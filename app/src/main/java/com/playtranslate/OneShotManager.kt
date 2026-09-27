@@ -1,10 +1,12 @@
 package com.playtranslate
 
 import android.graphics.Bitmap
+import android.util.Log
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ui.GrowthLimits
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -118,6 +120,13 @@ class OneShotManager(private val service: CaptureService) {
         object Success : HoldOutcome
         object NoText : HoldOutcome
         data class Failed(val why: String) : HoldOutcome
+        /** OCR found text and building its boxes threw: in practice the
+         *  waterfall's all-backends-failed throw, since translating is the
+         *  step that can fail there. Its own outcome, not [Failed]: the
+         *  placeholder boxes it painted must come down, and the pill must
+         *  not say the screenshot failed. An online service's own failure
+         *  also reaches the translation-error pill through the registry. */
+        data class TranslationFailed(val why: String) : HoldOutcome
         object Superseded : HoldOutcome
     }
 
@@ -139,7 +148,13 @@ class OneShotManager(private val service: CaptureService) {
             is HoldOutcome.Failed -> {
                 DetectionLog.log("hold cycle FAILED on D$displayId: ${outcome.why}")
                 if (displayId == cycle.panelDisplayId) service.setHoldLoading(false)
-                showFailurePill(displayId)
+                showFailurePill(displayId, "Screenshot failed")
+            }
+            is HoldOutcome.TranslationFailed -> {
+                DetectionLog.log("hold cycle TRANSLATION FAILED on D$displayId: ${outcome.why}")
+                if (displayId == cycle.panelDisplayId) service.setHoldLoading(false)
+                CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
+                showFailurePill(displayId, service.getString(R.string.hold_translation_failed))
             }
         }
     }
@@ -189,16 +204,29 @@ class OneShotManager(private val service: CaptureService) {
             val recordSrc = SourceLanguageProfiles[recordPrefs.sourceLangId].translationCode
             val recordTgt = recordPrefs.targetLang
             val processor = createProcessor(cycle.forceMode)
-            val boxes = processor.buildBoxes(ocrResult, raw, cropLeft, cropTop, screenshotW, screenshotH) { intermediate ->
-                // Shimmer placeholder callback. Gen-check so a superseded
-                // cycle can't paint over the new generation's overlay.
-                if (cycle.generation == currentGeneration) {
-                    service.showLiveOverlay(
-                        intermediate, cropLeft, cropTop, screenshotW, screenshotH,
-                        force = true, oneShot = true, displayId = displayId,
-                        growthLimits = GrowthLimits(bounds = pipeline.cropBounds),
-                    )
+            // The translation step. Every backend failing is an ordinary
+            // outcome (offline with no usable offline model, say), and this
+            // cycle runs in serviceScope, which has no exception handler: an
+            // escaping throw would crash the app. It ends the cycle instead.
+            val boxes = try {
+                processor.buildBoxes(ocrResult, raw, cropLeft, cropTop, screenshotW, screenshotH) { intermediate ->
+                    // Shimmer placeholder callback. Gen-check so a superseded
+                    // cycle can't paint over the new generation's overlay.
+                    if (cycle.generation == currentGeneration) {
+                        service.showLiveOverlay(
+                            intermediate, cropLeft, cropTop, screenshotW, screenshotH,
+                            force = true, oneShot = true, displayId = displayId,
+                            growthLimits = GrowthLimits(bounds = pipeline.cropBounds),
+                        )
+                    }
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Class name only: exception messages can carry request URLs
+                // (the translation diagnostics' privacy rule).
+                Log.w(TAG, "hold translate failed on D$displayId: ${e.javaClass.simpleName}")
+                return HoldOutcome.TranslationFailed(e.javaClass.simpleName)
             }
 
             if (cycle.generation != currentGeneration) return HoldOutcome.Superseded
@@ -239,10 +267,20 @@ class OneShotManager(private val service: CaptureService) {
             //    cancellation propagated by [supersede]/[cancel] handles
             //    the in-flight case past this checkpoint.
             if (displayId == cycle.panelDisplayId) {
-                service.translateAndSendToPanel(
-                    ocrResult, screenshotPath, displayId, frameIncludesUi,
-                    frame.includesOwnOverlays,
-                )
+                // Same handler-less scope as the translation above. The
+                // overlay is already painted, so a failure here (a result
+                // the cache didn't keep, translated again, failing this
+                // time) costs only the panel update.
+                try {
+                    service.translateAndSendToPanel(
+                        ocrResult, screenshotPath, displayId, frameIncludesUi,
+                        frame.includesOwnOverlays,
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "hold panel update failed on D$displayId: ${e.javaClass.simpleName}")
+                }
             }
             return HoldOutcome.Success
         } finally {
@@ -272,15 +310,20 @@ class OneShotManager(private val service: CaptureService) {
         }
     }
 
-    /** Failure pill for a [HoldOutcome.Failed] cycle — same surface as the
-     *  no-text pill. Inline English mirrors the existing
+    /** Failure pill for a [HoldOutcome.Failed] or
+     *  [HoldOutcome.TranslationFailed] cycle — same surface as the no-text
+     *  pill. The screenshot failure's inline English mirrors the existing
      *  runCaptureOcrTranslate failure string (l10n debt shared with it). */
-    private fun showFailurePill(displayId: Int) {
+    private fun showFailurePill(displayId: Int, message: String) {
         val overlayUi = CaptureBackendResolver.activeOverlayUi
         val dm = service.getSystemService(android.hardware.display.DisplayManager::class.java)
         val display = dm?.getDisplay(displayId)
         if (overlayUi != null && display != null) {
-            overlayUi.showNoTextPill(display, "Screenshot failed")
+            overlayUi.showNoTextPill(display, message)
         }
+    }
+
+    private companion object {
+        const val TAG = "OneShotManager"
     }
 }

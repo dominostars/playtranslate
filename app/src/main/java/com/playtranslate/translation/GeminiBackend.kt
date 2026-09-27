@@ -31,11 +31,15 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /** Thrown when Gemini rejects the API key (HTTP 400 with API_KEY_INVALID). */
-class GeminiAuthException : IOException("Invalid Gemini API key")
+class GeminiAuthException : IOException("Invalid Gemini API key"), ClassifiedFailure {
+    override val failure = BackendFailure(BackendFailureKind.AUTH, 400)
+}
 
-/** Thrown when Gemini rate-limits the call (HTTP 429). Falls through
- *  silently like the other backends' rate-limit exceptions. */
-class GeminiRateLimitException : IOException("Gemini rate limit exceeded")
+/** Thrown when Gemini answers 429. The waterfall falls through to the next
+ *  backend as for every rate-limit exception; [failure] tells a spent
+ *  daily quota from a plain rate limit (see [GeminiBackend.recordGemini429]). */
+class GeminiRateLimitException(override val failure: BackendFailure) :
+    IOException("Gemini rate limit exceeded"), ClassifiedFailure
 
 /**
  * Google Gemini (`generativelanguage.googleapis.com`) backend.
@@ -125,7 +129,9 @@ class GeminiBackend(
         withContext(Dispatchers.IO) {
             clearCooldownIfCredentialsChanged()
             val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
-                ?: throw IOException("Gemini API key not configured")
+                ?: throw StructuralFailureException(
+                    "Gemini API key not configured", BackendFailure(BackendFailureKind.AUTH),
+                )
             val model = modelProvider()
             val system = QwenChatTemplate.systemPrompt(source, target)
             // Online backend: {context} is affordable here (server-side prefill)
@@ -167,12 +173,13 @@ class GeminiBackend(
                                 bodyStr.contains("API key not valid")) {
                                 throw GeminiAuthException()
                             }
-                            throw StructuralFailureException("Gemini 400: ${bodyStr.take(200)}")
+                            throw StructuralFailureException(
+                                "Gemini 400: ${bodyStr.take(200)}", httpStatusFailure(400),
+                            )
                         }
                         429 -> {
                             Log.w(TAG, "429 body=${bodyStr.take(500)}")
-                            recordGemini429(bodyStr)
-                            throw GeminiRateLimitException()
+                            throw GeminiRateLimitException(recordGemini429(bodyStr))
                         }
                         else -> if (!response.isSuccessful) {
                             if (response.code >= 500) {
@@ -181,13 +188,21 @@ class GeminiBackend(
                                     CooldownCause.SERVER_ERROR,
                                 )
                             }
-                            throw StructuralFailureException("Gemini error ${response.code}")
+                            throw StructuralFailureException(
+                                "Gemini error ${response.code}", httpStatusFailure(response.code),
+                            )
                         }
                     }
-                    if (bodyStr.isEmpty()) throw StructuralFailureException("Empty response from Gemini")
+                    if (bodyStr.isEmpty()) {
+                        throw StructuralFailureException(
+                            "Empty response from Gemini", BackendFailure.BAD_RESPONSE,
+                        )
+                    }
                     val parsed = PtJson.lenient.decodeFromString<GeminiResponse>(bodyStr)
                     val raw = parsed.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.text
-                        ?: throw StructuralFailureException("No translation in Gemini response")
+                        ?: throw StructuralFailureException(
+                            "No translation in Gemini response", BackendFailure.BAD_RESPONSE,
+                        )
                     parsed.usageMetadata?.let {
                         usageTracker.addTokens(it.promptTokenCount, it.candidatesTokenCount)
                     }
@@ -220,7 +235,9 @@ class GeminiBackend(
     ): List<String> = withContext(Dispatchers.IO) {
         clearCooldownIfCredentialsChanged()
         val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
-            ?: throw IOException("Gemini API key not configured")
+            ?: throw StructuralFailureException(
+                "Gemini API key not configured", BackendFailure(BackendFailureKind.AUTH),
+            )
         val model = modelProvider()
         val system = LlmBatchPrompt.systemPrompt(source, target)
         val user = LlmBatchPrompt.userMessage(texts, source, target, includeContext = true)
@@ -286,8 +303,7 @@ class GeminiBackend(
                     }
                     429 -> {
                         Log.w(TAG, "429 body=${bodyStr.take(500)}")
-                        recordGemini429(bodyStr)
-                        throw GeminiRateLimitException()
+                        throw GeminiRateLimitException(recordGemini429(bodyStr))
                     }
                     else -> if (!response.isSuccessful) {
                         if (response.code >= 500) {
@@ -296,10 +312,16 @@ class GeminiBackend(
                                 CooldownCause.SERVER_ERROR,
                             )
                         }
-                        throw StructuralFailureException("Gemini error ${response.code}")
+                        throw StructuralFailureException(
+                            "Gemini error ${response.code}", httpStatusFailure(response.code),
+                        )
                     }
                 }
-                if (bodyStr.isEmpty()) throw StructuralFailureException("Empty response from Gemini")
+                if (bodyStr.isEmpty()) {
+                    throw StructuralFailureException(
+                        "Empty response from Gemini", BackendFailure.BAD_RESPONSE,
+                    )
+                }
                 val parsed = PtJson.lenient.decodeFromString<GeminiResponse>(bodyStr)
                 val rawJson = parsed.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.text
                     ?: throw BatchParseException("Gemini batch: empty candidate payload")
@@ -468,22 +490,27 @@ class GeminiBackend(
     )
 
     /**
-     * Thin wrapper: parse → route to the right [CooldownState] entry.
-     * Pure parsing lives in [parseGemini429Body] so unit tests can
-     * exercise it without constructing a full backend.
+     * Thin wrapper: parse → route to the right [CooldownState] entry, and
+     * return what this 429 was, for the exception that reports it. Pure
+     * parsing lives in [parseGemini429Body] so unit tests can exercise it
+     * without constructing a full backend.
      */
-    private fun recordGemini429(body: String) {
+    private fun recordGemini429(body: String): BackendFailure {
         val parsed = parseGemini429Body(body)
         if (parsed != null) {
             // parseGemini429Body's two descriptions are file-local
             // constants; the daily-quota one maps to the QUOTA message
             // class (resets at midnight PT), everything else is transient.
-            val cause = if (parsed.second == "Daily quota used") CooldownCause.DAILY_QUOTA
-                        else CooldownCause.RATE_LIMITED
+            val daily = parsed.second == "Daily quota used"
+            val cause = if (daily) CooldownCause.DAILY_QUOTA else CooldownCause.RATE_LIMITED
             cooldownState.recordParsedFailure(parsed.first, parsed.second, cause)
-        } else {
-            cooldownState.recordLadderFailure(CooldownLadder.RateLimit, "Rate limited")
+            return BackendFailure(
+                if (daily) BackendFailureKind.DAILY_QUOTA else BackendFailureKind.RATE_LIMITED,
+                429,
+            )
         }
+        cooldownState.recordLadderFailure(CooldownLadder.RateLimit, "Rate limited")
+        return BackendFailure(BackendFailureKind.RATE_LIMITED, 429)
     }
 
     @Serializable

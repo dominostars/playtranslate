@@ -44,9 +44,12 @@ import com.playtranslate.ui.WorkspaceHost
 import com.playtranslate.ui.WorkspacePage
 import com.playtranslate.ui.SonarPingIntroView
 import com.playtranslate.ui.TextBox
+import com.playtranslate.ui.TranslationErrorPills
 import com.playtranslate.ui.TranslationOverlayView
 import com.playtranslate.ui.WordLookupPopup
 import com.playtranslate.overlay.OwnWindows
+import com.playtranslate.translation.TranslationError
+import com.playtranslate.translation.TranslationErrorKey
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -202,6 +205,7 @@ class OverlayUiController(
             repositionIconForDisplay(displayId)
             repositionSonarIntroForDisplay(displayId)
             repositionFloatingMenuForDisplay(displayId)
+            errorPills.onDisplayChanged(displayId)
         }
     }
 
@@ -424,7 +428,19 @@ class OverlayUiController(
     private var floatingMenuDisplayId: Int? = null
 
     private var pillView: View? = null
+    /** Display, window params and window manager of the no-text pill, so it
+     *  can move to stay below the translation-error pills while they
+     *  change on its display ([keepNoTextPillBelowErrorPills]). */
+    private var pillDisplayId: Int? = null
+    private var pillParams: WindowManager.LayoutParams? = null
+    private var pillWm: WindowManager? = null
     private val pillHandler = Handler(Looper.getMainLooper())
+
+    /** The translation-error pills. See [showTranslationErrorPill]. */
+    private val errorPills = TranslationErrorPills(overlayHost).also {
+        it.onStackMoved = ::keepNoTextPillBelowErrorPills
+        it.onWithdrawn = com.playtranslate.translation.TranslationErrors::onPillsWithdrawn
+    }
 
     // ── Region overlays (delegated to RegionOverlayController) ───────────
 
@@ -523,9 +539,15 @@ class OverlayUiController(
             gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
             y = (40 * dp).toInt()
         }
+        // Under the translation-error pills when they're up on this display,
+        // not on top of them; kept there as they change.
+        errorPills.placeBelow(display.displayId, params)
 
         overlayHost.addOverlayWindow(view, wm, params, display.displayId)
         pillView = view
+        pillDisplayId = display.displayId
+        pillParams = params
+        pillWm = wm
 
         // Brief display, then fade out
         pillHandler.postDelayed({
@@ -545,7 +567,81 @@ class OverlayUiController(
             overlayHost.removeOverlayWindow(view)
         }
         pillView = null
+        pillDisplayId = null
+        pillParams = null
+        pillWm = null
     }
+
+    /** The translation-error pills on [displayId] were laid out anew or
+     *  moved: move the no-text pill, if it's up there, to just below them.
+     *  Called for their first layout too, which may come after the no-text
+     *  pill was placed (an error and a failed capture land in the same
+     *  frame), so the two never overlap whatever order they came in. When
+     *  the pills go away it stays put; it's gone within two seconds. */
+    private fun keepNoTextPillBelowErrorPills(displayId: Int) {
+        if (pillDisplayId != displayId) return
+        val view = pillView ?: return
+        val params = pillParams ?: return
+        if (!errorPills.placeBelow(displayId, params)) return
+        try {
+            pillWm?.updateViewLayout(view, params)
+        } catch (_: IllegalArgumentException) {
+            // Its window is already gone (a sweep, or the churn gate's
+            // deferred removal); hideNoTextPill clears the rest.
+        }
+    }
+
+    // ── Translation-error pills ──────────────────────────────────────────
+
+    /**
+     * Put [error]'s pill up; true when it is on screen afterwards (the
+     * tracker counts the error as shown only then). A pill shows whenever
+     * there's an error, whatever is in front, and × closes it
+     * (2026-09-27). It goes to the display the stack is already on, else the
+     * primary game display (the one the user last interacted with), else
+     * the first configured capture display. A display that leaves the
+     * capture set takes its pills with it ([reconcileFloatingIcons]).
+     */
+    fun showTranslationErrorPill(error: TranslationError): Boolean {
+        val displayId = errorPills.displayId
+            ?: CaptureService.instance?.primaryGameDisplayId()
+            ?: CaptureBackendResolver.active().capturableTargets(Prefs(context).captureDisplayIds).firstOrNull()
+            ?: Display.DEFAULT_DISPLAY
+        val display = (context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
+            .getDisplay(displayId) ?: return false
+        return errorPills.show(context.createDisplayContext(display), displayId, error)
+    }
+
+    /** Make the pill of [error]'s owner say [error] if it has one up; see
+     *  [com.playtranslate.translation.TranslationErrorPresenter.update]. */
+    fun updateTranslationErrorPill(error: TranslationError) {
+        errorPills.update(error)
+    }
+
+    /** Take down the pills of [keys]' owners (their service works again). */
+    fun hideTranslationErrorPills(keys: Collection<TranslationErrorKey>) {
+        errorPills.hide(keys.map { it.owner }.distinct())
+    }
+
+    /** Capture ended here (Turn Off, MediaProjection not turned on, or this
+     *  backend torn down: [hideFloatingIcon] with endsCapture): the pills
+     *  come down, and the errors they showed are forgotten, so the next
+     *  session shows any that still hold once (2026-09-26).
+     *  Idempotent. */
+    private fun endErrorPillSession() {
+        errorPills.removeAll()
+        com.playtranslate.translation.TranslationErrors.onCaptureSessionEnded()
+    }
+
+    /**
+     * Screen rects of this app's own chrome on [displayId] that a raw frame
+     * of that display can contain: the floating icon and the translation-
+     * error pills. The OCR sites black these out of frames stamped
+     * `includesOwnOverlays`, and the pinhole mode leaves them out of its
+     * change gate and its pinhole sampling. Read live, main thread.
+     */
+    fun ownChromeRects(displayId: Int): List<Rect> =
+        listOfNotNull(getFloatingIconRect(displayId)) + errorPills.screenRects(displayId)
 
     // ── Translation overlay ──────────────────────────────────────────────
 
@@ -970,7 +1066,7 @@ class OverlayUiController(
         val isMediaProjection =
             !CaptureBackendResolver.active().requiresAccessibilityService
         if (!isMediaProjection && !prefs.showOverlayIcon) {
-            hideFloatingIcon("pref_disabled")
+            hideFloatingIcon("pref_disabled", endsCapture = true)
             return
         }
         if (!isMediaProjection && CaptureLifecycle.floatingIconSuppressed) {
@@ -980,7 +1076,7 @@ class OverlayUiController(
             // resurrect path (service reconnect, display hot-plug, backend
             // reresolve) lands here, so the icon genuinely stays away until
             // MainActivity's onResume lifts the suppression.
-            hideFloatingIcon("suppressed_until_app_open")
+            hideFloatingIcon("suppressed_until_app_open", endsCapture = false)
             return
         }
         if (!canShowControls()) {
@@ -988,7 +1084,7 @@ class OverlayUiController(
             // deliberately the activation flag, not consent: a revoked
             // projection keeps the controls up — the next capture-requiring
             // action re-prompts (see onProjectionLost).
-            hideFloatingIcon("controls_gated")
+            hideFloatingIcon("controls_gated", endsCapture = true)
             return
         }
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
@@ -1020,6 +1116,14 @@ class OverlayUiController(
                 if (id in iconHandles) continue
                 val display = dm.getDisplay(id) ?: continue
                 if (installFloatingIconForDisplay(display, prefs, freshAppearance)) installedAny = true
+            }
+        }
+        // The translation-error pills live on a captured display: one that
+        // left the capture set (deselected, or gone) takes them with it, and
+        // each shows again at its next failure where capture is.
+        errorPills.displayId?.let { id ->
+            if ((id !in target && id !in iconHandles) || dm.getDisplay(id) == null) {
+                errorPills.withdrawFrom(id)
             }
         }
         // Once per reconcile, not per display, and only when an icon actually
@@ -1289,6 +1393,8 @@ class OverlayUiController(
                 clearLivePauseFlag = clearLivePauseFlag,
                 makeIcon = makeWiredIcon,
             )
+            // The error pills keep priority over the icon (2026-09-27).
+            errorPills.raise(displayId)
             // Fresh icon → sonar-ping intro. This is the only "icon added to
             // a window" path that means a fresh APPEARANCE (rotation reuses
             // the existing icon's params; bring-to-front swaps views for
@@ -1499,12 +1605,11 @@ class OverlayUiController(
             if (handle.icon.hasActiveGesture) continue
             val old = handle.icon
             // A blanked icon (window alpha 0) belongs to an in-flight clean
-            // capture. The old same-params re-add inherited that alpha and
-            // was healed by the capture's restore; a REPLACEMENT would go up
-            // at alpha 1 mid-capture (contaminating the bitmap), and the
-            // restore only knows the old view, so inheriting alpha 0 instead
-            // would leave the fresh icon invisible forever. Skip — the icon
-            // stays one layer low until the next overlay show re-raises it.
+            // capture. Skip it: the icon stays one layer low until the next
+            // overlay show re-raises it. (This skip predates OverlayHost
+            // adding a window mid-capture blanked and restoring it with the
+            // capture, which would now make a replacement safe; it is kept
+            // as it was.)
             val oldParams = old.params
             if (oldParams == null || oldParams.alpha == 0f) continue
             val fresh = handle.makeIcon()
@@ -1533,6 +1638,8 @@ class OverlayUiController(
             // untouchable), so the ghost can't eat the fresh icon's taps.
             old.destroy()
             overlayHost.removeOverlayWindow(old)
+            // The error pills keep priority over the icon (2026-09-27).
+            errorPills.raise(id)
         }
     }
 
@@ -1553,8 +1660,14 @@ class OverlayUiController(
         CaptureService.instance?.syncIconState()
     }
 
-    /** Tear down every floating icon. */
-    fun hideFloatingIcon(reason: String = "unspecified") {
+    /** Tear down every floating icon. [endsCapture] says whether capture
+     *  itself is ending (Turn Off, MediaProjection not turned on, this
+     *  backend's teardown), which ends the translation-error pills' session
+     *  too, icons or not. The icons also go while capture carries on (Hide
+     *  for Now, a reconcile while they're suppressed, the task swiped away),
+     *  and then the pills stay (2026-09-27). */
+    fun hideFloatingIcon(reason: String, endsCapture: Boolean) {
+        if (endsCapture) endErrorPillSession()
         if (iconHandles.isEmpty()) return
         Log.i(TAG, "hideFloatingIcon (all): $reason")
         val ids = iconHandles.keys.toList()
@@ -1568,7 +1681,7 @@ class OverlayUiController(
      *  transient teardown for every other reason. */
     private fun hideFloatingIconUntilAppOpen(reason: String) {
         CaptureLifecycle.setFloatingIconSuppressed(context, true)
-        hideFloatingIcon(reason)
+        hideFloatingIcon(reason, endsCapture = false)
     }
 
     /** Called by DragLookupController.openSentenceInApp before dismissing the
@@ -1582,9 +1695,11 @@ class OverlayUiController(
 
     /**
      * Returns the floating icon's bounding rect in screen coordinates for
-     * [displayId], or null if no icon is showing on that display.
+     * [displayId], or null if no icon is showing on that display. Private:
+     * frame consumers read [ownChromeRects], which also carries the error
+     * pills, so none of them can handle the icon and forget the pills.
      */
-    fun getFloatingIconRect(displayId: Int): android.graphics.Rect? {
+    private fun getFloatingIconRect(displayId: Int): android.graphics.Rect? {
         val icon = iconHandles[displayId]?.icon ?: return null
         val p = icon.params ?: return null
         return android.graphics.Rect(p.x, p.y, p.x + icon.viewSizePx, p.y + icon.viewSizePx)
@@ -2484,7 +2599,7 @@ class OverlayUiController(
         hideAppBoxes()
         regionController.hideAll()
         dismissFloatingMenu()
-        hideFloatingIcon("hideAll")
+        hideFloatingIcon("hideAll", endsCapture = true)
         overlayHost.removeAll()
         Log.i(TAG, "hideAll: structured teardown + overlayHost.removeAll() sweep done")
     }

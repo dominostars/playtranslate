@@ -254,13 +254,16 @@ class MainActivity :
     }
 
     /** Re-OCR target = engine/region/screenshot of whatever's on screen — a Ready
-     *  result or a "no text detected" status. Null when neither offers re-OCR. */
+     *  result or a "no text detected" status. Null when neither offers re-OCR, or
+     *  its frame can't be re-read ([com.playtranslate.model.OcrProvenance.canReRead]:
+     *  one that carries our own overlays, so the gear isn't offered for it). */
     private fun reOcrTarget(): Pair<com.playtranslate.model.OcrProvenance, String>? =
         when (val s = resultVm.result.value) {
             is com.playtranslate.ui.ResultState.Ready ->
-                (s.result.ocrProvenance ?: return null) to (s.result.screenshotPath ?: return null)
+                (s.result.ocrProvenance?.takeIf { it.canReRead } ?: return null) to
+                    (s.result.screenshotPath ?: return null)
             is com.playtranslate.ui.ResultState.Status ->
-                (s.ocrProvenance ?: return null) to (s.screenshotPath ?: return null)
+                (s.ocrProvenance?.takeIf { it.canReRead } ?: return null) to (s.screenshotPath ?: return null)
             else -> null
         }
 

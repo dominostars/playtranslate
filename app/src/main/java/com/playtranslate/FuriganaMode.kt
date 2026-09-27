@@ -395,10 +395,7 @@ class FuriganaMode(
                 // anyway (hidden panel, already-delivered content).
                 if (panelEligible && service.livePanelWouldAccept(displayId, dedupKey)) {
                     val screenshotPath = service.captureSaveToCache(raw, displayId)
-                    service.translateAndSendToPanel(
-                        ocrResult, screenshotPath, displayId, frameIncludesSystemUi,
-                        frameIncludesOwnOverlays, liveDedup = true,
-                    )
+                    offerToPanel(ocrResult, screenshotPath, frameIncludesSystemUi, frameIncludesOwnOverlays)
                 }
                 return
             }
@@ -489,10 +486,35 @@ class FuriganaMode(
         // deduped at the delivery layer.
         val screenshotPath = service.captureSaveToCache(raw, displayId)
         if (panelEligible) {
+            offerToPanel(ocrResult, screenshotPath, frameIncludesSystemUi, frameIncludesOwnOverlays)
+        }
+    }
+
+    /**
+     * Offer a settled frame's text to the in-app panel, which translates it.
+     * Every translation backend failing is an ordinary outcome (offline with
+     * no usable offline model), and this mode's [scope] has no exception
+     * handler, so an escaping throw would crash the app. A failed offer is
+     * dropped instead: nothing is recorded as delivered, so the next settled
+     * frame offers again. An online service's own failure reaches the
+     * translation-error pill through the registry.
+     */
+    private suspend fun offerToPanel(
+        ocrResult: OcrManager.OcrResult,
+        screenshotPath: String?,
+        frameIncludesSystemUi: Boolean,
+        frameIncludesOwnOverlays: Boolean,
+    ) {
+        try {
             service.translateAndSendToPanel(
                 ocrResult, screenshotPath, displayId, frameIncludesSystemUi,
                 frameIncludesOwnOverlays, liveDedup = true,
             )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Class name only: exception messages can carry request URLs.
+            Log.w(TAG, "D$displayId panel offer failed: ${e.javaClass.simpleName}")
         }
     }
 

@@ -16,7 +16,6 @@ import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
@@ -234,37 +233,17 @@ class OverlayAlert private constructor(
             setOnClickListener { }
         }
 
-        // App icon — larger image centered in a clipped circle (matches FloatingIconMenu).
-        // Shown only when the caller opted in via Builder.showIcon() — off by
-        // default because the app's utility popups don't need the brand mark.
+        // App icon in a circle ([appIconCircle]). Shown only when the caller
+        // opted in via Builder.showIcon() — off by default because the app's
+        // utility popups don't need the brand mark.
         if (showAppIcon) {
             val circleSize = (56 * dp).toInt()
-            val imgSize = (circleSize * 1.5f).toInt()
-            val iconFrame = FrameLayout(context).apply {
+            dialog.addView(appIconCircle(context, circleSize).apply {
                 layoutParams = LinearLayout.LayoutParams(circleSize, circleSize).apply {
                     gravity = Gravity.CENTER_HORIZONTAL
                     bottomMargin = (16 * dp).toInt()
                 }
-                clipToOutline = true
-                outlineProvider = object : android.view.ViewOutlineProvider() {
-                    override fun getOutline(view: View, outline: android.graphics.Outline) {
-                        outline.setOval(0, 0, view.width, view.height)
-                    }
-                }
-            }
-            val icon = ImageView(context).apply {
-                setImageResource(R.mipmap.ic_launcher_img)
-                scaleType = ImageView.ScaleType.FIT_CENTER
-                // The mark is deliberately larger than its circular frame and
-                // bleeds past every edge; Gravity.CENTER states that directly.
-                // The equivalent negative left/top margins it replaces relied on
-                // the default TOP|START gravity, which resolves to RIGHT under
-                // an RTL system locale — there FrameLayout drops leftMargin and
-                // the mark drifts off-centre horizontally.
-                layoutParams = FrameLayout.LayoutParams(imgSize, imgSize, Gravity.CENTER)
-            }
-            iconFrame.addView(icon)
-            dialog.addView(iconFrame)
+            })
         }
 
         // Title

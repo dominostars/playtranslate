@@ -18,7 +18,10 @@ import java.util.concurrent.TimeUnit
  *  registry treats the throw as "this backend failed", same as
  *  [GeminiRateLimitException]. [httpCode] rides along so the registry's
  *  diagnostics ring can record the status without touching the message. */
-class LingvaRateLimitException(val httpCode: Int) : IOException("Lingva rate limited (HTTP $httpCode)")
+class LingvaRateLimitException(val httpCode: Int) :
+    IOException("Lingva rate limited (HTTP $httpCode)"), ClassifiedFailure {
+    override val failure = BackendFailure(BackendFailureKind.RATE_LIMITED, httpCode)
+}
 
 /**
  * "Lingva" backend — historically a Lingva-proxy translator, currently
@@ -106,9 +109,15 @@ class LingvaBackend(
                 val result = try {
                     parseStrings(body, expected = 1)[0]
                 } catch (e: JSONException) {
-                    throw StructuralFailureException("Lingva: unexpected response shape", e)
+                    throw StructuralFailureException(
+                        "Lingva: unexpected response shape", BackendFailure.BAD_RESPONSE, e,
+                    )
                 }
-                if (result.isBlank()) throw StructuralFailureException("Blank translation in response")
+                if (result.isBlank()) {
+                    throw StructuralFailureException(
+                        "Blank translation in response", BackendFailure.BAD_RESPONSE,
+                    )
+                }
                 result
             } catch (e: LingvaRateLimitException) { throw e }
             catch (e: StructuralFailureException) { throw e }
@@ -215,10 +224,16 @@ class LingvaBackend(
         val strings = try {
             parseStrings(body, expected)
         } catch (e: JSONException) {
-            throw StructuralFailureException("Lingva batch: chunk at index $offset: ${e.message}", e)
+            throw StructuralFailureException(
+                "Lingva batch: chunk at index $offset: ${e.message}", BackendFailure.BAD_RESPONSE, e,
+            )
         }
         strings.forEachIndexed { i, s ->
-            if (s.isBlank()) throw StructuralFailureException("Lingva batch: blank result at index ${offset + i}")
+            if (s.isBlank()) {
+                throw StructuralFailureException(
+                    "Lingva batch: blank result at index ${offset + i}", BackendFailure.BAD_RESPONSE,
+                )
+            }
         }
         return strings
     }
@@ -315,14 +330,18 @@ class LingvaBackend(
                         CooldownLadder.RateLimit, "Server error",
                         CooldownCause.SERVER_ERROR,
                     )
-                    throw StructuralFailureException("Lingva error ${response.code}")
+                    throw StructuralFailureException(
+                        "Lingva error ${response.code}", httpStatusFailure(response.code),
+                    )
                 }
                 !response.isSuccessful ->
                     // Remaining 4xx (bad params; the 400 Google answers
                     // for a URL past its cap): deterministic rejection,
                     // not provider health — no cooldown, mirroring the
                     // other backends' structural path.
-                    throw StructuralFailureException("Lingva error ${response.code}")
+                    throw StructuralFailureException(
+                        "Lingva error ${response.code}", httpStatusFailure(response.code),
+                    )
             }
             return response.body.string()
         }

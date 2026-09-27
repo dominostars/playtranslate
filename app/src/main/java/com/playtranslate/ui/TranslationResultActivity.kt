@@ -292,14 +292,16 @@ class TranslationResultActivity :
     /** Re-OCR target = engine/region/screenshot of whatever's on screen — a Ready
      *  result or a "no text detected" status. Both prefer the stable pre-capture
      *  screenshot this screen was launched with over the overwriteable per-display
-     *  cache file. Null when neither offers re-OCR. */
+     *  cache file. Null when neither offers re-OCR, or its frame can't be re-read
+     *  ([OcrProvenance.canReRead]: one that carries our own overlays, so the gear
+     *  isn't offered for it). */
     private fun reOcrTarget(): Pair<OcrProvenance, String>? =
         when (val s = vm.result.value) {
             is ResultState.Ready ->
-                (s.result.ocrProvenance ?: return null) to
+                (s.result.ocrProvenance?.takeIf { it.canReRead } ?: return null) to
                     (intent.getStringExtra(EXTRA_SCREENSHOT_PATH) ?: s.result.screenshotPath ?: return null)
             is ResultState.Status ->
-                (s.ocrProvenance ?: return null) to
+                (s.ocrProvenance?.takeIf { it.canReRead } ?: return null) to
                     (intent.getStringExtra(EXTRA_SCREENSHOT_PATH) ?: s.screenshotPath ?: return null)
             else -> null
         }

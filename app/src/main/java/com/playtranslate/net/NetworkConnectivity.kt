@@ -53,6 +53,34 @@ object NetworkConnectivity {
         return cm?.activeNetwork != null
     }
 
+    /** What the OS knows about reaching the internet right now. */
+    enum class InternetState {
+        /** No default network at all (airplane mode, wifi off with no data). */
+        NONE,
+        /** A default network the OS has NOT confirmed reaches the internet: a
+         *  captive portal, wifi without internet, a network still coming up —
+         *  or one whose connectivity probe is blocked but works fine, which is
+         *  why this is only ever read together with other evidence. */
+        UNVALIDATED,
+        /** A default network the OS confirmed reaches the internet. */
+        VALIDATED,
+    }
+
+    /** The current [InternetState]. Safe from any thread. Unknown
+     *  capabilities read as [InternetState.UNVALIDATED], the claim that
+     *  asserts least. */
+    fun internetState(context: Context): InternetState {
+        val cm = context.getSystemService(ConnectivityManager::class.java)
+            ?: return InternetState.UNVALIDATED
+        val network = cm.activeNetwork ?: return InternetState.NONE
+        val caps = cm.getNetworkCapabilities(network) ?: return InternetState.UNVALIDATED
+        return if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) {
+            InternetState.VALIDATED
+        } else {
+            InternetState.UNVALIDATED
+        }
+    }
+
     /** Wire once from Application.onCreate, AFTER the consumer is ready to
      *  receive (the registration replays the current network). */
     fun install(context: Context, onRestored: () -> Unit) {

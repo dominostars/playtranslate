@@ -171,23 +171,13 @@ object OwnWindowMask {
 
     /**
      * Paint every rect in [rects] black. Empty list returns [bitmap]
-     * itself. Folds [OverlayToolkit.blackoutFloatingIcon] and inherits its
+     * itself. [OverlayToolkit.blackoutRects] on a full frame, with its
      * contract: [allowInPlace] is the ownership declaration for the FIRST
      * draw; once a copy exists it is ours and later rects draw into it.
      * Never recycles anything.
      */
-    fun apply(bitmap: Bitmap, rects: List<Rect>, allowInPlace: Boolean): Bitmap {
-        var out = bitmap
-        var inPlace = allowInPlace
-        for (rect in rects) {
-            val next = OverlayToolkit.blackoutFloatingIcon(out, 0, 0, rect, allowInPlace = inPlace)
-            if (next !== out) {
-                out = next
-                inPlace = true
-            }
-        }
-        return out
-    }
+    fun apply(bitmap: Bitmap, rects: List<Rect>, allowInPlace: Boolean): Bitmap =
+        OverlayToolkit.blackoutRects(bitmap, 0, 0, rects, allowInPlace)
 
     private fun isMaskable(activity: Activity): Boolean =
         !themeBoolean(activity, android.R.attr.windowIsTranslucent) &&

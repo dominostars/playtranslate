@@ -550,7 +550,9 @@ class CaptureService : Service() {
     override fun onTaskRemoved(rootIntent: Intent?) {
         Log.w(TAG, "onTaskRemoved")
         super.onTaskRemoved(rootIntent)
-        CaptureBackendResolver.activeOverlayUi?.hideFloatingIcon("task_removed")
+        // The icons go with the task; capture itself carries on, and so do
+        // the translation-error pills.
+        CaptureBackendResolver.activeOverlayUi?.hideFloatingIcon("task_removed", endsCapture = false)
     }
 
     override fun onDestroy() {
@@ -1024,25 +1026,23 @@ class CaptureService : Service() {
             bitmap = cropBitmap(raw, top, bottom, left, right)
 
             // The frame is stamped as possibly containing our own overlay
-            // windows (a re-OCR of a cached live raw frame) — black the
-            // floating icon out before OCR reads its chevron as text.
-            // In-place only when cropBitmap produced a fresh copy; a no-op
-            // crop leaves `bitmap === raw`, and the frame must never be
+            // windows (a re-OCR of a cached live raw frame) — black our
+            // chrome (floating icon, error pills) out before OCR reads it as
+            // text. In-place only when cropBitmap produced a fresh copy; a
+            // no-op crop leaves `bitmap === raw`, and the frame must never be
             // drawn into (uniform rule — here the cache write and colorRef
             // snapshot already happened, but the safety must not depend on
             // that ordering). Cleanup of `bitmap` is the outer finally's job.
             if (frame.includesOwnOverlays) {
-                val iconRect =
-                    CaptureBackendResolver.activeOverlayUi?.getFloatingIconRect(displayId)
-                if (iconRect != null) {
-                    val blacked = OverlayToolkit.blackoutFloatingIcon(
-                        bitmap, left, top, iconRect,
-                        allowInPlace = bitmap !== raw,
-                    )
-                    if (blacked !== bitmap) {
-                        bitmap.recycle()
-                        bitmap = blacked
-                    }
+                val chrome =
+                    CaptureBackendResolver.activeOverlayUi?.ownChromeRects(displayId).orEmpty()
+                val blacked = OverlayToolkit.blackoutRects(
+                    bitmap, left, top, chrome,
+                    allowInPlace = bitmap !== raw,
+                )
+                if (blacked !== bitmap) {
+                    bitmap.recycle()
+                    bitmap = blacked
                 }
             }
             state.value = CaptureState.InProgress(getString(R.string.status_ocr))
@@ -2762,14 +2762,15 @@ class CaptureService : Service() {
                 // The startup card may be inside this frame (whole-display
                 // mirrors, a11y screenshots) — never OCR our own chrome.
                 excludeRect = feedback?.ocrExclusionRect(displayId),
-                // Same principle for the floating icon, keyed on the frame's
-                // stamped fact. The rect is the icon's CURRENT dock — right
-                // for frames OCR'd in-cycle; for a cached frame re-entering
-                // OCR later it is the persisted dock position, which only
-                // drifts if the user moved the icon since (accepted).
-                blackoutIconRect = if (frameIncludesOwnOverlays) {
-                    CaptureBackendResolver.activeOverlayUi?.getFloatingIconRect(displayId)
-                } else null,
+                // Same principle for the floating icon and the translation-
+                // error pills, keyed on the frame's stamped fact. The rects
+                // are where that chrome is NOW — right for frames OCR'd
+                // in-cycle; for a cached frame re-entering OCR later they are
+                // today's positions, which only drift if the user moved the
+                // icon since or a pill came or went (accepted).
+                blackoutRects = if (frameIncludesOwnOverlays) {
+                    CaptureBackendResolver.activeOverlayUi?.ownChromeRects(displayId).orEmpty()
+                } else emptyList(),
             )
             // A completed pass — a null result means "nothing to translate",
             // which is also an answer — ends the startup card's narration.
@@ -3206,25 +3207,23 @@ class CaptureService : Service() {
             colorRef = oneShotColorRef(raw)
             bitmap = cropBitmap(raw, top, bottom, left, right)
 
-            // Black the floating icon out of frames stamped as possibly
-            // containing our own overlays. This path's frames come from
-            // requestClean (stamp false, no-op today) — keyed on the stamp,
-            // not the path, so a routing change can't silently reopen it.
-            // In-place only when cropBitmap produced a fresh copy; a no-op
-            // crop leaves `bitmap === raw`, and the frame must never be
-            // drawn into.
+            // Black our chrome (floating icon, error pills) out of frames
+            // stamped as possibly containing our own overlays. This path's
+            // frames come from requestClean (stamp false, no-op today) —
+            // keyed on the stamp, not the path, so a routing change can't
+            // silently reopen it. In-place only when cropBitmap produced a
+            // fresh copy; a no-op crop leaves `bitmap === raw`, and the frame
+            // must never be drawn into.
             if (frame.includesOwnOverlays) {
-                val iconRect =
-                    CaptureBackendResolver.activeOverlayUi?.getFloatingIconRect(displayId)
-                if (iconRect != null) {
-                    val blacked = OverlayToolkit.blackoutFloatingIcon(
-                        bitmap, left, top, iconRect,
-                        allowInPlace = bitmap !== raw,
-                    )
-                    if (blacked !== bitmap) {
-                        bitmap.recycle()
-                        bitmap = blacked
-                    }
+                val chrome =
+                    CaptureBackendResolver.activeOverlayUi?.ownChromeRects(displayId).orEmpty()
+                val blacked = OverlayToolkit.blackoutRects(
+                    bitmap, left, top, chrome,
+                    allowInPlace = bitmap !== raw,
+                )
+                if (blacked !== bitmap) {
+                    bitmap.recycle()
+                    bitmap = blacked
                 }
             }
             // Snapshot the exact source language (variant included) once for provenance.

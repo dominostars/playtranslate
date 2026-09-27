@@ -107,4 +107,44 @@ class OverlayToolkitBlackoutTest {
         assertEquals(Color.BLACK, out.getPixel(5, 15))
         assertEquals(Color.WHITE, out.getPixel(6, 15))
     }
+
+    // ── blackoutRects: the icon and the error pills together ────────────
+
+    @Test
+    fun `blackoutRects fills every rect on one copy and leaves a caller-owned frame alone`() {
+        val frame = whiteFrame()
+        val icon = Rect(0, 10, 8, 20)
+        val pill = Rect(20, 0, 36, 6)
+
+        val out = OverlayToolkit.blackoutRects(frame, 0, 0, listOf(icon, pill), allowInPlace = false)
+
+        assertNotSame(frame, out)
+        assertEquals(Color.WHITE, frame.getPixel(2, 15))
+        assertEquals(Color.WHITE, frame.getPixel(25, 3))
+        assertEquals(Color.BLACK, out.getPixel(2, 15))
+        assertEquals(Color.BLACK, out.getPixel(25, 3))
+        assertEquals(Color.WHITE, out.getPixel(15, 15))
+    }
+
+    @Test
+    fun `blackoutRects applies the crop offset to every rect`() {
+        val frame = whiteFrame()
+        // Screen rects; the bitmap's (0,0) sits at screen (100, 50).
+        val out = OverlayToolkit.blackoutRects(
+            frame, 100, 50, listOf(Rect(100, 60, 104, 64), Rect(130, 50, 134, 54)), allowInPlace = false,
+        )
+        assertEquals(Color.BLACK, out.getPixel(1, 11))
+        assertEquals(Color.BLACK, out.getPixel(31, 1))
+        assertEquals(Color.WHITE, out.getPixel(20, 20))
+    }
+
+    @Test
+    fun `blackoutRects with nothing to fill returns the input itself`() {
+        val frame = whiteFrame()
+        assertSame(frame, OverlayToolkit.blackoutRects(frame, 0, 0, emptyList(), allowInPlace = false))
+        assertSame(
+            frame,
+            OverlayToolkit.blackoutRects(frame, 0, 0, listOf(Rect(500, 500, 510, 510)), allowInPlace = false),
+        )
+    }
 }

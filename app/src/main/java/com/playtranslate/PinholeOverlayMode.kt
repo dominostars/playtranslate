@@ -516,17 +516,20 @@ class PinholeOverlayMode(
 
             val bitmapRects = coords.viewListToBitmap(rects)
 
-            // The floating icon is inside every raw frame this mode consumes
+            // Our own chrome — the floating icon, the translation-error
+            // pills — is inside every raw frame this mode consumes
             // (whole-display mirrors / a11y screenshots — never CLEAN
-            // streams). Its window rect is excluded from the outside gate
-            // below: the burn-in micro-orbit and idle dim repaint it, and
-            // self-chrome motion must never wake OCR. (The OCR-input
-            // blackout itself is central — runOcr keys it on the
-            // frameIncludesOwnOverlays fact passed at step 6.) Screen
-            // coords index the frame directly: this mode runs at identity
-            // scale only (guard above).
-            val iconRect =
-                CaptureBackendResolver.activeOverlayUi?.getFloatingIconRect(displayId)
+            // streams). Its rects are excluded from the outside gate below
+            // (the icon's burn-in micro-orbit and idle dim repaint it, a pill
+            // appears; self-chrome motion must never wake OCR) and from the
+            // pinhole sampling (a pill or the icon over a box would read as
+            // the box's game content changing). (The OCR-input blackout
+            // itself is central — runOcr keys it on the
+            // frameIncludesOwnOverlays fact passed at step 6.) Screen coords
+            // index the frame directly: this mode runs at identity scale only
+            // (guard above).
+            val chromeRects =
+                CaptureBackendResolver.activeOverlayUi?.ownChromeRects(displayId).orEmpty()
 
             // ── A2: cheap change gate in front of OCR ──────────────────
             // Pixel evidence BEFORE the expensive stages: the pinhole check
@@ -568,7 +571,7 @@ class PinholeOverlayMode(
                 if (gateBoxes.any { it.translatedText.isEmpty() }) return@gate
 
                 val outcomes = Array(gateBoxes.size) { i ->
-                    checkPinholes(raw, gateRef, bitmapRects[i], gateBoxes[i])
+                    checkPinholes(raw, gateRef, bitmapRects[i], gateBoxes[i], chromeRects)
                 }
                 val allKeep = outcomes.all { it.result == PinholeResult.KEEP }
                 val crop = OverlayToolkit.computeOcrCrop(
@@ -597,7 +600,7 @@ class PinholeOverlayMode(
                         orientedW = f.drawnW * sx + 2 * inflate,
                         orientedH = f.drawnH * sy + 2 * inflate,
                     )
-                } + listOfNotNull(iconRect?.let { OutsideChangeGate.Exclusion(it) })
+                } + chromeRects.map { OutsideChangeGate.Exclusion(it) }
                 val outside =
                     OutsideChangeGate.check(raw, gateRef, crop, exclude, gateBuffers, outsideGrid)
                 reconcileCycle =
@@ -841,7 +844,7 @@ class PinholeOverlayMode(
                     // gate-time snapshot survives updateCleanRef), saves the
                     // second per-box region read.
                     val outcome = pinholePre?.getOrNull(idx)
-                        ?: checkPinholes(raw, cleanRef, bitmapRects[idx], box)
+                        ?: checkPinholes(raw, cleanRef, bitmapRects[idx], box, chromeRects)
                     if (outcome.result == PinholeResult.REMOVE) {
                         pinholeRemovals.add(idx)
                     }
@@ -1409,9 +1412,23 @@ class PinholeOverlayMode(
      *     ratio results.
      *
      * None of this is done today. Identity scale only.
+     *
+     * ## Our own chrome over a box
+     *
+     * Pinholes inside [ownChrome] (the floating icon, the translation-error
+     * pills; screen coords, which index the frame at identity scale) are not
+     * sampled: there raw shows that window, not the blend the prediction
+     * models, so a pill resting over a box would read as its game content
+     * changing, REMOVE the box, and re-place it every cycle. Such a box is
+     * judged on the pinholes left uncovered. One with every pinhole under our
+     * chrome has no evidence left and is REMOVED rather than kept: a box we
+     * can no longer check must not stay up with a translation that may have
+     * gone stale (the text under it re-appears once the chrome moves off,
+     * and OCR can't read it while it's blacked out).
      */
     private fun checkPinholes(
-        raw: Bitmap, cleanRef: Bitmap, bitmapRect: Rect, box: TextBox
+        raw: Bitmap, cleanRef: Bitmap, bitmapRect: Rect, box: TextBox,
+        ownChrome: List<Rect>,
     ): PinholeOutcome {
         val keepZero = PinholeOutcome(PinholeResult.KEEP, 0f, 0, 0, 0)
         val overlay = overlayBitmap ?: return keepZero
@@ -1468,10 +1485,15 @@ class PinholeOverlayMode(
 
         var totalPinholes = 0
         var changedPinholes = 0
+        var chromeHidden = 0
         var maxDelta = 0
         for (py in 0 until regionH) {
             for (px in 0 until regionW) {
                 if (!isPinholePosition(left + px, top + py, spacing)) continue
+                if (ownChrome.isNotEmpty() && ownChrome.any { it.contains(left + px, top + py) }) {
+                    chromeHidden++
+                    continue
+                }
                 val i = py * regionW + px
                 val ovPx = ovPixels[i]
                 // A pixel the overlay never drew — a rotated chip's AABB
@@ -1508,7 +1530,12 @@ class PinholeOverlayMode(
                 }
             }
         }
-        if (totalPinholes == 0) return keepZero
+        if (totalPinholes == 0) {
+            // Every pinhole under our own chrome: no evidence, so don't keep
+            // what can't be checked (see "Our own chrome over a box" above).
+            return if (chromeHidden > 0) PinholeOutcome(PinholeResult.REMOVE, 1f, 0, 0, 0)
+            else keepZero
+        }
 
         val pct = changedPinholes.toFloat() / totalPinholes
         val result = if (pct >= PinholeCalibration.PINHOLE_CHANGE_PCT) {

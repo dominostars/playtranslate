@@ -421,7 +421,9 @@ class TranslationBackendRegistryTest {
         // the next one.
         val lingva = FakeFailingBatchBackend(
             id = "lingva", priority = 10,
-            batchException = StructuralFailureException("Lingva batch: chunk at index 0: top length 1 != q count 3"),
+            batchException = StructuralFailureException(
+                "Lingva batch: chunk at index 0: top length 1 != q count 3", BackendFailure.BAD_RESPONSE,
+            ),
         )
         val fallback = FakeOnlineBackend(id = "fallback", priority = 20)
         TranslationBackendRegistry.init(listOf(lingva, fallback))

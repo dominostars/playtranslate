@@ -22,16 +22,22 @@ import java.io.IOException
 import java.util.Locale
 
 /** Thrown when the DeepL free quota for the month has been exhausted (HTTP 456). */
-class DeepLQuotaExceededException : IOException("DeepL monthly quota exceeded")
+class DeepLQuotaExceededException : IOException("DeepL monthly quota exceeded"), ClassifiedFailure {
+    override val failure = BackendFailure(BackendFailureKind.MONTHLY_QUOTA, 456)
+}
 
 /** Thrown when the API key is rejected (HTTP 403). */
-class DeepLAuthException : IOException("Invalid DeepL API key")
+class DeepLAuthException : IOException("Invalid DeepL API key"), ClassifiedFailure {
+    override val failure = BackendFailure(BackendFailureKind.AUTH, 403)
+}
 
 /** Thrown when DeepL rate-limits the call (HTTP 429). DeepL exposes no
- *  retry-after or X-RateLimit-* headers, so callers fall through silently
- *  like the other backends' rate-limit exceptions; the [CooldownState]
- *  ladder governs how long the backend stays skipped. */
-class DeepLRateLimitException : IOException("DeepL rate limit exceeded")
+ *  retry-after or X-RateLimit-* headers, so callers fall through to the
+ *  next backend like the other backends' rate-limit exceptions; the
+ *  [CooldownState] ladder governs how long the backend stays skipped. */
+class DeepLRateLimitException : IOException("DeepL rate limit exceeded"), ClassifiedFailure {
+    override val failure = BackendFailure(BackendFailureKind.RATE_LIMITED, 429)
+}
 
 /**
  * DeepL REST API backend.
@@ -178,7 +184,9 @@ class DeepLBackend(
         // the batch path — keeps the body shape identical and avoids
         // drift between the two.
         val out = postTranslate(listOf(text), source, target)
-        return out.firstOrNull() ?: throw IOException("No translation in DeepL response")
+        return out.firstOrNull() ?: throw StructuralFailureException(
+            "No translation in DeepL response", BackendFailure.BAD_RESPONSE,
+        )
     }
 
     override suspend fun translateBatch(
@@ -191,7 +199,10 @@ class DeepLBackend(
             // request. OCR rarely produces more than ~10 groups so this
             // is defensive — refuse oversized batches and let the
             // registry fall through to the next backend.
-            throw BatchParseException("DeepL batch exceeds $MAX_DEEPL_BATCH strings (got ${texts.size})")
+            throw BatchParseException(
+                "DeepL batch exceeds $MAX_DEEPL_BATCH strings (got ${texts.size})",
+                serverAnswered = false,
+            )
         }
         val out = postTranslate(texts, source, target)
         if (out.size != texts.size) {
@@ -211,7 +222,9 @@ class DeepLBackend(
     ): List<String> = withContext(Dispatchers.IO) {
         clearCooldownIfCredentialsChanged()
         val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
-            ?: throw IOException("DeepL API key not configured")
+            ?: throw StructuralFailureException(
+                "DeepL API key not configured", BackendFailure(BackendFailureKind.AUTH),
+            )
 
         val host = hostFor(apiKey)
         val body = buildJsonObject {
@@ -262,7 +275,9 @@ class DeepLBackend(
                                 CooldownCause.SERVER_ERROR,
                             )
                         }
-                        throw StructuralFailureException("DeepL error ${response.code}")
+                        throw StructuralFailureException(
+                            "DeepL error ${response.code}", httpStatusFailure(response.code),
+                        )
                     }
                 }
                 val responseBody = response.body.string()

@@ -1,5 +1,6 @@
 package com.playtranslate.translation
 
+import android.os.SystemClock
 import android.util.Log
 import com.playtranslate.diagnostics.TranslationDiag
 import com.playtranslate.translation.llm.OnDeviceLlmBackend
@@ -8,6 +9,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 /** One active cooldown as seen by [TranslationBackendRegistry.earliestCooldownEnd]:
@@ -58,6 +60,27 @@ object TranslationBackendRegistry {
 
     @Volatile private var backends: List<TranslationBackend> = emptyList()
     @Volatile private var orderOverride: List<BackendId>? = null
+
+    /**
+     * Receives each waterfall pass's online outcomes: one [OnlineAttempt]
+     * per online service ([TranslationBackend.requiresInternet]) the pass
+     * actually called, in waterfall order. Cooldown-skipped and unusable
+     * services are absent, since they weren't asked. Offline tiers are
+     * never reported. Called on the translating thread when the pass ends,
+     * whether it returned, failed outright, or was cancelled: whatever
+     * completed before a cancellation is still a fact about those services.
+     * Passes overlap and a slow one reports after a faster, newer one, so
+     * each attempt carries when its request went out
+     * ([OnlineAttempt.sentAtMs]), stamped before the backend reads its
+     * config. Installed once by [TranslationErrors.install]; null in unit
+     * tests unless a test sets it.
+     */
+    @Volatile var onlineAttemptListener: ((List<OnlineAttempt>) -> Unit)? = null
+
+    private fun reportAttempts(attempts: List<OnlineAttempt>) {
+        if (attempts.isEmpty()) return
+        onlineAttemptListener?.invoke(attempts.toList())
+    }
 
     /** Register the set of backends to use. Production wiring lives in
      *  [com.playtranslate.PlayTranslateApplication.onCreate]; tests can
@@ -178,55 +201,77 @@ object TranslationBackendRegistry {
         // cycle, rolling logcat past the diagnostics we want to keep.
         val trail = ArrayList<String>(ordered.size)
         var eventful = false
-        for (backend in ordered) {
-            if (!backend.isUsable(source, target)) continue
-            // Cooldown skip: backends in a parsed/ladder cooldown stay out
-            // of rotation until retryAt elapses. The cache layer doesn't
-            // need a per-result signal — [preferredOnlineId] excludes
-            // cooled-down backends, so the cache's preferred-backend
-            // reconcile invalidates stale entries on cooldown enter/exit.
-            //
-            // `now` is read per-iteration: an earlier backend may have
-            // hung for many seconds before failing, during which a
-            // shorter cooldown on this one could have elapsed.
-            val now = System.currentTimeMillis()
-            val coolDown = (backend as? Cooldownable)?.unavailableUntil()
-            if (coolDown != null && coolDown > now) {
-                Log.d(TAG, "Backend ${backend.id} skipped (cooldown ${coolDown - now}ms remaining)")
-                trail.add("${backend.displayName}[cooldown ${(coolDown - now) / 1000}s]")
-                eventful = true
-                continue
-            }
-            val attemptStartedAt = System.currentTimeMillis()
-            try {
-                val translated = backend.translate(text, source, target)
-                (backend as? Cooldownable)?.recordSuccess(attemptStartedAt)
-                trail.add("${backend.displayName}[ok]")
-                if (backend.isDegradedFallback && eventful) logWaterfall("single", trail)
-                return WaterfallResult(
-                    text = translated,
-                    backend = backend,
-                    isDegraded = backend.isDegradedFallback,
-                    displacedLlmId = displacedLlmId,
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (e is OnDeviceLlmTransientException && backend is OnDeviceLlmBackend) {
-                    // Record the *first* displaced LLM in this call so the
-                    // caller can skip caching the fallback's output. Multi-
-                    // LLM displacement in the same call is rare; the first
-                    // one is the most useful signal.
-                    if (displacedLlmId == null) displacedLlmId = backend.id
+        val attempts = ArrayList<OnlineAttempt>(2)
+        try {
+            for (backend in ordered) {
+                if (!backend.isUsable(source, target)) continue
+                // Cooldown skip: backends in a parsed/ladder cooldown stay out
+                // of rotation until retryAt elapses. The cache layer doesn't
+                // need a per-result signal — [preferredOnlineId] excludes
+                // cooled-down backends, so the cache's preferred-backend
+                // reconcile invalidates stale entries on cooldown enter/exit.
+                //
+                // `now` is read per-iteration: an earlier backend may have
+                // hung for many seconds before failing, during which a
+                // shorter cooldown on this one could have elapsed.
+                val now = System.currentTimeMillis()
+                val coolDown = (backend as? Cooldownable)?.unavailableUntil()
+                if (coolDown != null && coolDown > now) {
+                    Log.d(TAG, "Backend ${backend.id} skipped (cooldown ${coolDown - now}ms remaining)")
+                    trail.add("${backend.displayName}[cooldown ${(coolDown - now) / 1000}s]")
+                    eventful = true
+                    continue
                 }
-                Log.w(TAG, "Backend ${backend.id} failed (${e.javaClass.simpleName}: ${e.message}), falling back")
-                trail.add("${backend.displayName}[${e.javaClass.simpleName}]")
-                eventful = true
-                recordFailureDiag(backend, e)
+                val attemptStartedAt = System.currentTimeMillis()
+                // The monotonic twin of attemptStartedAt (wall clock, which
+                // the cooldowns persist): orders this attempt's report.
+                val sentAt = SystemClock.elapsedRealtime()
+                try {
+                    val translated = backend.translate(text, source, target)
+                    (backend as? Cooldownable)?.recordSuccess(attemptStartedAt)
+                    trail.add("${backend.displayName}[ok]")
+                    if (backend.requiresInternet) {
+                        attempts += OnlineAttempt(backend.id, backend.displayName, null, sentAt, reachedServer = true)
+                    }
+                    if (backend.isDegradedFallback && eventful) logWaterfall("single", trail)
+                    return WaterfallResult(
+                        text = translated,
+                        backend = backend,
+                        isDegraded = backend.isDegradedFallback,
+                        displacedLlmId = displacedLlmId,
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    if (e is OnDeviceLlmTransientException && backend is OnDeviceLlmBackend) {
+                        // Record the *first* displaced LLM in this call so the
+                        // caller can skip caching the fallback's output. Multi-
+                        // LLM displacement in the same call is rare; the first
+                        // one is the most useful signal.
+                        if (displacedLlmId == null) displacedLlmId = backend.id
+                    }
+                    Log.w(TAG, "Backend ${backend.id} failed (${e.javaClass.simpleName}: ${e.message}), falling back")
+                    trail.add("${backend.displayName}[${e.javaClass.simpleName}]")
+                    eventful = true
+                    recordFailureDiag(backend, e)
+                    if (backend.requiresInternet) attempts += failedAttempt(backend, e, sentAt)
+                }
             }
+            logWaterfall("single ALL FAILED", trail)
+            throw IllegalStateException("All translation backends failed")
+        } finally {
+            reportAttempts(attempts)
         }
-        logWaterfall("single ALL FAILED", trail)
-        throw IllegalStateException("All translation backends failed")
+    }
+
+    /** The report for an online backend's call that threw [e]: the server
+     *  was reached unless the failure is a transport one. */
+    private fun failedAttempt(backend: TranslationBackend, e: Exception, sentAt: Long): OnlineAttempt {
+        val failure = classifyBackendFailure(e)
+        return OnlineAttempt(
+            backend.id, backend.displayName, failure, sentAt,
+            reachedServer = !failure.kind.isTransport,
+        )
     }
 
     /** Push one backend failure into [TranslationDiag]'s persisted ring.
@@ -237,7 +282,7 @@ object TranslationBackendRegistry {
         TranslationDiag.recordFailure(
             backendName = backend.displayName,
             exceptionClass = e.javaClass.simpleName,
-            httpCode = (e as? LingvaRateLimitException)?.httpCode,
+            httpCode = (e as? ClassifiedFailure)?.failure?.httpCode,
             cooldownUntil = (backend as? Cooldownable)?.unavailableUntil(),
         )
     }
@@ -285,7 +330,24 @@ object TranslationBackendRegistry {
         if (texts.size == 1) {
             return listOf(translate(texts[0], source, target))
         }
+        val attempts = ArrayList<OnlineAttempt>(2)
+        try {
+            return batchWaterfall(texts, source, target, ordered, attempts)
+        } finally {
+            reportAttempts(attempts)
+        }
+    }
 
+    /** [translateBatch]'s waterfall proper, for two or more texts. Appends
+     *  one [OnlineAttempt] to [attempts] per online backend it calls; the
+     *  caller reports them once the pass ends, however it ends. */
+    private suspend fun batchWaterfall(
+        texts: List<String>,
+        source: String,
+        target: String,
+        ordered: List<TranslationBackend>,
+        attempts: MutableList<OnlineAttempt>,
+    ): List<WaterfallResult> {
         val results = arrayOfNulls<WaterfallResult>(texts.size)
         var pendingIndices: List<Int> = texts.indices.toList()
         // Per-index displacement signal: when a non-batching on-device
@@ -309,9 +371,14 @@ object TranslationBackendRegistry {
             }
 
             val pendingTexts = pendingIndices.map { texts[it] }
+            // The batch call got a reply it couldn't use: the per-text retry
+            // below reports this backend, and that reply already proves its
+            // server was reached (not DeepL's cap, refused before sending).
+            var batchAnswered = false
 
             if (backend is BatchTranslator && pendingTexts.size > 1) {
                 val batchStartedAt = System.currentTimeMillis()
+                val batchSentAt = SystemClock.elapsedRealtime()
                 try {
                     val translated = backend.translateBatch(pendingTexts, source, target)
                     if (translated.size != pendingTexts.size) {
@@ -321,6 +388,9 @@ object TranslationBackendRegistry {
                     }
                     (backend as? Cooldownable)?.recordSuccess(batchStartedAt)
                     trail.add("${backend.displayName}[ok]")
+                    if (backend.requiresInternet) {
+                        attempts += OnlineAttempt(backend.id, backend.displayName, null, batchSentAt, reachedServer = true)
+                    }
                     pendingIndices.forEachIndexed { i, origIdx ->
                         results[origIdx] = WaterfallResult(
                             text = translated[i],
@@ -355,6 +425,7 @@ object TranslationBackendRegistry {
                         "Backend ${backend.id} batch parse failed (${e.message}), retrying per-text on same backend"
                     )
                     trail.add("${backend.displayName}[batch-parse, per-text retry]")
+                    batchAnswered = e.serverAnswered
                 } catch (e: Exception) {
                     Log.w(
                         TAG,
@@ -363,6 +434,7 @@ object TranslationBackendRegistry {
                     trail.add("${backend.displayName}[batch ${e.javaClass.simpleName}]")
                     eventful = true
                     recordFailureDiag(backend, e)
+                    if (backend.requiresInternet) attempts += failedAttempt(backend, e, batchSentAt)
                     // Fall through to the next backend with the FULL
                     // pending list. Intentional: per-text retry inside
                     // the same backend would defeat the batching point
@@ -377,31 +449,57 @@ object TranslationBackendRegistry {
             // behavior, with the addition of per-index displacement
             // tracking and the LLM-transient backend-wide bailout.
             val perTextStartedAt = System.currentTimeMillis()
+            val perTextSentAt = SystemClock.elapsedRealtime()
             var transientHit = false
             val firstFailure = AtomicReference<Exception?>(null)
-            val perBackend = coroutineScope {
-                pendingTexts.map { t ->
-                    async {
-                        if (transientHit) null else {
-                            try {
-                                backend.translate(t, source, target)
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (e: Exception) {
-                                if (e is OnDeviceLlmTransientException && backend is OnDeviceLlmBackend) {
-                                    transientHit = true
-                                    if (displacedLlmId == null) displacedLlmId = backend.id
+            // The first failure the server itself answered (a 429, a 5xx):
+            // the pill names that over a sibling's timeout, and it proves
+            // the server was reached even when nothing was translated.
+            val firstServerFailure = AtomicReference<BackendFailure?>(null)
+            val succeededSoFar = AtomicInteger(0)
+            val perBackend = try {
+                coroutineScope {
+                    pendingTexts.map { t ->
+                        async {
+                            if (transientHit) null else {
+                                try {
+                                    backend.translate(t, source, target).also { succeededSoFar.incrementAndGet() }
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    if (e is OnDeviceLlmTransientException && backend is OnDeviceLlmBackend) {
+                                        transientHit = true
+                                        if (displacedLlmId == null) displacedLlmId = backend.id
+                                    }
+                                    firstFailure.compareAndSet(null, e)
+                                    val failure = classifyBackendFailure(e)
+                                    if (!failure.kind.isTransport) firstServerFailure.compareAndSet(null, failure)
+                                    Log.w(
+                                        TAG,
+                                        "Backend ${backend.id} failed (${e.javaClass.simpleName}: ${e.message}), falling back"
+                                    )
+                                    null
                                 }
-                                firstFailure.compareAndSet(null, e)
-                                Log.w(
-                                    TAG,
-                                    "Backend ${backend.id} failed (${e.javaClass.simpleName}: ${e.message}), falling back"
-                                )
-                                null
                             }
                         }
-                    }
-                }.awaitAll()
+                    }.awaitAll()
+                }
+            } catch (e: CancellationException) {
+                // The pass was cancelled mid fan-out (a hold released, a
+                // newer capture). A text that already failed is still a fact
+                // about this service: report it, or a 429 that also started a
+                // cooldown would go unreported until the cooldown ends. No
+                // success is reported: the texts that never finished could
+                // have failed.
+                val failed = firstFailure.get()
+                if (backend.requiresInternet && failed != null) {
+                    attempts += OnlineAttempt(
+                        backend.id, backend.displayName,
+                        firstServerFailure.get() ?: classifyBackendFailure(failed), perTextSentAt,
+                        reachedServer = succeededSoFar.get() > 0 || firstServerFailure.get() != null,
+                    )
+                }
+                throw e
             }
 
             // If memory pressure forced a transient bailout, treat the
@@ -424,6 +522,24 @@ object TranslationBackendRegistry {
                 // fan-out can fail N texts on the same underlying cause,
                 // and N entries would flush the 20-slot ring for nothing.
                 firstFailure.get()?.let { recordFailureDiag(backend, it) }
+            }
+            // Reported as failed unless it answered EVERY text, the same
+            // health rule as the cooldown clear just below, naming a failure
+            // the server answered over a transport one. Reached-server is
+            // its own fact: the batch's unusable reply, any translated text
+            // or any server-answered failure proves it. (A null result on an
+            // online backend always comes with a firstFailure: only the
+            // on-device transient bailout returns null without one, and that
+            // branch has already moved on.)
+            if (backend.requiresInternet) {
+                val failure = if (succeeded == perBackend.size) null
+                    else firstServerFailure.get()
+                        ?: firstFailure.get()?.let(::classifyBackendFailure)
+                        ?: BackendFailure.BAD_RESPONSE
+                attempts += OnlineAttempt(
+                    backend.id, backend.displayName, failure, perTextSentAt,
+                    reachedServer = batchAnswered || succeeded > 0 || firstServerFailure.get() != null,
+                )
             }
             // Only clear cooldown when EVERY attempted text succeeded.
             // Mixed results mean some sibling call recorded a cooldown

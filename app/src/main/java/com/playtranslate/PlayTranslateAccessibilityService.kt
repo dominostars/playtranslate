@@ -882,7 +882,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         fun disable(ctx: Context, reason: String) {
             Prefs(ctx).showOverlayIcon = false
             CaptureService.instance?.let { if (it.isLive) it.stopLive() }
-            CaptureBackendResolver.activeOverlayUi?.hideFloatingIcon(reason)
+            CaptureBackendResolver.activeOverlayUi?.hideFloatingIcon(reason, endsCapture = true)
             PlayTranslateTileService.TileSync.refresh(ctx)
         }
 

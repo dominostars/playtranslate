@@ -176,6 +176,12 @@ class PlayTranslateApplication : Application() {
         com.playtranslate.net.NetworkConnectivity.install(this) {
             TranslationBackendRegistry.onConnectivityRestored()
         }
+        // Online translation failures surface as a pill on the game display
+        // (the registry reports every pass; the tracker decides; the active
+        // capture backend's overlay controller draws).
+        com.playtranslate.translation.TranslationErrors.install(
+            this, com.playtranslate.ui.ActiveOverlayErrorPills,
+        )
 
         // Launch-time cleanup: drop in-flight download partials for any
         // deprecated model (generic — driven by CatalogEntry.deprecated), so a

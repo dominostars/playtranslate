@@ -653,17 +653,19 @@ object OverlayToolkit {
      * Crop to active region, run OCR, filter source-lang chars. Returns null
      * if no text detected. Does NOT do dedup, translation, or display.
      *
-     * [blackoutIconRect], when non-null (screen coordinates), is filled
-     * black in the OCR input after the crop — the floating icon's window
-     * rect, resolved by the caller from the frame's stamped
-     * [com.playtranslate.capture.CapturedFrame.includesOwnOverlays] fact.
-     * Raw frames of contaminated sources contain the icon, and its compact
-     * chevron OCRs as a ‹-class glyph (observed producing overlay boxes,
-     * 2026-07-16). Frames that structurally cannot contain the icon (clean
-     * captures, CLEAN task mirrors) must pass null: filling their rect
-     * would eat real game text under the dock spot. Pixel fill rather than
-     * result-space exclusion so the glyph can never merge into an adjacent
-     * real text line and take it down with it.
+     * [blackoutRects] (screen coordinates) are filled black in the OCR
+     * input after the crop — this app's own chrome on the display (the
+     * floating icon, the translation-error pills:
+     * [OverlayUiController.ownChromeRects]), resolved by the caller from the
+     * frame's stamped [com.playtranslate.capture.CapturedFrame.includesOwnOverlays]
+     * fact. Raw frames of contaminated sources contain that chrome: the
+     * icon's compact chevron OCRs as a ‹-class glyph (observed producing
+     * overlay boxes, 2026-07-16), and a pill's message is real words. Frames
+     * that structurally cannot contain it (clean captures, CLEAN task
+     * mirrors) must pass an empty list: filling those rects would eat real
+     * game text under them. Pixel fill rather than result-space exclusion so
+     * the chrome can never merge into an adjacent real text line and take
+     * it down with it.
      *
      * [seedWriter], when non-null, is invoked after [OcrManager.recognise]
      * with the bitmap that was actually fed to OCR and the result (possibly
@@ -690,20 +692,20 @@ object OverlayToolkit {
         statusBarHeight: Int,
         seedWriter: ((Bitmap, OcrManager.OcrResult?) -> Unit)? = null,
         excludeRect: Rect? = null,
-        blackoutIconRect: Rect? = null,
+        blackoutRects: List<Rect> = emptyList(),
     ): OcrPipelineResult? {
         val crop = computeOcrCrop(raw.width, raw.height, activeRegion, statusBarHeight)
         val needsCrop = crop.top > 0 || crop.left > 0 || crop.bottom < raw.height || crop.right < raw.width
         var bitmap = if (needsCrop)
             Bitmap.createBitmap(raw, crop.left, crop.top, (crop.right - crop.left).coerceAtLeast(1), (crop.bottom - crop.top).coerceAtLeast(1))
         else raw
-        if (blackoutIconRect != null) {
+        if (blackoutRects.isNotEmpty()) {
             // In-place only into the pipeline-owned crop copy. When the crop
             // was a no-op, `bitmap` IS the caller-owned frame — reused after
             // this call as the untouched screen image — so the fill must land
             // on a copy no matter how mutable the frame is.
-            val blacked = blackoutFloatingIcon(
-                bitmap, crop.left, crop.top, blackoutIconRect,
+            val blacked = blackoutRects(
+                bitmap, crop.left, crop.top, blackoutRects,
                 allowInPlace = bitmap !== raw,
             )
             if (blacked !== bitmap) {
@@ -779,6 +781,32 @@ object OverlayToolkit {
             left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat(),
             iconBlackoutPaint,
         )
+        return out
+    }
+
+    /**
+     * [blackoutFloatingIcon] for every rect in [rects], with the same
+     * ownership contract: [allowInPlace] declares the caller owns [bitmap]
+     * outright, and holds for the FIRST draw only; once the helper has
+     * copied, the copy is ours and later rects draw into it. Returns
+     * [bitmap] itself when no rect touches it. Never recycles anything.
+     */
+    fun blackoutRects(
+        bitmap: Bitmap,
+        cropLeft: Int,
+        cropTop: Int,
+        rects: List<Rect>,
+        allowInPlace: Boolean,
+    ): Bitmap {
+        var out = bitmap
+        var inPlace = allowInPlace
+        for (rect in rects) {
+            val next = blackoutFloatingIcon(out, cropLeft, cropTop, rect, allowInPlace = inPlace)
+            if (next !== out) {
+                out = next
+                inPlace = true
+            }
+        }
         return out
     }
 

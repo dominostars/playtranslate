@@ -31,12 +31,16 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /** Thrown when OpenAI rejects the API key (HTTP 401). */
-class OpenAiAuthException : IOException("Invalid OpenAI API key")
+class OpenAiAuthException : IOException("Invalid OpenAI API key"), ClassifiedFailure {
+    override val failure = BackendFailure(BackendFailureKind.AUTH, 401)
+}
 
-/** Thrown when OpenAI rate-limits the call (HTTP 429). Like
- *  [DeepLQuotaExceededException], this falls through to the next backend
- *  silently — no transient row-status flair in v1. */
-class OpenAiRateLimitException : IOException("OpenAI rate limit exceeded")
+/** Thrown when an OpenAI-compatible endpoint answers 429. Like
+ *  [DeepLQuotaExceededException], this falls through to the next backend;
+ *  [failure] tells OpenAI's `insufficient_quota` (billing) from a plain
+ *  rate limit (see [OpenAiBackend.recordOpenAi429]). */
+class OpenAiRateLimitException(override val failure: BackendFailure) :
+    IOException("OpenAI rate limit exceeded"), ClassifiedFailure
 
 /**
  * OpenAI chat-completions backend. Doubles as a generic OpenAI-compatible
@@ -181,7 +185,9 @@ class OpenAiBackend(
         withContext(Dispatchers.IO) {
             clearCooldownIfCredentialsChanged()
             val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
-                ?: throw IOException("OpenAI API key not configured")
+                ?: throw StructuralFailureException(
+                    "OpenAI API key not configured", BackendFailure(BackendFailureKind.AUTH),
+                )
             val baseUrl = baseUrlProvider().trim().trimEnd('/')
             val model = modelProvider()
             val system = QwenChatTemplate.systemPrompt(source, target)
@@ -215,14 +221,14 @@ class OpenAiBackend(
                             val hints = RateLimitHints.from(response)
                             val body = response.body.string()
                             Log.w(TAG, "429 $hints body=${body.take(500)}")
-                            recordOpenAi429(body, hints)
-                            throw OpenAiRateLimitException()
+                            throw OpenAiRateLimitException(recordOpenAi429(body, hints))
                         }
                         else -> if (!response.isSuccessful) {
                             val fullBody = response.body.string()
                             val errBody = fullBody.take(300).replace('\n', ' ')
                             Log.w(TAG, "translate error code=${response.code} body=$errBody")
-                            if (response.code == 400 && isBillingExhausted(fullBody)) {
+                            val billing = response.code == 400 && isBillingExhausted(fullBody)
+                            if (billing) {
                                 recordBillingExhausted()
                             } else if (response.code >= 500) {
                                 cooldownState?.recordLadderFailure(
@@ -230,13 +236,19 @@ class OpenAiBackend(
                                     CooldownCause.SERVER_ERROR,
                                 )
                             }
-                            throw StructuralFailureException("OpenAI error ${response.code}: $errBody")
+                            throw StructuralFailureException(
+                                "OpenAI error ${response.code}: $errBody",
+                                if (billing) BackendFailure(BackendFailureKind.BILLING, 400)
+                                else httpStatusFailure(response.code),
+                            )
                         }
                     }
                     val bodyStr = response.body.string()
                     val parsed = PtJson.lenient.decodeFromString<OpenAiChatResponse>(bodyStr)
                     val raw = parsed.choices.firstOrNull()?.message?.content
-                        ?: throw StructuralFailureException("No translation in OpenAI response")
+                        ?: throw StructuralFailureException(
+                            "No translation in OpenAI response", BackendFailure.BAD_RESPONSE,
+                        )
                     parsed.usage?.let { usageTracker.addTokens(it.prompt_tokens, it.completion_tokens) }
                     val totalMs = (System.nanoTime() - translateStart) / 1_000_000
                     Log.i(TAG, "translate ok totalMs=$totalMs outLen=${raw.length}")
@@ -262,7 +274,9 @@ class OpenAiBackend(
     ): List<String> = withContext(Dispatchers.IO) {
         clearCooldownIfCredentialsChanged()
         val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
-            ?: throw IOException("OpenAI API key not configured")
+            ?: throw StructuralFailureException(
+                "OpenAI API key not configured", BackendFailure(BackendFailureKind.AUTH),
+            )
         val baseUrl = baseUrlProvider().trim().trimEnd('/')
         val model = modelProvider()
         val system = LlmBatchPrompt.systemPrompt(source, target)
@@ -321,8 +335,7 @@ class OpenAiBackend(
                         val hints = RateLimitHints.from(response)
                         val body = response.body.string()
                         Log.w(TAG, "429 $hints body=${body.take(500)}")
-                        recordOpenAi429(body, hints)
-                        throw OpenAiRateLimitException()
+                        throw OpenAiRateLimitException(recordOpenAi429(body, hints))
                     }
                     400 -> {
                         val fullBody = response.body.string()
@@ -334,7 +347,9 @@ class OpenAiBackend(
                             // Cool down instead, as the OpenAI 429 path does.
                             Log.w(TAG, "batch 400 billing body=$body")
                             recordBillingExhausted()
-                            throw StructuralFailureException("OpenAI error 400: $body")
+                            throw StructuralFailureException(
+                                "OpenAI error 400: $body", BackendFailure(BackendFailureKind.BILLING, 400),
+                            )
                         }
                         // Otherwise a 400 on the batch path is most often
                         // "this endpoint doesn't support strict json_schema"
@@ -357,7 +372,9 @@ class OpenAiBackend(
                                 CooldownCause.SERVER_ERROR,
                             )
                         }
-                        throw StructuralFailureException("OpenAI error ${response.code}: $errBody")
+                        throw StructuralFailureException(
+                            "OpenAI error ${response.code}: $errBody", httpStatusFailure(response.code),
+                        )
                     }
                 }
                 val bodyStr = response.body.string()
@@ -668,10 +685,11 @@ class OpenAiBackend(
      *     guesses an exponential backoff. Every header we learn to read is
      *     one provider that no longer has to be guessed at.
      *
-     * No-op when [cooldownState] is null (DeepSeek path).
+     * Returns what the 429 was (billing or a rate limit) for the exception
+     * that reports it. Records no cooldown when [cooldownState] is null
+     * (DeepSeek path), but still classifies.
      */
-    private fun recordOpenAi429(body: String, hints: RateLimitHints) {
-        val state = cooldownState ?: return
+    private fun recordOpenAi429(body: String, hints: RateLimitHints): BackendFailure {
         val errorCode = try {
             PtJson.lenient.decodeFromString<OpenAiErrorEnvelope>(body).error?.code
         } catch (e: SerializationException) {
@@ -679,8 +697,10 @@ class OpenAiBackend(
         }
         if (errorCode == "insufficient_quota") {
             recordBillingExhausted()
-            return
+            return BackendFailure(BackendFailureKind.BILLING, 429)
         }
+        val rateLimited = BackendFailure(BackendFailureKind.RATE_LIMITED, 429)
+        val state = cooldownState ?: return rateLimited
         fun seconds(raw: String?): Long? = raw?.trim()?.toLongOrNull()?.let { it * 1000 }
         val maxMs = listOfNotNull(
             seconds(hints.retryAfter),
@@ -696,6 +716,7 @@ class OpenAiBackend(
         } else {
             state.recordLadderFailure(CooldownLadder.RateLimit, "Rate limited")
         }
+        return rateLimited
     }
 
     /** Fixed [INSUFFICIENT_QUOTA_MS] BILLING cooldown, shared by OpenAI's

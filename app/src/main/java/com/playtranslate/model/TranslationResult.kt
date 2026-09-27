@@ -43,12 +43,19 @@ data class OcrProvenance(
     val frameIncludesSystemUi: Boolean? = null,
     /** Whether the saved screenshot can contain this app's own overlay
      *  windows — true for live raw frames (e.g. furigana's raw-delegated
-     *  first pass caches an icon-bearing frame), so a re-OCR must black the
-     *  floating icon back out ([com.playtranslate.capture.CapturedFrame]).
-     *  Same nullable-for-Gson idiom as [frameIncludesSystemUi]; readers
-     *  apply `?: false` (matches pre-field behavior). */
+     *  first pass caches an icon-bearing frame). Such a frame is never
+     *  re-read ([canReRead]). Same nullable-for-Gson idiom as
+     *  [frameIncludesSystemUi]; readers apply `?: false` (matches pre-field
+     *  behavior). */
     val frameIncludesOwnOverlays: Boolean? = null,
-)
+) {
+    /** Whether an OCR-tool switch may re-read the saved screenshot. Not one
+     *  that can contain our own overlays: on the pinhole tier that frame
+     *  carries our translation boxes, the floating icon and any error pill,
+     *  which a re-read would take for game text, and where they sat isn't
+     *  recorded. The switch still reads the next capture. */
+    val canReRead: Boolean get() = frameIncludesOwnOverlays != true
+}
 
 /**
  * The language context a [TranslationResult] was produced under: the source language

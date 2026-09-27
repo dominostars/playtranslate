@@ -57,6 +57,14 @@ class OverlayHost(
     /** Per-display 1×1 touch sentinels — see [addTouchSentinel]. */
     private val touchSentinels = mutableMapOf<Int, View>()
 
+    /** Per display, the clean captures in flight, from [prepareForCleanCapture]
+     *  to [restoreAfterCapture]. A window added meanwhile starts blanked and
+     *  comes back with the newest of them, so it can't reach a frame stamped
+     *  free of our overlays (Codex 2026-09-27: a translation-error pill
+     *  reported mid-capture could). Every capture site restores in a
+     *  `finally`, so an entry never outlives its capture. */
+    private val capturesInFlight = mutableMapOf<Int, MutableList<OverlayState>>()
+
     /** One handle's snapshot for restore: the handle plus the alpha it was
      *  at before [prepareForCleanCapture] blanked it. Stored because not
      *  every overlay runs at α=1 — the MediaProjection live-pinhole window
@@ -72,7 +80,10 @@ class OverlayHost(
      *  are deliberately separate because their freshness-wait PROOFS differ
      *  and a consumer must know which one it holds. */
     class OverlayState internal constructor(
-        internal val saved: List<SavedHandle>,
+        internal val displayId: Int,
+        /** Mutable so a window added while this capture is in flight joins
+         *  its restore ([addOverlayWindow]). */
+        internal val saved: MutableList<SavedHandle>,
         /** This prepare blanked at least one visible window. The blank's own
          *  repaint is guaranteed to come AND lands after any anchor taken
          *  before the prepare call, so a wait predicated on that anchor
@@ -103,6 +114,9 @@ class OverlayHost(
      * come back at alpha 0); that path now replaces its view with fresh
      * params, but the contract stays: a caller's pre-set alpha is a
      * deliberate statement about capture interplay, not a bug to correct.
+     * One exception, for the length of a clean capture of [displayId]: a
+     * window added then goes up blanked and returns to its alpha with the
+     * capture's restore ([capturesInFlight]).
      */
     fun addOverlayWindow(
         view: View,
@@ -140,7 +154,11 @@ class OverlayHost(
         // (Thor 2026-07-05: menu window 1920x1080 -> 1240x1080 nine ms after a
         // gear tap; 1240 = the app display's width). Pin every full-screen
         // overlay to its own display's explicit size so overlay == display by
-        // construction on every API level.
+        // construction on every API level. WRAP_CONTENT widths go through the
+        // same delegation (Thor 2026-09-26: the translation-error pills' wrap
+        // window came out 1240px wide on the 1920px screen), so a window whose
+        // content can be wider than the narrowest display pins its own width
+        // (TranslationErrorPills does).
         if (fullScreen) pinFullScreenSize(params, displayId)
         // A focusable window becomes the system-bar control target on focus,
         // and its default requested state is "bars visible" — which yanks the
@@ -150,15 +168,23 @@ class OverlayHost(
         // request is already recorded when focus lands.
         val focusable = params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE == 0
         val hiddenBars = if (focusable) hiddenSystemBarsOnDisplay(displayId) else null
+        // A clean capture of this display is in flight: go up blanked and
+        // come back with it, or this window lands in its frame.
+        val capture = capturesInFlight[displayId]?.lastOrNull()
+        val requestedAlpha = params.alpha
+        if (capture != null) params.alpha = 0f
         return try {
             wm.addView(view, params)
             if (focusable) mirrorSystemBars(view, hiddenBars)
-            overlayWindows += OverlayHandle(view, wm, params, displayId)
+            val handle = OverlayHandle(view, wm, params, displayId)
+            overlayWindows += handle
+            capture?.saved?.add(SavedHandle(handle, requestedAlpha))
             logOverlayGeometry(view, params, displayId, fullScreen)
             logFocusableOverlay("add", view, params, displayId)
             DrawRateProbe.attach(view, "${view.javaClass.simpleName}@d$displayId")
             true
         } catch (e: Exception) {
+            params.alpha = requestedAlpha
             Log.w(TAG, "addOverlayWindow failed: ${e.message}")
             false
         }
@@ -421,18 +447,28 @@ class OverlayHost(
                 handle.params.alpha = originalAlpha
             }
         }
-        return OverlayState(
+        val state = OverlayState(
+            displayId,
             saved,
             blankedAnything = saved.isNotEmpty(),
             uncompositedGhost = WindowChurnGate.hasUncompositedGhostOn(displayId),
         )
+        capturesInFlight.getOrPut(displayId) { mutableListOf() } += state
+        return state
     }
 
     /** Restores blanked overlays to the alpha they had before
-     *  [prepareForCleanCapture] blanked them. Most overlays were at α=1.0
-     *  and come back there; the MediaProjection live-pinhole window is the
-     *  only current exception (returns to the system obscuring cap). */
+     *  [prepareForCleanCapture] blanked them, and those added while the
+     *  capture was in flight to the alpha they were added with. Most
+     *  overlays were at α=1.0 and come back there; the MediaProjection
+     *  live-pinhole window is the only current exception (returns to the
+     *  system obscuring cap). Safe to call twice (the capture sites restore
+     *  early and again in a `finally`). */
     fun restoreAfterCapture(state: OverlayState) {
+        capturesInFlight[state.displayId]?.let { inFlight ->
+            inFlight.remove(state)
+            if (inFlight.isEmpty()) capturesInFlight.remove(state.displayId)
+        }
         for (saved in state.saved) {
             // A window removed between prepare and restore is a defused ghost
             // lingering in [WindowChurnGate] — still ATTACHED, so the

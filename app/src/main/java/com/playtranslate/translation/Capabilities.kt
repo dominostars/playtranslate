@@ -149,24 +149,44 @@ interface BatchTranslator {
  * could not be parsed in the expected shape, when the returned list
  * length does not match the request, or when a structural input
  * constraint is violated (e.g. DeepL's 50-string cap). The registry
- * catches this and falls through to the next backend.
+ * catches this and retries the texts one at a time on the same backend
+ * ([TranslationBackendRegistry.translateBatch]), so it is not a failure of
+ * the pass by itself; classified as [BackendFailureKind.BAD_RESPONSE] in
+ * case one ever ends a call. [serverAnswered] is false only for a refusal
+ * before anything was sent (DeepL's cap); every other throw follows a
+ * reply, which proves the service's server was reached
+ * ([OnlineAttempt.reachedServer]).
  */
-class BatchParseException(message: String, cause: Throwable? = null) : java.io.IOException(message, cause)
+class BatchParseException(
+    message: String,
+    cause: Throwable? = null,
+    val serverAnswered: Boolean = true,
+) : java.io.IOException(message, cause), ClassifiedFailure {
+    override val failure = BackendFailure(BackendFailureKind.BAD_RESPONSE)
+}
 
 /**
  * Thrown by translation backends when a response is deliberately
  * rejected for a non-transport reason — HTTP 4xx the user has to fix
- * (bad model id, malformed request), a structurally empty response
- * body, or a missing required field. The cooldown layer's outer
- * IOException catch keys off the type to skip recordNetworkFailure
- * for these throws; only OkHttp-originated connection failures
- * advance the network ladder.
+ * (bad model id, malformed request), a 5xx, a structurally empty
+ * response body, or a missing required field. The cooldown layer's
+ * outer IOException catch keys off the type to skip recordNetworkFailure
+ * for these throws; only OkHttp-originated connection failures advance
+ * the network ladder.
+ *
+ * [failure] is required, not defaulted: every throw site states what went
+ * wrong, because the translation-error pill words it for the user and a
+ * default would silently mislabel any site that forgot.
  *
  * Subclass of [java.io.IOException] so the registry's existing
  * fall-through-to-next-backend behaviour still applies — the
  * registry doesn't need to know the difference.
  */
-class StructuralFailureException(message: String, cause: Throwable? = null) : java.io.IOException(message, cause)
+class StructuralFailureException(
+    message: String,
+    override val failure: BackendFailure,
+    cause: Throwable? = null,
+) : java.io.IOException(message, cause), ClassifiedFailure
 
 /**
  * Backends that can return the list of models the configured API key

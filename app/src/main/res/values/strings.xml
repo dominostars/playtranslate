@@ -2358,6 +2358,67 @@
     <string name="degraded_warning_low_memory">Low memory — translation quality is reduced</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION ERROR PILL — a small pill at the top of the game
+         screen, shown while the user plays when an online translation
+         service fails: the app's logo, one of these messages, and a ×
+         that closes it.  It appears once per problem and goes away by
+         itself when the service works again.  Every message but the
+         connection one starts with the service's name exactly as it
+         appears on the Translation services page ("Gemini", "OpenAI",
+         "Claude", "DeepL", "Lingva", or a user-chosen provider name),
+         followed by a colon and the problem.  Keep each message short:
+         the pill has room for about one line over the game.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Translation error pill: the device can't reach the internet (no
+         network, or a network without internet access), so no online
+         service can be reached and none is named.  Short noun phrase. -->
+    <string name="translation_error_connection">Connection error</string>
+    <!-- Translation error pill: the service rejected the API key the user
+         entered for it (or no key is set).  %1$s = service name. -->
+    <string name="translation_error_auth"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: Invalid API key</string>
+    <!-- Translation error pill: the user's account with the service has no
+         credit or money left (e.g. OpenAI "insufficient_quota", Claude
+         "credit balance too low").  %1$s = service name. -->
+    <string name="translation_error_billing"><xliff:g id="service" example="Claude">%1$s</xliff:g>: Out of credits</string>
+    <!-- Translation error pill: the service's daily usage limit is used
+         up (Gemini's free tier); it resets the next day.  %1$s = service
+         name. -->
+    <string name="translation_error_daily_quota"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: Daily limit reached</string>
+    <!-- Translation error pill: the service's monthly character quota is
+         used up (DeepL).  %1$s = service name. -->
+    <string name="translation_error_monthly_quota"><xliff:g id="service" example="DeepL">%1$s</xliff:g>: Monthly quota used up</string>
+    <!-- Translation error pill: the service is refusing requests because
+         too many were sent too quickly (HTTP 429).  %1$s = service name. -->
+    <string name="translation_error_rate_limited"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: Too many requests</string>
+    <!-- Translation error pill: the service's own servers returned an
+         error (HTTP 5xx); nothing the user did.  %1$s = service name. -->
+    <string name="translation_error_server"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: Server error</string>
+    <!-- Translation error pill: the service refused the request for
+         another reason, e.g. a model name it doesn't know.  %1$s = service
+         name; %2$s = the HTTP status code as digits (e.g. 404), shown so
+         the user can look it up; keep it as written. -->
+    <string name="translation_error_rejected_code"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>: Request rejected (HTTP <xliff:g id="status_code" example="404">%2$s</xliff:g>)</string>
+    <!-- Translation error pill: same as translation_error_rejected_code
+         when no status code is known.  %1$s = service name. -->
+    <string name="translation_error_rejected"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>: Request rejected</string>
+    <!-- Translation error pill: the service answered, but with nothing
+         usable (an empty or garbled reply).  %1$s = service name. -->
+    <string name="translation_error_bad_response"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: Unexpected response</string>
+    <!-- Translation error pill: the service didn't answer in time, while
+         the internet itself works.  %1$s = service name. -->
+    <string name="translation_error_timeout"><xliff:g id="service" example="DeepSeek">%1$s</xliff:g>: Not responding</string>
+    <!-- Translation error pill: the app couldn't connect to the service's
+         server, while the internet itself works (other services answer).
+         %1$s = service name. -->
+    <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>: Can\'t connect</string>
+    <!-- Brief pill at the top of the game screen after the user presses
+         and holds the floating icon, when text was found but no
+         translation service could translate it.  Same short pill as
+         "No text found". -->
+    <string name="hold_translation_failed">Couldn\'t translate</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          MAIN SCREEN — bottom-bar and overflow-menu items.
          The bottom-bar items use small (8sp) labels; the same words
          appear in the overflow menu at full size (16sp), so we share
@@ -2747,7 +2808,8 @@
     <string name="cd_toggle_words_visibility">Toggle words visibility</string>
 
     <!-- contentDescription for the × close button on the word-detail
-         bottom sheet, and for the invisible area around a results popover
+         bottom sheet and on the translation error pill at the top of the
+         game screen, and for the invisible area around a results popover
          (the text-size slider, the "More actions" menu) whose tap closes
          it. -->
     <string name="cd_close">Close</string>

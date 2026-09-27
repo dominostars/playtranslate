@@ -14,6 +14,11 @@ import com.playtranslate.CaptureService
  *   reconcile (and a translation-cache clear when the change can alter
  *   what a given input translates to).
  *
+ * Every mutation of one instance also forgets its translation errors
+ * ([TranslationErrors.forget]): saving its config, toggling it, picking a
+ * model, or deleting it is the user saying "try this again", so a failure
+ * after it shows its pill even if it is the one shown before.
+ *
  * All main-thread, like the registry's other mutators.
  */
 object OnlineServiceMutations {
@@ -37,6 +42,7 @@ object OnlineServiceMutations {
             OnlineBackendFactory.build(context, sharedPrefs(context), instance)
         )
         applyStoreOrder()
+        TranslationErrors.forget(instance.id)
         CaptureService.instance?.clearTranslationCache()
         CaptureService.instance?.reconcileBackendPreference()
     }
@@ -61,6 +67,7 @@ object OnlineServiceMutations {
     fun setEnabled(id: String, enabled: Boolean) {
         OnlineServiceStore.setEnabled(id, enabled)
         TranslationBackendRegistry.resetCooldown(id)
+        TranslationErrors.forget(id)
         CaptureService.instance?.reconcileBackendPreference()
     }
 
@@ -68,6 +75,7 @@ object OnlineServiceMutations {
     fun setModel(id: String, model: String) {
         val instance = OnlineServiceStore.byId(id) ?: return
         OnlineServiceStore.update(instance.copy(model = model))
+        TranslationErrors.forget(id)
         CaptureService.instance?.clearTranslationCache()
         CaptureService.instance?.reconcileBackendPreference()
     }
@@ -90,6 +98,7 @@ object OnlineServiceMutations {
             remove("usage_${id}_day")
             remove("usage_${id}_tokens")
         }
+        TranslationErrors.forget(id)
         applyStoreOrder()
         CaptureService.instance?.reconcileBackendPreference()
     }
