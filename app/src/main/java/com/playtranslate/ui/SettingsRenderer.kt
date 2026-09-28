@@ -899,19 +899,30 @@ class SettingsRenderer(
     }
 
     /** Build (or rebuild) the floating-icon preview shown in the "On the
-     *  floating icon" cell. The icon view draws a full notional 56dp circle
-     *  pushed off the screen edge — the 40dp-wide slot clips it to the
-     *  visible quarter. Non-interactive — never hosted as a window. */
+     *  floating icon" cell, beside the gesture table. The icon view draws a
+     *  full notional 56dp circle around its centre, pushed off the screen
+     *  edge; docked on the slot's start edge (left, or right in RTL), with
+     *  the view's centre on that edge, so the narrow slot clips it to the
+     *  visible slice, arrow pointing at the gestures. Non-interactive — never
+     *  hosted as a window. */
     private fun buildOverlayIconPreview() {
         destroyOverlayIconPreview()
         overlayIconPreviewSlot.removeAllViews()
+        val rtl = ctx.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
+        val edge = if (rtl) FloatingOverlayIcon.Edge.RIGHT else FloatingOverlayIcon.Edge.LEFT
         val preview = FloatingOverlayIcon(ctx).apply {
             isClickable = false
             isFocusable = false
+            // No window params, so this only sets the edge the slice is drawn on.
+            setPosition(edge.ordinal, 0.5f)
         }
         overlayIconPreviewSlot.addView(
             preview,
-            FrameLayout.LayoutParams(preview.viewSizePx, preview.viewSizePx),
+            FrameLayout.LayoutParams(
+                preview.viewSizePx,
+                preview.viewSizePx,
+                Gravity.START or Gravity.CENTER_VERTICAL,
+            ).apply { marginStart = -preview.viewSizePx / 2 },
         )
         overlayIconPreview = preview
     }
