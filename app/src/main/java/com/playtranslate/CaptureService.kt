@@ -1668,6 +1668,11 @@ class CaptureService : Service() {
      *  confined like the rest of the live-mode mutators. */
     private var pendingLiveStart: Job? = null
 
+    /** A [startLive] is still suspended (the consent dialog, the stream
+     *  probe): [isLive] is false, yet the session will begin unless
+     *  [stopLive] cancels it. */
+    val isLiveStartPending: Boolean get() = pendingLiveStart?.isActive == true
+
     /** This start's feedback session — warm-up, chip, gate, busy tracking
      *  ([LiveSessionFeedback]). Created by [startLive], disposed by
      *  [stopLive], explicit start-aborts, and the next start. Main-confined

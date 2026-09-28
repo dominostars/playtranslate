@@ -49,6 +49,12 @@ interface WorkspacePage {
      *  of its own header and stops the right stick scrolling under it. */
     val isPopoverOpen: Boolean get() = false
 
+    /** An Anki card editor: its card is lost for good when the workspace
+     *  closes (no draft survives a teardown), so a surface outside the
+     *  workspace that would close it asks first
+     *  ([OverlayWorkspace.holdsCardEditor]). */
+    val isCardEditor: Boolean get() = false
+
     /** Close any in-page popover (the page is being hidden without being
      *  destroyed, e.g. a tab switch). */
     fun dismissPopovers() {}

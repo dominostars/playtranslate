@@ -444,6 +444,17 @@ class OverlayWorkspace(
 
     private val hasModal: Boolean get() = modalLayer.childCount > 0
 
+    /** Whether an Anki card editor is on the back stack: on top, or under a
+     *  picker it opened (deck, card type, audio), still holding its card. */
+    val holdsCardEditor: Boolean get() = stack.any { it.page.isCardEditor }
+
+    /** Show an alert over the pages, inside this window as a page's own
+     *  alerts are ([WorkspaceHost.alert]), for a surface outside the
+     *  workspace asking about what it holds. [build] fills the alert in and
+     *  gets the workspace's themed context to resolve colors against. */
+    fun showAlert(build: OverlayAlert.Builder.(themed: Context) -> Unit): OverlayAlert =
+        OverlayAlert.Builder(ctx).apply { build(ctx) }.showInParent(modalLayer)
+
     // ── Host seam ────────────────────────────────────────────────────────
 
     private val hostImpl = object : WorkspaceHost {

@@ -9,6 +9,7 @@ import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
+import com.playtranslate.R
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.translation.BackendFailure
 import com.playtranslate.translation.BackendFailureKind
@@ -26,13 +27,15 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowDisplayManager
 import java.time.Duration
 
 /**
  * The pill stack's window and rows, added through a real [OverlayHost]:
  * one pill per owner, a newer error updating its owner's pill, × and
- * [TranslationErrorPills.hide] removing pills, the window leaving with the
- * last one, and the rects the OCR blackout reads.
+ * [TranslationErrorPills.hide] removing pills, the gear handing its owner on
+ * to the controller, the window leaving with the last one, and the rects the
+ * OCR blackout reads.
  */
 @RunWith(RobolectricTestRunner::class)
 class TranslationErrorPillsTest {
@@ -62,7 +65,8 @@ class TranslationErrorPillsTest {
     }
 
     private fun ViewGroup.message(): String = (getChildAt(1) as TextView).text.toString()
-    private fun ViewGroup.closeButton(): ImageView = getChildAt(2) as ImageView
+    private fun ViewGroup.settingsButton(): ImageView = getChildAt(2) as ImageView
+    private fun ViewGroup.closeButton(): ImageView = getChildAt(3) as ImageView
 
     @Test fun `one pill per owner, in arrival order`() {
         assertTrue(pills.show(ctx, display, service("claude", "Claude", BackendFailureKind.BILLING)))
@@ -91,6 +95,73 @@ class TranslationErrorPillsTest {
 
         assertEquals(listOf("DeepL: Monthly quota used up"), rows().map { it.message() })
         assertEquals("Close", rows()[0].closeButton().contentDescription)
+    }
+
+    @Test fun `the gear sits between the message and the ×, a button like it`() {
+        pills.show(ctx, display, TranslationError.Connection)
+        settle()
+        val row = rows().single()
+        assertEquals("logo, message, gear, ×", 4, row.childCount)
+        val gear = row.settingsButton()
+        val close = row.closeButton()
+        assertEquals(R.drawable.ic_settings, shadowOf(gear.drawable).createdFromResId)
+        assertEquals(R.drawable.ic_close, shadowOf(close.drawable).createdFromResId)
+        assertEquals("Translation services", gear.contentDescription)
+        val target = (TranslationErrorPills.BUTTON_DP * density).toInt()
+        for (button in listOf(gear, close)) {
+            assertEquals(target, button.width)
+            assertEquals(target, button.height)
+        }
+        assertEquals(close.imageTintList, gear.imageTintList)
+        assertEquals(close.paddingLeft, gear.paddingLeft)
+        assertEquals(
+            "a gap between the gear and the ×",
+            (TranslationErrorPills.BUTTON_GAP_DP * density).toInt(), close.left - gear.right,
+        )
+    }
+
+    @Test fun `the gear hands its owner and display on, and leaves the pill to the controller`() {
+        // The controller may ask first (a card editor open over the game),
+        // and a Cancel there must find the pill where it was.
+        val second = ShadowDisplayManager.addDisplay("w640dp-h480dp")
+        val secondCtx = ctx.createDisplayContext(
+            ctx.getSystemService(android.hardware.display.DisplayManager::class.java).getDisplay(second),
+        )
+        val opened = mutableListOf<Pair<String, Int>>()
+        pills.onSettings = { owner, id -> opened += owner to id }
+        pills.show(secondCtx, second, service("claude", "Claude", BackendFailureKind.BILLING))
+        pills.show(secondCtx, second, TranslationError.Connection)
+        settle()
+
+        rows()[0].settingsButton().performClick()
+
+        assertEquals(listOf("claude" to second), opened)
+        assertEquals(listOf("Claude: Out of credits", "Connection error"), rows().map { it.message() })
+    }
+
+    @Test fun `the × never opens the settings`() {
+        val opened = mutableListOf<String>()
+        pills.onSettings = { owner, _ -> opened += owner }
+        pills.show(ctx, display, TranslationError.Connection)
+        settle()
+
+        rows()[0].closeButton().performClick()
+
+        assertTrue(opened.isEmpty())
+        assertNull(pills.stackRoot)
+    }
+
+    @Test fun `a raised pill's gear still opens the settings for its owner`() {
+        val opened = mutableListOf<Pair<String, Int>>()
+        pills.onSettings = { owner, id -> opened += owner to id }
+        pills.show(ctx, display, service("claude", "Claude", BackendFailureKind.BILLING))
+        settle()
+        pills.raise(display)
+        settle()
+
+        rows()[0].settingsButton().performClick()
+
+        assertEquals(listOf("claude" to display), opened)
     }
 
     @Test fun `the window goes with the last pill, and the next pill gets a new one`() {

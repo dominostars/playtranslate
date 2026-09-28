@@ -16,6 +16,8 @@ import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
 import androidx.annotation.VisibleForTesting
 import com.playtranslate.R
 import com.playtranslate.capture.CaptureBackendResolver
@@ -32,7 +34,8 @@ import com.playtranslate.translation.TranslationErrorPresenter
 /**
  * The translation-error pills on a game display: a stack at the top centre,
  * one pill per owner (a service, or the connection), each the PlayTranslate
- * mark, the message, and a × that closes it. [com.playtranslate.translation.TranslationErrorTracker]
+ * mark, the message, a gear for the Translation services page
+ * ([onSettings]), and a × that closes it. [com.playtranslate.translation.TranslationErrorTracker]
  * decides when an error shows and when its owner's recovery takes it down;
  * this class only draws. A newer error from an owner that already has a
  * pill replaces that pill's text ([show], [update]).
@@ -42,7 +45,7 @@ import com.playtranslate.translation.TranslationErrorPresenter
  * the 1dp ptDivider hairline, 8dp elevation. One window holds the whole
  * stack plus [SHADOW_ROOM_DP] of padding for the shadow to fall in, since a
  * shadow can't draw outside its window. The window has to be touchable for
- * the ×, and a touchable window takes every touch inside its bounds, so
+ * the buttons, and a touchable window takes every touch inside its bounds, so
  * while a pill is up the game doesn't get touches in that band at the top,
  * shadow room included. It goes through [OverlayHost], so clean captures
  * blank it and its removal is churn-gated like every game-display window.
@@ -96,8 +99,16 @@ internal class TranslationErrorPills(private val overlayHost: OverlayHost) {
      *  ([com.playtranslate.translation.TranslationErrorTracker.withdrawn]). */
     var onWithdrawn: ((owners: List<String>) -> Unit)? = null
 
+    /** Called with a pill's owner, and the display the stack is on, when
+     *  the user taps the pill's gear. The pill stays up: the controller
+     *  takes it down if it goes on to open the Translation services page
+     *  (it may ask first), and the tracker then shows the owner's next
+     *  failure again
+     *  ([com.playtranslate.translation.TranslationErrorTracker.settingsOpened]). */
+    var onSettings: ((owner: String, displayId: Int) -> Unit)? = null
+
     /** The stack window's root: one child per pill, each [logo, message,
-     *  ×]. For tests, which have no other way to reach the window. */
+     *  gear, ×]. For tests, which have no other way to reach the window. */
     @VisibleForTesting
     internal val stackRoot: LinearLayout? get() = stack?.root
 
@@ -267,9 +278,9 @@ internal class TranslationErrorPills(private val overlayHost: OverlayHost) {
             windowWidthPx(displayContext),
             WindowManager.LayoutParams.WRAP_CONTENT,
             overlayHost.windowType,
-            // Touchable for the ×; NOT_TOUCH_MODAL passes every touch outside
-            // the pills to the game; never focusable, so a controller keeps
-            // driving the game.
+            // Touchable for the buttons; NOT_TOUCH_MODAL passes every touch
+            // outside the pills to the game; never focusable, so a controller
+            // keeps driving the game.
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT,
@@ -334,8 +345,8 @@ internal class TranslationErrorPills(private val overlayHost: OverlayHost) {
                 topMargin = px(LOGO_INSET_DP)
                 bottomMargin = px(LOGO_INSET_DP)
             }
-            // Decorative: TalkBack reads the message and the ×, not an
-            // unlabeled image.
+            // Decorative: TalkBack reads the message and the two buttons,
+            // not an unlabeled image.
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         })
         val text = TextView(ctx).apply {
@@ -344,19 +355,48 @@ internal class TranslationErrorPills(private val overlayHost: OverlayHost) {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             maxLines = 2
             ellipsize = TextUtils.TruncateAt.END
-            // Everything between the logo and the ×.
+            // Everything between the logo and the gear.
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setPaddingRelative(px(TEXT_PAD_START_DP), px(4), px(TEXT_PAD_END_DP), px(4))
             // TalkBack reads a pill when it appears.
             accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
         row.addView(text)
-        row.addView(ImageView(ctx).apply {
-            setImageResource(R.drawable.ic_close)
+        // Rows never change display: a raise moves them to a stack on the
+        // same one.
+        val displayId = s.displayId
+        row.addView(button(ctx, R.drawable.ic_settings, R.string.settings_cell_translation_services) {
+            // "Try again": the controller closes the pill if the user goes
+            // on to the settings (see onSettings).
+            onSettings?.invoke(owner, displayId)
+        }.apply {
+            (layoutParams as LinearLayout.LayoutParams).marginEnd = px(BUTTON_GAP_DP)
+        })
+        row.addView(button(ctx, R.drawable.ic_close, R.string.cd_close) {
+            // The error still counts as shown: closing it is "seen", not
+            // "try again" (see TranslationErrorTracker).
+            hide(listOf(owner))
+        })
+        return Row(row, text)
+    }
+
+    /** One of a pill's two buttons, the gear and the ×: a square target as
+     *  tall as the pill around a [GLYPH_DP] glyph, muted, with a borderless
+     *  ripple. */
+    private fun button(
+        ctx: Context,
+        @DrawableRes icon: Int,
+        @StringRes description: Int,
+        onClick: () -> Unit,
+    ): ImageView {
+        val dp = ctx.resources.displayMetrics.density
+        fun px(v: Int) = (v * dp).toInt()
+        return ImageView(ctx).apply {
+            setImageResource(icon)
             imageTintList = ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextMuted))
-            contentDescription = ctx.getString(R.string.cd_close)
-            layoutParams = LinearLayout.LayoutParams(px(CLOSE_DP), px(CLOSE_DP))
-            val pad = px((CLOSE_DP - CLOSE_GLYPH_DP) / 2)
+            contentDescription = ctx.getString(description)
+            layoutParams = LinearLayout.LayoutParams(px(BUTTON_DP), px(BUTTON_DP))
+            val pad = px((BUTTON_DP - GLYPH_DP) / 2)
             setPadding(pad, pad, pad, pad)
             val ripple = TypedValue()
             if (ctx.theme.resolveAttribute(
@@ -364,11 +404,8 @@ internal class TranslationErrorPills(private val overlayHost: OverlayHost) {
                 )) {
                 setBackgroundResource(ripple.resourceId)
             }
-            // The error still counts as shown: closing it is "seen", not
-            // "try again" (see TranslationErrorTracker).
-            setOnClickListener { hide(listOf(owner)) }
-        })
-        return Row(row, text)
+            setOnClickListener { onClick() }
+        }
     }
 
     private fun fadeIn(view: View) {
@@ -414,8 +451,11 @@ internal class TranslationErrorPills(private val overlayHost: OverlayHost) {
         private const val LOGO_INSET_DP = (ROW_HEIGHT_DP - LOGO_DP) / 2
         private const val TEXT_PAD_START_DP = 10
         private const val TEXT_PAD_END_DP = 2
-        private const val CLOSE_DP = ROW_HEIGHT_DP
-        private const val CLOSE_GLYPH_DP = 18
+        /** The gear's and the ×'s square target. */
+        internal const val BUTTON_DP = ROW_HEIGHT_DP
+        /** Between the gear and the × (2026-09-28). */
+        internal const val BUTTON_GAP_DP = 8
+        private const val GLYPH_DP = 18
         /** The floating icon menu's screen margin. */
         internal const val SCREEN_MARGIN_DP = 16
         private const val MIN_PILL_WIDTH_DP = 200

@@ -11,9 +11,9 @@ import org.junit.Test
  * before an error may show again, pills down on recovery, shown only when
  * a pill actually appeared, a pill up saying its owner's newest failure,
  * transport failures split between the connection and the service (every
- * failure shows, the first one included), forget, the reset at the end of
- * a capture session, and every report judged by when its request went out,
- * not when it arrived.
+ * failure shows, the first one included), forget, the gear's try-again, the
+ * reset at the end of a capture session, and every report judged by when
+ * its request went out, not when it arrived.
  */
 class TranslationErrorTrackerTest {
 
@@ -55,6 +55,13 @@ class TranslationErrorTrackerTest {
     private fun ok(id: String, at: Long = clock) = OnlineAttempt(id, id, null, at, reachedServer = true)
 
     private fun advance(ms: Long) { clock += ms }
+
+    /** The user taps the gear on [owner]'s pill: the pill comes down, and
+     *  the tracker hears of it. */
+    private fun gear(owner: String) {
+        presenter.close(owner)
+        tracker.settingsOpened(owner)
+    }
 
     private val minute = 60_000L
 
@@ -514,6 +521,85 @@ class TranslationErrorTrackerTest {
         tracker.onPass(listOf(fail("lingva", BackendFailureKind.UNREACHABLE)))   // the outage, seen
         net = InternetState.VALIDATED                                           // and over
         hung.forEach { tracker.onPass(listOf(it)) }
+        assertEquals(listOf<TranslationError>(TranslationError.Connection), presenter.shown)
+    }
+
+    // ── the gear: try again (2026-09-28) ───────────────────────────────
+
+    @Test fun `after the gear the same error shows again at its next failure`() {
+        tracker.onPass(listOf(fail("claude", BackendFailureKind.BILLING)))
+        advance(1_000)
+        gear("claude")
+        advance(1_000)
+        tracker.onPass(listOf(fail("claude", BackendFailureKind.BILLING)))
+
+        assertEquals(2, presenter.shown.size)
+        assertTrue("the pill took itself down; the tracker hides nothing", presenter.hidden.isEmpty())
+    }
+
+    @Test fun `a failure already out when the gear was tapped doesn't put the pill back up`() {
+        // Auto-translate's last pass, still falling through to an offline
+        // tier when the gear stopped it, reports after the tap.
+        tracker.onPass(listOf(fail("gemini", BackendFailureKind.DAILY_QUOTA)))
+        val inFlight = fail("gemini", BackendFailureKind.DAILY_QUOTA, at = clock + 500)
+        advance(1_000)
+        gear("gemini")
+        tracker.onPass(listOf(inFlight))
+        assertTrue(presenter.onScreen.isEmpty())
+        assertEquals(1, presenter.shown.size)
+
+        advance(1_000)
+        tracker.onPass(listOf(fail("gemini", BackendFailureKind.DAILY_QUOTA)))
+        assertEquals("the next try shows", 2, presenter.shown.size)
+    }
+
+    @Test fun `the gear on one pill leaves the others' errors shown`() {
+        tracker.onPass(listOf(fail("claude", BackendFailureKind.BILLING), fail("deepl", BackendFailureKind.MONTHLY_QUOTA)))
+        gear("claude")
+        assertEquals(setOf("deepl"), presenter.onScreen.keys)
+
+        advance(1_000)
+        tracker.onPass(listOf(fail("claude", BackendFailureKind.BILLING), fail("deepl", BackendFailureKind.MONTHLY_QUOTA)))
+        assertEquals(
+            "claude again, deepl still the same outage",
+            listOf("claude", "deepl", "claude"),
+            presenter.shown.map { (it as TranslationError.Service).serviceId },
+        )
+    }
+
+    @Test fun `the gear on the connection pill tries the connection again, not a failure already out`() {
+        net = InternetState.NONE
+        tracker.onPass(listOf(fail("gemini", BackendFailureKind.UNREACHABLE)))
+        val inFlight = fail("lingva", BackendFailureKind.UNREACHABLE, at = clock + 500)
+        advance(1_000)
+        gear(TranslationErrorKey.CONNECTION_OWNER)
+        tracker.onPass(listOf(inFlight))
+        assertTrue(presenter.onScreen.isEmpty())
+
+        advance(1_000)
+        tracker.onPass(listOf(fail("gemini", BackendFailureKind.UNREACHABLE)))
+        assertEquals(
+            listOf<TranslationError>(TranslationError.Connection, TranslationError.Connection),
+            presenter.shown,
+        )
+    }
+
+    @Test fun `the gear keeps what the connection's history says about whose a failure is`() {
+        // A request that hung through the outage reports once the network is
+        // back. The connection failed after it went out, so it is the
+        // connection's, and older than that failure; forgetting that history
+        // at the gear would read it as Gemini's own timeout.
+        net = InternetState.NONE
+        tracker.onPass(listOf(fail("lingva", BackendFailureKind.UNREACHABLE)))
+        val hung = fail("gemini", BackendFailureKind.TIMEOUT, at = clock + 500)
+        tracker.onPass(listOf(fail("lingva", BackendFailureKind.UNREACHABLE, at = clock + 700)))
+        advance(1_000)
+        gear(TranslationErrorKey.CONNECTION_OWNER)
+        net = InternetState.VALIDATED
+
+        tracker.onPass(listOf(hung))
+
+        assertTrue(presenter.onScreen.isEmpty())
         assertEquals(listOf<TranslationError>(TranslationError.Connection), presenter.shown)
     }
 

@@ -2372,8 +2372,9 @@
     <!-- ═══════════════════════════════════════════════════════════════
          TRANSLATION ERROR PILL — a small pill at the top of the game
          screen, shown while the user plays when an online translation
-         service fails: the app's logo, one of these messages, and a ×
-         that closes it.  It appears once per problem and goes away by
+         service fails: the app's logo, one of these messages, a gear that
+         opens the Translation services settings, and a × that closes it.
+         It appears once per problem and goes away by
          itself when the service works again.  Every message but the
          connection one starts with the service's name exactly as it
          appears on the Translation services page ("Gemini", "OpenAI",
@@ -2424,6 +2425,19 @@
          server, while the internet itself works (other services answer).
          %1$s = service name. -->
     <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>: Can\'t connect</string>
+    <!-- Title of the confirm shown when the user taps a translation error
+         pill's gear while an Anki card they are building over the game is
+         open: opening the settings closes that card, and it can't be
+         brought back. -->
+    <string name="translation_error_discard_card_title">Discard card?</string>
+    <!-- Body of the same confirm.  "Settings" is the Translation services
+         settings page the gear opens; "capture" is a screen capture, the
+         way the user made the card in the first place. -->
+    <string name="translation_error_discard_card_message">If you launch settings, you will lose this card and have to regenerate it from a new capture.</string>
+    <!-- Destructive button on the same confirm: close the card and open
+         the Translation services settings.  Cancel, below it, keeps the
+         card open. -->
+    <string name="translation_error_discard_card_confirm">Go to settings</string>
     <!-- Brief pill at the top of the game screen after the user presses
          and holds the floating icon, when text was found but no
          translation service could translate it.  Same short pill as

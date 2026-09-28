@@ -321,6 +321,8 @@ class AnkiEditorPage(private val args: Bundle) : WorkspacePage {
     override fun title(ctx: Context): CharSequence =
         args.getString(WordAnkiReviewBinder.ARG_WORD) ?: ctx.getString(R.string.anki_mode_word)
 
+    override val isCardEditor: Boolean get() = true
+
     override fun onCreateView(ctx: Context, parent: ViewGroup, host: WorkspaceHost): View {
         hostRef = host
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -465,6 +467,8 @@ class AnkiSentenceEditorPage(
 
     override fun title(ctx: Context): CharSequence =
         ctx.getString(R.string.anki_sheet_title_new_card)
+
+    override val isCardEditor: Boolean get() = true
 
     override fun onCreateView(ctx: Context, parent: ViewGroup, host: WorkspaceHost): View {
         hostRef = host

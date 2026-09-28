@@ -46,6 +46,7 @@ import com.playtranslate.ui.SonarPingIntroView
 import com.playtranslate.ui.TextBox
 import com.playtranslate.ui.TranslationErrorPills
 import com.playtranslate.ui.TranslationOverlayView
+import com.playtranslate.ui.TranslationServicesActivity
 import com.playtranslate.ui.WordLookupPopup
 import com.playtranslate.overlay.OwnWindows
 import com.playtranslate.translation.TranslationError
@@ -440,7 +441,12 @@ class OverlayUiController(
     private val errorPills = TranslationErrorPills(overlayHost).also {
         it.onStackMoved = ::keepNoTextPillBelowErrorPills
         it.onWithdrawn = com.playtranslate.translation.TranslationErrors::onPillsWithdrawn
+        it.onSettings = ::onPillSettingsTapped
     }
+
+    /** The gear's "Discard card?" confirm while it is up
+     *  ([onPillSettingsTapped]). */
+    private var discardCardConfirm: OverlayAlert? = null
 
     // ── Region overlays (delegated to RegionOverlayController) ───────────
 
@@ -621,6 +627,89 @@ class OverlayUiController(
     /** Take down the pills of [keys]' owners (their service works again). */
     fun hideTranslationErrorPills(keys: Collection<TranslationErrorKey>) {
         errorPills.hide(keys.map { it.owner }.distinct())
+    }
+
+    /**
+     * The gear on [owner]'s pill on [displayId]. With an Anki card editor
+     * open in the workspace, going to the settings closes it, and its card
+     * with it (the workspace keeps no drafts), so the gear asks first, over
+     * the editor (2026-09-28): "Go to settings" goes on, and Cancel
+     * leaves everything as it was, the pill included. A tap while the
+     * confirm is up adds no second one.
+     */
+    private fun onPillSettingsTapped(owner: String, displayId: Int) {
+        val ws = workspace
+        if (ws == null || !ws.holdsCardEditor) {
+            openTranslationServicesFromPill(owner, displayId)
+            return
+        }
+        if (discardCardConfirm?.isShowing == true) return
+        discardCardConfirm = ws.showAlert { themed ->
+            setTitle(themed.getString(R.string.translation_error_discard_card_title))
+            setMessage(themed.getString(R.string.translation_error_discard_card_message))
+            // The app's destructive confirm style (the prompt editor's
+            // Discard, History's Clear).
+            addButton(
+                themed.getString(R.string.translation_error_discard_card_confirm),
+                themed.themeColor(R.attr.ptDanger),
+                themed.themeColor(R.attr.ptAccentOn),
+            ) {
+                discardCardConfirm = null
+                openTranslationServicesFromPill(owner, displayId)
+            }
+            addCancelButton(themed.getString(R.string.btn_cancel)) { discardCardConfirm = null }
+        }
+    }
+
+    /**
+     * Go on from the gear on [owner]'s pill on [displayId]
+     * (2026-09-28): take the pill down, stop auto-translate, have the tracker
+     * show the owner's next failure again, and open the Translation services
+     * page, where the user can fix the service or switch to another.
+     * Auto-translate stops, as the app's own pauseLiveMode stops it, rather
+     * than pausing to resume by itself: the user starts it again back in the
+     * game, and that start is the next try. It stops first, here and now,
+     * whatever is in front (Codex adversarial 2026-09-28): the tracker's
+     * cutoff must fall after the stop, and a start still pending (the
+     * consent dialog, the stream probe) must not begin later, which only
+     * [CaptureService.stopLive] prevents. The icon's gestures and the quick
+     * menu route their stops through the app when it is in front on another
+     * screen; that stop is this same call, a message later, and the app
+     * ignores it while a start is still pending. A session the word lens
+     * paused for its lookup is stopped too:
+     * the lens restarts it when it closes, so the gear cancels that restart
+     * before it closes the lens below (Codex adversarial 2026-09-28). The
+     * lens can be open under the pill (a pill that goes up while the lens is
+     * open sits above it, and a tap on the pill never reaches the lens); a
+     * lens above the pill takes the tap itself, since its window catches
+     * every tap off its card, so the gear runs only once that lens is gone.
+     *
+     * The page opens where our app is in front, else on the pill's display,
+     * as the quick menu's links to an activity do ([launchOnOverlayDisplay]),
+     * and SINGLE_TOP: a pill shows over our own screens too, and a tap while
+     * the page is already on top opens no second copy. Our full-screen
+     * surfaces over the game go first: an overlay window sits above every
+     * activity, so one left up would cover the page. The quick menu's, the
+     * capture panel's and the workspace's own links to an activity close
+     * them the same way.
+     */
+    private fun openTranslationServicesFromPill(owner: String, displayId: Int) {
+        errorPills.hide(listOf(owner))
+        CaptureService.instance?.let { svc ->
+            if (svc.isLive || svc.isLiveStartPending) svc.stopLive()
+        }
+        cancelLensResumes()
+        com.playtranslate.translation.TranslationErrors.onPillSettingsOpened(owner)
+        dismissFloatingMenu()
+        dismissCaptureResultOverlay()
+        dismissWorkspace()
+        if (regionController.isRegionEditorActive) regionController.hideRegionEditor()
+        dismissAllDragLookupPopups()
+        launchOnOverlayDisplay(
+            Intent(context.applicationContext, TranslationServicesActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            displayId,
+        )
     }
 
     /** Capture ended here (Turn Off, MediaProjection not turned on, or this
@@ -1715,9 +1804,13 @@ class OverlayUiController(
      *  magnifier so the dismiss-chain's resumeLiveMode is a no-op when the
      *  detail view will cover the live-mode surface. */
     fun cancelLivePauseObligation() {
-        if (effectivelySingleScreen()) {
-            iconHandles.values.forEach { it.clearLivePauseFlag.invoke() }
-        }
+        if (effectivelySingleScreen()) cancelLensResumes()
+    }
+
+    /** Every word lens that paused auto-translate for its lookup forgets to
+     *  restart it when it closes. */
+    private fun cancelLensResumes() {
+        iconHandles.values.forEach { it.clearLivePauseFlag.invoke() }
     }
 
     /**
@@ -1994,7 +2087,7 @@ class OverlayUiController(
     /** Launch [intent] as a NEW_TASK activity on the foreground display (else
      *  [fallbackDisplayId]) — mirrors the result overlay's language/OCR deep-links. */
     private fun launchOnOverlayDisplay(intent: Intent, fallbackDisplayId: Int) {
-        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val target = PlayTranslateApplication.foregroundDisplayId() ?: fallbackDisplayId
         val opts = android.app.ActivityOptions.makeBasic().setLaunchDisplayId(target).toBundle()
         context.applicationContext.startActivity(intent, opts)

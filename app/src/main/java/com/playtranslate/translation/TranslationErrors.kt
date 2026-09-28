@@ -93,6 +93,10 @@ interface TranslationErrorPresenter {
  *    again: the service's own success, or for the connection's, any server
  *    answering at all, even with an error (a 429 proves the network works).
  *    The × closes it any time. Either way the error still counts as shown.
+ *  - **The gear tries again.** The pill's gear closes it and opens the
+ *    Translation services page (2026-09-28): its owner's errors stop
+ *    counting as shown, so its next failure shows, even the same one
+ *    ([settingsOpened]).
  *  - **Shown means on screen.** A pill shows whenever there's an error,
  *    whatever is in front (2026-09-27), and an error counts as shown
  *    only once [TranslationErrorPresenter.show] actually put it up. A pill
@@ -126,6 +130,10 @@ interface TranslationErrorPresenter {
  *    server answer still proves the connection worked; nothing else about
  *    it counts.
  *
+ * And a failure sent before the user last tapped its owner's gear
+ * ([settingsOpened]) can't put the pill back up: it was already out when
+ * they tapped, so it isn't the next try. It still counts as a failure.
+ *
  * Nothing is persisted (2026-09-26): a fresh process starts with no
  * history, so an error still in effect after a restart shows again at its
  * next failure.
@@ -135,7 +143,7 @@ interface TranslationErrorPresenter {
 class TranslationErrorTracker(
     /** The clock [OnlineAttempt.sentAtMs] is on
      *  ([android.os.SystemClock.elapsedRealtime] in the app). Read only to
-     *  date a [forget] or a [reset]. */
+     *  date a [forget], a [reset] or a [settingsOpened]. */
     private val now: () -> Long,
     private val internet: () -> InternetState,
     /** Whether a service still exists and is switched on, read as its
@@ -151,9 +159,9 @@ class TranslationErrorTracker(
     private var sessionStartedAt = Long.MIN_VALUE
 
     /** Everything known about one owner (a service, or the connection) this
-     *  session, in send times. One record per owner, so [forget], [reset]
-     *  and [withdrawn] act on the whole of it and nothing about an owner can
-     *  be left behind in a map of its own. */
+     *  session, in send times. One record per owner, so [forget], [reset],
+     *  [withdrawn] and [settingsOpened] act on the whole of it and nothing
+     *  about an owner can be left behind in a map of its own. */
     private class Owner(
         /** When the user last changed this service ([forget]). Its reports of
          *  requests sent before then are dropped: those went out with what
@@ -174,6 +182,10 @@ class TranslationErrorTracker(
         /** The kinds of its errors whose pill has appeared in its current
          *  outage. */
         val shown = LinkedHashSet<String>()
+
+        /** When the user last tapped the gear on its pill ([settingsOpened]).
+         *  Its failures sent before then can't put a pill up. */
+        var settingsOpenedAt = Long.MIN_VALUE
     }
 
     private val owners = HashMap<String, Owner>()
@@ -202,7 +214,7 @@ class TranslationErrorTracker(
                 continue
             }
             val error = attribute(attempt, failure, passReachedServer = reachedAt != null, network)
-            if (failed(error.key.owner, attempt.sentAtMs)) surface(error)
+            if (failed(error.key.owner, attempt.sentAtMs)) surface(error, attempt.sentAtMs)
         }
     }
 
@@ -272,17 +284,38 @@ class TranslationErrorTracker(
         if (count > 0) Log.i(TAG, "pills withdrawn with their display: $count error(s) may show again")
     }
 
-    private fun surface(error: TranslationError) {
+    /** The user tapped the gear on [ownerId]'s pill, which took the pill
+     *  down and opened the Translation services page (2026-09-28):
+     *  its errors no longer count as shown, so its next failure shows
+     *  again, even the same one. Only a failure sent from now on can put
+     *  the pill back up; one already out when the user tapped (the last
+     *  pass of the auto-translate the gear stopped, say) is not the next
+     *  try. Everything else known about the owner is still true, so it
+     *  stays: when it last worked and failed, which orders its later
+     *  reports and, for the connection, decides whose a transport failure
+     *  is ([attribute]). */
+    fun settingsOpened(ownerId: String) {
+        val o = owner(ownerId)
+        Log.i(TAG, "settings opened from $ownerId's pill: its next failure shows")
+        o.shown.clear()
+        o.recoveredAt = null
+        o.settingsOpenedAt = now()
+    }
+
+    /** [error], sent at [sentAt], is its owner's newest news: put its pill
+     *  up, or reword the one that is up. */
+    private fun surface(error: TranslationError, sentAt: Long) {
         val presenter = presenter ?: return
         val o = owner(error.key.owner)
-        if (error.key.kind !in o.shown && presenter.show(error)) {
+        if (error.key.kind !in o.shown && sentAt > o.settingsOpenedAt && presenter.show(error)) {
             // Content-free: service name and kind only.
             Log.i(TAG, "pill shown: ${describe(error)}")
             o.shown += error.key.kind
         } else {
-            // Seen this outage, or no pill could go up: no new pill, but one
-            // still up for this owner (left there by another of its errors)
-            // says this one, its newest.
+            // Seen this outage, sent before the user last tapped the owner's
+            // gear, or no pill could go up: no new pill, but one still up
+            // for this owner (left there by another of its errors) says this
+            // one, its newest.
             presenter.update(error)
         }
     }
@@ -400,6 +433,12 @@ object TranslationErrors {
      *  [TranslationErrorTracker.withdrawn]. Main thread. */
     fun onPillsWithdrawn(owners: List<String>) {
         tracker?.withdrawn(owners)
+    }
+
+    /** The user tapped the gear on [owner]'s pill: see
+     *  [TranslationErrorTracker.settingsOpened]. Main thread. */
+    fun onPillSettingsOpened(owner: String) {
+        tracker?.settingsOpened(owner)
     }
 
     /** Test hook: undo [install]. */
