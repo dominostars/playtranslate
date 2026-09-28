@@ -1527,6 +1527,13 @@ class CaptureService : Service() {
             return
         }
         oneShotCaptureJob?.cancel()
+        // Live start claims the game surface, as it does for the app's
+        // one-shot boxes (MainActivity.onLiveModeChanged): the over-game
+        // capture panel comes down, and a capture still in flight is
+        // cancelled before it can put one up over the session. The floating
+        // menu does this when it opens, but a start needn't come through the
+        // menu (the icon's toggle and swap, the tap hotkeys, the app).
+        CaptureBackendResolver.activeOverlayUi?.dismissCaptureResultOverlay()
 
         // One feedback session per start — engine warm-up, startup chip,
         // first-cycle gate, busy tracking ([LiveSessionFeedback]). The

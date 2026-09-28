@@ -99,6 +99,14 @@ class IconGestureBindingsTest {
             assertEquals(R.string.icon_action_open_quick_menu, HoldAction.OPEN_QUICK_MENU.titleRes(hint))
             assertEquals(R.string.icon_action_open_quick_menu, TapAction.OPEN_QUICK_MENU.titleRes(hint))
             assertEquals(R.string.icon_action_capture_screen, TapAction.CAPTURE_SCREEN.titleRes(hint))
+            assertEquals(
+                R.string.icon_action_toggle_auto_translate,
+                HoldAction.TOGGLE_AUTO_TRANSLATE.titleRes(hint),
+            )
+            assertEquals(
+                R.string.icon_action_toggle_auto_translate,
+                TapAction.TOGGLE_AUTO_TRANSLATE.titleRes(hint),
+            )
         }
     }
 

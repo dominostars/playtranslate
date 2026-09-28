@@ -1312,9 +1312,18 @@ class OverlayUiController(
                     // The quick menu's Capture button without the menu: a
                     // fresh one-shot every tap, replacing any showing result.
                     TapAction.CAPTURE_SCREEN -> captureCurrentRegionForDisplay(displayId)
+                    TapAction.TOGGLE_AUTO_TRANSLATE -> toggleLiveFromOverlay()
                     TapAction.SWAP_OVERLAY_MODE -> swapOverlayModeOrStartLive()
                 }
             }
+            // True from a hold whose toggle stopped auto-translate until that
+            // gesture ends: at the lift (onHoldEnd), or at the drag a slide
+            // turns it into (onDragStart, right after onHoldCancel in the same
+            // move). That drag leaves live mode alone. With the app in front
+            // on the other screen the stop is a message to MainActivity, so
+            // the drag can still find the session running; pausing it would
+            // resume it when the lens closes, undoing the stop.
+            var holdStoppedLive = false
             icon.onDragStart = {
                 when (prefs.iconDragAction) {
                     DragAction.LOOKUP_WORDS -> {
@@ -1322,8 +1331,11 @@ class OverlayUiController(
                         if (regionController.hideIndicatorForDrag()) {
                             overlayHiddenForDrag = true
                         }
-                        // Pause live mode while dragging for definitions
-                        if (CaptureService.instance?.isLive == true) {
+                        // Pause live mode while dragging for definitions,
+                        // unless this drag's hold just stopped it.
+                        val stoppedByHold = holdStoppedLive
+                        holdStoppedLive = false
+                        if (!stoppedByHold && CaptureService.instance?.isLive == true) {
                             liveWasPausedForPopup = true
                             stopLiveRouted()
                         }
@@ -1350,6 +1362,7 @@ class OverlayUiController(
                 when (action) {
                     HoldAction.SHOW_TRANSLATIONS -> CaptureService.instance?.holdStart(displayId)
                     HoldAction.OPEN_QUICK_MENU -> showFloatingMenu(display, icon)
+                    HoldAction.TOGGLE_AUTO_TRANSLATE -> holdStoppedLive = toggleLiveFromOverlay()
                     HoldAction.SWAP_OVERLAY_MODE -> swapOverlayModeOrStartLive()
                 }
             }
@@ -1357,12 +1370,15 @@ class OverlayUiController(
                 when (heldAction ?: prefs.iconHoldAction) {
                     HoldAction.SHOW_TRANSLATIONS -> CaptureService.instance?.holdEnd()
                     // The menu opened at the hold threshold and stays up; the
-                    // lift ends the gesture, not the menu. Likewise the swap
-                    // happened at the threshold. A lift with no start latched
-                    // (the starved hold above) therefore does neither.
-                    HoldAction.OPEN_QUICK_MENU, HoldAction.SWAP_OVERLAY_MODE -> Unit
+                    // lift ends the gesture, not the menu. Likewise the toggle
+                    // and the swap happened at the threshold. A lift with no
+                    // start latched (the starved hold above) therefore does
+                    // none of them.
+                    HoldAction.OPEN_QUICK_MENU, HoldAction.TOGGLE_AUTO_TRANSLATE,
+                    HoldAction.SWAP_OVERLAY_MODE -> Unit
                 }
                 heldAction = null
+                holdStoppedLive = false
             }
             icon.onHoldCancel = {
                 when (heldAction ?: prefs.iconHoldAction) {
@@ -1373,10 +1389,12 @@ class OverlayUiController(
                     // touch stream, so the menu's tap-outside dismissal never
                     // saw it). Close the menu first.
                     HoldAction.OPEN_QUICK_MENU -> dismissFloatingMenu()
-                    // The swap stands: the drag that follows pauses a running
-                    // auto-translate and resumes it afterwards in the mode the
-                    // swap left, as any drag does.
-                    HoldAction.SWAP_OVERLAY_MODE -> Unit
+                    // The toggle and the swap stand: the drag that follows
+                    // pauses a running auto-translate and resumes it
+                    // afterwards, in the mode the swap left, as any drag does,
+                    // and leaves a stopped one stopped, including one the
+                    // toggle's stop hasn't reached yet (holdStoppedLive).
+                    HoldAction.TOGGLE_AUTO_TRANSLATE, HoldAction.SWAP_OVERLAY_MODE -> Unit
                 }
                 heldAction = null
             }
@@ -1843,14 +1861,8 @@ class OverlayUiController(
             }
         }
         menu.onToggleLive = {
-            // Auto-translate becomes the most-recently-used primary.
-            captureIsPreferredPrimary = false
             dismissFloatingMenu()
-            if (CaptureService.instance?.isLive == true) {
-                stopLiveRouted()
-            } else {
-                startLiveFromOverlay()
-            }
+            toggleLiveFromOverlay()
         }
         menu.activeRegion = CaptureService.instance?.activeRegionForDisplay(display.displayId)
         menu.onRegionSelected = { region ->
@@ -2120,7 +2132,7 @@ class OverlayUiController(
      *    keeping the session running;
      *  - not live → start the session in [mode].
      *
-     * Start/stop reuse [onToggleLive]'s exact single- vs dual-screen /
+     * Start/stop reuse [toggleLiveFromOverlay]'s exact single- vs dual-screen /
      * InAppOnly routing ([startLiveFromOverlay], [stopLiveRouted]); the
      * in-place switch is [switchLiveOverlayMode].
      */
@@ -2141,6 +2153,26 @@ class OverlayUiController(
             // start/route reads it (same-process, synchronous read-after-write).
             prefs.overlayMode = mode
             startLiveFromOverlay()
+        }
+    }
+
+    /**
+     * Start auto-translate if it's off, stop it if it runs: the floating
+     * menu's Auto button, and the icon's toggle gesture
+     * ([HoldAction.TOGGLE_AUTO_TRANSLATE], [TapAction.TOGGLE_AUTO_TRANSLATE]),
+     * which is that button without the menu. A start is in the overlay mode
+     * already selected ([startLiveFromOverlay]). Returns true when it
+     * stopped auto-translate, or asked MainActivity to.
+     */
+    private fun toggleLiveFromOverlay(): Boolean {
+        // Auto-translate becomes the most-recently-used primary.
+        captureIsPreferredPrimary = false
+        return if (CaptureService.instance?.isLive == true) {
+            stopLiveRouted()
+            true
+        } else {
+            startLiveFromOverlay()
+            false
         }
     }
 
@@ -2197,8 +2229,8 @@ class OverlayUiController(
     }
 
     /** Start auto-translate from an overlay control (the floating menu's
-     *  Auto button, a tap hotkey, the icon's swap) in the overlay mode
-     *  already selected. In-App Only shows its results in the app, so that
+     *  Auto button, a tap hotkey, the icon's toggle and swap) in the overlay
+     *  mode already selected. In-App Only shows its results in the app, so that
      *  start is MainActivity's ([MainActivity.ACTION_START_LIVE]); any other
      *  goes through [startLiveRouted]. */
     private fun startLiveFromOverlay() {

@@ -1011,6 +1011,9 @@
     <string name="icon_action_open_quick_menu">Open the quick menu</string>
     <!-- Tap: the one-shot capture the quick menu's Capture button runs. -->
     <string name="icon_action_capture_screen">Capture screen</string>
+    <!-- Hold or Tap: what the quick menu's Auto button does. Starts
+         auto-translate while it's off, stops it while it runs. -->
+    <string name="icon_action_toggle_auto_translate">Start/stop auto translate</string>
     <!-- Hold or Tap, offered only for a source language with furigana:
          while auto-translate runs, switches its overlays between the
          translation and the furigana (the kana readings over the

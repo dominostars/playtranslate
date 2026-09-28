@@ -13,10 +13,11 @@ import com.playtranslate.language.HintTextKind
  * title and says which source languages offer it. This shared face is what
  * the Settings surfaces render, the "On the floating icon" cell and the
  * picker page it opens: a title per candidate, and whether the current
- * source language offers it. "Open the quick menu" and the swap are each
- * offered on two gestures and so are each a constant in two enums, sharing
- * their strings; [IconGestureBindings.quickMenuReachable] is the one place
- * that treats the two menu constants as the same thing.
+ * source language offers it. "Open the quick menu", the auto-translate
+ * toggle and the swap are each offered on two gestures and so are each a
+ * constant in two enums, sharing their strings;
+ * [IconGestureBindings.quickMenuReachable] is the one place that treats the
+ * two menu constants as the same thing.
  *
  * Stored per gesture by enum name; see [Prefs.iconGestureBindings].
  */
@@ -79,6 +80,10 @@ enum class HoldAction : IconAction {
     SHOW_TRANSLATIONS,
     /** Open the floating menu at the hold threshold; the lift does nothing. */
     OPEN_QUICK_MENU,
+    /** The quick menu's Auto button at the hold threshold: start
+     *  auto-translate if it's off, stop it if it runs. The lift does
+     *  nothing. */
+    TOGGLE_AUTO_TRANSLATE,
     /** The swap ([SwapOverlayMode]) at the hold threshold; the lift does
      *  nothing. */
     SWAP_OVERLAY_MODE;
@@ -86,11 +91,12 @@ enum class HoldAction : IconAction {
     override fun titleRes(hint: HintTextKind): Int = when (this) {
         SHOW_TRANSLATIONS -> R.string.icon_action_show_translations
         OPEN_QUICK_MENU -> R.string.icon_action_open_quick_menu
+        TOGGLE_AUTO_TRANSLATE -> R.string.icon_action_toggle_auto_translate
         SWAP_OVERLAY_MODE -> SwapOverlayMode.titleRes(hint)
     }
 
     override fun isOfferedOn(hint: HintTextKind): Boolean = when (this) {
-        SHOW_TRANSLATIONS, OPEN_QUICK_MENU -> true
+        SHOW_TRANSLATIONS, OPEN_QUICK_MENU, TOGGLE_AUTO_TRANSLATE -> true
         SWAP_OVERLAY_MODE -> SwapOverlayMode.isOfferedOn(hint)
     }
 
@@ -105,17 +111,21 @@ enum class TapAction : IconAction {
     /** The quick menu's Capture button without the menu: a one-shot capture
      *  of this display's current region, replacing any showing result. */
     CAPTURE_SCREEN,
+    /** The quick menu's Auto button without the menu: start auto-translate
+     *  if it's off, stop it if it runs. */
+    TOGGLE_AUTO_TRANSLATE,
     /** The swap ([SwapOverlayMode]). */
     SWAP_OVERLAY_MODE;
 
     override fun titleRes(hint: HintTextKind): Int = when (this) {
         OPEN_QUICK_MENU -> R.string.icon_action_open_quick_menu
         CAPTURE_SCREEN -> R.string.icon_action_capture_screen
+        TOGGLE_AUTO_TRANSLATE -> R.string.icon_action_toggle_auto_translate
         SWAP_OVERLAY_MODE -> SwapOverlayMode.titleRes(hint)
     }
 
     override fun isOfferedOn(hint: HintTextKind): Boolean = when (this) {
-        OPEN_QUICK_MENU, CAPTURE_SCREEN -> true
+        OPEN_QUICK_MENU, CAPTURE_SCREEN, TOGGLE_AUTO_TRANSLATE -> true
         SWAP_OVERLAY_MODE -> SwapOverlayMode.isOfferedOn(hint)
     }
 
