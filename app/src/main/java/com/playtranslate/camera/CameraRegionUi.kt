@@ -23,6 +23,7 @@ import com.playtranslate.themeColor
 import com.playtranslate.ui.REGION_DASH_DP
 import com.playtranslate.ui.REGION_GAP_DP
 import com.playtranslate.ui.RegionDragView
+import com.playtranslate.ui.RegionEditorChrome
 import com.playtranslate.ui.drawScreenSpaceDashes
 
 /**
@@ -81,10 +82,6 @@ class CameraRegionUi(
             onDragStart = {
                 editorBar?.visibility = View.INVISIBLE
                 editorLabel?.visibility = View.INVISIBLE
-            }
-            onDragEnd = {
-                editorBar?.visibility = View.VISIBLE
-                editorLabel?.visibility = View.VISIBLE
             }
         }
         fullBleedHost.addView(
@@ -161,17 +158,6 @@ class CameraRegionUi(
                 }
             }
         )
-        controlsHost.addView(
-            bar,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
-            ).apply {
-                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-                bottomMargin = (32 * dp).toInt()
-            },
-        )
-        editorBar = bar
-
         val label = TextView(activity).apply {
             setText(R.string.region_overlay_drag_instruction)
             setTextColor(textColor)
@@ -186,18 +172,54 @@ class CameraRegionUi(
                 cornerRadius = 100 * dp
             }
         }
-        controlsHost.addView(
-            label,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
-            ).apply {
-                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                topMargin = (16 * dp).toInt()
-                marginStart = (16 * dp).toInt()
-                marginEnd = (16 * dp).toInt()
-            },
+
+        // The drag box's fractions are of the full-bleed host; the chrome sits
+        // in the controls host, inside its inset padding.
+        val unspecified = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        label.measure(unspecified, unspecified)
+        bar.measure(unspecified, unspecified)
+        val stackDepth = RegionEditorChrome.stackDepthPx(label.measuredHeight, bar.measuredHeight, dp)
+        val barOffset = RegionEditorChrome.barOffsetPx(label.measuredHeight, dp)
+        val pillOffset = RegionEditorChrome.pillOffsetPx(dp)
+        val barParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
         )
+        val labelParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+        ).apply {
+            marginStart = (16 * dp).toInt()
+            marginEnd = (16 * dp).toInt()
+        }
+        fun placeChrome(region: ClosedFloatingPointRange<Float>?) {
+            val hostH = fullBleedHost.height.toFloat()
+            val edge = RegionEditorChrome.edgeFor(
+                region,
+                topChromeEnd = (controlsHost.paddingTop + stackDepth) / hostH,
+                bottomChromeStart = 1f - (controlsHost.paddingBottom + stackDepth) / hostH,
+            )
+            val onTop = edge == RegionEditorChrome.Edge.TOP
+            for ((params, offset) in listOf(barParams to barOffset, labelParams to pillOffset)) {
+                params.gravity = edge.gravity or Gravity.CENTER_HORIZONTAL
+                params.topMargin = if (onTop) offset else 0
+                params.bottomMargin = if (onTop) 0 else offset
+            }
+        }
+
+        placeChrome(init?.let { it.top..it.bottom })
+        controlsHost.addView(bar, barParams)
+        editorBar = bar
+        controlsHost.addView(label, labelParams)
         editorLabel = label
+
+        // The chrome comes back at each drag's end on the edge the box, as it
+        // now stands, calls for.
+        drag.onDragEnd = {
+            placeChrome(drag.topFraction..drag.bottomFraction)
+            bar.layoutParams = barParams
+            label.layoutParams = labelParams
+            bar.visibility = View.VISIBLE
+            label.visibility = View.VISIBLE
+        }
     }
 
     fun hideEditor() {
