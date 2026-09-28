@@ -380,7 +380,7 @@ internal object PtCardTemplates {
         ".pt-sentence b{font-weight:700;text-decoration-line:underline;" +
             "text-decoration-color:var(--pt-hl);" +
             "text-decoration-thickness:2px;text-underline-offset:6px;}" +
-        ".pt-q ruby{cursor:pointer;-webkit-tap-highlight-color:transparent;}" +
+        ".pt-q .pt-tap{cursor:pointer;-webkit-tap-highlight-color:transparent;}" +
         ".pt-q ruby rt{display:none;}" +
         ".gl-tip{position:fixed;background:#282828;color:#fff;" +
             "padding:8px 16px;border-radius:8px;font-size:28px;pointer-events:none;" +
@@ -511,44 +511,89 @@ internal object PtCardTemplates {
         "})()"
 
     /**
-     * Tap-to-reveal tooltip for the sentence card's question side. v002:
-     * when the tapped ruby sits inside a `data-pt-kana`/`data-pt-pitch`
-     * word wrapper (baked into SentenceFurigana by
-     * [SentenceAnkiHtmlBuilder.buildSentenceFurigana] with
-     * `wrapWordPitch`), the tooltip shows the WORD's reading as a pitch
-     * contour; otherwise it falls back to the tapped ruby's own `rt`
-     * text, the v001 behavior — which is also what non-pitch words and
-     * pre-v002 wrapper-less fields get. Tap again, or tap outside, to
-     * dismiss; hover works on pointer-capable devices.
+     * Tap-to-reveal tooltip for the sentence card's question side. The
+     * tap target is the WORD: every `data-pt-w` wrapper that
+     * [SentenceAnkiHtmlBuilder.buildSentenceFurigana] bakes in with
+     * `wrapWords` — the same span the target-word underline covers, so
+     * the okurigana of 探している reveals the reading as readily as its
+     * kanji — plus any ruby outside a wrapper (a word the annotator
+     * left unresolved) on its own, the v001 behavior. What the tip
+     * shows:
+     *  - a wrapper with `data-pt-kana`/`data-pt-pitch`: the word's
+     *    reading as a pitch contour (v002);
+     *  - otherwise the reading the hidden furigana spells, rebuilt from
+     *    the element (`rt` text for each ruby, the visible text
+     *    elsewhere; readings that aren't kana, i.e. pinyin, join with
+     *    spaces);
+     *  - a wrapper with neither (a kana word without pitch) hides
+     *    nothing, so it is not bound and does not take the `pt-tap`
+     *    class that carries the pointer cursor — a dead tap that
+     *    prevents nothing, leaving the host app's own tap gestures
+     *    alone, [SCROLL_JS]'s rule.
+     * Tap the word again, or tap outside, to dismiss; hover works on
+     * pointer-capable devices.
      *
      * The tip is measured after insertion and clamped to the viewport's
      * sides (6px inset) instead of centered blindly — an edge word's
      * popup otherwise renders partly off-screen — and `--pt-tip-ax`
-     * re-aims the caret at the tapped ruby's center so the clamp
-     * doesn't visually detach the popup from its word. Ruby touchend
-     * taps carry the same 10px drag slop as [SCROLL_JS]: WKWebView
-     * delivers touchend for scroll releases too.
+     * re-aims the caret at the anchor's center so the clamp doesn't
+     * visually detach the popup from its word. The anchor is the
+     * word's client rect nearest the tap point rather than its bounding
+     * box: a wrapper broken across two lines would otherwise anchor the
+     * tip at the union's center. Touchend taps carry the same 10px drag
+     * slop as [SCROLL_JS]: WKWebView delivers touchend for scroll
+     * releases too.
      */
     val TOOLTIP_JS: String =
         "(function(){" +
         PITCH_HELPERS_JS +
-        "var tip=null,activeR=null;" +
-        "function hide(){if(tip){tip.parentNode.removeChild(tip);tip=null;}activeR=null;}" +
-        "function showTip(r,e){" +
+        "var tip=null,activeEl=null;" +
+        "function hide(){if(tip){tip.parentNode.removeChild(tip);tip=null;}activeEl=null;}" +
+        // The reading the element's hidden furigana spells: each ruby
+        // contributes its rt, everything else its visible text (<wbr>
+        // and <br> have neither). Readings that aren't kana (pinyin)
+        // join with spaces; kana and okurigana run together.
+        "function ptReadingOf(root){" +
+        "var out=[];" +
+        "function visit(n){" +
+        "if(n.nodeType===3){var v=n.nodeValue.trim();if(v)out.push({t:v,k:ptIsKana(v)});return;}" +
+        "if(n.nodeType!==1)return;" +
+        "var tag=n.tagName.toLowerCase();" +
+        "if(tag==='ruby'){var rt=n.querySelector('rt');var r=rt?rt.textContent:n.textContent;" +
+        "out.push({t:r,k:ptIsKana(r)});return;}" +
+        "if(tag==='rt'||tag==='rp')return;" +
+        "for(var i=0;i<n.childNodes.length;i++)visit(n.childNodes[i]);}" +
+        "visit(root);" +
+        "var s='';" +
+        "for(var j=0;j<out.length;j++){if(j>0&&!(out[j].k&&out[j-1].k))s+=' ';s+=out[j].t;}" +
+        "return s;}" +
+        // What the tip shows for an element, or null when it hides
+        // nothing: the pitch contour when the wrapper carries one, else
+        // the rebuilt reading when there is a ruby to rebuild it from.
+        "function ptTipFor(el){" +
+        "var kana=el.getAttribute('data-pt-kana');" +
+        "if(kana){var pitch=ptParsePitch(el.getAttribute('data-pt-pitch'));" +
+        "if(pitch.length){var pa=ptBuildPa(kana,pitch);" +
+        "if(pa){var f=document.createDocumentFragment();f.appendChild(pa);f.appendChild(ptPitchSuffix(pitch));return f;}}}" +
+        "if(!el.querySelector('rt'))return null;" +
+        "return document.createTextNode(ptReadingOf(el));}" +
+        // The element's line fragment nearest the tap point (a wrapper
+        // broken across lines has one per line); the bounding box when
+        // there is no point (or no layout) to measure against.
+        "function ptAnchorRect(el,x,y){" +
+        "var rs=el.getClientRects(),best=null,bd=Infinity;" +
+        "for(var i=0;i<rs.length;i++){var r=rs[i];" +
+        "var dx=Math.max(r.left-x,0,x-r.right),dy=Math.max(r.top-y,0,y-r.bottom),d=dx*dx+dy*dy;" +
+        "if(d<bd){bd=d;best=r;}}" +
+        "return best||el.getBoundingClientRect();}" +
+        "function showTip(el,x,y,e){" +
+        "if(activeEl===el){e.stopPropagation();e.preventDefault();hide();return;}" +
+        "var content=ptTipFor(el);if(!content)return;" +
         "e.stopPropagation();e.preventDefault();" +
-        "if(activeR===r){hide();return;}" +
         "hide();" +
-        "var rt=r.querySelector('rt');if(!rt)return;" +
-        "var rect=r.getBoundingClientRect();" +
+        "var rect=ptAnchorRect(el,x,y);" +
         "tip=document.createElement('div');tip.className='gl-tip';" +
-        "var host=r.closest?r.closest('[data-pt-kana]'):null;" +
-        "var pa=null,pitch=null;" +
-        "if(host){" +
-        "pitch=ptParsePitch(host.getAttribute('data-pt-pitch'));" +
-        "if(pitch.length)pa=ptBuildPa(host.getAttribute('data-pt-kana'),pitch);" +
-        "}" +
-        "if(pa){tip.appendChild(pa);tip.appendChild(ptPitchSuffix(pitch));}" +
-        "else{tip.textContent=rt.textContent;}" +
+        "tip.appendChild(content);" +
         "tip.style.top=rect.top+'px';" +
         "tip.style.transform='translateY(calc(-100% - 8px))';" +
         "document.body.appendChild(tip);" +
@@ -561,25 +606,33 @@ internal object PtCardTemplates {
         "var ax=cx-left;" +
         "if(ax<12)ax=12;if(ax>tw-12)ax=tw-12;" +
         "tip.style.setProperty('--pt-tip-ax',ax+'px');" +
-        "activeR=r;" +
+        "activeEl=el;" +
         "}" +
         "var hasHover=window.matchMedia('(hover:hover)').matches;" +
-        "document.querySelectorAll('.pt-q ruby').forEach(function(r){" +
+        "function bind(el){" +
+        "el.classList.add('pt-tap');" +
         "var sx=0,sy=0;" +
-        "r.addEventListener('touchstart',function(e){" +
+        "el.addEventListener('touchstart',function(e){" +
         "var t=e.touches[0];sx=t.clientX;sy=t.clientY;},{passive:true});" +
-        "r.addEventListener('touchend',function(e){" +
+        "el.addEventListener('touchend',function(e){" +
         "var t=e.changedTouches[0];" +
         "if(Math.abs(t.clientX-sx)>10||Math.abs(t.clientY-sy)>10)return;" +
-        "showTip(r,e);});" +
-        "r.addEventListener('click',function(e){showTip(r,e);});" +
+        "showTip(el,t.clientX,t.clientY,e);});" +
+        "el.addEventListener('click',function(e){showTip(el,e.clientX,e.clientY,e);});" +
         "if(hasHover){" +
-        "r.addEventListener('mouseenter',function(e){activeR=null;showTip(r,e);});" +
-        "r.addEventListener('mouseleave',function(){hide();});" +
-        "}" +
+        "el.addEventListener('mouseenter',function(e){activeEl=null;showTip(el,e.clientX,e.clientY,e);});" +
+        "el.addEventListener('mouseleave',function(){hide();});" +
+        "}}" +
+        // Word wrappers bind whole; a ruby inside one is covered by that
+        // binding, a ruby outside one binds on its own. Elements that
+        // hide nothing get no listener at all.
+        "document.querySelectorAll('.pt-q [data-pt-w], .pt-q ruby').forEach(function(el){" +
+        "if(el.tagName.toLowerCase()==='ruby'&&el.closest&&el.closest('[data-pt-w]'))return;" +
+        "if(!ptTipFor(el))return;" +
+        "bind(el);" +
         "});" +
-        "document.addEventListener('touchend',function(e){if(activeR&&!activeR.contains(e.target))hide();});" +
-        "document.addEventListener('click',function(e){if(activeR&&!activeR.contains(e.target))hide();});" +
+        "document.addEventListener('touchend',function(e){if(activeEl&&!activeEl.contains(e.target))hide();});" +
+        "document.addEventListener('click',function(e){if(activeEl&&!activeEl.contains(e.target))hide();});" +
         "})()"
 
     /**

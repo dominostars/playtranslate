@@ -53,7 +53,18 @@ object PtModels {
     )
 
     val SENTENCE = Spec(
-        name = "PlayTranslate Sentence",
+        // The rename contract (see [WORD]) firing for the first time
+        // (2026-09-27): the front tooltip's tap target moved from
+        // the ruby to the whole word, and an existing model's templates
+        // are never rewritten, so the fix can only reach a card under a
+        // new name. "+" rather than a number because the plain name is
+        // the brand and the suffix reads as "the better one" in the note
+        // type picker; a future Word fix should follow the same style.
+        // It is inert in Anki search, and the model lookup is exact
+        // string equality against the provider's list, never a query.
+        // The pre-"+" model keeps its notes and its old rendering, and
+        // stays hidden from the picker via [SYNTHETIC_EXACT_NAMES].
+        name = "PlayTranslate Sentence+",
         fields = listOf(
             "Sentence", "SentenceFurigana", "Translation", "TargetWord",
             "WordsTable", "Picture", "SentenceAudio", "AudioCredit",
@@ -82,9 +93,22 @@ object PtModels {
         "PlayTranslate Sentence v",
     )
 
-    /** The current unversioned names match EXACTLY, not by prefix — the
-     *  prefix list would otherwise stop hiding them from the picker the
-     *  moment the " v" suffix went away. */
+    /** The CURRENT names match EXACTLY, not by prefix — the prefix list
+     *  would otherwise stop hiding them from the picker the moment the
+     *  " v" suffix went away, and a bare "PlayTranslate Sentence" prefix
+     *  would swallow both the current "…+" model and a user's own
+     *  "PlayTranslate Sentence Mining".
+     *
+     *  A RETIRED name deliberately does NOT belong here
+     *  (2026-09-27, when "PlayTranslate Sentence" was superseded): the
+     *  rename already moved the default send away from that model, and a
+     *  superseded model can carry the user's own added fields and
+     *  template edits — [assemble] and [classifyStoredTemplate] exist to
+     *  honour exactly those — so hiding it as well would leave them no
+     *  way to send there at all. It stays pickable, as any other
+     *  user-owned note type is. The versioned prefixes above predate the
+     *  rule and stay hidden; those generations were retired while the
+     *  models existed only on the dev device. */
     private val SYNTHETIC_EXACT_NAMES = setOf(WORD.name, SENTENCE.name)
 
     fun isSyntheticName(name: String): Boolean =

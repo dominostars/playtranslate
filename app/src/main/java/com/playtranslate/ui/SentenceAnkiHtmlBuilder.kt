@@ -144,8 +144,10 @@ object SentenceAnkiHtmlBuilder {
         /** When true, wrap each dictionary word's span of the sentence in
          *  `<span data-pt-w="…">` (plus `data-pt-kana`/`data-pt-pitch` when
          *  the word has pitch data) so the PT sentence template's JS can
-         *  find words: the front tooltip draws the pitch contour, the back
-         *  tap scrolls to the word's cell in the words table. Default
+         *  find words: the front tooltip's tap target (the same span the
+         *  target-word underline covers), drawn as a pitch contour when
+         *  the word has one; the back tap scrolls to the word's cell in
+         *  the words table. Default
          *  false — the structured path's SentenceFurigana output must stay
          *  byte-stable for third-party consumers. */
         wrapWords: Boolean = false,

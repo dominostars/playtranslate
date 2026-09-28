@@ -238,7 +238,14 @@ class PtModelsTest {
         assertTrue(PtModels.isSyntheticName(PtModels.SENTENCE.name))
         assertTrue(PtModels.isSyntheticName("PlayTranslate v005"))
         assertTrue(PtModels.isSyntheticName("PlayTranslate v004"))
+        // The retired pre-"+" sentence model stays PICKABLE: it can carry
+        // the user's own fields and template edits, and the rename already
+        // took the default send away from it, so hiding it too would leave
+        // no way to send there.
+        assertFalse(PtModels.isSyntheticName("PlayTranslate Sentence"))
+        assertEquals("PlayTranslate Sentence+", PtModels.SENTENCE.name)
         assertFalse(PtModels.isSyntheticName("PlayTranslate Mining"))
+        assertFalse(PtModels.isSyntheticName("PlayTranslate Sentence Mining"))
         assertFalse(PtModels.isSyntheticName("Lapis"))
         assertFalse(PtModels.isSyntheticName("Basic"))
     }
@@ -260,6 +267,23 @@ class PtModelsTest {
         assertTrue(qfmt.contains("gl-tip"))
         assertTrue(qfmt.contains("touchend"))
         assertTrue(qfmt.contains("click"))
+    }
+
+    /** The front tooltip's tap target is the word wrapper (the span the
+     *  target-word underline covers); a bare ruby binds only outside one,
+     *  and the reading is rebuilt from the element when no pitch contour
+     *  is available. */
+    @Test fun `front tooltip binds word wrappers and bare rubies`() {
+        val qfmt = PtModels.SENTENCE.qfmt
+        assertTrue(qfmt.contains("querySelectorAll('.pt-q [data-pt-w], .pt-q ruby')"))
+        assertTrue(qfmt.contains("closest('[data-pt-w]')"))
+        assertTrue(qfmt.contains("ptReadingOf"))
+        // The pointer cursor rides a class the script adds to exactly what
+        // it binds, so an unbound word never advertises a tap.
+        assertTrue(qfmt.contains("classList.add('pt-tap')"))
+        assertTrue(PtModels.SENTENCE.css.contains(
+            ".pt-q .pt-tap{cursor:pointer;-webkit-tap-highlight-color:transparent;}",
+        ))
     }
 
     /** Readings are hidden on the question side only — the back shows
