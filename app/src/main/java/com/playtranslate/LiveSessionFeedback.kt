@@ -41,7 +41,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 internal class LiveSessionFeedback(
     parentScope: CoroutineScope,
     private val controller: MediaProjectionController,
-    sourceLang: String,
+    /** The game language's OCR code, read when the session is built and
+     *  again at [awaitFirstCycleClear]: the language can change while a
+     *  start waits on its consent dialog or stream probe. */
+    private val sourceLang: () -> String,
     /** Invoked at most once per session, on Main, when a live OCR pass has
      *  been in flight past [OCR_SLOW_PROMPT_MS] — the slow-device signal
      *  the rescue prompt fires on. Receives the displayId of an in-flight
@@ -50,6 +53,9 @@ internal class LiveSessionFeedback(
      *  the alert on a display the user isn't watching). Runs in [scope]: a
      *  disposed session can never fire it. */
     private val onSlowPass: (Int) -> Unit = {},
+    /** Resolves (loads and caches) the OCR engine for a language; a seam
+     *  for tests. */
+    private val warmUp: suspend (String) -> Unit = { OcrManager.instance.warmUpEngine(it) },
 ) {
 
     private val scope = CoroutineScope(
@@ -60,7 +66,7 @@ internal class LiveSessionFeedback(
      *  native session load overlaps consent/probe/MP setup instead of
      *  landing inside cycle 1's runOcr. Joined by [awaitFirstCycleClear]. */
     private val warmUpJob: Job = scope.launch {
-        OcrManager.instance.warmUpEngine(sourceLang)
+        warmUp(sourceLang())
     }
 
     // ── Startup chip ─────────────────────────────────────────────────────
@@ -250,9 +256,22 @@ internal class LiveSessionFeedback(
      * re-enter (loop restarts, input kicks). Runs in the CALLER's scope, so
      * a mode stop cancels it like any parked cycle; the cap is a hang
      * guard, not policy — warmUpEngine always returns.
+     *
+     * The engine warmed is the one the first pass will read: the game
+     * language can change while a start waits (its consent dialog, its
+     * stream probe), and the service restarts only a running session for
+     * that, so after the start's own warm-up the gate warms the current
+     * language too. An engine already loaded resolves at once, so it costs
+     * nothing when the language didn't change. That load happens here,
+     * before the pass, so it never counts toward the slow-pass prompt. A
+     * card that was never shown stays hidden for it ([armChipGrace] reads
+     * only the start's own warm-up). Each warm-up has a cap of its own, so
+     * a slow first one can't use up the second's and leave the rest of
+     * that load to the first pass (Codex adversarial, 2026-09-28).
      */
     suspend fun awaitFirstCycleClear() {
         withTimeoutOrNull(WARMUP_JOIN_CAP_MS) { warmUpJob.join() }
+        withTimeoutOrNull(WARMUP_JOIN_CAP_MS) { warmUp(sourceLang()) }
     }
 
     // ── Slow-pass tracking ───────────────────────────────────────────────
@@ -328,11 +347,15 @@ internal class LiveSessionFeedback(
         /** Chip leak guard — fires only when no completed first pass ever
          *  removed the card. Sized above worst-case probe (~3.4s) + warm-up
          *  join cap (8s) + a slow first pass, which all now legitimately
-         *  live inside the card's window. */
+         *  live inside the card's window. A game-language change during the
+         *  start's wait adds a second warm-up with a cap of its own
+         *  ([awaitFirstCycleClear]); only when both loads run that long can
+         *  this take the card down before the first pass lands. */
         const val CHIP_HARD_CAP_MS = 25_000L
 
-        /** Warm-up join cap — a hang guard, not policy; warmUpEngine always
-         *  returns on every healthy path. */
+        /** Cap on each warm-up the first-cycle gate waits for — a hang
+         *  guard, not policy; warmUpEngine always returns on every healthy
+         *  path. */
         const val WARMUP_JOIN_CAP_MS = 8_000L
 
         /** Pre-grab blink freshness cap. The hide composites into the

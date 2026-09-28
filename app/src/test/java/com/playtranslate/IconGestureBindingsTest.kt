@@ -107,6 +107,14 @@ class IconGestureBindingsTest {
                 R.string.icon_action_toggle_auto_translate,
                 TapAction.TOGGLE_AUTO_TRANSLATE.titleRes(hint),
             )
+            assertEquals(
+                R.string.icon_action_change_game_language,
+                HoldAction.CHANGE_GAME_LANGUAGE.titleRes(hint),
+            )
+            assertEquals(
+                R.string.icon_action_change_game_language,
+                TapAction.CHANGE_GAME_LANGUAGE.titleRes(hint),
+            )
         }
     }
 

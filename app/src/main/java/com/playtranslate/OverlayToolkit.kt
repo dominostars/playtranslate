@@ -655,7 +655,7 @@ object OverlayToolkit {
      *
      * [blackoutRects] (screen coordinates) are filled black in the OCR
      * input after the crop — this app's own chrome on the display (the
-     * floating icon, the translation-error pills:
+     * floating icon, the transient pill, the translation-error pills:
      * [OverlayUiController.ownChromeRects]), resolved by the caller from the
      * frame's stamped [com.playtranslate.capture.CapturedFrame.includesOwnOverlays]
      * fact. Raw frames of contaminated sources contain that chrome: the

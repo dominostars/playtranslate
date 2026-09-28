@@ -1023,6 +1023,18 @@
     <!-- The same action for a Chinese source, whose reading hint is
          pinyin (the romanized readings over the Chinese text). -->
     <string name="icon_action_swap_pinyin">Swap between translation and pinyin</string>
+    <!-- Hold or Tap: change the game language (the language IN the game
+         being translated; "Game Language" is the picker's title,
+         lang_translate_from). With exactly two languages downloaded it
+         switches to the other one; otherwise it opens that picker. -->
+    <string name="icon_action_change_game_language">Change game language</string>
+    <!-- Brief pill at the top of the game screen after that action
+         switched to the other downloaded language, confirming which one
+         the app now reads. It fades out by itself after two seconds.
+         %1$s = the language's name in the UI language (e.g. "Japanese",
+         "Chinese (Traditional)"), the same name the language picker
+         shows. -->
+    <string name="icon_action_translating_from">Translating from <xliff:g id="language" example="Japanese">%1$s</xliff:g></string>
 
     <!-- Alert shown on leaving the picker page while no gesture is bound
          to "Open the quick menu". The confirm button leaves with the

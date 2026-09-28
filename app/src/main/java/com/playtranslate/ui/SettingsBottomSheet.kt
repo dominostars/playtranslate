@@ -50,6 +50,7 @@ class SettingsBottomSheet : DialogFragment() {
 
     // ── External callbacks (set by the host) ────────────────────────────
     var onSourceLangChanged: (() -> Unit)? = null
+    var onTargetLangChanged: (() -> Unit)? = null
     var onScreenModeChanged: (() -> Unit)? = null
     var onClose: (() -> Unit)? = null
 
@@ -408,7 +409,7 @@ class SettingsBottomSheet : DialogFragment() {
                 onSourceLangChanged?.invoke()
             }
             override fun onTargetSelectionDone(targetCode: String) {
-                onSourceLangChanged?.invoke()
+                onTargetLangChanged?.invoke()
             }
         }
     }

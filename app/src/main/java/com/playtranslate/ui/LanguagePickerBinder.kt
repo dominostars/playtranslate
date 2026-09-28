@@ -165,7 +165,9 @@ class LanguagePickerBinder(
         // bundled (JA) or downloaded. A no-floor language whose OCR pack is
         // missing is excluded so it isn't surfaced as ready. Unlike the target
         // picker this does NOT include the device locale, per user request.
-        val suggested = allIds.filter { OcrModelManager.isFullyInstalled(ctx, it) }
+        // The floating icon's "Change game language" counts these same rows.
+        val installed = OcrModelManager.fullyInstalledSources(ctx).toSet()
+        val suggested = allIds.filter { it in installed }
 
         return bindLanguagePage(
             parent,
@@ -218,7 +220,8 @@ class LanguagePickerBinder(
 
         // Same "Suggested" notion as the source list: languages fully
         // installed on this device, i.e. the ones the user actually plays in.
-        val suggested = allIds.filter { OcrModelManager.isFullyInstalled(ctx, it) }
+        val installed = OcrModelManager.fullyInstalledSources(ctx).toSet()
+        val suggested = allIds.filter { it in installed }
 
         return bindLanguagePage(
             parent,

@@ -299,6 +299,40 @@ object SourceLanguageEngines {
         for (id in victims) cache.remove(id)?.close()
     }
 
+    /**
+     * Preload the engine for [id], off the main thread: the app does it at
+     * launch, and CaptureService after every change of the game language.
+     * Callers gate on [LanguagePackStore.isInstalled]. Recovery behavior is
+     * tiered so we don't punish transient failures with destructive pack
+     * deletion:
+     *  - [PreloadResult.PackMissing]: shouldn't happen (caller gated on
+     *    isInstalled). Log as anomaly.
+     *  - [PreloadResult.PackCorrupt]: confirmed on-disk integrity failure
+     *    (e.g. SQLite can't open). Uninstall the pack so the user's next
+     *    deliberate language interaction routes through download/recovery
+     *    rather than a silent crash loop.
+     *  - [PreloadResult.TokenizerInitFailed]: tokenizer library threw
+     *    during warm-up but the pack on disk looks fine. Likely OOM or
+     *    transient; log and let the next user action retry instead of
+     *    destroying a valid offline install.
+     */
+    suspend fun preloadAndRecover(ctx: Context, id: SourceLangId) {
+        val app = ctx.applicationContext
+        when (val r = get(app, id).preload()) {
+            is PreloadResult.Success -> { /* nothing to do */ }
+            is PreloadResult.PackMissing ->
+                android.util.Log.w(TAG, "preload($id) reported PackMissing after isInstalled() passed")
+            is PreloadResult.PackCorrupt -> {
+                android.util.Log.w(TAG, "preload($id) reported PackCorrupt: ${r.reason} — uninstalling")
+                LanguagePackStore.uninstall(app, id)
+            }
+            is PreloadResult.TokenizerInitFailed ->
+                android.util.Log.w(TAG, "preload($id) tokenizer warm-up failed: ${r.reason} — keeping pack, next call retries")
+        }
+    }
+
+    private const val TAG = "SourceLanguageEngines"
+
     private fun create(app: Context, id: SourceLangId): SourceLanguageEngine = when (id) {
         SourceLangId.JA -> JapaneseEngine(app)
         SourceLangId.ZH -> ChineseEngine(app, SourceLangId.ZH)

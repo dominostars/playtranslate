@@ -23,9 +23,10 @@ import org.robolectric.Shadows.shadowOf
 
 /**
  * The gesture picker page's Hold and Tap rows on each kind of source
- * language: the auto-translate toggle is on every one; the swap row is
- * there, named after the language's reading hint, only on a language that
- * has one; elsewhere a stored swap shows as its gesture's default, checked.
+ * language: the auto-translate toggle and the game-language change are on
+ * every one; the swap row is there, named after the language's reading
+ * hint, only on a language that has one; elsewhere a stored swap shows as
+ * its gesture's default, checked.
  * A language changed while the page is open (dual-screen: from the floating
  * menu on the other display) re-renders it.
  */
@@ -41,6 +42,7 @@ class IconGesturesSettingsRowsTest {
     private val toggle = "Start/stop auto translate"
     private val swapFurigana = "Swap between translation and furigana"
     private val swapPinyin = "Swap between translation and pinyin"
+    private val changeLanguage = "Change game language"
 
     @Before fun setUp() {
         // androidx keeps one AndroidViewModelFactory per process, holding the
@@ -64,11 +66,17 @@ class IconGesturesSettingsRowsTest {
         prefs.sourceLang = "ja"
         val page = open()
         assertEquals(
-            listOf(showTranslations to false, quickMenu to false, toggle to false, swapFurigana to true),
+            listOf(
+                showTranslations to false, quickMenu to false, toggle to false,
+                swapFurigana to true, changeLanguage to false,
+            ),
             rows(page, R.id.optionsHold),
         )
         assertEquals(
-            listOf(quickMenu to false, capture to false, toggle to false, swapFurigana to true),
+            listOf(
+                quickMenu to false, capture to false, toggle to false,
+                swapFurigana to true, changeLanguage to false,
+            ),
             rows(page, R.id.optionsTap),
         )
     }
@@ -77,11 +85,17 @@ class IconGesturesSettingsRowsTest {
         prefs.sourceLang = "zh"
         val page = open()
         assertEquals(
-            listOf(showTranslations to false, quickMenu to false, toggle to false, swapPinyin to true),
+            listOf(
+                showTranslations to false, quickMenu to false, toggle to false,
+                swapPinyin to true, changeLanguage to false,
+            ),
             rows(page, R.id.optionsHold),
         )
         assertEquals(
-            listOf(quickMenu to false, capture to false, toggle to false, swapPinyin to true),
+            listOf(
+                quickMenu to false, capture to false, toggle to false,
+                swapPinyin to true, changeLanguage to false,
+            ),
             rows(page, R.id.optionsTap),
         )
     }
@@ -90,10 +104,28 @@ class IconGesturesSettingsRowsTest {
         prefs.sourceLang = "en"
         val page = open()
         assertEquals(
-            listOf(showTranslations to true, quickMenu to false, toggle to false),
+            listOf(showTranslations to true, quickMenu to false, toggle to false, changeLanguage to false),
             rows(page, R.id.optionsHold),
         )
-        assertEquals(listOf(quickMenu to true, capture to false, toggle to false), rows(page, R.id.optionsTap))
+        assertEquals(
+            listOf(quickMenu to true, capture to false, toggle to false, changeLanguage to false),
+            rows(page, R.id.optionsTap),
+        )
+    }
+
+    @Test fun `the game-language change is checked where bound, on a language without a reading hint too`() {
+        prefs.sourceLang = "en"
+        prefs.iconHoldAction = HoldAction.CHANGE_GAME_LANGUAGE
+        prefs.iconTapAction = TapAction.CHANGE_GAME_LANGUAGE
+        val page = open()
+        assertEquals(
+            listOf(showTranslations to false, quickMenu to false, toggle to false, changeLanguage to true),
+            rows(page, R.id.optionsHold),
+        )
+        assertEquals(
+            listOf(quickMenu to false, capture to false, toggle to false, changeLanguage to true),
+            rows(page, R.id.optionsTap),
+        )
     }
 
     @Test fun `a language changed while the page is open re-renders it`() {
@@ -102,10 +134,13 @@ class IconGesturesSettingsRowsTest {
         prefs.sourceLang = "en"
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(
-            listOf(showTranslations to true, quickMenu to false, toggle to false),
+            listOf(showTranslations to true, quickMenu to false, toggle to false, changeLanguage to false),
             rows(page, R.id.optionsHold),
         )
-        assertEquals(listOf(quickMenu to true, capture to false, toggle to false), rows(page, R.id.optionsTap))
+        assertEquals(
+            listOf(quickMenu to true, capture to false, toggle to false, changeLanguage to false),
+            rows(page, R.id.optionsTap),
+        )
     }
 
     private fun open(): Activity {

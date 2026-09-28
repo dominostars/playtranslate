@@ -65,7 +65,6 @@ import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.PackKind
 import com.playtranslate.language.UpgradeMode
 import com.playtranslate.language.PackUpgradeOrchestrator
-import com.playtranslate.language.PreloadResult
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.SourceLangId
@@ -682,7 +681,7 @@ class MainActivity :
                 // just log a PackMissing and is pointless.
                 if (LanguagePackStore.isInstalled(applicationContext, prefs.sourceLangId)) {
                     lifecycleScope.launch(Dispatchers.IO) {
-                        preloadEngineAndRecover(prefs.sourceLangId)
+                        SourceLanguageEngines.preloadAndRecover(applicationContext, prefs.sourceLangId)
                     }
                 }
                 // One-shot migration: if the user already has a non-English target but
@@ -985,34 +984,6 @@ class MainActivity :
         if (isLiveMode && !isChangingConfigurations) captureService?.stopLive()
         if (serviceConnected) unbindService(serviceConnection)
         super.onDestroy()
-    }
-
-    /**
-     * Preload the engine for [id]. Recovery behavior is tiered so we
-     * don't punish transient failures with destructive pack deletion:
-     *  - [PreloadResult.PackMissing]: shouldn't happen (caller gated on
-     *    isInstalled). Log as anomaly.
-     *  - [PreloadResult.PackCorrupt]: confirmed on-disk integrity failure
-     *    (e.g. SQLite can't open). Uninstall the pack so the user's next
-     *    deliberate language interaction routes through download/recovery
-     *    rather than a silent crash loop.
-     *  - [PreloadResult.TokenizerInitFailed]: tokenizer library threw
-     *    during warm-up but the pack on disk looks fine. Likely OOM or
-     *    transient; log and let the next user action retry instead of
-     *    destroying a valid offline install.
-     */
-    private suspend fun preloadEngineAndRecover(id: com.playtranslate.language.SourceLangId) {
-        when (val r = SourceLanguageEngines.get(applicationContext, id).preload()) {
-            is PreloadResult.Success -> { /* nothing to do */ }
-            is PreloadResult.PackMissing ->
-                android.util.Log.w("MainActivity", "preload($id) reported PackMissing after isInstalled() passed")
-            is PreloadResult.PackCorrupt -> {
-                android.util.Log.w("MainActivity", "preload($id) reported PackCorrupt: ${r.reason} — uninstalling")
-                LanguagePackStore.uninstall(applicationContext, id)
-            }
-            is PreloadResult.TokenizerInitFailed ->
-                android.util.Log.w("MainActivity", "preload($id) tokenizer warm-up failed: ${r.reason} — keeping pack, next call retries")
-        }
     }
 
     // ── Setup ─────────────────────────────────────────────────────────────
@@ -1449,6 +1420,7 @@ class MainActivity :
         val sheet = SettingsBottomSheet.newInstance().apply {
             setShowsDialog(false)
             onSourceLangChanged = { onSourceLanguageChanged() }
+            onTargetLangChanged = { onTargetLanguageChanged() }
             onScreenModeChanged = {
                 refreshReadiness()
             }
@@ -1860,13 +1832,29 @@ class MainActivity :
         svc.configureSaved(displayIds = prefs.captureDisplayIds)
     }
 
+    /** The game language was picked in Settings. What a new game language
+     *  does to the session (a Furigana overlay mode dropped on a language
+     *  without readings, a running auto-translate restarted in it, its
+     *  engine warmed) is CaptureService's, for every change of it wherever
+     *  made ([CaptureService.onSourceLanguageChanged]); Settings adds
+     *  [onLanguagePicked]'s reset. */
     private fun onSourceLanguageChanged() {
+        onLanguagePicked()
+    }
+
+    /** The translate-to language was picked in Settings: [onLanguagePicked]'s
+     *  reset, and a running auto-translate restarts in the new pair. */
+    private fun onTargetLanguageChanged() {
         val wasLive = captureService?.isLive == true
-        // Reset overlay mode if new language has no hint text
-        if (SourceLanguageProfiles[prefs.sourceLangId].hintTextKind == HintTextKind.NONE
-            && prefs.overlayMode == OverlayMode.FURIGANA) {
-            prefs.overlayMode = OverlayMode.TRANSLATION
+        onLanguagePicked()
+        if (wasLive) {
+            captureService?.stopLive()
+            withAccessibility { doStartLive() }
         }
+    }
+
+    /** A language picked in Settings resets the capture state. */
+    private fun onLanguagePicked() {
         // Language managers self-heal in translate(), but configureSaved()
         // also clears any temporary override region and refreshes the saved
         // region — both of which should reset on a deliberate language
@@ -1875,15 +1863,6 @@ class MainActivity :
         configureService()
         updateRegionButton()
         CaptureBackendResolver.activeOverlayUi?.reconcileFloatingIcons()
-        if (LanguagePackStore.isInstalled(applicationContext, prefs.sourceLangId)) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                preloadEngineAndRecover(prefs.sourceLangId)
-            }
-        }
-        if (wasLive) {
-            captureService?.stopLive()
-            withAccessibility { doStartLive() }
-        }
     }
 
     private fun showAccessibilityDialog() {

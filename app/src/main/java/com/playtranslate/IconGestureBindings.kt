@@ -14,8 +14,8 @@ import com.playtranslate.language.HintTextKind
  * the Settings surfaces render, the "On the floating icon" cell and the
  * picker page it opens: a title per candidate, and whether the current
  * source language offers it. "Open the quick menu", the auto-translate
- * toggle and the swap are each offered on two gestures and so are each a
- * constant in two enums, sharing their strings;
+ * toggle, the swap and the game-language change are each offered on two
+ * gestures and so are each a constant in two enums, sharing their strings;
  * [IconGestureBindings.quickMenuReachable] is the one place that treats the
  * two menu constants as the same thing.
  *
@@ -86,17 +86,21 @@ enum class HoldAction : IconAction {
     TOGGLE_AUTO_TRANSLATE,
     /** The swap ([SwapOverlayMode]) at the hold threshold; the lift does
      *  nothing. */
-    SWAP_OVERLAY_MODE;
+    SWAP_OVERLAY_MODE,
+    /** The game-language change ([TapAction.CHANGE_GAME_LANGUAGE]) at the
+     *  hold threshold; the lift does nothing. */
+    CHANGE_GAME_LANGUAGE;
 
     override fun titleRes(hint: HintTextKind): Int = when (this) {
         SHOW_TRANSLATIONS -> R.string.icon_action_show_translations
         OPEN_QUICK_MENU -> R.string.icon_action_open_quick_menu
         TOGGLE_AUTO_TRANSLATE -> R.string.icon_action_toggle_auto_translate
         SWAP_OVERLAY_MODE -> SwapOverlayMode.titleRes(hint)
+        CHANGE_GAME_LANGUAGE -> R.string.icon_action_change_game_language
     }
 
     override fun isOfferedOn(hint: HintTextKind): Boolean = when (this) {
-        SHOW_TRANSLATIONS, OPEN_QUICK_MENU, TOGGLE_AUTO_TRANSLATE -> true
+        SHOW_TRANSLATIONS, OPEN_QUICK_MENU, TOGGLE_AUTO_TRANSLATE, CHANGE_GAME_LANGUAGE -> true
         SWAP_OVERLAY_MODE -> SwapOverlayMode.isOfferedOn(hint)
     }
 
@@ -115,17 +119,23 @@ enum class TapAction : IconAction {
      *  if it's off, stop it if it runs. */
     TOGGLE_AUTO_TRANSLATE,
     /** The swap ([SwapOverlayMode]). */
-    SWAP_OVERLAY_MODE;
+    SWAP_OVERLAY_MODE,
+    /** "Change game language": with exactly two languages downloaded, switch
+     *  to the other one and say so in a pill; otherwise open the language
+     *  picker, as the quick menu's Language row does (OverlayUiController's
+     *  changeGameLanguage). Offered on every language. */
+    CHANGE_GAME_LANGUAGE;
 
     override fun titleRes(hint: HintTextKind): Int = when (this) {
         OPEN_QUICK_MENU -> R.string.icon_action_open_quick_menu
         CAPTURE_SCREEN -> R.string.icon_action_capture_screen
         TOGGLE_AUTO_TRANSLATE -> R.string.icon_action_toggle_auto_translate
         SWAP_OVERLAY_MODE -> SwapOverlayMode.titleRes(hint)
+        CHANGE_GAME_LANGUAGE -> R.string.icon_action_change_game_language
     }
 
     override fun isOfferedOn(hint: HintTextKind): Boolean = when (this) {
-        OPEN_QUICK_MENU, CAPTURE_SCREEN, TOGGLE_AUTO_TRANSLATE -> true
+        OPEN_QUICK_MENU, CAPTURE_SCREEN, TOGGLE_AUTO_TRANSLATE, CHANGE_GAME_LANGUAGE -> true
         SWAP_OVERLAY_MODE -> SwapOverlayMode.isOfferedOn(hint)
     }
 

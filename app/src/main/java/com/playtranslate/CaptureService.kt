@@ -77,7 +77,10 @@ import com.playtranslate.capture.StreamKind
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.language.ChineseScriptVariant
+import com.playtranslate.language.HintTextKind
+import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.translation.TranslationBackendRegistry
@@ -522,6 +525,7 @@ class CaptureService : Service() {
             // cold-starting us from a passive path; fire it now that we exist.
             CaptureBackendResolver.activeOverlayUi?.firePendingPlacementPrompt(this)
         }
+        observeSourceLanguage()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -1027,7 +1031,7 @@ class CaptureService : Service() {
 
             // The frame is stamped as possibly containing our own overlay
             // windows (a re-OCR of a cached live raw frame) — black our
-            // chrome (floating icon, error pills) out before OCR reads it as
+            // chrome (floating icon, pills) out before OCR reads it as
             // text. In-place only when cropBitmap produced a fresh copy; a
             // no-op crop leaves `bitmap === raw`, and the frame must never be
             // drawn into (uniform rule — here the cache write and colorRef
@@ -1544,7 +1548,7 @@ class CaptureService : Service() {
         liveFeedback?.dispose()
         dismissSlowOcrPrompt()
         liveFeedback = LiveSessionFeedback(
-            serviceScope, mediaProjectionController, sourceLang,
+            serviceScope, mediaProjectionController, sourceLang = { sourceLang },
             onSlowPass = { slowDisplayId -> maybeShowSlowOcrPrompt(slowDisplayId) },
         )
 
@@ -2371,6 +2375,75 @@ class CaptureService : Service() {
         setLiveDisplays(target)
     }
 
+    /** The game language [observeSourceLanguage] last saw. Main-confined. */
+    private var appliedSourceLang: SourceLangId? = null
+
+    /**
+     * Apply every change of the game language, whoever makes it, for as
+     * long as the service lives ([onSourceLanguageChanged]). The first
+     * value is the language the service starts with: nothing to restart
+     * or warm, but a change made while no service ran was never applied,
+     * so the overlay mode is checked against it
+     * ([dropOverlayModeNotOffered]).
+     */
+    private fun observeSourceLanguage() {
+        val prefs = Prefs(this)
+        serviceScope.launch {
+            prefs.observe(Prefs.KEY_SOURCE_LANG).collect {
+                val id = prefs.sourceLangId
+                val previous = appliedSourceLang
+                appliedSourceLang = id
+                when (previous) {
+                    null -> dropOverlayModeNotOffered(prefs, id)
+                    id -> Unit
+                    else -> onSourceLanguageChanged(prefs, id)
+                }
+            }
+        }
+    }
+
+    /**
+     * The game language changed to [id], whoever changed it: the floating
+     * icon's "Change game language", a language picker over the game or in
+     * the app, onboarding. One handler for every change (2026-09-28);
+     * the app's Settings used to be the only place that did this:
+     *  - a Furigana overlay mode drops to Translation on a language without
+     *    readings ([dropOverlayModeNotOffered]);
+     *  - a running auto-translate restarts in the new language. A normal
+     *    start, so the new language's OCR engine warms up before the first
+     *    pass, and a Translation session on the accessibility backend
+     *    without screen-record consent asks for it again, as every
+     *    Translation start there does (chosen over skipping the
+     *    ask on a restart). A start still pending (its consent dialog, its
+     *    stream probe) is not restarted: it goes ahead, and its first-cycle
+     *    gate warms the new language's engine before the first pass
+     *    ([LiveSessionFeedback.awaitFirstCycleClear]);
+     *  - the new language's engine warms up in the background.
+     */
+    private fun onSourceLanguageChanged(prefs: Prefs, id: SourceLangId) {
+        Log.i(TAG, "game language changed to ${id.code} (isLive=$isLive)")
+        dropOverlayModeNotOffered(prefs, id)
+        if (isLive) {
+            stopLive()
+            startLive()
+        }
+        if (LanguagePackStore.isInstalled(this, id)) {
+            serviceScope.launch(Dispatchers.IO) {
+                SourceLanguageEngines.preloadAndRecover(this@CaptureService, id)
+            }
+        }
+    }
+
+    /** The Furigana overlay mode needs a language with a reading hint
+     *  (furigana, pinyin); on one without, Translation is the only mode. */
+    private fun dropOverlayModeNotOffered(prefs: Prefs, id: SourceLangId) {
+        if (prefs.overlayMode == OverlayMode.FURIGANA &&
+            SourceLanguageProfiles[id].hintTextKind == HintTextKind.NONE
+        ) {
+            prefs.overlayMode = OverlayMode.TRANSLATION
+        }
+    }
+
     fun stopLive() {
         // Abort any startLive suspended in its consent dialog — a stop must
         // win against a start that resumes later (see pendingLiveStart).
@@ -2781,12 +2854,13 @@ class CaptureService : Service() {
                 // The startup card may be inside this frame (whole-display
                 // mirrors, a11y screenshots) — never OCR our own chrome.
                 excludeRect = feedback?.ocrExclusionRect(displayId),
-                // Same principle for the floating icon and the translation-
-                // error pills, keyed on the frame's stamped fact. The rects
-                // are where that chrome is NOW — right for frames OCR'd
-                // in-cycle; for a cached frame re-entering OCR later they are
-                // today's positions, which only drift if the user moved the
-                // icon since or a pill came or went (accepted).
+                // Same principle for the floating icon and the pills (the
+                // transient one, the translation-error ones), keyed on the
+                // frame's stamped fact. The rects are where that chrome is
+                // NOW — right for frames OCR'd in-cycle; for a cached frame
+                // re-entering OCR later they are today's positions, which
+                // only drift if the user moved the icon since or a pill came
+                // or went (accepted).
                 blackoutRects = if (frameIncludesOwnOverlays) {
                     CaptureBackendResolver.activeOverlayUi?.ownChromeRects(displayId).orEmpty()
                 } else emptyList(),

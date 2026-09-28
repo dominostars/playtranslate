@@ -20,6 +20,7 @@ import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.CaptureLifecycle
 import com.playtranslate.capture.GameAudioGate
 import com.playtranslate.language.HintTextKind
+import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ocr.mangaocr.MangaOcrProvisioning
@@ -724,13 +725,27 @@ class OverlayUiController(
 
     /**
      * Screen rects of this app's own chrome on [displayId] that a raw frame
-     * of that display can contain: the floating icon and the translation-
-     * error pills. The OCR sites black these out of frames stamped
-     * `includesOwnOverlays`, and the pinhole mode leaves them out of its
-     * change gate and its pinhole sampling. Read live, main thread.
+     * of that display can contain: the floating icon, the transient pill
+     * ([showNoTextPill]: no text, a failure, "Translating from …") and the
+     * translation-error pills. The OCR sites black these out of frames
+     * stamped `includesOwnOverlays`, and the pinhole mode leaves them out of
+     * its change gate and its pinhole sampling. Read live, main thread.
      */
     fun ownChromeRects(displayId: Int): List<Rect> =
-        listOfNotNull(getFloatingIconRect(displayId)) + errorPills.screenRects(displayId)
+        listOfNotNull(getFloatingIconRect(displayId), noTextPillRect(displayId)) +
+            errorPills.screenRects(displayId)
+
+    /** The transient pill's rect on [displayId] while it is up there and laid
+     *  out. "Translating from …" goes up as the restarted session takes its
+     *  first frames, and a pill's message is real words. */
+    private fun noTextPillRect(displayId: Int): Rect? {
+        if (pillDisplayId != displayId) return null
+        val view = pillView ?: return null
+        if (!view.isLaidOut || view.width <= 0 || view.height <= 0) return null
+        val loc = IntArray(2)
+        view.getLocationOnScreen(loc)
+        return Rect(loc[0], loc[1], loc[0] + view.width, loc[1] + view.height)
+    }
 
     // ── Translation overlay ──────────────────────────────────────────────
 
@@ -1403,6 +1418,7 @@ class OverlayUiController(
                     TapAction.CAPTURE_SCREEN -> captureCurrentRegionForDisplay(displayId)
                     TapAction.TOGGLE_AUTO_TRANSLATE -> toggleLiveFromOverlay()
                     TapAction.SWAP_OVERLAY_MODE -> swapOverlayModeOrStartLive()
+                    TapAction.CHANGE_GAME_LANGUAGE -> changeGameLanguage(display)
                 }
             }
             // True from a hold whose toggle stopped auto-translate until that
@@ -1445,6 +1461,10 @@ class OverlayUiController(
             // FloatingOverlayIcon.onTouchEvent) reads the current binding, as
             // the pre-binding wiring always ended a hold on lift.
             var heldAction: HoldAction? = null
+            // True from a hold whose game-language change opened the picker
+            // in the workspace until that gesture ends; a slide into a drag
+            // closes it, as it closes the quick menu.
+            var holdOpenedPicker = false
             icon.onHoldStart = {
                 val action = prefs.iconHoldAction
                 heldAction = action
@@ -1453,21 +1473,24 @@ class OverlayUiController(
                     HoldAction.OPEN_QUICK_MENU -> showFloatingMenu(display, icon)
                     HoldAction.TOGGLE_AUTO_TRANSLATE -> holdStoppedLive = toggleLiveFromOverlay()
                     HoldAction.SWAP_OVERLAY_MODE -> swapOverlayModeOrStartLive()
+                    HoldAction.CHANGE_GAME_LANGUAGE -> holdOpenedPicker = changeGameLanguage(display)
                 }
             }
             icon.onHoldEnd = {
                 when (heldAction ?: prefs.iconHoldAction) {
                     HoldAction.SHOW_TRANSLATIONS -> CaptureService.instance?.holdEnd()
                     // The menu opened at the hold threshold and stays up; the
-                    // lift ends the gesture, not the menu. Likewise the toggle
-                    // and the swap happened at the threshold. A lift with no
-                    // start latched (the starved hold above) therefore does
-                    // none of them.
+                    // lift ends the gesture, not the menu. Likewise the
+                    // toggle, the swap and the game-language change (its
+                    // switch, or its picker) happened at the threshold. A
+                    // lift with no start latched (the starved hold above)
+                    // therefore does none of them.
                     HoldAction.OPEN_QUICK_MENU, HoldAction.TOGGLE_AUTO_TRANSLATE,
-                    HoldAction.SWAP_OVERLAY_MODE -> Unit
+                    HoldAction.SWAP_OVERLAY_MODE, HoldAction.CHANGE_GAME_LANGUAGE -> Unit
                 }
                 heldAction = null
                 holdStoppedLive = false
+                holdOpenedPicker = false
             }
             icon.onHoldCancel = {
                 when (heldAction ?: prefs.iconHoldAction) {
@@ -1484,8 +1507,14 @@ class OverlayUiController(
                     // and leaves a stopped one stopped, including one the
                     // toggle's stop hasn't reached yet (holdStoppedLive).
                     HoldAction.TOGGLE_AUTO_TRANSLATE, HoldAction.SWAP_OVERLAY_MODE -> Unit
+                    // A switch of the game language stands, as the swap does.
+                    // A picker this hold opened over the game closes, as the
+                    // menu does: its full-screen window would stay up under
+                    // the lens.
+                    HoldAction.CHANGE_GAME_LANGUAGE -> if (holdOpenedPicker) dismissWorkspace()
                 }
                 heldAction = null
+                holdOpenedPicker = false
             }
             icon.onAnyTouch   = {
                 CaptureService.instance?.lastInteractedDisplayId = displayId
@@ -1867,19 +1896,8 @@ class OverlayUiController(
         val overlayValue = if (hintKind != HintTextKind.NONE)
             overlayModeLabel(prefs.overlayMode, hintKind) else null
         menu.onSelectLanguage = {
-            // Mirror CaptureResultOverlay.changeLanguage(true): open the source
-            // picker — in the floating workspace over the game where available,
-            // else the Activity (dual-screen, where full pages are the correct
-            // presentation on the app display).
             dismissFloatingMenu()
-            if (!openWorkspace(display.displayId) { SourceListPage() }) {
-                LanguageSetupActivity.selectionDelegate = null
-                launchOnOverlayDisplay(
-                    Intent(context.applicationContext, LanguageSetupActivity::class.java)
-                        .putExtra(LanguageSetupActivity.EXTRA_MODE, LanguageSetupActivity.MODE_SOURCE),
-                    display.displayId,
-                )
-            }
+            openGameLanguagePicker(display.displayId)
         }
         menu.onSelectOcr = {
             // Show the picker over the still-open menu so its holdActive keeps
@@ -2291,14 +2309,80 @@ class OverlayUiController(
     }
 
     /**
+     * The icon's "Change game language" gesture
+     * ([HoldAction.CHANGE_GAME_LANGUAGE], [TapAction.CHANGE_GAME_LANGUAGE]).
+     * With exactly two languages downloaded, the current one among them,
+     * switch to the other and say so in the transient pill on [display];
+     * otherwise (one, three or more, or two without the current one) open
+     * the picker, as the quick menu's Language row does (2026-09-28).
+     * The downloaded languages are the picker's Suggested rows
+     * ([OcrModelManager.fullyInstalledSources]), so a Chinese download
+     * counts as two and switches between Simplified and Traditional.
+     *
+     * The picker opens too when the other language's pack needs a forced
+     * upgrade (a Japanese pack from before Sudachi, which the user may put
+     * off while it isn't the game language): it is on disk, so it counts,
+     * but it can't run, and picking it in the picker re-downloads it (Codex
+     * adversarial, 2026-09-28). A pack that is on disk but won't open is
+     * not checked here: installs are hash-verified and swapped in whole,
+     * and the load after the switch removes such a pack, as the launch
+     * does for the game language's own.
+     *
+     * The switch is the pref write: what a change of the game language
+     * does to the rest of the app, a running auto-translate restarted in it
+     * included, is CaptureService's, as for every change made anywhere
+     * ([CaptureService.onSourceLanguageChanged]). Returns true when the
+     * picker opened in the floating workspace, which a hold's slide into a
+     * drag closes.
+     */
+    private fun changeGameLanguage(display: Display): Boolean {
+        val prefs = Prefs(context)
+        val current = prefs.sourceLangId
+        val downloaded = OcrModelManager.fullyInstalledSources(context)
+        if (downloaded.size != 2 || current !in downloaded) {
+            return openGameLanguagePicker(display.displayId)
+        }
+        val other = downloaded.first { it != current }
+        if (LanguagePackStore.isForcedUpgrade(context, other)) {
+            return openGameLanguagePicker(display.displayId)
+        }
+        prefs.sourceLang = other.code
+        showNoTextPill(
+            display,
+            context.getString(R.string.icon_action_translating_from, other.displayName()),
+        )
+        return false
+    }
+
+    /**
+     * Open the game-language picker for [displayId]: in the floating
+     * workspace over the game where available, else the Activity
+     * (dual-screen with the app in front, where full pages are the right
+     * presentation on the app's display), as the capture panel's language
+     * header does. The quick menu's Language row and the icon's "Change game
+     * language" open it. Returns true when it opened in the workspace.
+     */
+    private fun openGameLanguagePicker(displayId: Int): Boolean {
+        if (openWorkspace(displayId) { SourceListPage() }) return true
+        LanguageSetupActivity.selectionDelegate = null
+        launchOnOverlayDisplay(
+            Intent(context.applicationContext, LanguageSetupActivity::class.java)
+                .putExtra(LanguageSetupActivity.EXTRA_MODE, LanguageSetupActivity.MODE_SOURCE),
+            displayId,
+        )
+        return false
+    }
+
+    /**
      * Switch the running auto-translate session to overlay [mode] in place,
      * for the overlay controls that change the mode mid-session (the floating
      * menu's Overlays row, the tap hotkeys, the icon's swap), so the saved
-     * mode stays the one running; in the app, the long-press menu and a
-     * source-language change restart the session, and the Capture and
-     * overlay page stops it. The session goes on here: no stop and start,
-     * so its History live card and LLM context carry over, which a restart
-     * would replace. The pref write is the switch;
+     * mode stays the one running; in the app, the long-press menu restarts
+     * the session, and the Capture and overlay page stops it. (A change of
+     * the game language, made anywhere, restarts it too:
+     * [CaptureService.onSourceLanguageChanged].) The session goes on here:
+     * no stop and start, so its History live card and LLM context carry
+     * over, which a restart would replace. The pref write is the switch;
      * [CaptureService.reconcileLiveModes] then rebuilds each per-display mode
      * instance through [CaptureService.setLiveDisplays]'s flavor-mismatch
      * detector. [reason] tags the reconcile's log line.

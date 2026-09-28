@@ -516,9 +516,9 @@ class PinholeOverlayMode(
 
             val bitmapRects = coords.viewListToBitmap(rects)
 
-            // Our own chrome — the floating icon, the translation-error
-            // pills — is inside every raw frame this mode consumes
-            // (whole-display mirrors / a11y screenshots — never CLEAN
+            // Our own chrome — the floating icon, the transient pill, the
+            // translation-error pills — is inside every raw frame this mode
+            // consumes (whole-display mirrors / a11y screenshots — never CLEAN
             // streams). Its rects are excluded from the outside gate below
             // (the icon's burn-in micro-orbit and idle dim repaint it, a pill
             // appears; self-chrome motion must never wake OCR) and from the

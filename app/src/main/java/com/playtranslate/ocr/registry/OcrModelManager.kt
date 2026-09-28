@@ -241,6 +241,15 @@ object OcrModelManager {
     fun isFullyInstalled(ctx: Context, id: SourceLangId): Boolean =
         LanguagePackStore.isInstalled(ctx, id) && isRequiredOcrInstalled(ctx, id)
 
+    /** Every source language [isFullyInstalled], in [SourceLangId] order: the
+     *  languages the user has downloaded, as the source picker lists them
+     *  under Suggested. The two Chinese variants share one pack, so a Chinese
+     *  download counts as two. The floating icon's "Change game language"
+     *  switches between these when there are exactly two (2026-09-28:
+     *  counted as the picker's rows). */
+    fun fullyInstalledSources(ctx: Context): List<SourceLangId> =
+        SourceLangId.entries.filter { isFullyInstalled(ctx, it) }
+
     /** True iff [id] cannot OCR on THIS device: no ML Kit floor AND no
      *  runtime-compatible recognizer (e.g. Russian on a 32-bit device, where the
      *  arm64-only Cyrillic MNN pack can't run). Drives the disabled source row. */
