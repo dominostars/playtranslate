@@ -36,6 +36,7 @@ import androidx.core.widget.TextViewCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.CaptureService
+import com.playtranslate.OcrManager
 import com.playtranslate.OcrTokenScope
 import com.playtranslate.OverlayMode
 import com.playtranslate.PlayTranslateAccessibilityService
@@ -101,6 +102,8 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     private lateinit var sliderOverlayMinText: SizeSliderView
     private lateinit var tvOverlayMinTextValue: TextView
     private lateinit var tvOverlayMinTextExample: TextView
+    private lateinit var rowFilterFurigana: View
+    private lateinit var switchFilterFurigana: MaterialSwitch
     private lateinit var rowVerticalGrow: View
     private lateinit var switchVerticalGrow: MaterialSwitch
     private lateinit var rowEdgeIndicator: View
@@ -132,6 +135,8 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         switchHideOverlays = rowHideOverlays.findViewById(R.id.switchRowToggle)
         rowTouchesRefresh = findViewById(R.id.rowTouchesRefresh)
         switchTouchesRefresh = rowTouchesRefresh.findViewById(R.id.switchRowToggle)
+        rowFilterFurigana = findViewById(R.id.rowFilterFurigana)
+        switchFilterFurigana = rowFilterFurigana.findViewById(R.id.switchRowToggle)
         rowVerticalGrow = findViewById(R.id.rowVerticalGrow)
         switchVerticalGrow = rowVerticalGrow.findViewById(R.id.switchRowToggle)
         rowEdgeIndicator = findViewById(R.id.rowEdgeIndicator)
@@ -160,6 +165,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         // The source language can change from another screen (the language
         // picker); rebuild the OCR cells so they track the current language.
         setupOcrSection()
+        refreshFilterFuriganaRow()
         maybeHandleOcrDownloadDeepLink()
     }
 
@@ -343,6 +349,20 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
             }
         }
 
+        // -- Filter furigana toggle (Japanese source only) --
+        // Drops furigana from Japanese OCR before grouping (RubyFilter). Read
+        // per OCR pass, so it takes effect on the next capture / live cycle
+        // without a live restart; an overlay already on screen keeps its
+        // persistence until its pixels change.
+        rowFilterFurigana.findViewById<TextView>(R.id.tvRowTitle).text =
+            getString(R.string.settings_filter_furigana_title)
+        switchFilterFurigana.setOnCheckedChangeListener { _, checked ->
+            prefs.filterFurigana = checked
+            OcrManager.instance.filterFuriganaEnabled = checked
+        }
+        rowFilterFurigana.setOnClickListener { switchFilterFurigana.toggle() }
+        refreshFilterFuriganaRow()
+
         // -- Widen vertical text toggle (always shown) --
         // Read when the overlay view is built (selects the per-box render path), so a flip
         // restarts live mode to take effect — like overlay mode and hide-overlays, unlike
@@ -376,6 +396,15 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
             prefs.edgeIndicatorEnabled = checked
         }
         rowEdgeIndicator.setOnClickListener { switchEdgeIndicator.toggle() }
+    }
+
+    /** The furigana filter only runs on a Japanese source (OcrManager's call
+     *  sites gate it), so the row shows only there. */
+    private fun refreshFilterFuriganaRow() {
+        val shown = prefs.sourceLangId == SourceLangId.JA
+        rowFilterFurigana.isVisible = shown
+        findViewById<View>(R.id.dividerFilterFurigana).isVisible = shown
+        switchFilterFurigana.isChecked = prefs.filterFurigana
     }
 
     // ── Capture display ────────────────────────────────────────────────────

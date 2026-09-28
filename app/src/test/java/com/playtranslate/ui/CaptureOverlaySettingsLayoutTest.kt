@@ -19,9 +19,9 @@ import org.robolectric.shadows.ShadowDisplayManager
 
 /**
  * The Capture and overlay screen's Auto-translate and Overlay cards, row by
- * row, in each cell of the two conditions that hide rows: a source language
- * with hint text (Overlay Mode shows) and a second screen (Hide overlays
- * shows). Each row's divider comes and goes with it, so no cell stacks two
+ * row, in each cell of the conditions that hide rows: a source language
+ * with hint text (Overlay Mode shows; JA here, which also shows Filter
+ * furigana) and a second screen (Hide overlays shows). Each row's divider comes and goes with it, so no cell stacks two
  * dividers; the Hide overlays divider used to stay up on a single screen.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -67,11 +67,14 @@ class CaptureOverlaySettingsLayoutTest {
             visibleRows(activity, R.id.rowTouchesRefresh),
         )
         val hint = source == SourceLangId.JA
+        val japanese = source == SourceLangId.JA
         assertEquals(
             listOfNotNull(
                 "overlayModeSection".takeIf { hint },
                 "dividerOverlayMode".takeIf { hint },
                 "rowOverlayMinText", "dividerOverlayMinText",
+                "rowFilterFurigana".takeIf { japanese },
+                "dividerFilterFurigana".takeIf { japanese },
                 "rowVerticalGrow", "dividerVerticalGrow",
                 "rowEdgeIndicator",
             ),

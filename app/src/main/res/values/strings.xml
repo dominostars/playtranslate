@@ -2682,7 +2682,8 @@
 
     <!-- Group header (rendered UPPERCASE) above the overlay settings on the Capture
          and overlay screen: the Overlay Mode chooser, the "minimum text size" slider,
-         the "widen vertical text" switch and the "edge indicator" switch. "Overlay" is
+         the "filter furigana" switch, the "widen vertical text" switch and the "edge
+         indicator" switch. "Overlay" is
          what the app draws over the game
          (the translation boxes on the game's text, and the result panel), so use the
          same word as the screen title (settings_cell_capture_overlay) and the Overlay
@@ -2705,6 +2706,13 @@
     <!-- Sample drawn under the "minimum text size" slider at the chosen size (bold,
          like the overlays) so the user can judge the size; hidden at the lowest value. -->
     <string name="settings_overlay_min_text_example">Example text</string>
+    <!-- Title of the "filter furigana" switch row on the Capture and overlay screen,
+         under the "minimum text size" slider, shown only when the source language is
+         Japanese. While ON, the small kana readings printed beside kanji (furigana)
+         are dropped from the text read off the screen (OCR), so they are neither
+         translated nor shown as overlays. "Furigana" is the Japanese term; keep it as
+         a loanword where the locale has no native one. -->
+    <string name="settings_filter_furigana_title">Filter furigana from OCR</string>
     <!-- Title of the "edge indicator" switch row: the soft accent-colored glow drawn
          around the edges of the screen while the result panel is showing, so a panel
          collapsed to its bottom strip is not mistaken for no overlay at all. -->
@@ -3799,12 +3807,6 @@
          instead of the current 3-degree default, so light diagonals render
          as straight text again. -->
     <string name="settings_debug_angle_gate">Classic angle threshold (10°)</string>
-    <!-- Settings dialog, debug section: switch-row title (debug builds only).
-         While ON, the small kana readings printed beside kanji (furigana) are
-         dropped from Japanese OCR before grouping, so they are neither
-         translated nor shown as overlays. "Furigana" is the Japanese term;
-         keep it as a loanword where the locale has no native one. -->
-    <string name="settings_debug_filter_furigana">Filter furigana from OCR</string>
     <!-- Toggle row title in Settings → Debug (debug builds only): records live-mode commits to a trace file for offline validation. -->
     <string name="settings_debug_log_trace">Record translation-log trace</string>
     <string name="settings_debug_force_crash_title">Force crash</string>

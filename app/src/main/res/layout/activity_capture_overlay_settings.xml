@@ -479,6 +479,22 @@
                         android:layout_marginStart="@dimen/pt_row_h_padding"
                         android:background="?attr/ptDivider" />
 
+                    <!-- Filter furigana toggle (Japanese source only). Title +
+                         checked state wired in
+                         CaptureOverlaySettingsActivity.setupOverlaySection. Its
+                         divider follows it and hides with it. -->
+                    <include layout="@layout/settings_row_switch"
+                        android:id="@+id/rowFilterFurigana"
+                        android:visibility="gone" />
+
+                    <View
+                        android:id="@+id/dividerFilterFurigana"
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="@dimen/pt_row_h_padding"
+                        android:background="?attr/ptDivider"
+                        android:visibility="gone" />
+
                     <!-- Vertical-text grow toggle (always shown). Title/subtitle +
                          checked state wired in CaptureOverlaySettingsActivity. -->
                     <include layout="@layout/settings_row_switch"

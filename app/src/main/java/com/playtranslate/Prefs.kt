@@ -110,7 +110,7 @@ class Prefs internal constructor(
      *  over a debug one inherits every pref the debug build wrote. An override
      *  that changes production behaviour must therefore read as OFF outside
      *  debug builds regardless of what is stored; see [debugForceMmapWeights],
-     *  [debugShortTextRouting], [debugLogTrace] and [debugFilterFurigana].
+     *  [debugShortTextRouting] and [debugLogTrace].
      *  Seam for JVM tests; production always passes [BuildConfig.DEBUG]. */
     private val debugBuild: Boolean = BuildConfig.DEBUG,
 ) {
@@ -1080,6 +1080,16 @@ class Prefs internal constructor(
             putInt(KEY_OVERLAY_MIN_TEXT_SP, v.coerceIn(OVERLAY_MIN_TEXT_SP_DEFAULT, OVERLAY_MIN_TEXT_SP_MAX))
         }
 
+    /** Drop furigana (ruby) regions from Japanese OCR before grouping, so
+     *  readings printed beside kanji are neither translated nor overlaid. See
+     *  [com.playtranslate.ocr.core.RubyFilter] for the rule and its census.
+     *  Default ON; pushed into [OcrManager.filterFuriganaEnabled] at start
+     *  and by the Capture and overlay screen's row, which shows only on a
+     *  Japanese source. */
+    var filterFurigana: Boolean
+        get() = sp.getBoolean(KEY_FILTER_FURIGANA, true)
+        set(v) = sp.edit { putBoolean(KEY_FILTER_FURIGANA, v) }
+
     /** Opt-in manga-ocr refinement for Japanese OCR — high quality, slow; OFF by
      *  default. Runtime-gated further to Japanese + arm64 + installed pack; the value
      *  is pushed to [OcrManager.mangaOcrEnabled] via
@@ -1513,19 +1523,6 @@ class Prefs internal constructor(
         get() = debugBuild && sp.getBoolean(KEY_DEBUG_LOG_TRACE, false)
         set(v) = sp.edit { putBoolean(KEY_DEBUG_LOG_TRACE, v) }
 
-    /** Debug-only: drop furigana (ruby) regions from Japanese OCR before
-     *  grouping, so readings printed beside kanji are neither translated nor
-     *  overlaid. See [com.playtranslate.ocr.core.RubyFilter] for the rule and
-     *  its census. Default OFF; pushed into [OcrManager.debugFilterFuriganaEnabled].
-     *
-     *  Reads as false outside debug builds even when the stored value is true
-     *  (see [debugBuild]): the filter deletes text, and a stale `true` carried
-     *  into a release install would keep deleting it with no Settings row to
-     *  turn it off. */
-    var debugFilterFurigana: Boolean
-        get() = debugBuild && sp.getBoolean(KEY_DEBUG_FILTER_FURIGANA, false)
-        set(v) = sp.edit { putBoolean(KEY_DEBUG_FILTER_FURIGANA, v) }
-
     /** Set to true after the user dismisses the target-pack migration dialog. */
     var targetPackMigrationDismissed: Boolean
         get() = sp.getBoolean(KEY_TARGET_PACK_MIGRATION_DISMISSED, false)
@@ -1817,7 +1814,6 @@ class Prefs internal constructor(
         private const val KEY_DEBUG_LOG_GROUPING             = "debug_log_grouping"
         private const val KEY_DEBUG_ANGLE_GATE_TARGET        = "debug_angle_gate_target"
         private const val KEY_DEBUG_LOG_TRACE                = "debug_log_trace"
-        private const val KEY_DEBUG_FILTER_FURIGANA          = "debug_filter_furigana"
         const val KEY_HOTKEY_TRANSLATION                   = "hotkey_translation"
         const val KEY_HOTKEY_FURIGANA                      = "hotkey_furigana"
         const val KEY_HOTKEY_TRANSLATION_TAP               = "hotkey_translation_tap"
@@ -1830,6 +1826,7 @@ class Prefs internal constructor(
         /** Public so a showing result panel can [observe] it. */
         const val KEY_EDGE_INDICATOR_ENABLED               = "edge_indicator_enabled"
         private const val KEY_OVERLAY_MIN_TEXT_SP          = "overlay_min_text_sp"
+        private const val KEY_FILTER_FURIGANA              = "filter_furigana"
         private const val KEY_LAST_UPDATE_CHECK            = "last_update_check"
         private const val KEY_LAST_YOMITAN_UPDATE_CHECK    = "last_yomitan_update_check"
         private const val KEY_YOMITAN_UPDATE_BACKFILL_DONE = "yomitan_update_backfill_done"

@@ -42,14 +42,13 @@ class OcrManager private constructor() {
      *  already-exercised code. */
     @Volatile var debugAngleGateDeg: Float? = null
 
-    /** Debug-only: drop furigana regions before grouping
-     *  ([com.playtranslate.ocr.core.RubyFilter]). Pushed from
-     *  [PlayTranslateApplication] on start (DEBUG block) and from the
-     *  SettingsRenderer toggle, like [debugLogGroupingEnabled]; read per
-     *  recognise() call, so a toggle takes effect on the next OCR pass.
-     *  Applied only to Japanese sources at the call sites — the filter's
-     *  script test is kana-based. */
-    @Volatile var debugFilterFuriganaEnabled: Boolean = false
+    /** Drop furigana regions before grouping
+     *  ([com.playtranslate.ocr.core.RubyFilter]); mirrors [Prefs.filterFurigana].
+     *  Pushed from [PlayTranslateApplication] on start and from the Capture
+     *  and overlay screen's toggle; read per recognise() call, so a toggle
+     *  takes effect on the next OCR pass. Applied only to Japanese sources at
+     *  the call sites — the filter's script test is kana-based. */
+    @Volatile var filterFuriganaEnabled: Boolean = true
 
     /** Mirrors [debugLogGroupingEnabled]'s wiring (boot + settings toggle).
      *  The setter injects/clears the AngleProbe sink — `ocr.core` cannot read
@@ -147,7 +146,7 @@ class OcrManager private constructor() {
         /** Scale factor applied during OCR; divide box coords by this to get original coords. */
         val scaleFactor: Float,
         /** Regions the furigana filter demoted before grouping (magenta in
-         *  the overlay). Empty unless [debugFilterFuriganaEnabled]. */
+         *  the overlay). Empty unless [filterFuriganaEnabled]. */
         val rubyBoxes: List<DebugBox> = emptyList(),
     )
 
@@ -277,7 +276,7 @@ class OcrManager private constructor() {
             documentLayoutBias = documentLayoutBias,
             angleNoiseGateDeg = debugAngleGateDeg
                 ?: com.playtranslate.ocr.core.OcrBox.ANGLE_NOISE_GATE_DEG,
-            filterRuby = debugFilterFuriganaEnabled && sourceLang == "ja",
+            filterRuby = filterFuriganaEnabled && sourceLang == "ja",
         ) ?: return null
 
         val result = buildOcrResult(
@@ -324,7 +323,7 @@ class OcrManager private constructor() {
             // Same gate as recognise(): a drag over furigana pixels then
             // resolves to nothing (or the base line if inside its box)
             // rather than to the kana reading.
-            filterRuby = debugFilterFuriganaEnabled && sourceLang == "ja",
+            filterRuby = filterFuriganaEnabled && sourceLang == "ja",
         ) ?: return null
 
         return buildOcrLines(output.groups, output.scaleFactor).ifEmpty { null }

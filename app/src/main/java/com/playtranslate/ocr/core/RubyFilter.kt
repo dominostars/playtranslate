@@ -9,8 +9,8 @@ import kotlin.math.abs
  * from the region list BEFORE grouping, so they never become their own group,
  * never reach the translator, and never get an overlay.
  *
- * Debug-flag only for now (`Prefs.debugFilterFurigana`, Japanese source only,
- * gated by the caller). Off, the pipeline is byte-identical to before.
+ * A user setting, on by default (`Prefs.filterFurigana`, Japanese source
+ * only, gated by the caller). Off, the pipeline is byte-identical to before.
  *
  * ## The rule, from the typesetting facts
  *
