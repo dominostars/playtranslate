@@ -1,6 +1,7 @@
 package com.playtranslate.translation
 
 import android.util.Log
+import com.playtranslate.BuildConfig
 import com.playtranslate.PtJson
 import com.playtranslate.R
 import com.playtranslate.net.PtHttp
@@ -182,6 +183,9 @@ class GeminiBackend(
                             throw GeminiRateLimitException(recordGemini429(bodyStr))
                         }
                         else -> if (!response.isSuccessful) {
+                            // The error's own words (a 503 says why Gemini is
+                            // unavailable), on debug builds only.
+                            if (BuildConfig.DEBUG) Log.d(TAG, "error ${response.code} body=${bodyStr.take(500)}")
                             if (response.code >= 500) {
                                 cooldownState.recordLadderFailure(
                                     CooldownLadder.RateLimit, "Server error",
@@ -306,6 +310,9 @@ class GeminiBackend(
                         throw GeminiRateLimitException(recordGemini429(bodyStr))
                     }
                     else -> if (!response.isSuccessful) {
+                        // The error's own words (a 503 says why Gemini is
+                        // unavailable), on debug builds only.
+                        if (BuildConfig.DEBUG) Log.d(TAG, "batch error ${response.code} body=${bodyStr.take(500)}")
                         if (response.code >= 500) {
                             cooldownState.recordLadderFailure(
                                 CooldownLadder.RateLimit, "Server error",
