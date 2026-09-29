@@ -1,4 +1,10 @@
+import com.android.build.api.artifact.SingleArtifact
+import com.android.build.api.variant.BuiltArtifactsLoader
+import java.io.InputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.Properties
+import java.util.zip.ZipFile
 
 plugins {
     alias(libs.plugins.android.application)
@@ -153,6 +159,22 @@ kotlin {
     jvmToolchain(17)
 }
 
+// Every APK this module builds is checked for ARM libraries that define ELF
+// thread-locals (see VerifyNoArmElfTlsTask) before assemble or install
+// completes, whether the library is ours or came in with an AAR.
+androidComponents {
+    onVariants { variant ->
+        val variantName = variant.name.replaceFirstChar { it.uppercase() }
+        val verify = tasks.register<VerifyNoArmElfTlsTask>("verify${variantName}NoArmElfTls") {
+            apkFolder.set(variant.artifacts.get(SingleArtifact.APK))
+            builtArtifactsLoader.set(variant.artifacts.getBuiltArtifactsLoader())
+            report.set(layout.buildDirectory.file("intermediates/no_arm_elf_tls/${variant.name}/checked.txt"))
+        }
+        tasks.matching { it.name == "assemble$variantName" || it.name == "install$variantName" }
+            .configureEach { dependsOn(verify) }
+    }
+}
+
 dependencies {
     implementation(project(":mnn"))
     implementation(project(":bergamot"))
@@ -226,4 +248,85 @@ dependencies {
     implementation(libs.camerax.camera2)
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
+}
+
+/**
+ * Fails the build if a native library packaged for an ARM ABI defines ELF
+ * thread-locals, i.e. carries a PT_TLS segment.
+ *
+ * x86 hosts (BlueStacks, MuMu, Chromebooks, Play Games on PC) run our ARM
+ * libraries through a binary translator, and translators resolve the TLS
+ * descriptors of a dlopen'ed library to a null address: the process SIGSEGVs
+ * on the library's first thread_local access, past every try/catch. It took
+ * down MNN_Express and Bergamot on BlueStacks, and Bergamot on MuMu's
+ * Android 12 image.
+ * `:mnn` and `:bergamot` build with -femulated-tls, which leaves no PT_TLS
+ * segment; this keeps that true for them after an upgrade and for every
+ * prebuilt library an AAR brings in, by reading the APK that actually ships.
+ * x86 slices are exempt: they run natively, never under a translator.
+ */
+abstract class VerifyNoArmElfTlsTask : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val apkFolder: DirectoryProperty
+
+    @get:Internal
+    abstract val builtArtifactsLoader: Property<BuiltArtifactsLoader>
+
+    /** The libraries checked, one per line; also what makes the task incremental. */
+    @get:OutputFile
+    abstract val report: RegularFileProperty
+
+    @TaskAction
+    fun verify() {
+        val apks = builtArtifactsLoader.get().load(apkFolder.get())?.elements?.map { File(it.outputFile) }
+            ?: throw GradleException("No APK metadata in ${apkFolder.get().asFile}")
+        val checked = mutableListOf<String>()
+        val offenders = mutableListOf<String>()
+        for (apk in apks) {
+            ZipFile(apk).use { zip ->
+                for (entry in zip.entries()) {
+                    val abi = entry.name.removePrefix("lib/").substringBefore('/', missingDelimiterValue = "")
+                    if (!entry.name.startsWith("lib/") || !entry.name.endsWith(".so") || !abi.startsWith("arm")) continue
+                    val path = "${apk.name}!/${entry.name}"
+                    checked += path
+                    if (zip.getInputStream(entry).use(::definesElfTls)) offenders += path
+                }
+            }
+        }
+        if (offenders.isNotEmpty()) {
+            throw GradleException(
+                "ARM native libraries define ELF thread-locals (PT_TLS), which x86 hosts' ARM " +
+                    "translators resolve to a null address:\n" +
+                    offenders.joinToString("\n") { "  $it" } +
+                    "\nBuild the library with -femulated-tls (see mnn/src/main/cpp/CMakeLists.txt)."
+            )
+        }
+        report.get().asFile.writeText(checked.sorted().joinToString("\n", postfix = "\n"))
+    }
+
+    /** True iff the ELF file read from [elf] has a PT_TLS program header. Reads
+     *  only the ELF header and the program header table that follows it. */
+    private fun definesElfTls(elf: InputStream): Boolean {
+        val ident = elf.readNBytes(16)
+        if (ident.size < 16 || ident[0] != 0x7F.toByte() || ident[1] != 'E'.code.toByte() ||
+            ident[2] != 'L'.code.toByte() || ident[3] != 'F'.code.toByte()
+        ) throw GradleException("Not an ELF file")
+        val is64 = ident[4] == 2.toByte()
+        val order = if (ident[5] == 1.toByte()) ByteOrder.LITTLE_ENDIAN else ByteOrder.BIG_ENDIAN
+        val headerSize = if (is64) 64 else 52
+        val header = ByteBuffer.wrap(ident + elf.readNBytes(headerSize - 16)).order(order)
+        val tableOffset = if (is64) header.getLong(0x20) else header.getInt(0x1C).toLong() and 0xFFFFFFFFL
+        val entrySize = header.getShort(if (is64) 0x36 else 0x2A).toInt() and 0xFFFF
+        val entryCount = header.getShort(if (is64) 0x38 else 0x2C).toInt() and 0xFFFF
+        if (tableOffset < headerSize) throw GradleException("Malformed ELF program header offset")
+        elf.skipNBytes(tableOffset - headerSize)
+        val table = ByteBuffer.wrap(elf.readNBytes(entrySize * entryCount)).order(order)
+        // p_type is the first word of a program header in both ELF32 and ELF64.
+        return (0 until entryCount).any { table.getInt(it * entrySize) == PT_TLS }
+    }
+
+    private companion object {
+        const val PT_TLS = 7
+    }
 }

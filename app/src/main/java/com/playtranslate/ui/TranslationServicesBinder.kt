@@ -389,8 +389,8 @@ class TranslationServicesBinder(
     /** Bergamot's row can't reuse [wireOfflineLlmRow]: install state is
      *  **per-pair** (the model for the current source→target), not the global
      *  [OnDeviceLlmBackend.isInstalled]. On devices the native engine can't
-     *  run — 32-bit, or arm64 under a binary translator (Houdini crashes the
-     *  engine — see BinaryTranslation) — the row stays VISIBLE but inert:
+     *  run — 32-bit, where the arm64-only library can't load — the row stays
+     *  VISIBLE but inert:
      *  [renderOfflineBackendRow] swaps the stat grid + switch for a
      *  "Not supported on this device" reason line and un-clickables the row,
      *  the same treatment the LLM rows get for a failed hardware floor.
@@ -573,10 +573,8 @@ class TranslationServicesBinder(
         // unavailable and why, but the stat grid + status icon + switch are
         // replaced by a single reason line. Three triggers:
         //   • on-device LLM whose device fails the hardware floor (arch / RAM)
-        //   • Bergamot on a device the native engine can't run: 32-bit, or
-        //     arm64 under a binary translator (Houdini SIGSEGVs the engine —
-        //     see BinaryTranslation). Device-level, so it outranks the
-        //     per-pair line below.
+        //   • Bergamot on a 32-bit device, where the arm64-only engine can't
+        //     load. Device-level, so it outranks the per-pair line below.
         //   • Bergamot when Mozilla ships no model for the current source→target
         //     pair — this is per-pair, so it's re-evaluated on every refresh and
         //     the row's interactivity is toggled here (not in the one-time
@@ -584,7 +582,7 @@ class TranslationServicesBinder(
         val disabledReason: String? = when {
             onDeviceLlm != null && !onDeviceLlm.meetsHardwareRequirements() ->
                 onDeviceLlm.hardwareIncompatibilityReason()
-            backend is BergamotBackend && !backend.supportsNativeRuntime() ->
+            backend is BergamotBackend && !BergamotBackend.supportsNativeRuntime() ->
                 ctx.getString(R.string.bergamot_device_unsupported)
             backend is BergamotBackend && !bergamotPairSupported(backend) ->
                 ctx.getString(R.string.bergamot_pair_unsupported)
