@@ -2,8 +2,8 @@ package com.playtranslate.bergamot
 
 /**
  * Thin JNI bridge to the slimt (Bergamot) inference engine, built with the
- * gemmology int8 backend — correct on ARM, unlike the ruy path that produces
- * garbage (DavidVentura/offline-translator#185).
+ * gemmology int8 backend: the same u8 x i8 "shift" arithmetic as the intgemm
+ * path Firefox's engine runs (see bergamot_jni.cpp).
  *
  * Handles are raw native pointers (Long, 0 = failure). The native engine is
  * single-threaded: callers MUST serialize every call (see BergamotTranslator,

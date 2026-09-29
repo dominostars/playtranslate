@@ -16,8 +16,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # --------------------------------------------------------------------------
 set(SLIMT_SRC ${CMAKE_CURRENT_LIST_DIR}/../../../third-party/slimt)
 
-# Engine config: gemmology for int8 (correct on ARM; avoids the ruy #185 bug),
-# ruy for float sgemm (no BLAS on Android), internal pcre2, builtin sentencepiece.
+# Engine config: gemmology for int8 (Firefox's shift arithmetic; see
+# bergamot_jni.cpp), ruy for float sgemm (no BLAS on Android), internal pcre2,
+# builtin sentencepiece.
 # Set as CACHE (not FORCE) so they default the slimt options before its
 # add_subdirectory reads them.
 set(WITH_GEMMOLOGY            ON  CACHE BOOL "")

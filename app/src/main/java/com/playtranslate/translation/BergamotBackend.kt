@@ -7,7 +7,7 @@ import com.playtranslate.translation.bergamot.BergamotTranslator
 
 /**
  * Offline NMT backend: Firefox Translations (Bergamot) via slimt built with the
- * gemmology int8 backend — correct on arm64 (avoids the ruy garbage bug) and
+ * gemmology int8 backend (Firefox's shift arithmetic; see bergamot_jni.cpp),
  * ~18 ms/sentence on a Snapdragon 8 Gen 2.
  *
  * The everyday "fast offline" tier: priority 28, just above ML Kit (30) and

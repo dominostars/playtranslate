@@ -1,8 +1,9 @@
-// JNI bridge to slimt (Bergamot) — built with the gemmology int8 backend, which
-// is correct on ARM (avoids the ruy garbage-output bug,
-// DavidVentura/offline-translator#185). Mirrors slimt's own bindings/java/slimt.cpp
-// but in the com.playtranslate.bergamot namespace and adds a single-text translate
-// + a native pivot entry point.
+// JNI bridge to slimt (Bergamot), built with the gemmology int8 backend: the
+// same u8 x i8 "shift" arithmetic as the intgemm path Firefox's engine runs.
+// (DavidVentura/offline-translator#185, once read as a ruy-on-ARM int8 bug, was
+// closed there as near-tie decoding noise, not a ruy defect.) Mirrors slimt's
+// own bindings/java/slimt.cpp but in the com.playtranslate.bergamot namespace
+// and adds a single-text translate + a native pivot entry point.
 //
 // Handles are raw native pointers passed as jlong. The engine is single-threaded;
 // the Kotlin side (BergamotTranslator) serializes all access. Every entry point is
@@ -167,6 +168,10 @@ Java_com_playtranslate_bergamot_BergamotNative_createService(JNIEnv*, jobject,
   try {
     Config config;
     config.cache_size = static_cast<size_t>(cache_size);
+    // Firefox's engine runs with max-length-factor 2.0; slimt defaults to 1.5,
+    // which cut translations short ("...even in Mement" for "...Mementos").
+    // Model::decode adds a fixed slack on top of this for short sources.
+    config.tgt_length_limit_factor = 2.0F;
     return reinterpret_cast<jlong>(new Blocking(config));
   } catch (const std::exception& e) {
     LOGE("createService failed: %s", e.what());
