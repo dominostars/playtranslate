@@ -1026,7 +1026,9 @@
     <!-- Hold or Tap: change the game language (the language IN the game
          being translated; "Game Language" is the picker's title,
          lang_translate_from). With exactly two languages downloaded it
-         switches to the other one; otherwise it opens that picker. -->
+         switches to the other one; otherwise it opens that picker. Also
+         the title of the Hotkeys page row that binds a key to the same
+         action, and of the dialog that records that key. -->
     <string name="icon_action_change_game_language">Change game language</string>
     <!-- Brief pill at the top of the game screen after that action
          switched to the other downloaded language, confirming which one

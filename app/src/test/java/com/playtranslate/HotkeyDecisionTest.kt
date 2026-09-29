@@ -526,6 +526,7 @@ class HotkeyDecisionTest {
             translationTap = "3",
             furiganaTap = "4",
             captureTap = "",
+            changeGameLanguageTap = "",
             hasReadingHint = true,
         )
         assertEquals(
@@ -550,6 +551,7 @@ class HotkeyDecisionTest {
             translationTap = "3",
             furiganaTap = "4",
             captureTap = "",
+            changeGameLanguageTap = "",
             hasReadingHint = false,
         )
         assertEquals(
@@ -566,6 +568,7 @@ class HotkeyDecisionTest {
             translationTap = "",
             furiganaTap = "",
             captureTap = "",
+            changeGameLanguageTap = "",
             hasReadingHint = true,
         )
         assertEquals(listOf(HotkeyAssignment.FURIGANA_HOLD), combos.map { it.assignment })
@@ -579,15 +582,55 @@ class HotkeyDecisionTest {
         // no hint layer.
         val withHint = buildHotkeyCombos(
             translationHold = "", furiganaHold = "", translationTap = "",
-            furiganaTap = "", captureTap = "8", hasReadingHint = true,
+            furiganaTap = "", captureTap = "8", changeGameLanguageTap = "",
+            hasReadingHint = true,
         )
         val noHint = buildHotkeyCombos(
             translationHold = "", furiganaHold = "", translationTap = "",
-            furiganaTap = "", captureTap = "8", hasReadingHint = false,
+            furiganaTap = "", captureTap = "8", changeGameLanguageTap = "",
+            hasReadingHint = false,
         )
         assertEquals(listOf(HotkeyAssignment.CAPTURE_TAP), withHint.map { it.assignment })
         assertEquals(listOf(HotkeyAssignment.CAPTURE_TAP), noHint.map { it.assignment })
         assertEquals(setOf(8), noHint.first().keys)
+    }
+
+    @Test
+    fun `buildHotkeyCombos includes the game-language tap regardless of reading hint`() {
+        // Changing the game language is offered on every language, like the
+        // floating icon's gesture it runs.
+        val withHint = buildHotkeyCombos(
+            translationHold = "", furiganaHold = "", translationTap = "",
+            furiganaTap = "", captureTap = "", changeGameLanguageTap = "9+10",
+            hasReadingHint = true,
+        )
+        val noHint = buildHotkeyCombos(
+            translationHold = "", furiganaHold = "", translationTap = "",
+            furiganaTap = "", captureTap = "", changeGameLanguageTap = "9+10",
+            hasReadingHint = false,
+        )
+        assertEquals(listOf(HotkeyAssignment.CHANGE_GAME_LANGUAGE_TAP), withHint.map { it.assignment })
+        assertEquals(listOf(HotkeyAssignment.CHANGE_GAME_LANGUAGE_TAP), noHint.map { it.assignment })
+        assertEquals(setOf(9, 10), noHint.first().keys)
+    }
+
+    @Test
+    fun `a hold sharing the game-language tap's key wins the press and its quick release changes the language`() {
+        // The built list keeps the holds ahead of this tap, so a key bound to
+        // both previews on press and changes the language on a quick release.
+        val combos = buildHotkeyCombos(
+            translationHold = "7", furiganaHold = "", translationTap = "",
+            furiganaTap = "", captureTap = "", changeGameLanguageTap = "7",
+            hasReadingHint = true,
+        )
+        assertEquals(
+            HotkeyAction.ActivateNow(HotkeyAssignment.TRANSLATION_HOLD),
+            decideHotkeyAction(setOf(7), HotkeyState(null, null), combos),
+        )
+        assertEquals(
+            HotkeyAssignment.CHANGE_GAME_LANGUAGE_TAP,
+            tapOnQuickRelease(HotkeyAssignment.TRANSLATION_HOLD, 100, 350, combos),
+        )
     }
 
     // ── shouldLatchActive (quick-release tap must not latch) ───────────

@@ -18,9 +18,9 @@ import android.view.KeyEvent
  * The machine is agnostic to a combo's [HotkeyTrigger]: HOLD and TAP combos
  * flow through identically (activate on press, "release" on key-up). The
  * trigger only changes what the *caller* does on activation/release — a HOLD
- * shows a momentary overlay preview, a TAP toggles the persistent auto
- * session — so the shadowing window must consider all four bindings together
- * (a TAP combo can shadow a HOLD combo and vice-versa).
+ * shows a momentary overlay preview, a TAP runs its action once (toggling the
+ * persistent auto session, say) — so the shadowing window must consider every
+ * binding together (a TAP combo can shadow a HOLD combo and vice-versa).
  *
  * The input-source policy below lives here for the same reason. Only
  * compile-time `InputDevice.SOURCE_*` constants are referenced, so the file
@@ -129,13 +129,16 @@ enum class HotkeyTrigger { HOLD, TAP }
  * and a [trigger] style:
  *  - HOLD combos show the overlay only while held (momentary preview).
  *  - TAP combos toggle the persistent auto/live session in [mode].
- *  - [CAPTURE_TAP] is the exception: a TAP-triggered one-shot "Capture screen"
- *    (the same action as the floating-icon Capture button) that respects the
- *    *current* overlay mode rather than forcing one, so its [mode] is nominal
- *    and unused — the caller dispatches it by identity, not by mode/trigger
- *    (see PlayTranslateAccessibilityService.fireTapOnMain). Modelling it as a
- *    TAP lets it reuse the state machine's tap timing unchanged (fire on press,
- *    fire on quick-release of a shadowed combo).
+ *  - [CAPTURE_TAP] and [CHANGE_GAME_LANGUAGE_TAP] are the exceptions:
+ *    TAP-triggered actions tied to no overlay mode, so their [mode] is
+ *    nominal and unused — the caller dispatches them by identity, not by
+ *    mode/trigger (see PlayTranslateAccessibilityService.fireTapOnMain).
+ *    [CAPTURE_TAP] is the one-shot "Capture screen" (the same action as the
+ *    floating-icon Capture button), which respects the *current* overlay mode;
+ *    [CHANGE_GAME_LANGUAGE_TAP] is the floating icon's "Change game language"
+ *    gesture. Modelling them as TAPs lets them reuse the state machine's tap
+ *    timing unchanged (fire on press, fire on quick-release of a shadowed
+ *    combo).
  *
  * Used as the combo identity throughout the state machine — [OverlayMode]
  * alone can't tell the hold and tap bindings for the same mode apart.
@@ -146,6 +149,7 @@ enum class HotkeyAssignment(val mode: OverlayMode, val trigger: HotkeyTrigger) {
     TRANSLATION_TAP(OverlayMode.TRANSLATION, HotkeyTrigger.TAP),
     FURIGANA_TAP(OverlayMode.FURIGANA, HotkeyTrigger.TAP),
     CAPTURE_TAP(OverlayMode.TRANSLATION, HotkeyTrigger.TAP),
+    CHANGE_GAME_LANGUAGE_TAP(OverlayMode.TRANSLATION, HotkeyTrigger.TAP),
 }
 
 /** A configured hotkey: a set of keycodes bound to an [assignment]. */
@@ -169,14 +173,16 @@ fun parseHotkeyCombo(stored: String): Set<Int> {
  * the hold, since it would silently start an auto session). Mirrors the
  * `hintTextKind != NONE` gate used by the Hotkeys page and the settings digest.
  *
- * [captureTap] (the "Capture screen" one-shot) is language-agnostic — it isn't
- * a reading-hint feature — so it is included regardless of [hasReadingHint],
- * exactly like the translation combos.
+ * [captureTap] (the "Capture screen" one-shot) and [changeGameLanguageTap] are
+ * offered on every source language — neither is a reading-hint feature — so
+ * they are included regardless of [hasReadingHint], exactly like the
+ * translation combos.
  *
  * Holds are listed before taps so a combo bound to both a hold and a tap of the
  * same key-set resolves to the hold in [decideHotkeyAction] (maxByOrNull returns
  * the first of equal-size matches), preserving instant-hold + tap-on-release;
- * [CAPTURE_TAP] is listed last so a hold still wins that tie over it.
+ * [CAPTURE_TAP] and [CHANGE_GAME_LANGUAGE_TAP] are listed last so a hold still
+ * wins that tie over them.
  */
 fun buildHotkeyCombos(
     translationHold: String,
@@ -184,6 +190,7 @@ fun buildHotkeyCombos(
     translationTap: String,
     furiganaTap: String,
     captureTap: String,
+    changeGameLanguageTap: String,
     hasReadingHint: Boolean,
 ): List<HotkeyCombo> = listOfNotNull(
     HotkeyCombo(parseHotkeyCombo(translationHold), HotkeyAssignment.TRANSLATION_HOLD),
@@ -193,6 +200,7 @@ fun buildHotkeyCombos(
     if (hasReadingHint)
         HotkeyCombo(parseHotkeyCombo(furiganaTap), HotkeyAssignment.FURIGANA_TAP) else null,
     HotkeyCombo(parseHotkeyCombo(captureTap), HotkeyAssignment.CAPTURE_TAP),
+    HotkeyCombo(parseHotkeyCombo(changeGameLanguageTap), HotkeyAssignment.CHANGE_GAME_LANGUAGE_TAP),
 ).filter { it.keys.isNotEmpty() }
 
 /** Snapshot of mutable hotkey state, used as input to [decideHotkeyAction]. */

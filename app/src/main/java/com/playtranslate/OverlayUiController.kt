@@ -2310,7 +2310,8 @@ class OverlayUiController(
 
     /**
      * The icon's "Change game language" gesture
-     * ([HoldAction.CHANGE_GAME_LANGUAGE], [TapAction.CHANGE_GAME_LANGUAGE]).
+     * ([HoldAction.CHANGE_GAME_LANGUAGE], [TapAction.CHANGE_GAME_LANGUAGE]),
+     * and the hotkey of that name ([changeGameLanguageForDisplay]).
      * With exactly two languages downloaded, the current one among them,
      * switch to the other and say so in the transient pill on [display];
      * otherwise (one, three or more, or two without the current one) open
@@ -2355,12 +2356,32 @@ class OverlayUiController(
     }
 
     /**
+     * The "Change game language" hotkey: the icon's gesture
+     * ([changeGameLanguage]) on [displayId], the primary game display. Called
+     * on the main thread via the active overlay UI, as
+     * [toggleCaptureScreenForDisplay] is. A hotkey has no hold to slide into a
+     * drag, so whether its picker opened in the workspace doesn't matter.
+     *
+     * Unlike the gesture, a hotkey can fire with the quick menu open (the
+     * menu covers the icon), so the menu closes first, as it does for its own
+     * Language row: left open, it would sit under the picker showing the old
+     * language and keep live capture paused ([CaptureService.holdActive]).
+     */
+    fun changeGameLanguageForDisplay(displayId: Int) {
+        val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        val display = dm.getDisplay(displayId) ?: return
+        dismissFloatingMenu()
+        changeGameLanguage(display)
+    }
+
+    /**
      * Open the game-language picker for [displayId]: in the floating
      * workspace over the game where available, else the Activity
      * (dual-screen with the app in front, where full pages are the right
      * presentation on the app's display), as the capture panel's language
-     * header does. The quick menu's Language row and the icon's "Change game
-     * language" open it. Returns true when it opened in the workspace.
+     * header does. The quick menu's Language row and "Change game language"
+     * (the icon's gesture and the hotkey) open it. Returns true when it
+     * opened in the workspace.
      */
     private fun openGameLanguagePicker(displayId: Int): Boolean {
         if (openWorkspace(displayId) { SourceListPage() }) return true

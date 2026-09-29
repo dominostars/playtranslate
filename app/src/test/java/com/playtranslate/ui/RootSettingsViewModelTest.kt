@@ -322,6 +322,20 @@ class RootSettingsViewModelTest {
         assertEquals("Translation", vm.state.value.hotkeysSummary)
     }
 
+    @Test @Config(sdk = [34])
+    fun `the game-language hotkey counts toward Translation, bound after construction`() {
+        // It lives in the Hotkeys page's Translations section, so it names that
+        // category; bound while the VM is alive, so its key must be observed.
+        Prefs(ctx).quickTileAdded = true // drop the Add-tile prefix from the digest
+        val vm = RootSettingsViewModel(app)
+        assertEquals("No hotkeys set", vm.state.value.hotkeysSummary)
+
+        Prefs(ctx).hotkeyChangeGameLanguageTap = "100"
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals("Translation", vm.state.value.hotkeysSummary)
+    }
+
     @Test fun `appearance digest is theme mode + accent name`() {
         val s = RootSettingsViewModel(app).state.value.appearanceSummary
         assertTrue(s.startsWith("System")) // default theme mode

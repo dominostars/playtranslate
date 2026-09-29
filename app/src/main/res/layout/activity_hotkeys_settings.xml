@@ -56,8 +56,9 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Translations section: hold-to-show + tap-to-toggle-auto. The
-                 group header text is set in code. -->
+            <!-- Translations section: hold-to-show, tap-to-toggle-auto,
+                 capture and the game-language change. The group header text
+                 is set in code. -->
             <include layout="@layout/settings_group_header"
                 android:id="@+id/headerTranslations" />
 
@@ -95,6 +96,15 @@
 
                     <include layout="@layout/settings_row_hotkey"
                         android:id="@+id/rowHotkeyCaptureTap" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="@dimen/pt_row_h_padding"
+                        android:background="?attr/ptDivider" />
+
+                    <include layout="@layout/settings_row_hotkey"
+                        android:id="@+id/rowHotkeyChangeGameLanguageTap" />
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>

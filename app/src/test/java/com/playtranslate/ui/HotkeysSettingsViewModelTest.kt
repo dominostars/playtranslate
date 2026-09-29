@@ -2,8 +2,10 @@ package com.playtranslate.ui
 
 import android.app.Application
 import android.content.Context
+import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.Prefs
+import com.playtranslate.language.HintTextKind
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -12,6 +14,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
@@ -80,6 +83,17 @@ class HotkeysSettingsViewModelTest {
         assertEquals("", Prefs(ctx).hotkeyFuriganaTap)
     }
 
+    @Test fun `the game-language hotkey seeds from prefs and writes through`() {
+        Prefs(ctx).hotkeyChangeGameLanguageTap = "100"
+        val vm = HotkeysSettingsViewModel(app)
+        assertEquals("100", vm.state.value.changeGameLanguageTapHotkey)
+
+        vm.setChangeGameLanguageTapHotkey("113+100")
+        assertEquals("113+100", Prefs(ctx).hotkeyChangeGameLanguageTap)
+        vm.clearChangeGameLanguageTapHotkey()
+        assertEquals("", Prefs(ctx).hotkeyChangeGameLanguageTap)
+    }
+
     @Test fun `markQuickTileAdded persists`() {
         val vm = HotkeysSettingsViewModel(app)
         vm.markQuickTileAdded()
@@ -109,5 +123,21 @@ class HotkeysSettingsViewModelTest {
         // furigana hint layer — so the reading-hint section is offered.
         val vm = HotkeysSettingsViewModel(app)
         assertTrue(vm.state.value.showFuriganaSection)
+    }
+
+    @Test fun `the reading-hint section follows a game-language change made while the page is open`() {
+        // The floating icon's "Change game language", its hotkey and the quick
+        // menu's Language row all reach the language with this page open.
+        val vm = HotkeysSettingsViewModel(app)
+        assertTrue("Japanese has furigana", vm.state.value.showFuriganaSection)
+
+        Prefs(ctx).sourceLang = "en"
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse("English has no reading hint", vm.state.value.showFuriganaSection)
+
+        Prefs(ctx).sourceLang = "zh"
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(vm.state.value.showFuriganaSection)
+        assertEquals(HintTextKind.PINYIN, vm.state.value.hintKind)
     }
 }

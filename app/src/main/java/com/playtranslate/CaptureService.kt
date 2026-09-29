@@ -184,6 +184,13 @@ class CaptureService : Service() {
      * is stable thanks to LinkedHashSet); finally [Display.DEFAULT_DISPLAY]
      * if the set is empty.
      *
+     * A display that no longer exists is passed over, as [shouldSkipDisplay]
+     * passes it over: with auto-translate off, a removed display (a monitor
+     * unplugged) stays in both fields, since the display listener that
+     * repairs them runs only while live, and the capture and game-language
+     * hotkeys, the in-app one-shot and the translation-error pill would
+     * otherwise target it.
+     *
      * On the MediaProjection backend this is always [Display.DEFAULT_DISPLAY] —
      * MediaProjection can only mirror that display, so it is the only one the
      * app can capture, OCR, or overlay there.
@@ -192,8 +199,10 @@ class CaptureService : Service() {
         if (!CaptureBackendResolver.active().requiresAccessibilityService) {
             return android.view.Display.DEFAULT_DISPLAY
         }
-        return lastInteractedDisplayId
-            ?: gameDisplayIds.firstOrNull()
+        val displays = getSystemService(DisplayManager::class.java)
+        val exists = { id: Int -> displays?.getDisplay(id) != null }
+        return lastInteractedDisplayId?.takeIf(exists)
+            ?: gameDisplayIds.firstOrNull(exists)
             ?: android.view.Display.DEFAULT_DISPLAY
     }
     /** Always returns the current source-language translation code from Prefs.

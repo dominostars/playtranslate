@@ -1373,6 +1373,12 @@ class Prefs internal constructor(
         get() = sp.getString(KEY_HOTKEY_CAPTURE_TAP, "") ?: ""
         set(v) = sp.edit { putString(KEY_HOTKEY_CAPTURE_TAP, v) }
 
+    /** Hotkey combo for "Change game language", the floating icon's gesture of
+     *  that name. Empty = not set. Format: keyCodes joined by "+". */
+    var hotkeyChangeGameLanguageTap: String
+        get() = sp.getString(KEY_HOTKEY_CHANGE_GAME_LANGUAGE_TAP, "") ?: ""
+        set(v) = sp.edit { putString(KEY_HOTKEY_CHANGE_GAME_LANGUAGE_TAP, v) }
+
     /** Capture interval for live mode in seconds. */
     var captureIntervalSec: Float
         get() = sp.getFloat(KEY_CAPTURE_INTERVAL_SEC, DEFAULT_CAPTURE_INTERVAL_SEC).coerceAtLeast(MIN_CAPTURE_INTERVAL_SEC)
@@ -1819,6 +1825,7 @@ class Prefs internal constructor(
         const val KEY_HOTKEY_TRANSLATION_TAP               = "hotkey_translation_tap"
         const val KEY_HOTKEY_FURIGANA_TAP                  = "hotkey_furigana_tap"
         const val KEY_HOTKEY_CAPTURE_TAP                   = "hotkey_capture_tap"
+        const val KEY_HOTKEY_CHANGE_GAME_LANGUAGE_TAP      = "hotkey_change_game_language_tap"
         const val KEY_QUICK_TILE_ADDED                     = "quick_tile_added"
         /** Public so the in-app result header's "Show on screen" toggle can
          *  [observe] it and stay in sync with the Settings row. */

@@ -140,11 +140,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      *  HOLD combos drive the momentary hold-to-preview on [CaptureService];
      *  TAP combos are routed by [fireTapOnMain] — the auto/live toggle for the
      *  translation/furigana taps, a one-shot Capture for [HotkeyAssignment
-     *  .CAPTURE_TAP] — through the active [OverlayUiController] (single- vs
-     *  dual-screen / InAppOnly) just like the floating menu's buttons. The
-     *  release leg only matters for HOLD (end the preview); a TAP already did
-     *  its work on activation, except that a quick release of a hold sharing
-     *  the tap's keys fires that tap too (one key = preview + action). */
+     *  .CAPTURE_TAP], the game-language change for [HotkeyAssignment
+     *  .CHANGE_GAME_LANGUAGE_TAP] — through the active [OverlayUiController]
+     *  (single- vs dual-screen / InAppOnly) just like the floating menu's
+     *  buttons and the floating icon's gestures. The release leg only matters
+     *  for HOLD (end the preview); a TAP already did its work on activation,
+     *  except that a quick release of a hold sharing the tap's keys fires that
+     *  tap too (one key = preview + action). */
     fun registerHotkeyCallbacks() {
         val svc = CaptureService.instance ?: return
         onHotkeyActivated = { assignment ->
@@ -180,13 +182,21 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     /**
      * Route a TAP-triggered [assignment] to its action. [HotkeyAssignment
      * .CAPTURE_TAP] runs a one-shot Capture (toggle-dismissing a showing
-     * capture result); every other tap toggles that mode's auto/live session.
-     * Shared by on-press activation and the hold's quick-release tap so the
-     * capture binding is honored on both paths.
+     * capture result); [HotkeyAssignment.CHANGE_GAME_LANGUAGE_TAP] runs the
+     * floating icon's "Change game language"; the translation and furigana
+     * taps toggle that mode's auto/live session. Shared by on-press activation
+     * and the hold's quick-release tap so every tap binding is honored on both
+     * paths. Exhaustive, so a new assignment cannot compile until it is routed
+     * here; both callers pass taps only, so the holds never arrive.
      */
     private fun fireTapOnMain(assignment: HotkeyAssignment) {
-        if (assignment == HotkeyAssignment.CAPTURE_TAP) captureScreenOnMain()
-        else toggleAutoModeOnMain(assignment.mode)
+        when (assignment) {
+            HotkeyAssignment.TRANSLATION_TAP, HotkeyAssignment.FURIGANA_TAP ->
+                toggleAutoModeOnMain(assignment.mode)
+            HotkeyAssignment.CAPTURE_TAP -> captureScreenOnMain()
+            HotkeyAssignment.CHANGE_GAME_LANGUAGE_TAP -> changeGameLanguageOnMain()
+            HotkeyAssignment.TRANSLATION_HOLD, HotkeyAssignment.FURIGANA_HOLD -> Unit
+        }
     }
 
     /**
@@ -226,6 +236,24 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         val displayId = CaptureService.instance?.primaryGameDisplayId() ?: Display.DEFAULT_DISPLAY
         (CaptureBackendResolver.activeOverlayUi ?: overlayUiController)
             .toggleCaptureScreenForDisplay(displayId)
+    }
+
+    /**
+     * Run the "Change game language" hotkey on the main thread: the floating
+     * icon's gesture of that name, on the display [captureScreenOnMain]
+     * targets (the primary game display), which gets its pill, or its picker
+     * when that opens over the game. Main thread and the [isUserReachable]
+     * re-check for the same reasons as [captureScreenOnMain].
+     */
+    private fun changeGameLanguageOnMain() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            debugHandler.post { changeGameLanguageOnMain() }
+            return
+        }
+        if (!isUserReachable()) return
+        val displayId = CaptureService.instance?.primaryGameDisplayId() ?: Display.DEFAULT_DISPLAY
+        (CaptureBackendResolver.activeOverlayUi ?: overlayUiController)
+            .changeGameLanguageForDisplay(displayId)
     }
 
     /**
@@ -654,6 +682,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             translationTap = prefs.hotkeyTranslationTap,
             furiganaTap = prefs.hotkeyFuriganaTap,
             captureTap = prefs.hotkeyCaptureTap,
+            changeGameLanguageTap = prefs.hotkeyChangeGameLanguageTap,
             hasReadingHint = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind != HintTextKind.NONE,
         )
     }

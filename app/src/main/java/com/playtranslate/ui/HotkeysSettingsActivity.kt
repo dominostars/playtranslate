@@ -49,6 +49,7 @@ class HotkeysSettingsActivity : SettingsSubPageActivity() {
     private lateinit var rowHotkeyTranslation: View
     private lateinit var rowHotkeyTranslationTap: View
     private lateinit var rowHotkeyCaptureTap: View
+    private lateinit var rowHotkeyChangeGameLanguageTap: View
     private lateinit var sectionFurigana: View
     private lateinit var headerFurigana: View
     private lateinit var rowHotkeyFurigana: View
@@ -61,6 +62,7 @@ class HotkeysSettingsActivity : SettingsSubPageActivity() {
         rowHotkeyTranslation = findViewById(R.id.rowHotkeyTranslation)
         rowHotkeyTranslationTap = findViewById(R.id.rowHotkeyTranslationTap)
         rowHotkeyCaptureTap = findViewById(R.id.rowHotkeyCaptureTap)
+        rowHotkeyChangeGameLanguageTap = findViewById(R.id.rowHotkeyChangeGameLanguageTap)
         sectionFurigana = findViewById(R.id.sectionFurigana)
         headerFurigana = findViewById(R.id.headerFurigana)
         rowHotkeyFurigana = findViewById(R.id.rowHotkeyFurigana)
@@ -104,6 +106,15 @@ class HotkeysSettingsActivity : SettingsSubPageActivity() {
             dialogTitle = getString(R.string.hotkey_capture_screen_dialog_title),
             onSet = vm::setCaptureTapHotkey,
             onClear = vm::clearCaptureTapHotkey,
+        )
+        // The floating icon's "Change game language" gesture, under its title.
+        renderHotkeyRow(
+            row = rowHotkeyChangeGameLanguageTap,
+            title = getString(R.string.icon_action_change_game_language),
+            hotkey = state.changeGameLanguageTapHotkey,
+            dialogTitle = getString(R.string.icon_action_change_game_language),
+            onSet = vm::setChangeGameLanguageTapHotkey,
+            onClear = vm::clearChangeGameLanguageTapHotkey,
         )
 
         sectionFurigana.isVisible = state.showFuriganaSection
