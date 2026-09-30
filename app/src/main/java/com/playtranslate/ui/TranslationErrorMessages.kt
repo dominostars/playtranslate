@@ -48,6 +48,8 @@ object TranslationErrorMessages {
                     context.getString(R.string.translation_error_timeout, name)
                 BackendFailureKind.UNREACHABLE ->
                     context.getString(R.string.translation_error_unreachable, name)
+                BackendFailureKind.NOT_RUNNING ->
+                    context.getString(R.string.translation_error_not_running, name)
             }
         }
     }

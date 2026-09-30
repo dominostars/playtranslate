@@ -6,6 +6,7 @@ import android.content.ComponentCallbacks2
 import android.os.Build
 import android.os.Bundle
 import com.playtranslate.capture.CaptureBackendResolver
+import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.diagnostics.CrashHandler
 import android.content.Context
 import android.util.Log
@@ -184,8 +185,12 @@ class PlayTranslateApplication : Application() {
         // expects online services to work the moment connectivity is back.
         // After the registry init on purpose — registration replays the
         // current network at once, and the replay must find the backends.
+        // PlayTranslate Cloud is not a registry backend, so it gets the
+        // signal alongside, and its cooldown must exist before the replay.
+        PtCloudService.init(this)
         com.playtranslate.net.NetworkConnectivity.install(this) {
             TranslationBackendRegistry.onConnectivityRestored()
+            PtCloudService.onConnectivityRestored()
         }
         // Online translation failures surface as a pill on the game display
         // (the registry reports every pass; the tracker decides; the active

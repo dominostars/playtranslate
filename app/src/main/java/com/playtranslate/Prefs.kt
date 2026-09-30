@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.hardware.display.DisplayManager
 import com.playtranslate.BuildConfig
 import com.google.mlkit.nl.translate.TranslateLanguage
+import com.playtranslate.cloud.PtCloudConfig
 import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLangId
@@ -110,7 +111,7 @@ class Prefs internal constructor(
      *  over a debug one inherits every pref the debug build wrote. An override
      *  that changes production behaviour must therefore read as OFF outside
      *  debug builds regardless of what is stored; see [debugForceMmapWeights],
-     *  [debugShortTextRouting] and [debugLogTrace].
+     *  [debugShortTextRouting], [debugLogTrace] and [ptCloudEnabled].
      *  Seam for JVM tests; production always passes [BuildConfig.DEBUG]. */
     private val debugBuild: Boolean = BuildConfig.DEBUG,
 ) {
@@ -1594,6 +1595,42 @@ class Prefs internal constructor(
         get() = debugBuild && sp.getBoolean(KEY_DEBUG_LOG_TRACE, false)
         set(v) = sp.edit { putBoolean(KEY_DEBUG_LOG_TRACE, v) }
 
+    // ── PlayTranslate Cloud (debug builds only) ──────────────────────────
+    // [com.playtranslate.cloud.PtCloudConfig] reads these per capture; the
+    // defaults live there.
+
+    /** Debug-only: read capture-once frames through PlayTranslate Cloud
+     *  (OCR, grouping and translation in one server call) instead of the
+     *  device OCR and the translation waterfall.
+     *
+     *  Reads as false outside debug builds even when the stored value is true
+     *  (see [debugBuild]): the switch and its settings page exist only in
+     *  debug builds, so a stale `true` carried into a release install would
+     *  otherwise upload every capture to a service that release users have
+     *  no key for and no row to turn off. */
+    var ptCloudEnabled: Boolean
+        get() = debugBuild && sp.getBoolean(KEY_PT_CLOUD_ENABLED, false)
+        set(v) = sp.edit { putBoolean(KEY_PT_CLOUD_ENABLED, v) }
+
+    /** PlayTranslate Cloud's root URL. Plaintext (not a secret), like
+     *  [openaiBaseUrl]; a field on the settings page, so a local build of the
+     *  service can be pointed at. */
+    var ptCloudBaseUrl: String
+        get() = sp.getString(KEY_PT_CLOUD_BASE_URL, PtCloudConfig.DEFAULT_BASE_URL) ?: PtCloudConfig.DEFAULT_BASE_URL
+        set(v) = sp.edit { putString(KEY_PT_CLOUD_BASE_URL, v) }
+
+    /** Long side, in pixels, a frame is scaled down to before upload. No UI
+     *  yet; a user setting later. */
+    var ptCloudUploadLongSideCap: Int
+        get() = sp.getInt(KEY_PT_CLOUD_UPLOAD_CAP, PtCloudConfig.DEFAULT_UPLOAD_LONG_SIDE_CAP)
+        set(v) = sp.edit { putInt(KEY_PT_CLOUD_UPLOAD_CAP, v) }
+
+    /** PlayTranslate Cloud's client key, the bearer token. Encrypted at rest
+     *  like [deeplApiKey], with no bootstrap default. */
+    var ptCloudClientKey: String
+        get() = readSecret(KEY_PT_CLOUD_CLIENT_KEY, "")
+        set(v) = writeSecret(KEY_PT_CLOUD_CLIENT_KEY, v)
+
     /** Set to true after the user dismisses the target-pack migration dialog. */
     var targetPackMigrationDismissed: Boolean
         get() = sp.getBoolean(KEY_TARGET_PACK_MIGRATION_DISMISSED, false)
@@ -1890,6 +1927,12 @@ class Prefs internal constructor(
         private const val KEY_DEBUG_LOG_GROUPING             = "debug_log_grouping"
         private const val KEY_DEBUG_ANGLE_GATE_TARGET        = "debug_angle_gate_target"
         private const val KEY_DEBUG_LOG_TRACE                = "debug_log_trace"
+        /** Public so the settings sheet can [observe] the cloud's switch and
+         *  key for its summary. */
+        const val KEY_PT_CLOUD_ENABLED                     = "pt_cloud_enabled"
+        const val KEY_PT_CLOUD_CLIENT_KEY                  = "pt_cloud_client_key"
+        private const val KEY_PT_CLOUD_BASE_URL            = "pt_cloud_base_url"
+        private const val KEY_PT_CLOUD_UPLOAD_CAP          = "pt_cloud_upload_long_side_cap"
         const val KEY_HOTKEY_TRANSLATION                   = "hotkey_translation"
         const val KEY_HOTKEY_FURIGANA                      = "hotkey_furigana"
         const val KEY_HOTKEY_TRANSLATION_TAP               = "hotkey_translation_tap"

@@ -19,6 +19,7 @@ import android.view.WindowManager
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.CaptureLifecycle
 import com.playtranslate.capture.GameAudioGate
+import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.SourceLangId
@@ -42,6 +43,7 @@ import com.playtranslate.ui.MagnifierLens
 import com.playtranslate.ui.OverlayAlert
 import com.playtranslate.ui.OverlayRenderConfig
 import com.playtranslate.ui.OverlayWorkspace
+import com.playtranslate.ui.PtCloudSettingsActivity
 import com.playtranslate.ui.SourceListPage
 import com.playtranslate.ui.WorkspaceHost
 import com.playtranslate.ui.WorkspacePage
@@ -657,7 +659,7 @@ class OverlayUiController(
     private fun onPillSettingsTapped(owner: String, displayId: Int) {
         val ws = workspace
         if (ws == null || !ws.holdsCardEditor) {
-            openTranslationServicesFromPill(owner, displayId)
+            openServiceSettingsFromPill(owner, displayId)
             return
         }
         if (discardCardConfirm?.isShowing == true) return
@@ -672,7 +674,7 @@ class OverlayUiController(
                 themed.themeColor(R.attr.ptAccentOn),
             ) {
                 discardCardConfirm = null
-                openTranslationServicesFromPill(owner, displayId)
+                openServiceSettingsFromPill(owner, displayId)
             }
             addCancelButton(themed.getString(R.string.btn_cancel)) { discardCardConfirm = null }
         }
@@ -681,8 +683,11 @@ class OverlayUiController(
     /**
      * Go on from the gear on [owner]'s pill on [displayId]
      * (2026-09-28): take the pill down, stop auto-translate, have the tracker
-     * show the owner's next failure again, and open the Translation services
-     * page, where the user can fix the service or switch to another.
+     * show the owner's next failure again, and open the owner's settings
+     * page, where the user can fix the service or switch to another: the
+     * Translation services page, or PlayTranslate Cloud's own page for its
+     * pill (the cloud is a frame reader, not a waterfall service, so it has
+     * no row on the services page).
      * Auto-translate stops, as the app's own pauseLiveMode stops it, rather
      * than pausing to resume by itself: the user starts it again back in the
      * game, and that start is the next try. It stops first, here and now,
@@ -710,7 +715,7 @@ class OverlayUiController(
      * capture panel's and the workspace's own links to an activity close
      * them the same way.
      */
-    private fun openTranslationServicesFromPill(owner: String, displayId: Int) {
+    private fun openServiceSettingsFromPill(owner: String, displayId: Int) {
         errorPills.hide(listOf(owner))
         CaptureService.instance?.let { svc ->
             if (svc.isLive || svc.isLiveStartPending) svc.stopLive()
@@ -722,8 +727,10 @@ class OverlayUiController(
         dismissWorkspace()
         if (regionController.isRegionEditorActive) regionController.hideRegionEditor()
         dismissAllDragLookupPopups()
+        val page = if (owner == PtCloudService.ID) PtCloudSettingsActivity::class.java
+            else TranslationServicesActivity::class.java
         launchOnOverlayDisplay(
-            Intent(context.applicationContext, TranslationServicesActivity::class.java)
+            Intent(context.applicationContext, page)
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             displayId,
         )

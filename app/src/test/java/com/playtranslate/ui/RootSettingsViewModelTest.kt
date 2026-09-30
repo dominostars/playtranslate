@@ -336,6 +336,36 @@ class RootSettingsViewModelTest {
         assertEquals("Translation", vm.state.value.hotkeysSummary)
     }
 
+    // ── PlayTranslate Cloud digest ────────────────────────────────────────
+    // The keyed "On" cell is device-verified: the VM builds its own Prefs on
+    // the AndroidKeyStore codec, which a JVM test has no keystore for, so a
+    // key written here stores nothing (the secret slot fails closed) and the
+    // VM could not read one anyway. The same holds for the client-key slot's
+    // observation. (Unit tests run the debug variant, so the switch's
+    // debug-build gate reads through.)
+
+    @Test fun `cloud summary reads Off while the switch is off`() {
+        assertEquals("Off", RootSettingsViewModel(app).state.value.cloudSummary)
+    }
+
+    @Test fun `cloud summary reads On, no key while the switch is on without a key`() {
+        Prefs(ctx).ptCloudEnabled = true
+        assertEquals("On, no key", RootSettingsViewModel(app).state.value.cloudSummary)
+    }
+
+    @Test fun `cloud summary follows the switch flipped after construction`() {
+        val vm = RootSettingsViewModel(app)
+        assertEquals("Off", vm.state.value.cloudSummary)
+
+        Prefs(ctx).ptCloudEnabled = true
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("On, no key", vm.state.value.cloudSummary)
+
+        Prefs(ctx).ptCloudEnabled = false
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("Off", vm.state.value.cloudSummary)
+    }
+
     @Test fun `appearance digest is theme mode + accent name`() {
         val s = RootSettingsViewModel(app).state.value.appearanceSummary
         assertTrue(s.startsWith("System")) // default theme mode

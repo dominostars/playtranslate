@@ -77,7 +77,12 @@ object TranslationBackendRegistry {
      */
     @Volatile var onlineAttemptListener: ((List<OnlineAttempt>) -> Unit)? = null
 
-    private fun reportAttempts(attempts: List<OnlineAttempt>) {
+    /** Hands [attempts] to [onlineAttemptListener]. Every waterfall pass
+     *  reports through here, and so does PlayTranslate Cloud
+     *  ([com.playtranslate.cloud.PtCloudService.report]), which reads frames
+     *  instead of joining the waterfall but whose failures show on the same
+     *  pill, judged by the same tracker. */
+    fun reportOnlineAttempts(attempts: List<OnlineAttempt>) {
         if (attempts.isEmpty()) return
         onlineAttemptListener?.invoke(attempts.toList())
     }
@@ -260,7 +265,7 @@ object TranslationBackendRegistry {
             logWaterfall("single ALL FAILED", trail)
             throw IllegalStateException("All translation backends failed")
         } finally {
-            reportAttempts(attempts)
+            reportOnlineAttempts(attempts)
         }
     }
 
@@ -334,7 +339,7 @@ object TranslationBackendRegistry {
         try {
             return batchWaterfall(texts, source, target, ordered, attempts)
         } finally {
-            reportAttempts(attempts)
+            reportOnlineAttempts(attempts)
         }
     }
 

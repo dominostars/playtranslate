@@ -12,6 +12,7 @@ import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.capturableDisplays
+import com.playtranslate.cloud.PtCloudConfig
 import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLangId
@@ -84,9 +85,9 @@ internal fun overlayModeLabelRes(mode: OverlayMode, hintKind: HintTextKind): Int
  * no pref to observe and stay imperative + resume-driven in [SettingsRenderer].
  *
  * Two state channels:
- *  - **Reactive** — names + the Hotkeys / Appearance digests re-derive from
- *    `Prefs.observe` (all their inputs are prefs), so an accent change or hotkey
- *    edit shows with no onResume catch-up.
+ *  - **Reactive** — names + the Hotkeys / Appearance / Cloud digests re-derive
+ *    from `Prefs.observe` (all their inputs are prefs), so an accent change,
+ *    hotkey edit or cloud switch shows with no onResume catch-up.
  *  - **Polled** — the Translation digest (real backend *usability* — installed
  *    models + keys + pair, not just toggles), the Capture digest (display set /
  *    OCR availability / overlay mode), the Anki cell + deck/card-type, and the
@@ -129,6 +130,9 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
         val captureSummary: String,
         val anki: AnkiCell,
         val tts: TtsCell,
+        /** PlayTranslate Cloud CONFIGURE cell digest (debug builds only):
+         *  "Off", "On", or "On, no key" ([cloudDigest]). */
+        val cloudSummary: String,
         /** Yomitan CONFIGURE cell digest: import prompt when empty,
          *  dictionary count otherwise. Null until the first [refresh]
          *  resolves it (subtitle hidden). */
@@ -144,8 +148,9 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     init {
-        // Names + the Hotkeys / Appearance digests react to their backing prefs
-        // (source/target language, hotkey edits, accent/theme). observe() seeds
+        // Names + the Hotkeys / Appearance / Cloud digests react to their
+        // backing prefs (source/target language, hotkey edits, accent/theme,
+        // the cloud switch and key). observe() seeds
         // on collect, so this also covers first render. The Translation digest
         // is polled in refresh() instead — it depends on non-pref state
         // (installed models, keys), so a pref signal can't carry it.
@@ -156,12 +161,14 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
                 Prefs.KEY_HOTKEY_TRANSLATION_TAP, Prefs.KEY_HOTKEY_FURIGANA_TAP,
                 Prefs.KEY_HOTKEY_CAPTURE_TAP, Prefs.KEY_HOTKEY_CHANGE_GAME_LANGUAGE_TAP,
                 Prefs.KEY_THEME_MODE, Prefs.KEY_ACCENT_NAME,
+                Prefs.KEY_PT_CLOUD_ENABLED, Prefs.KEY_PT_CLOUD_CLIENT_KEY,
             ).collect {
                 _state.value = _state.value.copy(
                     sourceName = resolveSourceName(),
                     targetName = resolveTargetName(),
                     hotkeysSummary = hotkeysDigest(),
                     appearanceSummary = appearanceDigest(),
+                    cloudSummary = cloudDigest(),
                 )
             }
         }
@@ -208,6 +215,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
             captureSummary = captureDigest(),
             anki = resolveAnkiCell(),
             tts = TtsCell.Loading,
+            cloudSummary = cloudDigest(),
         )
     }
 
@@ -276,6 +284,22 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
             },
         )
         return mode + SEP + str(prefs.accent.displayName)
+    }
+
+    // ── PlayTranslate Cloud digest ────────────────────────────────────────
+
+    /** "Off", "On", or "On, no key": the switch as [PtCloudConfig] reads it
+     *  (already false outside debug builds), and whether a capture would
+     *  have a key to send. Both are prefs, so it is observed, not polled. */
+    private fun cloudDigest(): String {
+        val config = PtCloudConfig(prefs)
+        return str(
+            when {
+                !config.enabled -> R.string.settings_pt_cloud_summary_off
+                config.hasKey -> R.string.settings_pt_cloud_summary_on
+                else -> R.string.settings_pt_cloud_summary_no_key
+            },
+        )
     }
 
     // ── Capture digest (polled — live display / OCR state) ────────────────

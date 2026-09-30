@@ -4,8 +4,12 @@ import android.graphics.Bitmap
 import android.util.Log
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.language.SourceLanguageEngines
+import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.ocr.ProvidedTranslations
+import com.playtranslate.ocr.ReaderAttribution
 import com.playtranslate.ui.GrowthLimits
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -117,7 +121,8 @@ class OneShotManager(private val service: CaptureService) {
      *  case: a newer gesture owns the screen. */
     private sealed interface HoldOutcome {
         object Success : HoldOutcome
-        object NoText : HoldOutcome
+        /** [attribution] names who looked, for the panel's no-text state. */
+        data class NoText(val attribution: ReaderAttribution?) : HoldOutcome
         data class Failed(val why: String) : HoldOutcome
         /** OCR found text and building its boxes threw: in practice the
          *  waterfall's all-backends-failed throw, since translating is the
@@ -140,7 +145,7 @@ class OneShotManager(private val service: CaptureService) {
             is HoldOutcome.NoText -> {
                 if (displayId == cycle.panelDisplayId) {
                     service.setHoldLoading(false)
-                    service.emitLiveNoText(displayId)
+                    service.emitLiveNoText(displayId, outcome.attribution)
                 }
                 showNoTextPill(displayId)
             }
@@ -164,6 +169,9 @@ class OneShotManager(private val service: CaptureService) {
         // reaches this outcome and its pill.
         if (!service.isConfigured) return HoldOutcome.Failed("service not configured")
         if (cycle.generation != currentGeneration) return HoldOutcome.Superseded
+        // The hold's mode, read once: it picks both the reader (stage 3) and
+        // the box builder (stage 5).
+        val mode = cycle.forceMode ?: Prefs(service).overlayMode
 
         // 1. Capture clean screenshot. Null is a real, reachable outcome
         //    (consent loss, no qualifying delivery inside the freshness
@@ -173,6 +181,12 @@ class OneShotManager(private val service: CaptureService) {
             ?: return HoldOutcome.Failed("screenshot failed")
         val raw: Bitmap = frame.bitmap
         val frameIncludesUi = frame.includesSystemUi
+        // The reader's translations, when it produced any. Cancelled in the
+        // finally, as the capture-once core cancels its own: an exit that never
+        // awaits them (superseded, box building throwing before the translate
+        // step) must not keep this cycle's job alive until they settle. A no-op
+        // once they have been awaited.
+        var translations: Deferred<ProvidedTranslations>? = null
 
         try {
             if (cycle.generation != currentGeneration) return HoldOutcome.Superseded
@@ -184,14 +198,24 @@ class OneShotManager(private val service: CaptureService) {
             // backend's capture source — forward it so the status-bar crop
             // matches the frame's contents (a single-app stream has no bar,
             // and cropping would eat game content).
-            val pipeline = service.runOcr(
+            // Two holds read on the device whatever the reader settings say:
+            // the furigana hold needs no translation, and a hold while live
+            // mode runs goes through runOcrRead's live bookkeeping (the slow-OCR
+            // prompt's pass timing, the startup card's exclusion rect), which
+            // is tuned for device engines.
+            val read = service.runOcrRead(
                 raw, displayId,
                 frameIncludesSystemUi = frameIncludesUi,
                 frameIncludesOwnOverlays = frame.includesOwnOverlays,
+                deviceOnly = mode == OverlayMode.FURIGANA || service.isLive,
             )
+            val pipeline = read.result
+            translations = pipeline?.translations
             if (cycle.generation != currentGeneration) return HoldOutcome.Superseded
 
-            if (pipeline == null) return HoldOutcome.NoText
+            // No text: the reader that looked names itself, the cloud or the
+            // device engine, for the panel's no-text state.
+            if (pipeline == null) return HoldOutcome.NoText(read.attribution)
 
             val (ocrResult, _, cropLeft, cropTop, screenshotW, screenshotH) = pipeline
 
@@ -205,7 +229,15 @@ class OneShotManager(private val service: CaptureService) {
             val recordPrefs = Prefs(service)
             val recordSrc = recordPrefs.sourceLangId
             val recordTgt = recordPrefs.targetLang
-            val processor = createProcessor(cycle.forceMode)
+            // What the translation processor produced, for the panel (step 7).
+            var perGroup: List<CaptureService.GroupTranslation>? = null
+            val processor = createProcessor(mode) { texts ->
+                // The reader's translations, when it produced any for the pair
+                // this call translates under (translateGroupsSeparately checks).
+                val provided = pipeline.translations?.await() as? ProvidedTranslations.Ok
+                service.translateGroupsSeparately(texts, provided = provided)
+                    .also { perGroup = it }
+            }
             // The translation step. Every backend failing is an ordinary
             // outcome (offline with no usable offline model, say), and this
             // cycle runs in serviceScope, which has no exception handler: an
@@ -274,9 +306,13 @@ class OneShotManager(private val service: CaptureService) {
                 // the cache didn't keep, translated again, failing this
                 // time) costs only the panel update.
                 try {
+                    // The overlay's own translations when this hold made them
+                    // (null for a furigana hold, which translates here).
                     service.translateAndSendToPanel(
                         ocrResult, screenshotPath, displayId, frameIncludesUi,
                         frame.includesOwnOverlays,
+                        perGroup = perGroup,
+                        attribution = read.attribution,
                     )
                 } catch (e: CancellationException) {
                     throw e
@@ -286,21 +322,20 @@ class OneShotManager(private val service: CaptureService) {
             }
             return HoldOutcome.Success
         } finally {
+            translations?.cancel()
             if (!raw.isRecycled) raw.recycle()
         }
     }
 
-    private fun createProcessor(forceMode: OverlayMode?): OneShotProcessor {
-        val mode = forceMode ?: Prefs(service).overlayMode
-        return when (mode) {
-            OverlayMode.FURIGANA -> {
-                val engine = SourceLanguageEngines.get(service, Prefs(service).sourceLangId)
-                FuriganaOneShotProcessor(engine, service.furiganaPaint)
-            }
-            OverlayMode.TRANSLATION -> TranslationOneShotProcessor(
-                service::translateGroupsSeparately
-            )
+    private fun createProcessor(
+        mode: OverlayMode,
+        translate: suspend (List<String>) -> List<CaptureService.GroupTranslation>,
+    ): OneShotProcessor = when (mode) {
+        OverlayMode.FURIGANA -> {
+            val engine = SourceLanguageEngines.get(service, Prefs(service).sourceLangId)
+            FuriganaOneShotProcessor(engine, service.furiganaPaint)
         }
+        OverlayMode.TRANSLATION -> TranslationOneShotProcessor(translate)
     }
 
     private fun showNoTextPill(displayId: Int) {
@@ -314,8 +349,9 @@ class OneShotManager(private val service: CaptureService) {
 
     /** Failure pill for a [HoldOutcome.Failed] or
      *  [HoldOutcome.TranslationFailed] cycle — same surface as the no-text
-     *  pill. The screenshot failure's inline English mirrors the existing
-     *  runCaptureOcrTranslate failure string (l10n debt shared with it). */
+     *  pill. The screenshot failure's inline English mirrors the capture
+     *  sheet's screenshot failure string in [CaptureService]'s
+     *  runCaptureCycle (l10n debt shared with it). */
     private fun showFailurePill(displayId: Int, message: String) {
         val overlayUi = CaptureBackendResolver.activeOverlayUi
         val dm = service.getSystemService(android.hardware.display.DisplayManager::class.java)

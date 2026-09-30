@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PlayTranslate Cloud page (Settings → Configure, debug builds only):
+     the master switch, the client key and server URL with Save, and the
+     service status. The page stays open after Save: it is where the
+     status shows. On the activity_translation_history.xml template. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/ptSurface"
+        app:navigationIcon="@drawable/ic_arrow_back"
+        app:navigationIconTint="?attr/ptText"
+        app:title="@string/pt_cloud_display_name"
+        app:titleTextColor="?attr/ptText" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="?attr/ptDivider" />
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true"
+        android:paddingHorizontal="14dp"
+        android:paddingBottom="20dp"
+        android:clipToPadding="false">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- Master switch. -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <include layout="@layout/settings_row_switch"
+                    android:id="@+id/rowCloudToggle" />
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Client key + server URL, persisted together by Save. -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="@dimen/pt_row_h_padding"
+                    android:paddingVertical="@dimen/pt_row_v_padding">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:labelFor="@+id/etCloudKey"
+                        android:text="@string/pt_cloud_key_label"
+                        style="@style/Text.PT.RowTitle" />
+
+                    <!-- As the LLM page's API key field: visible while typed
+                         (a pasted key is checked by eye), no autofill. -->
+                    <EditText
+                        android:id="@+id/etCloudKey"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:hint="@string/pt_cloud_key_hint"
+                        android:textColorHint="?attr/ptTextHint"
+                        android:textColor="?attr/ptText"
+                        android:textSize="13sp"
+                        android:fontFamily="monospace"
+                        android:singleLine="true"
+                        android:inputType="textVisiblePassword"
+                        android:background="?attr/ptSurface"
+                        android:padding="10dp"
+                        android:importantForAutofill="no" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:labelFor="@+id/etCloudUrl"
+                        android:text="@string/pt_cloud_url_label"
+                        style="@style/Text.PT.RowTitle" />
+
+                    <EditText
+                        android:id="@+id/etCloudUrl"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:textColorHint="?attr/ptTextHint"
+                        android:textColor="?attr/ptText"
+                        android:textSize="13sp"
+                        android:fontFamily="monospace"
+                        android:singleLine="true"
+                        android:inputType="textUri"
+                        android:background="?attr/ptSurface"
+                        android:padding="10dp"
+                        android:importantForAutofill="no" />
+
+                    <!-- The spinner overlays the blanked, disabled button
+                         while the health check Save started is in flight,
+                         as on the LLM page. -->
+                    <FrameLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:layout_marginTop="16dp">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnCloudSave"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:text="@string/btn_save"
+                            android:textAllCaps="false"
+                            android:textSize="15sp"
+                            app:cornerRadius="12dp" />
+
+                        <ProgressBar
+                            android:id="@+id/progressCloudSave"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_gravity="center"
+                            android:indeterminate="true"
+                            android:visibility="gone"
+                            android:indeterminateTint="?attr/colorOnPrimary" />
+                    </FrameLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Service status (GET /health), refreshed on resume and by
+                 Save, with the cooldown line below it while one runs. Not
+                 tappable. -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="@dimen/pt_row_min_height"
+                    android:orientation="vertical"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="@dimen/pt_row_h_padding"
+                    android:paddingVertical="@dimen/pt_row_v_padding">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/pt_cloud_status_title"
+                            style="@style/Text.PT.RowTitle" />
+
+                        <TextView
+                            android:id="@+id/tvCloudStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/pt_cloud_status_unchecked"
+                            style="@style/Text.PT.RowValue" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvCloudCooldown"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textColor="?attr/ptWarning"
+                        android:visibility="gone"
+                        style="@style/Text.PT.RowSubtitle" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+</LinearLayout>

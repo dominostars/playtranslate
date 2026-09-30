@@ -401,30 +401,11 @@ class OnlineServicesController(
             clearRowWarningTint(rowMain)
             return
         }
-        val description = cooldownable.unavailableDescription()
-            ?: activity.getString(R.string.backend_status_unavailable_default)
-        tv.text = formatCooldownLine(description, until)
+        tv.text = cooldownLine(activity, cooldownable.unavailableDescription(), until)
         applyTone(tv, Tone.Warning)
         applyItalic(tv, false)
         tv.isVisible = true
         applyRowWarningTint(rowMain)
-    }
-
-    /** "Rate limited · Retry at 3:42 PM" for short cooldowns;
-     *  "Monthly quota used · Retry on Jun 1" for ones more than ~24h
-     *  out. Time uses the user's locale TimeFormat; date uses a fixed
-     *  "MMM d" so the line stays readable. */
-    private fun formatCooldownLine(description: String, retryAt: Long): String {
-        val now = System.currentTimeMillis()
-        val withinDay = retryAt - now < 24L * 60 * 60 * 1000
-        val formatted = if (withinDay) {
-            android.text.format.DateFormat.getTimeFormat(activity).format(Date(retryAt))
-        } else {
-            SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(retryAt))
-        }
-        val word = if (withinDay) activity.getString(R.string.backend_cooldown_retry_at)
-                   else activity.getString(R.string.backend_cooldown_retry_on)
-        return activity.getString(R.string.backend_cooldown_status_fmt, description, word, formatted)
     }
 
     private fun applyRowWarningTint(row: View) {

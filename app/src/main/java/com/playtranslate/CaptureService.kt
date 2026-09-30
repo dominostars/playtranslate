@@ -35,12 +35,24 @@ import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.PendingTranslation
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
+import com.playtranslate.cloud.PtCloudClient
+import com.playtranslate.cloud.PtCloudConfig
+import com.playtranslate.cloud.PtCloudFrameReader
+import com.playtranslate.cloud.PtCloudRouting
+import com.playtranslate.cloud.PtCloudService
+import com.playtranslate.ocr.DeviceFrameReader
+import com.playtranslate.ocr.FallbackFrameReader
+import com.playtranslate.ocr.FrameReader
+import com.playtranslate.ocr.ProvidedTranslations
+import com.playtranslate.ocr.ReadRequest
+import com.playtranslate.ocr.ReaderAttribution
+import com.playtranslate.ocr.providedGroupTranslations
 import com.playtranslate.ocr.registry.OcrModelManager
-import com.playtranslate.ocr.registry.ocrLabel
 import com.playtranslate.ocr.registry.selectionToken
 import com.google.mlkit.nl.translate.TranslateLanguage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -152,6 +164,78 @@ class CaptureService : Service() {
     internal val furiganaPaint by lazy { FuriganaMetrics.measuringPaint(resources.displayMetrics.density) }
 
     internal val ocrManager get() = OcrManager.instance
+
+    /** The on-device [FrameReader], built once: it holds only the process-wide
+     *  [OcrManager] and this service's Context. */
+    private val deviceFrameReader by lazy { DeviceFrameReader(ocrManager, this) }
+
+    /** The PlayTranslate Cloud [FrameReader], built once. Its client and the
+     *  reader hold a [PtCloudConfig] that reads [Prefs] at each use, so a
+     *  settings change applies to the next capture with nothing to rebuild. */
+    private val cloudFrameReader by lazy {
+        val config = PtCloudConfig(Prefs(this))
+        PtCloudFrameReader(PtCloudClient(config), config)
+    }
+
+    /**
+     * The [FrameReader] a read of [srcId] goes through: PlayTranslate Cloud,
+     * falling back to the device for a frame it cannot read
+     * ([FallbackFrameReader]), when [PtCloudRouting.eligible] allows it, else the
+     * device alone. The facts, read at this call from a fresh [PtCloudConfig]
+     * in the table's column order, each only when every earlier one allowed the
+     * cloud:
+     *
+     * | switch | deviceOnly | usable key | usable URL | source | cooling down | reader |
+     * |---|---|---|---|---|---|---|
+     * | off (always, outside debug builds) | any | any | any | any | any | device |
+     * | on | true | any | any | any | any | device |
+     * | on | false | no | any | any | any | device |
+     * | on | false | yes | no | any | any | device |
+     * | on | false | yes | yes | not one the server reads | any | device |
+     * | on | false | yes | yes | read | yes | device |
+     * | on | false | yes | yes | read | no | cloud, then device |
+     *
+     * [deviceOnly] is the caller's statement that this read must stay on the device
+     * whatever the settings say: a re-OCR (the user picked a device engine for that
+     * capture), the furigana hold (it needs no translation), a hold while live mode
+     * runs ([runOcrRead]'s live bookkeeping is tuned for device engines). Every live
+     * tier reads through [runOcr]'s default, which is device-only.
+     */
+    internal fun frameReaderFor(srcId: SourceLangId, deviceOnly: Boolean): FrameReader {
+        val config = PtCloudConfig(Prefs(this))
+        // The two facts that cost nothing decide first, so a read that could
+        // never go to the cloud reads nothing else, the key's AndroidKeyStore
+        // decryption included: the switch, off in every release build, then
+        // the caller's device-only statement, which every live pass makes
+        // about once a second.
+        val enabled = config.enabled
+        if (!enabled) return deviceFrameReader
+        if (deviceOnly) {
+            Log.d(TAG, "PlayTranslate Cloud not used for this read: device-only")
+            return deviceFrameReader
+        }
+        val hasKey = config.hasKey
+        val endpointValid = config.endpoint != null
+        val sourceSupported = PtCloudRouting.isSupportedSource(srcId)
+        val coolingDown = PtCloudService.isCoolingDown()
+        if (PtCloudRouting.eligible(enabled, hasKey, endpointValid, sourceSupported, coolingDown, deviceOnly)) {
+            return FallbackFrameReader(cloudFrameReader, deviceFrameReader)
+        }
+        val why = when {
+            !hasKey -> "no key"
+            !endpointValid -> "bad URL"
+            !sourceSupported -> "source"
+            else -> "cooling down"
+        }
+        Log.d(TAG, "PlayTranslate Cloud not used for this read: $why")
+        return deviceFrameReader
+    }
+
+    /** A [ReadRequest.frameId] for a read of a frame from [displayId]: the
+     *  display and the read's moment, which names the frame in a reader's logs
+     *  without carrying anything of its content. */
+    private fun frameIdFor(displayId: Int): String =
+        "d$displayId-${android.os.SystemClock.elapsedRealtime()}"
 
     /**
      * The set of displays the user has selected to translate. P1 introduces
@@ -346,12 +430,21 @@ class CaptureService : Service() {
      * pinhole tier those pixels carry our own overlay boxes (its OCR runs on
      * a filled COPY, never on the honest frame), so re-OCRing them would
      * read our translations back as source text.
+     *
+     * [attribution] names who looked, when the caller's read knows it; null
+     * (every live tier) attributes the look to the device engine selected
+     * for the current source language
+     * ([DeviceFrameReader.noTextAttribution]).
      */
-    internal fun emitLiveNoText(displayId: Int) {
+    internal fun emitLiveNoText(displayId: Int, attribution: ReaderAttribution? = null) {
         val region = activeRegionForDisplay(displayId)
+        val srcId = Prefs(this).sourceLangId
         _panelState.value = PanelState.NoText(
             noTextMessage(displayId, region),
-            noTextProvenanceFor(displayId, region, Prefs(this).sourceLangId),
+            ocrProvenanceFor(
+                attribution ?: DeviceFrameReader.noTextAttribution(this, srcId),
+                displayId, region, srcId,
+            ),
         )
         // The recorded text is no longer what the panel shows — identical
         // text REAPPEARING after a no-text gap must deliver again.
@@ -1124,28 +1217,6 @@ class CaptureService : Service() {
             },
         )
         state.value = terminalStateFor(outcome, displayId)
-    }
-
-    /** Build the [OcrProvenance] for a NO-TEXT result, where there is no [OcrResult]
-     *  to read the engine from — attribute it to the engine that WAS selected (and
-     *  ran, finding nothing) for [srcId]. Pins the engine, language, [region], and
-     *  [displayId] so the "switch OCR tool" gear can re-OCR THIS exact capture. Null
-     *  when no OCR backend is available (e.g. a no-floor language on a 32-bit device).
-     *  The two frame facts are nullable for the live tiers, which pin no screenshot at
-     *  all ([emitLiveNoText]) — with nothing to re-crop, there is nothing to describe. */
-    private fun noTextProvenanceFor(
-        displayId: Int,
-        region: RegionEntry,
-        srcId: SourceLangId,
-        frameIncludesSystemUi: Boolean? = null,
-        frameIncludesOwnOverlays: Boolean? = null,
-    ): OcrProvenance? {
-        val backend = OcrModelManager.selectedBackend(this, srcId) ?: return null
-        return OcrProvenance(
-            backend.ocrLabel(this), backend.selectionToken, displayId, srcId, region,
-            frameIncludesSystemUi = frameIncludesSystemUi,
-            frameIncludesOwnOverlays = frameIncludesOwnOverlays,
-        )
     }
 
     // ── Live mode ─────────────────────────────────────────────────────────
@@ -2785,7 +2856,26 @@ class CaptureService : Service() {
         ui.showRegionIndicator(display, activeRegionForDisplay(displayId))
     }
 
-    /** Run the shared OCR pipeline on a frame captured from [displayId].
+    /** [runOcrRead]'s result alone (null = no text to translate), for the
+     *  live tiers, which never read a no-text look's attribution: their panel
+     *  state derives its own from their device engine. Same parameters, same
+     *  pass bookkeeping. */
+    internal suspend fun runOcr(
+        raw: Bitmap,
+        displayId: Int,
+        frameIncludesSystemUi: Boolean = true,
+        frameIncludesOwnOverlays: Boolean,
+        deviceOnly: Boolean = true,
+    ): OverlayToolkit.OcrPipelineResult? = runOcrRead(
+        raw, displayId,
+        frameIncludesSystemUi = frameIncludesSystemUi,
+        frameIncludesOwnOverlays = frameIncludesOwnOverlays,
+        deviceOnly = deviceOnly,
+    ).result
+
+    /** Run the shared OCR pipeline on a frame captured from [displayId], and
+     *  return its result with who read the frame
+     *  ([OverlayToolkit.OcrPipelineRead]), which a no-text read still names.
      *  Every per-display parameter (active region, status bar height, icon
      *  rect to black out) is resolved for [displayId] — the pipeline has no
      *  notion of a "primary" display. Caller still owns [raw].
@@ -2808,18 +2898,34 @@ class CaptureService : Service() {
      *  direction is safe to assume, so every caller — present and future —
      *  must state its frame's provenance (2026-07-16 adversarial-review
      *  finding: the furigana raw path silently kept feeding icon-bearing
-     *  frames after the blackout moved into one mode). */
-    internal suspend fun runOcr(
+     *  frames after the blackout moved into one mode).
+     *
+     *  [deviceOnly]: passed to [frameReaderFor] as the caller's statement that
+     *  this read must stay on the device. The live tiers pass nothing and read
+     *  on the device, the only reader their per-cycle loops and this function's
+     *  live bookkeeping (the slow-OCR prompt's pass timing, the startup card's
+     *  exclusion rect) are built for; the press-and-hold overlay states it per
+     *  hold. */
+    internal suspend fun runOcrRead(
         raw: Bitmap,
         displayId: Int,
         frameIncludesSystemUi: Boolean = true,
         frameIncludesOwnOverlays: Boolean,
-    ): OverlayToolkit.OcrPipelineResult? {
+        deviceOnly: Boolean = true,
+    ): OverlayToolkit.OcrPipelineRead {
         val prefs = Prefs(this)
         val seedWriter: ((Bitmap, OcrManager.OcrResult?) -> Unit)? =
             if (BuildConfig.DEBUG && prefs.debugSaveOcrSeed) {
                 { bitmap, result -> OcrSeedWriter.writeSeed(this, bitmap, result) }
             } else null
+        val srcId = prefs.sourceLangId
+        val reader = frameReaderFor(srcId, deviceOnly)
+        val request = ReadRequest(
+            srcId,
+            screenshotWidth = raw.width,
+            targetLang = prefs.targetLang,
+            frameId = frameIdFor(displayId),
+        )
         val statusBarHeight = statusBarHeightForFrame(displayId, frameIncludesSystemUi)
         // Session captured at entry: a pass that outlives a stop (native
         // inference cancels lazily) finalizes into ITS session — disposed
@@ -2827,12 +2933,12 @@ class CaptureService : Service() {
         val feedback = if (isLive) liveFeedback else null
         val passToken = feedback?.beginOcrPass(displayId)
         try {
-            val result = OverlayToolkit.runOcrPipeline(
+            val read = OverlayToolkit.runOcrPipeline(
                 raw,
                 activeRegionForDisplay(displayId),
-                prefs.sourceLangId,
-                ocrManager,
                 statusBarHeight,
+                reader,
+                request,
                 seedWriter = seedWriter,
                 // The startup card may be inside this frame (whole-display
                 // mirrors, a11y screenshots) — never OCR our own chrome.
@@ -2858,7 +2964,7 @@ class CaptureService : Service() {
                 displayId,
                 cardDisplayLive = liveModes.containsKey(Display.DEFAULT_DISPLAY),
             )
-            return result
+            return read
         } finally {
             if (feedback != null && passToken != null) feedback.endOcrPass(passToken)
         }
@@ -2868,6 +2974,15 @@ class CaptureService : Service() {
      * Translate OCR groups and send the result to the in-app panel.
      * Returns per-group translations (for callers that also need them for overlay building).
      * Returns null if skipped (panel not visible and forceShow=false).
+     *
+     * [perGroup], when given, is the translation of [ocrResult]'s groups the
+     * caller already made (the press-and-hold overlay translated them for its
+     * boxes), and is sent as is. Translating again would go through the cache,
+     * and a cache identity flip between the two calls (a cooldown expiring, a
+     * backend toggled) would translate the screen a second time, possibly by
+     * another backend than the overlay's. [attribution] names who read
+     * [ocrResult]; null derives it from the device result itself
+     * ([DeviceFrameReader.attributionOf]), which is every live caller.
      */
     internal suspend fun translateAndSendToPanel(
         ocrResult: OcrManager.OcrResult,
@@ -2881,6 +2996,8 @@ class CaptureService : Service() {
          *  idempotent. Deliberate captures (one-shot) never dedup — the
          *  user asked, the panel refreshes. */
         liveDedup: Boolean = false,
+        perGroup: List<GroupTranslation>? = null,
+        attribution: ReaderAttribution? = null,
     ): List<GroupTranslation>? {
         if (!forceShow) {
             val appPanelVisible = !Prefs.isSingleScreen(this) && MainActivity.isInForeground
@@ -2893,10 +3010,10 @@ class CaptureService : Service() {
         // capture-boundary stamp available, and it keeps MT latency out of
         // the result's game-audio anchor.
         val capturedAtWallMs = System.currentTimeMillis()
-        val perGroup = translateGroupsSeparately(ocrResult.groups.map { it.text })
-        val translated = perGroup.joinToString("\n\n") { it.text }
-        val note = perGroup.mapNotNull { it.note }.firstOrNull()
-        val backendDisplayName = perGroup.mapNotNull { it.backendDisplayName }.firstOrNull()
+        val groups = perGroup ?: translateGroupsSeparately(ocrResult.groups.map { it.text })
+        val translated = groups.joinToString("\n\n") { it.text }
+        val note = groups.mapNotNull { it.note }.firstOrNull()
+        val backendDisplayName = groups.mapNotNull { it.backendDisplayName }.firstOrNull()
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
         emitResult(
             com.playtranslate.model.TranslationResult(
@@ -2908,7 +3025,8 @@ class CaptureService : Service() {
                 note               = note,
                 backendDisplayName = backendDisplayName,
                 ocrProvenance      = ocrProvenanceFor(
-                    ocrResult, displayId, activeRegionForDisplay(displayId),
+                    attribution ?: DeviceFrameReader.attributionOf(ocrResult, this),
+                    displayId, activeRegionForDisplay(displayId),
                     Prefs(this).sourceLangId, frameIncludesSystemUi,
                     frameIncludesOwnOverlays,
                 ),
@@ -2923,7 +3041,7 @@ class CaptureService : Service() {
         // identical emission new again.
         livePanelRecord.committed(displayId, ocrResult.fullText, livePanelStamp())
         panelEmissions.committed(displayId, ocrResult.fullText, translated, backendDisplayName)
-        return perGroup
+        return groups
     }
 
     /** Whether the in-app panel is on screen to receive live results —
@@ -3052,51 +3170,51 @@ class CaptureService : Service() {
     internal fun captureSaveToCache(raw: Bitmap, displayId: Int): String? =
         CaptureBackendResolver.active().captureSource?.saveToCache(raw, displayId)
 
-    /** Build the [OcrProvenance] for a freshly-OCR'd result. [sourceLangId] is the
-     *  EXACT source language (variant included) the caller snapshotted at capture
-     *  time — passed in, NOT derived from the OCR code, because OCR is variant-
-     *  agnostic (ZH and ZH_HANT both OCR as "zh"), so reconstructing from the code
-     *  would collapse Traditional → Simplified and break the picker's backend key +
-     *  `sourceIsTraditional` on re-OCR. [engineBackend] supplies the label + selection
-     *  token; [displayId] + [region] re-crop the identical rectangle on a re-OCR.
-     *  Null when the result carries no engine identity (the empty engine) — callers
-     *  then leave [TranslationResult.ocrProvenance] null, suppressing the source OCR
-     *  row and re-OCR. */
     /** Provenance for a panel-emitted live result — the panel presenter's
      *  path to the re-OCR gear (region + source language resolved the same
-     *  way the one-shot pipeline resolves them). */
+     *  way the one-shot pipeline resolves them). Live results are device
+     *  reads, so the attribution comes from the result itself. */
     internal fun panelOcrProvenance(
         ocrResult: OcrManager.OcrResult,
         displayId: Int,
         frameIncludesSystemUi: Boolean,
         frameIncludesOwnOverlays: Boolean,
     ): OcrProvenance? = ocrProvenanceFor(
-        ocrResult, displayId, activeRegionForDisplay(displayId),
+        DeviceFrameReader.attributionOf(ocrResult, this),
+        displayId, activeRegionForDisplay(displayId),
         Prefs(this).sourceLangId, frameIncludesSystemUi, frameIncludesOwnOverlays,
     )
 
+    /** Build the [OcrProvenance] of a read, the one place every result's and
+     *  every no-text state's provenance is made. [attribution] is who read
+     *  the frame (a [com.playtranslate.ocr.FrameReading]'s, or derived from a
+     *  device result by [DeviceFrameReader]); null means no engine identity
+     *  (the empty engine, or no OCR backend available for a no-text look),
+     *  and the provenance is then null too, which suppresses the source OCR
+     *  row and re-OCR. [sourceLangId] is the EXACT source language (variant
+     *  included) the caller snapshotted at capture time — passed in, NOT
+     *  derived from the OCR code, because OCR is variant-agnostic (ZH and
+     *  ZH_HANT both OCR as "zh"), so reconstructing from the code would
+     *  collapse Traditional → Simplified and break the picker's backend key +
+     *  `sourceIsTraditional` on re-OCR. [displayId] + [region] re-crop the
+     *  identical rectangle on a re-OCR. */
     private fun ocrProvenanceFor(
-        ocrResult: OcrManager.OcrResult,
+        attribution: ReaderAttribution?,
         displayId: Int,
         region: RegionEntry,
         sourceLangId: SourceLangId,
         // The captured frame's stamped facts, when the caller has the frame
         // in hand — they persist with the result so a re-OCR re-crops the
         // same pixels and re-blacks our own chrome out of raw frames. Null
-        // (panel-emit paths without a frame) reads as legacy — full-display,
+        // (panel-emit paths without a frame, and the live tiers' no-text
+        // state, which pins no screenshot) reads as legacy — full-display,
         // clean — downstream.
         frameIncludesSystemUi: Boolean? = null,
         frameIncludesOwnOverlays: Boolean? = null,
     ): OcrProvenance? {
-        val backend = ocrResult.engineBackend ?: return null
-        // MangaOCR is a refinement layer over the base engine, not a selectable
-        // backend: extend the display label only ("Scanned by ML Kit + MangaOCR",
-        // proper nouns untranslated like ocrLabel) and keep the selection token on
-        // the base engine so the re-OCR gear still keys the picker correctly.
-        val label =
-            if (ocrResult.mangaOcrUsed) "${backend.ocrLabel(this)} + MangaOCR" else backend.ocrLabel(this)
+        attribution ?: return null
         return OcrProvenance(
-            label, backend.selectionToken, displayId, sourceLangId, region,
+            attribution.label, attribution.token, displayId, sourceLangId, region,
             frameIncludesSystemUi = frameIncludesSystemUi,
             frameIncludesOwnOverlays = frameIncludesOwnOverlays,
         )
@@ -3326,6 +3444,11 @@ class CaptureService : Service() {
             (android.os.SystemClock.uptimeMillis() - frame.capturedAtMs)
         var bitmap: Bitmap = raw
         var colorRef: Bitmap? = null
+        // The reader's translations, when it produces any. Cancelled in the
+        // finally, so an exit that never awaits them (no text, a same-language
+        // pair, a failure) leaves nothing running in the caller's job; a no-op
+        // once they have been awaited.
+        var providedTranslations: Deferred<ProvidedTranslations>? = null
         try {
             if (!isConfigured) return PipelineOutcome.Failed(NOT_CONFIGURED_MESSAGE)
             val screenshotPath = captureSaveToCache(raw, displayId)
@@ -3364,20 +3487,33 @@ class CaptureService : Service() {
                 }
             }
             onOcrStart?.invoke()
-            val ocrResult = ocrManager.recognise(bitmap, srcId, screenshotWidth = raw.width)
+            // A re-OCR stays on the device: the user picked a device engine for
+            // this capture from the result's OCR gear.
+            val reading = frameReaderFor(srcId, deviceOnly = isReOcr).read(
+                bitmap,
+                ReadRequest(
+                    srcId,
+                    screenshotWidth = rawW,
+                    targetLang = Prefs(this@CaptureService).targetLang,
+                    frameId = frameIdFor(displayId),
+                ),
+            )
+            providedTranslations = reading.translations
+            val ocrResult = reading.ocr
             if (BuildConfig.DEBUG && Prefs(this@CaptureService).debugSaveOcrSeed) {
                 OcrSeedWriter.writeSeed(this@CaptureService, bitmap, ocrResult)
             }
+            // Who read the frame, text or not: the reader decides, so a no-text
+            // look names the engine that looked and a result the engine that
+            // produced it.
+            val ocrProvenance = ocrProvenanceFor(
+                reading.attribution, displayId, region, srcId, frameIncludesSystemUi,
+                frame.includesOwnOverlays,
+            )
 
-            if (ocrResult == null) {
-                return PipelineOutcome.NoText(
-                    noTextProvenanceFor(
-                        displayId, region, srcId, frameIncludesSystemUi,
-                        frame.includesOwnOverlays,
-                    ),
-                    screenshotPath,
-                )
-            }
+            // No text, nothing to translate: the finally cancels the reader's
+            // translations, if it started any.
+            if (ocrResult == null) return PipelineOutcome.NoText(ocrProvenance, screenshotPath)
 
             // Reveal the page on OCR: show the source now, translate in the section.
             // The skeleton boxes ride along so a chips-preferred panel can collapse
@@ -3386,14 +3522,7 @@ class CaptureService : Service() {
                 ocrResult, colorRef, left, top, rawW, rawH,
                 cropWidth = right - left, cropHeight = bottom - top,
             )
-            onOcrReady?.invoke(
-                ocrResult.fullText, ocrResult.segments,
-                ocrProvenanceFor(
-                    ocrResult, displayId, region, srcId, frameIncludesSystemUi,
-                    frame.includesOwnOverlays,
-                ),
-                skeletonData,
-            )
+            onOcrReady?.invoke(ocrResult.fullText, ocrResult.segments, ocrProvenance, skeletonData)
             // Pin translation to the SAME source language OCR used (srcId), not current
             // Prefs — for a re-OCR after a source-language change they'd otherwise disagree,
             // sending the recognized text through the wrong source/target cache key and
@@ -3406,6 +3535,23 @@ class CaptureService : Service() {
             // (srcId is already pinned above).
             val recordSrc = SourceLanguageProfiles[srcId].translationCode
             val recordTgt = Prefs(this@CaptureService).targetLang
+            // Who translates, by (source == target; the reader's translations;
+            // the section hidden and the caller allowing deferral), the same
+            // comparison translateGroupsSeparately's same-language shortcut uses:
+            //  - same language; any; any: no translation at all. The reader's
+            //    translations are never awaited (the finally cancels them), and
+            //    the shortcut passes the OCR text through.
+            //  - different; none (a reader that only reads); not deferring: the
+            //    waterfall, as always.
+            //  - different; none; deferring: deferred, a PendingTranslation.
+            //  - different; Ok for this pair; any: the reader's texts, seeding
+            //    the cache, nothing pending, the degraded state untouched. Not
+            //    deferred even when hidden: they are already paid for, and the
+            //    later reveal is then instant.
+            //  - different; Ok for another pair (the target changed during the
+            //    read): as Unavailable, below.
+            //  - different; Unavailable; not deferring: the waterfall.
+            //  - different; Unavailable; deferring: deferred, as always.
             // Deferred path: the translation section is hidden and the caller
             // opted in, so no consumer needs MT right now — skip the backend
             // batch entirely. Rows record translation-less (they attach later
@@ -3415,11 +3561,15 @@ class CaptureService : Service() {
             // (allowDeferTranslation stays false at their call sites): their
             // recording is gated off below, so a deferred re-OCR would have
             // nothing to attach its late translation to.
+            val provided = if (recordSrc == recordTgt) null
+                else (providedTranslations?.await() as? ProvidedTranslations.Ok)
+                    ?.takeIf { it.isFor(recordSrc, recordTgt) }
             val deferTranslation = allowDeferTranslation &&
                 Prefs(this@CaptureService).hideTranslationSection &&
-                recordSrc != recordTgt
+                recordSrc != recordTgt &&
+                provided == null
             val perGroup = if (deferTranslation) null
-                else translateGroupsSeparately(ocrResult.groups.map { it.text }, srcId)
+                else translateGroupsSeparately(ocrResult.groups.map { it.text }, srcId, provided)
 
             // Deliberate capture → recording backend, FRESH captures only, one
             // capture session per invocation (per-group pairs with rects; the
@@ -3462,10 +3612,7 @@ class CaptureService : Service() {
                     screenshotPath      = screenshotPath,
                     note                = perGroup?.mapNotNull { it.note }?.firstOrNull(),
                     backendDisplayName  = perGroup?.mapNotNull { it.backendDisplayName }?.firstOrNull(),
-                    ocrProvenance       = ocrProvenanceFor(
-                        ocrResult, displayId, region, srcId, frameIncludesSystemUi,
-                        frame.includesOwnOverlays,
-                    ),
+                    ocrProvenance       = ocrProvenance,
                     pendingTranslation  = if (deferTranslation) PendingTranslation(
                         groupTexts = ocrResult.groups.map { it.text },
                         sourceLangId = srcId,
@@ -3494,6 +3641,7 @@ class CaptureService : Service() {
             Log.e(TAG, "Capture cycle failed: ${e.message}", e)
             return PipelineOutcome.Failed(e.message ?: "Unknown error")
         } finally {
+            providedTranslations?.cancel()
             colorRef?.recycle()
             if (!bitmap.isRecycled) bitmap.recycle()
         }
@@ -3588,10 +3736,17 @@ class CaptureService : Service() {
      *     transient low-memory exception and the waterfall fell through to
      *     a lower-priority backend, the fallback's output shouldn't outlast
      *     the memory pressure window.
+     *
+     * [provided]: translations the frame's reader produced with its OCR
+     * (a combined OCR and translation service), indexed like [groupTexts].
+     * Used, and cached like any backend's results, only when they are for
+     * this call's pair; under any other pair they are ignored and the
+     * waterfall below runs as if there were none.
      */
     internal suspend fun translateGroupsSeparately(
         groupTexts: List<String>,
         sourceOverride: SourceLangId? = null,
+        provided: ProvidedTranslations.Ok? = null,
     ): List<GroupTranslation> {
         val target = snapshotTranslationTarget(sourceOverride)
 
@@ -3608,6 +3763,13 @@ class CaptureService : Service() {
             // s2t/s2tw/s2hk applied; an already-Traditional (ZH_HANT) source is
             // a no-op (target.localize handles both via sourceIsTraditional).
             return groupTexts.map { GroupTranslation(target.localize(it), null, null) }
+        }
+
+        if (provided != null) {
+            if (provided.isFor(target.source, target.target)) {
+                return groupTranslationsFrom(provided, groupTexts, target)
+            }
+            Log.i(TAG, "provided translations ignored: the language pair changed since the read")
         }
 
         // Reconcile the cache's preferred-backend identity BEFORE the
@@ -3759,6 +3921,41 @@ class CaptureService : Service() {
             // Convert to the chosen Traditional variant AFTER the cache read, so
             // the shared "zh" cache keeps storing Simplified for every variant.
             .map { it.copy(text = target.localize(it.text)) }
+    }
+
+    /** [translateGroupsSeparately] with a reader's [provided] translations for
+     *  [target]'s pair: one [GroupTranslation] per group of [groupTexts], named
+     *  by [ProvidedTranslations.Ok.providerName], and each non-blank one cached
+     *  as that provider's, so the live tiers and the next capture serve it like
+     *  any backend's entry. A group the reader did not translate comes back
+     *  blank with no backend name, as a blank waterfall result does. */
+    private fun groupTranslationsFrom(
+        provided: ProvidedTranslations.Ok,
+        groupTexts: List<String>,
+        target: TranslationTarget,
+    ): List<GroupTranslation> {
+        // The cache's routing identity is reconciled before these writes, the
+        // rule every cache write follows (see the waterfall path above), so a
+        // backend toggle since the last call clears the old entries first
+        // instead of these landing among them.
+        ensureLanguageManagersFor(target)
+        val texts = providedGroupTranslations(groupTexts.size, provided.byGroup)
+        groupTexts.zip(texts).forEach { (text, translation) ->
+            if (translation.isNotBlank()) {
+                translationCache[cacheKey(text, target)] = translation to provided.providerName
+            }
+        }
+        // The degraded state is left untouched: no waterfall ran, the same
+        // rule as a fully cached batch.
+        return texts.map { translation ->
+            if (translation.isBlank()) GroupTranslation("", note = null, backendDisplayName = null)
+            // Localized after the cache write, like the waterfall's results:
+            // the shared "zh" cache keeps Simplified for every variant.
+            else GroupTranslation(
+                target.localize(translation), note = null,
+                backendDisplayName = provided.providerName,
+            )
+        }
     }
 
     /** Downscaled copy of [raw] for [OverlayToolkit.sampleGroupColors], at

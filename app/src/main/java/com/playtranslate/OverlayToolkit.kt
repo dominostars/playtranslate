@@ -15,7 +15,14 @@ import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.model.TextSegments
 import com.playtranslate.ui.FuriganaMetrics
+import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.ocr.FrameReader
+import com.playtranslate.ocr.FrameReading
+import com.playtranslate.ocr.ProvidedTranslations
+import com.playtranslate.ocr.ReadRequest
+import com.playtranslate.ocr.ReaderAttribution
 import com.playtranslate.ui.TextBox
+import kotlinx.coroutines.Deferred
 import androidx.core.graphics.get
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
@@ -635,10 +642,26 @@ object OverlayToolkit {
          *  boxes' growth inside the region that was read. Appended after the
          *  fields callers destructure positionally. */
         val cropWidth: Int, val cropHeight: Int,
+        /** The reader's translations of [ocrResult]'s groups
+         *  ([FrameReading.translations]); null when the reader only reads,
+         *  which every live tier's does. Whoever drops a non-null one without
+         *  awaiting it cancels it. */
+        val translations: Deferred<ProvidedTranslations>? = null,
     ) {
         /** The capture region in the boxes' own (crop) coordinates. */
         val cropBounds: android.graphics.Rect get() = android.graphics.Rect(0, 0, cropWidth, cropHeight)
     }
+
+    /** What [runOcrPipeline] made of one read: the [result] (null = no text for the
+     *  caller to translate) and who read the frame, as the reader reported it
+     *  ([FrameReading.attribution]; null when the reader has no engine identity).
+     *  The one place the pipeline hands the attribution back, outside [result]
+     *  so a read that found no text still names who looked, for the panel's
+     *  no-text state. */
+    data class OcrPipelineRead(
+        val result: OcrPipelineResult?,
+        val attribution: ReaderAttribution?,
+    )
 
     /**
      * Compute the OCR input crop bounds for a raw screenshot. Single source of
@@ -661,8 +684,12 @@ object OverlayToolkit {
     }
 
     /**
-     * Crop to active region, run OCR, filter source-lang chars. Returns null
-     * if no text detected. Does NOT do dedup, translation, or display.
+     * Crop to active region, read it with [reader], filter source-lang chars.
+     * The returned [OcrPipelineRead]'s result is null if no text detected; its
+     * attribution names who read the frame either way. Does NOT do dedup,
+     * translation, or display; a reader's translations ride along in the
+     * result for the caller, and are cancelled here whenever no result
+     * carries them.
      *
      * [blackoutRects] (screen coordinates) are filled black in the OCR
      * input after the crop — this app's own chrome on the display (the
@@ -678,7 +705,7 @@ object OverlayToolkit {
      * the chrome can never merge into an adjacent real text line and take
      * it down with it.
      *
-     * [seedWriter], when non-null, is invoked after [OcrManager.recognise]
+     * [seedWriter], when non-null, is invoked after [FrameReader.read]
      * with the bitmap that was actually fed to OCR and the result (possibly
      * null) — before the bitmap is recycled. Used to wire [OcrSeedWriter]
      * into the pinhole / live OCR path so we can capture the exact filled
@@ -698,13 +725,13 @@ object OverlayToolkit {
     suspend fun runOcrPipeline(
         raw: Bitmap,
         activeRegion: RegionEntry,
-        source: com.playtranslate.language.SourceLangId,
-        ocrManager: OcrManager,
         statusBarHeight: Int,
+        reader: FrameReader,
+        request: ReadRequest,
         seedWriter: ((Bitmap, OcrManager.OcrResult?) -> Unit)? = null,
         excludeRect: Rect? = null,
         blackoutRects: List<Rect> = emptyList(),
-    ): OcrPipelineResult? {
+    ): OcrPipelineRead {
         val crop = computeOcrCrop(raw.width, raw.height, activeRegion, statusBarHeight)
         val needsCrop = crop.top > 0 || crop.left > 0 || crop.bottom < raw.height || crop.right < raw.width
         var bitmap = if (needsCrop)
@@ -727,29 +754,48 @@ object OverlayToolkit {
             }
         }
 
-        var ocrResult: OcrManager.OcrResult?
+        val reading: FrameReading
         try {
-            ocrResult = ocrManager.recognise(bitmap, source, screenshotWidth = raw.width)
-            seedWriter?.invoke(bitmap, ocrResult)
+            reading = reader.read(bitmap, request)
+            seedWriter?.invoke(bitmap, reading.ocr)
         } finally {
             // Always clean up the crop (NOT raw — caller manages that)
             if (bitmap !== raw && !bitmap.isRecycled) bitmap.recycle()
         }
 
+        var ocrResult = reading.ocr
+        var translations = reading.translations
         if (excludeRect != null && ocrResult != null) {
             val exCropped = Rect(excludeRect).apply { offset(-crop.left, -crop.top) }
-            ocrResult = dropGroupsIntersecting(ocrResult, exCropped)
+            val kept = dropGroupsIntersecting(ocrResult, exCropped)
+            // Dropping groups re-indexes the rest, so translations keyed by the
+            // reader's group ids no longer line up with them: the caller
+            // translates locally instead. Not a live path today: the live
+            // startup card is the only source of excludeRect, and a hold while
+            // live mode runs reads on the device, whose reader translates
+            // nothing; this keeps a future reader from mislabeling groups.
+            if (kept !== ocrResult && translations != null) {
+                translations.cancel()
+                translations = null
+            }
+            ocrResult = kept
         }
-        if (ocrResult == null) return null
+        val sourceLang = SourceLanguageProfiles[request.sourceLangId].translationCode
+        val dedupKey = ocrResult?.fullText
+            ?.filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
+            .orEmpty()
+        if (ocrResult == null || dedupKey.isEmpty()) {
+            // Nothing for the caller to translate: the translations have no taker.
+            translations?.cancel()
+            return OcrPipelineRead(result = null, attribution = reading.attribution)
+        }
 
-        val sourceLang = com.playtranslate.language.SourceLanguageProfiles[source].translationCode
-        val dedupKey = ocrResult.fullText.filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
-        if (dedupKey.isEmpty()) return null
-
-        return OcrPipelineResult(
+        val result = OcrPipelineResult(
             ocrResult, dedupKey, crop.left, crop.top, raw.width, raw.height,
             cropWidth = crop.width(), cropHeight = crop.height(),
+            translations = translations,
         )
+        return OcrPipelineRead(result, reading.attribution)
     }
 
     /** Opaque fill for the floating icon's window rect in OCR input — a
