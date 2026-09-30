@@ -8,13 +8,17 @@
     rollback journal rides along after a crash mid-write) and the same belt-and-braces
     excludes as the 12+ file, so the policy is identical on every API level we ship. With android:allowBackup="true" this file is live on 29-30, not a
     formality: it is what keeps the user's API keys and translation history out of the
-    backup there. BackupRulesTest pins its shape alongside the 12+ file's.
+    backup there. BackupRulesTest pins its shape alongside the 12+ file's. The same
+    tools:ignore as the 12+ file, too: lint's FullBackupContent check reports those
+    excludes as errors and would fail the release build (see the 12+ file).
 
     Same syntax trap as the 12+ file: `path` is required, and `path="."` means the
     domain root and everything under it. And the same rule: never exclude the root
     domain; on restore that is matched by prefix and rejects every file (see the 12+ file).
 -->
-<full-backup-content>
+<full-backup-content
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="FullBackupContent">
     <include domain="file" path="vocab" />
     <exclude domain="file" path="vad" />
     <exclude domain="file" path="crashes" />

@@ -36,7 +36,10 @@
     include line were ever dropped or broken, the defaults would reopen every domain, and
     the explicit excludes would still hold the sharedpref and database domains closed.
     Under files/, the two other residents (vad/, the Silero VAD model copy; crashes/, crash
-    reports) are excluded by name for the same reason.
+    reports) are excluded by name for the same reason. Lint's FullBackupContent check wants
+    every exclude inside an included path, so it reports each of these as an error and
+    lintVitalRelease fails the release build on them; the root element's tools:ignore keeps
+    them, and BackupRulesTest, not lint, is what checks this file.
 
     The ONE exclude that must NOT be here: <exclude domain="root" path="." />. The root
     domain is the app's whole data directory, and the platform matches excludes
@@ -76,7 +79,9 @@
     "fix" costs more than the imaginary bug. If PlayTranslate ever ships on iOS, revisit with
     real IDs; until then, absence is the correct and safe configuration.
 -->
-<data-extraction-rules>
+<data-extraction-rules
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="FullBackupContent">
     <cloud-backup>
         <include domain="file" path="vocab" />
         <exclude domain="file" path="vad" />
