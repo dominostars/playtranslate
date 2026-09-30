@@ -404,6 +404,40 @@
 
     <string name="mp_overlay_permission_button">Einstellungen öffnen</string>
 
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING-ICON GESTURES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="icon_gesture_drag">Ziehen</string>
+
+    <string name="icon_gesture_hold">Gedrückt halten</string>
+
+    <string name="icon_gesture_tap">Tippen</string>
+
+    <string name="icon_action_lookup_words">Über ein Wort fahren, um seine Definition zu sehen</string>
+
+    <string name="icon_action_show_translations">Übersetzungen auf dem Bildschirm anzeigen</string>
+
+    <string name="icon_action_open_quick_menu">Schnellmenü öffnen</string>
+
+    <string name="icon_action_capture_screen">Bildschirm aufnehmen</string>
+
+    <string name="icon_action_toggle_auto_translate">Auto-Übersetzung starten/stoppen</string>
+
+    <string name="icon_action_swap_furigana">Zwischen Übersetzung und Furigana wechseln</string>
+
+    <string name="icon_action_swap_pinyin">Zwischen Übersetzung und Pinyin wechseln</string>
+
+    <string name="icon_action_change_game_language">Spielsprache ändern</string>
+
+    <string name="icon_action_translating_from">Spielsprache: <xliff:g id="language" example="Japanese">%1$s</xliff:g></string>
+
+    <string name="icon_gestures_no_menu_title">Keine Geste öffnet das Schnellmenü</string>
+
+    <string name="icon_gestures_no_menu_message">Das Schnellmenü ist dann über das schwebende Symbol nicht mehr erreichbar. Weise „Schnellmenü öffnen“ der Geste „Gedrückt halten“ oder „Tippen“ zu, damit es verfügbar bleibt.</string>
+
+    <string name="icon_gestures_no_menu_confirm">Verstanden</string>
+
     <string name="overlay_icon_a11y_required_title">Bedienungshilfen erforderlich</string>
 
     <string name="overlay_icon_a11y_required_message">Das schwebende Symbol benötigt die Berechtigung für Bedienungshilfen, um auf dem Spielbildschirm zu zeichnen.\n\nGehe zu Einstellungen → Bedienungshilfen → Heruntergeladene Apps → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → Aktivieren.</string>
@@ -520,7 +554,7 @@
 
     <string name="anki_group_screenshot">Screenshot</string>
 
-    <string name="anki_words_helper">Diese Wörter werden in die <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>-Karte aufgenommen. Tippe auf ein Wort, um es auf der Karte hervorzuheben. Tippe auf ×, um es von der Karte zu entfernen.</string>
+    <string name="anki_words_helper_hide">Diese Wörter werden in die <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>-Karte aufgenommen. Tippe auf ein Wort, um es hervorzuheben. Tippe auf <xliff:g id="hide_icon" example="👁">%1$s</xliff:g>, um es von der Karte auszuschließen.</string>
 
     <string name="anki_translation_error">Konnte nicht übersetzt werden</string>
 
@@ -1077,6 +1111,42 @@
     <string name="degraded_warning_low_memory">Wenig Arbeitsspeicher – die Übersetzungsqualität ist reduziert</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION ERROR PILL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="translation_error_connection">Verbindungsfehler</string>
+
+    <string name="translation_error_auth"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: ungültiger API-Schlüssel</string>
+
+    <string name="translation_error_billing"><xliff:g id="service" example="Claude">%1$s</xliff:g>: Guthaben aufgebraucht</string>
+
+    <string name="translation_error_daily_quota"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: Tageslimit erreicht</string>
+
+    <string name="translation_error_monthly_quota"><xliff:g id="service" example="DeepL">%1$s</xliff:g>: Monatskontingent aufgebraucht</string>
+
+    <string name="translation_error_rate_limited"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: zu viele Anfragen</string>
+
+    <string name="translation_error_server"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: Serverfehler</string>
+
+    <string name="translation_error_rejected_code"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>: Anfrage abgelehnt (HTTP <xliff:g id="status_code" example="404">%2$s</xliff:g>)</string>
+
+    <string name="translation_error_rejected"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>: Anfrage abgelehnt</string>
+
+    <string name="translation_error_bad_response"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: unerwartete Antwort</string>
+
+    <string name="translation_error_timeout"><xliff:g id="service" example="DeepSeek">%1$s</xliff:g>: reagiert nicht</string>
+
+    <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>: keine Verbindung möglich</string>
+
+    <string name="translation_error_discard_card_title">Karte verwerfen?</string>
+
+    <string name="translation_error_discard_card_message">Wenn du die Einstellungen öffnest, geht diese Karte verloren und du musst sie aus einer neuen Aufnahme neu erstellen.</string>
+
+    <string name="translation_error_discard_card_confirm">Zu den Einstellungen</string>
+
+    <string name="hold_translation_failed">Konnte nicht übersetzt werden</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          MAIN SCREEN — bottom-bar and overflow-menu items
          ═══════════════════════════════════════════════════════════════ -->
 
@@ -1211,6 +1281,22 @@
     <string name="settings_vertical_grow_title">Vertikalen Text verbreitern</string>
 
     <string name="settings_vertical_grow_subtitle">Vergrößert schmale Felder mit vertikalem Text, damit sich die Übersetzung horizontal lesen lässt. Kann benachbarte Inhalte verdecken.</string>
+
+    <string name="settings_header_overlay">Overlay</string>
+
+    <string name="settings_overlay_min_text_title">Minimale Textgröße</string>
+
+    <string name="settings_overlay_min_text_subtitle">Wenn du diesen Wert änderst, können Overlays größer als der Originaltext werden.</string>
+
+    <string name="settings_overlay_min_text_warning">EXPERIMENTELL. Kann dazu führen, dass Overlays der automatischen Übersetzung häufiger entfernt werden, besonders bei Spielen mit vielen Animationen</string>
+
+    <string name="settings_overlay_min_text_example">Beispieltext</string>
+
+    <string name="settings_filter_furigana_title">Furigana aus dem OCR-Ergebnis filtern</string>
+
+    <string name="settings_edge_indicator_title">Randanzeige</string>
+
+    <string name="settings_edge_indicator_subtitle">Zeigt ein sanftes Leuchten am Bildschirmrand, solange das Overlay zu sehen ist.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
@@ -1899,7 +1985,6 @@
     <string name="settings_debug_force_mmap_weights">Laden der Gewichte per mmap erzwingen (LLM auf dem Gerät)</string>
     <string name="settings_debug_log_grouping">OCR-Gruppierungsentscheidungen protokollieren</string>
     <string name="settings_debug_angle_gate">Klassischer Winkelschwellenwert (10°)</string>
-    <string name="settings_filter_furigana_title">Furigana aus dem OCR-Ergebnis filtern</string>
     <string name="settings_debug_log_trace">Trace des Textverlaufs aufzeichnen</string>
     <string name="settings_debug_force_crash_title">Absturz erzwingen</string>
 

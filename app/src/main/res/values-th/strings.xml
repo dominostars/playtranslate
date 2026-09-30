@@ -370,6 +370,38 @@
 
     <string name="mp_overlay_permission_button">เปิดการตั้งค่า</string>
 
+    <!-- ═══ FLOATING-ICON GESTURES ═══ -->
+
+    <string name="icon_gesture_drag">ลาก</string>
+
+    <string name="icon_gesture_hold">กดค้าง</string>
+
+    <string name="icon_gesture_tap">แตะ</string>
+
+    <string name="icon_action_lookup_words">วางไว้บนคำเพื่อดูคำจำกัดความ</string>
+
+    <string name="icon_action_show_translations">แสดงคำแปลบนหน้าจอ</string>
+
+    <string name="icon_action_open_quick_menu">เปิดเมนูด่วน</string>
+
+    <string name="icon_action_capture_screen">จับภาพหน้าจอ</string>
+
+    <string name="icon_action_toggle_auto_translate">เริ่ม/หยุดการแปลอัตโนมัติ</string>
+
+    <string name="icon_action_swap_furigana">สลับระหว่างคำแปลกับฟุริงานะ</string>
+
+    <string name="icon_action_swap_pinyin">สลับระหว่างคำแปลกับพินอิน</string>
+
+    <string name="icon_action_change_game_language">เปลี่ยนภาษาของเกม</string>
+
+    <string name="icon_action_translating_from">กำลังแปลจากภาษา<xliff:g id="language" example="Japanese">%1$s</xliff:g></string>
+
+    <string name="icon_gestures_no_menu_title">ไม่มีท่าทางสัมผัสใดที่เปิดเมนูด่วน</string>
+
+    <string name="icon_gestures_no_menu_message">จะเปิดเมนูด่วนจากไอคอนลอยไม่ได้ กำหนด “เปิดเมนูด่วน” ให้กับการกดค้างหรือการแตะเพื่อให้ยังใช้เมนูนี้ได้</string>
+
+    <string name="icon_gestures_no_menu_confirm">เข้าใจแล้ว</string>
+
     <string name="overlay_icon_a11y_required_title">ต้องมีการช่วยเหลือพิเศษ</string>
 
     <string name="overlay_icon_a11y_required_message">ไอคอนลอยต้องใช้สิทธิ์การช่วยเหลือพิเศษเพื่อวาดบนหน้าจอเกม\n\nไปที่ การตั้งค่า → การช่วยเหลือพิเศษ → แอปที่ดาวน์โหลด → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → เปิดใช้งาน</string>
@@ -478,7 +510,7 @@
 
     <string name="anki_group_screenshot">ภาพหน้าจอ</string>
 
-    <string name="anki_words_helper">คำเหล่านี้จะถูกรวมไว้ในการ์ด <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> แตะที่คำเพื่อไฮไลต์ในการ์ด แตะ × เพื่อลบออกจากการ์ด</string>
+    <string name="anki_words_helper_hide">คำเหล่านี้จะถูกรวมไว้ในการ์ด <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> แตะที่คำเพื่อไฮไลต์ แตะ <xliff:g id="hide_icon" example="👁">%1$s</xliff:g> เพื่อไม่รวมคำนั้นไว้ในการ์ด</string>
 
     <string name="anki_translation_error">ไม่สามารถแปลได้</string>
 
@@ -1029,6 +1061,40 @@
     <string name="degraded_warning_account">บัญชีบริการมีปัญหา คุณภาพลดลง</string>
     <string name="degraded_warning_low_memory">หน่วยความจำต่ำ — คุณภาพการแปลลดลง</string>
 
+    <!-- ═══ TRANSLATION ERROR PILL ═══ -->
+
+    <string name="translation_error_connection">ข้อผิดพลาดในการเชื่อมต่อ</string>
+
+    <string name="translation_error_auth"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: คีย์ API ไม่ถูกต้อง</string>
+
+    <string name="translation_error_billing"><xliff:g id="service" example="Claude">%1$s</xliff:g>: เครดิตหมด</string>
+
+    <string name="translation_error_daily_quota"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: ถึงขีดจำกัดรายวันแล้ว</string>
+
+    <string name="translation_error_monthly_quota"><xliff:g id="service" example="DeepL">%1$s</xliff:g>: ใช้โควตารายเดือนหมดแล้ว</string>
+
+    <string name="translation_error_rate_limited"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: คำขอมากเกินไป</string>
+
+    <string name="translation_error_server"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: ข้อผิดพลาดของเซิร์ฟเวอร์</string>
+
+    <string name="translation_error_rejected_code"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>: คำขอถูกปฏิเสธ (HTTP <xliff:g id="status_code" example="404">%2$s</xliff:g>)</string>
+
+    <string name="translation_error_rejected"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>: คำขอถูกปฏิเสธ</string>
+
+    <string name="translation_error_bad_response"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: การตอบกลับที่ไม่คาดคิด</string>
+
+    <string name="translation_error_timeout"><xliff:g id="service" example="DeepSeek">%1$s</xliff:g>: ไม่ตอบสนอง</string>
+
+    <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>: เชื่อมต่อไม่ได้</string>
+
+    <string name="translation_error_discard_card_title">ละทิ้งการ์ดหรือไม่</string>
+
+    <string name="translation_error_discard_card_message">หากเปิดการตั้งค่า การ์ดนี้จะหายไป และต้องสร้างใหม่จากการจับภาพครั้งใหม่</string>
+
+    <string name="translation_error_discard_card_confirm">ไปที่การตั้งค่า</string>
+
+    <string name="hold_translation_failed">ไม่สามารถแปลได้</string>
+
     <!-- ═══ MAIN SCREEN — bottom-bar and overflow-menu items ═══ -->
 
     <string name="nav_settings">การตั้งค่า</string>
@@ -1147,6 +1213,22 @@
     <string name="settings_vertical_grow_title">ขยายข้อความแนวตั้ง</string>
 
     <string name="settings_vertical_grow_subtitle">ขยายกล่องข้อความแนวตั้งที่แคบ เพื่อให้อ่านคำแปลในแนวนอนได้ อาจบังเนื้อหาที่อยู่ใกล้เคียง</string>
+
+    <string name="settings_header_overlay">การซ้อนทับ</string>
+
+    <string name="settings_overlay_min_text_title">ขนาดตัวอักษรขั้นต่ำ</string>
+
+    <string name="settings_overlay_min_text_subtitle">การเปลี่ยนค่านี้อาจทำให้การซ้อนทับมีขนาดใหญ่กว่าข้อความต้นฉบับ</string>
+
+    <string name="settings_overlay_min_text_warning">อยู่ในขั้นทดลอง อาจทำให้การซ้อนทับของการแปลอัตโนมัติถูกนำออกบ่อยขึ้น โดยเฉพาะขณะเล่นเกมที่มีภาพเคลื่อนไหวมาก</string>
+
+    <string name="settings_overlay_min_text_example">ข้อความตัวอย่าง</string>
+
+    <string name="settings_filter_furigana_title">กรองฟุริงานะออกจากผล OCR</string>
+
+    <string name="settings_edge_indicator_title">ตัวบ่งชี้ขอบจอ</string>
+
+    <string name="settings_edge_indicator_subtitle">แสดงแสงเรืองนุ่มนวลรอบขอบหน้าจอขณะที่การซ้อนทับปรากฏอยู่</string>
 
     <!-- ═══ HOTKEY SETUP DIALOG ═══ -->
 
@@ -1806,7 +1888,6 @@
     <string name="settings_debug_force_mmap_weights">บังคับโหลดน้ำหนักด้วย mmap (LLM บนอุปกรณ์)</string>
     <string name="settings_debug_log_grouping">บันทึกการตัดสินใจจัดกลุ่ม OCR</string>
     <string name="settings_debug_angle_gate">เกณฑ์มุมแบบเดิม (10°)</string>
-    <string name="settings_filter_furigana_title">กรองฟุริงานะออกจากผล OCR</string>
     <string name="settings_debug_log_trace">เก็บ trace ของบันทึกการแปล</string>
     <string name="settings_debug_force_crash_title">บังคับให้ขัดข้อง</string>
 

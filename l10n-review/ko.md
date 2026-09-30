@@ -702,3 +702,82 @@ object; 「텍스트 편집」 follows `cd_edit_original` 「원문 편집」. L
 **PASS.** Every delta string reuses the locale's own committed wording for its sibling
 (the furigana toggle, the read-aloud and edit descriptions, the parked sheet's "more"
 hint), so the menu reads in the same voice as the buttons it replaces.
+
+## Delta review 2026-09-29 (39 keys + 1 orphan: floating-icon gestures and the no-menu alert, "Change game language", the translation error pill and its discard confirm, the hold failure pill, the Overlay card rows, the Anki words helper)
+
+Mechanical layer verified programmatically across all 12 locales: all 39 delta names
+present once, the orphan `anki_words_helper` deleted (its replacement
+`anki_words_helper_hide` was translated afresh, as its commit asked), no duplicate `name=`;
+every `<xliff:g>` span byte-identical to EN (`id`, `example`, inner text); `%1$s`/`%2$s`
+parity; `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`; each file
+parses. Analyzer reports `missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD
+SUCCESSFUL. No `<plurals>` in this delta. `settings_filter_furigana_title` (already
+translated) was moved from its old Debug position to its English position between the new
+Overlay rows, text unchanged, so the file stays diffable against English. **No 🛑
+build-breaking issues.**
+
+**Render code read before reviewing.**
+- `icon_gesture_*` are bold 15 sp in the Settings cell's `TableLayout`; only the action
+  column shrinks (`shrinkColumns="2"`), so the longest gesture word sets the width left for
+  all three action titles. They are also the picker page's section headers
+  (`Text.PT.GroupHeader`, ALL CAPS, 11 sp). Action titles wrap freely in the cell and in the
+  picker's `settings_row_choice` rows (no `maxLines`).
+- `icon_action_translating_from` and `hold_translation_failed` are drawn by
+  `OverlayUiController.showNoTextPill` as ONE line of `Canvas.drawText` in a window sized to
+  the text: no wrapping, so both must stay short. `%1$s` is `SourceLangId.displayName()`,
+  the language name in the UI locale with its first letter capitalized.
+- The error pill (`TranslationErrorPills`) is a 14 sp TextView, `maxLines=2`, ellipsized,
+  spanning most of the display width; every message but the connection one leads with the
+  service name.
+- The no-menu alert and the discard confirm are `OverlayAlert`s with full-width stacked
+  buttons (the confirm in the danger colour, then `btn_cancel`).
+- `anki_words_helper_hide`'s `%1$s` becomes an ImageSpan of the eye glyph
+  (`inlineIconString`).
+- The Overlay card on screen: Overlay Mode, Minimum text size (title, subtitle, warning,
+  value + slider, example), Filter furigana (Japanese only), Widen vertical text, Edge
+  indicator.
+
+**Source-side observations (EN; reported, not changed):**
+1. `settings_overlay_min_text_warning` ends without a period after two sentences; every
+   locale mirrors that.
+2. The comments on `icon_action_translating_from` and `hold_translation_failed` do not say
+   the pill is a single canvas-drawn line that never wraps. A translator who writes a long
+   sentence there gets it drawn past the pill's edge.
+3. The error-pill banner asks every message to start with the service name. In an RTL
+   locale that makes the first strong character Latin, so the pill's TextView resolves an
+   LTR paragraph (see the ar report).
+4. `icon_gesture_*` asks for "short imperative verbs". Several locales label gestures with
+   an infinitive or a noun instead (see each report); the binding constraint is the width
+   one above.
+
+### Findings (delta, round 1)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| settings_edge_indicator_subtitle | 💬 | 오버레이가 표시되는 동안 화면 가장자리에 은은한 빛을 표시합니다. | 오버레이가 표시되는 동안 화면 가장자리가 은은하게 빛납니다. | 표시 twice. |
+
+### Clean areas (delta) — checked, no findings
+
+**Particles.** “빠른 메뉴 열기”를 (vowel-final 기, so 를). The pill 「%1$s에서 번역 중」 uses 에서,
+which does not alternate, so no combined form is needed. The helper names the icon as
+「%1$s 아이콘을」, putting the particle on 아이콘 instead of an 을(를) after an image.
+
+**Terms.** 빠른 메뉴 is the removed tap hint's (not onboarding's 빠른 액세스 메뉴); 드래그 / 길게
+누르기 / 탭 are that set's gestures. Reused verbatim: 게임 언어 변경, 화면 캡처, 자동 번역 시작/중지,
+번역할 수 없음, 잘못된 API 키; 할당량 and 크레딧 as `degraded_warning_quota` and
+`note_mlkit_account_issue` have them; 실험적 기능입니다.
+
+**Register.** 합니다체 in the alert and dialog bodies; noun-form rows; half-width colon in
+the pills.
+
+### Verdict (round 1)
+
+1 💬, to apply.
+
+### Round 2 (2026-09-29), after applying round 1
+
+Round-1 fix present: 오버레이가 표시되는 동안 화면 가장자리가 은은하게 빛납니다. Mechanical layer re-run after the fixes: 0 problems; analyzer `missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. Every screen of the delta was re-read in full, not only the changed keys.
+
+No new findings.
+
+**Verdict (round 2):** **PASS.**

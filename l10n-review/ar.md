@@ -598,3 +598,89 @@ right under RTL), before the label; no delta string starts with a Latin token.
 **PASS.** Every delta string reuses the locale's own committed wording for its sibling
 (the furigana toggle, the read-aloud and edit descriptions, the parked sheet's "more"
 hint), so the menu reads in the same voice as the buttons it replaces.
+
+## Delta review 2026-09-29 (39 keys + 1 orphan: floating-icon gestures and the no-menu alert, "Change game language", the translation error pill and its discard confirm, the hold failure pill, the Overlay card rows, the Anki words helper)
+
+Mechanical layer verified programmatically across all 12 locales: all 39 delta names
+present once, the orphan `anki_words_helper` deleted (its replacement
+`anki_words_helper_hide` was translated afresh, as its commit asked), no duplicate `name=`;
+every `<xliff:g>` span byte-identical to EN (`id`, `example`, inner text); `%1$s`/`%2$s`
+parity; `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`; each file
+parses. Analyzer reports `missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD
+SUCCESSFUL. No `<plurals>` in this delta. `settings_filter_furigana_title` (already
+translated) was moved from its old Debug position to its English position between the new
+Overlay rows, text unchanged, so the file stays diffable against English. **No 🛑
+build-breaking issues.**
+
+**Render code read before reviewing.**
+- `icon_gesture_*` are bold 15 sp in the Settings cell's `TableLayout`; only the action
+  column shrinks (`shrinkColumns="2"`), so the longest gesture word sets the width left for
+  all three action titles. They are also the picker page's section headers
+  (`Text.PT.GroupHeader`, ALL CAPS, 11 sp). Action titles wrap freely in the cell and in the
+  picker's `settings_row_choice` rows (no `maxLines`).
+- `icon_action_translating_from` and `hold_translation_failed` are drawn by
+  `OverlayUiController.showNoTextPill` as ONE line of `Canvas.drawText` in a window sized to
+  the text: no wrapping, so both must stay short. `%1$s` is `SourceLangId.displayName()`,
+  the language name in the UI locale with its first letter capitalized.
+- The error pill (`TranslationErrorPills`) is a 14 sp TextView, `maxLines=2`, ellipsized,
+  spanning most of the display width; every message but the connection one leads with the
+  service name.
+- The no-menu alert and the discard confirm are `OverlayAlert`s with full-width stacked
+  buttons (the confirm in the danger colour, then `btn_cancel`).
+- `anki_words_helper_hide`'s `%1$s` becomes an ImageSpan of the eye glyph
+  (`inlineIconString`).
+- The Overlay card on screen: Overlay Mode, Minimum text size (title, subtitle, warning,
+  value + slider, example), Filter furigana (Japanese only), Widen vertical text, Edge
+  indicator.
+
+**Source-side observations (EN; reported, not changed):**
+1. `settings_overlay_min_text_warning` ends without a period after two sentences; every
+   locale mirrors that.
+2. The comments on `icon_action_translating_from` and `hold_translation_failed` do not say
+   the pill is a single canvas-drawn line that never wraps. A translator who writes a long
+   sentence there gets it drawn past the pill's edge.
+3. The error-pill banner asks every message to start with the service name. In an RTL
+   locale that makes the first strong character Latin, so the pill's TextView resolves an
+   LTR paragraph (see the ar report).
+4. `icon_gesture_*` asks for "short imperative verbs". Several locales label gestures with
+   an infinitive or a noun instead (see each report); the binding constraint is the width
+   one above.
+
+### Findings (delta, round 1)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| settings_overlay_min_text_warning | 💬 | …بشكل متكرر أكثر… | …بوتيرة أعلى… | Clumsy comparative. |
+| translation_error_auth … translation_error_unreachable (11 strings) | 💬 (decision) | «خدمة %1$s: …» | — | EN leads with the service name. A Latin first strong character makes the pill's TextView resolve an LTR paragraph (FIRSTSTRONG), left-aligned inside an RTL row; خدمة before the name keeps the paragraph RTL and still shows the name exactly. Kept. |
+
+### Clean areas (delta) — checked, no findings
+
+**Gestures and actions.** Gesture names are verbal nouns (السحب / الضغط المطوّل / الضغط),
+matching the file's اسحب / اضغط مطولاً / اضغط and its existing noun «الضغط المطوّل»
+(`settings_overlay_mode_subtitle`); actions are masdar like the file's other rows.
+
+**Agreement and quotes.** لإبقائها agrees with القائمة, لا تستجيب with خدمة, لاستبعادها with
+الكلمة. « » as in `overlay_hide_controls_message`; the alert's «فتح القائمة السريعة»
+byte-matches the action.
+
+**Terms.** Reused: تغيير لغة اللعبة, التقاط الشاشة, بدء/إيقاف الترجمة التلقائية, تعذّرت الترجمة,
+مفتاح API غير صالح, الحصة, الرصيد, تجريبي., تجاهل (`llm_prompt_discard_title`), التراكب.
+
+**RTL.** «(HTTP 404)» at the end of an Arabic line resolves correctly under UBA bracket
+pairing (both brackets take the Arabic context). The one-line pill «الترجمة الآن من
+اليابانية» shapes correctly through Canvas.drawText. A device pass should still confirm
+the pills and the gesture cell.
+
+### Verdict (round 1)
+
+1 💬 to apply; 1 💬 recorded as a decision.
+
+### Round 2 (2026-09-29), after applying round 1
+
+Round-1 fix present: «…بوتيرة أعلى…». Mechanical layer re-run after the fixes: 0 problems; analyzer `missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. Every screen of the delta was re-read in full, not only the changed keys.
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| translation_error_discard_card_message | 💬 | …وسيتعيّن عليك إنشاؤها من جديد من التقاط جديد. | …وسيتعيّن عليك إنشاؤها مرة أخرى من التقاط جديد. | جديد twice (من جديد … جديد). New in round 2; applied at the user's request. |
+
+**Verdict (round 2):** **PASS.** The one 💬 was applied at the user's request; mechanical layer, analyzer and `:app:processDebugResources` re-run clean after it.

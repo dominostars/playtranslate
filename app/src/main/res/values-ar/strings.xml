@@ -394,6 +394,38 @@
 
     <string name="mp_overlay_permission_button">فتح الإعدادات</string>
 
+    <!-- ═══ FLOATING-ICON GESTURES ═══ -->
+
+    <string name="icon_gesture_drag">السحب</string>
+
+    <string name="icon_gesture_hold">الضغط المطوّل</string>
+
+    <string name="icon_gesture_tap">الضغط</string>
+
+    <string name="icon_action_lookup_words">عرض تعريف الكلمة عند المرور فوقها</string>
+
+    <string name="icon_action_show_translations">عرض الترجمات على الشاشة</string>
+
+    <string name="icon_action_open_quick_menu">فتح القائمة السريعة</string>
+
+    <string name="icon_action_capture_screen">التقاط الشاشة</string>
+
+    <string name="icon_action_toggle_auto_translate">بدء/إيقاف الترجمة التلقائية</string>
+
+    <string name="icon_action_swap_furigana">التبديل بين الترجمة والفوريغانا</string>
+
+    <string name="icon_action_swap_pinyin">التبديل بين الترجمة والبينيين</string>
+
+    <string name="icon_action_change_game_language">تغيير لغة اللعبة</string>
+
+    <string name="icon_action_translating_from">الترجمة الآن من <xliff:g id="language" example="Japanese">%1$s</xliff:g></string>
+
+    <string name="icon_gestures_no_menu_title">لا توجد إيماءة تفتح القائمة السريعة</string>
+
+    <string name="icon_gestures_no_menu_message">لن تتمكن من فتح القائمة السريعة من الأيقونة العائمة. عيّن «فتح القائمة السريعة» لإيماءة «الضغط المطوّل» أو «الضغط» لإبقائها متاحة.</string>
+
+    <string name="icon_gestures_no_menu_confirm">فهمت</string>
+
     <string name="overlay_icon_a11y_required_title">إمكانية الوصول مطلوبة</string>
 
     <string name="overlay_icon_a11y_required_message">تحتاج الأيقونة العائمة إلى إذن إمكانية الوصول للرسم فوق شاشة اللعبة.\n\nانتقل إلى الإعدادات ← إمكانية الوصول ← التطبيقات التي تم تنزيلها ← <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ← تفعيل.</string>
@@ -502,7 +534,7 @@
 
     <string name="anki_group_screenshot">لقطة الشاشة</string>
 
-    <string name="anki_words_helper">ستُضمَّن هذه الكلمات في بطاقة <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>. اضغط على كلمة لتمييزها في البطاقة. اضغط على × لإزالتها من البطاقة.</string>
+    <string name="anki_words_helper_hide">ستُضمَّن هذه الكلمات في بطاقة <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>. اضغط على كلمة لتمييزها. اضغط على <xliff:g id="hide_icon" example="👁">%1$s</xliff:g> لاستبعادها من البطاقة.</string>
 
     <string name="anki_translation_error">تعذّرت الترجمة</string>
 
@@ -1028,6 +1060,40 @@
     <string name="degraded_warning_account">مشكلة في حساب الخدمة. الجودة منخفضة</string>
     <string name="degraded_warning_low_memory">ذاكرة منخفضة — جودة الترجمة منخفضة</string>
 
+    <!-- ═══ TRANSLATION ERROR PILL ═══ -->
+
+    <string name="translation_error_connection">خطأ في الاتصال</string>
+
+    <string name="translation_error_auth">خدمة <xliff:g id="service" example="Gemini">%1$s</xliff:g>: مفتاح API غير صالح</string>
+
+    <string name="translation_error_billing">خدمة <xliff:g id="service" example="Claude">%1$s</xliff:g>: نفد الرصيد</string>
+
+    <string name="translation_error_daily_quota">خدمة <xliff:g id="service" example="Gemini">%1$s</xliff:g>: تم بلوغ الحد اليومي</string>
+
+    <string name="translation_error_monthly_quota">خدمة <xliff:g id="service" example="DeepL">%1$s</xliff:g>: نفدت الحصة الشهرية</string>
+
+    <string name="translation_error_rate_limited">خدمة <xliff:g id="service" example="Gemini">%1$s</xliff:g>: طلبات كثيرة جدًا</string>
+
+    <string name="translation_error_server">خدمة <xliff:g id="service" example="Gemini">%1$s</xliff:g>: خطأ في الخادم</string>
+
+    <string name="translation_error_rejected_code">خدمة <xliff:g id="service" example="OpenAI">%1$s</xliff:g>: رُفض الطلب (HTTP <xliff:g id="status_code" example="404">%2$s</xliff:g>)</string>
+
+    <string name="translation_error_rejected">خدمة <xliff:g id="service" example="OpenAI">%1$s</xliff:g>: رُفض الطلب</string>
+
+    <string name="translation_error_bad_response">خدمة <xliff:g id="service" example="Gemini">%1$s</xliff:g>: استجابة غير متوقعة</string>
+
+    <string name="translation_error_timeout">خدمة <xliff:g id="service" example="DeepSeek">%1$s</xliff:g>: لا تستجيب</string>
+
+    <string name="translation_error_unreachable">خدمة <xliff:g id="service" example="Lingva">%1$s</xliff:g>: تعذّر الاتصال</string>
+
+    <string name="translation_error_discard_card_title">تجاهل البطاقة؟</string>
+
+    <string name="translation_error_discard_card_message">إذا فتحت الإعدادات فستفقد هذه البطاقة، وسيتعيّن عليك إنشاؤها مرة أخرى من التقاط جديد.</string>
+
+    <string name="translation_error_discard_card_confirm">الانتقال إلى الإعدادات</string>
+
+    <string name="hold_translation_failed">تعذّرت الترجمة</string>
+
     <!-- ═══ MAIN SCREEN — bottom-bar and overflow-menu items ═══ -->
 
     <string name="nav_settings">الإعدادات</string>
@@ -1146,6 +1212,22 @@
     <string name="settings_vertical_grow_title">توسيع النص العمودي</string>
 
     <string name="settings_vertical_grow_subtitle">توسيع مربعات النص العمودي الضيقة لتُقرأ الترجمة أفقيًا. قد يغطي المحتوى المجاور.</string>
+
+    <string name="settings_header_overlay">التراكب</string>
+
+    <string name="settings_overlay_min_text_title">الحد الأدنى لحجم النص</string>
+
+    <string name="settings_overlay_min_text_subtitle">قد يؤدي تغيير هذه القيمة إلى جعل التراكبات أكبر من النص الأصلي.</string>
+
+    <string name="settings_overlay_min_text_warning">تجريبي. قد يؤدي إلى إزالة تراكبات الترجمة التلقائية بوتيرة أعلى، خاصةً عند لعب ألعاب فيها الكثير من الرسوم المتحركة</string>
+
+    <string name="settings_overlay_min_text_example">نص نموذجي</string>
+
+    <string name="settings_filter_furigana_title">تصفية الفوريغانا من نتيجة OCR</string>
+
+    <string name="settings_edge_indicator_title">مؤشر الحواف</string>
+
+    <string name="settings_edge_indicator_subtitle">إظهار توهّج خفيف حول الشاشة أثناء ظهور التراكب.</string>
 
     <!-- ═══ HOTKEY SETUP DIALOG ═══ -->
 
@@ -1830,7 +1912,6 @@
     <string name="settings_debug_force_mmap_weights">فرض تحميل الأوزان عبر mmap (نموذج LLM على الجهاز)</string>
     <string name="settings_debug_log_grouping">تسجيل قرارات تجميع OCR</string>
     <string name="settings_debug_angle_gate">العتبة الكلاسيكية للزاوية (10°)</string>
-    <string name="settings_filter_furigana_title">تصفية الفوريغانا من نتيجة OCR</string>
     <string name="settings_debug_log_trace">تسجيل تتبُّع لسجل الترجمة</string>
     <string name="settings_debug_force_crash_title">فرض تعطّل</string>
 

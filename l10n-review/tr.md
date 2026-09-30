@@ -621,3 +621,81 @@ işlem…»).
 **PASS.** Every delta string reuses the locale's own committed wording for its sibling
 (the furigana toggle, the read-aloud and edit descriptions, the parked sheet's "more"
 hint), so the menu reads in the same voice as the buttons it replaces.
+
+## Delta review 2026-09-29 (39 keys + 1 orphan: floating-icon gestures and the no-menu alert, "Change game language", the translation error pill and its discard confirm, the hold failure pill, the Overlay card rows, the Anki words helper)
+
+Mechanical layer verified programmatically across all 12 locales: all 39 delta names
+present once, the orphan `anki_words_helper` deleted (its replacement
+`anki_words_helper_hide` was translated afresh, as its commit asked), no duplicate `name=`;
+every `<xliff:g>` span byte-identical to EN (`id`, `example`, inner text); `%1$s`/`%2$s`
+parity; `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped `'`/`"`; each file
+parses. Analyzer reports `missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD
+SUCCESSFUL. No `<plurals>` in this delta. `settings_filter_furigana_title` (already
+translated) was moved from its old Debug position to its English position between the new
+Overlay rows, text unchanged, so the file stays diffable against English. **No 🛑
+build-breaking issues.**
+
+**Render code read before reviewing.**
+- `icon_gesture_*` are bold 15 sp in the Settings cell's `TableLayout`; only the action
+  column shrinks (`shrinkColumns="2"`), so the longest gesture word sets the width left for
+  all three action titles. They are also the picker page's section headers
+  (`Text.PT.GroupHeader`, ALL CAPS, 11 sp). Action titles wrap freely in the cell and in the
+  picker's `settings_row_choice` rows (no `maxLines`).
+- `icon_action_translating_from` and `hold_translation_failed` are drawn by
+  `OverlayUiController.showNoTextPill` as ONE line of `Canvas.drawText` in a window sized to
+  the text: no wrapping, so both must stay short. `%1$s` is `SourceLangId.displayName()`,
+  the language name in the UI locale with its first letter capitalized.
+- The error pill (`TranslationErrorPills`) is a 14 sp TextView, `maxLines=2`, ellipsized,
+  spanning most of the display width; every message but the connection one leads with the
+  service name.
+- The no-menu alert and the discard confirm are `OverlayAlert`s with full-width stacked
+  buttons (the confirm in the danger colour, then `btn_cancel`).
+- `anki_words_helper_hide`'s `%1$s` becomes an ImageSpan of the eye glyph
+  (`inlineIconString`).
+- The Overlay card on screen: Overlay Mode, Minimum text size (title, subtitle, warning,
+  value + slider, example), Filter furigana (Japanese only), Widen vertical text, Edge
+  indicator.
+
+**Source-side observations (EN; reported, not changed):**
+1. `settings_overlay_min_text_warning` ends without a period after two sentences; every
+   locale mirrors that.
+2. The comments on `icon_action_translating_from` and `hold_translation_failed` do not say
+   the pill is a single canvas-drawn line that never wraps. A translator who writes a long
+   sentence there gets it drawn past the pill's edge.
+3. The error-pill banner asks every message to start with the service name. In an RTL
+   locale that makes the first strong character Latin, so the pill's TextView resolves an
+   LTR paragraph (see the ar report).
+4. `icon_gesture_*` asks for "short imperative verbs". Several locales label gestures with
+   an infinitive or a noun instead (see each report); the binding constraint is the width
+   one above.
+
+### Findings (delta, round 1)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| translation_error_discard_card_message | 💬 | …bu kartı kaybedersiniz ve kartı yeni bir… | …bu kartı kaybedersiniz ve onu yeni bir… | kartı twice. |
+
+### Clean areas (delta) — checked, no findings
+
+**No suffix on a placeholder.** The pill is «Oyun dili: %1$s» (colon); service names end
+at a colon; the helper says «%1$s simgesine», so the suffix sits on the head noun.
+
+**Gestures.** Verbal nouns (Sürükleme / Basılı tutma / Dokunma), so the alert can say
+«basılı tutma veya dokunma hareketine atayın». The ALL CAPS headers rely on Android's
+locale-aware uppercasing (BASILI TUTMA).
+
+**Terms.** Reused: Hızlı menü, Oyun dilini değiştir, Ekranı yakala, otomatik çeviri,
+Çevrilemedi, geçersiz API anahtarı, kota doldu, bakiye, DENEYSEL., atılsın mı?, Yer
+paylaşımı. siz register.
+
+### Verdict (round 1)
+
+1 💬, to apply.
+
+### Round 2 (2026-09-29), after applying round 1
+
+Round-1 fix present: «…bu kartı kaybedersiniz ve onu yeni bir…». Mechanical layer re-run after the fixes: 0 problems; analyzer `missing=0 orphan=0 modified=0`; `:app:processDebugResources` BUILD SUCCESSFUL. Every screen of the delta was re-read in full, not only the changed keys.
+
+No new findings.
+
+**Verdict (round 2):** **PASS.**

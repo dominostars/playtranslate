@@ -415,6 +415,40 @@
 
     <string name="mp_overlay_permission_button">Ouvrir les paramètres</string>
 
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING-ICON GESTURES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="icon_gesture_drag">Faire glisser</string>
+
+    <string name="icon_gesture_hold">Maintenir</string>
+
+    <string name="icon_gesture_tap">Appuyer</string>
+
+    <string name="icon_action_lookup_words">Survoler un mot pour voir sa définition</string>
+
+    <string name="icon_action_show_translations">Afficher les traductions à l\'écran</string>
+
+    <string name="icon_action_open_quick_menu">Ouvrir le menu rapide</string>
+
+    <string name="icon_action_capture_screen">Capturer l\'écran</string>
+
+    <string name="icon_action_toggle_auto_translate">Lancer/arrêter la traduction auto</string>
+
+    <string name="icon_action_swap_furigana">Basculer entre traduction et furigana</string>
+
+    <string name="icon_action_swap_pinyin">Basculer entre traduction et pinyin</string>
+
+    <string name="icon_action_change_game_language">Changer la langue du jeu</string>
+
+    <string name="icon_action_translating_from">Langue du jeu : <xliff:g id="language" example="Japanese">%1$s</xliff:g></string>
+
+    <string name="icon_gestures_no_menu_title">Aucun geste n\'ouvre le menu rapide</string>
+
+    <string name="icon_gestures_no_menu_message">Le menu rapide ne sera plus accessible depuis l\'icône flottante. Associez « Ouvrir le menu rapide » au geste Maintenir ou Appuyer pour qu\'il reste disponible.</string>
+
+    <string name="icon_gestures_no_menu_confirm">J\'ai compris</string>
+
     <string name="overlay_icon_a11y_required_title">Accessibilité requise</string>
 
     <string name="overlay_icon_a11y_required_message">L\'icône flottante nécessite l\'autorisation d\'accessibilité pour dessiner sur l\'écran de jeu.\n\nAccédez à Paramètres → Accessibilité → Applications téléchargées → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → Activer.</string>
@@ -531,7 +565,7 @@
 
     <string name="anki_group_screenshot">Capture d\'écran</string>
 
-    <string name="anki_words_helper">Ces mots seront inclus dans la carte <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>. Appuyez sur un mot pour le mettre en évidence sur la carte. Appuyez sur × pour le retirer de la carte.</string>
+    <string name="anki_words_helper_hide">Ces mots seront inclus dans la carte <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>. Appuyez sur un mot pour le mettre en évidence. Appuyez sur <xliff:g id="hide_icon" example="👁">%1$s</xliff:g> pour l\'exclure de la carte.</string>
 
     <string name="anki_translation_error">Impossible de traduire</string>
 
@@ -1114,6 +1148,42 @@
     <string name="degraded_warning_low_memory">Mémoire insuffisante — la qualité de traduction est réduite</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION ERROR PILL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="translation_error_connection">Erreur de connexion</string>
+
+    <string name="translation_error_auth"><xliff:g id="service" example="Gemini">%1$s</xliff:g> : clé d\'API non valide</string>
+
+    <string name="translation_error_billing"><xliff:g id="service" example="Claude">%1$s</xliff:g> : crédits épuisés</string>
+
+    <string name="translation_error_daily_quota"><xliff:g id="service" example="Gemini">%1$s</xliff:g> : limite quotidienne atteinte</string>
+
+    <string name="translation_error_monthly_quota"><xliff:g id="service" example="DeepL">%1$s</xliff:g> : quota mensuel épuisé</string>
+
+    <string name="translation_error_rate_limited"><xliff:g id="service" example="Gemini">%1$s</xliff:g> : trop de requêtes</string>
+
+    <string name="translation_error_server"><xliff:g id="service" example="Gemini">%1$s</xliff:g> : erreur du serveur</string>
+
+    <string name="translation_error_rejected_code"><xliff:g id="service" example="OpenAI">%1$s</xliff:g> : requête refusée (HTTP <xliff:g id="status_code" example="404">%2$s</xliff:g>)</string>
+
+    <string name="translation_error_rejected"><xliff:g id="service" example="OpenAI">%1$s</xliff:g> : requête refusée</string>
+
+    <string name="translation_error_bad_response"><xliff:g id="service" example="Gemini">%1$s</xliff:g> : réponse inattendue</string>
+
+    <string name="translation_error_timeout"><xliff:g id="service" example="DeepSeek">%1$s</xliff:g> : ne répond pas</string>
+
+    <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g> : connexion impossible</string>
+
+    <string name="translation_error_discard_card_title">Abandonner la carte ?</string>
+
+    <string name="translation_error_discard_card_message">Si vous ouvrez les paramètres, vous perdrez cette carte et devrez la recréer à partir d\'une nouvelle capture.</string>
+
+    <string name="translation_error_discard_card_confirm">Aller aux paramètres</string>
+
+    <string name="hold_translation_failed">Impossible de traduire</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          MAIN SCREEN — bottom-bar and overflow-menu items
          ═══════════════════════════════════════════════════════════════ -->
 
@@ -1247,6 +1317,22 @@
 
     <string name="settings_vertical_grow_title">Élargir le texte vertical</string>
     <string name="settings_vertical_grow_subtitle">Agrandit les cadres étroits de texte vertical afin que la traduction se lise horizontalement. Peut recouvrir le contenu voisin.</string>
+
+    <string name="settings_header_overlay">Superposition</string>
+
+    <string name="settings_overlay_min_text_title">Taille minimale du texte</string>
+
+    <string name="settings_overlay_min_text_subtitle">Modifier cette valeur peut rendre les superpositions plus grandes que le texte d\'origine.</string>
+
+    <string name="settings_overlay_min_text_warning">EXPÉRIMENTAL. Peut faire disparaître plus souvent les superpositions de la traduction automatique, surtout dans les jeux avec beaucoup d\'animations</string>
+
+    <string name="settings_overlay_min_text_example">Exemple de texte</string>
+
+    <string name="settings_filter_furigana_title">Filtrer les furigana du résultat OCR</string>
+
+    <string name="settings_edge_indicator_title">Indicateur de bordure</string>
+
+    <string name="settings_edge_indicator_subtitle">Affiche une légère lueur autour de l\'écran tant que la superposition est visible.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
@@ -1863,7 +1949,6 @@
     <string name="settings_debug_force_mmap_weights">Forcer le chargement des poids via mmap (LLM sur l\'appareil)</string>
     <string name="settings_debug_log_grouping">Journaliser les décisions de regroupement OCR</string>
     <string name="settings_debug_angle_gate">Seuil classique d\'angle (10°)</string>
-    <string name="settings_filter_furigana_title">Filtrer les furigana du résultat OCR</string>
     <string name="settings_debug_log_trace">Enregistrer la trace de l\'historique de traduction</string>
     <string name="settings_debug_force_crash_title">Forcer un plantage</string>
 

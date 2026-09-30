@@ -411,6 +411,40 @@
 
     <string name="mp_overlay_permission_button">設定を開く</string>
 
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING-ICON GESTURES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="icon_gesture_drag">ドラッグ</string>
+
+    <string name="icon_gesture_hold">長押し</string>
+
+    <string name="icon_gesture_tap">タップ</string>
+
+    <string name="icon_action_lookup_words">単語にかざして定義を表示</string>
+
+    <string name="icon_action_show_translations">画面に翻訳を表示</string>
+
+    <string name="icon_action_open_quick_menu">クイックメニューを開く</string>
+
+    <string name="icon_action_capture_screen">画面をキャプチャ</string>
+
+    <string name="icon_action_toggle_auto_translate">自動翻訳を開始・停止</string>
+
+    <string name="icon_action_swap_furigana">翻訳とふりがなを切り替え</string>
+
+    <string name="icon_action_swap_pinyin">翻訳とピンインを切り替え</string>
+
+    <string name="icon_action_change_game_language">ゲームの言語を変更</string>
+
+    <string name="icon_action_translating_from"><xliff:g id="language" example="Japanese">%1$s</xliff:g>から翻訳します</string>
+
+    <string name="icon_gestures_no_menu_title">クイックメニューを開くジェスチャーがありません</string>
+
+    <string name="icon_gestures_no_menu_message">フローティングアイコンからクイックメニューを開けなくなります。引き続き使うには、「クイックメニューを開く」を長押しまたはタップに割り当ててください。</string>
+
+    <string name="icon_gestures_no_menu_confirm">了解しました</string>
+
     <string name="overlay_icon_a11y_required_title">ユーザー補助が必要です</string>
 
     <string name="overlay_icon_a11y_required_message">フローティングアイコンをゲーム画面に表示するには、ユーザー補助の権限が必要です。\n\n設定 → ユーザー補助 → ダウンロードしたアプリ → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → オンにする の順に進んでください。</string>
@@ -527,7 +561,7 @@
 
     <string name="anki_group_screenshot">スクリーンショット</string>
 
-    <string name="anki_words_helper">これらの単語が<xliff:g id="brand_anki" example="Anki">Anki</xliff:g>カードに含まれます。単語をタップするとカード内で強調表示されます。×をタップするとカードから削除されます。</string>
+    <string name="anki_words_helper_hide">これらの単語が<xliff:g id="brand_anki" example="Anki">Anki</xliff:g>カードに含まれます。単語をタップすると強調表示されます。<xliff:g id="hide_icon" example="👁">%1$s</xliff:g>をタップするとカードから除外されます。</string>
 
     <string name="anki_translation_error">翻訳できませんでした</string>
 
@@ -1126,6 +1160,42 @@
     <string name="degraded_warning_low_memory">メモリ不足：翻訳品質が低下しています</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION ERROR PILL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="translation_error_connection">接続エラー</string>
+
+    <string name="translation_error_auth"><xliff:g id="service" example="Gemini">%1$s</xliff:g>：APIキーが無効です</string>
+
+    <string name="translation_error_billing"><xliff:g id="service" example="Claude">%1$s</xliff:g>：クレジット残高がありません</string>
+
+    <string name="translation_error_daily_quota"><xliff:g id="service" example="Gemini">%1$s</xliff:g>：1日の上限に達しました</string>
+
+    <string name="translation_error_monthly_quota"><xliff:g id="service" example="DeepL">%1$s</xliff:g>：今月の利用枠を使い切りました</string>
+
+    <string name="translation_error_rate_limited"><xliff:g id="service" example="Gemini">%1$s</xliff:g>：リクエストが多すぎます</string>
+
+    <string name="translation_error_server"><xliff:g id="service" example="Gemini">%1$s</xliff:g>：サーバーエラー</string>
+
+    <string name="translation_error_rejected_code"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>：リクエストが拒否されました（HTTP <xliff:g id="status_code" example="404">%2$s</xliff:g>）</string>
+
+    <string name="translation_error_rejected"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>：リクエストが拒否されました</string>
+
+    <string name="translation_error_bad_response"><xliff:g id="service" example="Gemini">%1$s</xliff:g>：予期しない応答がありました</string>
+
+    <string name="translation_error_timeout"><xliff:g id="service" example="DeepSeek">%1$s</xliff:g>：応答がありません</string>
+
+    <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>：接続できません</string>
+
+    <string name="translation_error_discard_card_title">カードを破棄しますか？</string>
+
+    <string name="translation_error_discard_card_message">設定を開くと、このカードは失われ、新しいキャプチャからもう一度作成する必要があります。</string>
+
+    <string name="translation_error_discard_card_confirm">設定を開く</string>
+
+    <string name="hold_translation_failed">翻訳できませんでした</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          MAIN SCREEN — bottom-bar and overflow-menu items
          ═══════════════════════════════════════════════════════════════ -->
 
@@ -1260,6 +1330,22 @@
     <string name="settings_vertical_grow_title">縦書きテキストを横に広げる</string>
 
     <string name="settings_vertical_grow_subtitle">幅の狭い縦書きテキストのボックスを広げて、翻訳が横書きで読めるようにします。周囲の内容に重なる場合があります。</string>
+
+    <string name="settings_header_overlay">オーバーレイ</string>
+
+    <string name="settings_overlay_min_text_title">最小文字サイズ</string>
+
+    <string name="settings_overlay_min_text_subtitle">この値を変更すると、オーバーレイが元のテキストより大きくなる場合があります。</string>
+
+    <string name="settings_overlay_min_text_warning">試験運用版。特にアニメーションの多いゲームのプレイ中は、自動翻訳のオーバーレイが消えやすくなる場合があります</string>
+
+    <string name="settings_overlay_min_text_example">サンプルテキスト</string>
+
+    <string name="settings_filter_furigana_title">OCR結果からふりがなを除外</string>
+
+    <string name="settings_edge_indicator_title">画面端のインジケーター</string>
+
+    <string name="settings_edge_indicator_subtitle">オーバーレイの表示中は、画面の周囲をほのかに光らせます。</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
@@ -1945,7 +2031,6 @@
     <string name="settings_debug_force_mmap_weights">mmapによる重み読み込みを強制（端末内LLM）</string>
     <string name="settings_debug_log_grouping">OCRのグループ化判定をログ</string>
     <string name="settings_debug_angle_gate">従来の角度しきい値（10°）</string>
-    <string name="settings_filter_furigana_title">OCR結果からふりがなを除外</string>
     <string name="settings_debug_log_trace">翻訳ログのトレースを記録</string>
     <string name="settings_debug_force_crash_title">クラッシュを強制</string>
 

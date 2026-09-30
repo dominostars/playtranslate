@@ -400,6 +400,40 @@
 
     <string name="mp_overlay_permission_button">Mở Cài đặt</string>
 
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING-ICON GESTURES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="icon_gesture_drag">Kéo</string>
+
+    <string name="icon_gesture_hold">Nhấn giữ</string>
+
+    <string name="icon_gesture_tap">Nhấn</string>
+
+    <string name="icon_action_lookup_words">Đưa lên một từ để xem định nghĩa</string>
+
+    <string name="icon_action_show_translations">Hiện bản dịch trên màn hình</string>
+
+    <string name="icon_action_open_quick_menu">Mở menu nhanh</string>
+
+    <string name="icon_action_capture_screen">Chụp màn hình</string>
+
+    <string name="icon_action_toggle_auto_translate">Bật/tắt Tự động dịch</string>
+
+    <string name="icon_action_swap_furigana">Chuyển giữa bản dịch và furigana</string>
+
+    <string name="icon_action_swap_pinyin">Chuyển giữa bản dịch và pinyin</string>
+
+    <string name="icon_action_change_game_language">Đổi ngôn ngữ trò chơi</string>
+
+    <string name="icon_action_translating_from">Đang dịch từ <xliff:g id="language" example="Japanese">%1$s</xliff:g></string>
+
+    <string name="icon_gestures_no_menu_title">Không có cử chỉ nào mở menu nhanh</string>
+
+    <string name="icon_gestures_no_menu_message">Bạn sẽ không mở được menu nhanh từ biểu tượng nổi. Hãy gán “Mở menu nhanh” cho Nhấn giữ hoặc Nhấn để vẫn dùng được menu nhanh.</string>
+
+    <string name="icon_gestures_no_menu_confirm">Tôi đã hiểu</string>
+
     <string name="overlay_icon_a11y_required_title">Cần quyền Hỗ trợ tiếp cận</string>
 
     <string name="overlay_icon_a11y_required_message">Biểu tượng nổi cần quyền Hỗ trợ tiếp cận để vẽ lên màn hình trò chơi.\n\nVào Cài đặt → Hỗ trợ tiếp cận → Ứng dụng đã tải xuống → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → Bật.</string>
@@ -516,7 +550,7 @@
 
     <string name="anki_group_screenshot">Ảnh chụp màn hình</string>
 
-    <string name="anki_words_helper">Những từ này sẽ được đưa vào thẻ <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>. Nhấn vào một từ để làm nổi bật nó trong thẻ. Nhấn × để xóa nó khỏi thẻ.</string>
+    <string name="anki_words_helper_hide">Những từ này sẽ được đưa vào thẻ <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>. Nhấn vào một từ để làm nổi bật từ đó. Nhấn <xliff:g id="hide_icon" example="👁">%1$s</xliff:g> để loại từ đó khỏi thẻ.</string>
 
     <string name="anki_translation_error">Không thể dịch</string>
 
@@ -1074,6 +1108,42 @@
     <string name="degraded_warning_low_memory">Bộ nhớ thấp — chất lượng bản dịch bị giảm</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION ERROR PILL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="translation_error_connection">Lỗi kết nối</string>
+
+    <string name="translation_error_auth"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: khóa API không hợp lệ</string>
+
+    <string name="translation_error_billing"><xliff:g id="service" example="Claude">%1$s</xliff:g>: hết tín dụng</string>
+
+    <string name="translation_error_daily_quota"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: đã đạt giới hạn hằng ngày</string>
+
+    <string name="translation_error_monthly_quota"><xliff:g id="service" example="DeepL">%1$s</xliff:g>: đã dùng hết hạn mức hằng tháng</string>
+
+    <string name="translation_error_rate_limited"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: quá nhiều yêu cầu</string>
+
+    <string name="translation_error_server"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: lỗi máy chủ</string>
+
+    <string name="translation_error_rejected_code"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>: yêu cầu bị từ chối (HTTP <xliff:g id="status_code" example="404">%2$s</xliff:g>)</string>
+
+    <string name="translation_error_rejected"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>: yêu cầu bị từ chối</string>
+
+    <string name="translation_error_bad_response"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: phản hồi không mong đợi</string>
+
+    <string name="translation_error_timeout"><xliff:g id="service" example="DeepSeek">%1$s</xliff:g>: không phản hồi</string>
+
+    <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>: không thể kết nối</string>
+
+    <string name="translation_error_discard_card_title">Bỏ thẻ này?</string>
+
+    <string name="translation_error_discard_card_message">Nếu mở cài đặt, bạn sẽ mất thẻ này và phải tạo lại từ một lần chụp mới.</string>
+
+    <string name="translation_error_discard_card_confirm">Đi tới cài đặt</string>
+
+    <string name="hold_translation_failed">Không thể dịch</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          MAIN SCREEN — bottom-bar and overflow-menu items
          ═══════════════════════════════════════════════════════════════ -->
 
@@ -1208,6 +1278,22 @@
     <string name="settings_vertical_grow_title">Mở rộng văn bản dọc</string>
 
     <string name="settings_vertical_grow_subtitle">Mở rộng các khung văn bản dọc hẹp để bản dịch đọc theo chiều ngang. Có thể che nội dung lân cận.</string>
+
+    <string name="settings_header_overlay">Lớp phủ</string>
+
+    <string name="settings_overlay_min_text_title">Cỡ chữ tối thiểu</string>
+
+    <string name="settings_overlay_min_text_subtitle">Thay đổi giá trị này có thể khiến lớp phủ lớn hơn văn bản gốc.</string>
+
+    <string name="settings_overlay_min_text_warning">THỬ NGHIỆM. Có thể khiến lớp phủ của Tự động dịch bị gỡ bỏ thường xuyên hơn, nhất là khi chơi trò chơi có nhiều hoạt ảnh</string>
+
+    <string name="settings_overlay_min_text_example">Văn bản mẫu</string>
+
+    <string name="settings_filter_furigana_title">Lọc furigana khỏi kết quả OCR</string>
+
+    <string name="settings_edge_indicator_title">Chỉ báo viền màn hình</string>
+
+    <string name="settings_edge_indicator_subtitle">Hiện một vầng sáng dịu quanh viền màn hình khi có lớp phủ.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
@@ -1886,7 +1972,6 @@
     <string name="settings_debug_force_mmap_weights">Buộc tải trọng số bằng mmap (LLM trên thiết bị)</string>
     <string name="settings_debug_log_grouping">Ghi nhật ký quyết định nhóm OCR</string>
     <string name="settings_debug_angle_gate">Ngưỡng góc kiểu cũ (10°)</string>
-    <string name="settings_filter_furigana_title">Lọc furigana khỏi kết quả OCR</string>
     <string name="settings_debug_log_trace">Ghi lại dấu vết nhật ký dịch</string>
     <string name="settings_debug_force_crash_title">Buộc gặp sự cố</string>
 

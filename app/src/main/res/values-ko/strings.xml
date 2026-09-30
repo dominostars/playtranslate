@@ -401,6 +401,40 @@
 
     <string name="mp_overlay_permission_button">설정 열기</string>
 
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING-ICON GESTURES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="icon_gesture_drag">드래그</string>
+
+    <string name="icon_gesture_hold">길게 누르기</string>
+
+    <string name="icon_gesture_tap">탭</string>
+
+    <string name="icon_action_lookup_words">단어 위에 올려 정의 보기</string>
+
+    <string name="icon_action_show_translations">화면에 번역 표시</string>
+
+    <string name="icon_action_open_quick_menu">빠른 메뉴 열기</string>
+
+    <string name="icon_action_capture_screen">화면 캡처</string>
+
+    <string name="icon_action_toggle_auto_translate">자동 번역 시작/중지</string>
+
+    <string name="icon_action_swap_furigana">번역과 후리가나 전환</string>
+
+    <string name="icon_action_swap_pinyin">번역과 병음 전환</string>
+
+    <string name="icon_action_change_game_language">게임 언어 변경</string>
+
+    <string name="icon_action_translating_from"><xliff:g id="language" example="Japanese">%1$s</xliff:g>에서 번역 중</string>
+
+    <string name="icon_gestures_no_menu_title">빠른 메뉴를 여는 제스처가 없습니다</string>
+
+    <string name="icon_gestures_no_menu_message">플로팅 아이콘에서 빠른 메뉴를 열 수 없게 됩니다. 계속 사용하려면 “빠른 메뉴 열기”를 길게 누르기 또는 탭에 지정하세요.</string>
+
+    <string name="icon_gestures_no_menu_confirm">알겠습니다</string>
+
     <string name="overlay_icon_a11y_required_title">접근성 필요</string>
 
     <string name="overlay_icon_a11y_required_message">플로팅 아이콘을 게임 화면 위에 표시하려면 접근성 권한이 필요합니다.\n\n설정 → 접근성 → 다운로드된 앱 → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → 사용 설정으로 이동하세요.</string>
@@ -517,7 +551,7 @@
 
     <string name="anki_group_screenshot">스크린샷</string>
 
-    <string name="anki_words_helper">이 단어들이 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 카드에 포함됩니다. 단어를 탭하면 카드에서 강조 표시됩니다. ×를 탭하면 카드에서 제거됩니다.</string>
+    <string name="anki_words_helper_hide">이 단어들이 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 카드에 포함됩니다. 단어를 탭하면 강조 표시됩니다. <xliff:g id="hide_icon" example="👁">%1$s</xliff:g> 아이콘을 탭하면 카드에서 제외됩니다.</string>
 
     <string name="anki_translation_error">번역할 수 없음</string>
 
@@ -1074,6 +1108,42 @@
     <string name="degraded_warning_low_memory">메모리 부족 — 번역 품질 저하</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION ERROR PILL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="translation_error_connection">연결 오류</string>
+
+    <string name="translation_error_auth"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: 잘못된 API 키</string>
+
+    <string name="translation_error_billing"><xliff:g id="service" example="Claude">%1$s</xliff:g>: 크레딧 소진</string>
+
+    <string name="translation_error_daily_quota"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: 일일 한도 도달</string>
+
+    <string name="translation_error_monthly_quota"><xliff:g id="service" example="DeepL">%1$s</xliff:g>: 월간 할당량 소진</string>
+
+    <string name="translation_error_rate_limited"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: 요청이 너무 많음</string>
+
+    <string name="translation_error_server"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: 서버 오류</string>
+
+    <string name="translation_error_rejected_code"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>: 요청 거부됨(HTTP <xliff:g id="status_code" example="404">%2$s</xliff:g>)</string>
+
+    <string name="translation_error_rejected"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>: 요청 거부됨</string>
+
+    <string name="translation_error_bad_response"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: 예기치 않은 응답</string>
+
+    <string name="translation_error_timeout"><xliff:g id="service" example="DeepSeek">%1$s</xliff:g>: 응답 없음</string>
+
+    <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>: 연결할 수 없음</string>
+
+    <string name="translation_error_discard_card_title">카드를 삭제하시겠습니까?</string>
+
+    <string name="translation_error_discard_card_message">설정을 열면 이 카드가 사라지며, 새로 캡처해서 다시 만들어야 합니다.</string>
+
+    <string name="translation_error_discard_card_confirm">설정으로 이동</string>
+
+    <string name="hold_translation_failed">번역할 수 없음</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          MAIN SCREEN — bottom-bar and overflow-menu items
          ═══════════════════════════════════════════════════════════════ -->
 
@@ -1208,6 +1278,22 @@
     <string name="settings_vertical_grow_title">세로 텍스트 넓히기</string>
 
     <string name="settings_vertical_grow_subtitle">좁은 세로 텍스트 상자를 넓혀 번역이 가로로 읽히도록 합니다. 주변 콘텐츠를 가릴 수 있습니다.</string>
+
+    <string name="settings_header_overlay">오버레이</string>
+
+    <string name="settings_overlay_min_text_title">최소 글자 크기</string>
+
+    <string name="settings_overlay_min_text_subtitle">이 값을 변경하면 오버레이가 원본 텍스트보다 커질 수 있습니다.</string>
+
+    <string name="settings_overlay_min_text_warning">실험적 기능입니다. 특히 애니메이션이 많은 게임을 플레이할 때 자동 번역 오버레이가 더 자주 제거될 수 있습니다</string>
+
+    <string name="settings_overlay_min_text_example">예시 텍스트</string>
+
+    <string name="settings_filter_furigana_title">OCR 결과에서 후리가나 제외</string>
+
+    <string name="settings_edge_indicator_title">가장자리 표시</string>
+
+    <string name="settings_edge_indicator_subtitle">오버레이가 표시되는 동안 화면 가장자리가 은은하게 빛납니다.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
@@ -1873,7 +1959,6 @@
     <string name="settings_debug_force_mmap_weights">mmap 가중치 로딩 강제(온디바이스 LLM)</string>
     <string name="settings_debug_log_grouping">OCR 그룹화 결정 로깅</string>
     <string name="settings_debug_angle_gate">기존 각도 임계값(10°)</string>
-    <string name="settings_filter_furigana_title">OCR 결과에서 후리가나 제외</string>
     <string name="settings_debug_log_trace">번역 로그 트레이스 기록</string>
     <string name="settings_debug_force_crash_title">강제 충돌</string>
 

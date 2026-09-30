@@ -401,6 +401,40 @@
 
     <string name="mp_overlay_permission_button">打开设置</string>
 
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING-ICON GESTURES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="icon_gesture_drag">拖动</string>
+
+    <string name="icon_gesture_hold">长按</string>
+
+    <string name="icon_gesture_tap">点按</string>
+
+    <string name="icon_action_lookup_words">移到单词上查看释义</string>
+
+    <string name="icon_action_show_translations">在屏幕上显示翻译</string>
+
+    <string name="icon_action_open_quick_menu">打开快捷菜单</string>
+
+    <string name="icon_action_capture_screen">截取屏幕</string>
+
+    <string name="icon_action_toggle_auto_translate">启动/停止自动翻译</string>
+
+    <string name="icon_action_swap_furigana">在翻译和假名注音之间切换</string>
+
+    <string name="icon_action_swap_pinyin">在翻译和拼音之间切换</string>
+
+    <string name="icon_action_change_game_language">更改游戏语言</string>
+
+    <string name="icon_action_translating_from">正在从<xliff:g id="language" example="Japanese">%1$s</xliff:g>翻译</string>
+
+    <string name="icon_gestures_no_menu_title">没有手势可打开快捷菜单</string>
+
+    <string name="icon_gestures_no_menu_message">将无法从悬浮图标打开快捷菜单。如需继续使用，请将“打开快捷菜单”设为长按或点按的操作。</string>
+
+    <string name="icon_gestures_no_menu_confirm">我知道了</string>
+
     <string name="overlay_icon_a11y_required_title">需要无障碍权限</string>
 
     <string name="overlay_icon_a11y_required_message">悬浮图标需要无障碍权限才能在游戏画面上绘制。\n\n依次前往：设置 → 无障碍 → 已下载的应用 → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → 启用。</string>
@@ -517,7 +551,7 @@
 
     <string name="anki_group_screenshot">截图</string>
 
-    <string name="anki_words_helper">这些单词将包含在 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 卡片中。点按单词可在卡片中高亮显示。点按 × 可将其从卡片中移除。</string>
+    <string name="anki_words_helper_hide">这些单词将包含在 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 卡片中。点按单词可将其高亮显示。点按 <xliff:g id="hide_icon" example="👁">%1$s</xliff:g> 可将其从卡片中排除。</string>
 
     <string name="anki_translation_error">无法翻译</string>
 
@@ -1112,6 +1146,42 @@
     <string name="degraded_warning_low_memory">内存不足——翻译质量已降低</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION ERROR PILL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="translation_error_connection">连接错误</string>
+
+    <string name="translation_error_auth"><xliff:g id="service" example="Gemini">%1$s</xliff:g>：API 密钥无效</string>
+
+    <string name="translation_error_billing"><xliff:g id="service" example="Claude">%1$s</xliff:g>：余额不足</string>
+
+    <string name="translation_error_daily_quota"><xliff:g id="service" example="Gemini">%1$s</xliff:g>：已达到每日上限</string>
+
+    <string name="translation_error_monthly_quota"><xliff:g id="service" example="DeepL">%1$s</xliff:g>：本月额度已用完</string>
+
+    <string name="translation_error_rate_limited"><xliff:g id="service" example="Gemini">%1$s</xliff:g>：请求过多</string>
+
+    <string name="translation_error_server"><xliff:g id="service" example="Gemini">%1$s</xliff:g>：服务器错误</string>
+
+    <string name="translation_error_rejected_code"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>：请求被拒绝（HTTP <xliff:g id="status_code" example="404">%2$s</xliff:g>）</string>
+
+    <string name="translation_error_rejected"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>：请求被拒绝</string>
+
+    <string name="translation_error_bad_response"><xliff:g id="service" example="Gemini">%1$s</xliff:g>：响应异常</string>
+
+    <string name="translation_error_timeout"><xliff:g id="service" example="DeepSeek">%1$s</xliff:g>：无响应</string>
+
+    <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>：无法连接</string>
+
+    <string name="translation_error_discard_card_title">放弃这张卡片？</string>
+
+    <string name="translation_error_discard_card_message">打开设置后，这张卡片将会丢失，需要重新截取屏幕后再次生成。</string>
+
+    <string name="translation_error_discard_card_confirm">前往设置</string>
+
+    <string name="hold_translation_failed">无法翻译</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          MAIN SCREEN — bottom-bar and overflow-menu items
          ═══════════════════════════════════════════════════════════════ -->
 
@@ -1246,6 +1316,22 @@
     <string name="settings_vertical_grow_title">加宽竖排文字</string>
 
     <string name="settings_vertical_grow_subtitle">放大狭窄的竖排文字框，使翻译可以横向阅读。可能会遮挡附近的内容。</string>
+
+    <string name="settings_header_overlay">叠加层</string>
+
+    <string name="settings_overlay_min_text_title">最小文字大小</string>
+
+    <string name="settings_overlay_min_text_subtitle">更改此值可能会使叠加层比原文更大。</string>
+
+    <string name="settings_overlay_min_text_warning">实验性功能。可能导致自动翻译的叠加层更频繁地被移除，在玩动画较多的游戏时尤其明显</string>
+
+    <string name="settings_overlay_min_text_example">示例文字</string>
+
+    <string name="settings_filter_furigana_title">从 OCR 结果中过滤假名注音</string>
+
+    <string name="settings_edge_indicator_title">边缘指示器</string>
+
+    <string name="settings_edge_indicator_subtitle">叠加层显示期间，屏幕四周会出现柔和的光晕。</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
@@ -1931,7 +2017,6 @@
     <string name="settings_debug_force_mmap_weights">强制使用 mmap 加载权重（设备端 LLM）</string>
     <string name="settings_debug_log_grouping">记录 OCR 分组决策</string>
     <string name="settings_debug_angle_gate">经典角度阈值（10°）</string>
-    <string name="settings_filter_furigana_title">从 OCR 结果中过滤振假名</string>
     <string name="settings_debug_log_trace">记录翻译日志跟踪信息</string>
     <string name="settings_debug_force_crash_title">强制崩溃</string>
 

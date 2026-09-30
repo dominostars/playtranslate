@@ -396,6 +396,40 @@
 
     <string name="mp_overlay_permission_button">Ayarları aç</string>
 
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING-ICON GESTURES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="icon_gesture_drag">Sürükleme</string>
+
+    <string name="icon_gesture_hold">Basılı tutma</string>
+
+    <string name="icon_gesture_tap">Dokunma</string>
+
+    <string name="icon_action_lookup_words">Üzerine gelinen sözcüğün tanımını göster</string>
+
+    <string name="icon_action_show_translations">Çevirileri ekranda göster</string>
+
+    <string name="icon_action_open_quick_menu">Hızlı menüyü aç</string>
+
+    <string name="icon_action_capture_screen">Ekranı yakala</string>
+
+    <string name="icon_action_toggle_auto_translate">Otomatik çeviriyi başlat/durdur</string>
+
+    <string name="icon_action_swap_furigana">Çeviri ile furigana arasında geçiş yap</string>
+
+    <string name="icon_action_swap_pinyin">Çeviri ile pinyin arasında geçiş yap</string>
+
+    <string name="icon_action_change_game_language">Oyun dilini değiştir</string>
+
+    <string name="icon_action_translating_from">Oyun dili: <xliff:g id="language" example="Japanese">%1$s</xliff:g></string>
+
+    <string name="icon_gestures_no_menu_title">Hızlı menüyü açan bir hareket yok</string>
+
+    <string name="icon_gestures_no_menu_message">Hızlı menü artık kayan simgeden açılamayacak. Kullanılabilir kalması için “Hızlı menüyü aç” eylemini basılı tutma veya dokunma hareketine atayın.</string>
+
+    <string name="icon_gestures_no_menu_confirm">Anladım</string>
+
     <string name="overlay_icon_a11y_required_title">Erişilebilirlik gerekli</string>
 
     <string name="overlay_icon_a11y_required_message">Kayan yer paylaşımı simgesi, oyun ekranına çizim yapmak için Erişilebilirlik iznine ihtiyaç duyar.\n\nAyarlar → Erişilebilirlik → İndirilen uygulamalar → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → Etkinleştir yolunu izleyin.</string>
@@ -512,7 +546,7 @@
 
     <string name="anki_group_screenshot">Ekran görüntüsü</string>
 
-    <string name="anki_words_helper">Bu sözcükler <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> kartına dahil edilecek. Kartta vurgulamak için bir sözcüğe dokunun. Karttan çıkarmak için × düğmesine dokunun.</string>
+    <string name="anki_words_helper_hide">Bu sözcükler <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> kartına dahil edilecek. Vurgulamak için bir sözcüğe dokunun. Karttan hariç tutmak için <xliff:g id="hide_icon" example="👁">%1$s</xliff:g> simgesine dokunun.</string>
 
     <string name="anki_translation_error">Çevrilemedi</string>
 
@@ -1104,6 +1138,42 @@
     <string name="degraded_warning_low_memory">Düşük bellek — çeviri kalitesi düşük</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION ERROR PILL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="translation_error_connection">Bağlantı hatası</string>
+
+    <string name="translation_error_auth"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: geçersiz API anahtarı</string>
+
+    <string name="translation_error_billing"><xliff:g id="service" example="Claude">%1$s</xliff:g>: bakiye tükendi</string>
+
+    <string name="translation_error_daily_quota"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: günlük sınıra ulaşıldı</string>
+
+    <string name="translation_error_monthly_quota"><xliff:g id="service" example="DeepL">%1$s</xliff:g>: aylık kota doldu</string>
+
+    <string name="translation_error_rate_limited"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: çok fazla istek</string>
+
+    <string name="translation_error_server"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: sunucu hatası</string>
+
+    <string name="translation_error_rejected_code"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>: istek reddedildi (HTTP <xliff:g id="status_code" example="404">%2$s</xliff:g>)</string>
+
+    <string name="translation_error_rejected"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>: istek reddedildi</string>
+
+    <string name="translation_error_bad_response"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: beklenmeyen yanıt</string>
+
+    <string name="translation_error_timeout"><xliff:g id="service" example="DeepSeek">%1$s</xliff:g>: yanıt vermiyor</string>
+
+    <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>: bağlanılamıyor</string>
+
+    <string name="translation_error_discard_card_title">Kart atılsın mı?</string>
+
+    <string name="translation_error_discard_card_message">Ayarları açarsanız bu kartı kaybedersiniz ve onu yeni bir ekran yakalamasından yeniden oluşturmanız gerekir.</string>
+
+    <string name="translation_error_discard_card_confirm">Ayarlara git</string>
+
+    <string name="hold_translation_failed">Çevrilemedi</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          MAIN SCREEN — bottom-bar and overflow-menu items
          ═══════════════════════════════════════════════════════════════ -->
 
@@ -1235,6 +1305,22 @@
     <string name="settings_touches_refresh_title">Ekrana dokunmak çeviriyi yeniler</string>
     <string name="settings_vertical_grow_title">Dikey metni genişlet</string>
     <string name="settings_vertical_grow_subtitle">Dar dikey metin kutularını, çeviri yatay okunacak şekilde genişletir. Yakındaki içeriği kapatabilir.</string>
+
+    <string name="settings_header_overlay">Yer paylaşımı</string>
+
+    <string name="settings_overlay_min_text_title">Minimum metin boyutu</string>
+
+    <string name="settings_overlay_min_text_subtitle">Bu değeri değiştirmek, yer paylaşımlarının orijinal metinden büyük olmasına neden olabilir.</string>
+
+    <string name="settings_overlay_min_text_warning">DENEYSEL. Özellikle çok animasyonlu oyunlar oynarken otomatik çeviri yer paylaşımlarının daha sık kaldırılmasına neden olabilir</string>
+
+    <string name="settings_overlay_min_text_example">Örnek metin</string>
+
+    <string name="settings_filter_furigana_title">OCR sonucundaki furiganayı filtrele</string>
+
+    <string name="settings_edge_indicator_title">Kenar göstergesi</string>
+
+    <string name="settings_edge_indicator_subtitle">Yer paylaşımı ekrandayken ekranın çevresinde hafif bir parıltı gösterir.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
@@ -1835,7 +1921,6 @@
     <string name="settings_debug_force_mmap_weights">Ağırlık yüklemeyi mmap ile zorla (cihaz üzerindeki LLM)</string>
     <string name="settings_debug_log_grouping">OCR gruplama kararlarını günlüğe kaydet</string>
     <string name="settings_debug_angle_gate">Klasik açı eşiği (10°)</string>
-    <string name="settings_filter_furigana_title">OCR sonucundaki furiganayı filtrele</string>
     <string name="settings_debug_log_trace">Çeviri günlüğü izini kaydet</string>
     <string name="settings_debug_force_crash_title">Çökmeyi zorla</string>
     <string name="dictionary_screen_title">Sözlük</string>

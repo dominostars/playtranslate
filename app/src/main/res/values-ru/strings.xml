@@ -420,6 +420,40 @@
 
     <string name="mp_overlay_permission_button">Открыть настройки</string>
 
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING-ICON GESTURES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="icon_gesture_drag">Перетаскивание</string>
+
+    <string name="icon_gesture_hold">Удержание</string>
+
+    <string name="icon_gesture_tap">Нажатие</string>
+
+    <string name="icon_action_lookup_words">Показать определение слова при наведении</string>
+
+    <string name="icon_action_show_translations">Показать перевод на экране</string>
+
+    <string name="icon_action_open_quick_menu">Открыть быстрое меню</string>
+
+    <string name="icon_action_capture_screen">Захватить экран</string>
+
+    <string name="icon_action_toggle_auto_translate">Запустить/остановить автоперевод</string>
+
+    <string name="icon_action_swap_furigana">Переключаться между переводом и фуриганой</string>
+
+    <string name="icon_action_swap_pinyin">Переключаться между переводом и пиньинем</string>
+
+    <string name="icon_action_change_game_language">Изменить язык игры</string>
+
+    <string name="icon_action_translating_from">Язык игры: <xliff:g id="language" example="Japanese">%1$s</xliff:g></string>
+
+    <string name="icon_gestures_no_menu_title">Ни один жест не открывает быстрое меню</string>
+
+    <string name="icon_gestures_no_menu_message">Быстрое меню нельзя будет открыть с плавающего значка. Чтобы оно оставалось доступным, назначьте действие «Открыть быстрое меню» жесту «Удержание» или «Нажатие».</string>
+
+    <string name="icon_gestures_no_menu_confirm">Понятно</string>
+
     <string name="overlay_icon_a11y_required_title">Требуются специальные возможности</string>
 
     <string name="overlay_icon_a11y_required_message">Плавающему значку требуется разрешение на специальные возможности, чтобы рисовать поверх экрана игры.\n\nПерейдите в Настройки → Специальные возможности → Скачанные приложения → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → Включить.</string>
@@ -536,7 +570,7 @@
 
     <string name="anki_group_screenshot">Снимок экрана</string>
 
-    <string name="anki_words_helper">Эти слова будут включены в карточку <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>. Нажмите на слово, чтобы выделить его на карточке. Нажмите ×, чтобы убрать его с карточки.</string>
+    <string name="anki_words_helper_hide">Эти слова будут включены в карточку <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>. Нажмите на слово, чтобы выделить его. Нажмите <xliff:g id="hide_icon" example="👁">%1$s</xliff:g>, чтобы исключить его из карточки.</string>
 
     <string name="anki_translation_error">Не удалось перевести</string>
 
@@ -1131,6 +1165,42 @@
     <string name="degraded_warning_low_memory">Недостаточно памяти — качество перевода снижено</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION ERROR PILL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="translation_error_connection">Ошибка подключения</string>
+
+    <string name="translation_error_auth"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: недействительный API-ключ</string>
+
+    <string name="translation_error_billing"><xliff:g id="service" example="Claude">%1$s</xliff:g>: недостаточно средств</string>
+
+    <string name="translation_error_daily_quota"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: достигнут дневной лимит</string>
+
+    <string name="translation_error_monthly_quota"><xliff:g id="service" example="DeepL">%1$s</xliff:g>: месячная квота исчерпана</string>
+
+    <string name="translation_error_rate_limited"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: слишком много запросов</string>
+
+    <string name="translation_error_server"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: ошибка сервера</string>
+
+    <string name="translation_error_rejected_code"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>: запрос отклонён (HTTP <xliff:g id="status_code" example="404">%2$s</xliff:g>)</string>
+
+    <string name="translation_error_rejected"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>: запрос отклонён</string>
+
+    <string name="translation_error_bad_response"><xliff:g id="service" example="Gemini">%1$s</xliff:g>: неожиданный ответ</string>
+
+    <string name="translation_error_timeout"><xliff:g id="service" example="DeepSeek">%1$s</xliff:g>: не отвечает</string>
+
+    <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>: не удаётся подключиться</string>
+
+    <string name="translation_error_discard_card_title">Отказаться от карточки?</string>
+
+    <string name="translation_error_discard_card_message">Если открыть настройки, эта карточка будет потеряна и её придётся заново создать из нового захвата экрана.</string>
+
+    <string name="translation_error_discard_card_confirm">Перейти в настройки</string>
+
+    <string name="hold_translation_failed">Не удалось перевести</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          MAIN SCREEN — bottom-bar and overflow-menu items
          ═══════════════════════════════════════════════════════════════ -->
 
@@ -1265,6 +1335,22 @@
     <string name="settings_vertical_grow_title">Расширять вертикальный текст</string>
 
     <string name="settings_vertical_grow_subtitle">Расширяет узкие рамки вертикального текста, чтобы перевод читался горизонтально. Может перекрывать соседнее содержимое.</string>
+
+    <string name="settings_header_overlay">Наложение</string>
+
+    <string name="settings_overlay_min_text_title">Минимальный размер текста</string>
+
+    <string name="settings_overlay_min_text_subtitle">При изменении этого значения наложения могут стать больше исходного текста.</string>
+
+    <string name="settings_overlay_min_text_warning">ЭКСПЕРИМЕНТАЛЬНО. Наложения автоперевода могут чаще исчезать, особенно в играх с большим количеством анимации</string>
+
+    <string name="settings_overlay_min_text_example">Пример текста</string>
+
+    <string name="settings_filter_furigana_title">Фильтровать фуригану из результата OCR</string>
+
+    <string name="settings_edge_indicator_title">Подсветка краёв экрана</string>
+
+    <string name="settings_edge_indicator_subtitle">Показывает мягкое свечение по краям экрана, пока отображается наложение.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
@@ -1971,7 +2057,6 @@
     <string name="settings_debug_force_mmap_weights">Принудительная загрузка весов через mmap (локальная LLM)</string>
     <string name="settings_debug_log_grouping">Журналировать решения группировки OCR</string>
     <string name="settings_debug_angle_gate">Классический порог угла (10°)</string>
-    <string name="settings_filter_furigana_title">Фильтровать фуригану из результата OCR</string>
     <string name="settings_debug_log_trace">Записывать трассировку журнала переводов</string>
     <string name="settings_debug_force_crash_title">Принудительный сбой</string>
 
