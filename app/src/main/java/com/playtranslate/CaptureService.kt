@@ -538,8 +538,31 @@ class CaptureService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.i(TAG, "onStartCommand action=${intent?.action}")
-        // Android requires startForeground() within 5s of startForegroundService()
+        Log.i(
+            TAG,
+            if (intent == null) "onStartCommand sticky restart"
+            else "onStartCommand action=${intent.action}"
+        )
+        // Android requires startForeground() within 5s of startForegroundService(),
+        // and every starter of this service calls startForegroundService, so a
+        // non-null intent always carries that obligation.
+        //
+        // A null intent is the platform's START_STICKY restart after our
+        // process died. It carries no such obligation, and none of the
+        // background-start allowance a starter's call brings: the restart
+        // runs with the app in the background, where API 31+ refuses
+        // startForeground() with ForegroundServiceStartNotAllowedException
+        // unless an exemption applies. At targetSdk 35+ on API 35+,
+        // SYSTEM_ALERT_WINDOW only exempts an app with a visible overlay
+        // window, and the fresh process has none (field crashes 2026-09-27
+        // and 09-30, Android 16, MediaProjection backend). Nothing that needs
+        // the foreground survives the death either: consent,
+        // mediaProjectionActivated, live mode and the overlay windows are
+        // in memory, and the accessibility icon stays suppressed until a
+        // user summon. So a restart leaves promotion to updateForegroundState
+        // below, which finds nothing to hold. START_STICKY stays: the restart
+        // is what re-wires the accessibility backend's hotkeys after a
+        // process death (registerHotkeyCallbacks needs this service's instance).
         //
         // ACTION_MP_ACTIVATE entry: on a cold-start tile click, enterForeground
         // below is invoked synchronously with no live overlay window and no
@@ -549,7 +572,7 @@ class CaptureService : Service() {
         // succeeds under the tile-onclick tempAllowList grant; the
         // SPECIAL_USE → SPECIAL_USE|MEDIA_PROJECTION promotion happens later
         // in ensureMediaProjectionForegroundType once the user has granted.
-        enterForeground()
+        if (intent != null) enterForeground()
         // Immediately evaluate — may stopForeground if no game-screen presence yet
         updateForegroundState()
         if (intent?.action == ACTION_MP_ACTIVATE) {
