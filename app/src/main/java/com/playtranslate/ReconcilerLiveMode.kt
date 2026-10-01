@@ -195,6 +195,12 @@ class ReconcilerLiveMode(
                 }
             }
         }
+        // Warm PlayTranslate Cloud for the first cycle's read, which runOcrRead
+        // makes in the source language from the same pref, device-only when
+        // the session's block says so. Once per mode instance (setLiveDisplays
+        // starts each new one exactly once): later cycles read back to back on
+        // a connection already in use.
+        service.warmCloud(Prefs(service).sourceLangId, deviceOnly = PtCloudService.liveSessionBlocked)
         engine.scheduleNext()
     }
 

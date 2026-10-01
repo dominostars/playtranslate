@@ -173,6 +173,16 @@ class OneShotManager(private val service: CaptureService) {
         // the box builder (stage 5).
         val mode = cycle.forceMode ?: Prefs(service).overlayMode
 
+        // Warm PlayTranslate Cloud for the stage 3 read, in the source language
+        // runOcrRead reads from the same pref. The device-only statement is what
+        // the read would state at this moment; the read decides again when it
+        // runs, so the two differ only if live mode starts or stops during the
+        // screenshot, which costs one wasted or one missed warm.
+        service.warmCloud(
+            Prefs(service).sourceLangId,
+            deviceOnly = mode == OverlayMode.FURIGANA || service.isLive,
+        )
+
         // 1. Capture clean screenshot. Null is a real, reachable outcome
         //    (consent loss, no qualifying delivery inside the freshness
         //    budget) — it must surface, never silently strand the gesture.

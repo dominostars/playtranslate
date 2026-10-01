@@ -1625,6 +1625,31 @@ class Prefs internal constructor(
         get() = sp.getInt(KEY_PT_CLOUD_UPLOAD_CAP, PtCloudConfig.DEFAULT_UPLOAD_LONG_SIDE_CAP)
         set(v) = sp.edit { putInt(KEY_PT_CLOUD_UPLOAD_CAP, v) }
 
+    /** The format a frame is uploaded in, stored as its
+     *  [com.playtranslate.cloud.FrameFormat.wireName] (`jpeg` or `webp`); a
+     *  switch on the settings page, so the two can be compared from the
+     *  device. [PtCloudConfig.uploadFormat] reads a name it does not know as
+     *  the default. */
+    var ptCloudUploadFormat: String
+        get() = sp.getString(KEY_PT_CLOUD_UPLOAD_FORMAT, PtCloudConfig.DEFAULT_UPLOAD_FORMAT.wireName)
+            ?: PtCloudConfig.DEFAULT_UPLOAD_FORMAT.wireName
+        set(v) = sp.edit { putString(KEY_PT_CLOUD_UPLOAD_FORMAT, v) }
+
+    /** Whether a frame asks the service for a line per group as its
+     *  translation completes. The client only reads and times them; a
+     *  switch on the settings page, so the timing can be compared with them
+     *  on and off. */
+    var ptCloudStreamItems: Boolean
+        get() = sp.getBoolean(KEY_PT_CLOUD_STREAM_ITEMS, PtCloudConfig.DEFAULT_STREAM_ITEMS)
+        set(v) = sp.edit { putBoolean(KEY_PT_CLOUD_STREAM_ITEMS, v) }
+
+    /** Whether a capture headed for the cloud first sends the warm call
+     *  ([com.playtranslate.cloud.PtCloudClient.warm]); a switch on the
+     *  settings page, so its head start can be measured. */
+    var ptCloudWarm: Boolean
+        get() = sp.getBoolean(KEY_PT_CLOUD_WARM, PtCloudConfig.DEFAULT_WARM)
+        set(v) = sp.edit { putBoolean(KEY_PT_CLOUD_WARM, v) }
+
     /** PlayTranslate Cloud's client key, the bearer token. Encrypted at rest
      *  like [deeplApiKey], with no bootstrap default. */
     var ptCloudClientKey: String
@@ -1933,6 +1958,9 @@ class Prefs internal constructor(
         const val KEY_PT_CLOUD_CLIENT_KEY                  = "pt_cloud_client_key"
         private const val KEY_PT_CLOUD_BASE_URL            = "pt_cloud_base_url"
         private const val KEY_PT_CLOUD_UPLOAD_CAP          = "pt_cloud_upload_long_side_cap"
+        private const val KEY_PT_CLOUD_UPLOAD_FORMAT       = "pt_cloud_upload_format"
+        private const val KEY_PT_CLOUD_STREAM_ITEMS        = "pt_cloud_stream_items"
+        private const val KEY_PT_CLOUD_WARM                = "pt_cloud_warm"
         const val KEY_HOTKEY_TRANSLATION                   = "hotkey_translation"
         const val KEY_HOTKEY_FURIGANA                      = "hotkey_furigana"
         const val KEY_HOTKEY_TRANSLATION_TAP               = "hotkey_translation_tap"

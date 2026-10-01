@@ -140,11 +140,15 @@ object PtCloudErrors {
      *    stopped and the edge passes the pod host's bare 404 through). No
      *    cooldown and no retry: it answers again the moment it is started.
      *  - 404 with a body, 413, 415, 422: the request is wrong (a bug; a 413
-     *    is a frame over the server's cap), shown with its code.
+     *    is a frame over the server's cap, a 415 also a JPEG sent to an
+     *    origin that predates JPEG uploads), shown with its code.
      *  - 429: the edge's per-key rate limit, with `Retry-After`.
      *  - 500, 502: the service or its OCR failed, the RateLimit ladder.
      *  - 503: the pod is starting; waiting fixes it, so no cooldown.
-     *  - anything else: [httpStatusFailure], no cooldown.
+     *  - anything else: [httpStatusFailure], no cooldown. That includes 411,
+     *    the edge refusing an upload with no `Content-Length` (a multipart
+     *    body built from byte arrays always has one, so it is a bug), which
+     *    reads as REJECTED.
      */
     fun classifyHttp(code: Int, body: String, retryAfter: String?): Classified = when (code) {
         401 -> Classified(BackendFailure(BackendFailureKind.AUTH, code), CooldownAction.None)
@@ -189,10 +193,11 @@ object PtCloudErrors {
     }
 
     /**
-     * Part 2's status, per the server's translation-error classes (brief
-     * section 4):
-     *  - a line that is not `"part":"translation"` at [PT_CLOUD_SCHEMA_VERSION]:
-     *    a bad response, no cooldown.
+     * The final part's status, per the server's translation-error classes
+     * (brief section 4):
+     *  - a part that is not `"part":"translation"` at [PT_CLOUD_SCHEMA_VERSION]:
+     *    a bad response, no cooldown. ([PtCloudClient] hands over only lines
+     *    whose part is `translation`, so from there this is another schema.)
      *  - `ok`: the translations by group id; `translations` absent is a bad
      *    response. `skipped`: nothing to translate. Both are a success.
      *  - `deferred`: the server's translation deadline passed. TIMEOUT, no
@@ -247,15 +252,16 @@ object PtCloudErrors {
     }
 
     /**
-     * Whatever part 2's read produced ([FrameResponse.translation]):
-     *  - a line: [classifyTranslation];
-     *  - the connection ended after part 1 with no second line: treated as
-     *    `deferred`, TIMEOUT with no cooldown (the brief's rule);
+     * Whatever the read after part 1 produced ([FrameResponse.translation]):
+     *  - the final part: [classifyTranslation];
+     *  - the body ended before the final part (right after part 1, or after
+     *    item lines): treated as `deferred`, TIMEOUT with no cooldown (the
+     *    brief's rule);
      *  - the read failed on the transport (a timeout, a reset, a line cut
      *    off): the same, since the service answered part 1 and the frame is
      *    only missing its translations;
-     *  - anything else (a second line that is not a translation part): a bad
-     *    response, no cooldown.
+     *  - anything else (a line that is not a JSON object, or a final part
+     *    that does not decode): a bad response, no cooldown.
      */
     fun classifyPart2(result: Part2Result, nowMs: Long = System.currentTimeMillis()): TranslationOutcome =
         when (result) {
@@ -268,9 +274,11 @@ object PtCloudErrors {
             }
         }
 
-    /** Part 1's and part 2's `part` values. */
+    /** The `part` values this client reads: part 1's, the final part's, and
+     *  an item line's. */
     const val PART_OCR = "ocr"
     const val PART_TRANSLATION = "translation"
+    const val PART_TRANSLATION_ITEM = "translation_item"
 
     private fun failed(failure: BackendFailure, action: CooldownAction) =
         TranslationOutcome.Failed(Classified(failure, action))

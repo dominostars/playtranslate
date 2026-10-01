@@ -3,6 +3,8 @@ package com.playtranslate.cloud
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.PtJson
+import com.playtranslate.cloud.PtCloudTestSupport.CapturingExecutor
+import com.playtranslate.cloud.PtCloudTestSupport.onExecutor
 import com.playtranslate.translation.BackendFailure
 import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.translation.CooldownCause
@@ -36,7 +38,8 @@ import java.util.concurrent.atomic.AtomicLong
  * ways: the thrown [PtCloudReadException]'s kind and code, the cooldown it
  * leaves, and the [OnlineAttempt] it reports. After part 1 each row goes
  * through [PtCloudErrors.classifyTranslation] / [PtCloudErrors.classifyPart2]
- * and the cooldown the outcome records.
+ * and the cooldown the outcome records. The warm call's every answer records
+ * and reports nothing.
  */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudFailureMappingTest {
@@ -125,6 +128,11 @@ class PtCloudFailureMappingTest {
         }
     }
 
+    @Test fun `411 (the edge wanted a Content-Length) is a rejected request with its code, no cooldown`() {
+        assertRow(http(411, """{"error":"length required"}"""), BackendFailureKind.REJECTED, 411, reachedServer = true)
+        assertNoCooldown()
+    }
+
     @Test fun `429 is RATE_LIMITED until its Retry-After`() {
         // 60 is what the edge sends; 300 tells the header apart from the
         // ladder's first rung, which is also a minute.
@@ -211,6 +219,43 @@ class PtCloudFailureMappingTest {
 
     @Test fun `a 200 whose body ends before part 1 is a dropped connection`() {
         assertRow(http(200, ""), BackendFailureKind.UNREACHABLE, null, reachedServer = false)
+    }
+
+    // ── The warm call ──────────────────────────────────────────────────
+
+    /** Sends one warm call answered by [client] and waits for its callback;
+     *  returns what its callback thread threw. */
+    private fun warm(client: OkHttpClient): List<Throwable> {
+        val dispatcher = CapturingExecutor()
+        PtCloudClient(PtCloudTestSupport.config(ctx), clientFactory = { client.onExecutor(dispatcher.executor) }).warm()
+        dispatcher.await()
+        return dispatcher.thrown.toList()
+    }
+
+    @Test fun `a warm answered 404, 401, 500 or 429 records no cooldown, reports nothing, and throws nothing`() {
+        // 500 and 429 would cool the service down were a frame answered so;
+        // they are here so that recording anything from a warm shows up.
+        for (client in listOf(
+            PtCloudTestSupport.cannedClient(404, ""),
+            PtCloudTestSupport.cannedClient(401, """{"error":"unauthorized"}"""),
+            PtCloudTestSupport.cannedClient(500, """{"error":"internal"}"""),
+            PtCloudTestSupport.cannedClient(429, """{"error":"rate limited"}""", retryAfter = "300"),
+        )) {
+            assertEquals(emptyList<Throwable>(), warm(client))
+            assertNoCooldown()
+            assertTrue("no attempt reported: $attempts", attempts.isEmpty())
+        }
+    }
+
+    @Test fun `a warm that fails on the transport records no cooldown, reports nothing, and throws nothing`() {
+        // Twice: a second network failure in the pair window would engage the
+        // network ladder were either recorded.
+        repeat(2) {
+            assertEquals(emptyList<Throwable>(), warm(PtCloudTestSupport.failingClient(IOException("refused"))))
+            assertEquals(emptyList<Throwable>(), warm(PtCloudTestSupport.failingClient(SocketTimeoutException("read"))))
+        }
+        assertNoCooldown()
+        assertTrue("no attempt reported: $attempts", attempts.isEmpty())
     }
 
     // ── After part 1 ───────────────────────────────────────────────────

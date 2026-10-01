@@ -38,6 +38,12 @@ import java.net.Proxy
  * Connection reuse is reported as `connect=reused` so a warm second
  * call is visibly distinct from the cold first call. Failures log via
  * [callFailed] with the elapsed-so-far.
+ *
+ * A request that carries an [HttpCallClock] as its tag also gets whether
+ * its connection was reused and how long its body took to write filled into
+ * that clock, for a caller that prints them on its own line (PlayTranslate
+ * Cloud's per-frame clock line). A request without one is logged exactly as
+ * before and nothing else happens.
  */
 internal class HttpTimingLogger(
     private val tag: String,
@@ -50,6 +56,7 @@ internal class HttpTimingLogger(
     private var connectMs = -1L
     private var tlsStart = 0L
     private var tlsMs = -1L
+    private var requestBodyStart = 0L
     private var responseHeadersStart = 0L
     private var ttfbMs = -1L
     private var connectionReused = false
@@ -99,6 +106,7 @@ internal class HttpTimingLogger(
         // OkHttp's pool — warm reuse. Mark it so the summary line can
         // distinguish cold from warm without ambiguity.
         if (connectStart == 0L) connectionReused = true
+        call.request().tag(HttpCallClock::class.java)?.connectionReused = connectionReused
         Log.i(tag, "phase:connectionAcquired at=${ms(callStart)}ms reused=$connectionReused")
     }
 
@@ -111,10 +119,12 @@ internal class HttpTimingLogger(
     }
 
     override fun requestBodyStart(call: Call) {
+        requestBodyStart = System.nanoTime()
         Log.i(tag, "phase:requestBodyStart at=${ms(callStart)}ms")
     }
 
     override fun requestBodyEnd(call: Call, byteCount: Long) {
+        call.request().tag(HttpCallClock::class.java)?.uploadMs = ms(requestBodyStart)
         Log.i(tag, "phase:requestBodyEnd at=${ms(callStart)}ms bytes=$byteCount")
     }
 
@@ -172,5 +182,24 @@ internal class HttpTimingLogger(
             override fun create(call: Call): EventListener = HttpTimingLogger(tag)
         }
     }
+}
+
+/**
+ * What [HttpTimingLogger] knows about one call that its caller cannot see,
+ * for a caller that wants it on its own log line. Attached to the request as
+ * its tag (`Request.Builder.tag(HttpCallClock::class.java, clock)`); the
+ * logger fills it on the thread running the call and the caller reads it
+ * after the response headers, hence volatile. Each stays null when the
+ * stack never reported it (a client without the logger, or a call that
+ * ended first).
+ */
+internal class HttpCallClock {
+    /** True when the connection came from the pool, false when this call
+     *  opened it. */
+    @Volatile var connectionReused: Boolean? = null
+
+    /** Milliseconds from the start to the end of writing the request body
+     *  on this side (the device's upload time). */
+    @Volatile var uploadMs: Long? = null
 }
 

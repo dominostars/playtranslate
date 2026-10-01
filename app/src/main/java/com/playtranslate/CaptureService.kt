@@ -169,21 +169,26 @@ class CaptureService : Service() {
      *  [OcrManager] and this service's Context. */
     private val deviceFrameReader by lazy { DeviceFrameReader(ocrManager, this) }
 
-    /** The PlayTranslate Cloud [FrameReader], built once. Its client and the
-     *  reader hold a [PtCloudConfig] that reads [Prefs] at each use, so a
-     *  settings change applies to the next capture with nothing to rebuild. */
-    private val cloudFrameReader by lazy {
-        val config = PtCloudConfig(Prefs(this))
-        PtCloudFrameReader(PtCloudClient(config), config)
-    }
+    /** PlayTranslate Cloud's settings for the client and the reader below. It
+     *  reads [Prefs] at each use, so a settings change applies to the next
+     *  capture with nothing to rebuild. */
+    private val cloudConfig by lazy { PtCloudConfig(Prefs(this)) }
+
+    /** The one PlayTranslate Cloud client, built once and shared by
+     *  [cloudFrameReader] and [warmCloud]: a warm's send stamp then reaches the
+     *  next frame's clock line, and the warm opens the connection the frame
+     *  reuses (one connection pool). */
+    private val cloudClient by lazy { PtCloudClient(cloudConfig) }
+
+    /** The PlayTranslate Cloud [FrameReader], built once on [cloudClient]. */
+    private val cloudFrameReader by lazy { PtCloudFrameReader(cloudClient, cloudConfig) }
 
     /**
      * The [FrameReader] a read of [srcId] goes through: PlayTranslate Cloud,
      * falling back to the device for a frame it cannot read
-     * ([FallbackFrameReader]), when [PtCloudRouting.eligible] allows it, else the
-     * device alone. The facts, read at this call from a fresh [PtCloudConfig]
-     * in the table's column order, each only when every earlier one allowed the
-     * cloud:
+     * ([FallbackFrameReader]), when [cloudRefusal] finds nothing against it,
+     * else the device alone. The decision, from a fresh [PtCloudConfig] read at
+     * this call:
      *
      * | switch | deviceOnly | usable key | usable URL | source | cooling down | reader |
      * |---|---|---|---|---|---|---|
@@ -202,36 +207,91 @@ class CaptureService : Service() {
      * [runOcr]'s default, which is device-only; the reconciler tier
      * ([ReconcilerLiveMode]) states device-only only once the service refused its
      * session ([PtCloudService.liveSessionBlocked]).
+     *
+     * A read kept on the device logs why at debug level, except when the switch
+     * is off, which is every read of every release build. [warmCloud] asks the
+     * same [cloudRefusal] and logs nothing: the read that follows says why.
      */
     internal fun frameReaderFor(srcId: SourceLangId, deviceOnly: Boolean): FrameReader {
-        val config = PtCloudConfig(Prefs(this))
-        // The two facts that cost nothing decide first, so a read that could
-        // never go to the cloud reads nothing else, the key's AndroidKeyStore
-        // decryption included: the switch, off in every release build, then
-        // the caller's device-only statement, which the pinhole and furigana
-        // live passes, and a blocked reconciler session's, make about once a
-        // second.
+        val refusal = cloudRefusal(PtCloudConfig(Prefs(this)), srcId, deviceOnly)
+            ?: return FallbackFrameReader(cloudFrameReader, deviceFrameReader)
+        refusal.logWord?.let { Log.d(TAG, "PlayTranslate Cloud not used for this read: $it") }
+        return deviceFrameReader
+    }
+
+    /** Why a read stays on the device ([cloudRefusal]). [logWord] names it in
+     *  [frameReaderFor]'s log line; the switch has none, so a release build,
+     *  where it is always off, logs nothing per read. */
+    private enum class CloudRefusal(val logWord: String?) {
+        SWITCH_OFF(null),
+        DEVICE_ONLY("device-only"),
+        NO_KEY("no key"),
+        BAD_URL("bad URL"),
+        SOURCE("source"),
+        COOLING_DOWN("cooling down"),
+    }
+
+    /**
+     * The router's one decision: why a read of [srcId] with [deviceOnly] would
+     * stay on the device, or null when it would go to PlayTranslate Cloud
+     * ([frameReaderFor]'s table). [frameReaderFor] routes by it and [warmCloud]
+     * warms by it, so a warm goes out exactly when the read that follows would
+     * go to the cloud.
+     *
+     * The two facts that cost nothing decide first, each ending the decision
+     * when it keeps the read on the device, so a read that could never go to
+     * the cloud reads nothing else, the key's AndroidKeyStore decryption
+     * included: the switch, off in every release build, then the caller's
+     * device-only statement, which the pinhole and furigana live passes, and a
+     * blocked reconciler session's, make about once a second. Only then are the
+     * key (whose read decrypts it), the URL, the source and the cooldown read,
+     * all four, and judged by [PtCloudRouting.eligible]; the first of them, in
+     * that order, that refuses is the reason.
+     */
+    private fun cloudRefusal(config: PtCloudConfig, srcId: SourceLangId, deviceOnly: Boolean): CloudRefusal? {
         val enabled = config.enabled
-        if (!enabled) return deviceFrameReader
-        if (deviceOnly) {
-            Log.d(TAG, "PlayTranslate Cloud not used for this read: device-only")
-            return deviceFrameReader
-        }
+        if (!enabled) return CloudRefusal.SWITCH_OFF
+        if (deviceOnly) return CloudRefusal.DEVICE_ONLY
         val hasKey = config.hasKey
         val endpointValid = config.endpoint != null
         val sourceSupported = PtCloudRouting.isSupportedSource(srcId)
         val coolingDown = PtCloudService.isCoolingDown()
         if (PtCloudRouting.eligible(enabled, hasKey, endpointValid, sourceSupported, coolingDown, deviceOnly)) {
-            return FallbackFrameReader(cloudFrameReader, deviceFrameReader)
+            return null
         }
-        val why = when {
-            !hasKey -> "no key"
-            !endpointValid -> "bad URL"
-            !sourceSupported -> "source"
-            else -> "cooling down"
+        return when {
+            !hasKey -> CloudRefusal.NO_KEY
+            !endpointValid -> CloudRefusal.BAD_URL
+            !sourceSupported -> CloudRefusal.SOURCE
+            else -> CloudRefusal.COOLING_DOWN
         }
-        Log.d(TAG, "PlayTranslate Cloud not used for this read: $why")
-        return deviceFrameReader
+    }
+
+    /**
+     * Sends PlayTranslate Cloud's warm call ([PtCloudClient.warm]) when a read
+     * of [srcId] with [deviceOnly], which the caller is about to make, would go
+     * to the cloud: the same [cloudRefusal] [frameReaderFor] routes that read
+     * by. A caller passes the source language and the device-only statement its
+     * read will pass, and calls this just before it requests the screenshot, so
+     * the warm's head start covers the screenshot, the crop and the encode. One
+     * caller per kind of read: [captureOnce]'s cycle, the single-screen capture
+     * sheet, a press-and-hold, and a reconciler live mode's start (its later
+     * cycles read back to back on a connection already in use). A re-OCR reads
+     * on the device and never warms.
+     *
+     * Returns at once, on the caller's thread, when the switch is off, when
+     * [deviceOnly] is true or when the warm knob ([PtCloudConfig.warmEnabled])
+     * is off: plain pref reads, no key. Otherwise the decision, whose key read
+     * decrypts it, and the enqueue run on [Dispatchers.IO], off the capture's
+     * path. Fire and forget: nothing waits for it or reads its answer, and it
+     * logs nothing about why it did not go out (the read logs that).
+     */
+    internal fun warmCloud(srcId: SourceLangId, deviceOnly: Boolean) {
+        val config = PtCloudConfig(Prefs(this))
+        if (!config.enabled || deviceOnly || !config.warmEnabled) return
+        serviceScope.launch(Dispatchers.IO) {
+            if (cloudRefusal(config, srcId, deviceOnly) == null) cloudClient.warm()
+        }
     }
 
     /** A [ReadRequest.frameId] for a read of a frame from [displayId]: the
@@ -3697,6 +3757,10 @@ class CaptureService : Service() {
             return
         }
         state.value = CaptureState.InProgress(getString(R.string.status_capturing))
+        // Warm PlayTranslate Cloud for the read below: runFrameCycle reads in
+        // the source language from the same pref, and never device-only (this
+        // is not a re-OCR).
+        warmCloud(Prefs(this@CaptureService).sourceLangId, deviceOnly = false)
         // The frame carries its own capture-time facts (CapturedFrame);
         // downstream reads them from the frame, never re-derives them from
         // mutable state.

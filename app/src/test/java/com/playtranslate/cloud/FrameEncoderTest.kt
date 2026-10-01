@@ -1,14 +1,30 @@
 package com.playtranslate.cloud
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
  * The size a frame is scaled to under the configured long-side cap before
- * upload ([FrameEncoder.scaledSize], pure). The encoding itself, which needs
- * real graphics, is [FrameEncoderWebpTest].
+ * upload ([FrameEncoder.scaledSize], pure), and the upload formats' contract
+ * values. The encoding itself, which needs real graphics, is
+ * [FrameEncoderNativeTest].
  */
 class FrameEncoderTest {
+
+    @Test fun `JPEG uploads at quality 85 as frame jpg, WebP at 90 as frame webp`() {
+        // The server's recommended upload and the format it was measured
+        // against (docs/api.md, "Request").
+        assertEquals(listOf("image/jpeg", "85", "frame.jpg", "jpeg"), FrameFormat.JPEG.contract())
+        assertEquals(listOf("image/webp", "90", "frame.webp", "webp"), FrameFormat.WEBP.contract())
+    }
+
+    private fun FrameFormat.contract() = listOf(mediaType, quality.toString(), filename, wireName)
+
+    @Test fun `a stored name maps back to its format, and an unknown one to none`() {
+        for (format in FrameFormat.entries) assertEquals(format, FrameFormat.fromWireName(format.wireName))
+        for (unknown in listOf("png", "", "JPEG", "frame.jpg")) assertNull(unknown, FrameFormat.fromWireName(unknown))
+    }
 
     @Test fun `under the cap the size is unchanged`() {
         assertEquals(1280 to 720, FrameEncoder.scaledSize(1280, 720, 1920))

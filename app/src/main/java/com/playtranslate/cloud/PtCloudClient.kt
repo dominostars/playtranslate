@@ -4,6 +4,7 @@ import android.os.SystemClock
 import android.util.Log
 import com.playtranslate.PtJson
 import com.playtranslate.net.PtHttp
+import com.playtranslate.translation.HttpCallClock
 import com.playtranslate.translation.HttpTimingLogger
 import com.playtranslate.translation.OnlineAttempt
 import kotlinx.coroutines.CancellationException
@@ -17,21 +18,26 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import okio.BufferedSource
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
-/** What reading part 2 produced. Never an exception: the reader turns each
- *  case into a [TranslationOutcome] through [PtCloudErrors.classifyPart2]. */
+/** What reading the lines after part 1 produced. Never an exception: the
+ *  reader turns each case into a [TranslationOutcome] through
+ *  [PtCloudErrors.classifyPart2]. */
 sealed interface Part2Result {
-    /** The second line, decoded. */
+    /** The final part (`"part":"translation"`), decoded. */
     data class Line(val part: TranslationPart) : Part2Result
-    /** The body ended after part 1, with no second line. */
+    /** The body ended before the final part: right after part 1, or after
+     *  item lines. */
     data object Ended : Part2Result
     /** The read or the decode failed; [cause]'s class is loggable, its
      *  message is not (it can echo the body). */
@@ -39,11 +45,13 @@ sealed interface Part2Result {
 }
 
 /**
- * A frame whose part 1 arrived. [translation] reads part 2 as a child of the
- * coroutine that called [PtCloudClient.postFrame]: that caller's job waits
- * for it and cancelling that job cancels the HTTP call; a caller that will
- * not use part 2 cancels [translation]. It resolves to a [Part2Result] and
- * never throws, apart from [CancellationException].
+ * A frame whose part 1 arrived. [translation] reads the lines after part 1,
+ * up to the final part, as a child of the coroutine that called
+ * [PtCloudClient.postFrame]: that caller's job waits for it and cancelling
+ * that job cancels the HTTP call; a caller that will not use part 2 cancels
+ * [translation]. It resolves to a [Part2Result] and never throws, apart from
+ * [CancellationException]. Item lines on the way are read and timed by the
+ * client and go no further.
  *
  * The two stamps are taken right before the request went out, on two clocks
  * kept apart on purpose: [sentAtMs] on [SystemClock.elapsedRealtime] for the
@@ -78,8 +86,8 @@ sealed interface HealthStatus {
 }
 
 /**
- * The HTTP client for PlayTranslate Cloud's `POST /v1/frame` and
- * `GET /health` (the contract: docs/api.md and
+ * The HTTP client for PlayTranslate Cloud's `POST /v1/frame`, `GET /v1/warm`
+ * and `GET /health` (the contract: docs/api.md and
  * docs/client-integration-brief.md in the playtranslate-cloud repository).
  *
  * Reporting is split at part 1. [postFrame] records the cooldown and
@@ -95,8 +103,11 @@ sealed interface HealthStatus {
  * `Call.isCanceled()`: OkHttp's own call timeout cancels the call too, and a
  * timeout is a failure (TIMEOUT), not the user's gesture.
  *
- * Logs carry status codes, byte and group counts, timings and exception
- * class names only; never the key, the URL, a body or recognized text.
+ * Logs carry the frame id the caller chose, status codes and names, byte
+ * and group counts, sizes, timings and exception class names only; never
+ * the key, the URL, a body, or recognized or translated text. Each frame
+ * that reaches part 1 logs two clock lines ([PtCloudClocks]): one at part 1
+ * and one when the read after it ends, unless that read was cancelled.
  */
 class PtCloudClient(
     private val config: PtCloudConfig,
@@ -105,9 +116,15 @@ class PtCloudClient(
 
     private val client: OkHttpClient by lazy(clientFactory)
 
+    /** When the last [warm] call went out ([SystemClock.elapsedRealtime]), 0
+     *  when none has since the previous frame. Each frame takes it and
+     *  clears it in one step, so a warm sent while a frame reads it is kept
+     *  for the next frame instead of lost. */
+    private val warmSentAtMs = AtomicLong(0L)
+
     /**
      * Uploads [frame] with [meta] and returns once part 1 (the OCR groups)
-     * has arrived and decoded; part 2 keeps reading in
+     * has arrived and decoded; the lines after it keep reading in
      * [FrameResponse.translation], a child of the calling coroutine's job.
      * Call this from the job meant to own part 2, not inside a scoped
      * builder (`withContext`, `coroutineScope`, `withTimeout`): a scope
@@ -127,12 +144,14 @@ class PtCloudClient(
         // of the CALLER's job, so the caller waits for it and cancels it.
         val callerContext = currentCoroutineContext()
         val cooldown = PtCloudService.cooldown
-        val call = client.newCall(frameRequest(frame, meta))
+        val clock = HttpCallClock()
+        val call = client.newCall(frameRequest(frame, meta, clock))
         // A response read to part 1 when the caller was cancelled on the way
         // back must still be closed; this holds it until it is handed off.
         var opened: Opened? = null
         val sentAtMs = SystemClock.elapsedRealtime()
         val attemptStartedAtMs = System.currentTimeMillis()
+        val warmAtMs = warmSentAtMs.getAndSet(0L)
         val part1: Opened = try {
             withContext(Dispatchers.IO) {
                 blockingOn(call) { openPart1(call).also { opened = it } }
@@ -164,30 +183,46 @@ class PtCloudClient(
         }
         Log.i(
             TAG,
-            "part1 groups=${part1.part.groups.size} bytes=${frame.bytes.size} " +
-                "ms=${SystemClock.elapsedRealtime() - sentAtMs}",
+            PtCloudClocks.part1Line(
+                frameId = meta.frameId,
+                format = frame.format,
+                bytes = frame.bytes.size,
+                width = frame.width,
+                height = frame.height,
+                encodeMs = frame.encodeMs,
+                headersMs = part1.headersAtMs - sentAtMs,
+                part1Ms = part1.part1AtMs - sentAtMs,
+                groups = part1.part.groups.size,
+                connectionReused = clock.connectionReused,
+                uploadMs = clock.uploadMs,
+                warmLeadMs = if (warmAtMs == 0L) null else sentAtMs - warmAtMs,
+                edgeUploadHeader = part1.edgeUploadHeader,
+                edgeHeader = part1.edgeHeader,
+                timings = part1.part.timings,
+            ),
         )
 
         val response = part1.response
         val translation = CoroutineScope(callerContext + Dispatchers.IO).async {
+            val items = ItemLines()
             try {
-                blockingOn(call) {
-                    val source = response.body.source()
-                    if (source.exhausted()) {
-                        Part2Result.Ended
-                    } else {
-                        Part2Result.Line(PtJson.lenient.decodeFromString<TranslationPart>(source.readUtf8LineStrict()))
+                val result = try {
+                    blockingOn(call) { readFinalPart(response.body.source(), items, sentAtMs) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    // Never fail this child: a failed async would cancel the
+                    // caller's job (on the hold path, crash the app).
+                    if (!isActive) {
+                        throw CancellationException("PlayTranslate Cloud part 2 cancelled").apply { initCause(t) }
                     }
+                    Part2Result.Failed(t)
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (t: Throwable) {
-                // Never fail this child: a failed async would cancel the
-                // caller's job (on the hold path, crash the app).
-                if (!isActive) {
-                    throw CancellationException("PlayTranslate Cloud part 2 cancelled").apply { initCause(t) }
-                }
-                Part2Result.Failed(t)
+                // Reached only by a read that ended by itself: a cancelled one
+                // threw above and logs nothing. finalLine is total, so this
+                // cannot fail the child.
+                Log.i(TAG, PtCloudClocks.finalLine(meta.frameId, result, items, SystemClock.elapsedRealtime() - sentAtMs))
+                result
             } finally {
                 response.close()
             }
@@ -226,23 +261,68 @@ class PtCloudClient(
         }
     }
 
+    /**
+     * `GET {endpoint}/v1/warm` ("Pre-warm" in docs/api.md): wakes the radio,
+     * the pooled connection, the edge's path to the origin and the origin's
+     * translator connection before a frame is uploaded. Fire and forget: it
+     * returns at once, on the same client (and so the same connection pool)
+     * as [postFrame], and its answer is only closed and logged. A 204, a 404
+     * (the service off), a 401 or a transport failure all record no cooldown
+     * and report no attempt: the frame that follows is what says how the
+     * service is.
+     *
+     * Sends nothing when [PtCloudConfig.warmEnabled] is off, when the stored
+     * URL is unusable ([PtCloudConfig.endpoint] is null) or when there is no
+     * usable key ([PtCloudConfig.hasKey]). Otherwise stamps when it went
+     * out, so the next frame's clock line reports the head start. Reading
+     * the key decrypts it, so call this off the main thread.
+     */
+    fun warm() {
+        if (!config.warmEnabled) return
+        val endpoint = config.endpoint ?: return
+        if (!config.hasKey) return
+        val request = Request.Builder()
+            .url(endpoint.newBuilder().addPathSegments("v1/warm").build())
+            .header("Authorization", "Bearer ${config.clientKey}")
+            .get()
+            .build()
+        val sentAtMs = SystemClock.elapsedRealtime()
+        warmSentAtMs.set(sentAtMs)
+        client.newCall(request).enqueue(object : Callback {
+            override fun onResponse(call: Call, response: Response) {
+                val code = response.use { it.code }
+                Log.i(TAG, "warm status=$code ms=${SystemClock.elapsedRealtime() - sentAtMs}")
+            }
+
+            override fun onFailure(call: Call, e: IOException) {
+                Log.i(TAG, "warm failed (${e.javaClass.simpleName})")
+            }
+        })
+    }
+
     /** The multipart request exactly as the brief specifies it: `frame` a
-     *  file part with a filename and a media type, `meta` a plain form field
-     *  (a file part named `meta` is ignored and the server answers 422).
+     *  file part named and typed by the frame's [FrameFormat], `meta` a
+     *  plain form field (a file part named `meta` is ignored and the server
+     *  answers 422). Both parts are byte arrays of known length, so OkHttp
+     *  sends the `Content-Length` the edge requires (411 without one).
+     *  [clock] rides along as the request's tag for the HTTP stack to fill.
      *  Throws [IllegalStateException] when [PtCloudConfig.endpoint] is null:
      *  the router never sends a frame here without one, so reaching this is
      *  a programming error, not a service failure. */
-    private fun frameRequest(frame: EncodedFrame, meta: FrameMeta): Request {
+    private fun frameRequest(frame: EncodedFrame, meta: FrameMeta, clock: HttpCallClock): Request {
         val endpoint = checkNotNull(config.endpoint) { "PlayTranslate Cloud frame with no usable endpoint" }
         val body = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
-            .addFormDataPart("frame", FRAME_FILENAME, frame.bytes.toRequestBody(frame.mediaType.toMediaType()))
+            .addFormDataPart(
+                "frame", frame.format.filename, frame.bytes.toRequestBody(frame.format.mediaType.toMediaType()),
+            )
             .addFormDataPart("meta", PtJson.lenient.encodeToString(FrameMeta.serializer(), meta))
             .build()
         return Request.Builder()
             .url(endpoint.newBuilder().addPathSegments("v1/frame").build())
             .header("Authorization", "Bearer ${config.clientKey}")
             .header("Accept", NDJSON)
+            .tag(HttpCallClock::class.java, clock)
             .post(body)
             .build()
     }
@@ -250,9 +330,11 @@ class PtCloudClient(
     /** Sends the request and reads part 1, blocking. A non-200 status or an
      *  unreadable part 1 throws [Refused] with its classification; the
      *  response is closed on every path except success, where it is handed
-     *  back open for part 2. */
+     *  back open for part 2, with the moments the headers and part 1
+     *  arrived and the edge's two clock headers. */
     private fun openPart1(call: Call): Opened {
         val response = call.execute()
+        val headersAtMs = SystemClock.elapsedRealtime()
         var handedOff = false
         try {
             if (response.code != 200) {
@@ -270,14 +352,61 @@ class PtCloudClient(
                 throw Refused(PtCloudErrors.badPart1, "part 1 did not decode", e)
             }
             if (!PtCloudErrors.isOcrPart(part)) throw Refused(PtCloudErrors.badPart1, "not a schema 1 part 1")
+            val part1AtMs = SystemClock.elapsedRealtime()
             handedOff = true
-            return Opened(response, part)
+            return Opened(
+                response, part, headersAtMs, part1AtMs,
+                edgeUploadHeader = response.header(EDGE_UPLOAD_HEADER),
+                edgeHeader = response.header(EDGE_HEADER),
+            )
         } finally {
             if (!handedOff) response.close()
         }
     }
 
-    private class Opened(val response: Response, val part: OcrPart)
+    /**
+     * Reads the lines after part 1 until the final part, blocking:
+     *  - `"part":"translation"`: decoded and returned as [Part2Result.Line];
+     *  - `"part":"translation_item"`: its arrival is stamped into [items] and
+     *    the read goes on; an item that does not decode (no `id`, say) is
+     *    skipped like an unknown part, since nothing but the clock line reads
+     *    items and one cannot fail the frame;
+     *  - a JSON object with any other `part`, or none: skipped, the
+     *    contract's rule for a line this client does not know;
+     *  - the body ending first: [Part2Result.Ended].
+     * A line that is not a JSON object, a final part that does not decode and
+     * a failed read throw; the caller turns that into [Part2Result.Failed].
+     */
+    private fun readFinalPart(source: BufferedSource, items: ItemLines, sentAtMs: Long): Part2Result {
+        while (!source.exhausted()) {
+            val line = source.readUtf8LineStrict()
+            when (PtJson.lenient.decodeFromString<WirePartTag>(line).part) {
+                PtCloudErrors.PART_TRANSLATION ->
+                    return Part2Result.Line(PtJson.lenient.decodeFromString<TranslationPart>(line))
+                PtCloudErrors.PART_TRANSLATION_ITEM -> {
+                    val atMs = SystemClock.elapsedRealtime() - sentAtMs
+                    val item = try {
+                        PtJson.lenient.decodeFromString<TranslationItem>(line)
+                    } catch (e: IllegalArgumentException) {
+                        // kotlinx's SerializationException is one.
+                        null
+                    }
+                    if (item != null) items.add(item, atMs)
+                }
+                else -> Unit
+            }
+        }
+        return Part2Result.Ended
+    }
+
+    private class Opened(
+        val response: Response,
+        val part: OcrPart,
+        val headersAtMs: Long,
+        val part1AtMs: Long,
+        val edgeUploadHeader: String?,
+        val edgeHeader: String?,
+    )
 
     /** The server answered, but not with a usable part 1. */
     private class Refused(
@@ -289,7 +418,12 @@ class PtCloudClient(
     companion object {
         private const val TAG = "PtCloud"
         private const val NDJSON = "application/x-ndjson"
-        private const val FRAME_FILENAME = "frame.webp"
+
+        /** The edge's clocks (docs/api.md, "Clocks"): arrival to the last
+         *  body byte handed to the origin, and arrival to the origin's
+         *  response headers. */
+        private const val EDGE_UPLOAD_HEADER = "x-pt-edge-upload-ms"
+        private const val EDGE_HEADER = "x-pt-edge-ms"
 
         /** An error body is read only to tell the stopped service's empty
          *  404 from a routing 404; its text is never logged. */

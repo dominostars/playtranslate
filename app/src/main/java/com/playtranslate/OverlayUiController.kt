@@ -2654,6 +2654,10 @@ class OverlayUiController(
         val launchGeometry = DisplayGeometry(size.x, size.y, display.rotation)
         val gen = captureGeneration
         captureJob = scope.launch {
+            // Warm PlayTranslate Cloud for processScreenshot's read below: a
+            // fresh capture, so it reads in the source language from the same
+            // pref and never device-only.
+            svc.warmCloud(Prefs(context).sourceLangId, deviceOnly = false)
             // The frame carries its capture-time facts (CapturedFrame).
             val frame = CaptureBackendResolver.active().captureSource?.requestClean(displayId)
             val bitmap = frame?.bitmap

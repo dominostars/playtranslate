@@ -30,7 +30,9 @@ const val PT_CLOUD_SCHEMA_VERSION = 1
  * [PtCloudRouting.SUPPORTED_SOURCE_CODES]; [target] equal to [source] makes
  * the server skip translation. [persona] and [context] are omitted from the
  * JSON when null (`explicitNulls = false`), which asks for the server's
- * defaults.
+ * defaults. [streamTranslations] true asks for an item line per group as its
+ * translation completes ("Incremental translations" in docs/api.md); null
+ * leaves the key out, the server's default of no item lines.
  */
 @Serializable
 data class FrameMeta(
@@ -39,6 +41,7 @@ data class FrameMeta(
     @SerialName("frame_id") val frameId: String,
     val persona: String?,
     val context: String?,
+    @SerialName("stream_translations") val streamTranslations: Boolean? = null,
 )
 
 // ── Response, part 1 ───────────────────────────────────────────────────
@@ -73,7 +76,7 @@ data class WireEngine(
 )
 
 /** One paragraph, already in the app's post-grouping shape. [id] is its
- *  position in `groups` and the key part 2 uses. */
+ *  position in `groups` and the key the item lines and the final part use. */
 @Serializable
 data class WireGroup(
     val id: Int,
@@ -142,10 +145,34 @@ data class WireBox(val left: Int, val top: Int, val right: Int, val bottom: Int)
     }
 }
 
-// ── Response, part 2 ───────────────────────────────────────────────────
+// ── Response, after part 1 ─────────────────────────────────────────────
 
-/** The second NDJSON line: translations keyed by part 1's group ids, and
- *  how translation settled ([PtCloudErrors.classifyTranslation]). */
+/** Just a line's `part`, read first so the client knows how to read the
+ *  rest of the line; null when the line has none. */
+@Serializable
+data class WirePartTag(val part: String? = null)
+
+/**
+ * An item line, sent between part 1 and the final part when the frame asked
+ * for them ([FrameMeta.streamTranslations]): one group's translation the
+ * moment it completes. Provisional; the final part is authoritative. The
+ * client reads items only to time them and to count the ones the final part
+ * words differently: nothing is drawn, cached or recorded from one. [tMs] is
+ * milliseconds from the request's start on the server.
+ */
+@Serializable
+data class TranslationItem(
+    val part: String,
+    @SerialName("schema_version") val schemaVersion: Int,
+    @SerialName("frame_id") val frameId: String? = null,
+    val id: Int,
+    val translation: String,
+    @SerialName("t_ms") val tMs: Double? = null,
+)
+
+/** The final NDJSON line, after any item lines: translations keyed by part
+ *  1's group ids, and how translation settled
+ *  ([PtCloudErrors.classifyTranslation]). */
 @Serializable
 data class TranslationPart(
     val part: String,

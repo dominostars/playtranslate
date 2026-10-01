@@ -1,8 +1,6 @@
 package com.playtranslate.cloud
 
 import android.graphics.Bitmap
-import android.os.SystemClock
-import android.util.Log
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ocr.FrameReader
 import com.playtranslate.ocr.FrameReading
@@ -21,9 +19,10 @@ import kotlinx.coroutines.ensureActive
 
 /**
  * Reads a frame through PlayTranslate Cloud: one `POST /v1/frame` returns the
- * OCR groups (part 1) and, about a second later, their translations (part 2).
- * [read] returns at part 1; the translations follow as the reading's
- * [FrameReading.translations], a child of the caller's job.
+ * OCR groups (part 1) and, about a second later, their translations (the
+ * final part; any item lines before it are read and timed by the client and
+ * go no further). [read] returns at part 1; the translations follow as the
+ * reading's [FrameReading.translations], a child of the caller's job.
  *
  * Failures split at part 1, as in [PtCloudClient]. Before it, [read] throws
  * the client's [PtCloudReadException] (an IOException, which
@@ -36,14 +35,14 @@ import kotlinx.coroutines.ensureActive
  * locally. A caller that cancels (a released hold, a superseded capture, a
  * reading it has no use for) records and reports nothing.
  *
- * Logs carry byte counts, sizes, timings, status names and exception class
- * names only; never the key, the URL, the persona, the context or any text.
+ * This reader logs nothing of its own: the client's two clock lines per
+ * frame and its failure line cover the request ([PtCloudClient]).
  */
 class PtCloudFrameReader(
     private val client: PtCloudClient,
     private val config: PtCloudConfig,
     /** Test seam: [FrameEncoder.encode] needs native graphics. */
-    private val encode: suspend (Bitmap, Int) -> EncodedFrame = FrameEncoder::encode,
+    private val encode: suspend (Bitmap, Int, FrameFormat) -> EncodedFrame = FrameEncoder::encode,
 ) : FrameReader {
 
     /**
@@ -61,7 +60,9 @@ class PtCloudFrameReader(
      * user's System prompt override, absent without one (the server's
      * default is the app's default persona). `context` is the recent-dialogue
      * block the translation log keeps for the pair, absent when blank or
-     * same-language.
+     * same-language. `stream_translations` is true when
+     * [PtCloudConfig.streamItems] is on and absent when it is off. The upload
+     * cap and format are read from the config for this read.
      *
      * The attribution token "ptcloud" is unknown to the OCR picker: a result
      * read here highlights no engine there, and a re-OCR the user starts from
@@ -74,14 +75,7 @@ class PtCloudFrameReader(
         // cancels them, as postFrame's own part-2 reader is.
         val callerContext = currentCoroutineContext()
 
-        val cap = config.uploadLongSideCap
-        val encodeStartMs = SystemClock.elapsedRealtime()
-        val frame = encode(bitmap, cap)
-        Log.i(
-            TAG,
-            "encode=${SystemClock.elapsedRealtime() - encodeStartMs}ms bytes=${frame.bytes.size} " +
-                "cap=$cap size=${frame.width}x${frame.height}",
-        )
+        val frame = encode(bitmap, config.uploadLongSideCap, config.uploadFormat)
 
         val source = request.sourceLangId.code
         val translationCode = SourceLanguageProfiles[request.sourceLangId].translationCode
@@ -95,6 +89,7 @@ class PtCloudFrameReader(
             // backends ask for it; the wire's source is the OCR code.
             context = if (sameLanguage) null
                 else LlmPromptTemplates.contextProvider(translationCode, request.targetLang).takeIf { it.isNotBlank() },
+            streamTranslations = if (config.streamItems) true else null,
         )
 
         // Directly in this function, never in a scoped builder: part 2 must
@@ -122,12 +117,6 @@ class PtCloudFrameReader(
                         reachedServer = true,
                     ),
                 )
-                val status = when (outcome) {
-                    is TranslationOutcome.Translated -> "Translated ${outcome.byGroup.size}"
-                    TranslationOutcome.Skipped -> "Skipped"
-                    is TranslationOutcome.Failed -> "Failed ${outcome.failure.kind}"
-                }
-                Log.i(TAG, "part2 status=$status ms=${SystemClock.elapsedRealtime() - response.sentAtMs}")
                 when (outcome) {
                     // A group the server names with an empty (or blank)
                     // string has no translation. Treated as unnamed, it goes
@@ -156,9 +145,5 @@ class PtCloudFrameReader(
             }
         }
         return FrameReading(ocr, ReaderAttribution(PtCloudService.DISPLAY_NAME, PtCloudService.ID), translations)
-    }
-
-    private companion object {
-        const val TAG = "PtCloud"
     }
 }

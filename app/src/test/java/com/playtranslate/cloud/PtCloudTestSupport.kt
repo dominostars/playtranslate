@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.Call
+import okhttp3.Dispatcher
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -21,7 +22,10 @@ import okio.Source
 import okio.Timeout
 import okio.buffer
 import java.io.IOException
+import java.util.Collections
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /** Shared pieces for the PlayTranslate Cloud tests: fixtures in the wire's
@@ -88,14 +92,23 @@ internal object PtCloudTestSupport {
         """{"part":"translation","schema_version":1,"frame_id":"f","translation_status":"$status",""" +
             """"translations":$translations$extra,"timings":{"translate_ms":988.0,"total_ms":1210.0}}"""
 
+    /** An item line ("Incremental translations"): one group's translation,
+     *  sent between part 1 and the final part. */
+    fun item(id: Int, translation: String, tMs: Double = 900.0): String =
+        """{"part":"translation_item","schema_version":1,"frame_id":"f","id":$id,""" +
+            """"translation":"$translation","t_ms":$tMs}"""
+
     /** [obj] with [key] replaced. */
     fun JsonObject.with(key: String, value: JsonElement) = JsonObject(this + (key to value))
 
-    fun meta(persona: String? = null, context: String? = null) =
-        FrameMeta(source = "ja", target = "en", frameId = "capture-0042", persona = persona, context = context)
+    fun meta(persona: String? = null, context: String? = null, streamTranslations: Boolean? = null) =
+        FrameMeta(
+            source = "ja", target = "en", frameId = "capture-0042", persona = persona, context = context,
+            streamTranslations = streamTranslations,
+        )
 
-    fun frame(bytes: ByteArray = ByteArray(64) { it.toByte() }, scale: Float = 1f) =
-        EncodedFrame(bytes, FrameEncoder.MEDIA_TYPE_WEBP, scale, width = 1920, height = 1080)
+    fun frame(bytes: ByteArray = ByteArray(64) { it.toByte() }, scale: Float = 1f, format: FrameFormat = FrameFormat.JPEG) =
+        EncodedFrame(bytes, format, scale, width = 1920, height = 1080, encodeMs = 0)
 
     // ── Canned HTTP ────────────────────────────────────────────────────
 
@@ -123,9 +136,11 @@ internal object PtCloudTestSupport {
         OkHttpClient.Builder().addInterceptor(Interceptor { throw e }).build()
 
     /** A client answering 200 with an NDJSON body built by [body] for the
-     *  call, so a test can gate its lines ([GatedSource]). */
+     *  call, and [headers] as response headers, so a test can gate its lines
+     *  ([GatedSource]). */
     fun streamingClient(
         seen: MutableList<Call> = mutableListOf(),
+        headers: Map<String, String> = emptyMap(),
         body: (Call) -> Source,
     ): OkHttpClient = OkHttpClient.Builder().addInterceptor { chain ->
         seen += chain.call()
@@ -134,9 +149,33 @@ internal object PtCloudTestSupport {
             .protocol(Protocol.HTTP_1_1)
             .code(200)
             .message("OK")
+            .apply { headers.forEach { (name, value) -> header(name, value) } }
             .body(body(chain.call()).buffer().asResponseBody("application/x-ndjson".toMediaType()))
             .build()
     }.build()
+
+    /** [this] client with its enqueued calls run on [executor], so a test can
+     *  wait for a fire-and-forget call's callback ([CapturingExecutor.await]). */
+    fun OkHttpClient.onExecutor(executor: ExecutorService): OkHttpClient =
+        newBuilder().dispatcher(Dispatcher(executor)).build()
+
+    /**
+     * One thread for OkHttp's enqueued calls that keeps whatever escapes a
+     * task (OkHttp rethrows onto its thread anything but an IOException a
+     * callback throws), so a test can assert a callback threw nothing. [await] shuts it down and waits,
+     * after which every enqueued callback has run.
+     */
+    class CapturingExecutor {
+        val thrown: MutableList<Throwable> = Collections.synchronizedList(mutableListOf())
+        val executor: ExecutorService = Executors.newSingleThreadExecutor { r ->
+            Thread(r, "pt-cloud-test-dispatcher").apply { setUncaughtExceptionHandler { _, t -> thrown += t } }
+        }
+
+        fun await() {
+            executor.shutdown()
+            check(executor.awaitTermination(5, TimeUnit.SECONDS)) { "enqueued calls never finished" }
+        }
+    }
 
     /**
      * A response body that yields [lines] one at a time, each followed by a

@@ -2,13 +2,18 @@ package com.playtranslate.cloud
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.playtranslate.Prefs
 import com.playtranslate.cloud.PtCloudTestSupport.BASE_URL
+import com.playtranslate.cloud.PtCloudTestSupport.CapturingExecutor
 import com.playtranslate.cloud.PtCloudTestSupport.KEY
+import com.playtranslate.cloud.PtCloudTestSupport.onExecutor
 import com.playtranslate.translation.CooldownState
+import com.playtranslate.translation.HttpCallClock
 import com.playtranslate.translation.TranslationBackendRegistry
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MultipartBody
 import okhttp3.Request
@@ -17,6 +22,7 @@ import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -24,14 +30,20 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowLog
+import org.robolectric.shadows.ShadowSystemClock
 import java.io.IOException
+import java.time.Duration
+import java.util.Collections
 
 /**
  * The request exactly as the brief specifies it, captured at the client's
  * boundary: `POST {base}/v1/frame`, the two headers, and a two-part
- * multipart body whose `frame` is a file part with a filename and media type
- * and whose `meta` is a plain form field (a file part named `meta` makes the
- * server answer 422). Plus `GET /health`'s status mapping.
+ * multipart body of known length whose `frame` is a file part named and
+ * typed by its format and whose `meta` is a plain form field (a file part
+ * named `meta` makes the server answer 422). Plus `GET /health`'s status
+ * mapping and `GET /v1/warm`: what it sends, when it sends nothing, and the
+ * head start it hands the next frame's clock line.
  */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudRequestTest {
@@ -105,22 +117,50 @@ class PtCloudRequestTest {
         assertEquals("Bearer $KEY", send(key = "$KEY\n").header("Authorization"))
     }
 
-    @Test fun `the body is multipart form data with exactly the frame and meta parts`() {
-        val bytes = ByteArray(300) { (it * 7).toByte() }
-        val body = send(frame = PtCloudTestSupport.frame(bytes)).body as MultipartBody
-        assertEquals(MultipartBody.FORM, body.type)
-        assertEquals(2, body.parts.size)
+    @Test fun `the body is multipart form data with exactly the frame and meta parts, the frame named and typed by its format`() {
+        for ((format, filename, mediaType) in listOf(
+            Triple(FrameFormat.JPEG, "frame.jpg", "image/jpeg"),
+            Triple(FrameFormat.WEBP, "frame.webp", "image/webp"),
+        )) {
+            val bytes = ByteArray(300) { (it * 7).toByte() }
+            val body = send(frame = PtCloudTestSupport.frame(bytes, format = format)).body as MultipartBody
+            assertEquals(MultipartBody.FORM, body.type)
+            assertEquals(2, body.parts.size)
 
-        val frame = body.parts[0]
-        assertEquals("""form-data; name="frame"; filename="frame.webp"""", frame.disposition())
-        assertEquals("image/webp", frame.body.contentType().toString())
-        assertArrayEquals(bytes, Buffer().also { frame.body.writeTo(it) }.readByteArray())
+            val frame = body.parts[0]
+            assertEquals("""form-data; name="frame"; filename="$filename"""", frame.disposition())
+            assertEquals(mediaType, frame.body.contentType().toString())
+            assertArrayEquals(bytes, Buffer().also { frame.body.writeTo(it) }.readByteArray())
 
-        val meta = body.parts[1]
-        // A plain form field: no filename, no part media type.
-        assertEquals("""form-data; name="meta"""", meta.disposition())
-        assertNull(meta.body.contentType())
+            val meta = body.parts[1]
+            // A plain form field: no filename, no part media type.
+            assertEquals("""form-data; name="meta"""", meta.disposition())
+            assertNull(meta.body.contentType())
+        }
     }
+
+    @Test fun `the frame body's length is known, so OkHttp sends the Content-Length the edge requires`() {
+        // The edge answers 411 to an upload without one. A streaming body
+        // (length -1) would make OkHttp send it chunked instead.
+        val body = send().body!!
+        val length = body.contentLength()
+        assertTrue("length $length", length >= 0)
+        assertEquals(Buffer().also { body.writeTo(it) }.size, length)
+    }
+
+    @Test fun `the frame request carries a clock for the HTTP stack to fill`() {
+        assertNotNull(send().tag(HttpCallClock::class.java))
+    }
+
+    @Test fun `stream_translations goes out as true when asked for and is absent otherwise`() {
+        val on = metaJson(send(PtCloudTestSupport.meta(streamTranslations = true)))
+        assertTrue(on["stream_translations"]!!.jsonPrimitive.boolean)
+        val off = metaJson(send(PtCloudTestSupport.meta(streamTranslations = null)))
+        assertFalse("absent, not null or false: $off", "stream_translations" in off)
+    }
+
+    private fun metaJson(request: Request): JsonObject =
+        Json.parseToJsonElement((request.body as MultipartBody).parts[1].text()) as JsonObject
 
     @Test fun `meta carries source, target and frame id and omits an unset persona and context`() {
         val meta = (send().body as MultipartBody).parts[1]
@@ -194,5 +234,91 @@ class PtCloudRequestTest {
         assertEquals(HealthStatus.Unreachable, runBlocking { client.health() })
         assertNull(PtCloudService.unavailableUntil())
         assertFalse(PtCloudService.isCoolingDown())
+    }
+
+    // ── GET /v1/warm ───────────────────────────────────────────────────
+
+    @Test fun `warm is a GET on v1 warm with the key and no body, on the frame's own client`() {
+        val seen = Collections.synchronizedList(mutableListOf<Request>())
+        val dispatcher = CapturingExecutor()
+        var built = 0
+        val client = PtCloudClient(
+            PtCloudTestSupport.config(ctx),
+            clientFactory = { built++; PtCloudTestSupport.cannedClient(200, ndjson, seen = seen).onExecutor(dispatcher.executor) },
+        )
+        client.warm()
+        dispatcher.await()
+        val warm = seen.single()
+        assertEquals("GET", warm.method)
+        assertEquals("$BASE_URL/v1/warm", warm.url.toString())
+        assertEquals("Bearer $KEY", warm.header("Authorization"))
+        assertNull(warm.body)
+        assertTrue(dispatcher.thrown.isEmpty())
+
+        // The frame goes through the same client, so the same connection pool.
+        runBlocking { client.postFrame(PtCloudTestSupport.frame(), PtCloudTestSupport.meta()).translation.await() }
+        assertEquals("$BASE_URL/v1/frame", seen.last().url.toString())
+        assertEquals(1, built)
+    }
+
+    @Test fun `warm sends nothing with the switch off, an unusable URL, or no usable key`() {
+        val cases = listOf<Pair<String, (Prefs) -> Unit>>(
+            "switch off" to { it.ptCloudWarm = false },
+            "cleartext to a public host" to { it.ptCloudBaseUrl = "http://pt.example.test" },
+            "malformed URL" to { it.ptCloudBaseUrl = "not a url" },
+            "no key" to { it.ptCloudClientKey = "" },
+            "a key that is not a legal header value" to { it.ptCloudClientKey = "abc\ndef" },
+        )
+        for ((name, edit) in cases) {
+            val prefs = PtCloudTestSupport.prefs(ctx)
+            prefs.ptCloudBaseUrl = BASE_URL
+            prefs.ptCloudClientKey = KEY
+            prefs.ptCloudWarm = true
+            edit(prefs)
+            val seen = Collections.synchronizedList(mutableListOf<Request>())
+            val dispatcher = CapturingExecutor()
+            val client = PtCloudClient(
+                PtCloudConfig(prefs),
+                clientFactory = { PtCloudTestSupport.cannedClient(200, ndjson, seen = seen).onExecutor(dispatcher.executor) },
+            )
+            client.warm()
+            dispatcher.await()
+            assertTrue("$name: $seen", seen.isEmpty())
+            assertTrue(name, dispatcher.thrown.isEmpty())
+        }
+    }
+
+    private fun part1Lines() = ShadowLog.getLogsForTag("PtCloud").map { it.msg }.filter { it.startsWith("part1 ") }
+
+    @Test fun `a warm's head start shows on the next frame's part 1 line, and only that frame's`() {
+        ShadowLog.clear()
+        val dispatcher = CapturingExecutor()
+        val client = PtCloudClient(
+            PtCloudTestSupport.config(ctx),
+            clientFactory = { PtCloudTestSupport.cannedClient(200, ndjson).onExecutor(dispatcher.executor) },
+        )
+        client.warm()
+        ShadowSystemClock.advanceBy(Duration.ofMillis(1_000))
+        runBlocking { client.postFrame(PtCloudTestSupport.frame(), PtCloudTestSupport.meta()).translation.await() }
+        runBlocking { client.postFrame(PtCloudTestSupport.frame(), PtCloudTestSupport.meta()).translation.await() }
+        dispatcher.await()
+
+        val lines = part1Lines()
+        assertEquals(lines.toString(), 2, lines.size)
+        assertTrue(lines[0], " warm=1000 " in lines[0])
+        assertTrue("taken by the first frame: ${lines[1]}", " warm=none " in lines[1])
+    }
+
+    @Test fun `a warm the switch stopped leaves the next frame with no head start`() {
+        ShadowLog.clear()
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        val client = PtCloudClient(
+            PtCloudTestSupport.config(ctx),
+            clientFactory = { PtCloudTestSupport.cannedClient(200, ndjson) },
+        )
+        prefs.ptCloudWarm = false
+        client.warm()
+        runBlocking { client.postFrame(PtCloudTestSupport.frame(), PtCloudTestSupport.meta()).translation.await() }
+        assertTrue(part1Lines().single(), " warm=none " in part1Lines().single())
     }
 }
