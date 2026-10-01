@@ -129,8 +129,15 @@ class PtCloudFrameReader(
                 }
                 Log.i(TAG, "part2 status=$status ms=${SystemClock.elapsedRealtime() - response.sentAtMs}")
                 when (outcome) {
+                    // A group the server names with an empty (or blank)
+                    // string has no translation. Treated as unnamed, it goes
+                    // where an unnamed group goes (capture-once: no box; the
+                    // hold: a skeleton; live: the cache and the waterfall)
+                    // instead of pinning a live box blank while the
+                    // reconciler retries it every cycle.
                     is TranslationOutcome.Translated -> ProvidedTranslations.Ok(
-                        outcome.byGroup, translationCode, request.targetLang, PtCloudService.DISPLAY_NAME,
+                        outcome.byGroup.filterValues { it.isNotBlank() },
+                        translationCode, request.targetLang, PtCloudService.DISPLAY_NAME,
                     )
                     TranslationOutcome.Skipped -> ProvidedTranslations.Unavailable("skipped")
                     is TranslationOutcome.Failed -> ProvidedTranslations.Unavailable(outcome.failure.kind.name)

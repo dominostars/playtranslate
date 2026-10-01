@@ -8,6 +8,8 @@ import com.playtranslate.language.SourceLangId
 import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.ocr.registry.ocrLabel
 import com.playtranslate.ocr.registry.selectionToken
+import com.playtranslate.translation.BackendFailure
+import com.playtranslate.translation.ClassifiedFailure
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.currentCoroutineContext
@@ -56,6 +58,10 @@ class FrameReading(
     /** Null when the reader only reads. Otherwise a child of the caller's job that
      *  never fails: whoever drops the reading without awaiting it cancels it. */
     val translations: Deferred<ProvidedTranslations>?,
+    /** Why the primary could not read, when this reading came from the fallback
+     *  ([FallbackFrameReader]); null when the primary read it, or when the
+     *  primary's failure carried no classification. */
+    val fallbackFrom: BackendFailure? = null,
 )
 
 /** What a read needs besides the pixels. [screenshotWidth] is the full frame's width
@@ -71,8 +77,9 @@ data class ReadRequest(
 /**
  * The seam between a capture and whatever reads its pixels: the on-device OCR
  * engines today, a combined OCR and translation service behind the same call.
- * The capture-once paths and the press-and-hold overlay read through it; the
- * attribution a reading carries is the one place a result's "Scanned by" comes from.
+ * The capture-once paths, the press-and-hold overlay and the reconciler live tier
+ * read through it; the attribution a reading carries is the one place a result's
+ * "Scanned by" comes from.
  */
 interface FrameReader {
     /** Reads [bitmap] (the OCR input crop, in whose coordinates the result's boxes are).
@@ -138,6 +145,11 @@ class DeviceFrameReader(
  * [fallback]. Cancellation is never a failure: it propagates, and a primary that
  * failed while the caller was being cancelled does not start the fallback. Any
  * other exception is a bug in the primary and propagates too.
+ *
+ * A reading from the fallback carries the primary's failure
+ * ([FrameReading.fallbackFrom]) when the exception classified itself
+ * ([ClassifiedFailure], as [com.playtranslate.cloud.PtCloudReadException]
+ * does), so a caller can act on why the primary could not read.
  */
 class FallbackFrameReader(
     private val primary: FrameReader,
@@ -152,7 +164,11 @@ class FallbackFrameReader(
         currentCoroutineContext().ensureActive()
         // Class name only: an exception message can carry a URL.
         Log.i(TAG, "primary reader unavailable (${e.javaClass.simpleName}); reading on device")
-        fallback.read(bitmap, request)
+        val reading = fallback.read(bitmap, request)
+        FrameReading(
+            reading.ocr, reading.attribution, reading.translations,
+            fallbackFrom = (e as? ClassifiedFailure)?.failure,
+        )
     }
 }
 
@@ -161,3 +177,15 @@ class FallbackFrameReader(
  *  as a blank waterfall result), and ids outside `0 until count` are ignored. */
 internal fun providedGroupTranslations(count: Int, byGroup: Map<Int, String>): List<String> =
     List(count) { i -> byGroup[i].orEmpty() }
+
+/** These translations re-keyed by position in a consumer's own list: position i
+ *  takes `byGroup[indices[i]]` when that group is named, and stays unnamed
+ *  otherwise; the pair and the provider are kept. Null when no index is named,
+ *  so a caller passes no provided translations at all rather than an empty set. */
+internal fun ProvidedTranslations.Ok.forPositions(indices: List<Int>): ProvidedTranslations.Ok? {
+    val byPosition = HashMap<Int, String>()
+    indices.forEachIndexed { position, index ->
+        byGroup[index]?.let { byPosition[position] = it }
+    }
+    return if (byPosition.isEmpty()) null else copy(byGroup = byPosition)
+}

@@ -168,6 +168,17 @@ class PtCloudFrameReaderTest {
         assertOneAttempt(failure = null)
     }
 
+    @Test fun `a group the server translates to a blank is left unnamed`() = runBlocking {
+        val blanks = PtCloudTestSupport.part2(
+            translations = """[{"id":0,"translation":"Hello"},{"id":1,"translation":""},{"id":2,"translation":"  "}]""",
+        )
+        val reading = reader(streaming(listOf(part1, blanks))).read(bitmap, request())
+
+        assertEquals(ProvidedTranslations.Ok(mapOf(0 to "Hello"), "ja", "en", "PlayTranslate Cloud"), reading.part2())
+        // Still a working service: a success, not a failure.
+        assertOneAttempt(failure = null)
+    }
+
     @Test fun `part 2 rate_limited is Unavailable, cools down until its retry time, and reports RATE_LIMITED`() = runBlocking {
         val failed = PtCloudTestSupport.part2(
             "failed", "[]", extra = ""","translation_error":{"class":"rate_limited","http_status":429,"retry_after_s":12}""",

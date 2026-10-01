@@ -2,6 +2,9 @@ package com.playtranslate
 
 import com.playtranslate.capture.CapturedFrame
 import com.playtranslate.model.TranslationResult
+import com.playtranslate.ocr.DeviceFrameReader
+import com.playtranslate.ocr.ProvidedTranslations
+import com.playtranslate.ocr.ReaderAttribution
 import com.playtranslate.ui.TextBox
 
 /**
@@ -32,6 +35,7 @@ class PanelPresenter(
         cropLeft: Int,
         cropTop: Int,
         onPartial: suspend (List<TextBox>) -> Unit,
+        provided: suspend () -> ProvidedTranslations.Ok?,
     ): List<TextBox> {
         // No color sampling, no skeleton pass — nothing renders on screen.
         val texts = work.map { it.text }
@@ -50,7 +54,9 @@ class PanelPresenter(
                 sourceConfMean = cMean,
             )
         }
-        return OverlayToolkit.translatePlaceholders(service, placeholders, texts)
+        // Nothing renders early, so the reader's translations are awaited
+        // straight away.
+        return OverlayToolkit.translatePlaceholders(service, placeholders, texts, provided())
     }
 
     override suspend fun emitApplied(
@@ -59,6 +65,7 @@ class PanelPresenter(
         frameIncludesSystemUi: Boolean,
         frameIncludesOwnOverlays: Boolean,
         screenshotPath: () -> String?,
+        attribution: ReaderAttribution?,
     ) {
         val texts = OverlayToolkit.panelTexts(
             OverlayToolkit.panelReadingOrder(anchors, ocrResult),
@@ -70,14 +77,15 @@ class PanelPresenter(
             displayId, texts, screenshotPath,
             ocrProvenance = ocrResult?.let {
                 service.panelOcrProvenance(
-                    it, displayId, frameIncludesSystemUi, frameIncludesOwnOverlays,
+                    attribution ?: DeviceFrameReader.attributionOf(it, service),
+                    displayId, frameIncludesSystemUi, frameIncludesOwnOverlays,
                 )
             },
             backendDisplayName = OverlayToolkit.panelBackendLabel(anchors),
         )
     }
 
-    override fun emitNoText() {
-        service.emitLiveNoText(displayId)
+    override fun emitNoText(attribution: ReaderAttribution?) {
+        service.emitLiveNoText(displayId, attribution)
     }
 }

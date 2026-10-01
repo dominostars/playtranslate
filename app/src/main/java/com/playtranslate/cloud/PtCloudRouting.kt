@@ -31,7 +31,8 @@ object PtCloudRouting {
      * ([endpointValid]: [PtCloudConfig.endpoint] is not null), the source is
      * one the server reads, the service is not cooling down, and the caller
      * did not ask for the device reader ([deviceOnly]: re-OCR, the furigana
-     * hold, a hold while live mode runs).
+     * hold, a hold while live mode runs, the pinhole and furigana live tiers,
+     * a live session the service refused ([PtCloudService.liveSessionBlocked])).
      */
     fun eligible(
         enabled: Boolean,

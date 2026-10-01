@@ -7,11 +7,15 @@ import android.util.Log
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.LiveCaptureSource
 import com.playtranslate.capture.StreamKind
+import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextDirection
+import com.playtranslate.ocr.ProvidedTranslations
+import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.ui.GrowthLimits
 import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -364,6 +368,14 @@ class ReconcilerLiveMode(
         // The hold's cap anchor: stamped by the source at serve time
         // (CapturedFrame) — not a caller-side clock read.
         val captureAtMs = frame.capturedAtMs
+        // The reader's translations, when it produced any (PlayTranslate
+        // Cloud), awaited inside the presenter's present. Cancelled in the
+        // finally, as the capture-once core and the hold cancel their own: an
+        // exit that never awaits them (paused, dims or crop changed, nothing
+        // to translate, present failing before it asked) must not keep the
+        // loop's job alive until they settle. A no-op once they have been
+        // awaited.
+        var translations: Deferred<ProvidedTranslations>? = null
 
         try {
             // Rotation / display reconfig: crop-space bounds are void.
@@ -401,11 +413,26 @@ class ReconcilerLiveMode(
 
             // OCR the full crop. No status-bar exclusion: a task stream
             // contains no system UI — those top rows are game content.
+            // PlayTranslate Cloud reads it when the router allows it, unless
+            // this session was already refused (see below).
             val ocrStartMs = SystemClock.uptimeMillis()
-            val pipeline = service.runOcr(
+            val read = service.runOcrRead(
                 raw, displayId, frame.includesSystemUi, frame.includesOwnOverlays,
+                deviceOnly = PtCloudService.liveSessionBlocked,
             )
+            val pipeline = read.result
+            translations = pipeline?.translations
             val ocrMs = SystemClock.uptimeMillis() - ocrStartMs
+            // The service is stopped or refused the key: neither changes by
+            // itself, so the rest of this session reads on the device rather
+            // than sending a request per cycle to hear it again. A restart,
+            // the settings switch or a credentials save tries again.
+            // Transport failures, server errors and rate limits keep the
+            // cooldown's rules instead.
+            val refusedBy = read.fallbackFrom?.kind
+            if (refusedBy == BackendFailureKind.NOT_RUNNING || refusedBy == BackendFailureKind.AUTH) {
+                PtCloudService.blockForLiveSession()
+            }
 
             // A hold gesture (or the rescue alert) may have started during
             // the OCR suspension.
@@ -417,7 +444,7 @@ class ReconcilerLiveMode(
                 // contract applies, or a stale hold deadline pins pacing()
                 // at the floor forever on a textless screen.
                 holdDeadlineMs = typewriterGate.sweepEmptyBatch(SystemClock.uptimeMillis())
-                presenter.emitNoText()
+                presenter.emitNoText(read.attribution)
                 return pacing(prefs)
             }
 
@@ -527,16 +554,16 @@ class ReconcilerLiveMode(
                         CaptureBackendResolver.activeOverlayUi
                             ?.hideTranslationOverlayForDisplay(displayId)
                     } else {
-                        presenter.emitNoText()
+                        presenter.emitNoText(read.attribution)
                     }
                 } else {
                     showBoxes(kept, groups)
                     presenter.emitApplied(
                         kept, pipeline?.ocrResult,
                         frame.includesSystemUi, frame.includesOwnOverlays,
-                    ) {
-                        mgr.saveToCache(raw, displayId)
-                    }
+                        screenshotPath = { mgr.saveToCache(raw, displayId) },
+                        attribution = read.attribution,
+                    )
                 }
                 return pacing(prefs)
             }
@@ -544,7 +571,9 @@ class ReconcilerLiveMode(
             // Recording pair snapshot BEFORE the translate call: present()
             // can suspend for seconds in MT, and a mid-flight language
             // change must not relabel rows produced under the old pair
-            // (the ms gap to the service's own snapshot is accepted).
+            // (the gap to the service's own snapshot is accepted: a few ms,
+            // or on a cloud cycle the wait for the reader's translations,
+            // which present awaits before it translates).
             val recordPrefs = Prefs(service)
             val recordSrc = recordPrefs.sourceLangId
             val recordTgt = recordPrefs.targetLang
@@ -558,6 +587,19 @@ class ReconcilerLiveMode(
                 onPartial = { partial ->
                     cachedBoxes = kept + partial
                     showBoxes(kept + partial, groups)
+                },
+                // The reader's translations, awaited inside present only once
+                // its skeletons and cache fills are out, so live mode's first
+                // paint never waits on a server. The server translates every
+                // group of every frame; the loop takes those texts only for
+                // the regions it would translate anyway, and only where a
+                // region's text is its whole group's (a typewriter prefix is
+                // not what the server translated). The rest go through the
+                // cache and the waterfall.
+                provided = {
+                    providedForRegions(
+                        toTranslate, groups, pipeline?.translations?.await() as? ProvidedTranslations.Ok,
+                    )
                 },
             )
             // Recording backend (Text History / LLM context): the presenter
@@ -579,11 +621,12 @@ class ReconcilerLiveMode(
             presenter.emitApplied(
                 kept + finalAnchors, pipeline?.ocrResult,
                 frame.includesSystemUi, frame.includesOwnOverlays,
-            ) {
-                mgr.saveToCache(raw, displayId)
-            }
+                screenshotPath = { mgr.saveToCache(raw, displayId) },
+                attribution = read.attribution,
+            )
             return pacing(prefs)
         } finally {
+            translations?.cancel()
             if (!raw.isRecycled) raw.recycle()
         }
     }
@@ -671,4 +714,33 @@ class ReconcilerLiveMode(
         /** Per-channel level at or below which a sample counts as black. */
         const val BLACK_LEVEL_MAX = 12
     }
+}
+
+/**
+ * A reader's translations ([ProvidedTranslations.Ok], keyed by the index of a
+ * group in [groups]) re-keyed by position in [work], the regions a reconciler
+ * cycle translates. Position i is named when `work[i].group` is one of
+ * [groups] (by identity: two groups can be equal in value, and the index is
+ * the reader's id for the instance it returned), [provided] names that
+ * group's index, and the region's text is the whole group's. A typewriter
+ * partial prefix, which the TRANSLATION flavor dispatches with its group
+ * attached, is not the text the reader translated and must never take that
+ * group's translation. Null when no position is named, or when nothing was
+ * provided.
+ */
+internal fun providedForRegions(
+    work: List<ScanlineReconciler.Region>,
+    groups: List<OcrManager.OcrGroup>,
+    provided: ProvidedTranslations.Ok?,
+): ProvidedTranslations.Ok? {
+    if (provided == null) return null
+    val byPosition = HashMap<Int, String>()
+    work.forEachIndexed { position, region ->
+        val group = region.group ?: return@forEachIndexed
+        if (region.text != group.text) return@forEachIndexed
+        val index = groups.indexOfFirst { it === group }
+        if (index < 0) return@forEachIndexed
+        provided.byGroup[index]?.let { byPosition[position] = it }
+    }
+    return if (byPosition.isEmpty()) null else provided.copy(byGroup = byPosition)
 }

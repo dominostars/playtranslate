@@ -21,6 +21,8 @@ import com.playtranslate.ocr.FrameReading
 import com.playtranslate.ocr.ProvidedTranslations
 import com.playtranslate.ocr.ReadRequest
 import com.playtranslate.ocr.ReaderAttribution
+import com.playtranslate.ocr.forPositions
+import com.playtranslate.translation.BackendFailure
 import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.Deferred
 import androidx.core.graphics.get
@@ -644,7 +646,7 @@ object OverlayToolkit {
         val cropWidth: Int, val cropHeight: Int,
         /** The reader's translations of [ocrResult]'s groups
          *  ([FrameReading.translations]); null when the reader only reads,
-         *  which every live tier's does. Whoever drops a non-null one without
+         *  as the device reader does. Whoever drops a non-null one without
          *  awaiting it cancels it. */
         val translations: Deferred<ProvidedTranslations>? = null,
     ) {
@@ -657,10 +659,13 @@ object OverlayToolkit {
      *  ([FrameReading.attribution]; null when the reader has no engine identity).
      *  The one place the pipeline hands the attribution back, outside [result]
      *  so a read that found no text still names who looked, for the panel's
-     *  no-text state. */
+     *  no-text state. [fallbackFrom] is [FrameReading.fallbackFrom]: why the
+     *  primary reader could not read, when a fallback reader read the frame,
+     *  carried whether or not text was found. */
     data class OcrPipelineRead(
         val result: OcrPipelineResult?,
         val attribution: ReaderAttribution?,
+        val fallbackFrom: BackendFailure? = null,
     )
 
     /**
@@ -770,10 +775,9 @@ object OverlayToolkit {
             val kept = dropGroupsIntersecting(ocrResult, exCropped)
             // Dropping groups re-indexes the rest, so translations keyed by the
             // reader's group ids no longer line up with them: the caller
-            // translates locally instead. Not a live path today: the live
-            // startup card is the only source of excludeRect, and a hold while
-            // live mode runs reads on the device, whose reader translates
-            // nothing; this keeps a future reader from mislabeling groups.
+            // translates locally instead. The live startup card is the only
+            // source of excludeRect, so this is a reconciler-tier cycle that
+            // read through the cloud while the card was up.
             if (kept !== ocrResult && translations != null) {
                 translations.cancel()
                 translations = null
@@ -787,7 +791,7 @@ object OverlayToolkit {
         if (ocrResult == null || dedupKey.isEmpty()) {
             // Nothing for the caller to translate: the translations have no taker.
             translations?.cancel()
-            return OcrPipelineRead(result = null, attribution = reading.attribution)
+            return OcrPipelineRead(result = null, reading.attribution, reading.fallbackFrom)
         }
 
         val result = OcrPipelineResult(
@@ -795,7 +799,7 @@ object OverlayToolkit {
             cropWidth = crop.width(), cropHeight = crop.height(),
             translations = translations,
         )
-        return OcrPipelineRead(result, reading.attribution)
+        return OcrPipelineRead(result, reading.attribution, reading.fallbackFrom)
     }
 
     /** Opaque fill for the floating icon's window rect in OCR input — a
@@ -954,30 +958,50 @@ object OverlayToolkit {
     /**
      * Translate [texts] (cache-first) and return [placeholders] with filled
      * [TextBox.translatedText]. Only cache misses hit [service]'s translator.
+     *
+     * [provided]: a reader's translations keyed by position in [texts]
+     * ([providedForRegions]). A position it names skips the cache, since the
+     * reader's text is fresher than a cache entry, and goes through
+     * [CaptureService.translateGroupsSeparately] with it, which uses it under
+     * the pair check and caches it. The uncached positions it does not name (a
+     * typewriter prefix, a group the reader left untranslated) go through
+     * their own call as if nothing were provided: under a set whose pair
+     * matches, translateGroupsSeparately gives every position the set does
+     * not name no translation (the capture-once rule for a group the reader
+     * left out), which here would blank a box the waterfall can fill.
      */
     internal suspend fun translatePlaceholders(
         service: CaptureService, placeholders: List<TextBox>, texts: List<String>,
+        provided: ProvidedTranslations.Ok? = null,
     ): List<TextBox> {
+        val providedIndices = mutableListOf<Int>()
         val uncachedIndices = mutableListOf<Int>()
-        val uncachedTexts = mutableListOf<String>()
         val translations = arrayOfNulls<CaptureService.GroupTranslation>(texts.size)
 
         for ((idx, text) in texts.withIndex()) {
+            if (provided != null && idx in provided.byGroup) {
+                providedIndices.add(idx)
+                continue
+            }
             val cached = service.getCachedTranslation(text)
             if (cached != null) {
                 translations[idx] = cached
             } else {
                 uncachedIndices.add(idx)
-                uncachedTexts.add(text)
             }
         }
 
-        if (uncachedTexts.isNotEmpty()) {
-            val results = service.translateGroupsSeparately(uncachedTexts)
-            for ((i, idx) in uncachedIndices.withIndex()) {
+        suspend fun translate(indices: List<Int>, withProvided: ProvidedTranslations.Ok?) {
+            if (indices.isEmpty()) return
+            val results = service.translateGroupsSeparately(
+                indices.map { texts[it] }, provided = withProvided,
+            )
+            for ((i, idx) in indices.withIndex()) {
                 translations[idx] = results.getOrNull(i)
             }
         }
+        translate(providedIndices, provided?.forPositions(providedIndices))
+        translate(uncachedIndices, withProvided = null)
 
         return placeholders.mapIndexed { idx, ph ->
             val t = translations.getOrNull(idx)

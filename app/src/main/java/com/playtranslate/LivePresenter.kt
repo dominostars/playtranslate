@@ -1,6 +1,8 @@
 package com.playtranslate
 
 import com.playtranslate.capture.CapturedFrame
+import com.playtranslate.ocr.ProvidedTranslations
+import com.playtranslate.ocr.ReaderAttribution
 import com.playtranslate.ui.TextBox
 
 /**
@@ -38,6 +40,15 @@ interface LivePresenter {
      * the loop's backpressure. [onPartial] may be invoked once with
      * provisional anchors (skeletons / cache fills) for an early render pass
      * before slow work completes; the return value is final.
+     *
+     * [provided] yields the frame's reader's translations keyed by position
+     * in [work] ([providedForRegions]), null when the reader made none or
+     * none applies. It may suspend until they arrive (PlayTranslate Cloud
+     * sends them after the OCR), so a presenter calls it once, only after
+     * its early render ([onPartial]) is out: live mode's skeletons and cache
+     * fills never wait on a server. The presenter hands the result to
+     * [OverlayToolkit.translatePlaceholders], which uses a position's text in
+     * place of the cache and the waterfall when the pair still matches.
      */
     suspend fun present(
         work: List<ScanlineReconciler.Region>,
@@ -45,6 +56,7 @@ interface LivePresenter {
         cropLeft: Int,
         cropTop: Int,
         onPartial: suspend (List<TextBox>) -> Unit,
+        provided: suspend () -> ProvidedTranslations.Ok? = { null },
     ): List<TextBox>
 
     /** Display boxes for one anchor. Identity by default. */
@@ -66,19 +78,25 @@ interface LivePresenter {
      *  frame — invoke it lazily, only on paths that actually emit (a
      *  presenter that ignores it, or gates on panel visibility, must not
      *  pay the write), and only during this call: the frame backing it is
-     *  recycled when the cycle ends. */
+     *  recycled when the cycle ends. [attribution] is who read the cycle's
+     *  frame (the reading's [ReaderAttribution]), for the provenance's
+     *  "Scanned by"; null derives it from [ocrResult]'s device engine
+     *  ([com.playtranslate.ocr.DeviceFrameReader.attributionOf]). */
     suspend fun emitApplied(
         anchors: List<TextBox>,
         ocrResult: OcrManager.OcrResult?,
         frameIncludesSystemUi: Boolean,
         frameIncludesOwnOverlays: Boolean,
         screenshotPath: () -> String?,
+        attribution: ReaderAttribution? = null,
     )
 
     /** The no-text outcome (panel/overlay policy). Deliberately frameless,
      *  unlike [emitApplied]: the panel's no-text status offers an OCR-switch
      *  gear, but while live mode is running the LOOP is what acts on a switch
      *  (a fresh look at the current screen), so no frame needs pinning here —
-     *  see [CaptureService.emitLiveNoText]. */
-    fun emitNoText()
+     *  see [CaptureService.emitLiveNoText]. [attribution] names who looked
+     *  (the cycle's reading's); null names the device engine selected for the
+     *  source language. */
+    fun emitNoText(attribution: ReaderAttribution? = null)
 }

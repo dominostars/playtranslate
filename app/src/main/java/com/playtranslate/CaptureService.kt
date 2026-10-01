@@ -198,16 +198,19 @@ class CaptureService : Service() {
      * [deviceOnly] is the caller's statement that this read must stay on the device
      * whatever the settings say: a re-OCR (the user picked a device engine for that
      * capture), the furigana hold (it needs no translation), a hold while live mode
-     * runs ([runOcrRead]'s live bookkeeping is tuned for device engines). Every live
-     * tier reads through [runOcr]'s default, which is device-only.
+     * runs. Of the live tiers, the pinhole and furigana modes read through
+     * [runOcr]'s default, which is device-only; the reconciler tier
+     * ([ReconcilerLiveMode]) states device-only only once the service refused its
+     * session ([PtCloudService.liveSessionBlocked]).
      */
     internal fun frameReaderFor(srcId: SourceLangId, deviceOnly: Boolean): FrameReader {
         val config = PtCloudConfig(Prefs(this))
         // The two facts that cost nothing decide first, so a read that could
         // never go to the cloud reads nothing else, the key's AndroidKeyStore
         // decryption included: the switch, off in every release build, then
-        // the caller's device-only statement, which every live pass makes
-        // about once a second.
+        // the caller's device-only statement, which the pinhole and furigana
+        // live passes, and a blocked reconciler session's, make about once a
+        // second.
         val enabled = config.enabled
         if (!enabled) return deviceFrameReader
         if (deviceOnly) {
@@ -431,8 +434,9 @@ class CaptureService : Service() {
      * a filled COPY, never on the honest frame), so re-OCRing them would
      * read our translations back as source text.
      *
-     * [attribution] names who looked, when the caller's read knows it; null
-     * (every live tier) attributes the look to the device engine selected
+     * [attribution] names who looked, when the caller's read knows it (the
+     * hold, the reconciler tier); null (the pinhole and furigana tiers, which
+     * read on the device) attributes the look to the device engine selected
      * for the current source language
      * ([DeviceFrameReader.noTextAttribution]).
      */
@@ -1563,6 +1567,9 @@ class CaptureService : Service() {
             Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
             return
         }
+        // A new session tries PlayTranslate Cloud again, whatever kept the
+        // last one on the device ([PtCloudService.liveSessionBlocked]).
+        PtCloudService.onLiveSessionStarted()
         oneShotCaptureJob?.cancel()
         // Live start claims the game surface, as it does for the app's
         // one-shot boxes (MainActivity.onLiveModeChanged): the over-game
@@ -2857,9 +2864,12 @@ class CaptureService : Service() {
     }
 
     /** [runOcrRead]'s result alone (null = no text to translate), for the
-     *  live tiers, which never read a no-text look's attribution: their panel
-     *  state derives its own from their device engine. Same parameters, same
-     *  pass bookkeeping. */
+     *  pinhole and furigana live tiers, which read on the device ([deviceOnly]'s
+     *  default) and never read a no-text look's attribution: their panel state
+     *  derives its own from their device engine. Same parameters, same pass
+     *  bookkeeping. The reconciler tier calls [runOcrRead] itself: it may read
+     *  through the cloud, and keys its session's block on the reading's
+     *  [OverlayToolkit.OcrPipelineRead.fallbackFrom]. */
     internal suspend fun runOcr(
         raw: Bitmap,
         displayId: Int,
@@ -2901,11 +2911,18 @@ class CaptureService : Service() {
      *  frames after the blackout moved into one mode).
      *
      *  [deviceOnly]: passed to [frameReaderFor] as the caller's statement that
-     *  this read must stay on the device. The live tiers pass nothing and read
-     *  on the device, the only reader their per-cycle loops and this function's
-     *  live bookkeeping (the slow-OCR prompt's pass timing, the startup card's
-     *  exclusion rect) are built for; the press-and-hold overlay states it per
-     *  hold. */
+     *  this read must stay on the device. The pinhole and furigana live tiers
+     *  pass nothing and read on the device; the reconciler tier passes its
+     *  session's block ([PtCloudService.liveSessionBlocked]); the press-and-hold
+     *  overlay states it per hold.
+     *
+     *  The slow-OCR prompt's pass timing ([LiveSessionFeedback.beginOcrPass])
+     *  runs for a device read only: the prompt rescues a session from a slow
+     *  device engine (it offers a faster one), and a read through any other
+     *  reader spends its time on the network, which no engine switch speeds
+     *  up. A cloud read that falls back to the device is untimed too. The
+     *  startup card's first-pass narration ends on every reader's completed
+     *  pass. */
     internal suspend fun runOcrRead(
         raw: Bitmap,
         displayId: Int,
@@ -2931,7 +2948,7 @@ class CaptureService : Service() {
         // inference cancels lazily) finalizes into ITS session — disposed
         // and inert — never the next one's ([LiveSessionFeedback]).
         val feedback = if (isLive) liveFeedback else null
-        val passToken = feedback?.beginOcrPass(displayId)
+        val passToken = if (reader is DeviceFrameReader) feedback?.beginOcrPass(displayId) else null
         try {
             val read = OverlayToolkit.runOcrPipeline(
                 raw,
@@ -3109,10 +3126,13 @@ class CaptureService : Service() {
      *  and notifies the in-app panel. The panel emit is intentionally
      *  global — there's a single panel and a single result/no-text state
      *  for it. The overlay teardown is per-display so a no-text outcome
-     *  on display B doesn't take display A's still-valid overlay with it. */
-    internal fun handleNoTextDetected(displayId: Int) {
+     *  on display B doesn't take display A's still-valid overlay with it.
+     *  [attribution] names who looked, forwarded to [emitLiveNoText]: the
+     *  reconciler tier's reading's; null (the pinhole and furigana tiers)
+     *  is the device engine. */
+    internal fun handleNoTextDetected(displayId: Int, attribution: ReaderAttribution? = null) {
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
-        emitLiveNoText(displayId)
+        emitLiveNoText(displayId, attribution)
     }
 
     /** Remove specific overlay boxes without rebuilding the entire view.
@@ -3172,17 +3192,31 @@ class CaptureService : Service() {
 
     /** Provenance for a panel-emitted live result — the panel presenter's
      *  path to the re-OCR gear (region + source language resolved the same
-     *  way the one-shot pipeline resolves them). Live results are device
-     *  reads, so the attribution comes from the result itself. */
+     *  way the one-shot pipeline resolves them). [attribution] is who read
+     *  the frame: the reconciler tier's reading's, or one derived from a
+     *  device result ([DeviceFrameReader.attributionOf]); null gives a null
+     *  provenance, as [ocrProvenanceFor] does. */
+    internal fun panelOcrProvenance(
+        attribution: ReaderAttribution?,
+        displayId: Int,
+        frameIncludesSystemUi: Boolean,
+        frameIncludesOwnOverlays: Boolean,
+    ): OcrProvenance? = ocrProvenanceFor(
+        attribution,
+        displayId, activeRegionForDisplay(displayId),
+        Prefs(this).sourceLangId, frameIncludesSystemUi, frameIncludesOwnOverlays,
+    )
+
+    /** [panelOcrProvenance] for a device read, attributed from the result
+     *  itself: the pinhole tier's path. */
     internal fun panelOcrProvenance(
         ocrResult: OcrManager.OcrResult,
         displayId: Int,
         frameIncludesSystemUi: Boolean,
         frameIncludesOwnOverlays: Boolean,
-    ): OcrProvenance? = ocrProvenanceFor(
+    ): OcrProvenance? = panelOcrProvenance(
         DeviceFrameReader.attributionOf(ocrResult, this),
-        displayId, activeRegionForDisplay(displayId),
-        Prefs(this).sourceLangId, frameIncludesSystemUi, frameIncludesOwnOverlays,
+        displayId, frameIncludesSystemUi, frameIncludesOwnOverlays,
     )
 
     /** Build the [OcrProvenance] of a read, the one place every result's and

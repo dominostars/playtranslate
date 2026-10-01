@@ -19,10 +19,13 @@ import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowLog
 import java.util.concurrent.atomic.AtomicLong
 
 /** The service object: one cooldown, built once, cleared by the user's
- *  gestures and by a regained network (connection failures only). */
+ *  gestures and by a regained network (connection failures only); and the
+ *  live-session block, set by a not-running or bad-key answer to a live
+ *  read and cleared by a new session or the user's gestures. */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudServiceTest {
 
@@ -34,6 +37,7 @@ class PtCloudServiceTest {
 
     @After fun tearDown() {
         PtCloudService.installForTest(null)
+        PtCloudService.onLiveSessionStarted()
         TranslationBackendRegistry.onlineAttemptListener = null
     }
 
@@ -100,5 +104,52 @@ class PtCloudServiceTest {
         )
         PtCloudService.report(attempt)
         assertEquals(listOf(listOf(attempt)), seen)
+    }
+
+    @Test fun `a refused live read blocks the session until the next one starts`() {
+        install()
+        PtCloudService.onLiveSessionStarted()
+        assertFalse(PtCloudService.liveSessionBlocked)
+
+        PtCloudService.blockForLiveSession()
+        assertTrue(PtCloudService.liveSessionBlocked)
+        // A second refusal in the same session changes nothing.
+        PtCloudService.blockForLiveSession()
+        assertTrue(PtCloudService.liveSessionBlocked)
+
+        PtCloudService.onLiveSessionStarted()
+        assertFalse(PtCloudService.liveSessionBlocked)
+    }
+
+    @Test fun `the switch and a credentials save lift the live block`() {
+        install()
+        PtCloudService.blockForLiveSession()
+        PtCloudService.onToggled()
+        assertFalse(PtCloudService.liveSessionBlocked)
+
+        PtCloudService.blockForLiveSession()
+        PtCloudService.onCredentialsSaved()
+        assertFalse(PtCloudService.liveSessionBlocked)
+    }
+
+    @Test fun `the live block is not a cooldown and leaves the installed one alone`() {
+        val state = install()
+        PtCloudService.blockForLiveSession()
+        assertSame(state, PtCloudService.cooldown)
+        assertFalse(PtCloudService.isCoolingDown(clock.get()))
+        assertNull(PtCloudService.unavailableUntil())
+
+        PtCloudService.onLiveSessionStarted()
+        assertSame(state, PtCloudService.cooldown)
+    }
+
+    @Test fun `the block is logged once per session, with no detail`() {
+        install()
+        PtCloudService.onLiveSessionStarted()
+        ShadowLog.clear()
+        PtCloudService.blockForLiveSession()
+        PtCloudService.blockForLiveSession()
+        val lines = ShadowLog.getLogsForTag("PtCloud").map { it.msg }.filter { "live session" in it }
+        assertEquals(listOf("live session: cloud reads stay on the device"), lines)
     }
 }

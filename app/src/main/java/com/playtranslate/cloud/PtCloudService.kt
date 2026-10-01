@@ -24,6 +24,9 @@ import com.playtranslate.translation.TranslationErrors
  * connectivity fan-out and cooldown resets don't reach it; the app wires
  * [onConnectivityRestored], and the settings page calls [onToggled] and
  * [onCredentialsSaved].
+ *
+ * Beside the cooldown it keeps one live-session fact, [liveSessionBlocked]:
+ * the service refused a live read in a way only the user can change.
  */
 object PtCloudService {
 
@@ -66,6 +69,39 @@ object PtCloudService {
 
     fun unavailableCause(): CooldownCause? = cooldown.unavailableCause()
 
+    /**
+     * True once the service answered a live read with "not running" (its pod
+     * is stopped) or "bad key" during the current live session: every later
+     * live read of that session stays on the device. The pod does not start
+     * by itself and a key does not fix itself, so a request per live cycle
+     * while either holds would be waste, and each would report the same
+     * failure again. Set by [blockForLiveSession]; cleared when live mode
+     * starts ([onLiveSessionStarted]) and by the user's gestures that make
+     * a retry worth it ([onToggled], [onCredentialsSaved]).
+     *
+     * Capture-once and the press-and-hold overlay never read it: their own
+     * rule is to try the cloud and fall back to the device for that capture.
+     * Transport failures, server errors and rate limits do not set it; they
+     * keep the cooldown's rules ([isCoolingDown]).
+     */
+    @Volatile
+    var liveSessionBlocked: Boolean = false
+        private set
+
+    /** Keeps the rest of the current live session on the device
+     *  ([liveSessionBlocked]). Logs the first time per session only. */
+    fun blockForLiveSession() {
+        if (liveSessionBlocked) return
+        liveSessionBlocked = true
+        Log.i(TAG, "live session: cloud reads stay on the device")
+    }
+
+    /** A live session started ([com.playtranslate.CaptureService.startLive]):
+     *  its reads try the cloud again ([liveSessionBlocked]). */
+    fun onLiveSessionStarted() {
+        liveSessionBlocked = false
+    }
+
     /** The device regained a network: drops a "Connection failed" cooldown
      *  and the network ladder ([CooldownState.onConnectivityRestored]).
      *  Called off the main thread, from the ConnectivityManager callback.
@@ -88,8 +124,10 @@ object PtCloudService {
      *  does for a waterfall service: drop the cooldown and both ladders,
      *  forget the pill's errors so a failure after the gesture shows again,
      *  and clear the translation cache, which holds this service's
-     *  translations under the old configuration. */
+     *  translations under the old configuration. A running live session
+     *  tries the cloud again too ([liveSessionBlocked]). */
     private fun resetForUserGesture() {
+        liveSessionBlocked = false
         cooldown.resetCooldown()
         TranslationErrors.forget(ID)
         CaptureService.instance?.clearTranslationCache()
