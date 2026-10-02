@@ -54,6 +54,13 @@ data class FarGroup(
     /** Rect the placeholder is DRAWN at; [bounds] is what it is matched on.
      *  See [com.playtranslate.ui.TextBox.drawBounds]. */
     val drawBounds: Rect = bounds,
+    /** The index, in the classified [OcrManager.OcrResult.groups], of the ONE
+     *  group this entry is verbatim ([text] is that group's text): set for a
+     *  content-match replacement and a fresh far entry, null for a coalesced
+     *  merge (two groups' texts joined, which no single group of the read
+     *  has). Read by [providedForFarGroups], which gives a placeholder the
+     *  reader's translation of that group, keyed by the same index. */
+    val sourceGroupIndex: Int? = null,
 )
 
 /**
@@ -389,6 +396,7 @@ fun classifyOcrResults(
                         } else {
                             group.drawBounds
                         },
+                        sourceGroupIndex = ocrIdx,
                     ))
                     contentMatched = true
                     break
@@ -680,6 +688,9 @@ fun classifyOcrResults(
                     // REMOVE), the fix is per-component rects tested
                     // individually in deferDyingBoxFragments.
                     paired = existing.paired,
+                    // Two groups' texts joined: no single group of the read
+                    // has this text, so no group's translation is its own.
+                    sourceGroupIndex = null,
                 )
             } else {
                 farOcrGroups.add(FarGroup(
@@ -688,6 +699,7 @@ fun classifyOcrResults(
                     orientedWidth = group.orientedWidth,
                     orientedHeight = group.orientedHeight,
                     drawBounds = group.drawBounds,
+                    sourceGroupIndex = ocrIdx,
                 ))
             }
         }

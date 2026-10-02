@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import androidx.annotation.VisibleForTesting
 import com.playtranslate.CaptureService
+import com.playtranslate.translation.BackendFailure
+import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.translation.BackendId
 import com.playtranslate.translation.CooldownCause
 import com.playtranslate.translation.CooldownState
@@ -72,21 +74,39 @@ object PtCloudService {
     /**
      * True once the service answered a live read with "not running" (its pod
      * is stopped) or "bad key" during the current live session: every later
-     * live read of that session stays on the device. The pod does not start
-     * by itself and a key does not fix itself, so a request per live cycle
-     * while either holds would be waste, and each would report the same
-     * failure again. Set by [blockForLiveSession]; cleared when live mode
-     * starts ([onLiveSessionStarted]) and by the user's gestures that make
-     * a retry worth it ([onToggled], [onCredentialsSaved]).
+     * live read of that session stays on the device. Set by
+     * [blockForLiveSession], which [recordLiveRead] calls (that rule, and why,
+     * is its kdoc's); cleared when live mode starts ([onLiveSessionStarted])
+     * and by the user's gestures that make a retry worth it ([onToggled],
+     * [onCredentialsSaved]).
      *
      * Capture-once and the press-and-hold overlay never read it: their own
      * rule is to try the cloud and fall back to the device for that capture.
-     * Transport failures, server errors and rate limits do not set it; they
-     * keep the cooldown's rules ([isCoolingDown]).
      */
     @Volatile
     var liveSessionBlocked: Boolean = false
         private set
+
+    /**
+     * Acts on one live read's outcome ([com.playtranslate.CaptureService.runLiveOcrRead]):
+     * [fallbackFrom] is why the cloud could not read the frame, when the
+     * device read it instead ([com.playtranslate.ocr.FrameReading.fallbackFrom]).
+     * A not-running or bad-key answer ([BackendFailureKind.NOT_RUNNING],
+     * [BackendFailureKind.AUTH]) blocks the rest of the session
+     * ([blockForLiveSession]): the pod does not start by itself and a key does
+     * not fix itself, so a request per live cycle while either holds would be
+     * waste, and each would report the same failure again. Any other kind
+     * does nothing here (transport failures, server errors and rate limits
+     * keep the cooldown's rules, [isCoolingDown]), and neither does null: the
+     * cloud read the frame, the read never went to it, or its failure carried
+     * no classification.
+     */
+    fun recordLiveRead(fallbackFrom: BackendFailure?) {
+        val kind = fallbackFrom?.kind
+        if (kind == BackendFailureKind.NOT_RUNNING || kind == BackendFailureKind.AUTH) {
+            blockForLiveSession()
+        }
+    }
 
     /** Keeps the rest of the current live session on the device
      *  ([liveSessionBlocked]). Logs the first time per session only. */

@@ -776,8 +776,9 @@ object OverlayToolkit {
             // Dropping groups re-indexes the rest, so translations keyed by the
             // reader's group ids no longer line up with them: the caller
             // translates locally instead. The live startup card is the only
-            // source of excludeRect, so this is a reconciler-tier cycle that
-            // read through the cloud while the card was up.
+            // source of excludeRect, so this is a reconciler-tier or
+            // pinhole-tier cycle that read through the cloud while the card
+            // was up.
             if (kept !== ocrResult && translations != null) {
                 translations.cancel()
                 translations = null
@@ -960,11 +961,14 @@ object OverlayToolkit {
      * [TextBox.translatedText]. Only cache misses hit [service]'s translator.
      *
      * [provided]: a reader's translations keyed by position in [texts]
-     * ([providedForRegions]). A position it names skips the cache, since the
-     * reader's text is fresher than a cache entry, and goes through
-     * [CaptureService.translateGroupsSeparately] with it, which uses it under
-     * the pair check and caches it. The uncached positions it does not name (a
-     * typewriter prefix, a group the reader left untranslated) go through
+     * ([providedForRegions] on the reconciler tier, [providedForFarGroups] on
+     * the pinhole tier). A position it names skips the cache, since the
+     * reader's text is fresher than a cache entry (the pinhole tier names only
+     * positions the cache had not filled when the look placed them), and goes
+     * through [CaptureService.translateGroupsSeparately] with it, which uses it
+     * under the pair check and caches it. The uncached positions it does not
+     * name (a typewriter prefix, a pinhole far group coalesced from two
+     * groups, a group the reader left untranslated) go through
      * their own call as if nothing were provided: under a set whose pair
      * matches, translateGroupsSeparately gives every position the set does
      * not name no translation (the capture-once rule for a group the reader

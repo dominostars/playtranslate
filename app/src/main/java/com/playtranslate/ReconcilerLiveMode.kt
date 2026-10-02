@@ -7,11 +7,9 @@ import android.util.Log
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.LiveCaptureSource
 import com.playtranslate.capture.StreamKind
-import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextDirection
 import com.playtranslate.ocr.ProvidedTranslations
-import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.ui.GrowthLimits
 import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CoroutineScope
@@ -195,12 +193,13 @@ class ReconcilerLiveMode(
                 }
             }
         }
-        // Warm PlayTranslate Cloud for the first cycle's read, which runOcrRead
-        // makes in the source language from the same pref, device-only when
-        // the session's block says so. Once per mode instance (setLiveDisplays
-        // starts each new one exactly once): later cycles read back to back on
-        // a connection already in use.
-        service.warmCloud(Prefs(service).sourceLangId, deviceOnly = PtCloudService.liveSessionBlocked)
+        // Warm PlayTranslate Cloud for the first cycle's read, which
+        // runLiveOcrRead makes with the statements the warm states (the source
+        // language from the same pref, device-only when the session's block
+        // says so). Once per mode instance (setLiveDisplays starts each new one
+        // exactly once): later cycles read back to back on a connection
+        // already in use.
+        service.warmCloudForLiveRead()
         engine.scheduleNext()
     }
 
@@ -420,25 +419,18 @@ class ReconcilerLiveMode(
             // OCR the full crop. No status-bar exclusion: a task stream
             // contains no system UI — those top rows are game content.
             // PlayTranslate Cloud reads it when the router allows it, unless
-            // this session was already refused (see below).
+            // the service already refused this session: a stopped service or
+            // a refused key keeps the rest of the session on the device, set
+            // from this read's outcome inside runLiveOcrRead
+            // (PtCloudService.recordLiveRead). A restart, the settings switch
+            // or a credentials save tries again.
             val ocrStartMs = SystemClock.uptimeMillis()
-            val read = service.runOcrRead(
+            val read = service.runLiveOcrRead(
                 raw, displayId, frame.includesSystemUi, frame.includesOwnOverlays,
-                deviceOnly = PtCloudService.liveSessionBlocked,
             )
             val pipeline = read.result
             translations = pipeline?.translations
             val ocrMs = SystemClock.uptimeMillis() - ocrStartMs
-            // The service is stopped or refused the key: neither changes by
-            // itself, so the rest of this session reads on the device rather
-            // than sending a request per cycle to hear it again. A restart,
-            // the settings switch or a credentials save tries again.
-            // Transport failures, server errors and rate limits keep the
-            // cooldown's rules instead.
-            val refusedBy = read.fallbackFrom?.kind
-            if (refusedBy == BackendFailureKind.NOT_RUNNING || refusedBy == BackendFailureKind.AUTH) {
-                PtCloudService.blockForLiveSession()
-            }
 
             // A hold gesture (or the rescue alert) may have started during
             // the OCR suspension.

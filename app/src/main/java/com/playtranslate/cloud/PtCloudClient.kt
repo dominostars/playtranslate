@@ -432,15 +432,20 @@ class PtCloudClient(
         /** One client for the process, so consecutive captures reuse the
          *  connection (its TLS handshake is most of a cold call). The custom
          *  endpoint builder allows http to a loopback or LAN address, for a
-         *  local build of the service, and https anywhere. Timeouts from the
-         *  brief: part 1 normally within 2 s, part 2 at most about 5.5 s
-         *  later (the server's own deadline), so a 10 s read and a 12 s
-         *  whole-call budget cover the server and anything longer is the
-         *  network. */
+         *  local build of the service, and https anywhere. The server's
+         *  timings, from the brief: part 1 normally within 2 s, part 2 at
+         *  most about 5.5 s later (the server's own deadline). The 8 s read
+         *  is the longest any mode waits on a silent connection, the wait for
+         *  the translations after part 1 included: the same bound the
+         *  waterfall's services put on a translation ([com.playtranslate.translation.GeminiBackend]'s
+         *  call cap, [com.playtranslate.translation.LingvaBackend]'s read),
+         *  and above the server's deadline, so it ends a dead connection and
+         *  never a translation the server is still going to send. The 12 s
+         *  whole-call budget covers the upload, part 1 and that wait. */
         private val shared: OkHttpClient by lazy {
             PtHttp.customEndpointBuilder()
                 .connectTimeout(5, TimeUnit.SECONDS)
-                .readTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(8, TimeUnit.SECONDS)
                 .writeTimeout(10, TimeUnit.SECONDS)
                 .callTimeout(12, TimeUnit.SECONDS)
                 // Happy Eyeballs, as every other client here.

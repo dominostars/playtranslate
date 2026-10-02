@@ -14,9 +14,12 @@ import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextDirection
 import com.playtranslate.model.OcrProvenance
+import com.playtranslate.ocr.ProvidedTranslations
+import com.playtranslate.ocr.forPositions
 import com.playtranslate.ui.GrowthLimits
 import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -76,11 +79,14 @@ class PinholeOverlayMode(
     private var cropWidth = 0
     private var cropHeight = 0
     /** Most-recent OCR provenance for panel emissions ([sendFullStateToPanel]):
-     *  refreshed on every full look whose runOcr returned a result. Removal-only
-     *  and sweep emissions (runOcr null — no text found) reuse the last pass's
+     *  refreshed on every full look whose read (runLiveOcrRead) returned a
+     *  result, from the reading's attribution, so it names PlayTranslate Cloud
+     *  for a cloud read and the device engine for a device one. Removal-only
+     *  and sweep emissions (no result: no text found) reuse the last pass's
      *  identity: cachedBoxes were read by SOME earlier pass, and most-recent is
      *  the same accepted slop as the reconciler tier stamping the current
-     *  cycle's provenance over kept anchors from earlier cycles/engines. */
+     *  cycle's provenance over kept anchors from earlier cycles/engines (or
+     *  readers). */
     private var panelProvenance: OcrProvenance? = null
     /** Monotonic cycle counter for [Prefs.debugLiveMode] logs. Lets log
      *  consumers correlate per-box pinhole metrics with the cycle's
@@ -184,6 +190,10 @@ class PinholeOverlayMode(
         // went wrong under every box at once, and lifting the overlays is
         // the only way to actually read what replaced them.
         CaptureBackendResolver.active().startInputMonitoring(displayId) { dismiss() }
+        // Warm PlayTranslate Cloud for the first cycle's read (step 6). This
+        // tier's later reads go out without one, even one that follows a
+        // stretch parked on a static screen.
+        service.warmCloudForLiveRead()
         engine.scheduleNext()
     }
 
@@ -403,7 +413,7 @@ class PinholeOverlayMode(
         // Capture. Boxes that pinhole detection flags as changed are
         // removed and re-OCR'd on the next cycle; there is no longer a
         // dirty-companion buffer (see docs/dirty-overlay-archived-design.md).
-        // The frame's stamped facts ride into step 6's runOcr; the pinhole
+        // The frame's stamped facts ride into step 6's read; the pinhole
         // pipeline itself works on the unwrapped bitmap (this mode never
         // runs on CLEAN streams (routing), so frames are always
         // full-display).
@@ -419,6 +429,16 @@ class PinholeOverlayMode(
             return prefs.captureIntervalMs
         }
         val raw = frame.bitmap
+        // The reader's translations, when it produced any (PlayTranslate
+        // Cloud), awaited at step 12 for the placeholders that are still
+        // skeletons of one whole group. Cancelled in the finally, as the
+        // reconciler tier cancels its own: an exit after the read that never
+        // awaits them (paused, the crop moved, nothing to place because no
+        // far group came through steps 7 to 9c, the typewriter gate's holds
+        // included, every placeholder filled from the cache, skeletons that
+        // are all coalesced merges) must not keep the loop's job alive until
+        // they settle. A no-op once they have been awaited.
+        var translations: Deferred<ProvidedTranslations>? = null
 
         try {
             // Mid-cycle dimension changes (rotation, display resize) invalidate
@@ -525,7 +545,7 @@ class PinholeOverlayMode(
             // appears; self-chrome motion must never wake OCR) and from the
             // pinhole sampling (a pill or the icon over a box would read as
             // the box's game content changing). (The OCR-input blackout
-            // itself is central — runOcr keys it on the
+            // itself is central — the read keys it on the
             // frameIncludesOwnOverlays fact passed at step 6.) Screen coords
             // index the frame directly: this mode runs at identity scale only
             // (guard above).
@@ -684,7 +704,7 @@ class PinholeOverlayMode(
             // 5. Prepare OCR image: fill overlay regions with bgColor.
             //    Only this copy is mutated; the gate, the pinhole checks,
             //    and cleanRef all keep reading the honest raw. (The floating
-            //    icon is blacked out inside runOcr, step 6.)
+            //    icon is blacked out inside the read, step 6.)
             val ocrImage: Bitmap
             if (hasOverlays()) {
                 ocrImage = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
@@ -693,21 +713,27 @@ class PinholeOverlayMode(
                 ocrImage = raw
             }
 
-            // 6. OCR — try/finally ensures the copy is recycled even if runOcr
-            //          throws (e.g. CancellationException from resetState).
+            // 6. OCR — try/finally ensures the copy is recycled even if the
+            //          read throws (e.g. CancellationException from resetState).
             //    The frame's stamped fact (raw grab of a contaminated
             //    source ⇒ true) drives the floating-icon blackout inside.
-            val pipeline = try {
-                service.runOcr(
+            //    runLiveOcrRead reads through PlayTranslate Cloud when the
+            //    router allows it and the service has not refused this
+            //    session, else on the device; a cloud read may carry the
+            //    server's translations, which step 12 may take.
+            val read = try {
+                service.runLiveOcrRead(
                     ocrImage, displayId,
                     frameIncludesOwnOverlays = frame.includesOwnOverlays,
                 )
             } finally {
                 if (ocrImage !== raw && !ocrImage.isRecycled) ocrImage.recycle()
             }
+            val pipeline = read.result
+            translations = pipeline?.translations
             if (pipeline != null) {
                 panelProvenance = service.panelOcrProvenance(
-                    pipeline.ocrResult, displayId,
+                    read.attribution, displayId,
                     frame.includesSystemUi, frame.includesOwnOverlays,
                 )
             }
@@ -725,7 +751,7 @@ class PinholeOverlayMode(
             // screen.
             if (pipeline == null && !hasOverlays()) {
                 typewriterDeadlineMs = typewriterGate.sweepEmptyBatch(SystemClock.uptimeMillis())
-                service.handleNoTextDetected(displayId)
+                service.handleNoTextDetected(displayId, read.attribution)
                 return prefs.captureIntervalMs
             }
 
@@ -1101,12 +1127,37 @@ class PinholeOverlayMode(
 
                     // Recording backend: cache-hits are shown right here and
                     // never reach translatePlaceholders — record them now.
-                    // Pair captured pre-translate for the fresh tap below.
+                    // Pair captured pre-translate for the fresh tap below
+                    // (the gap to the translate call's own snapshot includes,
+                    // on a cloud cycle, the wait for the reader's
+                    // translations below: accepted, as on the reconciler tier).
                     val (recordSrc, recordTgt) = recordPair()
                     recordShown(placeGroups, recordSrc, recordTgt) { i -> partial[i] }
 
+                    // The reader's translations (a server's second part) are
+                    // awaited only here, after the skeletons and cache fills
+                    // above are on screen, so live mode's first paint never
+                    // waits on a server; and only when a placeholder is still
+                    // a skeleton of one whole group, the only kind of box
+                    // they fill (providedForFarGroups decides, and makes the
+                    // wait). A box the cache filled keeps the cache's text; a
+                    // look the cache fully served, or whose skeletons are all
+                    // coalesced merges, awaits nothing (the finally cancels
+                    // them), and the merges go straight to the waterfall.
+                    // Unlike the reconciler tier, which awaits them on every
+                    // cycle with work and lets them replace cache entries:
+                    // every game input dismisses this tier's overlays and the
+                    // next look re-places the whole screen, mostly from the
+                    // cache, so awaiting there would hold the serial loop for
+                    // the server's translation time after every input with
+                    // the screen already translated, and would reword boxes
+                    // already shown. The loop cannot see a change under its
+                    // boxes while it waits.
                     if (anyUncached) {
-                        val translated = translatePlaceholders(placeholders, farTexts)
+                        val provided = providedForFarGroups(placeGroups, partial) {
+                            translations?.await() as? ProvidedTranslations.Ok
+                        }
+                        val translated = OverlayToolkit.translatePlaceholders(service, placeholders, farTexts, provided)
                         val existing = cachedBoxes?.dropLast(placeholders.size) ?: emptyList()
                         val mergedFinal = existing + translated
                         cachedBoxes = mergedFinal
@@ -1135,7 +1186,7 @@ class PinholeOverlayMode(
                     // Held typewriter text is still text-on-screen: a no-text
                     // signal mid-reveal would blank the panel the imminent
                     // release is about to fill.
-                    if (farOutcome.held == 0) service.handleNoTextDetected(displayId)
+                    if (farOutcome.held == 0) service.handleNoTextDetected(displayId, read.attribution)
                 } else {
                     // Lazy path: the JPEG save only runs when the panel is
                     // actually visible (inside sendFullStateToPanel's gate).
@@ -1175,6 +1226,9 @@ class PinholeOverlayMode(
                 mgr.minCaptureIntervalMs,
             )
         } finally {
+            // Every exit that has not awaited the reader's translations
+            // (see their declaration) stops them here.
+            translations?.cancel()
             if (!raw.isRecycled) raw.recycle()
         }
     }
@@ -1688,41 +1742,6 @@ class PinholeOverlayMode(
         }
     }
 
-    /** Translate texts and return placeholders with filled translatedText
-     *  (and the producing backend, for attribution downstream). */
-    private suspend fun translatePlaceholders(
-        placeholders: List<TextBox>, texts: List<String>
-    ): List<TextBox> {
-        val uncachedIndices = mutableListOf<Int>()
-        val uncachedTexts = mutableListOf<String>()
-        val translations = arrayOfNulls<CaptureService.GroupTranslation>(texts.size)
-
-        for ((idx, text) in texts.withIndex()) {
-            val cached = service.getCachedTranslation(text)
-            if (cached != null) {
-                translations[idx] = cached
-            } else {
-                uncachedIndices.add(idx)
-                uncachedTexts.add(text)
-            }
-        }
-
-        if (uncachedTexts.isNotEmpty()) {
-            val results = service.translateGroupsSeparately(uncachedTexts)
-            for ((i, idx) in uncachedIndices.withIndex()) {
-                translations[idx] = results.getOrNull(i)
-            }
-        }
-
-        return placeholders.mapIndexed { idx, ph ->
-            val t = translations.getOrNull(idx)
-            ph.copy(
-                translatedText = t?.text ?: "",
-                backendDisplayName = t?.backendDisplayName,
-            )
-        }
-    }
-
     // ── Utility ─────────────────────────────────────────────────────────
 
 
@@ -1736,4 +1755,41 @@ class PinholeOverlayMode(
         }
     }
 
+}
+
+/**
+ * A reader's translations ([ProvidedTranslations.Ok], keyed by the index of a
+ * group in the read's [OcrManager.OcrResult.groups]) re-keyed by position in
+ * [work], the far groups a pinhole look places. [partial] is 1:1 with [work]:
+ * the placeholders with their cache fills. Position i can take the reader's
+ * translation only when the far group is one whole group of the read
+ * ([FarGroup.sourceGroupIndex]; a coalesced merge has none) AND the
+ * position's box is still a skeleton (the cache did not fill it); it takes
+ * one when the reader also named that group.
+ *
+ * [provided] is the wait for the reader's translations (the server's second
+ * part). It is invoked at most once, and only when at least one position can
+ * take one: when every skeleton is a coalesced merge, or the cache filled
+ * every box, nothing is awaited and this returns null at once, so the look
+ * never waits out a server translation no box could use before its
+ * waterfall starts. Null too when [provided] yields nothing or no position
+ * is named.
+ *
+ * The skeleton condition is this tier's own, and the deliberate difference
+ * from [providedForRegions]: the reconciler tier awaits the reader's
+ * translations on every cycle with work and lets them replace cache entries.
+ * Here a box the cache filled keeps the cache's text, and a look whose boxes
+ * the cache filled entirely awaits nothing: every game input dismisses this
+ * tier's overlays and the next look re-places the whole screen, mostly from
+ * the cache, where awaiting would hold the serial loop after every input and
+ * reword boxes already shown (runCycle's step 12 has the whole reason).
+ */
+internal suspend fun providedForFarGroups(
+    work: List<FarGroup>,
+    partial: List<TextBox>,
+    provided: suspend () -> ProvidedTranslations.Ok?,
+): ProvidedTranslations.Ok? {
+    val indices = work.mapIndexed { i, far -> far.sourceGroupIndex.takeIf { partial[i].translatedText.isEmpty() } }
+    if (indices.all { it == null }) return null
+    return provided()?.forPositions(indices)
 }

@@ -11,8 +11,10 @@ import org.junit.Test
  * position in a consumer's own list ([OverlayToolkit.translatePlaceholders]
  * hands the re-keyed set to [CaptureService.translateGroupsSeparately], which
  * reads it by position). Position i must take the translation of the group
- * `indices[i]` names, never the map's i-th value, and a set that names no
- * position is no set at all.
+ * `indices[i]` names, never the map's i-th value; a null index names no group
+ * ([providedForFarGroups] passes one for a far group that is not one whole
+ * group, or whose box the cache filled); and a set that names no position is
+ * no set at all.
  */
 class ProvidedTranslationsForPositionsTest {
 
@@ -40,5 +42,16 @@ class ProvidedTranslationsForPositionsTest {
     @Test fun `no position named gives no set`() {
         assertNull(ok(mapOf(0 to "a")).forPositions(listOf(1, 2)))
         assertNull(ok(mapOf(0 to "a")).forPositions(emptyList()))
+    }
+
+    @Test fun `a null index stays unnamed while its neighbours take their own groups`() {
+        // Group 1 is named too: a null at position 1 must not fall back to
+        // the group whose index equals its position.
+        val byPosition = ok(mapOf(0 to "a", 1 to "b", 2 to "c")).forPositions(listOf(2, null, 0))!!
+        assertEquals(mapOf(0 to "c", 2 to "a"), byPosition.byGroup)
+    }
+
+    @Test fun `all null indices give no set`() {
+        assertNull(ok(mapOf(0 to "a", 1 to "b")).forPositions(listOf(null, null)))
     }
 }

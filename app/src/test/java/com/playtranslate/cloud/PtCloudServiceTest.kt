@@ -121,6 +121,34 @@ class PtCloudServiceTest {
         assertFalse(PtCloudService.liveSessionBlocked)
     }
 
+    @Test fun `a live read that fell back on a not-running answer blocks the session`() {
+        install()
+        PtCloudService.onLiveSessionStarted()
+        PtCloudService.recordLiveRead(BackendFailure(BackendFailureKind.NOT_RUNNING, 404))
+        assertTrue(PtCloudService.liveSessionBlocked)
+    }
+
+    @Test fun `a live read that fell back on a refused key blocks the session`() {
+        install()
+        PtCloudService.onLiveSessionStarted()
+        PtCloudService.recordLiveRead(BackendFailure(BackendFailureKind.AUTH, 401))
+        assertTrue(PtCloudService.liveSessionBlocked)
+    }
+
+    @Test fun `a live read that fell back on any other failure leaves the session alone`() {
+        install()
+        PtCloudService.onLiveSessionStarted()
+        PtCloudService.recordLiveRead(BackendFailure(BackendFailureKind.SERVER_ERROR, 503))
+        assertFalse(PtCloudService.liveSessionBlocked)
+    }
+
+    @Test fun `a live read that did not fall back leaves the session alone`() {
+        install()
+        PtCloudService.onLiveSessionStarted()
+        PtCloudService.recordLiveRead(null)
+        assertFalse(PtCloudService.liveSessionBlocked)
+    }
+
     @Test fun `the switch and a credentials save lift the live block`() {
         install()
         PtCloudService.blockForLiveSession()
