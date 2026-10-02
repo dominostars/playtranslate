@@ -29,7 +29,9 @@ import org.robolectric.RobolectricTestRunner
  * Part 1 onto the app's OCR types ([PtCloudResponseMapper.toOcrResult]),
  * through real server output: a Japanese frame with character boxes, a
  * Latin frame with a slanted group, and an Arabic frame whose lines carry no
- * recognizer score and no quad. Robolectric for a real [Rect].
+ * recognizer score and no quad. Plus part 1's decode of a group's cache
+ * translation, which the mapper does not read. Robolectric for a real
+ * [Rect].
  */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudResponseTest {
@@ -156,6 +158,23 @@ class PtCloudResponseTest {
         val g = map(line)!!.groups.single()
         assertEquals(Rect(10, 20, 30, 40), g.bounds)
         assertEquals(Rect(10, 5, 30, 40), g.drawBounds)
+    }
+
+    @Test fun `a part 1 group carries the translation the server's cache answered, and none without one`() {
+        val part = decode(PtCloudTestSupport.part1(PtCloudTestSupport.LATIN, translated = mapOf(1 to "...I'll just go.")))
+        assertEquals(listOf(null, "...I'll just go."), part.groups.map { it.translation })
+        assertNull(decode(PtCloudTestSupport.part1(PtCloudTestSupport.JA)).groups.single().translation)
+        // Decoded as sent: a blank one is the reader's to treat as absent.
+        val blank = decode(PtCloudTestSupport.part1(PtCloudTestSupport.JA, translated = mapOf(0 to " ")))
+        assertEquals(" ", blank.groups.single().translation)
+    }
+
+    @Test fun `unknown keys beside a group's translation are still ignored`() {
+        val line = """{"part":"ocr","schema_version":1,"cache":{"hits":1},"groups":[{"id":0,"text":"a",
+            "bounds":[0,0,1,1],"translation":"A","cached":true,"translation_source":"cache"}]}""".replace("\n", "")
+        val g = decode(line).groups.single()
+        assertEquals("A", g.translation)
+        assertEquals("a", g.text)
     }
 
     @Test fun `no groups, or only blank ones, is no text`() {

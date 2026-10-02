@@ -1636,7 +1636,7 @@ class Prefs internal constructor(
         set(v) = sp.edit { putString(KEY_PT_CLOUD_UPLOAD_FORMAT, v) }
 
     /** Whether a frame asks the service for a line per group as its
-     *  translation completes. The client only reads and times them; a
+     *  translation completes, which fills that group's box as it arrives; a
      *  switch on the settings page, so the timing can be compared with them
      *  on and off. */
     var ptCloudStreamItems: Boolean

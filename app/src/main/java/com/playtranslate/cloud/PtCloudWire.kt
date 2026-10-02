@@ -76,7 +76,11 @@ data class WireEngine(
 )
 
 /** One paragraph, already in the app's post-grouping shape. [id] is its
- *  position in `groups` and the key the item lines and the final part use. */
+ *  position in `groups` and the key the item lines and the final part use.
+ *  [translation] is present only when the server's translation cache
+ *  answered the group ("Translation cache" in docs/api.md), and is then
+ *  final for this frame: nothing later in the response changes it, and no
+ *  item line follows for the group. */
 @Serializable
 data class WireGroup(
     val id: Int,
@@ -91,6 +95,9 @@ data class WireGroup(
     val ow: Double = 0.0,
     val oh: Double = 0.0,
     val lines: List<WireLine> = emptyList(),
+    /** Absent when the cache did not answer, and always from a server that
+     *  predates the cache. */
+    val translation: String? = null,
 )
 
 /** One line of a group. The detector's `quad` is diagnostics only and is
@@ -154,10 +161,10 @@ data class WirePartTag(val part: String? = null)
 
 /**
  * An item line, sent between part 1 and the final part when the frame asked
- * for them ([FrameMeta.streamTranslations]): one group's translation the
- * moment it completes. Provisional; the final part is authoritative. The
- * client reads items only to time them and to count the ones the final part
- * words differently: nothing is drawn, cached or recorded from one. [tMs] is
+ * for them ([FrameMeta.streamTranslations]): the translation of one group
+ * part 1 left untranslated, the moment it completes. Provisional; the final
+ * part is authoritative. The client times each item for its clock line and
+ * hands it on as it arrives through [FrameResponse.items]. [tMs] is
  * milliseconds from the request's start on the server.
  */
 @Serializable

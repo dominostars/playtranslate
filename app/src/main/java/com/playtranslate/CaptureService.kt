@@ -43,16 +43,14 @@ import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.ocr.DeviceFrameReader
 import com.playtranslate.ocr.FallbackFrameReader
 import com.playtranslate.ocr.FrameReader
-import com.playtranslate.ocr.ProvidedTranslations
 import com.playtranslate.ocr.ReadRequest
 import com.playtranslate.ocr.ReaderAttribution
-import com.playtranslate.ocr.providedGroupTranslations
+import com.playtranslate.ocr.ReaderTranslations
 import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.ocr.registry.selectionToken
 import com.google.mlkit.nl.translate.TranslateLanguage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -69,6 +67,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -1288,6 +1287,10 @@ class CaptureService : Service() {
                 state.value =
                     CaptureState.Translating(originalText, segments, ocrProvenance, overlayData)
             },
+            // More boxes translated before Done: the same Translating with
+            // only its boxes changed, which the collectors take as a box fill
+            // (CaptureState.Translating.fillsBoxesOf).
+            onBoxesFilled = { data -> state.update { (it as? CaptureState.Translating)?.copy(overlayData = data) ?: it } },
         )
         state.value = terminalStateFor(outcome, displayId)
     }
@@ -3534,7 +3537,10 @@ class CaptureService : Service() {
      * settings change mid-cycle. [isReOcr] marks a re-OCR of an existing
      * capture, which records nothing (see the gate below). [onOcrStart] runs
      * just before OCR; [onOcrReady] once OCR found text, before the (slower)
-     * translation.
+     * translation, with the boxes as they stand then (some may already be
+     * translated, by the reader with its OCR or from the cache); [onBoxesFilled]
+     * each time more of those boxes are translated before the cycle ends (a
+     * reader's translations arriving group by group).
      */
     private suspend fun runFrameCycle(
         frame: com.playtranslate.capture.CapturedFrame,
@@ -3550,6 +3556,7 @@ class CaptureService : Service() {
             ocrProvenance: OcrProvenance?,
             overlayData: OneShotOverlayData?,
         ) -> Unit)?,
+        onBoxesFilled: ((OneShotOverlayData) -> Unit)?,
     ): PipelineOutcome {
         val raw = frame.bitmap
         val frameIncludesSystemUi = frame.includesSystemUi
@@ -3564,9 +3571,9 @@ class CaptureService : Service() {
         var colorRef: Bitmap? = null
         // The reader's translations, when it produces any. Cancelled in the
         // finally, so an exit that never awaits them (no text, a same-language
-        // pair, a failure) leaves nothing running in the caller's job; a no-op
-        // once they have been awaited.
-        var providedTranslations: Deferred<ProvidedTranslations>? = null
+        // pair, a deferral, a failure) leaves nothing running in the caller's
+        // job; a no-op once they have settled.
+        var readerTranslations: ReaderTranslations? = null
         try {
             if (!isConfigured) return PipelineOutcome.Failed(NOT_CONFIGURED_MESSAGE)
             val screenshotPath = captureSaveToCache(raw, displayId)
@@ -3616,7 +3623,7 @@ class CaptureService : Service() {
                     frameId = frameIdFor(displayId),
                 ),
             )
-            providedTranslations = reading.translations
+            readerTranslations = reading.translations
             val ocrResult = reading.ocr
             if (BuildConfig.DEBUG && Prefs(this@CaptureService).debugSaveOcrSeed) {
                 OcrSeedWriter.writeSeed(this@CaptureService, bitmap, ocrResult)
@@ -3633,14 +3640,6 @@ class CaptureService : Service() {
             // translations, if it started any.
             if (ocrResult == null) return PipelineOutcome.NoText(ocrProvenance, screenshotPath)
 
-            // Reveal the page on OCR: show the source now, translate in the section.
-            // The skeleton boxes ride along so a chips-preferred panel can collapse
-            // NOW and show pulsing placeholders over the game while we translate.
-            val skeletonData = buildOneShotOverlayData(
-                ocrResult, colorRef, left, top, rawW, rawH,
-                cropWidth = right - left, cropHeight = bottom - top,
-            )
-            onOcrReady?.invoke(ocrResult.fullText, ocrResult.segments, ocrProvenance, skeletonData)
             // Pin translation to the SAME source language OCR used (srcId), not current
             // Prefs — for a re-OCR after a source-language change they'd otherwise disagree,
             // sending the recognized text through the wrong source/target cache key and
@@ -3651,25 +3650,12 @@ class CaptureService : Service() {
             // Recording target captured BEFORE the translate call — a
             // mid-flight language change must not relabel these rows
             // (srcId is already pinned above).
+            val groupTexts = ocrResult.groups.map { it.text }
             val recordSrc = SourceLanguageProfiles[srcId].translationCode
             val recordTgt = Prefs(this@CaptureService).targetLang
-            // Who translates, by (source == target; the reader's translations;
-            // the section hidden and the caller allowing deferral), the same
-            // comparison translateGroupsSeparately's same-language shortcut uses:
-            //  - same language; any; any: no translation at all. The reader's
-            //    translations are never awaited (the finally cancels them), and
-            //    the shortcut passes the OCR text through.
-            //  - different; none (a reader that only reads); not deferring: the
-            //    waterfall, as always.
-            //  - different; none; deferring: deferred, a PendingTranslation.
-            //  - different; Ok for this pair; any: the reader's texts, seeding
-            //    the cache, nothing pending, the degraded state untouched. Not
-            //    deferred even when hidden: they are already paid for, and the
-            //    later reveal is then instant.
-            //  - different; Ok for another pair (the target changed during the
-            //    read): as Unavailable, below.
-            //  - different; Unavailable; not deferring: the waterfall.
-            //  - different; Unavailable; deferring: deferred, as always.
+            // A same-language pair takes nothing from the reader: its
+            // translations are never awaited (the finally cancels them).
+            val reader = readerTranslations.takeIf { recordSrc != recordTgt }
             // Deferred path: the translation section is hidden and the caller
             // opted in, so no consumer needs MT right now — skip the backend
             // batch entirely. Rows record translation-less (they attach later
@@ -3679,15 +3665,101 @@ class CaptureService : Service() {
             // (allowDeferTranslation stays false at their call sites): their
             // recording is gated off below, so a deferred re-OCR would have
             // nothing to attach its late translation to.
-            val provided = if (recordSrc == recordTgt) null
-                else (providedTranslations?.await() as? ProvidedTranslations.Ok)
-                    ?.takeIf { it.isFor(recordSrc, recordTgt) }
-            val deferTranslation = allowDeferTranslation &&
+            val mayDefer = allowDeferTranslation &&
                 Prefs(this@CaptureService).hideTranslationSection &&
-                recordSrc != recordTgt &&
-                provided == null
+                recordSrc != recordTgt
+            // What can be shown at once, by group, under the pair OCR ran in:
+            // the reader's translations that came with its OCR (final, and
+            // cached here, so a deferred completion serves them from the
+            // cache), else the cache's entries.
+            val atOnce = translationsAtOnce(groupTexts, reader, srcId)
+
+            // Reveal the page on OCR: show the source now, translate in the section.
+            // The boxes ride along so a chips-preferred panel can collapse NOW and
+            // show them over the game while we translate: pulsing placeholders,
+            // except where a translation can be shown at once. A capture that
+            // may defer shows only placeholders until it decides, since a
+            // deferred Done keeps them.
+            val skeletonData = buildOneShotOverlayData(
+                ocrResult, colorRef, left, top, rawW, rawH,
+                cropWidth = right - left, cropHeight = bottom - top,
+            )
+            val firstPaint =
+                if (mayDefer) skeletonData else partlyFillOneShotOverlayData(skeletonData, atOnce.map { it?.text })
+            onOcrReady?.invoke(ocrResult.fullText, ocrResult.segments, ocrProvenance, firstPaint)
+            // Who translates, by (source == target; the reader's translations;
+            // the section hidden and the caller allowing deferral), the same
+            // comparison translateGroupsSeparately's same-language shortcut uses.
+            // The final part is waited for only when a group the reader has
+            // yet to name has no cache entry (readerTranslationsToTake), and
+            // "the rest" below are the groups that did not arrive with the OCR:
+            //  - same language; any; any: no translation at all. The reader's
+            //    translations are never awaited (the finally cancels them), and
+            //    the shortcut passes the OCR text through.
+            //  - different; none (a reader that only reads, as the device
+            //    reader); not deferring: the first paint fills the groups the
+            //    cache has and leaves the rest placeholders, then the cache
+            //    and the waterfall translate every group at Done, as always.
+            //  - different; none; deferring: placeholders only (cached groups
+            //    included), deferred, a PendingTranslation.
+            //  - different; every group translated with the OCR; not
+            //    deferring: every box translated in the first paint, nothing
+            //    waited for, no waterfall, the degraded state untouched.
+            //  - different; every group translated with the OCR; deferring:
+            //    placeholders only, then not deferred (nothing is left to pay
+            //    for, and the later reveal would only read the cache), every
+            //    box filled at Done.
+            //  - different; some groups (or none) with the OCR, the cache
+            //    having every one of the rest; not deferring: the first paint
+            //    is final (the OCR's translations and the cache's entries),
+            //    nothing waited for, no waterfall, and Done follows at once
+            //    with the same text (the final part's wording instead, if it
+            //    has already arrived); the item lines and the final part are
+            //    otherwise dropped (the finally cancels them).
+            //  - the same; deferring: placeholders only, then deferred at
+            //    once, nothing waited for, the OCR's translations already in
+            //    the cache. Not deferred only when the reader has already
+            //    settled naming every group (its final word is then taken
+            //    without a wait).
+            //  - different; some groups with the OCR, the rest in item lines
+            //    and an ok final part, the cache lacking one of the rest; not
+            //    deferring: the first paint fills the first ones and the
+            //    cache's entries for the others, each item fills its box in
+            //    place on top of that (onBoxesFilled), and the final part's
+            //    wording wins at Done, both over a cache fill too. A group the
+            //    final part leaves blank goes through the cache and the
+            //    waterfall.
+            //  - different; some groups with the OCR, the rest by the final
+            //    part, the cache lacking one of the rest; deferring:
+            //    placeholders only while the final part is awaited (no fills),
+            //    then not deferred when it named every group, deferred as
+            //    always when it did not.
+            //  - different; some groups with the OCR, then a final part that
+            //    fails (deferred, failed, the read ended), the cache lacking
+            //    one of the rest; not deferring: the first paint fills the
+            //    first ones and the cache's entries for the others, any item
+            //    drawn stays until Done, and Done keeps the OCR's translations
+            //    and has the cache and the waterfall translate the rest.
+            //    Deferring: deferred once the final part fails, the OCR's
+            //    translations already in the cache.
+            //  - different; translations for another pair (the target changed
+            //    during the read): as no reader, nothing taken or cached from
+            //    them.
+            // Deferred unless the reader, for this pair, named every group,
+            // by the translate call's own wait rule, so a capture that may
+            // defer waits for the final part exactly when its translate call
+            // would.
+            val deferTranslation = mayDefer &&
+                !(reader != null && reader.isFor(recordSrc, recordTgt) &&
+                    readerTranslationsToTake(groupTexts, reader, snapshotTranslationTarget(srcId), onProgress = null)
+                        .let { named -> groupTexts.indices.all { it in named } })
+            // Each delivery fills on top of the first paint, so a box it does
+            // not name keeps what the first paint gave it.
             val perGroup = if (deferTranslation) null
-                else translateGroupsSeparately(ocrResult.groups.map { it.text }, srcId, provided)
+                else translateGroupsSeparately(groupTexts, srcId, reader) { delivered ->
+                    partlyFillOneShotOverlayData(firstPaint, delivered.map { it?.text })
+                        ?.let { onBoxesFilled?.invoke(it) }
+                }
 
             // Deliberate capture → recording backend, FRESH captures only, one
             // capture session per invocation (per-group pairs with rects; the
@@ -3732,7 +3804,7 @@ class CaptureService : Service() {
                     backendDisplayName  = perGroup?.mapNotNull { it.backendDisplayName }?.firstOrNull(),
                     ocrProvenance       = ocrProvenance,
                     pendingTranslation  = if (deferTranslation) PendingTranslation(
-                        groupTexts = ocrResult.groups.map { it.text },
+                        groupTexts = groupTexts,
                         sourceLangId = srcId,
                         targetLang = recordTgt,
                         isCapture = true,
@@ -3759,7 +3831,7 @@ class CaptureService : Service() {
             Log.e(TAG, "Capture cycle failed: ${e.message}", e)
             return PipelineOutcome.Failed(e.message ?: "Unknown error")
         } finally {
-            providedTranslations?.cancel()
+            readerTranslations?.cancel()
             colorRef?.recycle()
             if (!bitmap.isRecycled) bitmap.recycle()
         }
@@ -3807,6 +3879,10 @@ class CaptureService : Service() {
                 state.value =
                     CaptureState.Translating(originalText, segments, ocrProvenance, overlayData)
             },
+            // More boxes translated before Done: the same Translating with
+            // only its boxes changed, which the collectors take as a box fill
+            // (CaptureState.Translating.fillsBoxesOf).
+            onBoxesFilled = { data -> state.update { (it as? CaptureState.Translating)?.copy(overlayData = data) ?: it } },
         )
         state.value = terminalStateFor(outcome, displayId)
     }
@@ -3833,12 +3909,16 @@ class CaptureService : Service() {
     /** Synchronous cache lookup for previously translated text. Returns null
      *  if not cached for the current pair; hits carry the producing backend's
      *  display name so cache-filled boxes stay attributable. */
-    internal fun getCachedTranslation(sourceText: String): GroupTranslation? {
-        val target = snapshotTranslationTarget()
-        return translationCache[cacheKey(sourceText, target)]?.let { (text, backend) ->
+    internal fun getCachedTranslation(sourceText: String): GroupTranslation? =
+        cachedTranslation(sourceText, snapshotTranslationTarget())
+
+    /** The cache's entry for [sourceText] under [target], localized; null when
+     *  there is none. Shared by [getCachedTranslation], [translationsAtOnce] and
+     *  [readerTranslationsToTake]. */
+    private fun cachedTranslation(sourceText: String, target: TranslationTarget): GroupTranslation? =
+        translationCache[cacheKey(sourceText, target)]?.let { (text, backend) ->
             GroupTranslation(target.localize(text), note = null, backendDisplayName = backend)
         }
-    }
 
     /**
      * Translates each group in parallel, using cached results for groups
@@ -3859,16 +3939,39 @@ class CaptureService : Service() {
      *     a lower-priority backend, the fallback's output shouldn't outlast
      *     the memory pressure window.
      *
-     * [provided]: translations the frame's reader produced with its OCR
-     * (a combined OCR and translation service), indexed like [groupTexts].
-     * Used, and cached like any backend's results, only when they are for
-     * this call's pair; under any other pair they are ignored and the
-     * waterfall below runs as if there were none.
+     * [reader]: the translations the frame's reader produces with its OCR (a
+     * combined OCR and translation service), keyed by position in
+     * [groupTexts]. Used only when they are for this call's pair; under any
+     * other pair they are ignored and every position goes through the cache
+     * and the waterfall as if there were none. Otherwise this waits for them
+     * only when the reader can still name a position whose text the cache
+     * has no entry for ([ReaderTranslations.awaited]), reporting each
+     * delivery on the way through [onProgress] by position (null = nothing
+     * yet; the reader's texts, localized and named by its provider, not
+     * cached, since they are provisional). When the cache has an entry for
+     * every position the reader has yet to name, this takes what is final
+     * now ([ReaderTranslations.finalSoFar]: what arrived with the OCR, or
+     * everything once the reader settled) without waiting: the cache already
+     * answers those positions, so waiting would only hold the caller to
+     * reword text it can show at once. A position the reader names takes its
+     * text, cached as the provider's like any backend's result, over a cache
+     * entry: the reader's text is the fresher one, so a call that waits
+     * takes the reader's text at a position the cache filled too. Every
+     * position it does not name (it left the group untranslated, its final
+     * part failed, the consumer maps no group there, or the call did not
+     * wait for it) goes through the cache and the waterfall in this same
+     * call. [onProgress] is never called without a wait, nor for the settled
+     * state, which this returns.
+     *
+     * Runs on the Main-dispatched scope (the cache's thread-safety
+     * invariant); the reader's state is collected on the caller's
+     * dispatcher, so the cache writes stay there.
      */
     internal suspend fun translateGroupsSeparately(
         groupTexts: List<String>,
         sourceOverride: SourceLangId? = null,
-        provided: ProvidedTranslations.Ok? = null,
+        reader: ReaderTranslations? = null,
+        onProgress: (suspend (List<GroupTranslation?>) -> Unit)? = null,
     ): List<GroupTranslation> {
         val target = snapshotTranslationTarget(sourceOverride)
 
@@ -3887,13 +3990,113 @@ class CaptureService : Service() {
             return groupTexts.map { GroupTranslation(target.localize(it), null, null) }
         }
 
-        if (provided != null) {
-            if (provided.isFor(target.source, target.target)) {
-                return groupTranslationsFrom(provided, groupTexts, target)
+        val provided: Map<Int, String> = when {
+            reader == null -> emptyMap()
+            !reader.isFor(target.source, target.target) -> {
+                Log.i(TAG, "provided translations ignored: the language pair changed since the read")
+                emptyMap()
             }
-            Log.i(TAG, "provided translations ignored: the language pair changed since the read")
+            else -> readerTranslationsToTake(groupTexts, reader, target, onProgress)
         }
+        if (reader == null || provided.isEmpty()) return translateThroughCache(groupTexts, target)
 
+        val taken = takeReaderTranslations(groupTexts, provided, reader.providerName, target)
+        val rest = groupTexts.indices.filter { taken[it] == null }
+        // In position order, as the nulls they fill.
+        val restTranslated =
+            if (rest.isEmpty()) emptyList() else translateThroughCache(rest.map { groupTexts[it] }, target)
+        val next = restTranslated.iterator()
+        return taken.map { it ?: next.next() }
+    }
+
+    /** What [reader], already checked to be for [target]'s pair, gives
+     *  [groupTexts] by position: its translations once it settles
+     *  ([ReaderTranslations.await], each delivery on the way reported through
+     *  [onProgress] as [translateGroupsSeparately] describes) when it can still
+     *  name a position whose text the cache has no entry for under [target],
+     *  else what is final now ([ReaderTranslations.finalSoFar]) without
+     *  waiting, since the cache already answers every position the reader has
+     *  yet to name. The one wait rule: [translateGroupsSeparately] and
+     *  [runFrameCycle]'s deferral decide by it, so a capture that may defer
+     *  waits for the reader exactly when its translate call would. */
+    private suspend fun readerTranslationsToTake(
+        groupTexts: List<String>,
+        reader: ReaderTranslations,
+        target: TranslationTarget,
+        onProgress: (suspend (List<GroupTranslation?>) -> Unit)?,
+    ): Map<Int, String> {
+        val cacheLacksOne = reader.awaited.any { cachedTranslation(groupTexts[it], target) == null }
+        if (!cacheLacksOne) return reader.finalSoFar
+        return reader.await(
+            onProgress?.let { report ->
+                { delivered ->
+                    report(
+                        List(groupTexts.size) { i ->
+                            delivered[i]?.let {
+                                GroupTranslation(target.localize(it), note = null, backendDisplayName = reader.providerName)
+                            }
+                        },
+                    )
+                }
+            },
+        )
+    }
+
+    /** What can be shown for [groupTexts] before any wait, by position: the reader's
+     *  translation that arrived with its OCR where there is one (final, so cached here
+     *  as the reader's, like any backend's result), else the cache's entry, else null.
+     *  The reader's are taken only for this call's pair; all null when source and
+     *  target are the same language (nothing is translated). */
+    internal fun translationsAtOnce(
+        groupTexts: List<String>,
+        reader: ReaderTranslations?,
+        sourceOverride: SourceLangId? = null,
+    ): List<GroupTranslation?> {
+        val target = snapshotTranslationTarget(sourceOverride)
+        if (target.source == target.target) return List(groupTexts.size) { null }
+        val cached = groupTexts.map { cachedTranslation(it, target) }
+        if (reader == null || !reader.isFor(target.source, target.target)) return cached
+        // The reader's text wins over a cache entry: it is the fresher one.
+        return takeReaderTranslations(groupTexts, reader.ready, reader.providerName, target)
+            .zip(cached) { fromReader, fromCache -> fromReader ?: fromCache }
+    }
+
+    /** The reader's [byPosition] texts for [groupTexts] under [target]: each one
+     *  cached as [providerName]'s, so the live tiers and the next capture serve it
+     *  like any backend's entry, and returned localized and named by
+     *  [providerName]; null at a position it does not name. Shared by
+     *  [translationsAtOnce] and [translateGroupsSeparately]. */
+    private fun takeReaderTranslations(
+        groupTexts: List<String>,
+        byPosition: Map<Int, String>,
+        providerName: String,
+        target: TranslationTarget,
+    ): List<GroupTranslation?> {
+        if (byPosition.isEmpty()) return List(groupTexts.size) { null }
+        // The cache's routing identity is reconciled before these writes, the
+        // rule every cache write follows (see translateThroughCache), so a
+        // backend toggle since the last call clears the old entries first
+        // instead of these landing among them.
+        ensureLanguageManagersFor(target)
+        // The degraded state is left untouched: no waterfall ran for these,
+        // the same rule as a fully cached batch.
+        return groupTexts.mapIndexed { i, text ->
+            byPosition[i]?.let { translation ->
+                translationCache[cacheKey(text, target)] = translation to providerName
+                // Localized after the cache write, like the waterfall's results:
+                // the shared "zh" cache keeps Simplified for every variant.
+                GroupTranslation(target.localize(translation), note = null, backendDisplayName = providerName)
+            }
+        }
+    }
+
+    /** [groupTexts] translated under [target] cache-first, the misses in one
+     *  batched waterfall: [translateGroupsSeparately]'s path for every position
+     *  no reader names. */
+    private suspend fun translateThroughCache(
+        groupTexts: List<String>,
+        target: TranslationTarget,
+    ): List<GroupTranslation> {
         // Reconcile the cache's preferred-backend identity BEFORE the
         // cache lookup. If a fully-cached batch returns early, the
         // identity check inside translateBatch never runs, so a backend
@@ -4045,41 +4248,6 @@ class CaptureService : Service() {
             .map { it.copy(text = target.localize(it.text)) }
     }
 
-    /** [translateGroupsSeparately] with a reader's [provided] translations for
-     *  [target]'s pair: one [GroupTranslation] per group of [groupTexts], named
-     *  by [ProvidedTranslations.Ok.providerName], and each non-blank one cached
-     *  as that provider's, so the live tiers and the next capture serve it like
-     *  any backend's entry. A group the reader did not translate comes back
-     *  blank with no backend name, as a blank waterfall result does. */
-    private fun groupTranslationsFrom(
-        provided: ProvidedTranslations.Ok,
-        groupTexts: List<String>,
-        target: TranslationTarget,
-    ): List<GroupTranslation> {
-        // The cache's routing identity is reconciled before these writes, the
-        // rule every cache write follows (see the waterfall path above), so a
-        // backend toggle since the last call clears the old entries first
-        // instead of these landing among them.
-        ensureLanguageManagersFor(target)
-        val texts = providedGroupTranslations(groupTexts.size, provided.byGroup)
-        groupTexts.zip(texts).forEach { (text, translation) ->
-            if (translation.isNotBlank()) {
-                translationCache[cacheKey(text, target)] = translation to provided.providerName
-            }
-        }
-        // The degraded state is left untouched: no waterfall ran, the same
-        // rule as a fully cached batch.
-        return texts.map { translation ->
-            if (translation.isBlank()) GroupTranslation("", note = null, backendDisplayName = null)
-            // Localized after the cache write, like the waterfall's results:
-            // the shared "zh" cache keeps Simplified for every variant.
-            else GroupTranslation(
-                target.localize(translation), note = null,
-                backendDisplayName = provided.providerName,
-            )
-        }
-    }
-
     /** Downscaled copy of [raw] for [OverlayToolkit.sampleGroupColors], at
      *  1/[ONE_SHOT_COLOR_SCALE]. Taken BEFORE [cropBitmap] — which recycles the
      *  raw frame when it crops — so [runFrameCycle] can still color-sample
@@ -4103,12 +4271,13 @@ class CaptureService : Service() {
         null
     }
 
-    /** Build the SKELETON in-place overlay boxes for a one-shot capture — the same
-     *  color-matched placeholders the press-and-hold preview paints while its
-     *  translation runs ([TranslationOneShotProcessor]): empty text (the overlay
+    /** Build the SKELETON in-place overlay boxes for a one-shot capture, the same
+     *  color-matched placeholders the press-and-hold preview starts from
+     *  ([TranslationOneShotProcessor]): empty text (the overlay
      *  view renders pulsing skeleton lines for those), sampled colors, OCR bounds.
-     *  One box per OCR group, index-aligned, so [fillOneShotOverlayData] can zip
-     *  the per-group translations in later. Null when there are no groups or no
+     *  One box per OCR group, index-aligned, so [partlyFillOneShotOverlayData]
+     *  (as translations arrive) and [fillOneShotOverlayData] (once they are
+     *  final) can zip the per-group translations in later. Null when there are no groups or no
      *  color reference (its allocation is best-effort — see [oneShotColorRef]). */
     private fun buildOneShotOverlayData(
         ocrResult: OcrManager.OcrResult,

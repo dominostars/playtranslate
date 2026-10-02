@@ -6,13 +6,13 @@ import com.playtranslate.language.SourceLangId
 import com.playtranslate.ocr.FallbackFrameReader
 import com.playtranslate.ocr.FrameReader
 import com.playtranslate.ocr.FrameReading
-import com.playtranslate.ocr.ProvidedTranslations
 import com.playtranslate.ocr.ReadRequest
 import com.playtranslate.ocr.ReaderAttribution
+import com.playtranslate.ocr.ReaderTranslations
 import com.playtranslate.translation.BackendFailure
 import com.playtranslate.translation.BackendFailureKind
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
@@ -93,7 +93,7 @@ class FallbackFrameReaderTest {
         val fallbackReading = FrameReading(
             ocr = OcrManager.OcrResult(fullText = "t", segments = emptyList()),
             attribution = ReaderAttribution("fallback", "fallback"),
-            translations = CompletableDeferred(ProvidedTranslations.Unavailable("test")),
+            translations = ReaderTranslations("ja", "en", "fallback", groupCount = 1, ready = emptyMap(), job = Job()),
         )
         val primary = FakeReader { throw PtCloudReadException(failure, "pod stopped") }
         val fallback = FakeReader { fallbackReading }

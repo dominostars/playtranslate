@@ -58,7 +58,8 @@ class PtCloudConfig(private val prefs: Prefs) {
         get() = FrameFormat.fromWireName(prefs.ptCloudUploadFormat) ?: DEFAULT_UPLOAD_FORMAT
 
     /** Whether a frame asks for item lines ([FrameMeta.streamTranslations]).
-     *  The client reads and times them; nothing is drawn from them. */
+     *  Each one fills its box as it arrives, ahead of the final part, and
+     *  is timed for the clock line. */
     val streamItems: Boolean get() = prefs.ptCloudStreamItems
 
     /** Whether [PtCloudClient.warm] sends anything. */

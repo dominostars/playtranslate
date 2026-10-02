@@ -58,7 +58,7 @@ data class FarGroup(
      *  group this entry is verbatim ([text] is that group's text): set for a
      *  content-match replacement and a fresh far entry, null for a coalesced
      *  merge (two groups' texts joined, which no single group of the read
-     *  has). Read by [providedForFarGroups], which gives a placeholder the
+     *  has). Read by [readerForFarGroups], which gives a placeholder the
      *  reader's translation of that group, keyed by the same index. */
     val sourceGroupIndex: Int? = null,
 )

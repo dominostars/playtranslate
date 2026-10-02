@@ -874,7 +874,7 @@ class ClassificationTest {
         // Group 0 stales the box (overlap, different text) and queues
         // nothing, so the fresh far from group 1 sits at far position 0. The
         // index must name group 1: it keys the reader's translation of that
-        // group (providedForFarGroups).
+        // group (readerForFarGroups).
         val boxBounds = Rect(0, 0, 100, 100)
         val result = classifyOcrResults(
             ocrResult = ocrResult(

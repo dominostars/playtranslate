@@ -285,6 +285,16 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
         startWordLookups(originalText, appCtx)
     }
 
+    /** A box fill landing on the current Translating placeholder: swap in
+     *  [onScreenBoxes], the same capture's boxes with more of them translated.
+     *  Unlike [showTranslatingPlaceholder] it never restarts word lookups: the
+     *  source text is unchanged, and a restart would flash the word list. No-op
+     *  in any other state, since only a placeholder still has boxes to fill. */
+    fun applyTranslatingBoxes(onScreenBoxes: OnScreenBoxes?) {
+        val cur = _result.value as? ResultState.Translating ?: return
+        _result.value = cur.copy(onScreenBoxes = onScreenBoxes)
+    }
+
     /** Edit-overlay commit: replace original text on the current
      *  Ready/Translating result, reset translation, re-run lookups.
      *  No-op for non-result states.
@@ -631,10 +641,11 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
  * Paintable "show on screen" boxes for the current in-app result (the
  * dual-screen counterpart of the capture panel's header toggle): the one-shot
  * pipeline's overlay geometry plus the display the capture came from. Carried
- * ONLY by the one-shot capture collector's Translating (skeletons) / Ready
- * (translated) writes — every other write path defaults it to null, which is
- * what makes "any new content dismisses the on-screen boxes" enforceable in
- * the fragment's single render funnel instead of at N call sites.
+ * ONLY by the one-shot capture collector's Translating (skeletons, filling in as
+ * the translations arrive) / Ready (translated) writes. Every other write path
+ * defaults it to null, which is what makes "any new content dismisses the
+ * on-screen boxes" enforceable in the fragment's single render funnel instead
+ * of at N call sites.
  */
 data class OnScreenBoxes(
     val data: OneShotOverlayData,
@@ -662,8 +673,10 @@ sealed class ResultState {
         /** OCR provenance when this placeholder came from a capture (drives the
          *  source "Scanned by …" row during translation); null for drag/sentence/edit. */
         val ocrProvenance: com.playtranslate.model.OcrProvenance? = null,
-        /** Skeleton boxes for the dual-screen "show on screen" toggle — see
-         *  [OnScreenBoxes]. Null for drag/sentence/edit placeholders. */
+        /** The capture's boxes for the dual-screen "show on screen" toggle (see
+         *  [OnScreenBoxes]): skeletons, filling in as the translations arrive
+         *  ([TranslationResultViewModel.applyTranslatingBoxes]). Null for
+         *  drag/sentence/edit placeholders. */
         val onScreenBoxes: OnScreenBoxes? = null,
     ) : ResultState()
     data class Ready(

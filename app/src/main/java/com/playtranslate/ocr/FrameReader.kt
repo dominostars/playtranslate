@@ -11,9 +11,14 @@ import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.translation.BackendFailure
 import com.playtranslate.translation.ClassifiedFailure
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
 import java.io.IOException
 
 private const val TAG = "FrameReader"
@@ -21,33 +26,173 @@ private const val TAG = "FrameReader"
 /** Who read the frame, for OcrProvenance ("Scanned by …" + the gear's picker key). */
 data class ReaderAttribution(val label: String, val token: String)
 
-/** Translations a reader produced alongside its OCR (a combined OCR+MT service). */
-sealed interface ProvidedTranslations {
-    /** Group index (= the reader's group id) to translation, translated under the pair
-     *  ([source] = the app's translationCode, [target] = the app's target code) the
-     *  reader sent; [providerName] is the "Translated by" name. A consumer under any
-     *  other pair must ignore it. */
-    data class Ok(
-        val byGroup: Map<Int, String>,
-        val source: String,
-        val target: String,
-        val providerName: String,
-    ) : ProvidedTranslations {
-        /** Whether these translations are for the pair ([source], [target]) the
-         *  consumer translates under. The pair can change between the read and the
-         *  translations' arrival; a text translated into the old target must never
-         *  be shown, or cached, under the new one. */
-        fun isFor(source: String, target: String): Boolean =
-            this.source == source && this.target == target
+/** What a reader's translations hold at one moment, by position. [settled]: nothing more will arrive. */
+data class ReaderProgress(val byPosition: Map<Int, String>, val settled: Boolean)
+
+/**
+ * The translations a reader produces alongside its OCR (a combined OCR and
+ * translation service), as they arrive, for the pair ([source] = the app's
+ * translationCode, [target] = the app's target code) the reader sent;
+ * [providerName] is the "Translated by" name. Keyed by position in a list of
+ * texts: the reader's own groups, or a consumer's own list after
+ * [forPositions].
+ *
+ * Three kinds of text, all held in one state keyed by the reader's group
+ * index and shared by the root and every view of it: [ready], what arrived
+ * with the OCR, final and present in every state; what the reader delivers
+ * provisionally on the way ([deliver]); and the reader's final word
+ * ([settle]), after which nothing changes. A blank text is no text: it is
+ * dropped wherever it comes in, so a position the reader translated to a
+ * blank goes where an unnamed position goes (the cache and the waterfall)
+ * instead of pinning a box blank, which a live tier would retry every cycle.
+ *
+ * The reader's work runs in the job the root is built with, a child of the
+ * caller's job that never fails and settles these translations however it
+ * ends; whoever drops them without awaiting them cancels it ([cancel]).
+ */
+class ReaderTranslations private constructor(
+    val source: String,
+    val target: String,
+    val providerName: String,
+    private val shared: Shared,
+    /** Each of this object's positions mapped to a reader group index; null =
+     *  this position takes none. */
+    private val groupOf: List<Int?>,
+) {
+
+    /** The root's state, shared by every view: one writer (the reader), any
+     *  number of readers on any thread. */
+    private class Shared(val readyByGroup: Map<Int, String>, val job: Job) {
+        val state = MutableStateFlow(ReaderProgress(readyByGroup, settled = false))
     }
 
-    /** The reader produced none (deferred, failed, skipped, connection ended): the caller translates locally. */
-    data class Unavailable(val reason: String) : ProvidedTranslations
+    /** The root, for the reader that produced them: [groupCount] groups, of
+     *  which [ready] (by group index) arrived with the OCR. */
+    constructor(
+        source: String,
+        target: String,
+        providerName: String,
+        groupCount: Int,
+        ready: Map<Int, String>,
+        job: Job,
+    ) : this(
+        source, target, providerName,
+        Shared(ready.filterValues { it.isNotBlank() }, job),
+        List(groupCount) { it },
+    )
+
+    /** Whether these translations are for the pair ([source], [target]) the
+     *  consumer translates under. The pair can change between the read and the
+     *  translations' arrival; a text translated into the old target must never
+     *  be shown, or cached, under the new one. */
+    fun isFor(source: String, target: String): Boolean =
+        this.source == source && this.target == target
+
+    /** By position, final: what arrived with the OCR. */
+    val ready: Map<Int, String> = byPosition(shared.readyByGroup)
+
+    /** By position: the translations as they stand now. */
+    val now: ReaderProgress
+        get() = shared.state.value.let { ReaderProgress(byPosition(it.byPosition), it.settled) }
+
+    /** The positions that take a group that did not arrive with the OCR:
+     *  fixed at construction, since [ready] never changes. */
+    private val notReady: Set<Int> =
+        groupOf.indices.filterTo(HashSet()) { position -> groupOf[position]?.let { it !in shared.readyByGroup } == true }
+
+    /** The positions waiting can still name: those that take a group that did
+     *  not arrive with the OCR. Empty once settled, and empty when every
+     *  position that takes a group arrived with the OCR. A consumer that
+     *  already has a translation for each of them (the app's cache) has
+     *  nothing to wait for. */
+    val awaited: Set<Int>
+        get() = if (shared.state.value.settled) emptySet() else notReady
+
+    /** True while waiting can still name one of this object's positions
+     *  ([awaited] is not empty): a consumer then has something to wait for. */
+    val pending: Boolean
+        get() = awaited.isNotEmpty()
+
+    /** By position, what is final now: every translation once settled; until
+     *  then only what arrived with the OCR ([ready]), since a provisional
+     *  delivery can still be replaced or dropped. What a consumer takes when
+     *  it does not wait. */
+    val finalSoFar: Map<Int, String>
+        get() = shared.state.value.let { if (it.settled) byPosition(it.byPosition) else ready }
+
+    /**
+     * The translations by position once nothing more can arrive for this
+     * object's positions: at once ([finalSoFar]) when not [pending], else
+     * when the reader settles. On the way, [onMore] is called with the
+     * cumulative by-position map each time it differs from the last one
+     * reported (starting from [ready]); the settled map itself is never
+     * reported through it, since this returns it. The state is collected on
+     * the caller's dispatcher, so [onMore] runs there too.
+     */
+    suspend fun await(onMore: (suspend (Map<Int, String>) -> Unit)? = null): Map<Int, String> {
+        if (!pending) return finalSoFar
+        var reported = ready
+        return shared.state
+            .map { ReaderProgress(byPosition(it.byPosition), it.settled) }
+            .onEach { progress ->
+                if (!progress.settled && progress.byPosition != reported) {
+                    reported = progress.byPosition
+                    onMore?.invoke(progress.byPosition)
+                }
+            }
+            .first { it.settled }
+            .byPosition
+    }
+
+    /** These translations for a consumer's own list: position i takes this
+     *  object's position `groupOf[i]` (composed through this object's own
+     *  mapping; an index outside it, or null, takes none). Null when no
+     *  position maps to a group, so a caller holds no reader at all rather
+     *  than one that can name nothing. The view shares this object's state,
+     *  pair, provider and job. */
+    fun forPositions(groupOf: List<Int?>): ReaderTranslations? {
+        val composed = groupOf.map { position -> position?.let { this.groupOf.getOrNull(it) } }
+        if (composed.all { it == null }) return null
+        return ReaderTranslations(source, target, providerName, shared, composed)
+    }
+
+    /** For the reader that made them: the provisional translations so far, by
+     *  group index. Ignored once settled. */
+    fun deliver(byGroup: Map<Int, String>) {
+        shared.state.update { if (it.settled) it else ReaderProgress(merged(byGroup), settled = false) }
+    }
+
+    /** For the reader that made them: its final word, by group index, after
+     *  which nothing changes; a second settle is ignored. With nothing, the
+     *  reader delivered no more than [ready] (it failed, was deferred,
+     *  skipped or cancelled, or its read ended), and anything it delivered
+     *  provisionally is dropped. */
+    fun settle(byGroup: Map<Int, String> = emptyMap()) {
+        shared.state.update { if (it.settled) it else ReaderProgress(merged(byGroup), settled = true) }
+    }
+
+    /** Cancels the reader's work. */
+    fun cancel() {
+        shared.job.cancel()
+    }
+
+    /** [byGroup]'s non-blank texts with the ready ones over them: what
+     *  arrived with the OCR is final and stays in every state. */
+    private fun merged(byGroup: Map<Int, String>): Map<Int, String> =
+        byGroup.filterValues { it.isNotBlank() } + shared.readyByGroup
+
+    private fun byPosition(byGroup: Map<Int, String>): Map<Int, String> {
+        val out = HashMap<Int, String>()
+        groupOf.forEachIndexed { position, group ->
+            group?.let { byGroup[it] }?.let { out[position] = it }
+        }
+        return out
+    }
 }
 
 /**
  * One read of one frame: what was recognized, who recognized it, and the
- * translations the reader will produce for it, if it produces any.
+ * translations the reader produces for it, if it produces any.
  */
 class FrameReading(
     /** The recognized groups, in the read bitmap's coordinates; null = no text found. */
@@ -55,9 +200,11 @@ class FrameReading(
     /** Null = no engine identity (the empty engine), which leaves the result's
      *  provenance null as it always has. Set for a no-text read too, naming who looked. */
     val attribution: ReaderAttribution?,
-    /** Null when the reader only reads. Otherwise a child of the caller's job that
-     *  never fails: whoever drops the reading without awaiting it cancels it. */
-    val translations: Deferred<ProvidedTranslations>?,
+    /** Null when the reader only reads. Otherwise keyed by the reader's group
+     *  index (= its position in [ocr]'s groups), and its job is a child of the
+     *  caller's job that never fails: whoever drops the reading without
+     *  awaiting the translations cancels them. */
+    val translations: ReaderTranslations?,
     /** Why the primary could not read, when this reading came from the fallback
      *  ([FallbackFrameReader]); null when the primary read it, or when the
      *  primary's failure carried no classification. */
@@ -80,14 +227,21 @@ data class ReadRequest(
  * The capture-once paths, the press-and-hold overlay and the live tiers read
  * through it (the reconciler and pinhole tiers may read through the service,
  * the furigana tier always reads on the device); the attribution a reading
- * carries is the one place a result's "Scanned by" comes from.
+ * carries is the one place a result's "Scanned by" comes from. A reader that
+ * also translates hands its translations over through the reading
+ * ([ReaderTranslations]): every consumer takes what arrived with the OCR in
+ * its first paint, waits for the rest only when the reader can still name a
+ * text the app's cache has no translation for, fills each further one in
+ * place as it arrives while it waits, and sends whatever the reader did not
+ * translate through the cache and the waterfall.
  */
 interface FrameReader {
     /** Reads [bitmap] (the OCR input crop, in whose coordinates the result's boxes are).
      *  A reader that streams translations launches that work as a child of the CALLER's
      *  job, so the caller's cancellation cancels it and the caller's completion waits
-     *  for it; a reader that cannot read at all throws an IOException (fallback readers
-     *  key on that), never for cancellation. */
+     *  for it, and settles them however that work ends, so nobody awaiting them can
+     *  wait on work that is over; a reader that cannot read at all throws an
+     *  IOException (fallback readers key on that), never for cancellation. */
     suspend fun read(bitmap: Bitmap, request: ReadRequest): FrameReading
 }
 
@@ -171,24 +325,4 @@ class FallbackFrameReader(
             fallbackFrom = (e as? ClassifiedFailure)?.failure,
         )
     }
-}
-
-/** The per-group texts of a provided translation for [count] groups, in group order:
- *  group i gets `byGroup[i]`, a group the reader did not name gets "" (no translation,
- *  as a blank waterfall result), and ids outside `0 until count` are ignored. */
-internal fun providedGroupTranslations(count: Int, byGroup: Map<Int, String>): List<String> =
-    List(count) { i -> byGroup[i].orEmpty() }
-
-/** These translations re-keyed by position in a consumer's own list: position i
- *  takes `byGroup[indices[i]]` when `indices[i]` is not null and that group is
- *  named, and stays unnamed otherwise (a null index is a position that names
- *  no group); the pair and the provider are kept. Null when no index is named,
- *  so a caller passes no provided translations at all rather than an empty set. */
-internal fun ProvidedTranslations.Ok.forPositions(indices: List<Int?>): ProvidedTranslations.Ok? {
-    val byPosition = HashMap<Int, String>()
-    indices.forEachIndexed { position, index ->
-        if (index == null) return@forEachIndexed
-        byGroup[index]?.let { byPosition[position] = it }
-    }
-    return if (byPosition.isEmpty()) null else copy(byGroup = byPosition)
 }

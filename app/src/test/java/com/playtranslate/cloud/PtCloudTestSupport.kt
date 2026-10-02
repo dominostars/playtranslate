@@ -8,6 +8,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Call
 import okhttp3.Dispatcher
 import okhttp3.Interceptor
@@ -73,11 +75,20 @@ internal object PtCloudTestSupport {
     }
 
     /** A fixture (the single-JSON shape) as the part-1 line the two-part
-     *  response sends: `"part":"ocr"`, status `pending`, no per-group
-     *  translation and no translation error. [edit] may change it first. */
-    fun part1(name: String, edit: (JsonObject) -> JsonObject = { it }): String {
+     *  response sends: `"part":"ocr"`, status `pending`, no translation
+     *  error, and a per-group translation only for the groups [translated]
+     *  names by id (the ones the server's cache answered). [edit] may change
+     *  it first. */
+    fun part1(
+        name: String,
+        translated: Map<Int, String> = emptyMap(),
+        edit: (JsonObject) -> JsonObject = { it },
+    ): String {
         val single = fixture(name)
-        val groups = (single["groups"] as JsonArray).map { g -> JsonObject((g as JsonObject) - "translation") }
+        val groups = (single["groups"] as JsonArray).map { g ->
+            val group = JsonObject((g as JsonObject) - "translation")
+            translated[group["id"]!!.jsonPrimitive.int]?.let { group.with("translation", JsonPrimitive(it)) } ?: group
+        }
         val obj = JsonObject(
             single - "translation_error" + mapOf(
                 "part" to JsonPrimitive("ocr"),

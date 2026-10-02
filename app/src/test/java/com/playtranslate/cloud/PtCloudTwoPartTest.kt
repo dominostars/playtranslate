@@ -23,6 +23,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowLog
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -33,8 +34,10 @@ import java.util.concurrent.atomic.AtomicReference
  * returns at part 1 while part 2 is still held back by the server, part 2
  * then resolves [FrameResponse.translation] without ever throwing into the
  * caller, and cancelling the caller cancels the HTTP call at once and
- * reports nothing. The body is a gated source: each line waits for its own
- * latch, the way a server flushes part 1 and answers part 2 a second later.
+ * reports nothing. A part 1 group the server's cache answered keeps its
+ * translation, and part 1's clock line counts those groups. The body is a
+ * gated source: each line waits for its own latch, the way a server flushes
+ * part 1 and answers part 2 a second later.
  */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudTwoPartTest {
@@ -85,17 +88,44 @@ class PtCloudTwoPartTest {
         assertEquals(1, response.ocr.groups.size)
         assertEquals("bof3_camping_01", response.ocr.frameId)
         assertFalse("part 2 must still be pending", response.translation.isCompleted)
+        assertEquals(emptyMap<Int, String>(), response.items.value)
 
         part2Gate.countDown()
         val part2 = withTimeout(5_000) { response.translation.await() }
         part2 as Part2Result.Line
         assertEquals("ok", part2.part.translationStatus)
         assertEquals(listOf(0 to "Hello"), part2.part.translations!!.map { it.id to it.translation })
+        // Two lines, no items: the response's items stay empty.
+        assertEquals(emptyMap<Int, String>(), response.items.value)
         // Success is the reader's to record and report, not the client's.
         assertNothingRecorded()
         // The two stamps are on their own clocks.
         assertTrue(response.attemptStartedAtMs > 1_000_000_000_000L)
     }
+
+    @Test fun `part 1's groups keep the translations the server's cache answered, and its clock line counts the non-blank ones`() =
+        runBlocking {
+            val cases = listOf(
+                emptyMap<Int, String>() to " groups=2 tr1=0 ",
+                mapOf(0 to "Good evening") to " groups=2 tr1=1 ",
+                mapOf(0 to "Good evening", 1 to " ") to " groups=2 tr1=1 ",
+                mapOf(0 to "Good evening", 1 to "I'll head home.") to " groups=2 tr1=2 ",
+            )
+            for ((translated, expected) in cases) {
+                ShadowLog.clear()
+                val cached = PtCloudTestSupport.part1(PtCloudTestSupport.LATIN, translated)
+                val response = client(listOf(cached, PtCloudTestSupport.part2()), emptyList())
+                    .postFrame(PtCloudTestSupport.frame(), PtCloudTestSupport.meta())
+                withTimeout(5_000) { response.translation.await() }
+
+                assertEquals("$translated", listOf(translated[0], translated[1]), response.ocr.groups.map { it.translation })
+                val logs = ShadowLog.getLogsForTag("PtCloud").map { it.msg }
+                val line = logs.single { it.startsWith("part1 ") }
+                assertTrue(line, expected in line)
+                // Counts only, never the text.
+                assertTrue("$logs", logs.none { "Good evening" in it || "head home" in it })
+            }
+        }
 
     @Test fun `a body that ends after part 1 resolves Ended`() = runBlocking {
         val response = client(listOf(part1), emptyList())

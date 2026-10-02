@@ -14,12 +14,10 @@ import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextDirection
 import com.playtranslate.model.OcrProvenance
-import com.playtranslate.ocr.ProvidedTranslations
-import com.playtranslate.ocr.forPositions
+import com.playtranslate.ocr.ReaderTranslations
 import com.playtranslate.ui.GrowthLimits
 import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -430,15 +428,17 @@ class PinholeOverlayMode(
         }
         val raw = frame.bitmap
         // The reader's translations, when it produced any (PlayTranslate
-        // Cloud), awaited at step 12 for the placeholders that are still
-        // skeletons of one whole group. Cancelled in the finally, as the
-        // reconciler tier cancels its own: an exit after the read that never
-        // awaits them (paused, the crop moved, nothing to place because no
-        // far group came through steps 7 to 9c, the typewriter gate's holds
-        // included, every placeholder filled from the cache, skeletons that
+        // Cloud), taken at step 12 for the placeholders that are one whole
+        // group: what arrived with the OCR in the first paint, over a cache
+        // entry, and the rest awaited only while a skeleton is one such
+        // group. Cancelled in the finally, as the reconciler tier cancels its
+        // own: an exit after the read that never awaits them (paused, the
+        // crop moved, nothing to place because no far group came through
+        // steps 7 to 9c, the typewriter gate's holds included, every
+        // placeholder filled from the cache or with the OCR, skeletons that
         // are all coalesced merges) must not keep the loop's job alive until
-        // they settle. A no-op once they have been awaited.
-        var translations: Deferred<ProvidedTranslations>? = null
+        // they settle. A no-op once they have settled.
+        var translations: ReaderTranslations? = null
 
         try {
             // Mid-cycle dimension changes (rotation, display resize) invalidate
@@ -1108,16 +1108,25 @@ class PinholeOverlayMode(
                 )
 
                 if (placeholders.isNotEmpty()) {
-                    val partial = placeholders.mapIndexed { i, ph ->
-                        val cached = service.getCachedTranslation(farTexts[i])
-                        if (cached != null) {
-                            ph.copy(
-                                translatedText = cached.text,
-                                backendDisplayName = cached.backendDisplayName,
-                            )
-                        } else ph
+                    // The reader's translations for every box that is one
+                    // whole group of the read, cache-filled or not
+                    // (readerForFarGroups). The first paint is what arrived
+                    // with the OCR, over a cache entry (translationsAtOnce),
+                    // else the cache's entry, else a skeleton.
+                    val reader = readerForFarGroups(placeGroups, translations)
+                    val partial = placeholders.filledFrom(service.translationsAtOnce(farTexts, reader))
+                    val anyUnfilled = partial.any { it.translatedText.isEmpty() }
+
+                    // Puts [boxes], this look's placeholders as they now stand,
+                    // in place of the look's previous ones at the end of
+                    // cachedBoxes, and shows exactly that.
+                    suspend fun showPlaced(boxes: List<TextBox>) {
+                        val placed = (cachedBoxes?.dropLast(placeholders.size) ?: emptyList()) + boxes
+                        cachedBoxes = placed
+                        showOverlayAndCapture(
+                            placed, cropLeft, cropTop, screenshotW, screenshotH, growthLimitsFor(placed),
+                        )
                     }
-                    val anyUncached = partial.any { it.translatedText.isEmpty() }
 
                     val merged = (cachedBoxes ?: emptyList()) + partial
                     cachedBoxes = merged
@@ -1125,48 +1134,43 @@ class PinholeOverlayMode(
                         merged, cropLeft, cropTop, screenshotW, screenshotH, growthLimitsFor(merged),
                     )
 
-                    // Recording backend: cache-hits are shown right here and
-                    // never reach translatePlaceholders — record them now.
-                    // Pair captured pre-translate for the fresh tap below
-                    // (the gap to the translate call's own snapshot includes,
-                    // on a cloud cycle, the wait for the reader's
-                    // translations below: accepted, as on the reconciler tier).
+                    // Recording backend: the boxes filled here (cache hits,
+                    // the reader's translations that came with the OCR) never
+                    // reach translatePlaceholders' result as fresh: record
+                    // them now. A cache fill the reader's text replaces while
+                    // the call below waits stays recorded with the cache's
+                    // text. Pair captured pre-translate for the fresh tap
+                    // below (the gap to the translate call's own snapshot
+                    // includes, on a cloud cycle that waits, the wait for the
+                    // reader's later translations: accepted, as on the
+                    // reconciler tier).
                     val (recordSrc, recordTgt) = recordPair()
                     recordShown(placeGroups, recordSrc, recordTgt) { i -> partial[i] }
 
-                    // The reader's translations (a server's second part) are
-                    // awaited only here, after the skeletons and cache fills
-                    // above are on screen, so live mode's first paint never
-                    // waits on a server; and only when a placeholder is still
-                    // a skeleton of one whole group, the only kind of box
-                    // they fill (providedForFarGroups decides, and makes the
-                    // wait). A box the cache filled keeps the cache's text; a
-                    // look the cache fully served, or whose skeletons are all
-                    // coalesced merges, awaits nothing (the finally cancels
-                    // them), and the merges go straight to the waterfall.
-                    // Unlike the reconciler tier, which awaits them on every
-                    // cycle with work and lets them replace cache entries:
-                    // every game input dismisses this tier's overlays and the
-                    // next look re-places the whole screen, mostly from the
-                    // cache, so awaiting there would hold the serial loop for
-                    // the server's translation time after every input with
-                    // the screen already translated, and would reword boxes
-                    // already shown. The loop cannot see a change under its
+                    // Every box still a skeleton goes through one translate
+                    // call, after the first paint above is on screen, so live
+                    // mode's first paint never waits on a server. A look the
+                    // cache and the OCR's translations fully served runs no
+                    // translate call and waits for nothing. Otherwise the
+                    // call waits for the reader only when a skeleton is one
+                    // whole group whose translation the reader can still
+                    // deliver (translateGroupsSeparately decides: the cache
+                    // answers every other box the reader has yet to name),
+                    // and while it waits each of the reader's translations
+                    // repaints as it arrives, over a box the cache filled
+                    // too. Skeletons that are all coalesced merges go to the
+                    // waterfall without waiting (the finally cancels the
+                    // reader's translations). The same rule as every other
+                    // consumer's. The loop cannot see a change under its
                     // boxes while it waits.
-                    if (anyUncached) {
-                        val provided = providedForFarGroups(placeGroups, partial) {
-                            translations?.await() as? ProvidedTranslations.Ok
-                        }
-                        val translated = OverlayToolkit.translatePlaceholders(service, placeholders, farTexts, provided)
-                        val existing = cachedBoxes?.dropLast(placeholders.size) ?: emptyList()
-                        val mergedFinal = existing + translated
-                        cachedBoxes = mergedFinal
-                        showOverlayAndCapture(
-                            mergedFinal, cropLeft, cropTop, screenshotW, screenshotH, growthLimitsFor(mergedFinal),
-                        )
-                        // Freshly translated boxes only — the cache-hits above
-                        // already recorded (gate dedupe would absorb a double,
-                        // but don't lean on it).
+                    if (anyUnfilled) {
+                        val translated = OverlayToolkit.translatePlaceholders(
+                            service, placeholders, farTexts, reader, shown = partial,
+                        ) { boxes -> showPlaced(boxes) }
+                        showPlaced(translated)
+                        // Freshly translated boxes only: the boxes filled in
+                        // the first paint already recorded (gate dedupe would
+                        // absorb a double, but don't lean on it).
                         recordShown(placeGroups, recordSrc, recordTgt) { i ->
                             if (partial[i].translatedText.isEmpty()) translated[i] else null
                         }
@@ -1758,38 +1762,25 @@ class PinholeOverlayMode(
 }
 
 /**
- * A reader's translations ([ProvidedTranslations.Ok], keyed by the index of a
- * group in the read's [OcrManager.OcrResult.groups]) re-keyed by position in
- * [work], the far groups a pinhole look places. [partial] is 1:1 with [work]:
- * the placeholders with their cache fills. Position i can take the reader's
- * translation only when the far group is one whole group of the read
- * ([FarGroup.sourceGroupIndex]; a coalesced merge has none) AND the
- * position's box is still a skeleton (the cache did not fill it); it takes
- * one when the reader also named that group.
+ * A reader's translations (keyed by the index of a group in the read's
+ * [OcrManager.OcrResult.groups]) for [work], the far groups a pinhole look
+ * places, by position ([ReaderTranslations.forPositions]). Position i takes
+ * the group `work[i].sourceGroupIndex` when the far group is one whole group
+ * of the read ([FarGroup.sourceGroupIndex]), whether or not the cache has its
+ * text; a coalesced merge has none, since no single group of the read is its
+ * text. Null when [reader] is null or no position takes a group: a look
+ * whose boxes are all coalesced merges holds no reader, so its waterfall
+ * starts without waiting for the server.
  *
- * [provided] is the wait for the reader's translations (the server's second
- * part). It is invoked at most once, and only when at least one position can
- * take one: when every skeleton is a coalesced merge, or the cache filled
- * every box, nothing is awaited and this returns null at once, so the look
- * never waits out a server translation no box could use before its
- * waterfall starts. Null too when [provided] yields nothing or no position
- * is named.
- *
- * The skeleton condition is this tier's own, and the deliberate difference
- * from [providedForRegions]: the reconciler tier awaits the reader's
- * translations on every cycle with work and lets them replace cache entries.
- * Here a box the cache filled keeps the cache's text, and a look whose boxes
- * the cache filled entirely awaits nothing: every game input dismisses this
- * tier's overlays and the next look re-places the whole screen, mostly from
- * the cache, where awaiting would hold the serial loop after every input and
- * reword boxes already shown (runCycle's step 12 has the whole reason).
+ * Mapping a cache-filled box costs no wait: the translate call waits only
+ * when a position the reader can still name has no cache entry
+ * ([CaptureService.translateGroupsSeparately]), as on the reconciler tier
+ * ([readerForRegions]). It lets what arrived with the OCR win over a cache
+ * entry in the first paint, and the reader's later text replace a cache
+ * fill while a call waits for another box.
  */
-internal suspend fun providedForFarGroups(
+internal fun readerForFarGroups(
     work: List<FarGroup>,
-    partial: List<TextBox>,
-    provided: suspend () -> ProvidedTranslations.Ok?,
-): ProvidedTranslations.Ok? {
-    val indices = work.mapIndexed { i, far -> far.sourceGroupIndex.takeIf { partial[i].translatedText.isEmpty() } }
-    if (indices.all { it == null }) return null
-    return provided()?.forPositions(indices)
-}
+    reader: ReaderTranslations?,
+): ReaderTranslations? =
+    reader?.forPositions(work.map { it.sourceGroupIndex })

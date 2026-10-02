@@ -28,6 +28,7 @@ import com.playtranslate.CaptureService
 import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.CaptureSession
 import com.playtranslate.CaptureState
+import com.playtranslate.fillsBoxesOf
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.Prefs
 import com.playtranslate.RegionEntry
@@ -620,13 +621,17 @@ class TranslationResultActivity :
         captureSession = session
         sessionCollectJob = lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                session.state.collect { state ->
+                session.stateWithPrevious.collect { (previous, state) ->
                     when (state) {
                         is CaptureState.InProgress -> vm.showStatus(state.message)
                         // OCR done: reveal the source + "Translating…" placeholder;
-                        // Done replaces it with the finished translation.
-                        is CaptureState.Translating ->
+                        // Done replaces it with the finished translation. A box
+                        // fill changes nothing this page shows (it paints no
+                        // boxes), and re-showing the placeholder would restart
+                        // the word lookups.
+                        is CaptureState.Translating -> if (!state.fillsBoxesOf(previous)) {
                             vm.showTranslatingPlaceholder(state.originalText, state.segments, applicationContext, state.ocrProvenance)
+                        }
                         is CaptureState.Done -> vm.displayResult(state.result, applicationContext)
                         is CaptureState.NoText -> vm.showStatus(
                             state.message,

@@ -3367,9 +3367,10 @@
          sends each paragraph's translation as soon as it is ready, ahead of the
          complete set of translations. -->
     <string name="pt_cloud_stream_items_title">Early translations</string>
-    <!-- Subtitle under the "Early translations" switch: for now the app only
-         measures when those early translations arrive and does not show them. -->
-    <string name="pt_cloud_stream_items_subtitle">Asks the server for each paragraph\'s translation as it completes. Timed only for now; nothing is drawn from them.</string>
+    <!-- Subtitle under the "Early translations" switch: with it on, each box
+         on screen shows its translation as soon as the server has it, instead
+         of all boxes waiting for the complete set. -->
+    <string name="pt_cloud_stream_items_subtitle">Asks the server for each paragraph\'s translation as it completes, and fills each box as its translation arrives.</string>
     <!-- Title of a switch on the PlayTranslate Cloud page: a small request sent to
          the server just before a capture is uploaded, so the upload finds the
          network connection already open. -->

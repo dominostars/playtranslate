@@ -1567,19 +1567,30 @@ class MainActivity :
                     // when a session reaches terminal we null out the flow so
                     // a later STOP→START re-collect doesn't replay the
                     // terminal state on top of newer VM state (e.g. a
-                    // drag-sentence local result).
-                    _currentCaptureSession.flatMapLatest { it?.state ?: emptyFlow() }
-                        .collect { state ->
+                    // drag-sentence local result). Each session's states come
+                    // paired with the one before them inside that session's
+                    // own flow, so a box fill is told from a new capture
+                    // without anything outliving the session.
+                    _currentCaptureSession.flatMapLatest { it?.stateWithPrevious ?: emptyFlow() }
+                        .collect { (previous, state) ->
                             when (state) {
                                 is CaptureState.InProgress ->
                                     resultVm.showStatus(state.message)
-                                is CaptureState.Translating ->
-                                    resultVm.showTranslatingPlaceholder(
-                                        state.originalText, state.segments, applicationContext, state.ocrProvenance,
-                                        onScreenBoxes = state.overlayData?.let {
-                                            com.playtranslate.ui.OnScreenBoxes(it, oneShotCaptureDisplayId)
-                                        },
-                                    )
+                                is CaptureState.Translating -> {
+                                    val boxes = state.overlayData?.let {
+                                        com.playtranslate.ui.OnScreenBoxes(it, oneShotCaptureDisplayId)
+                                    }
+                                    // A box fill swaps the boxes alone; the
+                                    // placeholder would restart the word lookups.
+                                    if (state.fillsBoxesOf(previous)) {
+                                        resultVm.applyTranslatingBoxes(boxes)
+                                    } else {
+                                        resultVm.showTranslatingPlaceholder(
+                                            state.originalText, state.segments, applicationContext, state.ocrProvenance,
+                                            onScreenBoxes = boxes,
+                                        )
+                                    }
+                                }
                                 is CaptureState.Done -> {
                                     editTranslationJob?.cancel()
                                     editTranslationJob = null

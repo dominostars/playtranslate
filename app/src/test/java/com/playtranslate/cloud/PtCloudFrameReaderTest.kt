@@ -5,11 +5,12 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.cloud.PtCloudTestSupport.GatedSource
+import com.playtranslate.cloud.PtCloudTestSupport.item
 import com.playtranslate.cloud.PtCloudTestSupport.with
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.ocr.FrameReading
-import com.playtranslate.ocr.ProvidedTranslations
 import com.playtranslate.ocr.ReadRequest
+import com.playtranslate.ocr.ReaderProgress
 import com.playtranslate.ocr.ReaderAttribution
 import com.playtranslate.translation.BackendFailure
 import com.playtranslate.translation.BackendFailureKind
@@ -21,6 +22,7 @@ import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.translation.llm.LlmPromptTemplates
 import com.playtranslate.translation.llm.PromptKind
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -49,12 +51,14 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * [PtCloudFrameReader] against canned two-part responses: part 1 becomes the
- * reading's OCR in the bitmap's coordinates, part 2 its translations, and
- * part 2's outcome is recorded on the cooldown and reported once. The
- * request's `meta` is read back from the call the reader made. The encoder
- * is faked (real compression needs native graphics, [FrameEncoderNativeTest]);
- * the bitmap is only the argument.
+ * [PtCloudFrameReader] against canned responses: part 1 becomes the reading's
+ * OCR in the bitmap's coordinates and its translations' ready set (the
+ * groups the server's cache answered), item lines arrive in the translations
+ * provisionally, the final part settles them, and the final part's outcome
+ * is recorded on the cooldown and reported once (at part 1 when part 1
+ * translated every group). The request's `meta` is read back from the call
+ * the reader made. The encoder is faked (real compression needs native
+ * graphics, [FrameEncoderNativeTest]); the bitmap is only the argument.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.LEGACY)
@@ -113,7 +117,21 @@ class PtCloudFrameReaderTest {
 
     private fun JsonObject.str(key: String) = this[key]?.jsonPrimitive?.content
 
-    private suspend fun FrameReading.part2(): ProvidedTranslations = withTimeout(5_000) { translations!!.await() }
+    /** The reading's translations once nothing more can arrive. */
+    private suspend fun FrameReading.settled(): Map<Int, String> = withTimeout(5_000) { translations!!.await() }
+
+    /** Waits, off the test's thread, until [done]: the reader's job runs on IO. */
+    private suspend fun until(done: () -> Boolean) {
+        withTimeout(5_000) { while (!done()) delay(5) }
+    }
+
+    /** A two-group part 1 ([PtCloudTestSupport.LATIN]) whose groups [translated]
+     *  names carry a translation, as the server's cache answers them. */
+    private fun twoGroups(translated: Map<Int, String> = emptyMap()) =
+        PtCloudTestSupport.part1(PtCloudTestSupport.LATIN, translated)
+
+    private val serverError =
+        PtCloudTestSupport.part2("failed", "[]", extra = ""","translation_error":{"class":"server_error","http_status":503}""")
 
     private fun assertOneAttempt(failure: BackendFailure?) {
         val attempt = attempts.single()
@@ -137,7 +155,7 @@ class PtCloudFrameReaderTest {
             .read(bitmap, request())
         try {
             // Returned at part 1, with part 2 still held by the server.
-            assertFalse(reading.translations!!.isCompleted)
+            assertTrue(reading.translations!!.pending)
             val group = reading.ocr!!.groups.single()
             // The fixture's group is [562, 765, 1288, 962] and its first line
             // [562, 765, 1137, 832] in uploaded pixels; at half scale the
@@ -151,7 +169,7 @@ class PtCloudFrameReaderTest {
         } finally {
             part2Gate.countDown()
         }
-        reading.part2()
+        reading.settled()
         Unit
     }
 
@@ -163,7 +181,10 @@ class PtCloudFrameReaderTest {
         val reading = reader(streaming(listOf(part1, PtCloudTestSupport.part2())))
             .read(bitmap, request(SourceLangId.ZH_HANT, "en"))
 
-        assertEquals(ProvidedTranslations.Ok(mapOf(0 to "Hello"), "zh", "en", "PlayTranslate Cloud"), reading.part2())
+        assertEquals(mapOf(0 to "Hello"), reading.settled())
+        val translations = reading.translations!!
+        assertTrue("for the app's pair: the translation code", translations.isFor("zh", "en"))
+        assertEquals("PlayTranslate Cloud", translations.providerName)
         assertEquals("zh-Hant", sentMeta().str("source"))
         assertEquals("en", sentMeta().str("target"))
         assertEquals("capture-0042", sentMeta().str("frame_id"))
@@ -177,18 +198,18 @@ class PtCloudFrameReaderTest {
         )
         val reading = reader(streaming(listOf(part1, blanks))).read(bitmap, request())
 
-        assertEquals(ProvidedTranslations.Ok(mapOf(0 to "Hello"), "ja", "en", "PlayTranslate Cloud"), reading.part2())
+        assertEquals(mapOf(0 to "Hello"), reading.settled())
         // Still a working service: a success, not a failure.
         assertOneAttempt(failure = null)
     }
 
-    @Test fun `part 2 rate_limited is Unavailable, cools down until its retry time, and reports RATE_LIMITED`() = runBlocking {
+    @Test fun `part 2 rate_limited settles with nothing, cools down until its retry time, and reports RATE_LIMITED`() = runBlocking {
         val failed = PtCloudTestSupport.part2(
             "failed", "[]", extra = ""","translation_error":{"class":"rate_limited","http_status":429,"retry_after_s":12}""",
         )
         val before = System.currentTimeMillis()
         val reading = reader(streaming(listOf(part1, failed))).read(bitmap, request())
-        assertEquals(ProvidedTranslations.Unavailable("RATE_LIMITED"), reading.part2())
+        assertEquals(emptyMap<Int, String>(), reading.settled())
         val after = System.currentTimeMillis()
 
         val until = cooldown.unavailableUntil()!!
@@ -213,7 +234,7 @@ class PtCloudFrameReaderTest {
             assertEquals(wire, meta.str("source"))
             assertEquals("target equals source, so the server skips translation", wire, meta.str("target"))
             assertFalse("no context for a pair that is not translated", "context" in meta)
-            assertEquals(ProvidedTranslations.Unavailable("skipped"), reading.part2())
+            assertEquals(emptyMap<Int, String>(), reading.settled())
             assertOneAttempt(failure = null)
         }
     }
@@ -222,7 +243,7 @@ class PtCloudFrameReaderTest {
         val asked = mutableListOf<Pair<String, String>>()
         LlmPromptTemplates.overrideProvider = { kind -> if (kind == PromptKind.SYSTEM) "You translate {source}." else null }
         LlmPromptTemplates.contextProvider = { s, t -> asked += s to t; "Recent dialogue:\nA: hi\n\n" }
-        reader(streaming(listOf(part1, PtCloudTestSupport.part2()))).read(bitmap, request(SourceLangId.ZH_HANT, "en")).part2()
+        reader(streaming(listOf(part1, PtCloudTestSupport.part2()))).read(bitmap, request(SourceLangId.ZH_HANT, "en")).settled()
         val meta = sentMeta()
         assertEquals("You translate {source}.", meta.str("persona"))
         assertEquals("Recent dialogue:\nA: hi\n\n", meta.str("context"))
@@ -235,7 +256,7 @@ class PtCloudFrameReaderTest {
         for (context in listOf("", "  \n")) {
             calls.clear()
             LlmPromptTemplates.contextProvider = { _, _ -> context }
-            reader(streaming(listOf(part1, PtCloudTestSupport.part2()))).read(bitmap, request()).part2()
+            reader(streaming(listOf(part1, PtCloudTestSupport.part2()))).read(bitmap, request()).settled()
             val meta = sentMeta()
             // stream_translations is the item-lines switch, on by default.
             assertEquals(setOf("source", "target", "frame_id", "stream_translations"), meta.keys)
@@ -244,21 +265,21 @@ class PtCloudFrameReaderTest {
 
     @Test fun `item lines are asked for while the switch is on and not mentioned while it is off`() = runBlocking {
         val reader = reader(streaming(listOf(part1, PtCloudTestSupport.part2())))
-        reader.read(bitmap, request()).part2()
+        reader.read(bitmap, request()).settled()
         assertEquals("true", sentMeta().str("stream_translations"))
 
         calls.clear()
         PtCloudTestSupport.prefs(ctx).ptCloudStreamItems = false
-        reader.read(bitmap, request()).part2()
+        reader.read(bitmap, request()).settled()
         assertFalse("absent, not false: ${sentMeta()}", "stream_translations" in sentMeta())
     }
 
     @Test fun `the upload format is read from the config at each read`() = runBlocking {
         // One reader for both reads: nothing is rebuilt between them.
         val reader = reader(streaming(listOf(part1, PtCloudTestSupport.part2())))
-        reader.read(bitmap, request()).part2()
+        reader.read(bitmap, request()).settled()
         PtCloudTestSupport.prefs(ctx).ptCloudUploadFormat = FrameFormat.WEBP.wireName
-        reader.read(bitmap, request()).part2()
+        reader.read(bitmap, request()).settled()
         assertEquals(listOf(FrameFormat.JPEG, FrameFormat.WEBP), formats.toList())
         // Each frame went out in the format it was encoded in.
         val types = calls.map { (it.request().body as MultipartBody).parts[0].body.contentType().toString() }
@@ -277,45 +298,48 @@ class PtCloudFrameReaderTest {
         assertTrue(coroutineContext.job.children.none())
     }
 
-    @Test fun `cancelling the translations while part 2 is pending cancels the call and reports nothing`() = runBlocking {
-        val part2Gate = CountDownLatch(1)
-        val waiting = CountDownLatch(1)
-        val reading = reader(streaming(listOf(part1, PtCloudTestSupport.part2()), listOf(null, part2Gate), waiting))
-            .read(bitmap, request())
-        try {
-            assertTrue("part 2's read must reach its gate", waiting.await(5, TimeUnit.SECONDS))
-            withTimeout(5_000) {
+    @Test fun `cancelling the translations while part 2 is pending cancels the call, settles them, and reports nothing`() =
+        runBlocking {
+            val part2Gate = CountDownLatch(1)
+            val waiting = CountDownLatch(1)
+            val reading = reader(
+                streaming(listOf(twoGroups(mapOf(0 to "Hi")), item(1, "World"), PtCloudTestSupport.part2()), listOf(null, null, part2Gate), waiting),
+            ).read(bitmap, request())
+            try {
+                assertTrue("part 2's read must reach its gate", waiting.await(5, TimeUnit.SECONDS))
                 reading.translations!!.cancel()
-                reading.translations!!.join()
+                coroutineContext.job.joinChildren()
+                assertTrue("the HTTP call is cancelled with the translations", calls.single().isCanceled())
+            } finally {
+                part2Gate.countDown()
             }
-            assertTrue("the HTTP call is cancelled with the translations", calls.single().isCanceled())
-            coroutineContext.job.joinChildren()
-        } finally {
-            part2Gate.countDown()
+            // Settled with part 1's alone, so nobody awaiting them could hang.
+            assertEquals(ReaderProgress(mapOf(0 to "Hi"), settled = true), reading.translations.now)
+            assertTrue("no attempt reported: $attempts", attempts.isEmpty())
+            assertNull(cooldown.unavailableUntil())
+            assertTrue("the caller is not failed", coroutineContext.job.isActive)
         }
-        assertTrue("no attempt reported: $attempts", attempts.isEmpty())
-        assertNull(cooldown.unavailableUntil())
-        assertTrue("the caller is not failed", coroutineContext.job.isActive)
-    }
 
-    @Test fun `a part 2 that never comes is Unavailable, a TIMEOUT attempt, and no cooldown`() = runBlocking {
+    @Test fun `a part 2 that never comes settles with nothing, a TIMEOUT attempt, and no cooldown`() = runBlocking {
         val reading = reader(streaming(listOf(part1))).read(bitmap, request())
-        assertEquals(ProvidedTranslations.Unavailable("TIMEOUT"), reading.part2())
+        assertEquals(emptyMap<Int, String>(), reading.settled())
         assertNull(cooldown.unavailableUntil())
         assertOneAttempt(BackendFailure(BackendFailureKind.TIMEOUT))
     }
 
-    @Test fun `a bug settling part 2 is Unavailable, reports nothing, and never fails the caller`() = runBlocking {
-        val part2Gate = CountDownLatch(1)
-        val reading = reader(streaming(listOf(part1, PtCloudTestSupport.part2()), listOf(null, part2Gate)))
-            .read(bitmap, request())
-        // Recording throws: the service's state is gone.
-        PtCloudService.installForTest(null)
-        part2Gate.countDown()
-        assertEquals(ProvidedTranslations.Unavailable("IllegalStateException"), reading.part2())
-        assertTrue(attempts.isEmpty())
-        assertTrue(coroutineContext.job.isActive)
-    }
+    @Test fun `a bug settling part 2 settles with part 1's translations, reports nothing, and never fails the caller`() =
+        runBlocking {
+            val part2Gate = CountDownLatch(1)
+            val final = PtCloudTestSupport.part2(translations = """[{"id":0,"translation":"Hi"},{"id":1,"translation":"World"}]""")
+            val reading = reader(streaming(listOf(twoGroups(mapOf(0 to "Hi")), final), listOf(null, part2Gate)))
+                .read(bitmap, request())
+            // Recording throws: the service's state is gone.
+            PtCloudService.installForTest(null)
+            part2Gate.countDown()
+            assertEquals("the final part never got through", mapOf(0 to "Hi"), reading.settled())
+            assertTrue(attempts.isEmpty())
+            assertTrue(coroutineContext.job.isActive)
+        }
 
     @Test fun `a part 1 in another schema propagates PtCloudReadException and leaves nothing running`() = runBlocking {
         val schema2 = PtCloudTestSupport.part1(PtCloudTestSupport.JA) { it.with("schema_version", JsonPrimitive(2)) }
@@ -329,4 +353,123 @@ class PtCloudFrameReaderTest {
         assertEquals(BackendFailure.BAD_RESPONSE, attempts.single().failure)
         assertNull(cooldown.unavailableUntil())
     }
+
+    // ── Part 1's translations, item lines and the final part ─────────────
+
+    @Test fun `part 1's translations are ready, a blank one absent, and the reading waits only for the rest`() =
+        runBlocking {
+            val part2Gate = CountDownLatch(1)
+            val final = PtCloudTestSupport.part2(translations = """[{"id":0,"translation":"Hi"},{"id":1,"translation":"World"}]""")
+            val reading = reader(streaming(listOf(twoGroups(mapOf(0 to "Hi", 1 to "  ")), final), listOf(null, part2Gate)))
+                .read(bitmap, request())
+            try {
+                val translations = reading.translations!!
+                assertEquals(mapOf(0 to "Hi"), translations.ready)
+                assertEquals(ReaderProgress(mapOf(0 to "Hi"), settled = false), translations.now)
+                assertTrue("group 1 is still to come", translations.pending)
+            } finally {
+                part2Gate.countDown()
+            }
+            assertEquals(mapOf(0 to "Hi", 1 to "World"), reading.settled())
+            assertOneAttempt(failure = null)
+        }
+
+    @Test fun `an item appears in the translations before the final part, whose wording wins`() = runBlocking {
+        val part2Gate = CountDownLatch(1)
+        val final = PtCloudTestSupport.part2(translations = """[{"id":0,"translation":"Hello"},{"id":1,"translation":"World"}]""")
+        val reading = reader(streaming(listOf(twoGroups(), item(1, "Wrld"), final), listOf(null, null, part2Gate)))
+            .read(bitmap, request())
+        val translations = reading.translations!!
+        try {
+            until { translations.now.byPosition[1] == "Wrld" }
+            assertEquals(ReaderProgress(mapOf(1 to "Wrld"), settled = false), translations.now)
+            assertTrue("an item is provisional", translations.pending)
+            assertTrue("nothing reported before the final part", attempts.isEmpty())
+        } finally {
+            part2Gate.countDown()
+        }
+        assertEquals(mapOf(0 to "Hello", 1 to "World"), reading.settled())
+        assertOneAttempt(failure = null)
+    }
+
+    @Test fun `an ok final part settles its texts, part 1's kept over a different wording`() = runBlocking {
+        val final = PtCloudTestSupport.part2(translations = """[{"id":0,"translation":"Hello"},{"id":1,"translation":"World"}]""")
+        val reading = reader(streaming(listOf(twoGroups(mapOf(0 to "Hi")), final))).read(bitmap, request())
+        assertEquals(mapOf(0 to "Hi", 1 to "World"), reading.settled())
+        assertOneAttempt(failure = null)
+    }
+
+    @Test fun `a failed, deferred or ended final part keeps part 1's, drops the items, and records as before`() =
+        runBlocking {
+            data class Want(val failure: BackendFailure, val until: Long?, val cause: CooldownCause?)
+            val cases = listOf(
+                listOf(serverError) to Want(
+                    BackendFailure(BackendFailureKind.SERVER_ERROR, 503), clock.get() + 60_000, CooldownCause.SERVER_ERROR,
+                ),
+                listOf(PtCloudTestSupport.part2("deferred", "[]")) to Want(BackendFailure(BackendFailureKind.TIMEOUT), null, null),
+                // The body ends after the item, before any final part.
+                emptyList<String>() to Want(BackendFailure(BackendFailureKind.TIMEOUT), null, null),
+            )
+            for ((final, want) in cases) {
+                cooldown.resetCooldown()
+                attempts.clear()
+                calls.clear()
+                val reading = reader(streaming(listOf(twoGroups(mapOf(0 to "Hi")), item(1, "World")) + final))
+                    .read(bitmap, request())
+                assertEquals("$final", mapOf(0 to "Hi"), reading.settled())
+                assertTrue(reading.translations!!.now.settled)
+                assertOneAttempt(want.failure)
+                assertEquals("$final", want.until, cooldown.unavailableUntil())
+                assertEquals("$final", want.cause, cooldown.unavailableCause())
+            }
+        }
+
+    @Test fun `part 1 translating every group settles at once and reports its success once, whatever the final part says`() =
+        runBlocking {
+            cooldown.recordLadderFailure(CooldownLadder.RateLimit, "Server error", CooldownCause.SERVER_ERROR)
+            val part2Gate = CountDownLatch(1)
+            // The contract says the final part is ok here; a failed one proves
+            // nothing more is recorded from it.
+            val reading = reader(
+                streaming(listOf(twoGroups(mapOf(0 to "Hi", 1 to "There")), serverError), listOf(null, part2Gate)),
+            ).read(bitmap, request())
+            try {
+                val translations = reading.translations!!
+                assertFalse(translations.pending)
+                assertEquals(ReaderProgress(mapOf(0 to "Hi", 1 to "There"), settled = true), translations.now)
+                // A consumer has nothing to wait for, with the final part held.
+                assertEquals(mapOf(0 to "Hi", 1 to "There"), withTimeout(1_000) { translations.await() })
+                assertOneAttempt(failure = null)
+                assertNull("the success cleared the cooldown", cooldown.unavailableUntil())
+            } finally {
+                part2Gate.countDown()
+            }
+            coroutineContext.job.joinChildren()
+            assertOneAttempt(failure = null)
+            assertNull("nothing recorded from the final part", cooldown.unavailableUntil())
+            assertEquals(ReaderProgress(mapOf(0 to "Hi", 1 to "There"), settled = true), reading.translations.now)
+        }
+
+    @Test fun `cancelling translations part 1 fully answered leaves the call to read its final part`() =
+        runBlocking {
+            val part2Gate = CountDownLatch(1)
+            val waiting = CountDownLatch(1)
+            val reading = reader(
+                streaming(
+                    listOf(twoGroups(mapOf(0 to "Hi", 1 to "There")), PtCloudTestSupport.part2()),
+                    listOf(null, part2Gate), waiting,
+                ),
+            ).read(bitmap, request())
+            try {
+                assertTrue("part 2's read must reach its gate", waiting.await(5, TimeUnit.SECONDS))
+                // What every consumer does once it is done with a reading.
+                reading.translations!!.cancel()
+                assertFalse("nothing here for the cancel to stop", calls.single().isCanceled())
+            } finally {
+                part2Gate.countDown()
+            }
+            coroutineContext.job.joinChildren()
+            assertFalse("the exchange ended by itself", calls.single().isCanceled())
+            assertOneAttempt(failure = null)
+        }
 }

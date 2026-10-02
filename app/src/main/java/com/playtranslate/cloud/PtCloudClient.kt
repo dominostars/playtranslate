@@ -13,6 +13,10 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -50,8 +54,9 @@ sealed interface Part2Result {
  * [PtCloudClient.postFrame]: that caller's job waits for it and cancelling
  * that job cancels the HTTP call; a caller that will not use part 2 cancels
  * [translation]. It resolves to a [Part2Result] and never throws, apart from
- * [CancellationException]. Item lines on the way are read and timed by the
- * client and go no further.
+ * [CancellationException]. Item lines on the way are timed for the clock
+ * line and handed on as they arrive through [items]; what is done with them
+ * is the reader's business.
  *
  * The two stamps are taken right before the request went out, on two clocks
  * kept apart on purpose: [sentAtMs] on [SystemClock.elapsedRealtime] for the
@@ -64,6 +69,12 @@ sealed interface Part2Result {
 class FrameResponse(
     val ocr: OcrPart,
     val translation: Deferred<Part2Result>,
+    /** The item lines read so far after part 1, by group id (the last one,
+     *  should a group repeat): grows as the read passes each item, and keeps
+     *  its last value once the read ends. Provisional: the final part is
+     *  authoritative. Empty when the frame asked for none or the server sent
+     *  none. */
+    val items: StateFlow<Map<Int, String>>,
     val sentAtMs: Long,
     val attemptStartedAtMs: Long,
 )
@@ -125,7 +136,8 @@ class PtCloudClient(
     /**
      * Uploads [frame] with [meta] and returns once part 1 (the OCR groups)
      * has arrived and decoded; the lines after it keep reading in
-     * [FrameResponse.translation], a child of the calling coroutine's job.
+     * [FrameResponse.translation], a child of the calling coroutine's job,
+     * which adds each item line to [FrameResponse.items] as it passes it.
      * Call this from the job meant to own part 2, not inside a scoped
      * builder (`withContext`, `coroutineScope`, `withTimeout`): a scope
      * waits for its children, so it would return only after part 2.
@@ -193,6 +205,7 @@ class PtCloudClient(
                 headersMs = part1.headersAtMs - sentAtMs,
                 part1Ms = part1.part1AtMs - sentAtMs,
                 groups = part1.part.groups.size,
+                translated = part1.part.groups.count { !it.translation.isNullOrBlank() },
                 connectionReused = clock.connectionReused,
                 uploadMs = clock.uploadMs,
                 warmLeadMs = if (warmAtMs == 0L) null else sentAtMs - warmAtMs,
@@ -203,11 +216,12 @@ class PtCloudClient(
         )
 
         val response = part1.response
+        val items = MutableStateFlow<Map<Int, String>>(emptyMap())
         val translation = CoroutineScope(callerContext + Dispatchers.IO).async {
-            val items = ItemLines()
+            val itemLines = ItemLines()
             try {
                 val result = try {
-                    blockingOn(call) { readFinalPart(response.body.source(), items, sentAtMs) }
+                    blockingOn(call) { readFinalPart(response.body.source(), itemLines, items, sentAtMs) }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (t: Throwable) {
@@ -221,7 +235,12 @@ class PtCloudClient(
                 // Reached only by a read that ended by itself: a cancelled one
                 // threw above and logs nothing. finalLine is total, so this
                 // cannot fail the child.
-                Log.i(TAG, PtCloudClocks.finalLine(meta.frameId, result, items, SystemClock.elapsedRealtime() - sentAtMs))
+                Log.i(
+                    TAG,
+                    PtCloudClocks.finalLine(
+                        meta.frameId, result, itemLines, items.value, SystemClock.elapsedRealtime() - sentAtMs,
+                    ),
+                )
                 result
             } finally {
                 response.close()
@@ -230,7 +249,7 @@ class PtCloudClient(
         // A caller cancelled between part 1 and this launch cancels the
         // child before its body runs, so the finally above never would.
         translation.invokeOnCompletion { response.close() }
-        return FrameResponse(part1.part, translation, sentAtMs, attemptStartedAtMs)
+        return FrameResponse(part1.part, translation, items.asStateFlow(), sentAtMs, attemptStartedAtMs)
     }
 
     /** `GET {endpoint}/health`, no auth. [HealthStatus.BadUrl], with nothing
@@ -367,17 +386,23 @@ class PtCloudClient(
     /**
      * Reads the lines after part 1 until the final part, blocking:
      *  - `"part":"translation"`: decoded and returned as [Part2Result.Line];
-     *  - `"part":"translation_item"`: its arrival is stamped into [items] and
-     *    the read goes on; an item that does not decode (no `id`, say) is
-     *    skipped like an unknown part, since nothing but the clock line reads
-     *    items and one cannot fail the frame;
+     *  - `"part":"translation_item"`: its arrival is stamped into
+     *    [itemLines], its text goes into [items] under its group id (in place
+     *    of an earlier item for the same group), and the read goes on; an
+     *    item that does not decode (no `id`, say) is skipped like an unknown
+     *    part, since items are provisional and one cannot fail the frame;
      *  - a JSON object with any other `part`, or none: skipped, the
      *    contract's rule for a line this client does not know;
      *  - the body ending first: [Part2Result.Ended].
      * A line that is not a JSON object, a final part that does not decode and
      * a failed read throw; the caller turns that into [Part2Result.Failed].
      */
-    private fun readFinalPart(source: BufferedSource, items: ItemLines, sentAtMs: Long): Part2Result {
+    private fun readFinalPart(
+        source: BufferedSource,
+        itemLines: ItemLines,
+        items: MutableStateFlow<Map<Int, String>>,
+        sentAtMs: Long,
+    ): Part2Result {
         while (!source.exhausted()) {
             val line = source.readUtf8LineStrict()
             when (PtJson.lenient.decodeFromString<WirePartTag>(line).part) {
@@ -391,7 +416,10 @@ class PtCloudClient(
                         // kotlinx's SerializationException is one.
                         null
                     }
-                    if (item != null) items.add(item, atMs)
+                    if (item != null) {
+                        itemLines.add(atMs)
+                        items.update { it + (item.id to item.translation) }
+                    }
                 }
                 else -> Unit
             }

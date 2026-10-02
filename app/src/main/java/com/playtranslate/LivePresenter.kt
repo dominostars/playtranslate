@@ -1,8 +1,8 @@
 package com.playtranslate
 
 import com.playtranslate.capture.CapturedFrame
-import com.playtranslate.ocr.ProvidedTranslations
 import com.playtranslate.ocr.ReaderAttribution
+import com.playtranslate.ocr.ReaderTranslations
 import com.playtranslate.ui.TextBox
 
 /**
@@ -36,19 +36,25 @@ interface LivePresenter {
     /**
      * Turn [work] (regions the reconciler wants (re)presented — RETRANSLATE
      * and NEW alike, post-hold) into their anchor boxes, 1:1 with [work].
-     * May suspend (MT, tokenizer); runs serially inside the cycle — this is
-     * the loop's backpressure. [onPartial] may be invoked once with
-     * provisional anchors (skeletons / cache fills) for an early render pass
-     * before slow work completes; the return value is final.
+     * May suspend (MT, tokenizer, the reader's translations); runs serially
+     * inside the cycle, which is the loop's backpressure. [onPartial] may be
+     * invoked any number of times with provisional anchors, each time every
+     * anchor as known so far (skeletons, cache fills, the reader's
+     * translations as they arrive), for a render pass before slow work
+     * completes; the return value is final.
      *
-     * [provided] yields the frame's reader's translations keyed by position
-     * in [work] ([providedForRegions]), null when the reader made none or
-     * none applies. It may suspend until they arrive (PlayTranslate Cloud
-     * sends them after the OCR), so a presenter calls it once, only after
-     * its early render ([onPartial]) is out: live mode's skeletons and cache
-     * fills never wait on a server. The presenter hands the result to
-     * [OverlayToolkit.translatePlaceholders], which uses a position's text in
-     * place of the cache and the waterfall when the pair still matches.
+     * [reader] is the frame's reader's translations keyed by position in
+     * [work] ([readerForRegions]), null when the reader made none or no
+     * position can take one. A presenter paints first and only then waits:
+     * what arrived with the OCR ([ReaderTranslations.ready]) and the cache
+     * fills go into its first [onPartial], so live mode's first paint never
+     * waits on a server. It waits only when a position the cache has no
+     * entry for can still take one of the reader's translations, since the
+     * cache already answers every other position; while it waits, each later
+     * translation repaints as it arrives, over a cache fill too.
+     * [OverlayToolkit.translatePlaceholders] does the waiting, and uses a
+     * position's text in place of the cache and the waterfall when the pair
+     * still matches.
      */
     suspend fun present(
         work: List<ScanlineReconciler.Region>,
@@ -56,7 +62,7 @@ interface LivePresenter {
         cropLeft: Int,
         cropTop: Int,
         onPartial: suspend (List<TextBox>) -> Unit,
-        provided: suspend () -> ProvidedTranslations.Ok? = { null },
+        reader: ReaderTranslations? = null,
     ): List<TextBox>
 
     /** Display boxes for one anchor. Identity by default. */

@@ -8,7 +8,6 @@ import com.playtranslate.cloud.PtCloudTestSupport.GatedSource
 import com.playtranslate.cloud.PtCloudTestSupport.item
 import com.playtranslate.cloud.PtCloudTestSupport.part2
 import com.playtranslate.language.SourceLangId
-import com.playtranslate.ocr.ProvidedTranslations
 import com.playtranslate.ocr.ReadRequest
 import com.playtranslate.translation.BackendFailure
 import com.playtranslate.translation.BackendFailureKind
@@ -18,6 +17,7 @@ import com.playtranslate.translation.OnlineAttempt
 import com.playtranslate.translation.TranslationBackendRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -26,6 +26,7 @@ import kotlinx.serialization.decodeFromString
 import okhttp3.Call
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -47,16 +48,21 @@ import java.util.concurrent.atomic.AtomicReference
  * | line | action |
  * |---|---|
  * | `"part":"translation"` | decoded, the read's result |
- * | `"part":"translation_item"` | stamped and kept for the clock line, the read goes on |
+ * | `"part":"translation_item"` | stamped for the clock line and added to the response's items, the read goes on |
  * | a JSON object with any other `part`, or none | skipped |
  * | not a JSON object, or a final part that does not decode | Failed |
  * | the body ends before the final part | Ended |
  *
- * Plus: an item that does not decode is skipped, not a failure; items never
- * reach the reading, whose translations and cooldown are exactly those of
- * the two-line response; an older server's two lines read unchanged; a
- * caller cancelled while an item is awaited cancels the call and records,
- * reports and logs nothing; and the two clock lines carry what the read saw.
+ * Plus: an item that does not decode is skipped, not a failure; the
+ * response's items ([FrameResponse.items]) grow as each item arrives, before
+ * the final part, keep a repeated group's last text, and keep their value
+ * once the read ends, however it ends; through the reader, the settled
+ * translations and the cooldown are exactly those of the two-line response
+ * (items are provisional: [PtCloudFrameReaderTest] has how they reach the
+ * reading before the final part); an older server's two lines read
+ * unchanged; a caller cancelled while an item is awaited cancels the call and
+ * records, reports and logs nothing; and the two clock lines carry what the
+ * read saw.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.LEGACY)
@@ -98,12 +104,16 @@ class PtCloudItemLinesTest {
     )
 
     /** Posts a frame that asks for items, answered with [lines], and waits
-     *  for what the read after part 1 produced. */
-    private suspend fun readAfterPart1(lines: List<String>): Part2Result {
+     *  for the read after part 1 to end. */
+    private suspend fun postAndRead(lines: List<String>): FrameResponse {
         // Called straight from the test's job: part 2 is its child.
         val response = client(lines).postFrame(PtCloudTestSupport.frame(), PtCloudTestSupport.meta(streamTranslations = true))
-        return withTimeout(5_000) { response.translation.await() }
+        withTimeout(5_000) { response.translation.await() }
+        return response
     }
+
+    /** [postAndRead]'s result: what the read after part 1 produced. */
+    private suspend fun readAfterPart1(lines: List<String>): Part2Result = postAndRead(lines).translation.await()
 
     private fun decoded(line: String): TranslationPart = PtJson.lenient.decodeFromString(line)
 
@@ -202,9 +212,77 @@ class PtCloudItemLinesTest {
     }
 
     @Test fun `an older server's two lines read unchanged with items asked for`() = runBlocking {
-        val result = readAfterPart1(listOf(part1, part2()))
-        assertEquals(Part2Result.Line(decoded(part2())), result)
+        val response = postAndRead(listOf(part1, part2()))
+        assertEquals(Part2Result.Line(decoded(part2())), response.translation.await())
+        assertEquals(emptyMap<Int, String>(), response.items.value)
         assertTrue(logLines("final ").single(), " items=0 item_first=- item_last=- " in logLines("final ").single())
+    }
+
+    // ── The response's items ───────────────────────────────────────────
+
+    @Test fun `the items grow one by one as each arrives, before the final part, and keep their value after it`() =
+        runBlocking {
+            val firstItem = CountDownLatch(1)
+            val secondItem = CountDownLatch(1)
+            val finalPart = CountDownLatch(1)
+            val final = part2(translations = """[{"id":0,"translation":"Hello"},{"id":1,"translation":"World"}]""")
+            val c = client(
+                listOf(part1, item(0, "Helo"), item(1, "World"), final),
+                listOf(null, firstItem, secondItem, finalPart),
+            )
+            try {
+                val response = c.postFrame(PtCloudTestSupport.frame(), PtCloudTestSupport.meta(streamTranslations = true))
+                assertEquals("no item has arrived", emptyMap<Int, String>(), response.items.value)
+
+                firstItem.countDown()
+                assertEquals(mapOf(0 to "Helo"), withTimeout(5_000) { response.items.first { it.isNotEmpty() } })
+                assertFalse("the final part is still held", response.translation.isCompleted)
+
+                secondItem.countDown()
+                assertEquals(mapOf(0 to "Helo", 1 to "World"), withTimeout(5_000) { response.items.first { it.size == 2 } })
+                assertFalse("the final part is still held", response.translation.isCompleted)
+
+                finalPart.countDown()
+                withTimeout(5_000) { response.translation.await() }
+                // The items stay as the server sent them: applying the final
+                // part's wording is the reader's job.
+                assertEquals(mapOf(0 to "Helo", 1 to "World"), response.items.value)
+            } finally {
+                firstItem.countDown()
+                secondItem.countDown()
+                finalPart.countDown()
+            }
+        }
+
+    @Test fun `a group repeated across items keeps its last text`() = runBlocking {
+        val response = postAndRead(listOf(part1, item(0, "Helo"), item(1, "World"), item(0, "Hello"), part2()))
+        assertEquals(mapOf(0 to "Hello", 1 to "World"), response.items.value)
+        assertTrue(logLines("final ").single(), " items=3 " in logLines("final ").single())
+    }
+
+    @Test fun `an item that does not decode leaves the items as they were, and the next one still adds`() = runBlocking {
+        val response = postAndRead(
+            listOf(
+                part1,
+                item(0, "Hello"),
+                """{"part":"translation_item","schema_version":1,"translation":"no id"}""",
+                """{"part":"translation_item","schema_version":1,"id":"zero","translation":"bad id"}""",
+                """{"part":"translation_item","schema_version":1,"id":1}""",
+                item(1, "World"),
+                part2(),
+            ),
+        )
+        assertEquals(mapOf(0 to "Hello", 1 to "World"), response.items.value)
+    }
+
+    @Test fun `the items keep their value when the body ends early or the read fails`() = runBlocking {
+        val ended = postAndRead(listOf(part1, item(0, "Hello")))
+        assertEquals(Part2Result.Ended, ended.translation.await())
+        assertEquals(mapOf(0 to "Hello"), ended.items.value)
+
+        val failed = postAndRead(listOf(part1, item(0, "Hello"), "not json at all", item(1, "World"), part2()))
+        assertTrue(failed.translation.await() is Part2Result.Failed)
+        assertEquals(mapOf(0 to "Hello"), failed.items.value)
     }
 
     // ── Through the reader ─────────────────────────────────────────────
@@ -222,10 +300,10 @@ class PtCloudItemLinesTest {
 
     private val request = ReadRequest(SourceLangId.JA, screenshotWidth = 1920, targetLang = "en", frameId = "capture-0042")
 
-    /** What one read leaves: the reading's translations, the cooldown, and
-     *  the attempt reported. */
+    /** What one read leaves: the reading's settled translations, the
+     *  cooldown, and the attempt reported. */
     private data class Settled(
-        val provided: ProvidedTranslations,
+        val translations: Map<Int, String>,
         val until: Long?,
         val cause: CooldownCause?,
         val attempts: List<BackendFailure?>,
@@ -235,8 +313,8 @@ class PtCloudItemLinesTest {
         cooldown.resetCooldown()
         attempts.clear()
         val reading = reader(lines).read(bitmap, request)
-        val provided = withTimeout(5_000) { reading.translations!!.await() }
-        return Settled(provided, cooldown.unavailableUntil(), cooldown.unavailableCause(), attempts.map { it.failure })
+        val translations = withTimeout(5_000) { reading.translations!!.await() }
+        return Settled(translations, cooldown.unavailableUntil(), cooldown.unavailableCause(), attempts.map { it.failure })
     }
 
     @Test fun `items then a failed or deferred final settle exactly as the two-line response does`() = runBlocking {
@@ -244,11 +322,11 @@ class PtCloudItemLinesTest {
         val deferred = part2("deferred", "[]")
         val expected = mapOf(
             serverError to Settled(
-                ProvidedTranslations.Unavailable("SERVER_ERROR"), clock.get() + 60_000, CooldownCause.SERVER_ERROR,
+                emptyMap(), clock.get() + 60_000, CooldownCause.SERVER_ERROR,
                 listOf(BackendFailure(BackendFailureKind.SERVER_ERROR, 503)),
             ),
             deferred to Settled(
-                ProvidedTranslations.Unavailable("TIMEOUT"), null, null,
+                emptyMap(), null, null,
                 listOf(BackendFailure(BackendFailureKind.TIMEOUT)),
             ),
         )
@@ -260,11 +338,11 @@ class PtCloudItemLinesTest {
         }
     }
 
-    @Test fun `an item's text never reaches the reading, only the final part's does`() = runBlocking {
+    @Test fun `an item's text is not what the reading settles on, the final part's is`() = runBlocking {
         val settled = settle(
             listOf(part1, item(0, "Helo"), item(5, "Not in the final list"), part2()),
         )
-        assertEquals(ProvidedTranslations.Ok(mapOf(0 to "Hello"), "ja", "en", "PlayTranslate Cloud"), settled.provided)
+        assertEquals(mapOf(0 to "Hello"), settled.translations)
         assertEquals(listOf<BackendFailure?>(null), settled.attempts)
     }
 
@@ -295,6 +373,7 @@ class PtCloudItemLinesTest {
 
             assertTrue("the HTTP call is cancelled", calls.single().isCanceled())
             assertTrue("the read is cancelled with its caller", response.get()!!.translation.isCancelled)
+            assertEquals("the item read before the cancel stays", mapOf(0 to "Hello"), response.get()!!.items.value)
             assertNothingRecorded()
             assertEquals("a cancelled read logs no final line", emptyList<String>(), logLines("final "))
             assertEquals(1, logLines("part1 ").size)
@@ -312,7 +391,7 @@ class PtCloudItemLinesTest {
         // stands still, so reuse and upload are dashes and the times are 0.
         assertEquals(
             listOf(
-                "part1 id=capture-0042 fmt=jpeg bytes=64 size=1920x1080 encode=0 hdr=0 part1=0 groups=1 " +
+                "part1 id=capture-0042 fmt=jpeg bytes=64 size=1920x1080 encode=0 hdr=0 part1=0 groups=1 tr1=0 " +
                     "reused=- upload=- warm=none edge_upload=118 edge=640 recv=- ocr=665 ocr_total=-",
             ),
             logLines("part1 "),

@@ -54,6 +54,7 @@ import com.playtranslate.CaptureState
 import com.playtranslate.OneShotOverlayData
 import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.fillOneShotOverlayData
+import com.playtranslate.fillsBoxesOf
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.RegionEntry
@@ -294,10 +295,10 @@ class CaptureResultOverlay(
      *  [CARD_FILL_ALPHA_NO_IMAGE]) — barely transparent. Set before [show]. */
     var opaqueBackgroundBoost: Boolean = false
 
-    /** Overlay boxes for the currently-bound result: skeletons from
-     *  [CaptureState.Translating] while an auto-collapse is showing placeholders,
-     *  then the translated boxes from [CaptureState.Done]. Null otherwise (stash
-     *  re-show, no-text, post-edit) — null keeps the switch pill hidden. */
+    /** Overlay boxes for the currently-bound result: the latest
+     *  [CaptureState.Translating]'s (skeletons, filling in as the translations
+     *  arrive), then the translated boxes from [CaptureState.Done]. Null otherwise
+     *  (stash re-show, no-text, post-edit), and null keeps the switch pill hidden. */
     private var overlayData: OneShotOverlayData? = null
 
     /** The in-place boxes, rendered INSIDE this window (a root child just
@@ -331,9 +332,9 @@ class CaptureResultOverlay(
      *  boxes are the independent [PresentationPrefs.boxesEnabled] axis. */
     private var sliverMode = false
 
-    /** Whether the on-screen boxes are currently up (via [showChips]) — the
-     *  live counterpart of the persisted toggle, so Done knows to promote
-     *  in place ([updateChips]) vs present fresh, and hide paths can no-op. */
+    /** Whether the on-screen boxes are currently up (via [showChips]): the
+     *  live counterpart of the persisted toggle, so a box fill and Done know to
+     *  promote in place ([updateChips]) vs present fresh, and hide paths can no-op. */
     private var boxesShown = false
 
     /** Sliver-only hint text (see the body's addView). Two modes, switched by
@@ -1026,16 +1027,27 @@ class CaptureResultOverlay(
         captureSession?.cancel()
         captureSession = session
         sessionJob = scope.launch {
-            session.state.collect { state ->
+            session.stateWithPrevious.collect { (previous, state) ->
                 when (state) {
                     is CaptureState.InProgress -> setStatus(state.message, loading = true)
                     // OCR done: show the source now with a "Translating…" placeholder
                     // (blank translatedText renders it); Done fills it in + re-fits.
                     is CaptureState.Translating -> {
-                        // Skeleton boxes exist from OCR time — expose them BEFORE the
+                        // More of this capture's boxes translated: swap them in
+                        // place and nothing else. The source, the panel's posture
+                        // and the toggle stay as the first Translating set them;
+                        // the boxes are kept current while hidden too, so a
+                        // toggle-on paints the latest.
+                        if (state.fillsBoxesOf(previous)) {
+                            overlayData = state.overlayData
+                            if (boxesShown) state.overlayData?.let { updateChips(it) }
+                            return@collect
+                        }
+                        // The capture's boxes exist from OCR time (skeletons, some
+                        // possibly translated already): expose them BEFORE the
                         // bind so the header's boxes toggle is offered while the
-                        // translation is still running (the Done promotion fills
-                        // them in place either way).
+                        // translation is still running (later fills and the Done
+                        // promotion swap them in place either way).
                         overlayData = state.overlayData
                         bindResult(
                             TranslationResult(
@@ -1047,7 +1059,7 @@ class CaptureResultOverlay(
                                 langContext = prefs.langContext(),
                             ),
                         )
-                        // Boxes are their own axis: skeletons go up the moment OCR
+                        // Boxes are their own axis: they go up the moment OCR
                         // lands, whatever the panel is doing (a re-run with boxes
                         // already showing swaps them in place). (Fits while
                         // slivered run measure-only — they set the drag ceiling +
@@ -1342,8 +1354,8 @@ class CaptureResultOverlay(
         root.addView(v, root.indexOfChild(anchor) + 1)
     }
 
-    /** Swap the boxes in place: the skeleton → translated promotion when Done
-     *  lands while slivered. No-op unless the boxes are up. A render setting
+    /** Swap the boxes in place: the skeleton to translated promotion as a box
+     *  fill or Done lands. No-op unless the boxes are up. A render setting
      *  changed since they went up replaces the view ([chipsViewFor]); the
      *  fresh one starts at alpha 1, right since the boxes were up. */
     private fun updateChips(data: OneShotOverlayData) {
@@ -1373,7 +1385,7 @@ class CaptureResultOverlay(
     }
 
     /** The header toggle: flip the on-frame boxes without moving the panel.
-     *  Turning ON paints the bound result's boxes (skeletons while the
+     *  Turning ON paints the bound result's boxes (skeletons where the
      *  translation is still running); the persisted state lands wherever
      *  reality landed — the overlay surface can refuse the paint (live mode
      *  owns it), and the accent state must never claim boxes that aren't

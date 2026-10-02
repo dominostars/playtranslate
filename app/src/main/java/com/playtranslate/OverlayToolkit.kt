@@ -18,13 +18,11 @@ import com.playtranslate.ui.FuriganaMetrics
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ocr.FrameReader
 import com.playtranslate.ocr.FrameReading
-import com.playtranslate.ocr.ProvidedTranslations
 import com.playtranslate.ocr.ReadRequest
 import com.playtranslate.ocr.ReaderAttribution
-import com.playtranslate.ocr.forPositions
+import com.playtranslate.ocr.ReaderTranslations
 import com.playtranslate.translation.BackendFailure
 import com.playtranslate.ui.TextBox
-import kotlinx.coroutines.Deferred
 import androidx.core.graphics.get
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
@@ -644,11 +642,11 @@ object OverlayToolkit {
          *  boxes' growth inside the region that was read. Appended after the
          *  fields callers destructure positionally. */
         val cropWidth: Int, val cropHeight: Int,
-        /** The reader's translations of [ocrResult]'s groups
-         *  ([FrameReading.translations]); null when the reader only reads,
-         *  as the device reader does. Whoever drops a non-null one without
-         *  awaiting it cancels it. */
-        val translations: Deferred<ProvidedTranslations>? = null,
+        /** The reader's translations of [ocrResult]'s groups, keyed by group
+         *  index ([FrameReading.translations]); null when the reader only
+         *  reads, as the device reader does. Whoever drops a non-null one
+         *  without awaiting it cancels it. */
+        val translations: ReaderTranslations? = null,
     ) {
         /** The capture region in the boxes' own (crop) coordinates. */
         val cropBounds: android.graphics.Rect get() = android.graphics.Rect(0, 0, cropWidth, cropHeight)
@@ -960,62 +958,48 @@ object OverlayToolkit {
      * Translate [texts] (cache-first) and return [placeholders] with filled
      * [TextBox.translatedText]. Only cache misses hit [service]'s translator.
      *
-     * [provided]: a reader's translations keyed by position in [texts]
-     * ([providedForRegions] on the reconciler tier, [providedForFarGroups] on
-     * the pinhole tier). A position it names skips the cache, since the
-     * reader's text is fresher than a cache entry (the pinhole tier names only
-     * positions the cache had not filled when the look placed them), and goes
-     * through [CaptureService.translateGroupsSeparately] with it, which uses it
-     * under the pair check and caches it. The uncached positions it does not
-     * name (a typewriter prefix, a pinhole far group coalesced from two
-     * groups, a group the reader left untranslated) go through
-     * their own call as if nothing were provided: under a set whose pair
-     * matches, translateGroupsSeparately gives every position the set does
-     * not name no translation (the capture-once rule for a group the reader
-     * left out), which here would blank a box the waterfall can fill.
+     * [reader]: a reader's translations keyed by position in [texts]
+     * ([readerForRegions] on the reconciler tier, [readerForFarGroups] on the
+     * pinhole tier), handed to one [CaptureService.translateGroupsSeparately]
+     * call, which waits for them only when a position the cache has no entry
+     * for can still take one: a position the reader names takes its text
+     * over a cache entry, and every position it does not name (a typewriter
+     * prefix, a pinhole far group coalesced from two groups, a group the
+     * reader left untranslated, one the call did not wait for) goes through
+     * the cache and the waterfall in the same call.
+     *
+     * [onProgress] gets each delivery the reader makes while it is awaited:
+     * [shown] (what the caller has on screen for these positions, the bare
+     * [placeholders] by default) with each position the delivery names
+     * replaced by its placeholder filled with the reader's text, a cache fill
+     * included. Never called without a wait, nor for the final boxes, which
+     * this returns.
      */
     internal suspend fun translatePlaceholders(
         service: CaptureService, placeholders: List<TextBox>, texts: List<String>,
-        provided: ProvidedTranslations.Ok? = null,
+        reader: ReaderTranslations? = null,
+        shown: List<TextBox> = placeholders,
+        onProgress: (suspend (List<TextBox>) -> Unit)? = null,
     ): List<TextBox> {
-        val providedIndices = mutableListOf<Int>()
-        val uncachedIndices = mutableListOf<Int>()
-        val translations = arrayOfNulls<CaptureService.GroupTranslation>(texts.size)
-
-        for ((idx, text) in texts.withIndex()) {
-            if (provided != null && idx in provided.byGroup) {
-                providedIndices.add(idx)
-                continue
-            }
-            val cached = service.getCachedTranslation(text)
-            if (cached != null) {
-                translations[idx] = cached
-            } else {
-                uncachedIndices.add(idx)
-            }
-        }
-
-        suspend fun translate(indices: List<Int>, withProvided: ProvidedTranslations.Ok?) {
-            if (indices.isEmpty()) return
-            val results = service.translateGroupsSeparately(
-                indices.map { texts[it] }, provided = withProvided,
-            )
-            for ((i, idx) in indices.withIndex()) {
-                translations[idx] = results.getOrNull(i)
-            }
-        }
-        translate(providedIndices, provided?.forPositions(providedIndices))
-        translate(uncachedIndices, withProvided = null)
-
-        return placeholders.mapIndexed { idx, ph ->
-            val t = translations.getOrNull(idx)
-            ph.copy(
-                translatedText = t?.text ?: "",
-                backendDisplayName = t?.backendDisplayName,
-            )
-        }
+        val translations = service.translateGroupsSeparately(
+            texts, reader = reader,
+            onProgress = onProgress?.let { report ->
+                { delivered ->
+                    val filled = placeholders.filledFrom(delivered)
+                    report(shown.mapIndexed { i, box -> if (delivered.getOrNull(i) != null) filled[i] else box })
+                }
+            },
+        )
+        return placeholders.filledFrom(translations)
     }
 
     // ── Factory ───────────────────────────────────────────────────────────
 
 }
+
+/** These boxes with [known]'s translations: box i takes `known[i]`'s text and
+ *  backend name when it is not null, and stays as it is otherwise. */
+internal fun List<TextBox>.filledFrom(known: List<CaptureService.GroupTranslation?>): List<TextBox> =
+    mapIndexed { i, box ->
+        known.getOrNull(i)?.let { box.copy(translatedText = it.text, backendDisplayName = it.backendDisplayName) } ?: box
+    }

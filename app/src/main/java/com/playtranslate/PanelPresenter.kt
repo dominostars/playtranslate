@@ -3,8 +3,8 @@ package com.playtranslate
 import com.playtranslate.capture.CapturedFrame
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.ocr.DeviceFrameReader
-import com.playtranslate.ocr.ProvidedTranslations
 import com.playtranslate.ocr.ReaderAttribution
+import com.playtranslate.ocr.ReaderTranslations
 import com.playtranslate.ui.TextBox
 
 /**
@@ -35,7 +35,7 @@ class PanelPresenter(
         cropLeft: Int,
         cropTop: Int,
         onPartial: suspend (List<TextBox>) -> Unit,
-        provided: suspend () -> ProvidedTranslations.Ok?,
+        reader: ReaderTranslations?,
     ): List<TextBox> {
         // No color sampling, no skeleton pass — nothing renders on screen.
         val texts = work.map { it.text }
@@ -54,9 +54,12 @@ class PanelPresenter(
                 sourceConfMean = cMean,
             )
         }
-        // Nothing renders early, so the reader's translations are awaited
-        // straight away.
-        return OverlayToolkit.translatePlaceholders(service, placeholders, texts, provided())
+        // Nothing renders, so nothing is reported on the way: the reader's
+        // translations are awaited straight away, when more can arrive for a
+        // region the cache has no entry for (translateGroupsSeparately), and
+        // not at all when the cache already answers every region the reader
+        // has yet to name.
+        return OverlayToolkit.translatePlaceholders(service, placeholders, texts, reader)
     }
 
     override suspend fun emitApplied(

@@ -4,36 +4,45 @@ import android.graphics.Bitmap
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ocr.FrameReader
 import com.playtranslate.ocr.FrameReading
-import com.playtranslate.ocr.ProvidedTranslations
 import com.playtranslate.ocr.ReadRequest
 import com.playtranslate.ocr.ReaderAttribution
+import com.playtranslate.ocr.ReaderTranslations
 import com.playtranslate.translation.OnlineAttempt
 import com.playtranslate.translation.llm.LlmPromptTemplates
 import com.playtranslate.translation.llm.PromptKind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 
 /**
  * Reads a frame through PlayTranslate Cloud: one `POST /v1/frame` returns the
- * OCR groups (part 1) and, about a second later, their translations (the
- * final part; any item lines before it are read and timed by the client and
- * go no further). [read] returns at part 1; the translations follow as the
- * reading's [FrameReading.translations], a child of the caller's job.
+ * OCR groups (part 1, where a group the server's translation cache answered
+ * already carries its translation), then an item line per further group as
+ * the model completes it, then the final part with every translation. [read]
+ * returns at part 1 with the reading's [FrameReading.translations], whose
+ * [ReaderTranslations.ready] are part 1's translations; the items arrive in
+ * them as provisional deliveries and the final part settles them, in a job
+ * that is a child of the caller's job.
  *
  * Failures split at part 1, as in [PtCloudClient]. Before it, [read] throws
  * the client's [PtCloudReadException] (an IOException, which
  * [com.playtranslate.ocr.FallbackFrameReader] answers with the device reader),
  * the cooldown already recorded and the attempt already reported. After it,
- * the OCR is kept and part 2's outcome decides everything else: this reader
- * records it on [PtCloudService.cooldown] and reports it through
- * [PtCloudService.report], once per frame, and a translation that failed
- * resolves to [ProvidedTranslations.Unavailable] so the caller translates
- * locally. A caller that cancels (a released hold, a superseded capture, a
- * reading it has no use for) records and reports nothing.
+ * the OCR and part 1's translations are kept and the final part's outcome
+ * decides everything else: this reader records it on [PtCloudService.cooldown]
+ * and reports it through [PtCloudService.report], once per frame, and a
+ * translation that failed settles with part 1's translations alone, the
+ * items dropped, so the caller translates the rest locally. A frame whose
+ * part 1 translated every group needs no final part: its success is recorded
+ * and reported, and its translations settled, before [read] returns, and
+ * the client reads the final part to its end whatever the caller does with
+ * the reading. A
+ * caller that cancels (a released hold, a superseded capture, a reading it
+ * has no use for) records and reports nothing.
  *
  * This reader logs nothing of its own: the client's two clock lines per
  * frame and its failure line cover the request ([PtCloudClient]).
@@ -47,9 +56,15 @@ class PtCloudFrameReader(
 
     /**
      * Uploads [bitmap] and returns once part 1 has arrived and mapped back to
-     * [bitmap]'s coordinates. Call it from the job meant to own part 2, not
-     * inside a scoped builder: a scope waits for its children, so it would
-     * return only after part 2 ([PtCloudClient.postFrame]).
+     * [bitmap]'s coordinates, with the reading's translations keyed by group
+     * index: part 1's as [ReaderTranslations.ready], the rest still to come
+     * unless part 1 translated every group. Call it from the job meant to own
+     * part 2, not inside a scoped builder: a scope waits for its children, so
+     * it would return only after part 2 ([PtCloudClient.postFrame]).
+     *
+     * The translations are for the pair the request was sent under (the
+     * source's translationCode and [ReadRequest.targetLang]); a consumer
+     * under another pair ignores them ([ReaderTranslations.isFor]).
      *
      * The request's pair decides what the server is asked for. `source` is
      * the wire code of [ReadRequest.sourceLangId]; when the app's pair is
@@ -70,9 +85,9 @@ class PtCloudFrameReader(
      * device).
      */
     override suspend fun read(bitmap: Bitmap, request: ReadRequest): FrameReading {
-        // Captured here, outside any withContext: the translations below are
-        // a child of the CALLER's job, so the caller waits for them and
-        // cancels them, as postFrame's own part-2 reader is.
+        // Captured here, outside any withContext: the translations' job below
+        // is a child of the CALLER's job, so the caller waits for it and
+        // cancels it, as postFrame's own part-2 reader is.
         val callerContext = currentCoroutineContext()
 
         val frame = encode(bitmap, config.uploadLongSideCap, config.uploadFormat)
@@ -103,9 +118,36 @@ class PtCloudFrameReader(
             throw e
         }
 
-        val translations = CoroutineScope(callerContext + Dispatchers.IO).async {
+        // The groups the server's cache answered: final for this frame,
+        // whatever the final part says. A blank one is no translation.
+        val groups = response.ocr.groups
+        val ready = groups.mapNotNull { g -> g.translation?.takeIf { it.isNotBlank() }?.let { g.id to it } }.toMap()
+        // Every group answered: the contract makes no model call and sends
+        // the final part at once with ok, so the frame's outcome is known now.
+        val answeredByCache = groups.isNotEmpty() && groups.all { it.id in ready }
+
+        // Built lazily: the job needs the translations it fills and the
+        // translations need the job they cancel. Started right after, before
+        // anything else can throw: a child never started would hold the
+        // caller's job open forever.
+        lateinit var translations: ReaderTranslations
+        val job = CoroutineScope(callerContext + Dispatchers.IO).launch(start = CoroutineStart.LAZY) {
+            // Recorded, reported and settled in read below, so there is no
+            // work here for a consumer's cancel to stop. The read after part 1
+            // (postFrame's own child of the caller's job) is left to end by
+            // itself, the final part following at once: the exchange completes
+            // and logs its clock line instead of being reset by every consumer
+            // that drops a reading it has no more use for.
+            if (answeredByCache) return@launch
             try {
-                val result = response.translation.await()
+                // Each item as it arrives: provisional, so the final part
+                // below replaces them all.
+                val forwarding = launch { response.items.collect { translations.deliver(it) } }
+                val result = try {
+                    response.translation.await()
+                } finally {
+                    forwarding.cancel()
+                }
                 // A caller cancelled as part 2 settled: not a fact about the
                 // service, so nothing is recorded or reported.
                 ensureActive()
@@ -117,20 +159,11 @@ class PtCloudFrameReader(
                         reachedServer = true,
                     ),
                 )
-                when (outcome) {
-                    // A group the server names with an empty (or blank)
-                    // string has no translation. Treated as unnamed, it goes
-                    // where an unnamed group goes (capture-once: no box; the
-                    // hold: a skeleton; live: the cache and the waterfall)
-                    // instead of pinning a live box blank while the
-                    // reconciler retries it every cycle.
-                    is TranslationOutcome.Translated -> ProvidedTranslations.Ok(
-                        outcome.byGroup.filterValues { it.isNotBlank() },
-                        translationCode, request.targetLang, PtCloudService.DISPLAY_NAME,
-                    )
-                    TranslationOutcome.Skipped -> ProvidedTranslations.Unavailable("skipped")
-                    is TranslationOutcome.Failed -> ProvidedTranslations.Unavailable(outcome.failure.kind.name)
-                }
+                // Skipped and Failed deliver nothing beyond part 1's: the
+                // items are dropped and the cache's answers stand (the
+                // contract's rule for a failed or deferred final part).
+                if (outcome is TranslationOutcome.Translated) translations.settle(outcome.byGroup)
+                else translations.settle()
             } catch (e: CancellationException) {
                 // Cancelling these translations (the core does on no text and
                 // on a same-language pair) must stop part 2's read too, or
@@ -140,9 +173,34 @@ class PtCloudFrameReader(
             } catch (t: Throwable) {
                 // A bug in this block: nothing recorded or reported, and never
                 // a failed child, which would fail the caller's job (on the
-                // hold path, crash the app).
-                ProvidedTranslations.Unavailable(t.javaClass.simpleName)
+                // hold path, crash the app). The completion handler below
+                // settles.
             }
+        }
+        translations = ReaderTranslations(
+            translationCode, request.targetLang, PtCloudService.DISPLAY_NAME,
+            groupCount = groups.size, ready = ready, job = job,
+        )
+        // However the job ends, the translations settle, so a consumer in
+        // ReaderTranslations.await can never wait on a job that is over. A
+        // completion handler rather than a finally: a job cancelled before
+        // its body runs never reaches the body's finally. A no-op when the
+        // body already settled.
+        job.invokeOnCompletion { translations.settle() }
+        job.start()
+
+        if (answeredByCache) {
+            // A caller cancelled on the way back records nothing; its
+            // cancellation reaches the job too.
+            callerContext.ensureActive()
+            TranslationOutcome.Translated(ready).record(PtCloudService.cooldown, response.attemptStartedAtMs)
+            PtCloudService.report(
+                OnlineAttempt(
+                    PtCloudService.ID, PtCloudService.DISPLAY_NAME, failure = null, response.sentAtMs,
+                    reachedServer = true,
+                ),
+            )
+            translations.settle()
         }
         return FrameReading(ocr, ReaderAttribution(PtCloudService.DISPLAY_NAME, PtCloudService.ID), translations)
     }
