@@ -12,6 +12,7 @@ import com.playtranslate.ocr.FrameReading
 import com.playtranslate.ocr.ReadRequest
 import com.playtranslate.ocr.ReaderProgress
 import com.playtranslate.ocr.ReaderAttribution
+import com.playtranslate.ocr.readLines
 import com.playtranslate.translation.BackendFailure
 import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.translation.CooldownCause
@@ -237,6 +238,17 @@ class PtCloudFrameReaderTest {
             assertEquals(emptyMap<Int, String>(), reading.settled())
             assertOneAttempt(failure = null)
         }
+    }
+
+    @Test fun `a lines-only read sends the same-language pair and no context`() = runBlocking {
+        LlmPromptTemplates.contextProvider = { _, _ -> "Recent dialogue:\nA: hi\n\n" }
+        val lines = reader(streaming(listOf(part1, PtCloudTestSupport.part2("skipped", "[]"))))
+            .readLines(bitmap, SourceLangId.ZH_HANT, "id")
+        val meta = sentMeta()
+        assertEquals("zh-Hant", meta.str("source"))
+        assertEquals("target equals source, so the server skips translation", "zh-Hant", meta.str("target"))
+        assertFalse("no context for a pair that is not translated", "context" in meta)
+        assertTrue("part 1's lines", lines!!.isNotEmpty())
     }
 
     @Test fun `persona and context go out when the user has them, keyed by the translation pair`() = runBlocking {

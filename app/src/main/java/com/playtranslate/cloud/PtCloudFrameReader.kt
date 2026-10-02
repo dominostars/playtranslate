@@ -71,7 +71,9 @@ class PtCloudFrameReader(
      * same-language (its translationCode equals [ReadRequest.targetLang],
      * which includes a Traditional Chinese source with a "zh" target),
      * `target` is sent equal to `source`, so the server skips translation
-     * and a capture that needs none never pays for one. `persona` is the
+     * and a capture that needs none never pays for one; a lines-only read
+     * ([com.playtranslate.ocr.readLines]) arrives as the same-language pair
+     * for this reason. `persona` is the
      * user's System prompt override, absent without one (the server's
      * default is the app's default persona). `context` is the recent-dialogue
      * block the translation log keeps for the pair, absent when blank or

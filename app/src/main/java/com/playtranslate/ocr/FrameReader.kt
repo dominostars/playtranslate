@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.util.Log
 import com.playtranslate.OcrManager
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.ocr.registry.ocrLabel
 import com.playtranslate.ocr.registry.selectionToken
@@ -226,14 +227,16 @@ data class ReadRequest(
  * engines today, a combined OCR and translation service behind the same call.
  * The capture-once paths, the press-and-hold overlay and the live tiers read
  * through it (the reconciler and pinhole tiers may read through the service,
- * the furigana tier always reads on the device); the attribution a reading
- * carries is the one place a result's "Scanned by" comes from. A reader that
- * also translates hands its translations over through the reading
- * ([ReaderTranslations]): every consumer takes what arrived with the OCR in
- * its first paint, waits for the rest only when the reader can still name a
- * text the app's cache has no translation for, fills each further one in
- * place as it arrives while it waits, and sends whatever the reader did not
- * translate through the cache and the waterfall.
+ * the furigana tier always reads on the device), and so does the drag lookup,
+ * which reads lines through [readLines] and takes no translations; the
+ * attribution a reading carries is the one place a result's "Scanned by"
+ * comes from. A reader that also translates hands its translations over
+ * through the reading ([ReaderTranslations]): every consumer that translates
+ * takes what arrived with the OCR in its first paint, waits for the rest only
+ * when the reader can still name a text the app's cache has no translation
+ * for, fills each further one in place as it arrives while it waits, and
+ * sends whatever the reader did not translate through the cache and the
+ * waterfall.
  */
 interface FrameReader {
     /** Reads [bitmap] (the OCR input crop, in whose coordinates the result's boxes are).
@@ -243,6 +246,40 @@ interface FrameReader {
      *  wait on work that is over; a reader that cannot read at all throws an
      *  IOException (fallback readers key on that), never for cancellation. */
     suspend fun read(bitmap: Bitmap, request: ReadRequest): FrameReading
+}
+
+/**
+ * The lines this reader finds in [bitmap] ([OcrManager.OcrResult.lines]), for
+ * a consumer that looks words up in the frame and translates nothing
+ * (drag-to-lookup); null = no text found. [frameId] is the request's
+ * [ReadRequest.frameId].
+ *
+ * The request names the source's own translationCode as its target, the
+ * same-language pair, for which a translating reader asks its service for no
+ * translation ([com.playtranslate.cloud.PtCloudFrameReader] sends `target`
+ * equal to `source`), so a lookup never pays for one. Its screenshotWidth is
+ * 0, no menu split, as a lookup has always read on the device. The reader's
+ * translations, if it hands any over, are cancelled, since nothing awaits
+ * them (the seam's rule: whoever drops a reading without awaiting its
+ * translations cancels them).
+ *
+ * Like [FrameReader.read], call it directly in the job meant to own the
+ * reader's work, never inside a scoped builder (`withContext`,
+ * `coroutineScope`, `withTimeout`): that work is a child of the calling job,
+ * and a scope waits for its children.
+ */
+suspend fun FrameReader.readLines(bitmap: Bitmap, sourceLangId: SourceLangId, frameId: String): List<OcrManager.OcrLine>? {
+    val reading = read(
+        bitmap,
+        ReadRequest(
+            sourceLangId,
+            screenshotWidth = 0,
+            targetLang = SourceLanguageProfiles[sourceLangId].translationCode,
+            frameId = frameId,
+        ),
+    )
+    reading.translations?.cancel()
+    return reading.ocr?.lines()?.ifEmpty { null }
 }
 
 /**

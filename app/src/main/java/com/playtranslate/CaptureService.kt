@@ -208,15 +208,25 @@ class CaptureService : Service() {
      * which states device-only only once the service refused their session
      * ([PtCloudService.liveSessionBlocked]).
      *
+     * [device] is the reader the read stays on when the router refuses the
+     * cloud and falls back to when the cloud cannot read: this service's own
+     * device reader by default. A drag lookup passes its own
+     * ([com.playtranslate.ui.DragLookupController]'s, which reads under the
+     * stored source code), and reads a fresh frame, never device-only.
+     *
      * A read kept on the device logs why at debug level, except when the switch
      * is off, which is every read of every release build. [warmCloud] asks the
      * same [cloudRefusal] and logs nothing: the read that follows says why.
      */
-    internal fun frameReaderFor(srcId: SourceLangId, deviceOnly: Boolean): FrameReader {
+    internal fun frameReaderFor(
+        srcId: SourceLangId,
+        deviceOnly: Boolean,
+        device: FrameReader = deviceFrameReader,
+    ): FrameReader {
         val refusal = cloudRefusal(PtCloudConfig(Prefs(this)), srcId, deviceOnly)
-            ?: return FallbackFrameReader(cloudFrameReader, deviceFrameReader)
+            ?: return FallbackFrameReader(cloudFrameReader, device)
         refusal.logWord?.let { Log.d(TAG, "PlayTranslate Cloud not used for this read: $it") }
-        return deviceFrameReader
+        return device
     }
 
     /** Why a read stays on the device ([cloudRefusal]). [logWord] names it in
@@ -275,9 +285,9 @@ class CaptureService : Service() {
      * read will pass, and calls this just before it requests the screenshot, so
      * the warm's head start covers the screenshot, the crop and the encode. One
      * caller per kind of read: [captureOnce]'s cycle, the single-screen capture
-     * sheet, a press-and-hold, and a reconciler or pinhole live mode's start,
-     * through [warmCloudForLiveRead], for its first cycle's read only. A re-OCR
-     * reads on the device and never warms.
+     * sheet, a press-and-hold, a drag lookup's capture, and a reconciler or
+     * pinhole live mode's start, through [warmCloudForLiveRead], for its first
+     * cycle's read only. A re-OCR reads on the device and never warms.
      *
      * Returns at once, on the caller's thread, when the switch is off, when
      * [deviceOnly] is true or when the warm knob ([PtCloudConfig.warmEnabled])
@@ -301,12 +311,6 @@ class CaptureService : Service() {
     internal fun warmCloudForLiveRead() {
         warmCloud(Prefs(this).sourceLangId, deviceOnly = PtCloudService.liveSessionBlocked)
     }
-
-    /** A [ReadRequest.frameId] for a read of a frame from [displayId]: the
-     *  display and the read's moment, which names the frame in a reader's logs
-     *  without carrying anything of its content. */
-    private fun frameIdFor(displayId: Int): String =
-        "d$displayId-${android.os.SystemClock.elapsedRealtime()}"
 
     /**
      * The set of displays the user has selected to translate. P1 introduces
@@ -3369,6 +3373,12 @@ class CaptureService : Service() {
         @Volatile
         var instance: CaptureService? = null
             private set
+
+        /** A [ReadRequest.frameId] for a read of a frame from [displayId]: the
+         *  display and the read's moment, which names the frame in a reader's logs
+         *  without carrying anything of its content. */
+        internal fun frameIdFor(displayId: Int): String =
+            "d$displayId-${android.os.SystemClock.elapsedRealtime()}"
 
         /** The ONE write path for [Prefs.recordGameAudio]: pref write +
          *  recorder reconcile + the session's consent lifecycle at both

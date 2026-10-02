@@ -22,8 +22,8 @@ import kotlin.coroutines.coroutineContext
  * Optional post-layout refinement: re-read the selected engine's [LayoutGroup]s with
  * the manga-ocr specialist and splice its (better) reading back onto the base lines.
  * Invoked by [OcrPipeline] AFTER [com.playtranslate.ocr.core.LayoutAnalyzer.analyze],
- * so it runs once and both `recognise` (translate) and `recogniseWithPositions`
- * (drag-lookup) inherit the result. Coordinates stay in engine-input space (same as
+ * so it runs once and every `recognise` result (translation and drag-lookup alike)
+ * inherits it. Coordinates stay in engine-input space (same as
  * [LayoutGroup] and the `processed` bitmap), so the caller's existing scaleFactor
  * projection is untouched.
  *

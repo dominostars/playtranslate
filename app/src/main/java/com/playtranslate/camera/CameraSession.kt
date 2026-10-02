@@ -1424,21 +1424,7 @@ class CameraSession(
         if (mode != Mode.FROZEN) return null
         synchronized(stateLock) {
             val ocr = cachedOcr ?: return null
-            val lines = ocr.groups.flatMapIndexed { gi, g ->
-                g.lines.map { line ->
-                    OcrManager.OcrLine(
-                        text = line.text,
-                        bounds = line.bounds,
-                        groupIndex = gi,
-                        groupText = g.text,
-                        symbols = line.symbols,
-                        orientation = line.orientation,
-                        angleDeg = line.angleDeg,
-                        orientedWidth = line.orientedWidth,
-                        orientedHeight = line.orientedHeight,
-                    )
-                }
-            }
+            val lines = ocr.lines()
             if (lines.isEmpty()) return null
             return com.playtranslate.camera.render.FrozenLookupScene(
                 lines, cachedAuW, cachedAuH, cachedScreenshotPath,

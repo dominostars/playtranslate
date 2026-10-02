@@ -37,6 +37,10 @@ import com.playtranslate.model.FrequencyTag
 import com.playtranslate.yomitan.YomitanDataStore
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.selectHeadword
+import com.playtranslate.ocr.FrameReader
+import com.playtranslate.ocr.FrameReading
+import com.playtranslate.ocr.ReadRequest
+import com.playtranslate.ocr.readLines
 import kotlinx.coroutines.*
 import java.io.File
 import kotlin.coroutines.coroutineContext
@@ -44,7 +48,8 @@ import kotlin.math.abs
 
 /**
  * Manages the drag-to-lookup workflow:
- * 1. On drag start: screenshot the full screen, run OCR, cache line positions
+ * 1. On drag start: screenshot the full screen, read its lines through the reader
+ *    seam ([readDragLines]: PlayTranslate Cloud or the device), cache line positions
  * 2. On hold-still: hit-test finger against cached lines, tokenize, dictionary lookup
  * 3. Show/dismiss the WordLookupPopup
  *
@@ -91,6 +96,19 @@ class DragLookupController(
             CoroutineExceptionHandler { _, e -> Log.e(TAG, "Uncaught", e) }
     )
     private val ocrManager get() = com.playtranslate.OcrManager.instance
+
+    /** The drag's own device reader: [OcrManager.recognise] under the
+     *  request's source, on [Dispatchers.Default] as the lookup's read always
+     *  ran. No attribution: [readLines] takes only the lines. */
+    private val deviceReader = object : FrameReader {
+        override suspend fun read(bitmap: Bitmap, request: ReadRequest): FrameReading = FrameReading(
+            ocr = withContext(Dispatchers.Default) {
+                ocrManager.recognise(bitmap, request.sourceLangId, screenshotWidth = request.screenshotWidth)
+            },
+            attribution = null,
+            translations = null,
+        )
+    }
 
     /** Cached OCR lines from the initial screenshot. */
     private var ocrLines: List<OcrManager.OcrLine>? = null
@@ -698,9 +716,7 @@ class DragLookupController(
         }
         if (ocrJob === coroutineContext[Job]) revealLensAfterCapture()
         onScreenshotCaptured(bitmap, path)
-        val lines = withContext(Dispatchers.Default) {
-            ocrManager.recogniseWithPositions(bitmap, Prefs(popup.ctx).sourceLangId)
-        }
+        val lines = readDragLines(bitmap)
         if (lines == null) {
             Log.d(TAG, "No text found in saved screenshot")
             return
@@ -1273,6 +1289,11 @@ class DragLookupController(
     private suspend fun captureAndOcr() {
         Log.d(TAG, "Taking screenshot for full-screen OCR...")
 
+        // Warm PlayTranslate Cloud for readDragLines' read below: a fresh
+        // capture, so it reads in the source language from the same pref and
+        // never device-only.
+        CaptureService.instance?.warmCloud(Prefs(context).sourceLangId, deviceOnly = false)
+
         // maskOwnWindows = false: the lens looks up words wherever the
         // finger is, our own pages included, so this frame must carry our
         // UI's real pixels. The saved screenshot below therefore contains
@@ -1313,9 +1334,7 @@ class DragLookupController(
         val savedPath = withContext(Dispatchers.IO) { saveScreenshot(bitmap) }
         onScreenshotCaptured(bitmap, savedPath)
 
-        val lines = withContext(Dispatchers.Default) {
-            ocrManager.recogniseWithPositions(bitmap, Prefs(context).sourceLangId)
-        }
+        val lines = readDragLines(bitmap)
         if (lines == null) {
             Log.d(TAG, "No text found on screen")
             return
@@ -1329,6 +1348,18 @@ class DragLookupController(
             magnifier.setPillLoading(false)
         }
         pretokenizeLines(lines)
+    }
+
+    /** The drag's lines: through PlayTranslate Cloud when the router would
+     *  send a capture there (a frame it cannot read falls back to
+     *  [deviceReader]), else on the device, and on the device when no service
+     *  is running. Called directly in the OCR job, never inside a scoped
+     *  builder, since a cloud read's later work is a child of the calling job. */
+    private suspend fun readDragLines(bitmap: Bitmap): List<OcrManager.OcrLine>? {
+        val srcId = Prefs(context).sourceLangId
+        val reader = CaptureService.instance?.frameReaderFor(srcId, deviceOnly = false, device = deviceReader)
+            ?: deviceReader
+        return reader.readLines(bitmap, srcId, CaptureService.frameIdFor(displayId))
     }
 
     /** Run on the main thread once the drag-start bitmap is in hand. The
