@@ -1,0 +1,2153 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    PlayTranslate Traditional Chinese (Hong Kong) (zh-rHK) localization.
+
+    Based on the Simplified Chinese localization and reviewed against
+    res/values/strings.xml for Hong Kong terminology. Per-string translator
+    notes live in that default file; this file keeps only section banners.
+
+    Formatting preserved from the source:
+      • <xliff:g …>…</xliff:g> wraps placeholders / brand names — never
+        translate or reorder their inner content (the %1$s, %2$d, … inside).
+      • <b>…</b> renders bold. \n is a newline. \{ \} are escaped braces.
+      • Brand names (PlayTranslate, Anki, DeepL, Qwen, …) stay untranslated.
+      • translatable="false" entries are omitted and fall back to English.
+      • Plurals use only the "other" category (Chinese has no count plural).
+-->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ACTIONS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="btn_translate_once">不儲存，直接使用</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ACCESSIBILITY SERVICE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="accessibility_service_description"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 使用無障礙服務擷取遊戲畫面並顯示懸浮圖示。不會讀取或監控任何介面內容、輸入事件或個人資料。</string>
+
+    <string name="accessibility_service_summary">用於翻譯螢幕上的遊戲文字</string>
+
+    <string name="accessibility_dialog_title">需要無障礙權限</string>
+
+    <string name="accessibility_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 需要無障礙權限，以便在底部螢幕保持開啟的同時，擷取頂部螢幕上的遊戲畫面。\n\n<xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> 不會讀取任何介面內容、監控輸入或存取任何個人資料——僅在你點按「翻譯」或開啟即時模式時才會截圖。\n\n前往：設定 → 無障礙 → 已下載的應用程式 → <xliff:g id="app_name3" example="PlayTranslate">PlayTranslate</xliff:g> → 啟用。</string>
+
+    <string name="accessibility_dialog_open">開啟無障礙設定</string>
+
+    <string name="status_accessibility_needed">請先在無障礙設定中啟用 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         QUICK SETTINGS TILE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tile_subtitle_a11y_required">啟用無障礙</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         STATUS MESSAGES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="status_idle">點按「翻譯」以擷取遊戲畫面</string>
+
+    <string name="status_hold_hint">長按「區域」或「自動」開啟快速選擇選單</string>
+
+    <string name="words_none">未偵測到詞語</string>
+
+    <string name="status_capturing">正在擷取畫面…</string>
+
+    <string name="status_ocr">正在辨識文字…</string>
+
+    <string name="status_translating">正在翻譯…</string>
+
+    <string name="capture_show_on_screen">顯示在螢幕上</string>
+
+    <string name="status_no_text">未在「<xliff:g id="region_label" example="Dialogue box">%2$s</xliff:g>」中偵測到<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>文字</string>
+
+    <string name="status_error">錯誤：<xliff:g id="error_message" example="Network timeout">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         NOTIFICATION
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="notif_channel_name">螢幕擷取</string>
+
+    <string name="notif_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 正在執行</string>
+
+    <string name="notif_text">點按返回 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ONBOARDING
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="onboarding_welcome_title">歡迎使用 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>！</string>
+
+    <string name="onboarding_welcome_tagline">無論玩什麼、讀什麼，都能用任何語言看懂。</string>
+
+    <string name="onboarding_welcome_play_title">不懂這種語言？</string>
+
+    <string name="onboarding_welcome_play_body">自動翻譯會把你的語言直接顯示在螢幕上，並隨對話的變化即時更新。離線也能用！</string>
+
+    <string name="onboarding_welcome_learn_title">正在學習這種語言？</string>
+
+    <string name="onboarding_welcome_learn_body">只在你需要時才提供幫助：詞語查詢、振假名和拼音、一鍵建立 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 卡片等等。</string>
+
+    <string name="onboarding_welcome_row_placeholder">點按選擇</string>
+
+    <string name="onboarding_welcome_continue">繼續</string>
+
+    <string name="onboarding_welcome_select_source">選擇遊戲語言</string>
+
+    <string name="onboarding_notif_title">允許通知</string>
+
+    <string name="onboarding_notif_intro">Android 要求在背景執行的應用程式於活動期間顯示一條狀態列通知。</string>
+
+    <string name="onboarding_notif_row_alerts_title">沒有提醒或橫幅</string>
+
+    <string name="onboarding_notif_row_alerts_sub">不會彈出任何內容，也不會打擾你</string>
+
+    <string name="onboarding_notif_row_silent_title">沒有聲音或振動</string>
+
+    <string name="onboarding_notif_row_silent_sub">它會在背景完全靜默執行</string>
+
+    <string name="onboarding_notif_row_status_title">只有一個狀態列圖示</string>
+
+    <string name="onboarding_notif_row_status_sub">用來表示 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 正在執行的靜默提示</string>
+
+    <string name="onboarding_a11y_hint">請尋找 <b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b></string>
+
+    <string name="onboarding_a11y_title">顯示在其他應用程式上層</string>
+
+    <string name="onboarding_a11y_enable_title">啟用「<xliff:g id="setting_name" example="Display over other apps">%1$s</xliff:g>」</string>
+
+    <string name="onboarding_a11y_intro"><b><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></b> 需要顯示在其他應用程式上層，以便：</string>
+
+    <string name="onboarding_a11y_row_translate_title">顯示翻譯後的文字</string>
+
+    <string name="onboarding_a11y_row_translate_sub">翻譯會直接顯示在原文上方</string>
+
+    <string name="onboarding_a11y_row_menu_title">顯示快速選單</string>
+
+    <string name="onboarding_a11y_row_menu_sub">無需切換應用程式即可使用 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 的功能</string>
+
+    <string name="onboarding_a11y_row_lookup_title">查詢詞語</string>
+
+    <string name="onboarding_a11y_row_lookup_sub">即時取得螢幕上詞語的釋義</string>
+
+    <string name="btn_grant_permission">授予權限</string>
+
+    <string name="btn_open_a11y_settings">開啟無障礙設定</string>
+
+    <string name="btn_open_overlay_settings">開啟設定</string>
+
+    <string name="restricted_settings_title">允許受限設定</string>
+
+    <string name="restricted_settings_message">在 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 的 Android 設定頁面，點按右上角的三點（⋮）按鈕，然後選擇「允許受限設定」。完成身份驗證後，你應該就能開啟無障礙權限了。</string>
+
+    <string name="btn_open_app_settings">開啟 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 設定</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         WORD DETAIL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="word_detail_no_definitions">找不到釋義。</string>
+
+    <string name="word_detail_more_examples">更多例句</string>
+
+    <string name="word_detail_more_examples_loading">正在載入例句…</string>
+
+    <string name="word_detail_more_examples_error">無法載入例句。</string>
+
+    <string name="word_detail_tatoeba_attribution">例句來自 <xliff:g id="brand_tatoeba" example="Tatoeba">Tatoeba</xliff:g> · <xliff:g id="license_cc_by_2_fr" example="CC BY 2.0 FR">CC BY 2.0 FR</xliff:g></string>
+
+    <string name="word_detail_common">常用</string>
+
+    <string name="card_words_in_sentence">句子中的詞語</string>
+
+    <string name="word_anki_in_decks"><xliff:g id="count" example="3">%1$d</xliff:g> 個 Anki 牌組</string>
+    <string name="word_anki_deck_badge_cd">已加入 Anki：<xliff:g id="label" example="Core 2k">%1$s</xliff:g></string>
+
+    <string name="word_detail_numbered_definition"><xliff:g id="number" example="1">%1$d</xliff:g>. <xliff:g id="definition" example="to eat">%2$s</xliff:g></string>
+
+    <string name="word_detail_label_format"><xliff:g id="label" example="READING">%1$s</xliff:g>：</string>
+
+    <plurals name="word_detail_senses_count">
+        <item quantity="other"><xliff:g id="senses_count" example="3">%d</xliff:g> 個釋義</item>
+    </plurals>
+
+    <plurals name="word_detail_chars_count">
+        <item quantity="other"><xliff:g id="char_count" example="3">%d</xliff:g> 個字</item>
+    </plurals>
+
+    <string name="word_detail_group_definitions">釋義</string>
+
+    <string name="word_detail_group_kanji">漢字</string>
+
+    <string name="word_detail_group_hanzi">漢字</string>
+
+    <string name="word_detail_mt_banner">機器翻譯</string>
+
+    <string name="word_detail_mt_banner_named">機器翻譯：<xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
+
+    <string name="word_detail_char_meanings_mt">機器翻譯 · <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — general
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_title">設定</string>
+
+    <string name="lang_translate_from">遊戲語言</string>
+
+    <string name="lang_translate_to">你的語言</string>
+
+    <string name="lang_download">下載</string>
+
+    <string name="lang_download_error_title">下載失敗</string>
+
+    <string name="lang_setup_preloading_message">正在準備，請稍候</string>
+
+    <string name="lang_setup_offline_model_unavailable">此裝置目前無法使用離線翻譯。詞典查詢及線上翻譯仍可正常使用。</string>
+
+    <string name="lang_setup_requires_64bit">需要 64 位元裝置</string>
+    <string name="lang_setup_requires_64bit_msg"><xliff:g id="language" example="Russian">%1$s</xliff:g>的文字辨識需要 64 位元裝置，但此裝置不支援。</string>
+
+    <string name="lang_delete_pack">刪除語言包</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         LANGUAGE PICKER — search and filter
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="lang_search_hint">搜尋語言</string>
+
+    <string name="lang_search_clear_cd">清除搜尋</string>
+
+    <string name="lang_search_no_results">無結果</string>
+
+    <string name="lang_section_suggested">推薦</string>
+
+    <string name="lang_pick_any">任何語言</string>
+
+    <string name="lang_section_all">全部</string>
+
+    <plurals name="lang_search_match_count">
+        <item quantity="other"><xliff:g id="count" example="5">%d</xliff:g> 個結果</item>
+    </plurals>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         PACK-UPGRADE FLOW
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="pack_upgrade_title">有可用的語言包更新</string>
+
+    <string name="pack_upgrade_button_now">立即更新</string>
+
+    <string name="pack_upgrade_button_later">稍後更新</string>
+
+    <string name="pack_upgrade_mandatory_title">需要更新</string>
+
+    <string name="pack_upgrade_mandatory_message"><xliff:g id="pack_list" example="Game Language (Japanese)">%1$s</xliff:g>\n\n此更新為必要項目——已安裝的版本不再受支援。請立即更新，或刪除它以選擇其他語言。</string>
+
+    <string name="pack_upgrade_button_delete">刪除</string>
+
+    <string name="pack_upgrade_progress_title">正在更新語言包</string>
+
+    <string name="pack_upgrade_progress_format">正在下載<xliff:g id="pack_name" example="Japanese">%1$s</xliff:g>…</string>
+
+    <string name="pack_upgrade_progress_format_with_bytes">正在下載<xliff:g id="pack_name" example="Japanese">%1$s</xliff:g>… <xliff:g id="bytes_so_far" example="12 MB">%2$s</xliff:g> / <xliff:g id="bytes_total" example="84 MB">%3$s</xliff:g></string>
+
+    <string name="pack_upgrade_priming_models">正在載入翻譯模型…</string>
+
+    <string name="pack_upgrade_label_source">遊戲語言（<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>）</string>
+
+    <string name="pack_upgrade_label_target">你的語言（<xliff:g id="target_language" example="English">%1$s</xliff:g>）</string>
+
+    <string name="lang_section_update_packs_title">更新語言包</string>
+    <string name="lang_section_offline_models_title">下載離線模型</string>
+    <string name="lang_section_offline_models_subtitle">尚未下載<xliff:g id="source_language" example="Japanese">%1$s</xliff:g> → <xliff:g id="target_language" example="English">%2$s</xliff:g>的離線翻譯。應用程式仍可線上使用。</string>
+
+    <string name="settings_no_displays_found">找不到顯示器</string>
+
+    <string name="settings_capture_display_footer">請選擇一個或多個螢幕。你目前查看 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 的螢幕將被跳過。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         DEEPL — settings hints
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="hint_deepl_key">在此貼上你的 <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> API 金鑰</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION FALLBACK NOTES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="note_mlkit_no_internet">⚠ 無網絡連線——顯示離線翻譯（質素較低）。</string>
+
+    <string name="note_mlkit_service_unavailable">⚠ 翻譯服務不可用——顯示離線翻譯（質素較低）。</string>
+    <string name="note_mlkit_service_cooldown">⚠ 翻譯服務暫時不可用。<xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g> 前將顯示離線翻譯（質素較低）。</string>
+    <string name="note_mlkit_quota_exhausted">⚠ 翻譯配額已用完。<xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g> 前將顯示離線翻譯（質素較低）。</string>
+    <string name="note_mlkit_account_issue">⚠ 翻譯服務帳戶存在問題（帳單或配額）。將顯示離線翻譯（質素較低）。請在設定中檢查該服務。</string>
+
+    <string name="note_low_memory_fallback">⚠ 記憶體不足——顯示離線翻譯（質素較低）。</string>
+
+    <string name="translation_source_label">由 <xliff:g id="backend_name" example="DeepL">%1$s</xliff:g> 翻譯</string>
+
+    <string name="ocr_source_label">由 <xliff:g id="ocr_engine" example="PaddleOCR">%1$s</xliff:g> 辨識</string>
+    <string name="ocr_picker_title">選擇 OCR 工具</string>
+    <string name="ocr_picker_message">OCR 負責從截圖中擷取文字。不同工具可能更適合不同字型。</string>
+    <string name="cd_choose_ocr">選擇 OCR 工具</string>
+    <string name="cd_change_source_language">更改遊戲語言</string>
+    <string name="cd_change_target_language">更改你的語言</string>
+
+    <string name="error_live_mode_unsupported_backend">目前的螢幕擷取方式不支援即時模式。</string>
+
+    <string name="error_screen_capture_denied">即時模式已停止——螢幕擷取權限被拒絕。</string>
+
+    <string name="error_single_app_not_fullscreen">翻譯已暫停——正在擷取的應用程式未佔滿螢幕。當該應用程式再次以全螢幕顯示時會自動恢復。</string>
+    <string name="error_capture_blocked_secure">什麼都無法讀取——受保護的內容會阻止螢幕擷取。</string>
+    <string name="probe_initializing">正在初始化…</string>
+
+    <string name="startup_initializing_auto_mode">正在初始化自動模式…</string>
+
+    <string name="slow_ocr_prompt_title">文字辨識較慢</string>
+
+    <string name="slow_ocr_prompt_message">此裝置讀取螢幕的速度較慢。切換到更快的引擎可加快處理速度，但辨識質素可能略有下降。你隨時可以在設定中切換：\n\n<xliff:g id="settings" example="Settings">%1$s</xliff:g> → <xliff:g id="section" example="Capture &amp; overlay">%2$s</xliff:g> → <xliff:g id="ocr_header" example="Text recognition (OCR)">%3$s</xliff:g></string>
+
+    <string name="slow_ocr_prompt_message_camera">此裝置從相機讀取文字的速度較慢。切換到更快的引擎可加快處理速度，但辨識質素可能略有下降。你隨時可以用此介面上的設定齒輪切換相機的引擎。</string>
+
+    <string name="slow_ocr_prompt_switch">使用更快的引擎</string>
+
+    <string name="slow_ocr_prompt_keep">保留目前引擎</string>
+
+    <string name="stream_kind_prompt_title">你選擇了哪個分享選項？</string>
+    <string name="stream_kind_prompt_message">分享單一應用程式與分享整個螢幕時，即時翻譯的運作方式不同，而系統不會指出你分享的是哪一種。</string>
+    <string name="stream_kind_share_one_app">分享單一應用程式</string>
+    <string name="stream_kind_share_entire_screen">分享整個螢幕</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SECTION HEADERS (translation-result screen)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="section_original">原文</string>
+
+    <string name="section_translation">譯文</string>
+
+    <string name="section_words">詞語</string>
+
+    <string name="words_loading">正在查詢詞語…</string>
+
+    <string name="lens_loading">正在查詢…</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         REGION PICKER
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="label_select_region">選擇區域</string>
+
+    <string name="region_overlay_drag_instruction">拖曳邊緣，將螢幕擷取範圍限制在此區域</string>
+
+    <string name="label_edit">編輯</string>
+
+    <string name="label_done">完成</string>
+
+    <string name="label_add_custom_region">+ 新增自訂區域</string>
+
+    <string name="label_add_custom_region_title">新增自訂區域</string>
+
+    <string name="label_region_drag_hint">在遊戲畫面上拖曳區域框以選擇你想要的範圍。拖曳上邊緣或下邊緣，或拖曳中間部分來移動整個框。</string>
+
+    <string name="label_region_name">區域名稱</string>
+
+    <string name="hint_region_name">例如：對話框</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING ICON CELL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_show_overlay_icon">懸浮圖示操作</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CAPTURE LIFECYCLE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="capture_lifecycle_start">開啟</string>
+
+    <string name="capture_lifecycle_stop">關閉</string>
+
+    <string name="capture_lifecycle_state_on">開</string>
+
+    <string name="capture_lifecycle_state_off">關</string>
+
+    <string name="capture_lifecycle_on_subtitle">已允許螢幕擷取</string>
+
+    <string name="capture_lifecycle_off_subtitle">允許螢幕擷取</string>
+
+    <string name="capture_lifecycle_standby_subtitle">螢幕擷取處於待機狀態</string>
+
+    <string name="game_screen_controls_title">顯示螢幕上的控制項</string>
+
+    <string name="record_audio_action">錄製音訊</string>
+
+    <string name="audio_recording_row_start">開始錄製音訊</string>
+
+    <string name="audio_recording_row_active">正在錄製音訊</string>
+    <string name="audio_recording_row_failed">音訊錄製失敗</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MEDIAPROJECTION OVERLAY-PERMISSION DIALOG
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="mp_overlay_permission_title">顯示在其他應用程式上層</string>
+
+    <string name="mp_overlay_permission_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 需要「顯示在其他應用程式上層」權限，以便懸浮遊戲控制項能夠顯示在遊戲上層。</string>
+
+    <string name="mp_overlay_permission_button">開啟設定</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING-ICON GESTURES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="icon_gesture_drag">拖曳</string>
+
+    <string name="icon_gesture_hold">長按</string>
+
+    <string name="icon_gesture_tap">點按</string>
+
+    <string name="icon_action_lookup_words">移到詞語上以查看釋義</string>
+
+    <string name="icon_action_show_translations">在螢幕上顯示翻譯</string>
+
+    <string name="icon_action_open_quick_menu">開啟快速選單</string>
+
+    <string name="icon_action_capture_screen">擷取螢幕</string>
+
+    <string name="icon_action_toggle_auto_translate">啟動/停止自動翻譯</string>
+
+    <string name="icon_action_swap_furigana">在翻譯和振假名之間切換</string>
+
+    <string name="icon_action_swap_pinyin">在翻譯和拼音之間切換</string>
+
+    <string name="icon_action_change_game_language">更改遊戲語言</string>
+
+    <string name="icon_action_translating_from">正在從<xliff:g id="language" example="Japanese">%1$s</xliff:g>翻譯</string>
+
+    <string name="icon_gestures_no_menu_title">沒有手勢可開啟快速選單</string>
+
+    <string name="icon_gestures_no_menu_message">將無法從懸浮圖示開啟快速選單。如需繼續使用，請將「開啟快速選單」設為長按或點按的操作。</string>
+
+    <string name="icon_gestures_no_menu_confirm">我知道了</string>
+
+    <string name="overlay_icon_a11y_required_title">需要無障礙權限</string>
+
+    <string name="overlay_icon_a11y_required_message">懸浮圖示需要無障礙權限才能在遊戲畫面上繪製。\n\n前往：設定 → 無障礙 → 已下載的應用程式 → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → 啟用。</string>
+
+    <string name="a11y_stuck_title">無障礙服務需要重新啟動</string>
+
+    <string name="a11y_stuck_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 的無障礙權限已啟用，但 Android 已停止該服務且不會自行重新啟動。你的裝置可能會在無障礙設定中提示此應用程式運作異常。這通常發生在系統為省電而強制停止應用程式後。\n\n要解決此問題，請在無障礙設定中將該服務關閉後重新開啟。</string>
+
+    <string name="a11y_stuck_message_xiaomi">在小米裝置上，你亦需在應用程式的系統設定中為 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 開啟「自啟動」，並將省電策略設為「無限制」。否則系統會不斷停止該服務。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ACCESSIBILITY-REQUIRED ALERT
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="a11y_required_alert_title">需要無障礙權限</string>
+
+    <string name="a11y_required_displays_message">切換螢幕或同時翻譯多個螢幕需要無障礙權限。它能讓 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 擷取任何顯示器，而不僅僅是主螢幕。</string>
+
+    <string name="a11y_required_hotkey_message">設定快捷鍵需要無障礙權限。它能讓 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 偵測你在遊戲時按下的按鍵。</string>
+
+    <string name="a11y_required_enhanced_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 使用這些增強控制來改善自動翻譯體驗。</string>
+
+    <string name="requires_android_11_title">需要 Android 11</string>
+    <string name="requires_android_11_message">此功能需要 Android 11 或更高版本。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ENHANCED AUTO-TRANSLATE ROW
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="enhanced_auto_translate_title">增強自動翻譯</string>
+
+    <string name="enhanced_auto_translate_subtitle_off">更易讀、更靈敏、更穩定。需要無障礙權限。</string>
+
+    <string name="enhanced_auto_translate_subtitle_on">已啟用</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ANKI INTEGRATION
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_deck_picker_empty">找不到牌組</string>
+
+    <string name="anki_deck_picker_loading">正在載入牌組…</string>
+    <string name="anki_deck_picker_title">選擇 Anki 牌組</string>
+
+    <string name="anki_card_type_picker_loading">正在載入卡片類型…</string>
+
+    <string name="anki_not_installed_title">建立抽認卡以供複習</string>
+
+    <string name="anki_not_installed_message">儲存你在遊戲中發現的詞語，稍後再複習。\n\n<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 可以將翻譯後的句子、詞彙和截圖直接儲存到 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>——一款免費的間隔重複抽認卡應用程式。</string>
+
+    <string name="anki_not_installed_get">取得 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
+
+    <string name="anki_permission_rationale_title">需要 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 權限</string>
+
+    <string name="anki_permission_rationale_message">要向 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 新增抽認卡，<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 需要存取 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 的權限。\n\n點按「繼續」以授予此權限。</string>
+
+    <string name="btn_continue">繼續</string>
+
+    <string name="anki_permission_denied">權限被拒絕——請在 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 設定中授予</string>
+
+    <string name="anki_no_deck_selected">在 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 中找不到牌組</string>
+
+    <string name="anki_added_no_audio">已新增到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>（音訊不可用）</string>
+
+    <string name="anki_added_no_screenshot">已新增到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>（截圖不可用）</string>
+
+    <string name="anki_added_no_screenshot_or_audio">已新增到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>（截圖和音訊不可用）</string>
+
+    <string name="anki_added_sentence_success">句子卡片已新增到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="anki_added_word_success">詞語卡片已新增到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="anki_adding_in_progress">正在新增到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>…</string>
+
+    <string name="anki_send_failed_title">無法新增卡片</string>
+
+    <string name="anki_send_failed_message"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 未接受該卡片。請確保 <xliff:g id="brand_ankidroid2" example="AnkiDroid">AnkiDroid</xliff:g> 正在執行，然後重試。</string>
+
+    <string name="anki_card_too_large_title">卡片過大</string>
+
+    <string name="anki_card_too_large_prompt">這張卡片的詞典釋義過大，無法傳送到 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>。是否儲存使用純文字釋義的簡化卡片？</string>
+
+    <string name="anki_card_too_large_simplify">儲存簡化版</string>
+
+    <string name="anki_card_too_large_failed">即使使用簡化釋義，這張卡片仍然過大，<xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 無法接受。請嘗試刪除部分詞語或縮短句子。</string>
+
+    <string name="anki_added_simplified">已新增到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>（釋義已簡化以適應大小）</string>
+
+    <string name="anki_mode_sentence">句子</string>
+
+    <string name="anki_mode_word">詞語</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ANKI REVIEW SHEET
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_sheet_title_new_card">新建 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 卡片</string>
+
+    <string name="anki_deck_row_label">牌組</string>
+
+    <string name="anki_deck_row_empty">選擇牌組</string>
+
+    <string name="anki_deck_label_format">牌組：<xliff:g id="deck_name" example="Vocabulary">%1$s</xliff:g></string>
+
+    <string name="anki_save_button_label">儲存 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 卡片</string>
+
+    <string name="anki_group_original">原文</string>
+
+    <string name="anki_group_translation">譯文</string>
+
+    <string name="anki_group_words_count">卡片內的詞語 · <xliff:g id="words_count" example="3">%d</xliff:g></string>
+
+    <string name="anki_group_definitions">釋義</string>
+
+    <string name="anki_group_screenshot">截圖</string>
+
+    <string name="anki_words_helper_hide">這些詞語將包含在 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 卡片中。點按詞語可將其醒目標示。點按 <xliff:g id="hide_icon" example="👁">%1$s</xliff:g> 可將其從卡片中排除。</string>
+
+    <string name="anki_translation_error">無法翻譯</string>
+
+    <string name="anki_word_remove_content_description">從卡片中移除</string>
+    <string name="hidden_word_hide_content_description">隱藏詞語</string>
+    <string name="hidden_word_show_content_description">顯示詞語</string>
+    <string name="hidden_word_save_failed">無法儲存，請重試</string>
+
+    <string name="anki_screenshot_remove_content_description">移除截圖</string>
+
+    <string name="anki_group_audio">音訊</string>
+
+    <string name="anki_audio_preview_content_description">預覽音訊</string>
+
+    <string name="anki_word_audio_row_title">包含音訊</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GAME-AUDIO RECORDING (Settings → Anki → Audio; trim editor)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_game_audio_row_title">錄製遊戲音訊</string>
+
+    <string name="anki_game_audio_row_subtitle">保留最近幾分鐘的遊戲音訊，讓新的句子卡片可以使用真實的語音台詞</string>
+
+    <string name="anki_game_audio_permission_denied">權限被拒絕——遊戲音訊錄製保持關閉</string>
+
+    <string name="audio_source_game_name">遊戲音訊</string>
+
+    <string name="audio_source_game_ready">來自你最近的遊戲過程</string>
+
+    <string name="audio_source_game_enable_hint">目前未錄製——開啟後即可錄製遊戲音訊，供以後的卡片使用</string>
+
+    <string name="game_audio_zoom_hint">雙指張合可查看更多或更少的音訊</string>
+
+    <string name="game_audio_trim_duration">已選 <xliff:g id="seconds" example="2.4">%1$s</xliff:g> 秒 · 已錄製 <xliff:g id="total_seconds" example="147">%2$s</xliff:g> 秒</string>
+
+    <string name="anki_game_audio_cell_untrimmed">儲存時裁剪</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CARD TYPE PICKER + FIELD MAPPING
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_card_type_row_label">卡片類型</string>
+
+    <string name="anki_card_type_row_empty">預設（<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>）</string>
+
+    <string name="anki_card_type_pick_title">選擇卡片類型</string>
+
+    <string name="anki_card_type_no_models">在 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 中找不到卡片類型</string>
+
+    <string name="anki_card_type_stale_fallback">卡片類型已不存在，將使用預設類型</string>
+
+    <string name="anki_card_type_section_default">預設</string>
+
+    <string name="anki_card_type_section_custom">卡片類型</string>
+
+    <string name="anki_card_type_edit_mapping_row_label">編輯欄位對應</string>
+
+    <string name="anki_field_mapping_title">設定 <xliff:g id="card_type_name" example="Lapis sentence">%1$s</xliff:g></string>
+
+    <string name="anki_field_mapping_save">儲存</string>
+
+    <string name="anki_field_mapping_unconfigured">傳送前請為此卡片類型設定欄位對應</string>
+
+    <string name="anki_first_field_unmapped">請為「<xliff:g id="field_name" example="Key">%1$s</xliff:g>」欄位指定內容，以便 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 辨識筆記。</string>
+
+    <string name="anki_first_field_empty">該卡片的「<xliff:g id="field_name" example="Key">%1$s</xliff:g>」欄位為空。<xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 使用第一個欄位來辨識筆記，因此每張卡片都必須為該欄位填入內容。</string>
+
+    <string name="anki_models_unavailable">無法連線 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 以查詢卡片類型。請稍後重試。</string>
+
+    <string name="anki_card_type_basic_no_mapping">基礎卡片類型不需要欄位對應——「正面」和「背面」會根據你儲存的是詞語還是句子自動填充。</string>
+
+    <string name="anki_content_source_pick_title">設定「<xliff:g id="field_name" example="Expression">%1$s</xliff:g>」</string>
+
+    <string name="anki_long_press_footer">小提示：如果你想不經編輯直接建立卡片，可長按任何通常會帶你進入 <xliff:g id="brand_anki" example="anki">anki</xliff:g> 卡片建立頁面的按鈕</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CONTENT SOURCE LABELS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_content_none">空</string>
+    <string name="anki_content_none_desc">不傳送任何內容——<xliff:g id="brand_anki" example="Anki">Anki</xliff:g> 欄位保持為空。</string>
+
+    <string name="anki_content_expression">詞語／詞目</string>
+    <string name="anki_content_expression_desc">醒目標示詞語的詞典形式，不帶括號。例子：聞く</string>
+
+    <string name="anki_content_expression_furigana">詞語／詞目（帶振假名）</string>
+    <string name="anki_content_expression_furigana_desc">帶逐字振假名標註的詞典形式，適用於透過 \{\{furigana:\}\} 顯示的欄位。例子：聞[き]く</string>
+
+    <string name="anki_content_reading">詞語讀音（假名）</string>
+    <string name="anki_content_reading_desc">醒目標示詞語的純假名讀音。例子：きく</string>
+
+    <string name="anki_content_sentence">原文句子</string>
+    <string name="anki_content_sentence_desc">原文句子，醒目標示詞語以粗體顯示。例子：友達に<b>聞いた</b></string>
+
+    <string name="anki_content_sentence_furigana">原文句子（帶振假名）</string>
+    <string name="anki_content_sentence_furigana_desc">帶逐字振假名標註的原文句子，適用於透過 \{\{furigana:\}\} 顯示的欄位。例子：友達[ともだち]に<b>聞[き]いた</b></string>
+
+    <string name="anki_content_sentence_translation">翻譯後的句子</string>
+    <string name="anki_content_sentence_translation_desc">原文句子在你所選目標語言中的翻譯。</string>
+
+    <string name="anki_content_definition">釋義</string>
+    <string name="anki_content_definition_desc">醒目標示詞語的詞典釋義，以 HTML 格式呈現。</string>
+
+    <string name="anki_content_examples">例句</string>
+    <string name="anki_content_examples_desc">醒目標示詞語的 <xliff:g id="brand_tatoeba" example="Tatoeba">Tatoeba</xliff:g> 例句（如有）。</string>
+
+    <string name="anki_content_picture">截圖</string>
+    <string name="anki_content_picture_desc">遊戲畫面的截圖，包裹在 &lt;img&gt; 標記中，可直接用於圖片／截圖欄位。</string>
+
+    <string name="anki_content_word_audio">詞語音訊</string>
+    <string name="anki_content_word_audio_desc">詞語的文字轉語音音訊，可用於詞語音訊欄位。</string>
+
+    <string name="anki_content_sentence_audio">句子音訊</string>
+    <string name="anki_content_sentence_audio_desc">句子的文字轉語音音訊，可用於句子音訊欄位。</string>
+
+    <string name="anki_content_frequency">詞頻星級</string>
+    <string name="anki_content_frequency_desc">以星星表示的醒目標示詞語詞頻評級。例子：★★★</string>
+
+    <string name="anki_content_part_of_speech">詞性</string>
+    <string name="anki_content_part_of_speech_desc">醒目標示詞語的詞性標籤（僅限詞語模式卡片）。例子：noun</string>
+
+    <string name="anki_content_words_table">詞語清單（句子卡片）</string>
+    <string name="anki_content_words_table_desc"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 在句子中偵測到的所有詞語的格式化清單，包含讀音和釋義。</string>
+
+    <string name="anki_content_pitch_position">音高重音位置</string>
+    <string name="anki_content_pitch_position_desc">醒目標示詞語的音高重音降調位置，以逗號分隔。用於 <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> 的「PitchPosition」或 <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> 的「PAOverride」。例子：0,2</string>
+
+    <string name="anki_content_frequency_values">詞頻清單</string>
+    <string name="anki_content_frequency_values_desc">醒目標示詞語的 ★ 評級，以及來自各詞頻詞典的所有數值，以清單形式呈現。用於 <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> 的「Frequency」。</string>
+
+    <string name="anki_content_frequency_stylized">詞頻清單（JPMN 風格）</string>
+    <string name="anki_content_frequency_stylized_desc">同一份詞頻清單，以 <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> 自有的樣式格式輸出，供其「FrequenciesStylized」欄位使用。請僅在 <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> 卡片上使用。</string>
+
+    <string name="anki_content_frequency_harmonic">詞頻排序數值</string>
+    <string name="anki_content_frequency_harmonic_desc">用於按詞頻排序卡片的單個數值，即該詞語各詞典詞頻的調和平均數（越小越常用）。用於 <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> 的「FreqSort」或 <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> 的「FrequencySort」。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CARD-TYPE STATE FLAGS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_content_flag_vocabulary">詞彙卡片標記 (x)</string>
+    <string name="anki_content_flag_vocabulary_desc">僅在詞語模式傳送時輸出「x」——用於 <xliff:g id="brand_migaku" example="Migaku">Migaku</xliff:g> 的「Is Vocabulary Card」等範本欄位。</string>
+
+    <string name="anki_content_flag_sentence">句子卡片標記 (x)</string>
+    <string name="anki_content_flag_sentence_desc">僅在句子模式傳送時輸出「x」——用於 <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> 或 <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> 的「IsSentenceCard」等範本欄位。</string>
+
+    <string name="anki_content_flag_targeted_sentence">目標句子卡片標記 (x)</string>
+    <string name="anki_content_flag_targeted_sentence_desc">僅在含醒目標示目標詞語的句子傳送時輸出「x」——用於 <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> 的「IsTargetedSentenceCard」。</string>
+
+    <string name="anki_content_flag_always_on">始終開啟標記 (x)</string>
+    <string name="anki_content_flag_always_on_desc">始終輸出「x」。用於你希望無條件啟用的範本欄位。</string>
+
+    <string name="anki_content_section_content">內容</string>
+    <string name="anki_content_section_flag">卡片類型標記</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC CHROME
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="cd_back">返回</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         APPEARANCE — theme mode and accent picker
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="pt_theme_mode_system">跟隨系統</string>
+    <string name="pt_theme_mode_dark">深色</string>
+    <string name="pt_theme_mode_light">淺色</string>
+
+    <string name="pt_accent_label">強調色</string>
+
+    <string name="pt_accent_coral">珊瑚色</string>
+    <string name="pt_accent_amber">琥珀色</string>
+    <string name="pt_accent_lime">青檸色</string>
+    <string name="pt_accent_mint">薄荷色</string>
+    <string name="pt_accent_teal">藍綠色</string>
+    <string name="pt_accent_aqua">水藍色</string>
+    <string name="pt_accent_sky">天藍色</string>
+    <string name="pt_accent_steel">鋼藍色</string>
+    <string name="pt_accent_violet">紫羅蘭色</string>
+    <string name="pt_accent_orchid">蘭花紫</string>
+    <string name="pt_accent_rose">玫瑰色</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         DEEPL — detail screen
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="deepl_settings_save">儲存</string>
+
+    <string name="deepl_settings_close_cd">關閉</string>
+
+    <string name="deepl_settings_get_key_title">取得免費 <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> API 金鑰</string>
+
+    <string name="deepl_settings_get_key_subtitle">免費方案每月包含 50 萬個字元，但註冊時需要信用卡</string>
+
+    <string name="deepl_settings_about"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> 是一項以高質素輸出著稱的翻譯服務，尤其擅長歐洲語言。</string>
+
+    <string name="llm_backend_preset_custom">自訂</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC LLM BACKEND SETTINGS (OpenAI / Gemini / DeepSeek)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="llm_backend_api_key_label">API 金鑰</string>
+
+    <string name="llm_backend_model_label">模型</string>
+
+    <string name="llm_backend_provider_label">供應商</string>
+
+    <string name="llm_backend_base_url_label">自訂 URL</string>
+
+    <string name="llm_backend_base_url_custom_hint">輸入你的後端 URL</string>
+
+    <string name="llm_backend_base_url_invalid">請使用 https://；只有本機或區域網絡位址才允許使用 http://</string>
+
+    <string name="llm_backend_get_key_title_fmt">取得 <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> API 金鑰</string>
+
+    <string name="llm_backend_model_custom_entry">自訂…</string>
+
+    <string name="llm_model_picker_loading">正在載入模型…</string>
+
+    <string name="llm_model_picker_fetch_failed">無法取得模型清單。請檢查 API 金鑰，或透過「自訂…」輸入模型 ID。</string>
+
+    <string name="llm_backend_invalid_key_alert_title">無法驗證 API 金鑰</string>
+
+    <string name="llm_backend_invalid_key_alert_message_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> 拒絕了你輸入的金鑰。請在 <xliff:g id="dev_console_url" example="platform.openai.com">%2$s</xliff:g> 仔細核對後重試。</string>
+    <string name="llm_backend_key_needs_workspace_scope">此金鑰未連結至工作區，因此無法在此使用。請在 Claude Console 中於特定工作區內建立金鑰，然後改為輸入該金鑰。</string>
+
+    <string name="llm_backend_invalid_key_alert_button">好的</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ADVANCED LLM CONFIGURATION — user-editable prompt templates.
+         The {token} keywords are literal and stay in Latin.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_header_advanced_llm">進階 LLM 設定</string>
+
+    <string name="settings_llm_context_title">使用最近幾行文字作為上下文</string>
+
+    <string name="settings_llm_context_subtitle">只限線上使用。向線上 LLM 翻譯器提供最近記錄的幾行文字，讓代詞和專有名詞的翻譯更一致。</string>
+
+    <string name="llm_prompt_row_system_title">系統提示詞</string>
+
+    <string name="llm_prompt_row_system_subtitle">傳送給雲端和裝置端 LLM 翻譯器的角色與指令。</string>
+
+    <string name="llm_prompt_row_translation_title">翻譯提示詞</string>
+
+    <string name="llm_prompt_row_translation_subtitle">為你查詢的每個短語構建的請求。</string>
+
+    <string name="llm_prompt_row_batch_title">批量提示詞</string>
+
+    <string name="llm_prompt_row_batch_subtitle">雲端服務一次性翻譯整個螢幕時使用的請求。</string>
+
+    <string name="llm_prompt_reset">重置</string>
+
+    <string name="llm_prompt_keywords_header">關鍵詞</string>
+
+    <string name="llm_prompt_save_anyway">仍然儲存</string>
+
+    <string name="llm_prompt_kw_source_desc">來源語言的英文名稱，例如 Japanese</string>
+
+    <string name="llm_prompt_kw_source_code_desc">來源語言代碼，例如 ja</string>
+
+    <string name="llm_prompt_kw_target_desc">目標語言的英文名稱，例如 English</string>
+
+    <string name="llm_prompt_kw_target_code_desc">目標語言代碼，例如 en</string>
+
+    <string name="llm_prompt_kw_text_desc">待翻譯的文字</string>
+
+    <string name="llm_prompt_kw_context_desc">啟用上下文時的最近幾行文字</string>
+
+    <string name="llm_prompt_kw_count_desc">本批次中的短語數量</string>
+
+    <string name="llm_prompt_kw_strings_desc">待翻譯的短語，以 JSON 陣列形式呈現</string>
+
+    <string name="llm_prompt_invalid_title">無法儲存此提示詞</string>
+
+    <string name="llm_prompt_fatal_blank">提示詞不能為空。</string>
+
+    <string name="llm_prompt_fatal_missing_text">提示詞必須包含 {text}——否則待翻譯的短語永遠不會傳送給模型。</string>
+
+    <string name="llm_prompt_fatal_missing_strings">提示詞必須包含 {strings}——否則待翻譯的短語永遠不會傳送給模型。</string>
+
+    <string name="llm_prompt_warning_title">請檢查此提示詞</string>
+
+    <string name="llm_prompt_advisory_missing_source">缺少 {source} 或 {source_code}：模型將不知道要從哪種語言翻譯。</string>
+
+    <string name="llm_prompt_advisory_missing_target">缺少 {target} 或 {target_code}：模型將不知道要翻譯成哪種語言。</string>
+
+    <string name="llm_prompt_advisory_missing_count">缺少 {N}：模型將不知道會收到多少個短語。</string>
+
+    <string name="llm_prompt_advisory_foreign_token"><xliff:g id="keyword" example="{text}">%1$s</xliff:g> 不會被此提示詞填充，將按字面文字傳送。</string>
+
+    <string name="llm_prompt_advisory_too_long">此提示詞很長。裝置端模型可能會變慢或耗盡上下文視窗。</string>
+
+    <string name="llm_prompt_discard_title">放棄更改？</string>
+
+    <string name="llm_prompt_discard_message">你對此提示詞的修改尚未儲存。</string>
+
+    <string name="llm_prompt_discard_confirm">放棄</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS FOOTERS (Translation Service sections)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tr_service_order_footer">翻譯會按所示次序逐一嘗試已啟用的服務；某項服務不可用時，便會切換至下一項。線上翻譯服務會接收擷取到的文字。啟用前請查看各供應商的私隱政策。</string>
+
+    <string name="tr_service_add_online">新增線上翻譯服務</string>
+
+    <string name="add_online_service_title">新增翻譯服務</string>
+
+    <string name="service_llm_badge">LLM</string>
+
+    <string name="service_account_required">需要帳戶</string>
+
+    <string name="service_account_required_free">需要帳戶（有免費方案）</string>
+
+    <string name="service_no_account_required">無需帳戶</string>
+
+    <string name="tr_service_key_tail_fmt">金鑰 ••••<xliff:g id="key_tail" example="4f2a">%1$s</xliff:g></string>
+
+    <string name="tr_service_remove_title_fmt">移除 <xliff:g id="service_name" example="OpenAI">%1$s</xliff:g>？</string>
+
+    <string name="tr_service_remove_message">這會將該服務從清單中移除，並刪除已儲存的 API 金鑰。</string>
+
+    <string name="tr_service_remove_confirm">移除</string>
+
+    <string name="tr_service_delete_cd">移除服務</string>
+
+    <string name="tr_service_offline_footer">線上翻譯不可用時，便會使用離線翻譯作為後備方案。<xliff:g id="brand_mlkit" example="MLKit">MLKit</xliff:g> 翻譯質素較差，但其他選項可能非常緩慢，而且會耗用大量資源，使用這些選項進行自動翻譯時請留意效能。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         PER-BACKEND STATUS LINE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tr_service_status_loading">正在查詢用量…</string>
+
+    <string name="tr_service_status_quota_fmt">已使用 <xliff:g id="used" example="120,345">%1$s</xliff:g> / <xliff:g id="total" example="500,000">%2$s</xliff:g> 個字元</string>
+
+    <string name="tr_service_status_quota_with_reset_fmt"><xliff:g id="quota_line" example="120,345 / 500,000 characters used">%1$s</xliff:g> · <xliff:g id="reset_date" example="Jun 1">%2$s</xliff:g>重置</string>
+
+    <string name="tr_service_status_invalid_key">API 金鑰無效</string>
+
+    <string name="tr_service_status_no_internet">無網絡連線，無法查詢用量</string>
+
+    <string name="tr_service_status_check_failed">無法查詢用量</string>
+
+    <string name="tr_service_status_no_usage_today">今日無用量</string>
+
+    <string name="tr_service_status_usage_today_fmt">今日：<xliff:g id="tokens" example="12,345">%1$s</xliff:g> 個 token</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         BACKEND QUALITY / SPEED LABELS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tr_service_quality_bad">質素差</string>
+    <string name="tr_service_quality_okay">質素一般</string>
+    <string name="tr_service_quality_good">質素良好</string>
+    <string name="tr_service_quality_better">質素更佳</string>
+
+    <string name="tr_service_speed_very_slow">非常慢</string>
+    <string name="tr_service_speed_slow">慢</string>
+    <string name="tr_service_speed_okay">速度一般</string>
+    <string name="tr_service_speed_fast">快</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         OFFLINE BACKEND ROW
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="offline_backend_quality_label">質素</string>
+    <string name="offline_backend_speed_label">速度</string>
+    <string name="offline_backend_ram_label">記憶體</string>
+    <string name="offline_backend_disk_label">儲存</string>
+
+    <!-- ── Firefox Translations (Bergamot) offline row ──────────────── -->
+    <string name="bergamot_status_downloading">正在下載… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%2$s</xliff:g></string>
+
+    <string name="bergamot_download_failed">無法下載 Firefox Translations 模型</string>
+
+    <string name="bergamot_disable_title">關閉 Firefox Translations？</string>
+
+    <string name="bergamot_disable_message">將停止目前語言組合的離線翻譯。你可以保留已下載的模型，或刪除它以釋放空間。</string>
+
+    <string name="bergamot_disable_keep">僅關閉</string>
+
+    <string name="bergamot_disable_delete">刪除模型</string>
+
+    <string name="bergamot_warmup_downloading">正在下載離線模型… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%2$s</xliff:g></string>
+
+    <string name="bergamot_warmup_downloading_multi">正在下載離線模型（<xliff:g id="file_index" example="1">%1$d</xliff:g>/<xliff:g id="file_count" example="2">%2$d</xliff:g>）… <xliff:g id="bytes_so_far" example="12 MB">%3$s</xliff:g> / <xliff:g id="bytes_total" example="50 MB">%4$s</xliff:g></string>
+    <string name="bergamot_pair_unsupported">暫不支援目前語言組合</string>
+
+    <string name="bergamot_device_unsupported">此裝置不支援</string>
+
+    <string name="offline_backend_downloaded_cd">已下載</string>
+    <string name="offline_backend_not_downloaded_cd">未下載</string>
+    <string name="offline_backend_enabled_cd">已啟用</string>
+    <string name="offline_backend_disabled_cd">已停用</string>
+
+    <string name="offline_backend_row_a11y_fmt"><xliff:g id="title" example="Qwen 2.5 1.5B">%1$s</xliff:g>。質素：<xliff:g id="quality" example="Good quality">%2$s</xliff:g>。速度：<xliff:g id="speed" example="Okay speed">%3$s</xliff:g>。需要記憶體：<xliff:g id="ram" example="4 GB">%4$s</xliff:g>。佔用儲存：<xliff:g id="disk_size" example="1.2 GB">%5$s</xliff:g>。<xliff:g id="downloaded_state" example="Downloaded">%6$s</xliff:g>。<xliff:g id="enabled_state" example="Enabled">%7$s</xliff:g>。</string>
+
+    <string name="offline_backend_row_a11y_no_speed_fmt"><xliff:g id="title" example="ML Kit">%1$s</xliff:g>。質素：<xliff:g id="quality" example="Bad quality">%2$s</xliff:g>。需要記憶體：<xliff:g id="ram" example="&lt; 1 GB">%3$s</xliff:g>。佔用儲存：<xliff:g id="disk_size" example="~30 MB">%4$s</xliff:g>。<xliff:g id="downloaded_state" example="Downloaded">%5$s</xliff:g>。<xliff:g id="enabled_state" example="Enabled">%6$s</xliff:g>。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC DOWNLOAD UI
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="model_download_extracting">正在解壓…</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ON-DEVICE LLM TRANSLATION MODELS (MNN-backed)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- ── Shared pre-flight refusal reasons ──────────────────────── -->
+
+    <string name="model_refused_ram">記憶體不足（此裝置有 <xliff:g id="device_ram" example="3.8 GB">%1$s</xliff:g>，需要 <xliff:g id="needed_ram" example="4.0 GB">%2$s</xliff:g>）</string>
+
+    <string name="model_refused_storage">可用空間不足（需要 <xliff:g id="needed" example="1.2 GB">%1$s</xliff:g>，僅有 <xliff:g id="available" example="400 MB">%2$s</xliff:g>）</string>
+
+    <!-- ── Qwen 2.5 1.5B ──────────────────────────────────────────── -->
+
+    <string name="qwen_mnn_status_not_downloaded">需要記憶體 <xliff:g id="ram" example="4 GB">%1$s</xliff:g>，佔用儲存 <xliff:g id="disk_size" example="1.2 GB">%2$s</xliff:g></string>
+
+    <string name="qwen_mnn_status_downloaded_disabled">已下載但已停用（佔用儲存 <xliff:g id="disk_size" example="1.2 GB">%1$s</xliff:g>）</string>
+
+    <string name="qwen_mnn_status_ready">需要記憶體 <xliff:g id="ram" example="4 GB">%1$s</xliff:g>，佔用儲存 <xliff:g id="disk_size" example="1.2 GB">%2$s</xliff:g></string>
+
+    <string name="qwen_mnn_status_downloading">正在下載… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="1.2 GB">%2$s</xliff:g></string>
+
+    <string name="qwen_mnn_status_verifying">正在驗證下載…</string>
+
+    <string name="qwen_mnn_disable_title">停用 <xliff:g id="brand_qwen" example="Qwen">Qwen</xliff:g>（MNN）？</string>
+
+    <string name="qwen_mnn_disable_message">已安裝該 <xliff:g id="disk_size" example="1.2 GB">%1$s</xliff:g> 模型。你可以保留以備後用，或刪除它以釋放空間。</string>
+
+    <string name="qwen_mnn_download_failed">下載失敗：<xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="qwen_mnn_metered_warning_title">在按流量計費的網絡上下載？</string>
+
+    <string name="qwen_mnn_metered_warning_message"><xliff:g id="brand_qwen" example="Qwen 2.5 1.5B (MNN)">Qwen 2.5 1.5B (MNN)</xliff:g> 大小為 <xliff:g id="download_size" example="1.2 GB">%1$s</xliff:g>。此網絡被標記為按流量計費。是否繼續？</string>
+
+    <string name="qwen_mnn_disable_keep">僅停用</string>
+    <string name="qwen_mnn_disable_delete">刪除模型</string>
+
+    <!-- ── Qwen 3.5 2B ────────────────────────────────────────────── -->
+
+    <string name="qwen35_2b_mnn_status_not_downloaded">需要記憶體 <xliff:g id="ram" example="6 GB">%1$s</xliff:g>，佔用儲存 <xliff:g id="disk_size" example="1.3 GB">%2$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_status_downloaded_disabled">已下載但已停用（佔用儲存 <xliff:g id="disk_size" example="1.3 GB">%1$s</xliff:g>）</string>
+
+    <string name="qwen35_2b_mnn_status_ready">需要記憶體 <xliff:g id="ram" example="6 GB">%1$s</xliff:g>，佔用儲存 <xliff:g id="disk_size" example="1.3 GB">%2$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_status_downloading">正在下載… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="1.3 GB">%2$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_status_verifying">正在驗證下載…</string>
+
+    <string name="qwen35_2b_mnn_disable_title">停用 <xliff:g id="brand_qwen" example="Qwen 3.5 2B">Qwen 3.5 2B</xliff:g>？</string>
+
+    <string name="qwen35_2b_mnn_disable_message">已安裝該 <xliff:g id="disk_size" example="1.3 GB">%1$s</xliff:g> 模型。你可以保留以備後用，或刪除它以釋放空間。</string>
+
+    <string name="qwen35_2b_mnn_download_failed">下載失敗：<xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="qwen35_2b_mnn_metered_warning_title">在按流量計費的網絡上下載？</string>
+
+    <string name="qwen35_2b_mnn_metered_warning_message"><xliff:g id="brand_qwen" example="Qwen 3.5 2B">Qwen 3.5 2B</xliff:g> 大小為 <xliff:g id="download_size" example="1.3 GB">%1$s</xliff:g>。此網絡被標記為按流量計費。是否繼續？</string>
+
+    <string name="qwen35_2b_mnn_disable_keep">僅停用</string>
+    <string name="qwen35_2b_mnn_disable_delete">刪除模型</string>
+
+    <string name="deprecated_badge_label">已棄用</string>
+
+    <!-- ── Gemma 4 E2B ────────────────────────────────────────────── -->
+
+    <string name="gemma_e2b_mnn_status_not_downloaded">需要記憶體 <xliff:g id="ram" example="6 GB">%1$s</xliff:g>，佔用儲存 <xliff:g id="disk_size" example="2.1 GB">%2$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_status_downloaded_disabled">已下載但已停用（佔用儲存 <xliff:g id="disk_size" example="2.1 GB">%1$s</xliff:g>）</string>
+
+    <string name="gemma_e2b_mnn_status_ready">需要記憶體 <xliff:g id="ram" example="6 GB">%1$s</xliff:g>，佔用儲存 <xliff:g id="disk_size" example="2.1 GB">%2$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_status_downloading">正在下載… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="2.1 GB">%2$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_status_verifying">正在驗證下載…</string>
+
+    <string name="gemma_e2b_mnn_disable_title">停用 <xliff:g id="brand_gemma" example="Gemma 4 E2B">Gemma 4 E2B</xliff:g>？</string>
+
+    <string name="gemma_e2b_mnn_disable_message">已安裝該 <xliff:g id="disk_size" example="2.1 GB">%1$s</xliff:g> 模型。你可以保留以備後用，或刪除它以釋放空間。</string>
+
+    <string name="gemma_e2b_mnn_download_failed">下載失敗：<xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="gemma_e2b_mnn_metered_warning_title">在按流量計費的網絡上下載？</string>
+
+    <string name="gemma_e2b_mnn_metered_warning_message"><xliff:g id="brand_gemma" example="Gemma 4 E2B">Gemma 4 E2B</xliff:g> 大小為 <xliff:g id="download_size" example="2.1 GB">%1$s</xliff:g>。此網絡被標記為按流量計費。是否繼續？</string>
+
+    <string name="gemma_e2b_mnn_disable_keep">僅停用</string>
+    <string name="gemma_e2b_mnn_disable_delete">刪除模型</string>
+
+    <!-- ── Tencent Hunyuan-MT 1.5 1.8B ────────────────────────────── -->
+
+    <string name="hymt2_status_not_downloaded">需要記憶體 <xliff:g id="ram" example="4 GB">%1$s</xliff:g>，佔用儲存 <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g></string>
+    <string name="hymt2_status_downloaded_disabled">已下載但已停用（佔用儲存 <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g>）</string>
+    <string name="hymt2_status_ready">需要記憶體 <xliff:g id="ram" example="4 GB">%1$s</xliff:g>，佔用儲存 <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g></string>
+    <string name="hymt2_status_downloading">正在下載… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="1.5 GB">%2$s</xliff:g></string>
+    <string name="hymt2_status_verifying">正在驗證下載…</string>
+    <string name="hymt2_disable_title">停用 <xliff:g id="brand_hymt2" example="Hy-MT2">Hy-MT2</xliff:g>？</string>
+    <string name="hymt2_disable_message">已安裝該 <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> 模型。你可以保留以備後用，或刪除它以釋放空間。</string>
+    <string name="hymt2_download_failed">下載失敗：<xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+    <string name="hymt2_metered_warning_title">在按流量計費的網絡上下載？</string>
+    <string name="hymt2_metered_warning_message"><xliff:g id="brand_hymt2" example="Hy-MT2">Hy-MT2</xliff:g> 大小為 <xliff:g id="download_size" example="1.5 GB">%1$s</xliff:g>。此網絡被標記為按流量計費。是否繼續？</string>
+    <string name="hymt2_disable_keep">僅停用</string>
+    <string name="hymt2_disable_delete">刪除模型</string>
+    <string name="hymt_status_not_downloaded">需要記憶體 <xliff:g id="ram" example="4 GB">%1$s</xliff:g>，佔用儲存 <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g></string>
+
+    <string name="hymt_status_downloaded_disabled">已下載但已停用（佔用儲存 <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g>）</string>
+
+    <string name="hymt_status_ready">需要記憶體 <xliff:g id="ram" example="4 GB">%1$s</xliff:g>，佔用儲存 <xliff:g id="disk_size" example="1.5 GB">%2$s</xliff:g></string>
+
+    <string name="hymt_status_downloading">正在下載… <xliff:g id="bytes_so_far" example="120 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="1.5 GB">%2$s</xliff:g></string>
+
+    <string name="hymt_status_verifying">正在驗證下載…</string>
+
+    <string name="hymt_disable_title">停用 <xliff:g id="brand_hunyuan" example="Hunyuan-MT">Hunyuan-MT</xliff:g>？</string>
+
+    <string name="hymt_disable_message">已安裝該 <xliff:g id="disk_size" example="1.5 GB">%1$s</xliff:g> 模型。你可以保留以備後用，或刪除它以釋放空間。</string>
+
+    <string name="hymt_download_failed">下載失敗：<xliff:g id="error_message" example="Network unreachable">%1$s</xliff:g></string>
+
+    <string name="hymt_metered_warning_title">在按流量計費的網絡上下載？</string>
+
+    <string name="hymt_metered_warning_message"><xliff:g id="brand_hunyuan15" example="Hunyuan-MT 1.5">Hunyuan-MT 1.5</xliff:g> 大小為 <xliff:g id="download_size" example="1.5 GB">%1$s</xliff:g>。此網絡被標記為按流量計費。是否繼續？</string>
+
+    <string name="hymt_disable_keep">僅停用</string>
+    <string name="hymt_disable_delete">刪除模型</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         HUNYUAN-MT LEGAL ATTESTATION (legal text — translated faithfully)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="hymt_legal_title">法律聲明及區域限制</string>
+
+    <string name="hymt_legal_message"><xliff:g id="brand_tencent" example="Tencent">Tencent</xliff:g> 的 <xliff:g id="brand_hunyuan15" example="Hunyuan-MT 1.5">Hunyuan-MT 1.5</xliff:g> 模型依據 <xliff:g id="license_name" example="Tencent HY Community License Agreement">Tencent HY Community License Agreement</xliff:g> 授權。該許可證排除在歐盟、英國和韓國境內的使用。\n\n點按「同意」即表示你聲明並保證：\n\n(1) 你目前並未居住於或身處歐盟、英國或韓國境內。\n\n(2) 你不會使用本模型的輸出來改進任何其他 AI 模型（依據本許可證的 <xliff:g id="license_section" example="§5(b)">§5(b)</xliff:g>）。</string>
+
+    <string name="hymt_legal_agree">同意並啟用 <xliff:g id="brand_hunyuan" example="Hunyuan">Hunyuan</xliff:g></string>
+
+    <string name="hymt_legal_cancel">取消</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         COLD-LAUNCH MIGRATION ALERT
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="legacy_engines_removed_title">離線翻譯已更新</string>
+    <string name="legacy_engines_removed_message">你的舊版離線翻譯器（<xliff:g id="brand_qwen" example="Qwen">Qwen</xliff:g> 和 <xliff:g id="brand_translategemma" example="TranslateGemma">TranslateGemma</xliff:g>）已被移除，並替換為更快的基於 MNN 的版本。開啟「設定」以啟用新的翻譯器。</string>
+    <string name="legacy_engines_removed_button_settings">設定</string>
+    <string name="legacy_engines_removed_button_cancel">取消</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         LLM HARDWARE-UNSUPPORTED STATUS LINES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="llm_hardware_unsupported_arm64">此裝置不支援（需要 arm64 CPU）</string>
+
+    <string name="llm_hardware_unsupported_ram">此裝置不支援（至少需要 <xliff:g id="min_ram_gb" example="4">%1$d</xliff:g> GB 記憶體）</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         PRE-TOGGLE LOW-MEMORY GATE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="llm_low_memory_title">可用記憶體不足</string>
+
+    <string name="llm_low_memory_message"><xliff:g id="model_name" example="Qwen 2.5 1.5B">%1$s</xliff:g> 執行時大約需要 <xliff:g id="needed_memory" example="4 GB">%2$s</xliff:g> 的可用記憶體。目前僅有 <xliff:g id="free_memory" example="1.2 GB">%3$s</xliff:g> 可用。\n\n請關閉其他應用程式以釋放記憶體，或在此模型不適合你的裝置時取消。</string>
+
+    <string name="llm_low_memory_start_anyway">仍然啟動</string>
+
+    <string name="llm_low_memory_delete">刪除模型</string>
+
+    <string name="llm_low_memory_cancel">取消</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         WARNING-TONE LLM STATUS LINE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="llm_status_low_memory_badge">記憶體不足——翻譯正在使用後備方案</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING-ICON MENU WARNING PILL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="degraded_warning_offline">離線——翻譯質素已降低</string>
+    <string name="degraded_warning_cooldown">服務不可用，<xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g> 前質素較低</string>
+    <string name="degraded_warning_quota">配額已用完，<xliff:g id="retry_time" example="3:42 PM">%1$s</xliff:g> 前質素較低</string>
+    <string name="degraded_warning_account">服務帳戶存在問題，質素較低</string>
+    <string name="degraded_warning_low_memory">記憶體不足——翻譯質素已降低</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION ERROR PILL
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="translation_error_connection">連線錯誤</string>
+
+    <string name="translation_error_auth"><xliff:g id="service" example="Gemini">%1$s</xliff:g>：API 金鑰無效</string>
+
+    <string name="translation_error_billing"><xliff:g id="service" example="Claude">%1$s</xliff:g>：餘額不足</string>
+
+    <string name="translation_error_daily_quota"><xliff:g id="service" example="Gemini">%1$s</xliff:g>：已達到每日上限</string>
+
+    <string name="translation_error_monthly_quota"><xliff:g id="service" example="DeepL">%1$s</xliff:g>：本月配額已用完</string>
+
+    <string name="translation_error_rate_limited"><xliff:g id="service" example="Gemini">%1$s</xliff:g>：請求過多</string>
+
+    <string name="translation_error_server"><xliff:g id="service" example="Gemini">%1$s</xliff:g>：伺服器錯誤</string>
+
+    <string name="translation_error_rejected_code"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>：請求被拒絕（HTTP <xliff:g id="status_code" example="404">%2$s</xliff:g>）</string>
+
+    <string name="translation_error_rejected"><xliff:g id="service" example="OpenAI">%1$s</xliff:g>：請求被拒絕</string>
+
+    <string name="translation_error_bad_response"><xliff:g id="service" example="Gemini">%1$s</xliff:g>：響應異常</string>
+
+    <string name="translation_error_timeout"><xliff:g id="service" example="DeepSeek">%1$s</xliff:g>：無響應</string>
+
+    <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>：無法連線</string>
+
+    <string name="translation_error_discard_card_title">放棄這張卡片？</string>
+
+    <string name="translation_error_discard_card_message">開啟設定後，這張卡片將會丟失，需要重新擷取螢幕後再次生成。</string>
+
+    <string name="translation_error_discard_card_confirm">前往設定</string>
+
+    <string name="hold_translation_failed">無法翻譯</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MAIN SCREEN — bottom-bar and overflow-menu items
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="nav_settings">設定</string>
+
+    <string name="nav_regions">區域</string>
+
+    <string name="live_mode_auto_label">自動</string>
+
+    <string name="live_mode_pause_label">暫停</string>
+
+    <string name="live_mode_auto_translate_label">自動翻譯</string>
+
+    <string name="live_mode_pause_auto_label">暫停自動</string>
+
+    <string name="live_mode_auto_with_hint">自動<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <string name="menu_capture_region">擷取區域</string>
+
+    <string name="menu_translations">翻譯</string>
+
+    <string name="menu_close">關閉</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC BUTTON LABELS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="btn_save">儲存</string>
+
+    <string name="btn_cancel">取消</string>
+
+    <string name="btn_clear">清除</string>
+
+    <string name="btn_ok">好的</string>
+
+    <string name="btn_not_now">暫不</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         CUSTOM-REGION SHEET
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="btn_save_to_list">儲存到清單</string>
+
+    <string name="custom_region_edit_title">編輯<xliff:g id="region_label" example="Dialogue box">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         REGION PICKER SHEET
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="region_picker_editing_title">編輯區域</string>
+
+    <string name="region_default_full_screen">全螢幕</string>
+
+    <string name="region_default_capture">區域</string>
+
+    <string name="region_action_remove">移除</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MAIN-SCREEN BIG TRANSLATE BUTTON
+         (prefix is joined to the region label by code with a space)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="translate_button_prefix_translate">翻譯</string>
+
+    <string name="translate_button_prefix_reload">重新翻譯</string>
+
+    <string name="translate_button_subtitle_hold_to_hide_translations">長按以在遊戲畫面上隱藏翻譯</string>
+
+    <string name="translate_button_subtitle_hold_to_show_translations_instead_of_hint">長按以顯示翻譯而非<xliff:g id="hint_label" example="furigana">%1$s</xliff:g></string>
+
+    <string name="translate_button_subtitle_hold_to_show_hint">長按以在遊戲畫面上顯示<xliff:g id="hint_label" example="furigana">%1$s</xliff:g></string>
+
+    <string name="translate_button_subtitle_hold_to_show_translations">長按以在遊戲畫面上顯示翻譯</string>
+
+    <string name="hint_label_pinyin_lower">拼音</string>
+    <string name="hint_label_furigana_lower">振假名</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         FLOATING ICON LONG-PRESS MENU
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="floating_icon_close_label_turn_off">關閉</string>
+
+    <string name="floating_icon_close_label_hide">隱藏</string>
+
+    <string name="floating_menu_btn_capture_region">擷取\n區域</string>
+
+    <string name="floating_menu_capture_screen">擷取\n螢幕</string>
+
+    <string name="floating_menu_edit_region">編輯區域</string>
+
+    <string name="floating_menu_panel_language">語言</string>
+
+    <string name="floating_menu_panel_overlays">疊加層</string>
+
+    <string name="floating_menu_panel_open_app">開啟 <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
+
+    <string name="floating_menu_drag_instruction">拖曳手指以擷取特定區域</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         DEEPL SETTINGS — API-key field label
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="deepl_api_key_field_label"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> API 金鑰</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         AUTO-TRANSLATE DIALOG
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_overlay_mode_title">疊加層模式</string>
+
+    <string name="settings_overlay_mode_subtitle">在自動模式或長按預覽時顯示哪些疊加內容。</string>
+
+    <string name="settings_capture_interval_title">擷取間隔</string>
+
+    <string name="settings_capture_interval_seconds_suffix">秒</string>
+
+    <string name="settings_capture_interval_hint">在自動翻譯期間擷取遊戲畫面的頻率。最短 <xliff:g id="min_seconds" example="1">%1$s</xliff:g> 秒。</string>
+
+    <string name="overlay_mode_option_translation">翻譯</string>
+
+    <string name="overlay_mode_option_furigana">振假名</string>
+
+    <string name="overlay_mode_option_pinyin">拼音</string>
+
+    <string name="settings_hide_overlays_during_auto_mode">在自動模式下隱藏疊加層</string>
+
+    <string name="settings_hide_overlays_ignored_multi_display">選擇多個顯示器時此項被忽略——疊加層會在每個螢幕上呈現。</string>
+
+    <string name="settings_touches_refresh_title">輕觸螢幕以重新整理翻譯</string>
+
+    <string name="settings_vertical_grow_title">加寬豎排文字</string>
+
+    <string name="settings_vertical_grow_subtitle">放大狹窄的豎排文字框，使翻譯可以橫向閲讀。可能會遮擋附近的內容。</string>
+
+    <string name="settings_header_overlay">疊加層</string>
+
+    <string name="settings_overlay_min_text_title">最小文字大小</string>
+
+    <string name="settings_overlay_min_text_subtitle">更改此值可能會使疊加層比原文更大。</string>
+
+    <string name="settings_overlay_min_text_warning">實驗性功能。可能導致自動翻譯的疊加層更頻繁地被移除，在玩動畫較多的遊戲時尤其明顯</string>
+
+    <string name="settings_overlay_min_text_example">示例文字</string>
+
+    <string name="settings_filter_furigana_title">從 OCR 結果中過濾振假名</string>
+
+    <string name="settings_edge_indicator_title">邊緣指示器</string>
+
+    <string name="settings_edge_indicator_subtitle">疊加層顯示期間，螢幕四周會出現柔和的光暈。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         HOTKEY SETUP DIALOG
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="dialog_hotkey_setup_title">設定快捷鍵</string>
+
+    <string name="dialog_hotkey_setup_instruction">按住按鍵 2 秒</string>
+
+    <string name="dialog_hotkey_setup_countdown">按住 <xliff:g id="remaining_seconds" example="1.4">%1$s</xliff:g></string>
+
+    <string name="dialog_hotkey_setup_typing_key">此按鍵會輸入字元，打字時也會觸發。請加上 Ctrl 或改用功能鍵。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         TRANSLATION-RESULT SCREEN — toolbar + per-row buttons
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="cd_translation_result_back">返回</string>
+
+    <string name="cd_toggle_translation_visibility">切換譯文可見性</string>
+
+    <string name="cd_toggle_inline_furigana">切換內嵌振假名</string>
+
+    <string name="cd_toggle_inline_pinyin">切換內嵌拼音</string>
+
+    <string name="cd_text_size">文字大小</string>
+
+    <string name="cd_read_original_aloud">朗讀原文</string>
+
+    <string name="cd_edit_original">編輯原文</string>
+
+    <string name="cd_add_to_anki">新增到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g></string>
+
+    <string name="cd_more_actions">更多操作</string>
+
+    <string name="header_action_furigana">振假名</string>
+
+    <string name="header_action_pinyin">拼音</string>
+
+    <string name="header_action_read_aloud">朗讀</string>
+
+    <string name="header_action_edit">編輯文字</string>
+
+    <string name="cd_toggle_original_visibility">切換原文可見性</string>
+
+    <string name="cd_toggle_words_visibility">切換詞語可見性</string>
+
+    <string name="cd_close">關閉</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         REGION-PICKER ROW — per-row icon contentDescriptions
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="cd_drag_to_reorder">拖曳以重新排序</string>
+
+    <string name="cd_delete_region">刪除區域</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MAIN ACTIVITY DIALOGS (crash / update / target-pack migration)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="crash_dialog_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 上次發生了崩潰</string>
+
+    <string name="crash_dialog_message">要將崩潰報告傳送給開發者嗎？它包含堆疊追蹤、近期應用程式日誌，以及 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 最近 OCR 辨識或查詢過的任何文字。不包括帳戶資訊。</string>
+
+    <string name="crash_dialog_send">傳送</string>
+
+    <string name="crash_dialog_discard">丟棄</string>
+
+    <string name="crash_dialog_later">稍後</string>
+
+    <string name="crash_email_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 崩潰 – v<xliff:g id="version" example="2.2.0">%1$s</xliff:g></string>
+
+    <string name="crash_email_body">重現步驟：\n\n（可選——描述發生此問題時你正在進行的操作。）\n\n裝置資訊已附於附件中。</string>
+
+    <string name="update_dialog_title">有可用更新</string>
+
+    <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> 已在 <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> 上發佈。</string>
+
+    <string name="update_dialog_view_release">查看更新説明</string>
+
+    <string name="update_dialog_skip">跳過此版本</string>
+
+    <string name="update_dialog_ask_again_later">稍後再問</string>
+
+    <string name="update_dialog_download">下載並安裝</string>
+
+    <string name="update_dialog_size_note">下載大小：<xliff:g id="size" example="128 MB">%1$s</xliff:g></string>
+
+    <string name="update_dialog_metered_note">你正在使用按流量計費的網絡。</string>
+
+    <string name="update_progress_title">正在更新 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="update_progress_verifying">正在驗證…</string>
+
+    <string name="update_unknown_sources_title">允許安裝更新</string>
+
+    <string name="update_unknown_sources_message">要完成更新，請在即將開啟的設定頁面中允許 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 安裝應用程式更新。開啟該權限時，Android 可能會重新啟動應用程式。已下載的更新會被保留，安裝將自動繼續。</string>
+
+    <string name="update_unknown_sources_button">開啟設定</string>
+
+    <string name="update_error_title">更新失敗</string>
+
+    <string name="update_error_incomplete">下載未正確完成。請重試，或從 <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> 取得更新。</string>
+
+    <string name="update_error_verification">無法驗證下載的檔案。請重試，或從 <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> 取得更新。</string>
+
+    <string name="update_error_wrong_package">下載的檔案不是 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 的更新。請改從 <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> 取得更新。</string>
+
+    <string name="update_error_downgrade">下載的版本不比已安裝的版本新。</string>
+
+    <string name="update_error_signature">無法在目前版本上覆蓋安裝此更新。請從 <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> 手動安裝。</string>
+
+    <string name="update_error_no_space">可用空間不足，無法下載更新（還需 <xliff:g id="needed" example="230 MB">%1$s</xliff:g>）。</string>
+
+    <string name="update_error_retry">重試</string>
+
+    <string name="update_error_install_launch">無法開啟系統安裝程式。</string>
+
+    <string name="update_none_title">未發現更新</string>
+
+    <string name="update_none_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version" example="2.4.1">%1$s</xliff:g> 已是最新版本。</string>
+
+    <string name="update_check_failed_title">無法檢查更新</string>
+
+    <string name="update_check_failed_message">無法連線 <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> 查找新版本。請檢查你的網絡連線後重試。</string>
+
+    <string name="toast_no_browser_available">沒有可用的瀏覽器</string>
+
+    <string name="target_pack_migration_title"><xliff:g id="target_language" example="Spanish">%1$s</xliff:g>釋義現已可用</string>
+
+    <string name="target_pack_migration_message">現已提供<xliff:g id="target_language" example="Spanish">%1$s</xliff:g>釋義包。是否下載它，以便用<xliff:g id="target_language2" example="Spanish">%2$s</xliff:g>而非英語顯示詞語釋義？</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         OVERLAY UI CONTROLLER — confirmation dialogs
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="overlay_turn_off_title">關閉 <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g>？</string>
+
+    <string name="overlay_turn_off_message">在 <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> 應用中重新開啟</string>
+
+    <string name="overlay_hide_controls_title">隱藏 <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> 遊戲畫面控制項？</string>
+
+    <string name="overlay_hide_controls_message">「暫時隱藏」會在你下次開啟 <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> 時讓它重新出現。「關閉」會將其停用，直到你在設定中重新啟用。</string>
+
+    <string name="overlay_hide_for_now">暫時隱藏</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         LANGUAGE PACK / TARGET-PACK INSTALLER DIALOGS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="install_downloading_generic">正在下載</string>
+
+    <string name="install_downloading_with_bytes">正在下載… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="84 MB">%2$s</xliff:g></string>
+
+    <string name="lang_setup_downloading_ocr_model">正在下載 OCR 模型… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="47 MB">%2$s</xliff:g></string>
+
+    <string name="install_downloading_definitions">正在下載釋義</string>
+
+    <string name="install_downloading_definitions_with_bytes">正在下載釋義… <xliff:g id="bytes_so_far" example="12 MB">%1$s</xliff:g> / <xliff:g id="bytes_total" example="84 MB">%2$s</xliff:g></string>
+
+    <string name="install_downloading_translation_model">正在下載翻譯模型</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — section group headers
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_header_auto_translate">自動翻譯</string>
+    <string name="settings_header_capture_display">擷取顯示器</string>
+    <string name="settings_header_online_translations">線上翻譯</string>
+    <string name="settings_header_offline_translations">離線翻譯</string>
+    <string name="settings_header_ocr">文字辨識（OCR）</string>
+    <string name="settings_ocr_note_builtin">內建</string>
+
+    <string name="settings_ocr_default_badge">預設</string>
+
+    <string name="ocr_label_paddle_accurate">PaddleOCR（精準）</string>
+
+    <string name="ocr_label_paddle_fast">PaddleOCR（快速）</string>
+
+    <string name="settings_ocr_tier_accurate_note">能辨識小字，速度較慢</string>
+
+    <string name="settings_ocr_tier_fast_note">快得多，可能漏掉小字</string>
+
+    <string name="settings_ocr_note_meiki">最適合遊戲，詞語查詢最精準</string>
+
+    <string name="settings_ocr_note_mlkit">即使畫面文字很多也迅速</string>
+
+    <string name="settings_ocr_footer_guidance">標有「<xliff:g id="default_badge" example="Default">%1$s</xliff:g>」的引擎是此語言的推薦選項。如果讀取速度慢，可以試試更快的選項。如果小字或藝術字被誤認，可以換一個引擎。</string>
+
+    <string name="settings_ocr_delete_cd">刪除 <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
+
+    <string name="settings_ocr_delete_title">刪除 <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g>？</string>
+
+    <string name="settings_ocr_delete_msg">這將從此裝置移除 <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> 模型。你之後可以重新下載。</string>
+
+    <string name="settings_ocr_delete_shared_msg"><xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g> 也被以下語言使用。現在刪除可釋放空間；下次切換到其中之一時會重新下載：\n\n<xliff:g id="languages" example="Chinese">%2$s</xliff:g></string>
+
+    <string name="settings_ocr_delete_camera_note">相機工具也在使用此引擎，它將切換回你的預設選擇。</string>
+
+    <string name="settings_ocr_delete_import_note">檔案匯入工具也在使用此引擎，它將切換回你的預設選擇。</string>
+
+    <string name="settings_ocr_delete_camera_import_note">相機和檔案匯入工具也在使用此引擎，它們將切換回你的預設選擇。</string>
+
+    <string name="settings_ocr_delete_confirm">刪除</string>
+
+    <string name="settings_ocr_downloading_title">正在下載 <xliff:g id="engine" example="PaddleOCR">%1$s</xliff:g></string>
+
+    <string name="settings_ocr_downloading_msg">正在開始…</string>
+
+    <string name="settings_ocr_verifying">正在驗證…</string>
+
+    <string name="settings_ocr_installing">正在安裝…</string>
+
+    <string name="settings_ocr_download_failed">無法下載 OCR 模型。請檢查你的網絡連線後重試。</string>
+
+    <string name="settings_ocr_use_manga_subtitle">實驗性功能。僅建議用於閲讀漫畫。速度慢，且在遊戲和其他內容上質素較差。</string>
+
+    <string name="settings_ocr_disable_manga_title">關閉 MangaOCR？</string>
+
+    <string name="settings_ocr_disable_manga_msg">保留已下載的模型（<xliff:g id="size" example="68 MB">%1$s</xliff:g>），還是刪除它以釋放空間？</string>
+
+    <string name="settings_ocr_disable_keep">保留模型</string>
+
+    <string name="settings_ocr_disable_delete">刪除模型</string>
+
+    <string name="settings_header_support">支援</string>
+
+    <string name="settings_header_configure">設定</string>
+    <string name="settings_cell_appearance">外觀</string>
+    <string name="settings_cell_hotkeys">快捷鍵</string>
+    <string name="settings_cell_capture_overlay">擷取與疊加層</string>
+    <string name="settings_cell_anki">Anki 抽認卡</string>
+    <string name="settings_cell_translation_services">翻譯服務</string>
+    <string name="settings_cell_tts">文字轉語音</string>
+
+    <string name="settings_yomitan_empty_summary">匯入詞典以增強詞語查詢</string>
+
+    <plurals name="settings_yomitan_count_summary">
+        <item quantity="other">已匯入 <xliff:g id="count" example="3">%d</xliff:g> 部詞典</item>
+    </plurals>
+
+    <plurals name="settings_yomitan_outdated_summary">
+        <item quantity="other">有 <xliff:g id="count" example="3">%d</xliff:g> 部詞典需要重新匯入</item>
+    </plurals>
+
+    <string name="yomitan_page_description">Yomitan 詞典是由社群建立、供 Yomitan 瀏覽器擴充功能使用的詞典檔案。內容可包括額外詞典、詞頻資料及音高重音資料。用 + 按鈕匯入詞典（.zip）或 Yomitan 詞典集合匯出檔案（.json），PlayTranslate 便會將其無縫整合到應用程式的各處。</string>
+
+    <string name="yomitan_outdated_label">應用程式更新後需要重新匯入。點按以重新匯入其檔案。</string>
+
+    <string name="yomitan_collection_imported_title">已匯入合集</string>
+
+    <string name="yomitan_collection_none_title">沒有可匯入的新內容</string>
+
+    <plurals name="yomitan_collection_imported_count">
+        <item quantity="other">已匯入 <xliff:g id="count" example="4">%d</xliff:g> 部詞典</item>
+    </plurals>
+
+    <plurals name="yomitan_collection_skipped_count">
+        <item quantity="other">有 <xliff:g id="count" example="2">%d</xliff:g> 部詞典已是最新</item>
+    </plurals>
+
+    <string name="yomitan_import_action">匯入詞典</string>
+
+    <string name="yomitan_category_terms">詞語</string>
+
+    <string name="yomitan_category_kanji">漢字</string>
+
+    <string name="yomitan_category_frequency">詞頻</string>
+
+    <string name="yomitan_category_kanji_frequency">漢字頻率</string>
+
+    <string name="yomitan_category_pitch_accent">音高重音</string>
+
+    <string name="yomitan_category_pronunciation">發音</string>
+
+    <string name="yomitan_importing_title">正在匯入詞典</string>
+
+    <string name="yomitan_importing_message">正在匯入詞典檔案…</string>
+
+    <string name="yomitan_importing_progress">正在匯入 <xliff:g id="current" example="2">%1$d</xliff:g> / <xliff:g id="total" example="5">%2$d</xliff:g>…</string>
+
+    <string name="yomitan_import_summary_title">匯入完成</string>
+
+    <string name="yomitan_import_summary_title_none">無法匯入</string>
+
+    <plurals name="yomitan_import_summary_count">
+        <item quantity="other">已匯入 <xliff:g id="total" example="6">%2$d</xliff:g> 部詞典中的 <xliff:g id="imported" example="4">%1$d</xliff:g> 部。</item>
+    </plurals>
+
+    <string name="yomitan_import_summary_duplicates">已匯入過：<xliff:g id="names" example="JMdict, KANJIDIC">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_invalid">無法讀取：<xliff:g id="names" example="notes.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_no_space">空間不足：<xliff:g id="names" example="big.zip">%1$s</xliff:g></string>
+
+    <string name="yomitan_import_summary_failed">失敗：<xliff:g id="names" example="broken.zip">%1$s</xliff:g></string>
+
+    <plurals name="yomitan_import_summary_more">
+        <item quantity="other">+<xliff:g id="count" example="3">%1$d</xliff:g> 項</item>
+    </plurals>
+
+    <string name="yomitan_import_summary_unknown_file">未知檔案</string>
+
+    <string name="yomitan_invalid_title">無效檔案</string>
+
+    <string name="yomitan_invalid_message">無法將此檔案作為 Yomitan 詞典讀取。</string>
+
+    <string name="yomitan_no_space_title">空間不足</string>
+
+    <string name="yomitan_no_space_message">匯入此詞典約需 <xliff:g id="needed" example="180 MB">%1$s</xliff:g> 可用空間，但目前僅有 <xliff:g id="available" example="42 MB">%2$s</xliff:g>。請釋放空間後重試。</string>
+
+    <string name="yomitan_single_dict_title">僅顯示來自單個詞典的釋義</string>
+
+    <string name="yomitan_single_dict_subtitle">釋義來自優先次序最高且有結果的詞典；內建詞典作為最後的後備。</string>
+
+    <string name="yomitan_styling_title">詞典樣式</string>
+
+    <string name="yomitan_styling_subtitle">按各詞典自帶的排版和樣式顯示釋義。僅對此後匯入的詞典生效；關閉後始終使用純文字。</string>
+
+    <string name="yomitan_auto_update_label">自動更新</string>
+
+    <string name="yomitan_auto_update_subtitle">自動下載並安裝此詞典的新版本</string>
+
+    <string name="yomitan_io_error_title">匯入失敗</string>
+
+    <string name="yomitan_io_error_message">無法匯入該檔案。請檢查儲存空間後重試。</string>
+
+    <string name="yomitan_duplicate_title">已匯入</string>
+
+    <string name="yomitan_duplicate_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> 已匯入。請先刪除它，才能再次匯入。</string>
+
+    <string name="yomitan_delete_title">刪除 <xliff:g id="title" example="Jitendex.org">%1$s</xliff:g>？</string>
+
+    <string name="yomitan_delete_message">這會將已匯入的詞典從應用程式中移除。</string>
+
+    <string name="yomitan_delete_message_multi">此詞典出現在多個分組中——將從所有分組中移除。</string>
+
+    <string name="yomitan_delete_confirm">刪除</string>
+
+    <string name="cd_yomitan_delete">刪除詞典</string>
+
+    <string name="yomitan_category_recommended">推薦</string>
+
+    <string name="yomitan_downloading_title">正在下載詞典</string>
+
+    <string name="yomitan_downloading_message"><xliff:g id="received" example="3.2 MB">%1$s</xliff:g> / <xliff:g id="total" example="11 MB">%2$s</xliff:g></string>
+
+    <string name="cd_yomitan_download">下載詞典</string>
+
+    <string name="yomitan_download_error_title">下載失敗</string>
+
+    <string name="yomitan_download_error_message">無法下載該詞典。請檢查你的網絡連線後重試。</string>
+
+    <string name="yomitan_metadata_title">詞典</string>
+
+    <string name="yomitan_metadata_header">中繼資料</string>
+
+    <string name="yomitan_metadata_unavailable">無法讀取此詞典的中繼資料。</string>
+
+    <string name="yomitan_alias_label">別名</string>
+
+    <string name="yomitan_alias_hint">新增暱稱</string>
+
+    <string name="yomitan_accent_default_cd">預設（副標題文字顏色）</string>
+
+    <string name="yomitan_source_language_label">來源語言</string>
+
+    <string name="yomitan_check_updates_label">檢查更新</string>
+
+    <string name="yomitan_update_checking_title">正在檢查更新</string>
+
+    <string name="yomitan_update_available_title">有可用更新</string>
+
+    <string name="yomitan_update_available_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> 可更新到版本 <xliff:g id="revision" example="2026.02.05">%2$s</xliff:g>。</string>
+
+    <string name="yomitan_update_confirm">更新</string>
+
+    <string name="yomitan_update_repair_title">需要重新下載</string>
+
+    <string name="yomitan_update_repair_message">需要重新下載 <xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> 的資料，才能在此版本的應用程式中使用。</string>
+
+    <string name="yomitan_update_redownload_confirm">重新下載</string>
+
+    <string name="yomitan_update_none_title">已是最新</string>
+
+    <string name="yomitan_update_none_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> 已是最新版本。</string>
+
+    <string name="yomitan_update_check_failed_title">無法檢查更新</string>
+
+    <string name="yomitan_update_check_failed_message">無法連線至該詞典的更新伺服器。請檢查你的網絡連線後重試。</string>
+
+    <string name="yomitan_update_busy_title">暫時無法更新</string>
+
+    <string name="yomitan_update_busy_message">正在進行翻譯會話。請在結束後重試。</string>
+
+    <string name="yomitan_update_scan_active_message">正在背景檢查詞典更新。請稍後重試。</string>
+
+    <string name="yomitan_update_skipped_title">未應用更新</string>
+
+    <string name="yomitan_update_skipped_message">更新已下載，但與此詞典不匹配，因此未安裝。</string>
+
+    <string name="yomitan_update_done_title">詞典已更新</string>
+
+    <string name="yomitan_update_done_message"><xliff:g id="title" example="Jitendex.org">%1$s</xliff:g> 已更新到最新版本。</string>
+
+    <string name="settings_header_tools">工具</string>
+
+    <string name="settings_cell_dictionary">詞典</string>
+
+    <string name="settings_cell_history">歷史記錄</string>
+
+    <string name="settings_cell_history_summary_on">開 · 擷取到的句子記錄</string>
+
+    <string name="settings_cell_history_summary_off">關 · 擷取到的句子記錄</string>
+
+    <string name="history_screen_title">歷史記錄</string>
+
+    <string name="history_toggle_title">保留文字歷史記錄</string>
+
+    <string name="history_toggle_subtitle">將擷取到的句子儲存在此裝置上</string>
+
+    <string name="history_empty_off">文字歷史記錄已關閉。開啟後即可保留 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 擷取到的句子。</string>
+
+    <string name="history_empty_none">這裏還沒有內容。文字會在翻譯時逐條出現。</string>
+
+    <string name="history_action_copy">複製</string>
+
+    <string name="history_action_anki">新增到 Anki</string>
+
+    <string name="history_action_delete">刪除</string>
+
+    <string name="history_clear_menu">清空歷史記錄</string>
+
+    <string name="history_clear_confirm_title">清空所有歷史記錄？</string>
+
+    <string name="history_clear_confirm_message">所有已儲存的記錄都將從此裝置上刪除。</string>
+
+    <string name="history_delete_confirm_title">刪除這條記錄？</string>
+
+    <string name="history_copied_toast">已複製</string>
+
+    <string name="history_capture_image_toggle_title">儲存擷取影像</string>
+
+    <string name="history_capture_image_toggle_subtitle">為每次相機或螢幕擷取保留一張圖片</string>
+
+    <string name="history_hide_translations_toggle_title">隱藏譯文</string>
+
+    <string name="history_hide_translations_toggle_subtitle">只顯示擷取到的文字。點按記錄即可查看譯文。</string>
+
+    <string name="history_live_session_title">即時會話</string>
+
+    <plurals name="history_line_count">
+        <item quantity="other"><xliff:g id="count" example="42">%d</xliff:g> 行</item>
+    </plurals>
+
+    <string name="history_capture_camera_cd">相機擷取</string>
+
+    <string name="history_capture_screen_cd">螢幕擷取</string>
+
+    <string name="history_reopen_cd">開啟擷取影像</string>
+
+    <string name="settings_cell_dictionary_summary">查詢詞語釋義</string>
+
+    <string name="image_import_no_text">未在此影像中偵測到<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>文字</string>
+
+    <string name="settings_cell_image_import">匯入檔案</string>
+
+    <string name="settings_cell_image_import_summary">翻譯已儲存的圖片或文件</string>
+
+    <string name="image_import_landing_title">翻譯圖片或文件中的文字</string>
+
+    <string name="image_import_pick_photos">選擇照片</string>
+
+    <string name="image_import_pick_files">瀏覽檔案</string>
+
+    <string name="image_import_paste_image">貼上已複製的圖片</string>
+
+    <string name="image_import_decode_failed">無法開啟該檔案。</string>
+
+    <string name="image_import_unsupported">不支援此檔案類型。請選擇圖片、PDF 或漫畫壓縮檔。</string>
+
+    <string name="image_import_password_protected">此 PDF 有密碼保護，無法開啟。</string>
+
+    <string name="image_import_empty">此檔案中找不到頁面。</string>
+
+    <string name="image_import_mixed_selection">要一次匯入多個檔案，請只選擇圖片。PDF 和漫畫壓縮檔需逐個開啟。</string>
+
+    <string name="image_import_close_cd">關閉檔案</string>
+
+    <string name="image_import_settings_cd">檔案匯入設定</string>
+
+    <string name="image_import_page_chip"><xliff:g id="page" example="3">%1$d</xliff:g> / <xliff:g id="count" example="14">%2$d</xliff:g></string>
+
+    <string name="image_import_prev_page_cd">上一頁</string>
+
+    <string name="image_import_next_page_cd">下一頁</string>
+
+    <string name="image_import_page_grid_cd">顯示所有頁面</string>
+
+    <string name="slow_ocr_prompt_message_import">此裝置從該檔案讀取文字的速度較慢。切換到更快的引擎可加快處理速度，但辨識質素可能略有下降。你隨時可以用此介面上的設定齒輪切換此工具的引擎。</string>
+
+    <string name="settings_cell_camera">相機</string>
+
+    <string name="settings_cell_camera_summary">用相機對準文字即可翻譯</string>
+
+    <string name="settings_cell_camera_unavailable">未偵測到相機</string>
+
+    <string name="camera_permission_rationale">PlayTranslate 需要相機權限才能翻譯你對準的文字。影像只會在此裝置上處理。</string>
+
+    <string name="camera_permission_grant">允許存取相機</string>
+
+    <string name="camera_permission_denied">相機權限已被拒絕。請在系統設定中允許後再使用相機。</string>
+
+    <string name="camera_open_settings">開啟設定</string>
+
+    <string name="camera_unavailable">此裝置沒有可用的相機</string>
+
+    <string name="camera_back_cd">返回</string>
+
+    <string name="camera_no_text_hint">沒有可辨識的文字——試着靠近一些或點按對焦</string>
+
+    <string name="camera_pause_cd">暫停自動翻譯</string>
+
+    <string name="camera_play_cd">繼續自動翻譯</string>
+
+    <string name="camera_shutter_cd">拍攝快照</string>
+
+    <string name="camera_close_cd">關閉快照</string>
+
+    <string name="camera_snapshot_no_text">未在此快照中偵測到<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>文字</string>
+
+    <string name="camera_region_cd">選擇區域</string>
+
+    <string name="camera_region_remove">移除</string>
+
+    <string name="capture_sliver_expand_hint">點按查看更多選項</string>
+
+    <string name="camera_settings_cd">相機設定</string>
+
+    <string name="settings_digest_none">無</string>
+    <string name="settings_capture_displays_count"><xliff:g id="count" example="2">%1$d</xliff:g> 台顯示器</string>
+
+    <string name="settings_hotkeys_tile_add">新增圖塊</string>
+    <string name="settings_hotkeys_none">未設定快捷鍵</string>
+    <string name="settings_hotkeys_translation">翻譯</string>
+    <string name="settings_hotkeys_furigana">振假名</string>
+    <string name="settings_hotkeys_pinyin">拼音</string>
+
+    <string name="settings_anki_digest">牌組 <xliff:g id="deck_name" example="Vocabulary">%1$s</xliff:g> · 卡片類型 <xliff:g id="card_type_name" example="Lapis sentence">%2$s</xliff:g></string>
+    <string name="settings_anki_default">預設</string>
+    <string name="settings_anki_get_app_summary">在 Google Play 免費下載 AnkiDroid</string>
+    <string name="settings_anki_grant_summary">授予權限以使用 AnkiDroid</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Text-to-Speech section
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="tts_voice_numbered">語音 <xliff:g id="voice_index" example="3">%1$d</xliff:g></string>
+
+    <string name="tts_voice_region_numbered"><xliff:g id="region" example="China">%1$s</xliff:g> <xliff:g id="region_index" example="2">%2$d</xliff:g></string>
+
+    <string name="tts_voice_default">預設</string>
+
+    <string name="tts_voice_default_subtitle">引擎的預設語音</string>
+
+    <string name="tts_voice_needs_download">需要下載</string>
+
+    <string name="tts_no_engine_row_subtitle">沒有可用的語音引擎。點按以新增一個。</string>
+
+    <string name="tts_voice_picker_title">語音</string>
+
+    <string name="tts_voices_section_header"><xliff:g id="language" example="JAPANESE">%1$s</xliff:g>語音</string>
+    <string name="tts_speed_title">速度</string>
+
+    <string name="tts_no_engine_dialog_title">無文字轉語音引擎</string>
+
+    <string name="tts_no_engine_dialog_message">沒有可用的文字轉語音引擎來朗讀詞語。請安裝一個——或者，如果你的裝置已有引擎，請在 Android 的設定中啟用它。</string>
+
+    <string name="tts_no_engine_get_google">取得 Google TTS</string>
+
+    <string name="tts_no_engine_open_settings">開啟 TTS 設定</string>
+
+    <string name="tts_language_unsupported_dialog_title">不支援該語言</string>
+
+    <string name="tts_language_unsupported_with_engine_message">目前引擎是 <xliff:g id="engine_name" example="Google TTS">%1$s</xliff:g>，但不支援<xliff:g id="source_language" example="Japanese">%2$s</xliff:g>。</string>
+
+    <string name="tts_language_unsupported_unknown_engine_message">目前的文字轉語音引擎不支援<xliff:g id="source_language" example="Japanese">%1$s</xliff:g>。</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Quick Settings tile row (Android 13+)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="quick_tile_add_row_title">新增快速設定圖塊</string>
+
+    <string name="quick_tile_add_row_subtitle">從狀態列切換 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="quick_tile_added_row_subtitle">已新增至快速設定</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Hotkeys section
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="hotkey_not_set_subtitle">未設定</string>
+
+    <string name="hotkey_section_translations">翻譯</string>
+
+    <string name="hotkey_show_translations_title">長按以顯示翻譯</string>
+
+    <string name="hotkey_show_translations_dialog_title">顯示翻譯</string>
+
+    <string name="hotkey_auto_translation_title">點按以啟動/停止自動翻譯</string>
+
+    <string name="hotkey_auto_translation_dialog_title">自動翻譯</string>
+
+    <string name="hotkey_capture_screen_title">點按以擷取螢幕</string>
+
+    <string name="hotkey_capture_screen_dialog_title">擷取螢幕</string>
+
+    <string name="hotkey_show_hint_title">長按以顯示<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <string name="hotkey_show_hint_dialog_title">顯示<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <string name="hotkey_auto_hint_title">點按以啟動/停止自動<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <string name="hotkey_auto_hint_dialog_title">自動<xliff:g id="hint_label" example="Furigana">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Capture Display section
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="capture_display_row_label">顯示器 <xliff:g id="display_id" example="0">%1$d</xliff:g>  —  <xliff:g id="display_name" example="Built-in screen">%2$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Online Translations (cooldown / unavailable states)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="backend_status_unavailable_default">不可用</string>
+
+    <string name="backend_cooldown_retry_at">重試於</string>
+
+    <string name="backend_cooldown_retry_on">重試於</string>
+
+    <string name="backend_cooldown_status_fmt"><xliff:g id="description" example="Rate limited">%1$s</xliff:g> · <xliff:g id="retry_word" example="Retry at">%2$s</xliff:g> <xliff:g id="retry_time" example="3:42 PM">%3$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Anki rows + deck/card-type fallback labels
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="anki_deck_not_selected_subtitle">未選擇</string>
+
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Support section rows
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_support_discord_title">加入 <xliff:g id="brand_discord" example="Discord">Discord</xliff:g></string>
+
+    <string name="settings_support_discord_subtitle">取得幫助，並與其他玩家交流。</string>
+
+    <string name="settings_support_donate_title">支援 PlayTranslate</string>
+
+    <string name="settings_support_donate_subtitle">一款免費、開源的用心之作。幫助它持續發展。</string>
+
+    <string name="settings_support_check_updates_title">檢查更新</string>
+
+    <string name="settings_support_check_updates_title_available">有可用更新</string>
+
+    <string name="settings_support_check_updates_subtitle">目前版本：<xliff:g id="version" example="2.4.1">%1$s</xliff:g></string>
+
+    <string name="settings_support_check_updates_checking">正在檢查更新…</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SETTINGS — Debug section (developer-only)
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="settings_debug_force_single_screen">強制單一螢幕</string>
+    <string name="settings_debug_show_ocr_boxes">顯示 OCR 框</string>
+    <string name="settings_debug_show_detection_log">顯示偵測日誌</string>
+    <string name="settings_debug_log_pinhole">記錄即時模式針孔指標</string>
+    <string name="settings_debug_save_ocr_seed">將 OCR 擷取儲存為種子</string>
+    <string name="settings_debug_short_text_routing">短文字離線路由</string>
+    <string name="settings_debug_force_mmap_weights">強制使用 mmap 載入權重（裝置端 LLM）</string>
+    <string name="settings_debug_log_grouping">記錄 OCR 分組決策</string>
+    <string name="settings_debug_angle_gate">經典角度閾值（10°）</string>
+    <string name="settings_debug_log_trace">記錄翻譯日誌追蹤</string>
+    <string name="settings_debug_force_crash_title">強制崩潰</string>
+
+    <string name="dictionary_screen_title">詞典</string>
+
+    <string name="dictionary_search_hint">搜尋詞語</string>
+
+    <string name="dictionary_clear_query">清除</string>
+
+    <plurals name="dictionary_entries_count">
+        <item quantity="other"><xliff:g id="count" example="5">%d</xliff:g> 個詞條</item>
+    </plurals>
+
+    <string name="dictionary_lang_pair"><xliff:g id="source" example="Japanese">%1$s</xliff:g> → <xliff:g id="target" example="English">%2$s</xliff:g></string>
+
+    <string name="dictionary_status_no_results">無結果</string>
+
+    <string name="dictionary_status_error">無法查詢該詞</string>
+
+    <string name="settings_debug_export_logs_title">匯出日誌</string>
+
+    <string name="settings_debug_export_logs_subtitle">分享近期日誌以提交錯誤報告</string>
+
+    <string name="settings_debug_export_logs_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 日誌</string>
+
+    <string name="settings_debug_export_logs_failed">匯出日誌失敗：<xliff:g id="exception_class" example="FileNotFoundException">%1$s</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         GENERIC TOASTS
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="toast_link_copied">連結已複製</string>
+
+    <string name="toast_copied">已複製</string>
+
+    <string name="toast_no_logs_to_share">沒有可分享的日誌</string>
+
+    <string name="toast_no_crash_report">沒有可傳送的崩潰報告</string>
+
+    <string name="share_chooser_share_logs">分享日誌</string>
+
+    <!-- Audio sources (Wikimedia Commons human recordings + TTS). -->
+
+    <string name="audio_source_tts_name">文字轉語音</string>
+
+    <string name="audio_source_commons_name">Wikimedia Commons</string>
+
+    <string name="audio_no_results">無結果</string>
+
+    <string name="audio_source_picker_title">音訊</string>
+
+    <string name="audio_loading">正在載入…</string>
+
+    <string name="audio_error_loading">無法載入</string>
+
+    <string name="process_text_translation_failed">無法翻譯所選文字。請檢查你的網絡連線或語言設定。</string>
+
+    <!-- Part-of-speech labels (universal categories); see values/strings.xml. -->
+    <string name="pos_noun">名詞</string>
+    <string name="pos_pronoun">代詞</string>
+    <string name="pos_verb">動詞</string>
+    <string name="pos_adjective">形容詞</string>
+    <string name="pos_adverb">副詞</string>
+    <string name="pos_particle">助詞</string>
+    <string name="pos_conjunction">連詞</string>
+    <string name="pos_interjection">嘆詞</string>
+    <string name="pos_preposition">介詞</string>
+    <string name="pos_postposition">後置詞</string>
+    <string name="pos_determiner">限定詞</string>
+    <string name="pos_article">冠詞</string>
+    <string name="pos_prefix">前綴</string>
+    <string name="pos_suffix">後綴</string>
+    <string name="pos_counter">量詞</string>
+    <string name="pos_numeral">數詞</string>
+    <string name="pos_expression">詞組</string>
+    <string name="pos_phrase">短語</string>
+    <string name="pos_proverb">諺語</string>
+    <string name="pos_abbreviation">縮寫</string>
+    <string name="pos_contraction">縮略形</string>
+    <string name="pos_auxiliary">助動詞</string>
+
+    <!-- Misc register/usage tags (short chips); see values/strings.xml. -->
+    <string name="misc_kana_only">僅用假名</string>
+    <string name="misc_kanji_only">僅用漢字</string>
+    <string name="misc_colloquial">口語</string>
+    <string name="misc_informal">非正式</string>
+    <string name="misc_formal">正式</string>
+    <string name="misc_literary">書面語</string>
+    <string name="misc_honorific">敬辭</string>
+    <string name="misc_humble">謙辭</string>
+    <string name="misc_polite">禮貌語</string>
+    <string name="misc_familiar">親暱</string>
+    <string name="misc_endearing">愛稱</string>
+    <string name="misc_childrens">兒語</string>
+    <string name="misc_female_speech">女性用語</string>
+    <string name="misc_male_speech">男性用語</string>
+    <string name="misc_archaic">古語</string>
+    <string name="misc_obsolete">廢語</string>
+    <string name="misc_dated">過時</string>
+    <string name="misc_historical">歷史詞</string>
+    <string name="misc_rare">罕用</string>
+    <string name="misc_neologism">新詞</string>
+    <string name="misc_slang">俚語</string>
+    <string name="misc_internet_slang">網絡用語</string>
+    <string name="misc_manga_slang">漫畫用語</string>
+    <string name="misc_idiomatic">慣用語</string>
+    <string name="misc_figurative">比喻</string>
+    <string name="misc_onomatopoeia">擬聲詞</string>
+    <string name="misc_poetic">詩歌用語</string>
+    <string name="misc_humorous">詼諧</string>
+    <string name="misc_derogatory">貶義</string>
+    <string name="misc_offensive">冒犯語</string>
+    <string name="misc_vulgar">粗俗</string>
+    <string name="misc_slur">蔑稱</string>
+    <string name="misc_sensitive">敏感</string>
+    <string name="misc_euphemistic">委婉語</string>
+    <string name="misc_sarcastic">諷刺</string>
+    <string name="misc_nonstandard">不規範</string>
+    <string name="misc_yojijukugo">四字成語</string>
+    <string name="misc_dialectal">方言</string>
+
+    <string name="inflection_causative">使役</string>
+    <string name="inflection_passive">被動/可能</string>
+    <string name="inflection_negative">否定</string>
+    <string name="inflection_past">過去</string>
+    <string name="inflection_polite">禮貌</string>
+    <string name="inflection_te_form">て形</string>
+    <string name="inflection_desiderative">願望</string>
+    <string name="inflection_conditional">條件</string>
+    <string name="inflection_volitional">意志</string>
+    <string name="inflection_imperative">命令</string>
+    <string name="inflection_more">還有<xliff:g id="count" example="2">%1$d</xliff:g>個</string>
+</resources>
