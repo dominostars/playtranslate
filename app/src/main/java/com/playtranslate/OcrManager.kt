@@ -49,7 +49,10 @@ class OcrManager private constructor() {
      *  Pushed from [PlayTranslateApplication] on start and from the Capture
      *  and overlay screen's toggle; read per recognise() call, so a toggle
      *  takes effect on the next OCR pass. Applied only to Japanese sources at
-     *  the call sites — the filter's script test is kana-based. */
+     *  the call sites — the filter's script test is kana-based.
+     *  PlayTranslate Cloud's reader also sends it with each frame
+     *  ([com.playtranslate.cloud.PtCloudFrameReader]), and the server applies
+     *  its copy of the rule under the same Japanese-only gate. */
     @Volatile var filterFuriganaEnabled: Boolean = true
 
     /** Mirrors [debugLogGroupingEnabled]'s wiring (boot + settings toggle).

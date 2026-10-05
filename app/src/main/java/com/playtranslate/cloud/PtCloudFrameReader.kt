@@ -1,6 +1,7 @@
 package com.playtranslate.cloud
 
 import android.graphics.Bitmap
+import com.playtranslate.OcrManager
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ocr.FrameReader
 import com.playtranslate.ocr.FrameReading
@@ -78,8 +79,13 @@ class PtCloudFrameReader(
      * default is the app's default persona). `context` is the recent-dialogue
      * block the translation log keeps for the pair, absent when blank or
      * same-language. `stream_translations` is true when
-     * [PtCloudConfig.streamItems] is on and absent when it is off. The upload
-     * cap and format are read from the config for this read.
+     * [PtCloudConfig.streamItems] is on and absent when it is off.
+     * `filter_furigana` is the furigana filter as the device OCR reads it
+     * ([OcrManager.filterFuriganaEnabled]), sent for every source since the
+     * server applies it to a Japanese source only, as the device does, so a
+     * frame read here and the device's fallback read of the same capture
+     * follow the same setting. The upload cap and format are read from the
+     * config for this read.
      *
      * The attribution token "ptcloud" is unknown to the OCR picker: a result
      * read here highlights no engine there, and a re-OCR the user starts from
@@ -107,6 +113,7 @@ class PtCloudFrameReader(
             context = if (sameLanguage) null
                 else LlmPromptTemplates.contextProvider(translationCode, request.targetLang).takeIf { it.isNotBlank() },
             streamTranslations = if (config.streamItems) true else null,
+            filterFurigana = OcrManager.instance.filterFuriganaEnabled,
         )
 
         // Directly in this function, never in a scoped builder: part 2 must

@@ -33,6 +33,11 @@ const val PT_CLOUD_SCHEMA_VERSION = 1
  * defaults. [streamTranslations] true asks for an item line per group as its
  * translation completes ("Incremental translations" in docs/api.md); null
  * leaves the key out, the server's default of no item lines.
+ * [filterFurigana] is the user's furigana filter, always sent: true asks the
+ * server to remove the readings from a Japanese frame before grouping, false
+ * keeps them. The server applies it to a Japanese source only, as the device
+ * does, and a server that predates it ignores the key and keeps every
+ * reading.
  */
 @Serializable
 data class FrameMeta(
@@ -42,6 +47,11 @@ data class FrameMeta(
     val persona: String?,
     val context: String?,
     @SerialName("stream_translations") val streamTranslations: Boolean? = null,
+    /** Required, with no default: [com.playtranslate.PtJson.lenient] does not
+     *  encode a value equal to its default, so a default of true would leave
+     *  the key out whenever it is true, and the client always states the
+     *  user's choice rather than relying on the server's default. */
+    @SerialName("filter_furigana") val filterFurigana: Boolean,
 )
 
 // ── Response, part 1 ───────────────────────────────────────────────────

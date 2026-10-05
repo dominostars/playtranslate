@@ -112,10 +112,10 @@ internal object PtCloudTestSupport {
     /** [obj] with [key] replaced. */
     fun JsonObject.with(key: String, value: JsonElement) = JsonObject(this + (key to value))
 
-    fun meta(persona: String? = null, context: String? = null, streamTranslations: Boolean? = null) =
+    fun meta(persona: String? = null, context: String? = null, streamTranslations: Boolean? = null, filterFurigana: Boolean = true) =
         FrameMeta(
             source = "ja", target = "en", frameId = "capture-0042", persona = persona, context = context,
-            streamTranslations = streamTranslations,
+            streamTranslations = streamTranslations, filterFurigana = filterFurigana,
         )
 
     fun frame(bytes: ByteArray = ByteArray(64) { it.toByte() }, scale: Float = 1f, format: FrameFormat = FrameFormat.JPEG) =

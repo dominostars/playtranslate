@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Rect
 import androidx.test.core.app.ApplicationProvider
+import com.playtranslate.OcrManager
 import com.playtranslate.cloud.PtCloudTestSupport.GatedSource
 import com.playtranslate.cloud.PtCloudTestSupport.item
 import com.playtranslate.cloud.PtCloudTestSupport.with
@@ -79,6 +80,7 @@ class PtCloudFrameReaderTest {
         cooldown = CooldownState(null, PtCloudService.ID, nowMs = { clock.get() })
         PtCloudService.installForTest(cooldown)
         TranslationBackendRegistry.onlineAttemptListener = { attempts += it }
+        OcrManager.instance.filterFuriganaEnabled = true
     }
 
     @After fun tearDown() {
@@ -86,6 +88,8 @@ class PtCloudFrameReaderTest {
         TranslationBackendRegistry.onlineAttemptListener = null
         LlmPromptTemplates.resetOverrides()
         PtCloudTestSupport.sharedPrefs(ctx).edit().clear().commit()
+        // A process-wide singleton the other tests share.
+        OcrManager.instance.filterFuriganaEnabled = true
     }
 
     private val part1 = PtCloudTestSupport.part1(PtCloudTestSupport.JA)
@@ -270,8 +274,9 @@ class PtCloudFrameReaderTest {
             LlmPromptTemplates.contextProvider = { _, _ -> context }
             reader(streaming(listOf(part1, PtCloudTestSupport.part2()))).read(bitmap, request()).settled()
             val meta = sentMeta()
-            // stream_translations is the item-lines switch, on by default.
-            assertEquals(setOf("source", "target", "frame_id", "stream_translations"), meta.keys)
+            // stream_translations is the item-lines switch, on by default,
+            // and filter_furigana is always sent.
+            assertEquals(setOf("source", "target", "frame_id", "stream_translations", "filter_furigana"), meta.keys)
         }
     }
 
@@ -296,6 +301,39 @@ class PtCloudFrameReaderTest {
         // Each frame went out in the format it was encoded in.
         val types = calls.map { (it.request().body as MultipartBody).parts[0].body.contentType().toString() }
         assertEquals(listOf("image/jpeg", "image/webp"), types)
+    }
+
+    @Test fun `the furigana filter goes out as the device OCR reads it, at each read`() = runBlocking {
+        // One reader for both reads: nothing is rebuilt between them.
+        val reader = reader(streaming(listOf(part1, PtCloudTestSupport.part2())))
+        reader.read(bitmap, request()).settled()
+        assertEquals("true", sentMeta().str("filter_furigana"))
+
+        calls.clear()
+        OcrManager.instance.filterFuriganaEnabled = false
+        reader.read(bitmap, request()).settled()
+        assertEquals("false", sentMeta().str("filter_furigana"))
+    }
+
+    @Test fun `the furigana filter is sent for every source, not only Japanese`() = runBlocking {
+        // The server applies it to a Japanese source only, so the reader
+        // sends the setting as it is.
+        for ((src, filter) in listOf(SourceLangId.EN to true, SourceLangId.ZH_HANT to true, SourceLangId.EN to false)) {
+            calls.clear()
+            OcrManager.instance.filterFuriganaEnabled = filter
+            reader(streaming(listOf(part1, PtCloudTestSupport.part2()))).read(bitmap, request(src, "ja")).settled()
+            assertEquals("$src", "$filter", sentMeta().str("filter_furigana"))
+        }
+    }
+
+    @Test fun `a lines-only read carries the furigana filter too`() = runBlocking {
+        for (filter in listOf(true, false)) {
+            calls.clear()
+            OcrManager.instance.filterFuriganaEnabled = filter
+            reader(streaming(listOf(part1, PtCloudTestSupport.part2("skipped", "[]"))))
+                .readLines(bitmap, SourceLangId.JA, "id")
+            assertEquals("setting $filter", "$filter", sentMeta().str("filter_furigana"))
+        }
     }
 
     @Test fun `a failure before part 1 propagates the client's PtCloudReadException`() = runBlocking {

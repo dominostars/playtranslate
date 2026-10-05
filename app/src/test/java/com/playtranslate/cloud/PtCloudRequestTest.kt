@@ -159,13 +159,23 @@ class PtCloudRequestTest {
         assertFalse("absent, not null or false: $off", "stream_translations" in off)
     }
 
+    @Test fun `filter_furigana goes out as the boolean it is, true and false, and is never absent`() {
+        // The field has no default: the meta's encoder leaves out a value
+        // equal to its default, which would drop the key on one of the two.
+        for (filter in listOf(true, false)) {
+            val obj = metaJson(send(PtCloudTestSupport.meta(filterFurigana = filter)))
+            assertTrue("present when $filter: $obj", "filter_furigana" in obj)
+            assertEquals(filter, obj["filter_furigana"]!!.jsonPrimitive.boolean)
+        }
+    }
+
     private fun metaJson(request: Request): JsonObject =
         Json.parseToJsonElement((request.body as MultipartBody).parts[1].text()) as JsonObject
 
-    @Test fun `meta carries source, target and frame id and omits an unset persona and context`() {
+    @Test fun `meta carries source, target, frame id and the furigana filter and omits an unset persona and context`() {
         val meta = (send().body as MultipartBody).parts[1]
         val obj = Json.parseToJsonElement(meta.text()) as JsonObject
-        assertEquals(setOf("source", "target", "frame_id"), obj.keys)
+        assertEquals(setOf("source", "target", "frame_id", "filter_furigana"), obj.keys)
         assertEquals("ja", obj["source"]!!.jsonPrimitive.content)
         assertEquals("en", obj["target"]!!.jsonPrimitive.content)
         assertEquals("capture-0042", obj["frame_id"]!!.jsonPrimitive.content)
@@ -182,7 +192,7 @@ class PtCloudRequestTest {
 
     @Test fun `every supported source code goes out as it is spelled`() {
         for (code in PtCloudRouting.SUPPORTED_SOURCE_CODES) {
-            val meta = (send(FrameMeta(code, "en", "f", null, null)).body as MultipartBody).parts[1]
+            val meta = (send(FrameMeta(code, "en", "f", null, null, filterFurigana = true)).body as MultipartBody).parts[1]
             val obj = Json.parseToJsonElement(meta.text()) as JsonObject
             assertEquals(code, obj["source"]!!.jsonPrimitive.content)
         }
