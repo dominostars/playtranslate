@@ -24,7 +24,7 @@ To report issues, receive support, or make requests, please join the [Discord se
 - **Camera translation**: point your camera at text in the world and read it live, or freeze a frame to tap words and look them up.
 - **Text History**: keep a record of captured sentences. Off by default.
 
-## How to Use
+## How to Install
 
 1. [Download the latest release by clicking here](../../releases/download/v3.3.0/PlayTranslate-3.3.0.apk)
 2. On your Android, enable **Settings → Security → Install unknown apps** for your file manager or browser
