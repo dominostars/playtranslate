@@ -283,16 +283,25 @@ object CaptureLifecycle {
         }
     }
 
-    /** MediaProjection backend, at the service start MainActivity issues
-     *  in a process that replaced one killed with the controls on: come up
-     *  activated without consent (the post-revoke state the backend already
-     *  supports), so the icon is back without a Settings trip and the next
-     *  capture re-prompts for the single-use token Android discarded with
-     *  the old process. Runs with the app in the foreground, so the
-     *  promotion that follows is credited. */
+    /** Whether [restoreMediaProjectionSessionIfCutShort] has something to
+     *  do: a session cut short by a kill, on the MediaProjection backend.
+     *  The sticky restart checks this before the promotion it makes first. */
+    fun mediaProjectionRestorePending(): Boolean =
+        SessionMarker.cutShort && !CaptureBackendResolver.active().requiresAccessibilityService
+
+    /** MediaProjection backend, in a process that replaced one killed with
+     *  the controls on: come up activated without consent (the post-revoke
+     *  state the backend already supports), so the icon is back without a
+     *  Settings trip and the next capture re-prompts for the single-use
+     *  token Android discarded with the old process. Called at the service
+     *  start MainActivity issues, where the app is in the foreground and
+     *  the promotion that follows is credited, and at the sticky restart
+     *  itself when the user has exempted the app from battery optimisation,
+     *  once the restart's own uncredited promotion has succeeded (see
+     *  [CaptureService.onStartCommand] for why only then and in that
+     *  order). */
     fun restoreMediaProjectionSessionIfCutShort(svc: CaptureService) {
-        if (!SessionMarker.cutShort) return
-        if (CaptureBackendResolver.active().requiresAccessibilityService) return
+        if (!mediaProjectionRestorePending()) return
         SessionMarker.consumeCutShort()
         if (svc.mediaProjectionActivated) return
         Log.i(TAG, "restoreMediaProjectionSession")
