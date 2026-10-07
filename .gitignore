@@ -27,6 +27,11 @@ third-party/**/docs/
 __pycache__/
 *.pyc
 
+# R8 mapping of each release build, archived by app/build.gradle.kts
+# (archiveReleaseMapping) for retracing crash logs; local only. The README
+# beside them is tracked.
+releases/mapping-*.txt
+
 # Release APK (distributed via GitHub Releases, not committed)
 *.apk
 
