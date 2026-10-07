@@ -260,7 +260,7 @@ class CameraActivity : AppCompatActivity() {
         "${prefs.sourceLangId}|${prefs.targetLang}|${prefs.targetChineseVariant}|" +
             (
                 OcrModelManager.selectedBackend(
-                    this, prefs.sourceLangId, prefs.cameraOcrBackendToken(prefs.sourceLangId),
+                    this, prefs.sourceLangId, com.playtranslate.OcrTokenScope.CAMERA,
                 )?.selectionToken ?: ""
             )
 
@@ -503,7 +503,7 @@ class CameraActivity : AppCompatActivity() {
     private fun showPillOcrPicker() {
         val srcId = prefs.sourceLangId
         val token = OcrModelManager
-            .selectedBackend(this, srcId, prefs.cameraOcrBackendToken(srcId))
+            .selectedBackend(this, srcId, com.playtranslate.OcrTokenScope.CAMERA)
             ?.selectionToken ?: ""
         com.playtranslate.ui.OcrPicker.populate(
             com.playtranslate.ui.OverlayAlert.Builder(this),
@@ -604,7 +604,7 @@ class CameraActivity : AppCompatActivity() {
         val id = prefs.sourceLangId
         if (prefs.cameraSlowOcrPromptAnswered(id)) return
         val selected =
-            OcrModelManager.selectedBackend(this, id, prefs.cameraOcrBackendToken(id)) ?: return
+            OcrModelManager.selectedBackend(this, id, com.playtranslate.OcrTokenScope.CAMERA) ?: return
         val rescue = OcrModelManager.slowOcrRescue(
             available = OcrModelManager.availableBackends(this, id),
             selected = selected,

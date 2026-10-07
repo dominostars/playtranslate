@@ -2,6 +2,7 @@ package com.playtranslate.ocr.registry
 
 import android.content.Context
 import android.util.Log
+import com.playtranslate.OcrTokenScope
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.LanguagePackStore
@@ -80,37 +81,50 @@ object OcrModelManager {
     @Volatile var appContext: Context? = null
 
     /**
-     * Production OCR engine for [sourceLang] paired with the backend that produced
-     * it: the user's chosen backend if its pack is installed, else null → the
-     * registry's ML Kit floor. Returning the backend (not just the engine) lets the
-     * registry report what actually ran without re-deriving the resolution rule.
-     * Selection only mutates Prefs, so this resolves fresh each call (no stale
-     * cached engine); the native session is owned + cached by the bridge (closed
-     * only at quiescent teardown).
+     * Production OCR engine for [id] paired with the backend that produced it:
+     * the resolved backend if its pack is installed, else null → the registry's
+     * ML Kit floor. Returning the backend (not just the engine) lets the registry
+     * report what actually ran without re-deriving the resolution rule. Selection
+     * only mutates Prefs, so this resolves fresh each call (no stale cached
+     * engine); the native session is owned + cached by the bridge (closed only at
+     * quiescent teardown).
      *
-     * [tokenOverride] substitutes the stored global selection with a caller-scoped
-     * token (the camera tool's per-flow engine choice); resolution and fallback
-     * are otherwise identical.
+     * Takes the EXACT source language, never a translation code: ZH and ZH_HANT
+     * both OCR as "zh", and rebuilding the language from that code read
+     * Simplified's selection for a Traditional user (2026-10-06). [scope] picks
+     * the stored selection the way every label, picker and guard does
+     * ([selectedBackend]), so what runs is what the UI names. [isInstalled] and
+     * [build] are seams for the JVM test that pins the id flowing through; the
+     * native bridges cannot load there.
      */
-    fun engineForSelected(sourceLang: String, tokenOverride: String? = null): Pair<OcrBackend, OcrEngine>? {
+    fun engineForSelected(
+        id: SourceLangId,
+        scope: OcrTokenScope = OcrTokenScope.GLOBAL,
+        isInstalled: ((packKey: String) -> Boolean)? = null,
+        build: ((OcrBackend) -> OcrEngine?)? = null,
+    ): Pair<OcrBackend, OcrEngine>? {
         val ctx = appContext ?: return null
-        val profile = SourceLanguageProfiles.forCode(sourceLang) ?: SourceLanguageProfiles[SourceLangId.JA]
-        return when (val chosen = selectedBackend(ctx, profile.id, tokenOverride)) {
-            is OcrBackend.Meiki ->
-                if (OcrPackModelHelper(chosen.packKey).isInstalled(ctx))
-                    MeikiBridge.engine(ctx, chosen.packKey)?.let { chosen to it } else null
-            is OcrBackend.Paddle ->
-                if (OcrPackModelHelper(chosen.recPackKey).isInstalled(ctx))
-                    PaddleOcrBridge.engine(ctx, chosen.recPackKey, chosen.fast)?.let { chosen to it } else null
-            else -> null // ML Kit floor — registry builds it
-        }
+        val installed = isInstalled ?: { key -> OcrPackModelHelper(key).isInstalled(ctx) }
+        val chosen = selectedBackend(ctx, id, scope, installed) ?: return null
+        // The ML Kit floor has no pack and is built by the registry.
+        if (chosen.packKeys.isEmpty() || !chosen.packKeys.all(installed)) return null
+        val engine = (build ?: { backend -> buildEngine(ctx, backend) })(chosen) ?: return null
+        return chosen to engine
+    }
+
+    /** The bridge-owned engine for a pack-backed [backend]; null for the pack-less
+     *  kinds, which the registry builds. */
+    private fun buildEngine(ctx: Context, backend: OcrBackend): OcrEngine? = when (backend) {
+        is OcrBackend.Meiki -> MeikiBridge.engine(ctx, backend.packKey)
+        is OcrBackend.Paddle -> PaddleOcrBridge.engine(ctx, backend.recPackKey, backend.fast)
+        else -> null
     }
 
     /** Every OCR pack key the app knows about (single source of truth = the
      *  profiles' `ocrBackends`), so the on-disk universe never drifts from the keys. */
     val ALL_PACK_KEYS: Set<String> =
         SourceLangId.entries.flatMapTo(HashSet()) { id ->
-            SourceLanguageProfiles.forCode(id.code)?.ocrBackends?.flatMap { it.packKeys } ?: emptyList()
+            SourceLanguageProfiles[id].ocrBackends.flatMap { it.packKeys }
         }
 
     private fun helper(packKey: String) = OcrPackModelHelper(packKey)
@@ -151,34 +165,54 @@ object OcrModelManager {
     fun availableBackends(ctx: Context, id: SourceLangId): List<OcrBackend> =
         SourceLanguageProfiles[id].ocrBackends.filter { isBackendAvailable(ctx, it) }
 
-    /** Chosen backend for [id]: the stored selection if still deliverable, else the
-     *  ML Kit floor, else — for a no-floor language (Cyrillic) — its single deliverable
-     *  recognizer. NULL only when nothing is deliverable on this device (a no-floor
-     *  language on a 32-bit process). See [resolveSelectedBackend] for the rule.
-     *  [tokenOverride] (non-null) resolves a caller-scoped selection — the camera
-     *  tool's — in place of the stored global token, under the same fallbacks. */
-    fun selectedBackend(ctx: Context, id: SourceLangId, tokenOverride: String? = null): OcrBackend? =
+    /** The backend [id] resolves to under [scope]: the stored selection if still
+     *  deliverable, else the best deliverable backend whose packs are on disk, else
+     *  the ML Kit floor, else — for a no-floor language (Cyrillic) — its single
+     *  deliverable recognizer. NULL only when nothing is deliverable on this device
+     *  (a no-floor language on a 32-bit process). See [resolveSelectedBackend] for
+     *  the rule. This is the ONE resolution: the engine ([engineForSelected]), the
+     *  Settings rows, the pickers, the labels and the delete guards all read it, so
+     *  none can name a backend another one runs. [scope] resolves a tool's own
+     *  selection, inheriting the global one until set ([Prefs.ocrBackendToken]). */
+    fun selectedBackend(
+        ctx: Context,
+        id: SourceLangId,
+        scope: OcrTokenScope = OcrTokenScope.GLOBAL,
+        isInstalled: (packKey: String) -> Boolean = { OcrPackModelHelper(it).isInstalled(ctx) },
+    ): OcrBackend? =
         resolveSelectedBackend(
             available = availableBackends(ctx, id),
-            token = tokenOverride ?: Prefs(ctx).ocrBackendToken(id),
+            token = Prefs(ctx).ocrBackendToken(id, scope),
             mlKitFloor = SourceLanguageProfiles[id].mlKitFloor,
+            isInstalled = isInstalled,
         )
 
     /** PURE selection rule (JVM-testable): the [token]'s backend if it's in
-     *  [available], else [mlKitFloor], else the top [available] backend. The final
-     *  fallback keeps the OCR token NON-load-bearing for no-floor languages (Cyrillic,
-     *  where [mlKitFloor] is null): a missing/stale token resolves to the same backend
-     *  the installed pack already represents, so [engineForSelected] never drops to the
-     *  empty engine over a bookkeeping gap. (Pack retention no longer rides on this —
-     *  [plan] retains every installed language's packs by membership — but the resolved
-     *  engine still does.) Returns null only when [available] is empty and there is no
-     *  floor (a no-floor language with no deliverable recognizer on this device). */
+     *  [available]; else the first [available] backend whose packs are all on disk
+     *  ([isInstalled]), which is the language's default once its recognizer is
+     *  present, and the pack-less ML Kit floor where that floor is listed first
+     *  (Vietnamese, Turkish, Polish); else [mlKitFloor]; else the top [available]
+     *  backend. An unset token therefore MEANS "the default": nothing seeds a token
+     *  at setup, at launch or on a language switch, so a language reached by a path
+     *  that skips those (the icon's Simplified/Traditional toggle) runs the same
+     *  default as one reached through the picker. A stored token is an explicit
+     *  choice, an ML Kit pick included. The final fallback keeps the token
+     *  non-load-bearing for no-floor languages (Cyrillic, where [mlKitFloor] is
+     *  null): a missing/stale token resolves to the backend the installed pack
+     *  already represents, so [engineForSelected] never drops to the empty engine
+     *  over a bookkeeping gap. Returns null only when [available] is empty and
+     *  there is no floor (a no-floor language with no deliverable recognizer on
+     *  this device). */
     fun resolveSelectedBackend(
         available: List<OcrBackend>,
         token: String?,
         mlKitFloor: OcrBackend?,
+        isInstalled: (packKey: String) -> Boolean,
     ): OcrBackend? =
-        available.firstOrNull { it.selectionToken == token } ?: mlKitFloor ?: available.firstOrNull()
+        available.firstOrNull { it.selectionToken == token }
+            ?: available.firstOrNull { it.packKeys.all(isInstalled) }
+            ?: mlKitFloor
+            ?: available.firstOrNull()
 
     /** True iff [id] has an ML Kit OCR recognizer that needs no download — the
      *  always-available floor. False for scripts ML Kit can't read (Cyrillic),
@@ -211,8 +245,9 @@ object OcrModelManager {
      *  would actually resolve to is deliverable on this device AND its packs are on
      *  disk — see [requiredOcrReady]. */
     fun isRequiredOcrInstalled(ctx: Context, id: SourceLangId): Boolean =
-        requiredOcrReady(
-            hasFloor = hasMlKitFloor(id),
+        // Floored languages short-circuit before resolving, which reads the disk.
+        hasMlKitFloor(id) || requiredOcrReady(
+            hasFloor = false,
             selected = selectedBackend(ctx, id),
             isInstalled = { OcrPackModelHelper(it).isInstalled(ctx) },
         )
@@ -256,12 +291,12 @@ object OcrModelManager {
     fun isOcrUnavailableOnDevice(ctx: Context, id: SourceLangId): Boolean =
         !hasMlKitFloor(id) && availableBackends(ctx, id).isEmpty()
 
-    /** The three launch-time outcomes for a grandfathered source's default OCR. */
+    /** The two launch-time outcomes for a grandfathered source's default OCR. */
     enum class OcrMigration {
-        /** Nothing to do (explicit choice, no floor, or the floor IS the default). */
+        /** Nothing to do: an explicit choice, no floor, the floor IS the default, or
+         *  the default's packs are already on disk, which an unset selection resolves
+         *  to by itself ([resolveSelectedBackend]). */
         NONE,
-        /** Better default's packs already on disk → just adopt the token. */
-        ADOPT,
         /** Better default's pack still missing → offer a download. */
         OFFER_DOWNLOAD,
     }
@@ -275,9 +310,9 @@ object OcrModelManager {
      * including an explicit ML Kit pick); when there is no ML Kit [floor] (a
      * no-floor source like Russian already resolves to its lone recognizer
      * regardless of token, see [resolveSelectedBackend], so it needs no migration);
-     * or when the top [best] engine is absent, IS the floor, or has no packs
-     * (Vietnamese/Turkish default to ML Kit). Otherwise [ADOPT] when every pack of
-     * [best] is already installed — a no-download token switch off the floor — else
+     * when the top [best] engine is absent, IS the floor, or has no packs
+     * (Vietnamese/Turkish default to ML Kit); or when every pack of [best] is
+     * already installed, since an unset selection resolves to it. Otherwise
      * [OFFER_DOWNLOAD].
      */
     fun decideOcrMigration(
@@ -288,35 +323,17 @@ object OcrModelManager {
     ): OcrMigration {
         if (hasStoredChoice || floor == null) return OcrMigration.NONE
         if (best == null || best == floor || best.packKeys.isEmpty()) return OcrMigration.NONE
-        return if (best.packKeys.all(isInstalled)) OcrMigration.ADOPT else OcrMigration.OFFER_DOWNLOAD
+        return if (best.packKeys.all(isInstalled)) OcrMigration.NONE else OcrMigration.OFFER_DOWNLOAD
     }
 
-    /** [decideOcrMigration] bound to live state for [id], paired with the candidate
-     *  backend (the top deliverable engine) so callers can act on it. */
-    private fun migrationFor(ctx: Context, id: SourceLangId): Pair<OcrMigration, OcrBackend?> {
-        val best = availableBackends(ctx, id).firstOrNull()
-        val decision = decideOcrMigration(
+    /** [decideOcrMigration] bound to live state for [id]. */
+    private fun migrationFor(ctx: Context, id: SourceLangId): OcrMigration =
+        decideOcrMigration(
             hasStoredChoice = Prefs(ctx).ocrBackendToken(id) != null,
             floor = SourceLanguageProfiles[id].mlKitFloor,
-            best = best,
+            best = availableBackends(ctx, id).firstOrNull(),
             isInstalled = { OcrPackModelHelper(it).isInstalled(ctx) },
         )
-        return decision to best
-    }
-
-    /** Launch-time bookkeeping for an installed, floored source [id]: if its better
-     *  default recognizer's packs are ALREADY on disk (e.g. a shared `paddle-rec-unified`
-     *  downloaded for another CJK language), adopt it — persist the token so
-     *  [selectedBackend] resolves to the present recognizer instead of the ML Kit
-     *  floor, putting the user on the better engine. No download, no UI. No-op in
-     *  every other case (see [decideOcrMigration]). (The pack itself is retained by
-     *  language membership regardless of the token — see [plan].) */
-    fun adoptInstalledDefaultOcr(ctx: Context, id: SourceLangId) {
-        val (decision, best) = migrationFor(ctx, id)
-        if (decision == OcrMigration.ADOPT && best != null) {
-            Prefs(ctx).setOcrBackendToken(id, best.selectionToken)
-        }
-    }
 
     /** True iff installed, floored source [id] has a better default recognizer the
      *  user never opted into whose pack still needs downloading — a grandfathered
@@ -324,10 +341,10 @@ object OcrModelManager {
      *  available but absent. Drives the launch-time "update your source pack" nudge,
      *  which routes the pack through the upgrade flow purely to fetch the recognizer
      *  (the dict install no-ops — see `LanguagePackStore.install`'s idempotency
-     *  guard). When the pack is instead already present, [adoptInstalledDefaultOcr]
-     *  handles it silently. */
+     *  guard). Once the pack is present, an unset selection resolves to it
+     *  ([resolveSelectedBackend]); nothing is written. */
     fun isDefaultOcrUpgradeAvailable(ctx: Context, id: SourceLangId): Boolean =
-        migrationFor(ctx, id).first == OcrMigration.OFFER_DOWNLOAD
+        migrationFor(ctx, id) == OcrMigration.OFFER_DOWNLOAD
 
     /** PURE: should the launch flow offer to download the user's CHOSEN OCR
      *  recognizer? True iff [selected] is a real pack-backed backend (not the
@@ -417,14 +434,12 @@ object OcrModelManager {
      *     shared recognizer pack reclaimed by the Settings OCR trash while another
      *     language still has it selected re-downloads the next time that language
      *     becomes the source ([deleteOcrPack]'s contract).
-     *   - **No choice yet**: fetch the top deliverable DEFAULT's packs, then — only
-     *     once every pack is actually on disk — record that engine as the default.
-     *     Persisting AFTER the download (not before) means a cancelled/failed fetch
-     *     leaves the choice unset: the source keeps resolving to the ML Kit floor
-     *     AND stays eligible for the launch-time re-nudge
-     *     ([isDefaultOcrUpgradeAvailable]) instead of being pinned to an absent
-     *     recognizer. (For a no-floor source the token is non-load-bearing —
-     *     [resolveSelectedBackend] resolves to the lone recognizer regardless.)
+     *   - **No choice yet**: fetch the top deliverable DEFAULT's packs. Nothing is
+     *     persisted: an unset selection resolves to the default once its packs
+     *     are on disk ([resolveSelectedBackend]), and a cancelled/failed fetch
+     *     leaves the source on the ML Kit floor AND eligible for the launch-time
+     *     re-nudge ([isDefaultOcrUpgradeAvailable]) instead of pinned to an absent
+     *     recognizer.
      *
      *  No-op when the active backend is the pack-less ML Kit floor
      *  (Vietnamese/Turkish) or its packs are already present.
@@ -439,25 +454,18 @@ object OcrModelManager {
         id: SourceLangId,
         onBytes: (received: Long, total: Long) -> Unit,
     ) {
-        val prefs = Prefs(ctx)
-        val hasChoice = prefs.ocrBackendToken(id) != null
+        val hasChoice = Prefs(ctx).ocrBackendToken(id) != null
         // The backend whose packs to ensure: the existing choice if any (recover
         // ITS packs — selectedBackend resolves the token), else the top deliverable
-        // DEFAULT. (When unchosen, selectedBackend would resolve to the pack-less
-        // floor, so pick the default explicitly to actually fetch a recognizer.)
+        // DEFAULT. (When unchosen, selectedBackend resolves to the floor while the
+        // default's pack is absent, so pick the default explicitly to fetch it.)
         val backend = if (hasChoice) selectedBackend(ctx, id) else availableBackends(ctx, id).firstOrNull()
         backend ?: return
-        if (backend.packKeys.isEmpty()) return // ML Kit floor — nothing to download, no token
+        if (backend.packKeys.isEmpty()) return // ML Kit floor — nothing to download
         for (key in backend.packKeys.filter { !OcrPackModelHelper(it).isInstalled(ctx) }) {
             downloadPack(ctx, key) { p ->
                 if (p is OnDeviceLlmDownloader.Progress.Downloading) onBytes(p.received, p.total)
             }
-        }
-        // A fresh default is committed only once the engine is actually loadable,
-        // so a cancelled/failed fetch leaves it unset and re-nudge-eligible. An
-        // existing choice is already persisted (and was just recovered above).
-        if (!hasChoice && backend.packKeys.all { OcrPackModelHelper(it).isInstalled(ctx) }) {
-            prefs.setOcrBackendToken(id, backend.selectionToken)
         }
     }
 

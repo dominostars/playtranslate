@@ -7,7 +7,6 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.playtranslate.OcrManager
-import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ocr.OcrPipeline
 import com.playtranslate.ocr.core.LayoutAnalyzer
 import com.playtranslate.ocr.core.LayoutGroup
@@ -80,18 +79,24 @@ class CloudParityDumpTest {
             val seeds = loadSeeds().filter { (langFilter == null || it.lang in langFilter) && (caseFilter == null || it.id in caseFilter) }
             Log.i(TAG, "${seeds.size} seeds")
             for (seed in seeds) {
-                val profile = SourceLanguageProfiles.forCode(seed.lang)
-                if (profile == null) { emit(skip(runId, seed, "unknown lang")); continue }
-                val backend = OcrModelManager.availableBackends(appCtx, profile.id).firstOrNull { it.selectionToken == TOKEN }
+                val id = com.playtranslate.language.SourceLangId.fromCode(seed.lang)
+                if (id == null) { emit(skip(runId, seed, "unknown lang")); continue }
+                val backend = OcrModelManager.availableBackends(appCtx, id).firstOrNull { it.selectionToken == TOKEN }
                 if (backend == null) { emit(skip(runId, seed, "paddle not offered for ${seed.lang}")); continue }
                 if (!backend.isDownloaded(appCtx)) { emit(skip(runId, seed, "paddle pack not installed for ${seed.lang}")); continue }
+                // The registry resolves the engine by language through the
+                // production selection: pin TOKEN as the global choice for this
+                // seed's language for the run, restored in the finally below.
+                val prefs = com.playtranslate.Prefs(appCtx)
+                val originalToken = prefs.ocrBackendToken(id)
+                prefs.setOcrBackendToken(id, TOKEN)
                 var bmp: Bitmap? = null
                 try {
                     val bitmap = loadBitmap(seed).also { bmp = it }
                     val t0 = System.nanoTime()
                     runBlocking {
                         OcrPipeline.withRecognition(
-                            engineProvider = { registry.engineFor(seed.lang, TOKEN) },
+                            engineProvider = { registry.engineFor(id) },
                             bitmap = bitmap,
                             sourceLang = seed.lang,
                             screenshotWidth = bitmap.width,
@@ -130,6 +135,8 @@ class CloudParityDumpTest {
                         .put("status", "error").put("reason", "${t.javaClass.simpleName}: ${t.message}"))
                 } finally {
                     bmp?.recycle()
+                    if (originalToken == null) prefs.clearOcrBackendToken(id)
+                    else prefs.setOcrBackendToken(id, originalToken)
                 }
                 runCatching { fos.fd.sync() }
             }

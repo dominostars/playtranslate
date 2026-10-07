@@ -107,7 +107,7 @@ class SentenceTranslationFlow(
         fun attachLookup(
             source: String,
             translation: String,
-            sourceLang: String,
+            sourceLangId: SourceLangId,
             targetLang: String,
             backendDisplayName: String?,
             historyEligible: Boolean,
@@ -121,7 +121,7 @@ class SentenceTranslationFlow(
             rowId: Long,
             source: String,
             translation: String,
-            sourceLang: String,
+            sourceLangId: SourceLangId,
             targetLang: String,
             backendDisplayName: String?,
             contextEligible: Boolean,
@@ -129,8 +129,17 @@ class SentenceTranslationFlow(
     }
 
     /** The History row a translation must attach to, with the pair the row
-     *  was stored under (null = unknown, which never matches). */
-    data class HistoryRow(val id: Long, val sourceLang: String?, val targetLang: String?)
+     *  was stored under (null = unknown, which never matches) and, for rows
+     *  stored since History schema v2, the EXACT source language: ZH and
+     *  ZH_HANT share the pair code, and a Simplified row must not take a
+     *  translation made under Traditional (null = a v1 row, matched by the
+     *  pair alone). */
+    data class HistoryRow(
+        val id: Long,
+        val sourceLang: String?,
+        val sourceLangId: SourceLangId?,
+        val targetLang: String?,
+    )
 
     /** A translation the caller already holds for the sentence. */
     data class Cached(val text: String, val backendDisplayName: String?)
@@ -312,15 +321,16 @@ class SentenceTranslationFlow(
         if (outcome.text.isNotEmpty()) {
             val row = historyRow
             if (row != null) {
-                if (row.sourceLang == sourceLang && row.targetLang == targetLang) {
+                val sameVariant = row.sourceLangId == null || row.sourceLangId == langContext.sourceLangId
+                if (row.sourceLang == sourceLang && row.targetLang == targetLang && sameVariant) {
                     b.attachHistoryRow(
-                        row.id, text, outcome.text, sourceLang, targetLang,
+                        row.id, text, outcome.text, langContext.sourceLangId, targetLang,
                         outcome.backendDisplayName, contextEligible,
                     )
                 }
             } else {
                 b.attachLookup(
-                    text, outcome.text, sourceLang, targetLang,
+                    text, outcome.text, langContext.sourceLangId, targetLang,
                     outcome.backendDisplayName, historyEligible, contextEligible,
                 )
             }
@@ -357,14 +367,14 @@ fun CaptureService.sentenceTranslationBackend(): SentenceTranslationFlow.Backend
         override fun attachLookup(
             source: String,
             translation: String,
-            sourceLang: String,
+            sourceLangId: SourceLangId,
             targetLang: String,
             backendDisplayName: String?,
             historyEligible: Boolean,
             contextEligible: Boolean,
         ) {
             translationLogRecorder.onDeliberateTranslation(
-                source, translation, sourceLang, targetLang,
+                source, translation, sourceLangId, targetLang,
                 TranslationHistoryStore.PROVENANCE_LOOKUP, backendDisplayName,
                 historyEligible = historyEligible,
                 contextEligible = contextEligible,
@@ -375,13 +385,13 @@ fun CaptureService.sentenceTranslationBackend(): SentenceTranslationFlow.Backend
             rowId: Long,
             source: String,
             translation: String,
-            sourceLang: String,
+            sourceLangId: SourceLangId,
             targetLang: String,
             backendDisplayName: String?,
             contextEligible: Boolean,
         ) {
             translationLogRecorder.onHistoryEntryTranslated(
-                rowId, source, translation, sourceLang, targetLang,
+                rowId, source, translation, sourceLangId, targetLang,
                 backendDisplayName, contextEligible = contextEligible,
             )
         }

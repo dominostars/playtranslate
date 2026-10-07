@@ -10,6 +10,7 @@ import com.playtranslate.CaptureState
 import com.playtranslate.OcrManager
 import com.playtranslate.OverlayMode
 import com.playtranslate.OverlayToolkit
+import com.playtranslate.OcrTokenScope
 import com.playtranslate.Prefs
 import com.playtranslate.camera.CameraCoordinates
 import com.playtranslate.camera.CameraTranslator
@@ -334,11 +335,9 @@ class ImageImportSession(
         gen: Long,
     ) {
         val srcId = prefs.sourceLangId
-        val sourceLang = SourceLanguageProfiles[srcId].translationCode
         val auW = frame.width
         val auH = frame.height
         val screenshotPath = saveToCache(frame)
-        val importToken = prefs.importOcrBackendToken(srcId)
 
         // Slow-OCR rescue timer, the live/camera threshold: fires MID-pass,
         // once per image; cancelled with the pass so a fast read never
@@ -352,7 +351,7 @@ class ImageImportSession(
         val ocr = try {
             OcrManager.instance.recognise(
                 frame,
-                sourceLang,
+                srcId,
                 screenshotWidth = auW,
                 // Whole-frame read (no edge gate — the user asked for THIS
                 // image, clipped lines included); the region clip is a
@@ -362,7 +361,7 @@ class ImageImportSession(
                     dropEdgeClipped = false, clipTo = regionAu,
                     clipFrameW = auW, clipFrameH = auH, tag = TAG,
                 ),
-                engineTokenOverride = importToken,
+                scope = OcrTokenScope.IMPORT,
                 // Declared documents only (see the property's kdoc): PDFs
                 // and page-sets get the page-rhythm grouping prior; a lone
                 // imported screenshot must not.
@@ -385,7 +384,7 @@ class ImageImportSession(
             SnapshotCore.usableGroups(it, auW, auH, translating, skipEdgeGate = true, tag = TAG)
         }.orEmpty()
         val groups = SnapshotCore.regionCenterFilter(gatedGroups, regionAu)
-        val provenance = SnapshotCore.snapshotProvenance(context, ocr, srcId, importToken)
+        val provenance = SnapshotCore.snapshotProvenance(context, ocr, srcId, OcrTokenScope.IMPORT)
         if (ocr == null || groups.isEmpty()) {
             // A no-text verdict OWNS the display exactly like a successful
             // run: a re-run (empty region, gear re-OCR) must not leave the

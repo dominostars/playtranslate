@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import com.google.mlkit.vision.text.Text
 import com.playtranslate.language.OcrBackend
+import com.playtranslate.language.SourceLangId
+import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.model.TextSegment
@@ -91,7 +93,7 @@ class OcrManager private constructor() {
 
     /**
      * Resolve — and thereby construct and cache — the OCR engine for
-     * [sourceLang] ahead of the first recognition pass. Live mode calls this at
+     * [source] ahead of the first recognition pass. Live mode calls this at
      * start so the multi-second Meiki/Paddle native session load overlaps
      * MediaProjection setup instead of landing inside cycle 1's [recognise].
      *
@@ -102,20 +104,20 @@ class OcrManager private constructor() {
      * are synchronized and idempotent, so both callers get the same cached
      * session.
      */
-    suspend fun warmUpEngine(sourceLang: String) {
+    suspend fun warmUpEngine(source: SourceLangId) {
         withContext(Dispatchers.Default) {
-            runCatching { registry.engineFor(sourceLang) }
+            runCatching { registry.engineFor(source) }
         }
     }
 
-    /** True when manga-ocr refinement should run for [sourceLang]: enabled by the user
+    /** True when manga-ocr refinement should run for [source]: enabled by the user
      *  ([mangaOcrEnabled]), Japanese, arm64 (MNN), and the model pack installed
      *  ([MangaOcrBridge.modelDir] pushed non-null). Gating modelDir here is also what
      *  keeps the bridge's lazy init from firing — and latching `triedInit` — before
      *  the pack exists. */
-    private fun shouldRefineMangaOcr(sourceLang: String): Boolean =
+    private fun shouldRefineMangaOcr(source: SourceLangId): Boolean =
         mangaOcrEnabled &&
-            sourceLang == "ja" &&
+            source == SourceLangId.JA &&
             OcrModelManager.isMnnAvailable() &&
             MangaOcrBridge.modelDir != null
 
@@ -243,19 +245,24 @@ class OcrManager private constructor() {
 
     /**
      * Run OCR and return a grouped, translation-ready [OcrResult] in original
-     * bitmap coordinates. Resolves the engine for [sourceLang], runs the shared
+     * bitmap coordinates. Resolves the engine for [source], runs the shared
      * pipeline, and projects the result.
+     *
+     * [source] is the EXACT language, variant included: the engine selection is
+     * per-language, while the pipeline below keys its script decisions on the
+     * translation code, which ZH and ZH_HANT share. The code is derived here,
+     * once, and never turned back into a language.
      */
     suspend fun recognise(
         bitmap: Bitmap,
-        sourceLang: String = "ja",
+        source: SourceLangId = SourceLangId.JA,
         collectDebugBoxes: Boolean = false,
         screenshotWidth: Int = 0,
-        recipe: OcrPreprocessingRecipe = selectOcrRecipe(sourceLang),
+        recipe: OcrPreprocessingRecipe = selectOcrRecipe(SourceLanguageProfiles[source].translationCode),
         regionPreFilter: com.playtranslate.ocr.core.RegionPreFilter? = null,
-        /** Caller-scoped OCR selection token (the camera tool's per-flow engine
-         *  choice) resolved in place of the stored global one; null = global. */
-        engineTokenOverride: String? = null,
+        /** Whose OCR selection to run: the global one, or a tool's own (the
+         *  camera's, the import tool's), inheriting global until set. */
+        scope: com.playtranslate.OcrTokenScope = com.playtranslate.OcrTokenScope.GLOBAL,
         /** Document layout bias: grouping may borrow the page's dominant line
          *  rhythm as bootstrap evidence in the ambiguous gap band (airy
          *  document leading otherwise starves there — see
@@ -263,20 +270,21 @@ class OcrManager private constructor() {
          *  menus are rhythmic too, and the band's refusal protects them. */
         documentLayoutBias: Boolean = false,
     ): OcrResult? {
+        val sourceLang = SourceLanguageProfiles[source].translationCode
         val output = OcrPipeline.run(
-            engineProvider = { registry.engineFor(sourceLang, engineTokenOverride) },
+            engineProvider = { registry.engineFor(source, scope) },
             bitmap = bitmap,
             sourceLang = sourceLang,
             screenshotWidth = screenshotWidth,
             recipe = recipe,
             darkBackgroundProvider = { sampleIsDarkBackground(bitmap) },
             logGrouping = debugLogGroupingEnabled,
-            refineWithMangaOcr = shouldRefineMangaOcr(sourceLang),
+            refineWithMangaOcr = shouldRefineMangaOcr(source),
             regionPreFilter = regionPreFilter,
             documentLayoutBias = documentLayoutBias,
             angleNoiseGateDeg = debugAngleGateDeg
                 ?: com.playtranslate.ocr.core.OcrBox.ANGLE_NOISE_GATE_DEG,
-            filterRuby = filterFuriganaEnabled && sourceLang == "ja",
+            filterRuby = filterFuriganaEnabled && source == SourceLangId.JA,
         ) ?: return null
 
         val result = buildOcrResult(
@@ -306,24 +314,25 @@ class OcrManager private constructor() {
      */
     suspend fun recogniseWithPositions(
         bitmap: Bitmap,
-        sourceLang: String = "ja",
-        recipe: OcrPreprocessingRecipe = selectOcrRecipe(sourceLang)
+        source: SourceLangId = SourceLangId.JA,
+        recipe: OcrPreprocessingRecipe = selectOcrRecipe(SourceLanguageProfiles[source].translationCode),
     ): List<OcrLine>? {
+        val sourceLang = SourceLanguageProfiles[source].translationCode
         val output = OcrPipeline.run(
-            engineProvider = { registry.engineFor(sourceLang) },
+            engineProvider = { registry.engineFor(source) },
             bitmap = bitmap,
             sourceLang = sourceLang,
             screenshotWidth = 0,
             recipe = recipe,
             darkBackgroundProvider = { sampleIsDarkBackground(bitmap) },
             logGrouping = debugLogGroupingEnabled,
-            refineWithMangaOcr = shouldRefineMangaOcr(sourceLang),
+            refineWithMangaOcr = shouldRefineMangaOcr(source),
             angleNoiseGateDeg = debugAngleGateDeg
                 ?: com.playtranslate.ocr.core.OcrBox.ANGLE_NOISE_GATE_DEG,
             // Same gate as recognise(): a drag over furigana pixels then
             // resolves to nothing (or the base line if inside its box)
             // rather than to the kana reading.
-            filterRuby = filterFuriganaEnabled && sourceLang == "ja",
+            filterRuby = filterFuriganaEnabled && source == SourceLangId.JA,
         ) ?: return null
 
         return buildOcrLines(output.groups, output.scaleFactor).ifEmpty { null }

@@ -50,11 +50,10 @@ class CameraGearMenu(
      *  mirrors the floating menu's Overlays row: cycles IN PLACE, updating
      *  its value without closing the menu. */
     private val onCycleOverlayMode: () -> Unit,
-    /** The hosting tool's OCR selection (raw scoped token, inheriting
-     *  global until set) — the OCR row's value label resolves through it.
-     *  Defaults to the camera's scope. */
-    private val ocrToken: (com.playtranslate.language.SourceLangId) -> String? =
-        { Prefs(activity).cameraOcrBackendToken(it) },
+    /** The hosting tool's OCR selection scope (inheriting global until set),
+     *  which the OCR row's value label resolves through. Defaults to the
+     *  camera's. */
+    private val ocrScope: com.playtranslate.OcrTokenScope = com.playtranslate.OcrTokenScope.CAMERA,
     /** The hosting tool's overlay flavor — the Overlays row's value label.
      *  Defaults to the camera's scope. */
     private val overlayMode: () -> OverlayMode = { Prefs(activity).cameraOverlayMode },
@@ -215,7 +214,7 @@ class CameraGearMenu(
         // Tool-scoped resolution: the hosting tool's own token, inheriting
         // the global selection until set.
         val ocrName = OcrModelManager
-            .selectedBackend(activity, prefs.sourceLangId, ocrToken(prefs.sourceLangId))
+            .selectedBackend(activity, prefs.sourceLangId, ocrScope)
             ?.ocrLabel(activity) ?: "ML Kit"
         menuHost.addView(divider())
         addRow(inflater, activity.getString(R.string.floating_menu_panel_language), languageName) {

@@ -113,29 +113,56 @@ class OcrModelManagerPlanTest {
         assertEquals(emptySet<String>(), p.toDelete)
     }
 
-    // ── resolveSelectedBackend: the OCR token must stay NON-load-bearing ──────
-    // A no-floor language (Russian) whose token is missing/stale must still
-    // resolve to its installed recognizer, or engineForSelected would drop to the
-    // empty engine. (Pack retention no longer depends on this — plan retains by
-    // language membership — but the resolved engine still does.)
+    // ── resolveSelectedBackend: an unset token MEANS the default ─────────────
+    // The first deliverable backend whose packs are on disk wins when nothing is
+    // stored, so no setup/launch/switch path has to seed a token, and a language
+    // reached by a path that skips them (the icon's Simplified/Traditional
+    // toggle) runs the same default as one reached through the picker. A no-floor
+    // language (Russian) whose token is missing/stale must still resolve to its
+    // installed recognizer, or engineForSelected would drop to the empty engine.
+
+    private fun resolve(
+        available: List<OcrBackend>,
+        token: String?,
+        floor: OcrBackend?,
+        installed: Boolean,
+    ) = OcrModelManager.resolveSelectedBackend(available, token, floor, isInstalled = { installed })
 
     @Test fun noFloorLangResolvesToItsOnlyBackendWhenTokenMissingOrStale() {
-        assertEquals(cyr, OcrModelManager.resolveSelectedBackend(listOf(cyr), token = null, mlKitFloor = null))
-        assertEquals(cyr, OcrModelManager.resolveSelectedBackend(listOf(cyr), token = "stale", mlKitFloor = null))
+        assertEquals(cyr, resolve(listOf(cyr), token = null, floor = null, installed = false))
+        assertEquals(cyr, resolve(listOf(cyr), token = "stale", floor = null, installed = false))
     }
 
     @Test fun storedTokenWinsWhenItMatchesAvailable() {
-        assertEquals(latin, OcrModelManager.resolveSelectedBackend(listOf(latin, mlkit), token = "paddle", mlKitFloor = mlkit))
+        assertEquals(latin, resolve(listOf(latin, mlkit), token = "paddle", floor = mlkit, installed = true))
     }
 
-    @Test fun flooredLangFallsBackToMlKitFloorWhenTokenMissing() {
-        // Unchanged for floored languages: mlKitFloor short-circuits the no-floor fallback.
-        assertEquals(mlkit, OcrModelManager.resolveSelectedBackend(listOf(latin, mlkit), token = null, mlKitFloor = mlkit))
+    @Test fun explicitMlKitPickBeatsAnInstalledDefault() {
+        // A stored token is an explicit choice, the floor included.
+        assertEquals(mlkit, resolve(listOf(latin, mlkit), token = "mlkit", floor = mlkit, installed = true))
+    }
+
+    @Test fun unsetTokenResolvesToTheFirstInstalledBackend() {
+        // The default's pack is on disk (downloaded at setup, or by another
+        // language sharing it): it runs with nothing written.
+        assertEquals(latin, resolve(listOf(latin, mlkit), token = null, floor = mlkit, installed = true))
+        // A stale token (another language's engine) resolves like unset.
+        assertEquals(latin, resolve(listOf(latin, mlkit), token = "meiki", floor = mlkit, installed = true))
+    }
+
+    @Test fun unsetTokenKeepsTheFloorWhereItIsListedFirst() {
+        // Vietnamese/Turkish/Polish list ML Kit first: it is pack-less, so it
+        // is the first "installed" backend and stays the default.
+        assertEquals(mlkit, resolve(listOf(mlkit, latin), token = null, floor = mlkit, installed = true))
+    }
+
+    @Test fun flooredLangFallsBackToMlKitFloorWhenDefaultPackMissing() {
+        assertEquals(mlkit, resolve(listOf(latin, mlkit), token = null, floor = mlkit, installed = false))
     }
 
     @Test fun noDeliverableBackendAndNoFloorIsNull() {
         // No-floor language on a 32-bit device: nothing deliverable → null.
-        assertEquals(null, OcrModelManager.resolveSelectedBackend(emptyList(), token = null, mlKitFloor = null))
+        assertEquals(null, resolve(emptyList(), token = null, floor = null, installed = false))
     }
 
     // ── requiredOcrReady: completeness must imply the engine can load ────────
@@ -159,9 +186,9 @@ class OcrModelManagerPlanTest {
     }
 
     // ── decideOcrMigration: the launch-time grandfathered-OCR decision table ──
-    // Floored source + no stored choice + a better-than-floor default ⇒ ADOPT when
-    // its packs are already on disk (token switch, no download) else OFFER_DOWNLOAD.
-    // Everything else is NONE.
+    // Floored source + no stored choice + a better-than-floor default whose pack
+    // is missing ⇒ OFFER_DOWNLOAD. Everything else is NONE: a default already on
+    // disk needs no token, the unset selection resolves to it.
     private fun migrate(choice: Boolean, floor: OcrBackend?, best: OcrBackend?, installed: Boolean) =
         OcrModelManager.decideOcrMigration(choice, floor, best, isInstalled = { installed })
 
@@ -190,9 +217,10 @@ class OcrModelManagerPlanTest {
         assertEquals(OcrModelManager.OcrMigration.NONE, migrate(choice = false, floor = mlkit, best = OcrBackend.MLKitKorean, installed = false))
     }
 
-    @Test fun migrationAdoptWhenDefaultPackAlreadyInstalled() {
-        // The shared recognizer is already on disk (downloaded for another language).
-        assertEquals(OcrModelManager.OcrMigration.ADOPT, migrate(choice = false, floor = mlkit, best = cjk, installed = true))
+    @Test fun migrationNoneWhenDefaultPackAlreadyInstalled() {
+        // The shared recognizer is already on disk (downloaded for another
+        // language): resolveSelectedBackend runs it with nothing written.
+        assertEquals(OcrModelManager.OcrMigration.NONE, migrate(choice = false, floor = mlkit, best = cjk, installed = true))
     }
 
     @Test fun migrationOfferDownloadWhenDefaultPackMissing() {

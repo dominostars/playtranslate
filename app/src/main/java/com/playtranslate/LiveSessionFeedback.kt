@@ -41,10 +41,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 internal class LiveSessionFeedback(
     parentScope: CoroutineScope,
     private val controller: MediaProjectionController,
-    /** The game language's OCR code, read when the session is built and
-     *  again at [awaitFirstCycleClear]: the language can change while a
-     *  start waits on its consent dialog or stream probe. */
-    private val sourceLang: () -> String,
+    /** The game language, read when the session is built and again at
+     *  [awaitFirstCycleClear]: the language can change while a start waits
+     *  on its consent dialog or stream probe. */
+    private val sourceLang: () -> com.playtranslate.language.SourceLangId,
     /** Invoked at most once per session, on Main, when a live OCR pass has
      *  been in flight past [OCR_SLOW_PROMPT_MS] — the slow-device signal
      *  the rescue prompt fires on. Receives the displayId of an in-flight
@@ -55,7 +55,8 @@ internal class LiveSessionFeedback(
     private val onSlowPass: (Int) -> Unit = {},
     /** Resolves (loads and caches) the OCR engine for a language; a seam
      *  for tests. */
-    private val warmUp: suspend (String) -> Unit = { OcrManager.instance.warmUpEngine(it) },
+    private val warmUp: suspend (com.playtranslate.language.SourceLangId) -> Unit =
+        { OcrManager.instance.warmUpEngine(it) },
 ) {
 
     private val scope = CoroutineScope(

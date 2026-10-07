@@ -1957,12 +1957,10 @@ class MainActivity :
         val activeSource = prefs.sourceLangId
         if (LanguagePackStore.isInstalled(this, activeSource)) {
             val ocr = com.playtranslate.ocr.registry.OcrModelManager
-            // (a) The better default's pack is already on disk (e.g. the shared CJK
-            //     recognizer downloaded for another language) → adopt it silently:
-            //     no UI, no download, just move the token off the floor so the user
-            //     is on the better engine.
-            ocr.adoptInstalledDefaultOcr(this, activeSource)
-            // (b) Else the recognizer still needs downloading → fold a synthetic
+            // A better default whose pack is already on disk (e.g. the shared CJK
+            //     recognizer downloaded for another language) needs nothing here:
+            //     an unset selection resolves to it (OcrModelManager.selectedBackend).
+            // Else the recognizer still needs downloading → fold a synthetic
             //     "update the source pack" entry into this flow; its post-upgrade
             //     priming fetches the recognizer and the dict re-install no-ops
             //     (idempotency guard in LanguagePackStore.install). Skipped when the
@@ -2360,9 +2358,20 @@ class MainActivity :
         // Used both for the Your Language row display and for localizing the
         // Game Language name.
         val sourceCode = com.playtranslate.language.SourceLanguageProfiles[p.sourceLangId].translationCode
-        val effectiveTarget = if (tgtSet) p.targetLang
-            else com.playtranslate.ui.WelcomeDefaults.computeDefaultTarget(sourceCode)
-        val tgtLocale = java.util.Locale.forLanguageTag(effectiveTarget)
+        val effectiveTarget = if (tgtSet) {
+            com.playtranslate.language.TargetSelection(p.targetLang, p.targetChineseVariant)
+        } else {
+            com.playtranslate.ui.WelcomeDefaults.computeDefaultTarget(sourceCode)
+        }
+        // The rows read in the target's own script: the variant code for Chinese
+        // (zh-Hant-TW names the game language in Traditional), the bare code else.
+        val tgtLocale = java.util.Locale.forLanguageTag(
+            if (com.playtranslate.language.ChineseScriptVariant.isChineseTarget(effectiveTarget.code)) {
+                effectiveTarget.chineseVariant.code
+            } else {
+                effectiveTarget.code
+            },
+        )
 
         rowWelcomeGameLang.findViewById<TextView>(R.id.tvRowTitle).text =
             getString(R.string.lang_translate_from)
@@ -2383,7 +2392,7 @@ class MainActivity :
         // something else they tap the row. Tapping Continue without having
         // picked explicitly runs the install flow for this default.
         yourVal.text = com.playtranslate.language.ChineseScriptVariant.targetDisplayName(
-            effectiveTarget, p.targetChineseVariant, tgtLocale,
+            effectiveTarget.code, effectiveTarget.chineseVariant, tgtLocale,
         )
         yourVal.setTextColor(themeColor(R.attr.ptTextMuted))
 
@@ -2436,9 +2445,9 @@ class MainActivity :
                         .computeDefaultTarget(sourceCode)
                     welcomeTargetInstaller.installAndLoad(
                         sourceLangCode = sourceCode,
-                        targetCode = defaultTarget,
+                        targetCode = defaultTarget.code,
                         onSuccess = {
-                            Prefs(this).targetLang = defaultTarget
+                            Prefs(this).setTarget(defaultTarget.code, defaultTarget.chineseVariant)
                             refreshReadiness()
                         },
                     )

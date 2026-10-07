@@ -855,11 +855,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
      *  over-game/live engine as a side effect. This screen's own rows always
      *  persist the global selection (GLOBAL). */
     private fun selectOcr(id: SourceLangId, backend: OcrBackend, scope: OcrTokenScope = OcrTokenScope.GLOBAL) {
-        fun persist() = when (scope) {
-            OcrTokenScope.GLOBAL -> prefs.setOcrBackendToken(id, backend.selectionToken)
-            OcrTokenScope.CAMERA -> prefs.setCameraOcrBackendToken(id, backend.selectionToken)
-            OcrTokenScope.IMPORT -> prefs.setImportOcrBackendToken(id, backend.selectionToken)
-        }
+        fun persist() = prefs.setOcrBackendToken(id, backend.selectionToken, scope)
         val needsDownload = backend.packKeys.any { !OcrPackModelHelper(it).isInstalled(this) }
         if (!needsDownload) {
             persist()

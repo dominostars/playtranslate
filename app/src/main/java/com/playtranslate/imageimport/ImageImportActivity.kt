@@ -186,7 +186,7 @@ class ImageImportActivity : AppCompatActivity() {
             onOcrRow = { showPillOcrPicker() },
             onCycleOverlayMode = { cycleOverlayFlavor() },
             // The import tool's own scoped selections label the rows.
-            ocrToken = { prefs.importOcrBackendToken(it) },
+            ocrScope = OcrTokenScope.IMPORT,
             overlayMode = { prefs.importOverlayMode },
         )
         sessionLangKey = langKey()
@@ -507,7 +507,7 @@ class ImageImportActivity : AppCompatActivity() {
         "${prefs.sourceLangId}|${prefs.targetLang}|${prefs.targetChineseVariant}|" +
             (
                 OcrModelManager.selectedBackend(
-                    this, prefs.sourceLangId, prefs.importOcrBackendToken(prefs.sourceLangId),
+                    this, prefs.sourceLangId, OcrTokenScope.IMPORT,
                 )?.selectionToken ?: ""
             )
 
@@ -526,7 +526,7 @@ class ImageImportActivity : AppCompatActivity() {
     private fun showPillOcrPicker() {
         val srcId = prefs.sourceLangId
         val token = OcrModelManager
-            .selectedBackend(this, srcId, prefs.importOcrBackendToken(srcId))
+            .selectedBackend(this, srcId, OcrTokenScope.IMPORT)
             ?.selectionToken ?: ""
         com.playtranslate.ui.OcrPicker.populate(
             OverlayAlert.Builder(this),
@@ -588,7 +588,7 @@ class ImageImportActivity : AppCompatActivity() {
         val id = prefs.sourceLangId
         if (prefs.importSlowOcrPromptAnswered(id)) return
         val selected =
-            OcrModelManager.selectedBackend(this, id, prefs.importOcrBackendToken(id)) ?: return
+            OcrModelManager.selectedBackend(this, id, OcrTokenScope.IMPORT) ?: return
         val rescue = OcrModelManager.slowOcrRescue(
             available = OcrModelManager.availableBackends(this, id),
             selected = selected,

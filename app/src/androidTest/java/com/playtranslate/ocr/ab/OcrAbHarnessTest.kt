@@ -8,7 +8,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.playtranslate.OcrManager
 import com.playtranslate.Prefs
-import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.ocr.registry.isDownloaded
@@ -344,9 +343,8 @@ class OcrAbHarnessTest {
         val prefs = Prefs(appCtx)
         val byLang = (goldenJaCases() + stagedCases()).groupBy { it.lang }.toSortedMap()
         for ((lang, cases) in byLang) {
-            val profile = SourceLanguageProfiles.forCode(lang)
-            if (profile == null) { sink.skip(exp, "unknown staged lang '$lang'"); continue }
-            val id = profile.id
+            val id = com.playtranslate.language.SourceLangId.fromCode(lang)
+            if (id == null) { sink.skip(exp, "unknown staged lang '$lang'"); continue }
             val backends = OcrModelManager.availableBackends(appCtx, id)
             val fastBackend = backends.firstOrNull { it.selectionToken == "paddle-fast" }
             if (backends.none { it.selectionToken == "mlkit" } ||
@@ -381,7 +379,7 @@ class OcrAbHarnessTest {
             bmp = loadBitmap(c)
             val t0 = System.nanoTime()
             val result = runBlocking {
-                OcrManager.instance.recognise(bitmap = bmp, sourceLang = c.lang, screenshotWidth = bmp.width)
+                OcrManager.instance.recognise(bitmap = bmp, source = com.playtranslate.language.SourceLangId.fromCode(c.lang) ?: com.playtranslate.language.SourceLangId.JA, screenshotWidth = bmp.width)
             }
             val totalMs = (System.nanoTime() - t0) / 1_000_000
             val ranToken = result?.engineBackend?.selectionToken

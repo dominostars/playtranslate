@@ -40,7 +40,7 @@ class PrefsTargetLangBeenSetTest {
     }
 
     @Test fun `hasTargetLangBeenSet is true after setting a non-default target`() {
-        Prefs(ctx).targetLang = "es"
+        Prefs(ctx).setTarget("es")
         assertTrue(Prefs(ctx).hasTargetLangBeenSet)
     }
 
@@ -48,7 +48,7 @@ class PrefsTargetLangBeenSetTest {
         // Ensures the flag tracks presence of the key rather than value-differs-
         // from-default. The welcome flow's Continue-with-English commit relies
         // on this so upgrade-migrated users stay migrated.
-        Prefs(ctx).targetLang = "en"
+        Prefs(ctx).setTarget("en")
         assertTrue(Prefs(ctx).hasTargetLangBeenSet)
     }
 }

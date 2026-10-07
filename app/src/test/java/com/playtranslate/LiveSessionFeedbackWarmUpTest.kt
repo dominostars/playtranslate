@@ -48,83 +48,83 @@ class LiveSessionFeedbackWarmUpTest {
     }
 
     @Test fun `the gate warms the language the first pass will read, when it changed during the wait`() {
-        var lang = "ja"
-        val warmed = mutableListOf<String>()
+        var lang = com.playtranslate.language.SourceLangId.JA
+        val warmed = mutableListOf<com.playtranslate.language.SourceLangId>()
         val feedback = LiveSessionFeedback(
             svc.serviceScope, svc.mediaProjectionController, sourceLang = { lang },
             warmUp = { warmed += it },
         )
         settle()
-        assertEquals("the start's own warm-up", listOf("ja"), warmed)
+        assertEquals("the start's own warm-up", listOf(com.playtranslate.language.SourceLangId.JA), warmed)
 
-        lang = "zh"
+        lang = com.playtranslate.language.SourceLangId.ZH
         val gate = svc.serviceScope.launch { feedback.awaitFirstCycleClear() }
         settle()
 
         assertTrue(gate.isCompleted)
-        assertEquals(listOf("ja", "zh"), warmed)
+        assertEquals(listOf(com.playtranslate.language.SourceLangId.JA, com.playtranslate.language.SourceLangId.ZH), warmed)
         feedback.dispose()
     }
 
     // One load at a time: on the slow devices this exists for, two native
     // model loads at once would only compete.
     @Test fun `the gate warms the current language only after the start's own warm-up settled`() {
-        var lang = "ja"
-        val warmed = mutableListOf<String>()
+        var lang = com.playtranslate.language.SourceLangId.JA
+        val warmed = mutableListOf<com.playtranslate.language.SourceLangId>()
         val startsWarmUp = CompletableDeferred<Unit>()
         val feedback = LiveSessionFeedback(
             svc.serviceScope, svc.mediaProjectionController, sourceLang = { lang },
             warmUp = {
                 warmed += it
-                if (it == "ja") startsWarmUp.await()
+                if (it == com.playtranslate.language.SourceLangId.JA) startsWarmUp.await()
             },
         )
         settle()
-        lang = "zh"
+        lang = com.playtranslate.language.SourceLangId.ZH
         val gate = svc.serviceScope.launch { feedback.awaitFirstCycleClear() }
         settle()
         assertFalse("still waiting on the start's warm-up", gate.isCompleted)
-        assertEquals(listOf("ja"), warmed)
+        assertEquals(listOf(com.playtranslate.language.SourceLangId.JA), warmed)
 
         startsWarmUp.complete(Unit)
         settle()
 
         assertTrue(gate.isCompleted)
-        assertEquals(listOf("ja", "zh"), warmed)
+        assertEquals(listOf(com.playtranslate.language.SourceLangId.JA, com.playtranslate.language.SourceLangId.ZH), warmed)
         feedback.dispose()
     }
 
     // Codex adversarial 2026-09-28: one shared cap let a slow first load use
     // up the second's time, leaving the rest of that load to the first pass.
     @Test fun `a slow start warm-up leaves the new language a cap of its own`() {
-        var lang = "ja"
-        val loaded = mutableListOf<String>()
+        var lang = com.playtranslate.language.SourceLangId.JA
+        val loaded = mutableListOf<com.playtranslate.language.SourceLangId>()
         val feedback = LiveSessionFeedback(
             svc.serviceScope, svc.mediaProjectionController, sourceLang = { lang },
             warmUp = {
-                delay(if (it == "ja") 7_000 else 2_000)
+                delay(if (it == com.playtranslate.language.SourceLangId.JA) 7_000 else 2_000)
                 loaded += it
             },
         )
         shadowOf(Looper.getMainLooper()).idle()   // the start's own warm-up begins: 7 s
-        lang = "zh"
+        lang = com.playtranslate.language.SourceLangId.ZH
         val gate = svc.serviceScope.launch { feedback.awaitFirstCycleClear() }
 
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(10))
 
         assertTrue(gate.isCompleted)
-        assertEquals("both loads finished inside the gate", listOf("ja", "zh"), loaded)
+        assertEquals("both loads finished inside the gate", listOf(com.playtranslate.language.SourceLangId.JA, com.playtranslate.language.SourceLangId.ZH), loaded)
         feedback.dispose()
     }
 
     @Test fun `a warm-up that never returns still lets the first cycle go after its cap`() {
-        var lang = "ja"
+        var lang = com.playtranslate.language.SourceLangId.JA
         val feedback = LiveSessionFeedback(
             svc.serviceScope, svc.mediaProjectionController, sourceLang = { lang },
-            warmUp = { if (it == "zh") awaitCancellation() },
+            warmUp = { if (it == com.playtranslate.language.SourceLangId.ZH) awaitCancellation() },
         )
         settle()
-        lang = "zh"
+        lang = com.playtranslate.language.SourceLangId.ZH
         val gate = svc.serviceScope.launch { feedback.awaitFirstCycleClear() }
 
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(LiveSessionFeedback.WARMUP_JOIN_CAP_MS - 100))

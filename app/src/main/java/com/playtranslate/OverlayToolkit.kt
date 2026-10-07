@@ -687,7 +687,7 @@ object OverlayToolkit {
     suspend fun runOcrPipeline(
         raw: Bitmap,
         activeRegion: RegionEntry,
-        sourceLang: String,
+        source: com.playtranslate.language.SourceLangId,
         ocrManager: OcrManager,
         statusBarHeight: Int,
         seedWriter: ((Bitmap, OcrManager.OcrResult?) -> Unit)? = null,
@@ -718,7 +718,7 @@ object OverlayToolkit {
 
         var ocrResult: OcrManager.OcrResult?
         try {
-            ocrResult = ocrManager.recognise(bitmap, sourceLang, screenshotWidth = raw.width)
+            ocrResult = ocrManager.recognise(bitmap, source, screenshotWidth = raw.width)
             seedWriter?.invoke(bitmap, ocrResult)
         } finally {
             // Always clean up the crop (NOT raw — caller manages that)
@@ -731,6 +731,7 @@ object OverlayToolkit {
         }
         if (ocrResult == null) return null
 
+        val sourceLang = com.playtranslate.language.SourceLanguageProfiles[source].translationCode
         val dedupKey = ocrResult.fullText.filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
         if (dedupKey.isEmpty()) return null
 

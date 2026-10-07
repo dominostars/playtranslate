@@ -457,7 +457,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                     // rect would hide real content from the debug overlay.
                     ocr.recognise(
                         cropped,
-                        SourceLanguageProfiles[prefs.sourceLangId].translationCode,
+                        prefs.sourceLangId,
                         collectDebugBoxes = true,
                         screenshotWidth = raw.width,
                     )

@@ -206,12 +206,6 @@ class CaptureService : Service() {
             ?: gameDisplayIds.firstOrNull(exists)
             ?: android.view.Display.DEFAULT_DISPLAY
     }
-    /** Always returns the current source-language translation code from Prefs.
-     *  Single source of truth for the language pair — callers don't need to
-     *  notify the service when prefs change; [ensureLanguageManagersFor]
-     *  picks up drift at each capture entry point. */
-    internal val sourceLang: String
-        get() = SourceLanguageProfiles[Prefs(this).sourceLangId].translationCode
     /** Tracks whether [configureSaved] has populated capture-time state
      *  (displayIds). Keeping this distinct from manager presence means
      *  a translation-only path that constructs translators via
@@ -1096,9 +1090,7 @@ class CaptureService : Service() {
                 }
             }
             state.value = CaptureState.InProgress(getString(R.string.status_ocr))
-            val ocrResult = ocrManager.recognise(
-                bitmap, SourceLanguageProfiles[srcId].translationCode, screenshotWidth = raw.width,
-            )
+            val ocrResult = ocrManager.recognise(bitmap, srcId, screenshotWidth = raw.width)
             if (BuildConfig.DEBUG && Prefs(this@CaptureService).debugSaveOcrSeed) {
                 OcrSeedWriter.writeSeed(this@CaptureService, bitmap, ocrResult)
             }
@@ -1169,7 +1161,7 @@ class CaptureService : Service() {
                 ocrResult.groups.forEachIndexed { i, g ->
                     val tr = perGroup?.getOrNull(i)?.text.orEmpty()
                     if (deferTranslation || tr.isNotEmpty()) translationLogRecorder.onCaptureShown(
-                        token, g.text, tr.takeIf { it.isNotEmpty() }, g.bounds, recordSrc, recordTgt,
+                        token, g.text, tr.takeIf { it.isNotEmpty() }, g.bounds, srcId, recordTgt,
                         com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_ONE_SHOT,
                         perGroup?.getOrNull(i)?.backendDisplayName,
                         captureImage = screenshotPath?.let {
@@ -1594,7 +1586,7 @@ class CaptureService : Service() {
         liveFeedback?.dispose()
         dismissSlowOcrPrompt()
         liveFeedback = LiveSessionFeedback(
-            serviceScope, mediaProjectionController, sourceLang = { sourceLang },
+            serviceScope, mediaProjectionController, sourceLang = { Prefs(this@CaptureService).sourceLangId },
             onSlowPass = { slowDisplayId -> maybeShowSlowOcrPrompt(slowDisplayId) },
         )
 
@@ -2469,6 +2461,10 @@ class CaptureService : Service() {
     private fun onSourceLanguageChanged(prefs: Prefs, id: SourceLangId) {
         Log.i(TAG, "game language changed to ${id.code} (isLive=$isLive)")
         dropOverlayModeNotOffered(prefs, id)
+        // The sentence cache is keyed by text alone: the same text under the
+        // other Chinese variant would otherwise serve the rows built for the
+        // old one (the target picker clears it for the same reason).
+        com.playtranslate.ui.LastSentenceCache.clear()
         if (isLive) {
             stopLive()
             startLive()
@@ -2893,7 +2889,7 @@ class CaptureService : Service() {
             val result = OverlayToolkit.runOcrPipeline(
                 raw,
                 activeRegionForDisplay(displayId),
-                sourceLang,
+                prefs.sourceLangId,
                 ocrManager,
                 statusBarHeight,
                 seedWriter = seedWriter,
@@ -3374,9 +3370,10 @@ class CaptureService : Service() {
                     bitmap = blacked
                 }
             }
-            // Snapshot the exact source language (variant included) once for provenance.
+            // Snapshot the exact source language (variant included) once: it keys
+            // the engine selection and the provenance alike.
             val srcId = Prefs(this@CaptureService).sourceLangId
-            val ocrResult = ocrManager.recognise(bitmap, sourceLang, screenshotWidth = raw.width)
+            val ocrResult = ocrManager.recognise(bitmap, srcId, screenshotWidth = raw.width)
             if (BuildConfig.DEBUG && Prefs(this@CaptureService).debugSaveOcrSeed) {
                 OcrSeedWriter.writeSeed(this@CaptureService, bitmap, ocrResult)
             }
@@ -3437,7 +3434,7 @@ class CaptureService : Service() {
             ocrResult.groups.forEachIndexed { i, g ->
                 val tr = perGroup?.getOrNull(i)?.text.orEmpty()
                 if (deferTranslation || tr.isNotEmpty()) translationLogRecorder.onCaptureShown(
-                    token, g.text, tr.takeIf { it.isNotEmpty() }, g.bounds, recordSrc, recordTgt,
+                    token, g.text, tr.takeIf { it.isNotEmpty() }, g.bounds, srcId, recordTgt,
                     com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_ONE_SHOT,
                     perGroup?.getOrNull(i)?.backendDisplayName,
                     captureImage = screenshotPath?.let {
@@ -3863,7 +3860,7 @@ class CaptureService : Service() {
         if (pending.historySessionId != null || pending.contextEligible) {
             deferredAttachPlan(pending.groupTexts, perGroup, recordSrc).forEach { (source, tr, backend) ->
                 translationLogRecorder.onCaptureTranslated(
-                    pending.historySessionId, source, tr, recordSrc, recordTgt,
+                    pending.historySessionId, source, tr, pending.sourceLangId, recordTgt,
                     pending.contextEligible, backend,
                 )
             }

@@ -170,7 +170,19 @@ class Prefs internal constructor(
 
     var targetLang: String
         get() = sp.getString(KEY_TARGET_LANG, TranslateLanguage.ENGLISH) ?: TranslateLanguage.ENGLISH
-        set(v) = sp.edit { putString(KEY_TARGET_LANG, v) }
+        private set(v) = sp.edit { putString(KEY_TARGET_LANG, v) }
+
+    /** The ONE write of the target pair. [targetLang] and [targetChineseVariant]
+     *  are two stored fields read separately (the backend code everywhere, the
+     *  script only at conversion and display), so they are written together: a
+     *  writer that set the code alone left a Traditional-locale device on
+     *  Simplified (the welcome page, 2026-10-06). A non-Chinese [code] resets the
+     *  variant to Simplified, a no-op for it. */
+    fun setTarget(code: String, chineseVariant: ChineseScriptVariant = ChineseScriptVariant.SIMPLIFIED) =
+        sp.edit {
+            putString(KEY_TARGET_LANG, code)
+            putString(KEY_TARGET_CHINESE_VARIANT, chineseVariant.code)
+        }
 
     /**
      * The Chinese script variant for target output, meaningful only when
@@ -183,7 +195,7 @@ class Prefs internal constructor(
      */
     var targetChineseVariant: ChineseScriptVariant
         get() = ChineseScriptVariant.fromCode(sp.getString(KEY_TARGET_CHINESE_VARIANT, null))
-        set(v) = sp.edit { putString(KEY_TARGET_CHINESE_VARIANT, v.code) }
+        private set(v) = sp.edit { putString(KEY_TARGET_CHINESE_VARIANT, v.code) }
 
     /** The current (source, target, variant) translation context — what a freshly
      *  produced result is translated under. [sourceOverride] pins the source for a
@@ -225,6 +237,22 @@ class Prefs internal constructor(
     fun setOcrBackendToken(id: SourceLangId, token: String) =
         sp.edit { putString("ocr_backend_${id.code}", token) }
     fun clearOcrBackendToken(id: SourceLangId) = sp.edit { remove("ocr_backend_${id.code}") }
+
+    /** The selection [scope] resolves for [id]: a tool's own token when set, else
+     *  the global one. The ONE place the inherit-until-set rule lives; every
+     *  resolver and label reads it through `OcrModelManager.selectedBackend`. */
+    fun ocrBackendToken(id: SourceLangId, scope: OcrTokenScope): String? = when (scope) {
+        OcrTokenScope.GLOBAL -> ocrBackendToken(id)
+        OcrTokenScope.CAMERA -> cameraOcrBackendToken(id) ?: ocrBackendToken(id)
+        OcrTokenScope.IMPORT -> importOcrBackendToken(id) ?: ocrBackendToken(id)
+    }
+
+    /** Persist [token] as [scope]'s own selection for [id]. */
+    fun setOcrBackendToken(id: SourceLangId, token: String, scope: OcrTokenScope) = when (scope) {
+        OcrTokenScope.GLOBAL -> setOcrBackendToken(id, token)
+        OcrTokenScope.CAMERA -> setCameraOcrBackendToken(id, token)
+        OcrTokenScope.IMPORT -> setImportOcrBackendToken(id, token)
+    }
 
     /** The slow-OCR rescue prompt was answered for [id] — either way, it
      *  never shows again for that language (the OCR picker is the standing

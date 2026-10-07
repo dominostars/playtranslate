@@ -6,6 +6,7 @@ import com.google.mlkit.vision.text.devanagari.DevanagariTextRecognizerOptions
 import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.playtranslate.OcrTokenScope
 import com.playtranslate.language.OcrBackend
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
@@ -33,27 +34,27 @@ class OcrEngineRegistry {
 
     private val engines = ConcurrentHashMap<OcrBackend, OcrEngine>()
 
-    /** [tokenOverride]: a caller-scoped selection token (the camera tool's)
-     *  resolved in place of the stored global one; null = global. */
-    fun engineFor(sourceLang: String, tokenOverride: String? = null): ResolvedOcr {
+    /** The engine for the EXACT source language [id] (its selection is
+     *  per-language, Chinese variants included) under [scope]: the global
+     *  selection, or a tool's own, inheriting global until set. */
+    fun engineFor(id: SourceLangId, scope: OcrTokenScope = OcrTokenScope.GLOBAL): ResolvedOcr {
         // Production: the user's chosen Meiki/Paddle engine if its pack is
         // installed — built + owned by the bridge (NOT cached here, so a selection
         // switch never closes a live session out from under a capture). Falls
         // through to the ML Kit floor (cached; thread-safe, no native teardown).
         // This is the single point where the real chosen→floor→empty fallback is
         // observable, so it reports the resolved backend alongside the engine.
-        OcrModelManager.engineForSelected(sourceLang, tokenOverride)?.let { (backend, engine) ->
+        OcrModelManager.engineForSelected(id, scope)?.let { (backend, engine) ->
             return ResolvedOcr(engine, backend)
         }
-        val profile = SourceLanguageProfiles.forCode(sourceLang)
-            ?: SourceLanguageProfiles[SourceLangId.JA]
+        val profile = SourceLanguageProfiles[id]
         // A no-floor language (Cyrillic etc.) reaches here only if its mandatory
         // recognizer pack is absent — selection gates against that (see
         // OcrModelManager.isFullyInstalled), so this is defense-in-depth: return an
         // empty engine (no OCR) instead of NPE-ing on a null floor, and leave a
         // breadcrumb so a gate hole is diagnosable rather than silently text-less.
         val floor = profile.mlKitFloor ?: run {
-            Log.w(TAG, "no OCR backend for '$sourceLang' (no ML Kit floor, pack absent); returning empty engine")
+            Log.w(TAG, "no OCR backend for '${id.code}' (no ML Kit floor, pack absent); returning empty engine")
             return ResolvedOcr(EmptyOcrEngine, null)
         }
         return ResolvedOcr(engines.getOrPut(floor) { create(floor) }, floor)

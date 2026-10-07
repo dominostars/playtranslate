@@ -344,11 +344,8 @@ class FrozenReviewPanel(
         o.observe(s)
     }
 
-    private fun persistToken(id: SourceLangId, token: String) = when (tokenScope) {
-        OcrTokenScope.GLOBAL -> prefs.setOcrBackendToken(id, token)
-        OcrTokenScope.CAMERA -> prefs.setCameraOcrBackendToken(id, token)
-        OcrTokenScope.IMPORT -> prefs.setImportOcrBackendToken(id, token)
-    }
+    private fun persistToken(id: SourceLangId, token: String) =
+        prefs.setOcrBackendToken(id, token, tokenScope)
 
     /** Read settings changed (source language, OCR engine — the pill's gear
      *  menu): re-read the SAME retained frame under the new selections,

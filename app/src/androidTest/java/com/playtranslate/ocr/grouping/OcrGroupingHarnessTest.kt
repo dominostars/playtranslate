@@ -8,7 +8,6 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.playtranslate.OcrManager
-import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.ocr.OcrPipeline
 import com.playtranslate.ocr.core.GlyphScale
@@ -128,28 +127,38 @@ class OcrGroupingHarnessTest {
     // ── Per-seed driver ──────────────────────────────────────────────────────
 
     private fun runSeed(sink: ResultSink, registry: OcrEngineRegistry, seed: Seed) {
-        val profile = SourceLanguageProfiles.forCode(seed.lang)
-        if (profile == null) {
+        val id = com.playtranslate.language.SourceLangId.fromCode(seed.lang)
+        if (id == null) {
             sink.skip(seed.id, "unknown lang '${seed.lang}' in ${seed.id}.groups.txt")
             return
         }
-        val id = profile.id
         val offered = OcrModelManager.availableBackends(appCtx, id)
         val prodToken = OcrModelManager.selectedBackend(appCtx, id)?.selectionToken
-        for (token in CANONICAL_TOKENS) {
-            val backend = offered.firstOrNull { it.selectionToken == token }
-            if (backend == null) {
-                sink.skip(seed.id, "$token: not offered for '${seed.lang}'")
-                continue
+        // The registry resolves the engine by language through the production
+        // selection: each column pins its token as the global choice for the
+        // seed's language; the original is restored after the seed.
+        val prefs = com.playtranslate.Prefs(appCtx)
+        val originalToken = prefs.ocrBackendToken(id)
+        try {
+            for (token in CANONICAL_TOKENS) {
+                val backend = offered.firstOrNull { it.selectionToken == token }
+                if (backend == null) {
+                    sink.skip(seed.id, "$token: not offered for '${seed.lang}'")
+                    continue
+                }
+                if (!backend.isDownloaded(appCtx)) {
+                    sink.skip(seed.id, "$token: pack not installed")
+                    continue
+                }
+                prefs.setOcrBackendToken(id, token)
+                val reps = if (token == "mlkit") MLKIT_REPS else 1
+                for (rep in 0 until reps) {
+                    runColumn(sink, registry, seed, id, token, rep, prodToken)
+                }
             }
-            if (!backend.isDownloaded(appCtx)) {
-                sink.skip(seed.id, "$token: pack not installed")
-                continue
-            }
-            val reps = if (token == "mlkit") MLKIT_REPS else 1
-            for (rep in 0 until reps) {
-                runColumn(sink, registry, seed, token, rep, prodToken)
-            }
+        } finally {
+            if (originalToken == null) prefs.clearOcrBackendToken(id)
+            else prefs.setOcrBackendToken(id, originalToken)
         }
     }
 
@@ -159,7 +168,8 @@ class OcrGroupingHarnessTest {
      *  the analyzer's output groups (group index per line), boxes divided back
      *  to original-bitmap coords. */
     private fun runColumn(
-        sink: ResultSink, registry: OcrEngineRegistry, seed: Seed, token: String, rep: Int, prodToken: String?,
+        sink: ResultSink, registry: OcrEngineRegistry, seed: Seed, id: com.playtranslate.language.SourceLangId,
+        token: String, rep: Int, prodToken: String?,
     ) {
         var bmp: Bitmap? = null
         try {
@@ -169,7 +179,7 @@ class OcrGroupingHarnessTest {
                 // Scoped bracket: withRecognition owns the preprocessed bitmap
                 // and recycles it when this block exits — nothing to clean up here.
                 OcrPipeline.withRecognition(
-                    engineProvider = { registry.engineFor(seed.lang, token) },
+                    engineProvider = { registry.engineFor(id) },
                     bitmap = bitmap,
                     sourceLang = seed.lang,
                     screenshotWidth = bitmap.width,

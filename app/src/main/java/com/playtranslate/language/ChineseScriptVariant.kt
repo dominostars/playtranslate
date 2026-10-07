@@ -50,6 +50,24 @@ enum class ChineseScriptVariant(val code: String) {
          *  Chinese backend code is [BACKEND_CODE]. */
         fun isChineseTarget(targetLang: String): Boolean = targetLang == BACKEND_CODE
 
+        private val TRADITIONAL_REGIONS = setOf("TW", "HK", "MO")
+
+        /** The variant a device [locale] reads: the Hant script or a Traditional
+         *  region (TW, HK, MO) picks the matching Traditional variant, anything else
+         *  Simplified. The source side (`SourceLangId.fromCode`) folds the same
+         *  regions onto ZH_HANT. Drives the welcome page's default target and the
+         *  target picker's suggested Chinese row, so a Taiwan or Hong Kong device
+         *  is not offered Simplified first. */
+        fun forLocale(locale: Locale): ChineseScriptVariant {
+            val region = locale.country.uppercase(Locale.ROOT)
+            if (locale.script != "Hant" && region !in TRADITIONAL_REGIONS) return SIMPLIFIED
+            return when (region) {
+                "TW" -> TRADITIONAL_TW
+                "HK", "MO" -> TRADITIONAL_HK
+                else -> TRADITIONAL
+            }
+        }
+
         /** Human label for a target language: the script-qualified Chinese
          *  [variant] label (e.g. "Chinese (Traditional, Taiwan)") when [targetLang]
          *  is Chinese, else the plain language name. [variant] is ignored for
@@ -65,3 +83,12 @@ enum class ChineseScriptVariant(val code: String) {
                 .replaceFirstChar { it.uppercase(locale) }
     }
 }
+
+/** A target language pick: the backend code plus, for Chinese, the script. The
+ *  two are persisted together ([com.playtranslate.Prefs.setTarget]) and computed
+ *  together (`WelcomeDefaults.computeDefaultTarget`), so no writer can set one
+ *  without the other. */
+data class TargetSelection(
+    val code: String,
+    val chineseVariant: ChineseScriptVariant = ChineseScriptVariant.SIMPLIFIED,
+)
