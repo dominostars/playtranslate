@@ -11,6 +11,7 @@ import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.language.SentenceAnnotation
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.model.ImportedSense
 import com.playtranslate.model.ImportedSenseGroup
@@ -40,6 +41,12 @@ import org.robolectric.android.controller.ActivityController
  * drawn BEFORE the language's set loaded is provisional, and the load's
  * bump re-renders it ordered exactly once; a row tap reaches the host with
  * the row; and Loading / Idle clear the rows.
+ *
+ * And the card's own visibility: the effective hidden state is the pref OR
+ * the live session's auto-hide; an Analyzed lookup asks for its rows only
+ * while the card is shown; live start auto-hides without writing the pref
+ * and is edge-triggered; the eye writes the opposite of what the card is
+ * showing and spends the auto-hide.
  */
 @RunWith(RobolectricTestRunner::class)
 class WordRowsBinderTest {
@@ -60,6 +67,8 @@ class WordRowsBinderTest {
     private lateinit var root: View
     private lateinit var binder: WordRowsBinder
     private val tapped = mutableListOf<String>()
+    /** [WordRowsBinder.onRowsWanted] invocations. */
+    private var rowsWanted = 0
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val rows = listOf(
@@ -94,7 +103,7 @@ class WordRowsBinderTest {
             override fun onWordTapped(row: RowState) { tapped += row.displayWord }
         },
         styledRowCap = styledRowCap,
-    )
+    ).also { it.onRowsWanted = { rowsWanted++ } }
 
     @After
     fun tearDown(): Unit = runBlocking {
@@ -249,6 +258,117 @@ class WordRowsBinderTest {
         assertTrue(root.findViewById<View>(R.id.tvMainWordsLoading).visibility == View.VISIBLE)
         binder.render(WordLookupsState.Idle)
         assertTrue(binder.isEmpty)
+    }
+
+    private fun analyzed() = WordLookupsState.Analyzed(
+        tokenSpans = emptyList(),
+        annotation = SentenceAnnotation("猫", SourceLangId.JA, 0, emptyList()),
+        phrases = emptyList(),
+    )
+
+    private val card: View get() = root.findViewById(R.id.cardWords)
+    private val eye: View get() = root.findViewById(R.id.btnToggleWords)
+    private val hidePref: Boolean get() = Prefs(app).hideWordsSection
+
+    @Test
+    fun `a hidden card never asks for rows, and a Settled landing while hidden still builds`() {
+        Prefs(app).hideWordsSection = true
+        binder.applyWordsVisibility()
+        assertEquals(View.GONE, card.visibility)
+        binder.render(analyzed())
+        assertEquals(0, rowsWanted)
+        assertTrue("Analyzed draws like Loading", binder.isEmpty)
+        assertEquals(View.VISIBLE, root.findViewById<View>(R.id.tvMainWordsLoading).visibility)
+        // Rows requested earlier, card hidden before they settled: built anyway.
+        binder.render(settled())
+        assertEquals(3, cells().size)
+        assertEquals(View.GONE, root.findViewById<View>(R.id.tvMainWordsLoading).visibility)
+        // Outside live mode the eye reveals and persists the reveal.
+        eye.performClick()
+        assertEquals(View.VISIBLE, card.visibility)
+        assertFalse(hidePref)
+        assertEquals(1, rowsWanted)
+    }
+
+    @Test
+    fun `a shown card asks for rows on the reveal and on an Analyzed render`() {
+        binder.applyWordsVisibility()
+        assertEquals(View.VISIBLE, card.visibility)
+        assertEquals(1, rowsWanted)
+        binder.render(analyzed())
+        assertEquals(2, rowsWanted)
+        assertTrue(binder.isEmpty)
+        binder.render(WordLookupsState.Loading)
+        assertEquals("only Analyzed asks", 2, rowsWanted)
+        binder.setLiveMode(false)
+        assertEquals("a stop with no live session on record is no edge", 2, rowsWanted)
+    }
+
+    @Test
+    fun `live start auto-hides without the pref, the eye reveals for the session, a second tap hides for good`() {
+        binder.applyWordsVisibility()
+        rowsWanted = 0
+        binder.setLiveMode(true)
+        assertEquals(View.GONE, card.visibility)
+        assertTrue(binder.isHidden)
+        assertFalse("the auto-hide is never persisted", hidePref)
+        assertEquals(0, rowsWanted)
+        binder.render(analyzed())
+        assertEquals("auto-hidden: no rows", 0, rowsWanted)
+        binder.setLiveMode(true)
+        assertEquals("a repeat start changes nothing", View.GONE, card.visibility)
+        eye.performClick()
+        assertEquals(View.VISIBLE, card.visibility)
+        assertFalse(hidePref)
+        assertEquals("the reveal asks for the rows", 1, rowsWanted)
+        eye.performClick()
+        assertEquals(View.GONE, card.visibility)
+        assertTrue("a hide from a shown card persists", hidePref)
+        binder.setLiveMode(false)
+        assertEquals("the stop leaves the persisted hide", View.GONE, card.visibility)
+        assertEquals(1, rowsWanted)
+    }
+
+    @Test
+    fun `live mode is edge-triggered and a stop restores the pref's state`() {
+        binder.applyWordsVisibility()
+        binder.setLiveMode(true)
+        eye.performClick()
+        assertEquals(View.VISIBLE, card.visibility)
+        binder.setLiveMode(true)
+        assertEquals("a repeat start does not re-hide a revealed card", View.VISIBLE, card.visibility)
+        binder.setLiveMode(false)
+        assertEquals(View.VISIBLE, card.visibility)
+
+        binder.setLiveMode(true)
+        assertEquals(View.GONE, card.visibility)
+        rowsWanted = 0
+        binder.setLiveMode(false)
+        assertEquals("stop drops the auto-hide: back to the shown pref", View.VISIBLE, card.visibility)
+        assertEquals(1, rowsWanted)
+        assertFalse(hidePref)
+    }
+
+    @Test
+    fun `the eye on a pref-hidden card under live mode reveals it and clears the pref`() {
+        Prefs(app).hideWordsSection = true
+        binder.applyWordsVisibility()
+        binder.setLiveMode(true)
+        assertEquals(View.GONE, card.visibility)
+        binder.render(analyzed())
+        assertEquals(0, rowsWanted)
+        // A stop with no tap: the pref still hides it.
+        binder.setLiveMode(false)
+        assertEquals(View.GONE, card.visibility)
+        assertEquals(0, rowsWanted)
+
+        binder.setLiveMode(true)
+        eye.performClick()
+        assertEquals(View.VISIBLE, card.visibility)
+        assertFalse(hidePref)
+        assertEquals(1, rowsWanted)
+        binder.setLiveMode(false)
+        assertEquals(View.VISIBLE, card.visibility)
     }
 
     private fun clearPrefs() {

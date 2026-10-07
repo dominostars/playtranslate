@@ -32,6 +32,26 @@ data class SentenceAnkiArgs(
 )
 
 /**
+ * The card editor's word rows from one lookup pass — every field read from
+ * THIS payload, so surfaces and enrichment always belong to the results
+ * beside them (reading [LastSentenceCache]'s global fields separately would
+ * race a rotation to another sentence). The one mapping behind every lazy
+ * words fill of [SentenceAnkiContentView]: the word editor's sentence tab,
+ * [AnkiReviewBottomSheet] and [AnkiSentenceEditorPage].
+ */
+fun LastSentenceCache.WordsPayload.toWordEntries(): List<SentenceAnkiHtmlBuilder.WordEntry> =
+    results.map { (w, triple) ->
+        SentenceAnkiHtmlBuilder.WordEntry(
+            w, triple.first, triple.second, triple.third,
+            surfaceForm = surfaces[w].orEmpty(),
+            pitch = enrichment[w]?.pitch.orEmpty(),
+            frequencies = enrichment[w]?.frequencies.orEmpty(),
+            isCommon = enrichment[w]?.isCommon ?: false,
+            senses = enrichment[w]?.senses.orEmpty(),
+        )
+    }
+
+/**
  * Present the editable sentence card from an over-game surface — the one
  * entry the capture sheet and the workspace's Sentence page share. With
  * the AnkiDroid permission already held and a [route] that can present,

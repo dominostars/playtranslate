@@ -24,6 +24,7 @@ import com.playtranslate.applyDialogEdgeToEdge
 import com.playtranslate.audio.AudioSelection
 import com.playtranslate.fullScreenDialogTheme
 import com.playtranslate.language.SourceLangId
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
@@ -32,7 +33,8 @@ import kotlinx.coroutines.launch
  * [SentenceAnkiContentView] — shared with [WordAnkiReviewBinder]'s sentence
  * tab and the floating workspace's editor page; this DialogFragment keeps
  * the dialog window, the deck section, the screenshot pin, the lazy
- * translation fill, and the send.
+ * translation and words fills (re-run for the new sentence when the user
+ * commits an edited Original, as the word editor does), and the send.
  */
 class AnkiReviewBottomSheet : DialogFragment() {
 
@@ -42,6 +44,10 @@ class AnkiReviewBottomSheet : DialogFragment() {
     private var sendButton: AnkiSendButton? = null
 
     private var contentView: SentenceAnkiContentView? = null
+
+    /** The latest words fill (the lazy one at open, or the refill after an
+     *  Original edit), while it runs — [sendToAnki] waits for it. */
+    private var wordsFillJob: Job? = null
 
     /** The content's launch-state bundle — fresh at first creation, the
      *  persisted bundle on a saved-state recreation (applied translation
@@ -180,9 +186,22 @@ class AnkiReviewBottomSheet : DialogFragment() {
         )
         refreshDeckSubtitle()
 
+        // Handed no words for a real sentence: the launching result's word
+        // lookups were deferred (its words card hidden) or are still
+        // running, so the lazy words fill below supplies them. On restore
+        // the restored args are the truth, and when they say a fill is owed
+        // (saved mid-fill), the restore resumes it; Save's join covers the
+        // resumed job too.
+        val fillWords = original.isNotBlank() && (
+            if (restoredContentArgs == null) words.isEmpty()
+            else SentenceAnkiContentView.wordsFillOwed(restoredContentArgs)
+        )
+
         // The card editor, hosted directly (the child-fragment hop is gone).
         val cArgs = restoredContentArgs ?: SentenceAnkiContentView.buildArgs(
             original, translation, words, screenshotPath, sourceLangId = sourceLangId,
+            // "Looking up words…" until applyWords, not a zero-word card.
+            wordsLoading = fillWords,
             audioAnchorMs = args.takeIf { it.containsKey(ARG_AUDIO_ANCHOR_MS) }
                 ?.getLong(ARG_AUDIO_ANCHOR_MS),
         )
@@ -202,6 +221,12 @@ class AnkiReviewBottomSheet : DialogFragment() {
         contentView = content
         host.addView(contentRoot)
         content.buildInto(contentRoot, savedInstanceState)
+        content.onOriginalCommitted = { newOriginal ->
+            // Edited text is NOT the deferred capture's text — never pass
+            // the pending here (resolveAnkiTranslation's caller contract).
+            launchTranslationFill(newOriginal, pending = null)
+            launchWordsFill(newOriginal)
+        }
 
         val sendBtn = view.findViewById<FrameLayout>(R.id.btnSendToAnki)
         sendButton = AnkiSendButton(sendBtn)
@@ -217,23 +242,56 @@ class AnkiReviewBottomSheet : DialogFragment() {
             }
         }
 
+        // A deferred capture's pending rides the args (see newInstance). It
+        // is the launch sentence's, so only the launch-time fill gets it.
+        @Suppress("DEPRECATION")
+        val pending = args.getSerializable(ARG_PENDING_TRANSLATION)
+            as? com.playtranslate.model.PendingTranslation
+
         // Lazy translation fill (mirror of the word editor's): a blank
         // incoming translation means the sheet was opened from a result whose
         // translation never ran — the hidden-section deferral — or hasn't
-        // landed yet. A deferred capture's pending rides the args, and
-        // resolveAnkiTranslation routes it through the deferred completion
-        // (History rows fill, idempotently). Failures are contained (null →
-        // applyTranslation renders the error variant without clobbering user
-        // edits). Safe after restore too: applyTranslation guards on the
+        // landed yet. Safe after restore too: applyTranslation guards on the
         // visible original and on user-touched state.
         if (translation.isBlank() && original.isNotBlank()) {
-            @Suppress("DEPRECATION")
-            val pending = args.getSerializable(ARG_PENDING_TRANSLATION)
-                as? com.playtranslate.model.PendingTranslation
-            viewLifecycleOwner.lifecycleScope.launch {
-                val outcome = resolveAnkiTranslation(pending, original)
-                contentView?.applyTranslation(original, outcome?.text)
-            }
+            launchTranslationFill(original, pending)
+        }
+
+        // Lazy words fill (mirror of the word editor's), owed per fillWords
+        // above.
+        if (fillWords) launchWordsFill(original)
+    }
+
+    /** Fetch [sentence]'s translation and push it into the content, via
+     *  [resolveAnkiTranslation]: a deferred capture's [pending] routes
+     *  through the deferred completion (History rows fill, idempotently);
+     *  null keeps [LastSentenceCache.awaitOrStartTranslation]'s coalescing.
+     *  Failures are contained (null → applyTranslation renders the error
+     *  variant without clobbering user edits), and applyTranslation drops
+     *  a result for a sentence the user has since edited. */
+    private fun launchTranslationFill(
+        sentence: String,
+        pending: com.playtranslate.model.PendingTranslation?,
+    ) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val outcome = resolveAnkiTranslation(pending, sentence)
+            contentView?.applyTranslation(sentence, outcome?.text)
+        }
+    }
+
+    /** Fetch [sentence]'s word breakdown and push it into the content: joins
+     *  the lookup already in flight or cached for this sentence, else starts
+     *  one, and the rows come from that one payload (never the cache's
+     *  separate global fields, which may have rotated). A failed lookup
+     *  lands as an empty payload, which applyWords renders as a definitive
+     *  zero-word card. The job replaces [wordsFillJob], so Save waits for
+     *  the latest fill; an earlier one is left to finish, and applyWords,
+     *  which guards on the visible original, drops its rows. */
+    private fun launchWordsFill(sentence: String) {
+        val appCtx = requireContext().applicationContext
+        wordsFillJob = viewLifecycleOwner.lifecycleScope.launch {
+            val payload = LastSentenceCache.awaitOrStartWordLookups(appCtx, sentence)
+            contentView?.applyWords(sentence, payload.toWordEntries(), targetWord = null)
         }
     }
 
@@ -279,6 +337,8 @@ class AnkiReviewBottomSheet : DialogFragment() {
             sendButton?.setLoading(false)
             return
         }
+        // A card saved mid-fill used to ship without its words table.
+        wordsFillJob?.join()
         val data = content.getCardData()
         val input = SentenceSendInput(
             original = data.source,

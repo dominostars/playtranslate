@@ -442,8 +442,9 @@ class AnkiEditorPage(private val args: Bundle) : WorkspacePage {
 
 /** Sentence-card editor over the game — the [AnkiReviewBottomSheet] shape
  *  with the payload passed as objects (no transport marshalling): deck
- *  section, the shared [SentenceAnkiContentView], lazy translation fill,
- *  and the send. */
+ *  section, the shared [SentenceAnkiContentView], lazy translation and
+ *  words fills (re-run for the new sentence when the user commits an
+ *  edited Original), and the send. */
 class AnkiSentenceEditorPage(
     private val original: String,
     private val translation: String,
@@ -460,6 +461,9 @@ class AnkiSentenceEditorPage(
     private var pageView: View? = null
     private var hostRef: WorkspaceHost? = null
     private var contentView: SentenceAnkiContentView? = null
+    /** The latest words fill (the lazy one at open, or the refill after an
+     *  Original edit), while it runs — [sendToAnki] waits for it. */
+    private var wordsFillJob: kotlinx.coroutines.Job? = null
     private var sendButton: AnkiSendButton? = null
     private var deckSubtitleView: TextView? = null
     private var pinnedScreenshotPath: String? = null
@@ -516,9 +520,14 @@ class AnkiSentenceEditorPage(
         )
         refreshDeckSubtitle(ctx)
 
+        // Handed no words for a real sentence: the sheet host's lazy words
+        // fill, below. No restore guard: a workspace page builds once per
+        // push and has no saved state.
+        val fillWords = words.isEmpty() && original.isNotBlank()
         val cArgs = SentenceAnkiContentView.buildArgs(
             original, translation, words, pinnedScreenshotPath,
             sourceLangId = sourceLangId,
+            wordsLoading = fillWords,
             audioAnchorMs = audioAnchorMs,
         )
         val contentHost = view.findViewById<ViewGroup>(R.id.sentenceAnkiFragmentHost)
@@ -534,6 +543,12 @@ class AnkiSentenceEditorPage(
         contentView = content
         contentHost.addView(contentRoot)
         content.buildInto(contentRoot, null)
+        content.onOriginalCommitted = { newOriginal ->
+            // Edited text is NOT the deferred capture's text — never pass
+            // the pending here (resolveAnkiTranslation's caller contract).
+            launchTranslationFill(newOriginal, pending = null)
+            launchWordsFill(ctx, newOriginal)
+        }
 
         val sendBtn = view.findViewById<FrameLayout>(R.id.btnSendToAnki)
         sendButton = AnkiSendButton(sendBtn)
@@ -551,14 +566,41 @@ class AnkiSentenceEditorPage(
         // the sheet host's, completing a deferred capture's pending when
         // one rides in.
         if (translation.isBlank() && original.isNotBlank()) {
-            scope.launch {
-                val outcome = resolveAnkiTranslation(pendingTranslation, original)
-                contentView?.applyTranslation(original, outcome?.text)
-            }
+            launchTranslationFill(original, pendingTranslation)
         }
+        // Lazy words fill — the sheet host's mirror.
+        if (fillWords) launchWordsFill(ctx, original)
 
         imeWatcher = ImeFocusWatcher(view, host).also { it.attach() }
         return view
+    }
+
+    /** Fetch [sentence]'s translation into the content through
+     *  [resolveAnkiTranslation] — [pending] only for the launch sentence of
+     *  a deferred capture. applyTranslation drops a result for a sentence
+     *  the user has since edited. No-op once the page is destroyed. */
+    private fun launchTranslationFill(
+        sentence: String,
+        pending: com.playtranslate.model.PendingTranslation?,
+    ) {
+        val scope = pageScope ?: return
+        scope.launch {
+            val outcome = resolveAnkiTranslation(pending, sentence)
+            contentView?.applyTranslation(sentence, outcome?.text)
+        }
+    }
+
+    /** Fetch [sentence]'s words into the content — one payload, joined or
+     *  started through the cache. The job replaces [wordsFillJob], so Save
+     *  waits for the latest fill; an earlier one is left to finish, and
+     *  applyWords, which guards on the visible original, drops its rows.
+     *  No-op once the page is destroyed. */
+    private fun launchWordsFill(ctx: Context, sentence: String) {
+        val scope = pageScope ?: return
+        wordsFillJob = scope.launch {
+            val payload = LastSentenceCache.awaitOrStartWordLookups(ctx.applicationContext, sentence)
+            contentView?.applyWords(sentence, payload.toWordEntries(), targetWord = null)
+        }
     }
 
     private inner class ContentHost(
@@ -594,6 +636,8 @@ class AnkiSentenceEditorPage(
             sendButton?.setLoading(false)
             return
         }
+        // A card saved mid-fill used to ship without its words table.
+        wordsFillJob?.join()
         val data = content.getCardData()
         val input = SentenceSendInput(
             original = data.source,

@@ -53,6 +53,25 @@ import kotlinx.coroutines.withContext
  * a row: [applyHiddenState] re-stubs cells in place. The eye tap writes the
  * opposite of the state the cell was SHOWING (handed over by the cell),
  * never a fresh store read — the icon is what the user acted on.
+ *
+ * The card itself has two hide sources, and [isHidden] is their union:
+ * the persisted pref ([Prefs.hideWordsSection]) and a session-only live
+ * auto-hide ([setLiveMode]). The rows are lazy: the VM settles only the
+ * analysis ([WordLookupsState.Analyzed], drawn like Loading) and builds the
+ * rows when this card asks through [onRowsWanted], which it does whenever
+ * it is effectively visible. A hidden card therefore costs no dictionary
+ * lookups, no cells and no deck queries. A [WordLookupsState.Settled] that
+ * lands while the card is hidden (the rows were requested, then the user
+ * hid the card before they settled) still builds its rows: the lookup was
+ * already paid, and the next text starts lazy again.
+ *
+ * Live mode auto-hides the card for its whole session: a dual-screen live
+ * session lands a result on every panel emission, and the list is rarely
+ * read there. The eye reveals it for the rest of that session without
+ * touching the pref; hiding it again is an ordinary, persisted hide. The
+ * live flag lives on this binder, so it is per view: a page recreated
+ * during live mode is seeded with the running state and starts auto-hidden
+ * again.
  */
 class WordRowsBinder(
     root: View,
@@ -105,28 +124,69 @@ class WordRowsBinder(
      *  instead of re-stubbing in place. */
     private var hiddenOrderApplied = false
 
+    /** The live session's auto-hide (class doc): set on live start, cleared
+     *  on live stop and by any eye tap. Never persisted. */
+    private var liveAutoHide = false
+
+    /** The last live state [setLiveMode] saw; the edge detector. */
+    private var liveRunning = false
+
+    /** Asks the VM for the current analysis's rows
+     *  ([TranslationResultViewModel.requestWordRows]). Invoked whenever the
+     *  card is effectively visible and rows may be needed: every
+     *  [applyWordsVisibility] that leaves it shown, and every
+     *  [WordLookupsState.Analyzed] rendered while it is shown. The VM side is
+     *  idempotent (a no-op unless rows are pending and none are in flight),
+     *  so a redundant call costs nothing. */
+    var onRowsWanted: (() -> Unit)? = null
+
+    /** The card's effective hidden state: the persisted pref or the live
+     *  session's auto-hide. */
+    val isHidden: Boolean get() = prefs.hideWordsSection || liveAutoHide
+
     init {
         // Tint in code: the workspace inflates this layout with a plain
         // (non-AppCompat) inflater that drops app:tint (the section binder's
         // gear rule); the same color the XML asks for, so in-app matches.
         toggle.imageTintList = ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextMuted))
         toggle.setOnClickListener {
-            prefs.hideWordsSection = !prefs.hideWordsSection
+            // The opposite of what the card is SHOWING, whichever source hid
+            // it: a tap on a live auto-hidden card reveals it (and clears a
+            // stale hiding pref, since the reveal is what the user asked for),
+            // and a tap on a shown card is a persisted hide. Either way the
+            // auto-hide is spent for this session.
+            val hide = !isHidden
+            prefs.hideWordsSection = hide
+            liveAutoHide = false
             applyWordsVisibility()
         }
     }
 
-    /** Reflect the persisted hide-words pref: the card and the eye icon. */
+    /** Reflect the effective hidden state ([isHidden]): the card and the eye
+     *  icon; a shown card asks for its rows ([onRowsWanted]). */
     fun applyWordsVisibility() {
-        val hidden = prefs.hideWordsSection
+        val hidden = isHidden
         card.visibility = if (hidden) View.GONE else View.VISIBLE
         toggle.setImageResource(if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility)
+        if (!hidden) onRowsWanted?.invoke()
+    }
+
+    /** The host's live-mode state. Edge-triggered: a start auto-hides the
+     *  card, a stop drops the auto-hide (back to the pref), and a repeat of
+     *  the current state is ignored, so a duplicate start after the user
+     *  revealed the card does not hide it again. Never writes the pref. */
+    fun setLiveMode(running: Boolean) {
+        if (running == liveRunning) return
+        liveRunning = running
+        liveAutoHide = running
+        applyWordsVisibility()
     }
 
     val isEmpty: Boolean get() = container.isEmpty()
 
     /** Mirror a [WordLookupsState] into the card. The pipeline itself runs
-     *  in the VM; this only renders. */
+     *  in the VM; this only renders, and asks for the rows of an
+     *  [WordLookupsState.Analyzed] when the card is shown (class doc). */
     fun render(state: WordLookupsState) {
         when (state) {
             is WordLookupsState.Idle -> {
@@ -134,11 +194,15 @@ class WordRowsBinder(
                 noWordsText.isGone = true
                 clearRows()
             }
-            is WordLookupsState.Loading -> {
+            // Analyzed draws exactly like Loading: to the card the rows are
+            // still on their way (they start on the request below, or on the
+            // reveal that makes the card visible).
+            is WordLookupsState.Loading, is WordLookupsState.Analyzed -> {
                 clearRows()
                 loadingText.isVisible = true
                 loadingText.text = ctx.getString(R.string.words_loading)
                 noWordsText.isGone = true
+                if (state is WordLookupsState.Analyzed && !isHidden) onRowsWanted?.invoke()
             }
             is WordLookupsState.Settled -> {
                 renderRows(state.rows, state.styled)

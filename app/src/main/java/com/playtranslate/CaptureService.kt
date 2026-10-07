@@ -309,16 +309,19 @@ class CaptureService : Service() {
 
     internal fun emitResult(result: TranslationResult) {
         _panelState.value = PanelState.Result(result)
-        // Deliberately NO livePanelRecord.committed here: only screen-derived
-        // deliveries ([translateAndSendToPanel]) commit. A deliberate flow
-        // (re-translate, deferred history) emitting through this writer shows
-        // text that is NOT the live screen — recording it would make the
-        // screen's unchanged text look new and let the live loop stomp the
-        // user's requested result one settled cycle later ([LivePanelRecord]).
+        // Deliberately NO commit to either record ([livePanelRecord],
+        // [panelEmissions]) here: only screen-derived deliveries
+        // ([translateAndSendToPanel], [emitPanelResult]) record. A deliberate
+        // flow (re-translate, deferred history) emitting through this writer
+        // shows text that is NOT the live screen — recording it would make
+        // the screen's unchanged text look new and let the live loop stomp
+        // the user's requested result one settled cycle later
+        // ([LivePanelRecord]).
     }
     internal fun emitError(message: String) {
         _panelState.value = PanelState.Error(message)
         livePanelRecord.clear()
+        panelEmissions.clear()
     }
     /**
      * The panel's "a live cycle looked at [displayId] and found nothing"
@@ -346,6 +349,7 @@ class CaptureService : Service() {
         // The recorded text is no longer what the panel shows — identical
         // text REAPPEARING after a no-text gap must deliver again.
         livePanelRecord.clear()
+        panelEmissions.clear()
     }
     /** Reset the sticky panel stream to [PanelState.Idle] so its replay can't re-show a
      *  stale result after the activity returns (e.g. from the language picker). Idle is a
@@ -354,6 +358,7 @@ class CaptureService : Service() {
     internal fun clearPanel() {
         _panelState.value = PanelState.Idle
         livePanelRecord.clear()
+        panelEmissions.clear()
     }
 
     /** Observable translation-degradation state — one [DegradedWarningKind]
@@ -809,6 +814,12 @@ class CaptureService : Service() {
         hasCaptureStateConfigured = true
         ensureLanguageManagersFor(snapshotTranslationTarget())
         _statusUpdates.tryEmit(getString(R.string.status_idle))
+        // The activity flips the panel to Idle on that signal: it leaves its
+        // Result state, so both delivery records clear (identical text read
+        // after this must deliver again). livePanelRecord was not cleared
+        // here before: a furigana-tier gap of the same shape.
+        livePanelRecord.clear()
+        panelEmissions.clear()
         // Treat saved-region reconfig as a region change for the running
         // pipeline: refreshes live modes' cached boxes/cleanRef/dedup so
         // the next cycle reads the new region instead of replaying stale
@@ -1982,6 +1993,7 @@ class CaptureService : Service() {
         // result lingering until the first cycle lands).
         _panelState.value = PanelState.Searching
         livePanelRecord.clear()
+        panelEmissions.clear()
 
         val prefs = Prefs(this)
         val activeIds = gameDisplayIds.ifEmpty { setOf(primaryGameDisplayId()) }
@@ -3003,8 +3015,11 @@ class CaptureService : Service() {
         )
         // COMMIT ON DELIVERY: every caller of THIS function delivers what
         // the capture display currently shows (live furigana offers,
-        // one-shot holds), so the record keeps mirroring the screen.
+        // one-shot holds), so both records keep mirroring the screen — a
+        // hold that delivered other text makes a live tier's next
+        // identical emission new again.
         livePanelRecord.committed(displayId, ocrResult.fullText, livePanelStamp())
+        panelEmissions.committed(displayId, ocrResult.fullText, translated, backendDisplayName)
         return perGroup
     }
 
@@ -3016,6 +3031,11 @@ class CaptureService : Service() {
     /** What the panel currently shows, owned HERE at the delivery layer —
      *  see [LivePanelRecord] for the rules and the bug history. */
     private val livePanelRecord = LivePanelRecord()
+
+    /** The overlay tiers' twin of [livePanelRecord]: the exact key of what
+     *  [emitPanelResult] last delivered per display — see
+     *  [PanelEmissionDedup]. Cleared wherever livePanelRecord is. */
+    private val panelEmissions = PanelEmissionDedup()
 
     /** Language key for [livePanelRecord]: same text under a new
      *  source/target pair is new content. */
@@ -3032,18 +3052,23 @@ class CaptureService : Service() {
     internal fun livePanelWouldAccept(displayId: Int, text: String): Boolean =
         appPanelVisible() && livePanelRecord.isNew(displayId, text, livePanelStamp())
 
-    /** Emit a live tier's displayed state to the in-app panel — the ONE
-     *  emission shape shared by the pinhole tier and the reconciler
-     *  presenters (build [texts] via [OverlayToolkit.panelTexts]; gating
-     *  and ordering policy stay with the caller, where they genuinely
-     *  differ). [screenshotPath] is a synchronous JPEG write — callers
-     *  invoke it (lazily) only on paths that actually emit. */
+    /** Emit a live tier's displayed state from [displayId] to the in-app
+     *  panel — the ONE emission shape shared by the pinhole tier and the
+     *  reconciler presenters (build [texts] via [OverlayToolkit.panelTexts];
+     *  visibility gating and ordering policy stay with the caller, where
+     *  they genuinely differ). Deduped HERE against what the panel shows
+     *  ([panelEmissions]): an identical delivery is dropped. [screenshotPath]
+     *  is a synchronous JPEG write, invoked only past the dedup. */
     internal fun emitPanelResult(
+        displayId: Int,
         texts: OverlayToolkit.PanelTexts,
-        screenshotPath: String?,
+        screenshotPath: () -> String?,
         ocrProvenance: OcrProvenance? = null,
         backendDisplayName: String? = null,
     ) {
+        if (!panelEmissions.isNew(displayId, texts, backendDisplayName)) return
+        // The JPEG write runs only past the dedup.
+        val shot = screenshotPath()
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
             .format(java.util.Date())
         emitResult(TranslationResult(
@@ -3051,7 +3076,7 @@ class CaptureService : Service() {
             segments = texts.segments,
             translatedText = texts.translatedText,
             timestamp = timestamp,
-            screenshotPath = screenshotPath,
+            screenshotPath = shot,
             backendDisplayName = backendDisplayName,
             ocrProvenance = ocrProvenance,
             langContext = Prefs(this).langContext(),
@@ -3296,6 +3321,12 @@ class CaptureService : Service() {
         overrideRegions.clear()
         hasCaptureStateConfigured = false
         _statusUpdates.tryEmit(getString(R.string.status_idle))
+        // The activity flips the panel to Idle on that signal: it leaves its
+        // Result state, so both delivery records clear (identical text read
+        // after this must deliver again). livePanelRecord was not cleared
+        // here before: a furigana-tier gap of the same shape.
+        livePanelRecord.clear()
+        panelEmissions.clear()
     }
 
     /** True iff [configureSaved] has run (display + region set). Explicitly
