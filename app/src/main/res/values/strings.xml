@@ -2901,6 +2901,15 @@
     <!-- Crash-report email body. -->
     <string name="crash_email_body">Steps to reproduce:\n\n(Optional — describe what you were doing when this happened.)\n\nDevice info is included in the attached file.</string>
 
+    <!-- Title of the app chooser for the crash-report email. -->
+    <string name="crash_email_chooser_title">Send crash report</string>
+
+    <!-- Toast when no email app is installed, for both the crash report and
+         Report a bug: the files go out through the plain share sheet
+         instead, which carries no recipient, so the address is named here.
+         %1$s = the support email address. -->
+    <string name="email_no_app_fallback">No email app found. Send the files to <xliff:g id="email" example="support@playtranslate.com">%1$s</xliff:g> another way.</string>
+
     <!-- Title of the "new version available" dialog. -->
     <string name="update_dialog_title">Update available</string>
 
@@ -3797,6 +3806,28 @@
     <!-- Subtitle under that row: the mechanism behind the symptom. -->
     <string name="settings_support_keep_running_subtitle">Stop your phone from closing <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
 
+    <!-- Row title in Support: opens a pre-addressed email to the support
+         address with recent logs and any crash files attached. Phrased as
+         the user's goal, like its neighbours. -->
+    <string name="settings_support_report_bug_title">Report a bug</string>
+
+    <!-- Subtitle on the Report a bug row. ONE LINE: the hub row clips its
+         summary. Tap = email; hold = the plain share sheet, for sending the
+         files somewhere else (Discord). -->
+    <string name="settings_support_report_bug_subtitle">Email logs to support. Hold to share instead.</string>
+
+    <!-- Subject of the bug-report email. %1$s = the app version
+         (e.g. "2.2.0"). Mirrors crash_email_subject. "PlayTranslate" is the
+         app name; do not translate. -->
+    <string name="settings_support_report_bug_email_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> bug report – v<xliff:g id="version" example="2.2.0">%1$s</xliff:g></string>
+
+    <!-- Body of the bug-report email: a prompt the user answers above the
+         attachment. -->
+    <string name="settings_support_report_bug_email_body">What happened?\n\n(Describe what you were doing and what went wrong.)\n\nDevice info and recent logs are attached.</string>
+
+    <!-- Title of the app chooser for the bug-report email. -->
+    <string name="settings_support_report_bug_chooser_title">Send bug report</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          KILL NOTICE (MainActivity.maybeShowKillNotice): the alert shown
          once after the system killed the app while the floating controls
@@ -3985,14 +4016,8 @@
     <!-- Shown in the dictionary-lookup status-row count label when the lookup itself failed (dictionary unavailable, pack error). -->
     <string name="dictionary_status_error">Couldn\'t look that up</string>
 
-    <!-- Row title in Debug — share recent logs for a bug report. -->
-    <string name="settings_debug_export_logs_title">Export logs</string>
-
-    <!-- Subtitle on the export-logs row. -->
-    <string name="settings_debug_export_logs_subtitle">Share recent logs for a bug report</string>
-
-    <!-- Names the exported logs: share-sheet subject when sending the files, and
-         the clipboard label when the user long-presses the row to copy them. -->
+    <!-- Share-sheet subject when the user holds Report a bug to send the
+         logs somewhere other than email. -->
     <string name="settings_debug_export_logs_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> logs</string>
 
     <!-- Error toast shown if log export failed. %1$s = exception
@@ -4009,14 +4034,15 @@
     <!-- Toast after copying translated text to the clipboard. -->
     <string name="toast_copied">Copied</string>
 
-    <!-- Toast shown when the user taps Export Logs but no logs exist. -->
+    <!-- Toast shown when Report a bug finds no logs to send. -->
     <string name="toast_no_logs_to_share">No logs to share</string>
 
     <!-- Toast shown when the user taps Send Crash Report but no report
          exists. -->
     <string name="toast_no_crash_report">No crash report to send</string>
 
-    <!-- Share-sheet chooser title used by the Export Logs flow. -->
+    <!-- Share-sheet chooser title when the user holds Report a bug, and
+         for the no-email-app fallback. -->
     <string name="share_chooser_share_logs">Share logs</string>
 
     <!-- Audio sources (Wikimedia Commons human recordings + TTS). -->

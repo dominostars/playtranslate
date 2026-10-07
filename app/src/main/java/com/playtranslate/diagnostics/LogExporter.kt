@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.widget.Toast
+import androidx.annotation.StringRes
 import androidx.core.content.FileProvider
 import com.playtranslate.BuildConfig
 import com.playtranslate.R
@@ -16,16 +17,11 @@ import java.util.Locale
 
 object LogExporter {
 
-    const val CRASH_REPORT_EMAIL = "support@playtranslate.com"
+    /** Where the crash dialog and Settings → Report a bug address their email. */
+    const val SUPPORT_EMAIL = "support@playtranslate.com"
     private const val FILE_PROVIDER_AUTHORITY = "com.playtranslate.fileprovider"
     private const val LOGS_DIR = "logs"
     private const val LOGCAT_LINES = "5000"
-
-    /** A clip crosses a Binder transaction — ~1 MB per process, and text
-     *  parcels as UTF-16 — so a full [LOGCAT_LINES] dump can overflow it and
-     *  throw. ~200k chars lands at ~400 KB on the wire. */
-    private const val CLIPBOARD_MAX_CHARS = 200_000
-    private const val TRIM_MARKER = "[older lines trimmed to fit the clipboard]\n"
 
     private val FILE_NAME_FORMAT = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US)
     private val HEADER_FORMAT = SimpleDateFormat("yyyy-MM-dd HH:mm:ss z", Locale.US)
@@ -42,26 +38,6 @@ object LogExporter {
         return file
     }
 
-    /**
-     * The same header + logcat [exportLogcat] writes, as one blob capped to
-     * [CLIPBOARD_MAX_CHARS] — used by Settings → Export logs (long-press).
-     * Crash files are left to the share path: their stacks reach logcat through
-     * the default handler anyway, and the files outlive only a rolled-over log.
-     *
-     * Blocking (spawns `logcat`) — call off the main thread.
-     */
-    fun clipboardLogText(): String {
-        val header = buildHeader()
-        val body = runLogcat()
-        val room = CLIPBOARD_MAX_CHARS - header.length - TRIM_MARKER.length
-        if (body.length <= room) return header + body
-        // Drop the oldest output, never the newest — a bug report lives in the
-        // tail. Resume on a line boundary so the paste doesn't open mid-line.
-        val from = body.length - room
-        val start = body.indexOf('\n', from).let { if (it < 0) from else it + 1 }
-        return header + TRIM_MARKER + body.substring(start)
-    }
-
     fun getCrashFiles(context: Context): List<File> {
         val dir = File(context.filesDir, CrashHandler.CRASHES_DIR)
         if (!dir.isDirectory) return emptyList()
@@ -70,13 +46,28 @@ object LogExporter {
             ?: emptyList()
     }
 
+    /**
+     * Copies of [files] next to the logcat file in the export directory, for
+     * attaching in place of the originals. The chooser returns before the
+     * receiving app opens the attachment URIs, so a source deleted right after
+     * launch is gone by the time Gmail reads it; a copy here outlives that,
+     * and [exportLogcat] clearing this directory on the next export is the
+     * only cleanup it needs. Call AFTER [exportLogcat], which empties the
+     * directory first. Blocking; call off the main thread.
+     */
+    fun stageCrashFiles(context: Context, files: List<File>): List<File> {
+        val dir = File(context.cacheDir, LOGS_DIR).apply { mkdirs() }
+        return files.map { src -> src.copyTo(File(dir, src.name), overwrite = true) }
+    }
+
     fun deleteCrashFiles(context: Context) {
         val dir = File(context.filesDir, CrashHandler.CRASHES_DIR)
         if (!dir.isDirectory) return
         dir.listFiles()?.forEach { it.delete() }
     }
 
-    /** Generic share sheet — used by Settings → Export logs. */
+    /** Plain share sheet, no recipient: Settings → Report a bug on hold, and
+     *  the fallback [emailFiles] takes when no email app is installed. */
     fun shareFiles(activity: Activity, files: List<File>, subject: String) {
         if (files.isEmpty()) {
             Toast.makeText(activity, activity.getString(R.string.toast_no_logs_to_share), Toast.LENGTH_SHORT).show()
@@ -90,38 +81,45 @@ object LogExporter {
     }
 
     /**
-     * Pre-filled email to [CRASH_REPORT_EMAIL] — used by the crash dialog.
-     * Falls back to [shareFiles] if no email app is installed.
+     * Email to [SUPPORT_EMAIL] with [files] attached and the recipient,
+     * [subject] and [body] filled in — the crash dialog and Settings → Report
+     * a bug. Falls back to [shareFiles] when no email app is installed. That
+     * check is resolveActivity, which on API 30+ only sees apps the manifest's
+     * <queries> declares; the SEND_MULTIPLE / message/rfc822 entry there is
+     * what keeps it from answering "none" on every phone that has Gmail.
      */
     fun emailFiles(
         activity: Activity,
         files: List<File>,
         subject: String,
-        body: String
+        body: String,
+        chooserTitle: String,
+        @StringRes noFilesToast: Int,
     ) {
         if (files.isEmpty()) {
-            Toast.makeText(activity, activity.getString(R.string.toast_no_crash_report), Toast.LENGTH_SHORT).show()
+            Toast.makeText(activity, activity.getString(noFilesToast), Toast.LENGTH_SHORT).show()
             return
         }
-        val uris = ArrayList(files.map { fileToUri(activity, it) })
-        val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-            type = "message/rfc822"
-            putExtra(Intent.EXTRA_EMAIL, arrayOf(CRASH_REPORT_EMAIL))
+        // ACTION_SEND for one file, SEND_MULTIPLE for more, like the share
+        // path: a client that registers only the single-file action would
+        // otherwise read as "no email app" for a logcat-only report.
+        val uris = files.map { fileToUri(activity, it) }
+        val intent = buildSendIntent(uris, mimeType = "message/rfc822").apply {
+            putExtra(Intent.EXTRA_EMAIL, arrayOf(SUPPORT_EMAIL))
             putExtra(Intent.EXTRA_SUBJECT, subject)
             putExtra(Intent.EXTRA_TEXT, body)
-            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         if (intent.resolveActivity(activity.packageManager) == null) {
+            // The share sheet carries no recipient, so the toast names it.
             Toast.makeText(
                 activity,
-                "No email app found — choose another way to share",
+                activity.getString(R.string.email_no_app_fallback, SUPPORT_EMAIL),
                 Toast.LENGTH_LONG
             ).show()
             shareFiles(activity, files, subject)
             return
         }
-        startChooser(activity, intent, "Send crash report")
+        startChooser(activity, intent, chooserTitle)
     }
 
     private fun runLogcat(): String {
@@ -184,16 +182,16 @@ object LogExporter {
     private fun fileToUri(context: Context, file: File): Uri =
         FileProvider.getUriForFile(context, FILE_PROVIDER_AUTHORITY, file)
 
-    private fun buildSendIntent(uris: List<Uri>): Intent {
+    private fun buildSendIntent(uris: List<Uri>, mimeType: String = "text/plain"): Intent {
         return if (uris.size == 1) {
             Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
+                type = mimeType
                 putExtra(Intent.EXTRA_STREAM, uris.first())
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
         } else {
             Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                type = "text/plain"
+                type = mimeType
                 putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
