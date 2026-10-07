@@ -1,6 +1,19 @@
 # PlayTranslate
 
-A real-time game translation Android app, built for both language learners and people who just want to play. Supports 23 game languages and 59 user languages!
+<!-- l10n-header -->
+<div align="center">
+
+English | [简体中文](./readme/README.zh-CN.md) | [繁體中文](./readme/README.zh-HK.md) | [Español](./readme/README.es.md) | [العربية](./readme/README.ar.md) | [Français](./readme/README.fr.md) | [Português (Brasil)](./readme/README.pt-BR.md) | [Русский](./readme/README.ru.md) | [Deutsch](./readme/README.de.md) | [日本語](./readme/README.ja.md) | [Türkçe](./readme/README.tr.md) | [Tiếng Việt](./readme/README.vi.md) | [한국어](./readme/README.ko.md) | [ไทย](./readme/README.th.md)
+
+[![Downloads](https://img.shields.io/github/downloads/dominostars/playtranslate/total)](https://github.com/dominostars/playtranslate/releases)
+[![Stars](https://img.shields.io/github/stars/dominostars/playtranslate?style=flat)](https://github.com/dominostars/playtranslate/stargazers)
+![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white)
+[![License](https://img.shields.io/github/license/dominostars/playtranslate)](https://github.com/dominostars/playtranslate/blob/main/LICENSE)
+
+</div>
+<!-- /l10n-header -->
+
+A real-time translation and language learning Android app for games, visual novels, manga, and any other screen text. Supports 26 game languages and 59 user languages!
 
 [Download the latest release by clicking here](../../releases/latest)
 
@@ -10,9 +23,9 @@ To report issues, receive support, or make requests, please join the [Discord se
 
 ## Features
 
-- **One-tap Translation**: Capture the game screen and translate Japanese text with one tap
+- **One-tap Translation**: Capture the game screen and translate the text on it with one tap
 - **Auto Translation Mode**: Automatically translates as dialogue changes, no tapping required
-- **Word lookup**: Hover the floating lens over any word for immediate dictionary definitionss
+- **Word lookup**: Hover the floating lens over any word for immediate dictionary definitions
 - **Offline**: OCR and dictionary lookups work without an internet connection, with optional offline translation models
 - **Furigana/Pinyin Mode**: Show reading hints above characters in real time
 - **Hotkeys**: Configure a physical key to hold-to-preview translations or furigana, great for handhelds with dedicated buttons
@@ -21,13 +34,13 @@ To report issues, receive support, or make requests, please join the [Discord se
 - **Text-to-speech**: Hear text spoken aloud. Change the default voice in settings
 - **Anki export**: Save sentences to AnkiDroid with the original text, translation, word list, target words, text-to-speech, and a screenshot. Even record and include game audio! Card type selection with presets for popular decks.
 - **Yomitan integration**: Yomitan dictionaries seamlessly integrate, including pitch accent, frequency chips, kanji enrichment, and merged term definitions everywhere (incl. Anki). Look for deeper integration in the future
-- **Camera translation**: point your camera at text in the world and read it live, or freeze a frame to tap words and look them up.
-- **Text History**: keep a record of captured sentences. Off by default.
+- **Camera translation**: Point your camera at text in the world and read it live, or freeze a frame to tap words and look them up.
+- **Text History**: Keep a record of captured sentences. Off by default.
 
 ## How to Install
 
-1. [Download the latest release by clicking here](../../releases/download/v3.3.0/PlayTranslate-3.3.0.apk)
-2. On your Android, enable **Settings → Security → Install unknown apps** for your file manager or browser
+1. [Download the latest release by clicking here](../../releases/latest)
+2. On your Android, allow your browser or file manager to install unknown apps: open **Settings → Apps → Special app access → Install unknown apps**, pick the app, and turn on **Allow from this source**. Android also offers to take you there when you first open the APK
 3. Open the APK and tap Install
 4. On first launch, follow the onboarding steps to grant the necessary permissions
 
