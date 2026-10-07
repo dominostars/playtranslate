@@ -1095,10 +1095,14 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                     removeRegionButton?.visibility = View.GONE
                 }
                 if (isDragging) {
-                    val left   = minOf(dragStartX, event.x)
-                    val top    = minOf(dragStartY, event.y)
-                    val right  = maxOf(dragStartX, event.x)
-                    val bottom = maxOf(dragStartY, event.y)
+                    // The box becomes fractions of this view, so it ends at
+                    // the view's edges whatever the gesture reports.
+                    val x = event.x.coerceIn(0f, width.toFloat())
+                    val y = event.y.coerceIn(0f, height.toFloat())
+                    val left   = minOf(dragStartX, x)
+                    val top    = minOf(dragStartY, y)
+                    val right  = maxOf(dragStartX, x)
+                    val bottom = maxOf(dragStartY, y)
                     selectionRect = RectF(left, top, right, bottom)
                     invalidate()
                 }

@@ -73,12 +73,7 @@ class CameraRegionUi(
         hideEditor()
         val start = init ?: RectF(0.25f, 0.25f, 0.75f, 0.75f)
         val drag = RegionDragView(activity).apply {
-            setRegion(
-                top = start.top.coerceIn(0f, 1f),
-                bottom = start.bottom.coerceIn(0f, 1f),
-                left = start.left.coerceIn(0f, 1f),
-                right = start.right.coerceIn(0f, 1f),
-            )
+            setRegion(top = start.top, bottom = start.bottom, left = start.left, right = start.right)
             onDragStart = {
                 editorBar?.visibility = View.INVISIBLE
                 editorLabel?.visibility = View.INVISIBLE
