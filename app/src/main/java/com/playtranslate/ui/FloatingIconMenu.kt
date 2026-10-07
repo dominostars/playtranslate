@@ -15,6 +15,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.StaticLayout
 import android.text.TextUtils
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -51,9 +52,24 @@ enum class DegradedWarningKind { None, Offline, LowMemory }
  * Auto-translate toggle).
  *
  * Also supports drag-to-select: dragging outside the menu draws a selection
- * rectangle and fires [onRegionSelected] with fractional coordinates.
+ * rectangle and fires [onRegionSelected] with fractional coordinates. A drag
+ * released within [MIN_DRAG_MS] is an accidental touch: nothing is selected
+ * and the menu comes back.
  */
 class FloatingIconMenu(context: Context) : FrameLayout(context) {
+
+    companion object {
+        /** A drag-to-select released sooner than this is an accidental touch
+         *  and restores the menu instead of selecting. Measured on the Thor
+         *  (2026-10-07, eight gestures a side): brushes and flicks were 42 to
+         *  85 ms from down to up, every aimed drawing 340 ms or more, nothing
+         *  between. Size separates nothing, since a flick across the screen
+         *  leaves a region-sized box. 150 ms is 1.8x the slowest flick and
+         *  0.44x the quickest drawing, nearer the flick side because a flick's
+         *  duration is bounded by physiology and a quick hand's small box is
+         *  not. */
+        const val MIN_DRAG_MS = 150L
+    }
 
     private val dp = resources.displayMetrics.density
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
@@ -326,6 +342,10 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private var dragStartY = 0f
     private var selectionRect: RectF? = null
     private var potentialDrag = false
+    /** Whether the record bar was showing when a drag hid it, so a rejected
+     *  drag puts back exactly that: its placement leaves the bar hidden
+     *  when the screen has no room for it, whatever [showRecordAudio] says. */
+    private var recordAudioHiddenByDrag = false
 
     init {
         setWillNotDraw(false)
@@ -1089,6 +1109,7 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 if (!isDragging && (dx * dx + dy * dy > touchSlop * touchSlop)) {
                     isDragging = true
                     menuCard.isGone = true
+                    recordAudioHiddenByDrag = recordAudioBtn.isVisible
                     recordAudioBtn.isGone = true
                     instructionPill.isGone = true
                     regionNamePill?.visibility = View.GONE
@@ -1111,20 +1132,26 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             MotionEvent.ACTION_UP -> {
                 if (isDragging) {
                     val sel = selectionRect
-                    if (sel != null && sel.width() > touchSlop && sel.height() > touchSlop) {
-                        val w = width.toFloat()
-                        val h = height.toFloat()
-                        if (w > 0 && h > 0) {
-                            onRegionSelected?.invoke(
-                                // Unnamed: RegionEntry.displayName resolves the
-                                // empty label to the generic "Capture region".
-                                RegionEntry("", sel.top / h, sel.bottom / h, sel.left / w, sel.right / w)
-                            )
-                        }
-                    }
+                    val held = event.eventTime - event.downTime
+                    // Slop on both axes rules out a line; the duration floor
+                    // rules out a flick, whatever its size.
+                    val passes = sel != null && sel.width() > touchSlop && sel.height() > touchSlop &&
+                        held >= MIN_DRAG_MS
+                    logDragSample(event, if (passes) "drag accepted" else "drag rejected")
                     isDragging = false
                     potentialDrag = false
                     selectionRect = null
+                    val w = width.toFloat()
+                    val h = height.toFloat()
+                    if (sel != null && passes && w > 0 && h > 0) {
+                        onRegionSelected?.invoke(
+                            // Unnamed: RegionEntry.displayName resolves the
+                            // empty label to the generic "Capture region".
+                            RegionEntry("", sel.top / h, sel.bottom / h, sel.left / w, sel.right / w)
+                        )
+                    } else {
+                        restoreChromeAfterDrag()
+                    }
                     return true
                 }
                 potentialDrag = false
@@ -1132,14 +1159,43 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
+                val wasDragging = isDragging
+                if (wasDragging) logDragSample(event, "drag cancelled")
                 isDragging = false
                 potentialDrag = false
                 selectionRect = null
-                invalidate()
+                if (wasDragging) restoreChromeAfterDrag() else invalidate()
                 return true
             }
         }
         return super.onTouchEvent(event)
+    }
+
+    /** One line per drag outside the card: how long the finger was down, the
+     *  box's extents in dp and the tool. [MIN_DRAG_MS] was sized from these
+     *  lines; they stay so a field report carries the same numbers. */
+    private fun logDragSample(event: MotionEvent, kind: String) {
+        val sel = selectionRect ?: return
+        Log.d(
+            "IconMenuDrag",
+            "$kind ms=${event.eventTime - event.downTime} w=${(sel.width() / dp).toInt()}dp " +
+                "h=${(sel.height() / dp).toInt()}dp tool=${event.getToolType(0)}",
+        )
+    }
+
+    /** Brings back the chrome a drag hid: the card; the record bar, if the
+     *  drag found it showing; the drag hint by its own rule; the region
+     *  chrome, which exists only for a non-full region. A
+     *  rejected drag thus ends where it began, with the menu open, rather
+     *  than as a tap outside the card does, so an accidental touch costs
+     *  nothing and a drawing that was too quick is redone from the menu. */
+    private fun restoreChromeAfterDrag() {
+        menuCard.isVisible = true
+        if (recordAudioHiddenByDrag) recordAudioBtn.visibility = View.VISIBLE
+        applyInstructionPillVisibility()
+        regionNamePill?.visibility = View.VISIBLE
+        removeRegionButton?.visibility = View.VISIBLE
+        invalidate()
     }
 
     // ── Positioning ──────────────────────────────────────────────────────
