@@ -555,9 +555,11 @@ class CaptureService : Service() {
         // mediaProjectionActivated, live mode and the overlay windows are
         // in memory, and the accessibility icon stays suppressed until a
         // user summon. So a restart leaves promotion to updateForegroundState
-        // below, which finds nothing to hold. START_STICKY stays: the restart
-        // is what re-wires the accessibility backend's hotkeys after a
-        // process death (registerHotkeyCallbacks needs this service's instance).
+        // below, which finds nothing to hold unless the exempted restore
+        // below put the icon back. START_STICKY stays: the restart is what
+        // re-wires the accessibility backend's hotkeys after a process death
+        // (registerHotkeyCallbacks needs this service's instance), and what
+        // carries that restore.
         //
         // ACTION_MP_ACTIVATE entry: on a cold-start tile click, enterForeground
         // below is invoked synchronously with no live overlay window and no
@@ -577,8 +579,32 @@ class CaptureService : Service() {
         // A process that replaced one killed with the controls on comes
         // back activated at MainActivity's start (a plain intent, no
         // action): before the evaluation below, so the promotion holds.
+        // The sticky restart restores too, with no app open, but only for
+        // an app the user has exempted from battery optimisation. That
+        // exemption (the device-idle user allowlist; AOSP read 2026-10-06)
+        // is what lets a background process promote
+        // (ActiveServices.isAllowlistedForFgsStartLOSP) and what keeps a
+        // restarted started service from the app-idle stop
+        // (appServicesRestrictedInBackgroundLOSP) that ended the Moto's
+        // restarted process at +60 s. Without it the icon would come up
+        // behind the keyguard, the promotion would be refused, and the idle
+        // stop would take the icon down and erase the record, losing the
+        // app-open restore as well; so the restart leaves it alone.
+        //
+        // The exemption is a prediction of the platform's answer, and the
+        // restore commits everything (the record consumed, the icon up and
+        // stamped with this process) before that answer is heard, so the
+        // restart asks first: promote with nothing yet to hold, and restore
+        // only once promoted. A ROM that refuses despite the allowlist
+        // (Codex 2026-10-06) then leaves the restart as it was: nothing
+        // held, demoted below, the record intact for the app-open restore.
         if (intent != null && intent.action == null) {
             CaptureLifecycle.restoreMediaProjectionSessionIfCutShort(this)
+        } else if (intent == null && isBatteryExempt() &&
+            CaptureLifecycle.mediaProjectionRestorePending()
+        ) {
+            promoteOrDefer()
+            if (promoted) CaptureLifecycle.restoreMediaProjectionSessionIfCutShort(this)
         }
         // Immediately evaluate — may stopForeground if no game-screen presence yet
         updateForegroundState()
@@ -4140,10 +4166,18 @@ class CaptureService : Service() {
         }
     }
 
+    /** Whether the user has set this app's battery usage to Unrestricted
+     *  (the Fix disappearing icon page's request), which puts it on the
+     *  device-idle user allowlist: see [onStartCommand]. */
+    private fun isBatteryExempt(): Boolean =
+        getSystemService(PowerManager::class.java)
+            ?.isIgnoringBatteryOptimizations(packageName) == true
+
     /**
      * The one uncredited promotion path, for calls to [updateForegroundState]
      * that no startForegroundService obliges: a sticky restart that finds an
-     * icon up (the accessibility re-bind restore), a projection-loss
+     * icon up (the accessibility re-bind restore, or the exempted
+     * MediaProjection restore in [onStartCommand]), a projection-loss
      * reinstall, a window being added or removed, the type change before a
      * capture. Android 12+ refuses startForeground from the background
      * unless an exemption applies, and the refusal is
