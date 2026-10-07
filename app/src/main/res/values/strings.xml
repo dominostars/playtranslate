@@ -3870,6 +3870,12 @@
     <!-- One line under the title, before the cards. -->
     <string name="keep_running_intro">These settings make it less likely that your phone closes <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> while you play.</string>
 
+    <!-- Centered label in the cards' place when every setting on the page
+         is already made: nothing left to recommend, so it points at the
+         Report a bug row beneath. NOT YET LOCALIZED (en only until the
+         next localization sync). -->
+    <string name="keep_running_empty">There are no other recommended settings. If you are still having problems, please reproduce the issue then report a bug.</string>
+
     <!-- Card title: the standard Android per-app battery setting ("Unrestricted"
          is Android's own word for it, kept so the user can find it). -->
     <string name="keep_running_battery_title">Set battery usage to Unrestricted</string>
