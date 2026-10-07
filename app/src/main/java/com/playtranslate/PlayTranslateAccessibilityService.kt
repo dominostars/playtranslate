@@ -97,14 +97,45 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         }
     }
 
-    /** Stops live mode when the screen turns off. */
+    /** Stops live mode when the screen turns off; runs a restore the
+     *  re-bind had to put off until the screen is on (see
+     *  [restoreIfCutShort]). */
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == Intent.ACTION_SCREEN_OFF) {
-                CaptureService.instance?.let { if (it.isLive) it.stopLive() }
-                overlayUiController.hideTranslationOverlay()
+            when (intent.action) {
+                Intent.ACTION_SCREEN_OFF -> {
+                    CaptureService.instance?.let { if (it.isLive) it.stopLive() }
+                    overlayUiController.hideTranslationOverlay()
+                }
+                Intent.ACTION_SCREEN_ON -> restoreIfCutShort("screen on")
             }
         }
+    }
+
+    /**
+     * After a kill with the controls on, the system re-binds this service
+     * and [com.playtranslate.capture.SessionMarker.cutShort] says so. The
+     * restore waits for the screen to be on: the binding lends its
+     * foreground-start allowance only while the device is awake
+     * (OomAdjuster, AOSP: BIND_FOREGROUND_SERVICE_WHILE_AWAKE), and the Moto
+     * G's kill came at screen-off with the re-bind 36 s later, screen still
+     * off. Nothing is placed while asleep, so a sticky CaptureService
+     * restart in that window finds no icon and makes no promotion, and no
+     * icon appears on the lock screen. Consumed by the restore
+     * itself, so the SCREEN_ON path is a no-op afterwards. Only on the
+     * accessibility backend: MediaProjection restores at the next app open.
+     */
+    private fun restoreIfCutShort(trigger: String): Boolean {
+        if (!com.playtranslate.capture.SessionMarker.cutShort) return false
+        if (!CaptureBackendResolver.active().requiresAccessibilityService) return false
+        val interactive = getSystemService(android.os.PowerManager::class.java)?.isInteractive == true
+        if (!interactive) {
+            Log.i(TAG, "restore deferred until the screen is on ($trigger)")
+            return false
+        }
+        Log.i(TAG, "restoring the session ($trigger)")
+        com.playtranslate.capture.CaptureLifecycle.restoreAccessibilitySession(this)
+        return true
     }
 
     override fun onServiceConnected() {
@@ -115,7 +146,14 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         serviceInfo = serviceInfo.apply {
             flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
-        registerReceiver(screenReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
+        // Protected system broadcasts only, so no export flag is required.
+        registerReceiver(
+            screenReceiver,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+            },
+        )
         (getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
             .registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
         // Wire OverlayUiController's own DisplayListener now that the
@@ -130,7 +168,13 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         // accessibility backend (or no-ops when already there); reresolve
         // tears down any outgoing MediaProjection session + overlays.
         CaptureBackendResolver.reresolve(this)
-        overlayUiController.reconcileFloatingIcons()
+        // A re-bind in a process that replaced one the system killed with
+        // the controls on puts the icon straight back, screen permitting
+        // (restoreIfCutShort); every other bind, boot included, keeps the
+        // boot suppression.
+        if (!restoreIfCutShort("re-bind")) {
+            overlayUiController.reconcileFloatingIcons()
+        }
         registerHotkeyCallbacks()
         PlayTranslateTileService.TileSync.refresh(this)
     }
@@ -913,6 +957,14 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             CaptureService.instance?.let { if (it.isLive) it.stopLive() }
             CaptureBackendResolver.activeOverlayUi?.hideFloatingIcon(reason, endsCapture = true)
             PlayTranslateTileService.TileSync.refresh(ctx)
+            // Every Turn Off path ends here (menu, tile, Settings, the
+            // lifecycle's deactivate). The icon removal above cleared the
+            // persisted session record when there was an icon; this covers
+            // a Turn Off before any icon is up in this process, where the
+            // record is still a dead process's and a restore may still be
+            // pending.
+            com.playtranslate.capture.SessionMarker.consumeCutShort()
+            com.playtranslate.capture.SessionMarker.markOff(ctx)
         }
 
         /**

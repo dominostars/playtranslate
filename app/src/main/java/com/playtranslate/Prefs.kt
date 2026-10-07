@@ -1438,6 +1438,40 @@ class Prefs internal constructor(
         get() = sp.getBoolean(KEY_QUICK_TILE_ADDED, false)
         set(v) = sp.edit { putBoolean(KEY_QUICK_TILE_ADDED, v) }
 
+    /** True once the one-time "add the Quick Settings tile" prompt at the
+     *  end of onboarding has been offered, or was found not to apply (the
+     *  user had already finished onboarding before the prompt existed). See
+     *  [com.playtranslate.ui.QuickTilePromptPolicy]. */
+    var quickTilePromptDone: Boolean
+        get() = sp.getBoolean(KEY_QUICK_TILE_PROMPT_DONE, false)
+        set(v) = sp.edit { putBoolean(KEY_QUICK_TILE_PROMPT_DONE, v) }
+
+    /** The boot the floating controls were last turned on in, as the OS's
+     *  BOOT_COUNT, or -1 while they are off. Paired with
+     *  [sessionOnProcessStart]; written only through
+     *  [com.playtranslate.capture.SessionMarker]. */
+    var sessionOnBoot: Int
+        get() = sp.getInt(KEY_SESSION_ON_BOOT, -1)
+        set(v) = sp.edit { putInt(KEY_SESSION_ON_BOOT, v) }
+
+    /** Start time (Process.getStartElapsedRealtime) of the process that
+     *  turned the controls on; see [sessionOnBoot]. */
+    var sessionOnProcessStart: Long
+        get() = sp.getLong(KEY_SESSION_ON_PROCESS_START, 0L)
+        set(v) = sp.edit { putLong(KEY_SESSION_ON_PROCESS_START, v) }
+
+    /** Pid of that process, to find its death in the platform's exit
+     *  records; see [sessionOnBoot]. */
+    var sessionOnPid: Int
+        get() = sp.getInt(KEY_SESSION_ON_PID, 0)
+        set(v) = sp.edit { putInt(KEY_SESSION_ON_PID, v) }
+
+    /** True once the user has opened the "Keep PlayTranslate running" page.
+     *  The alert that points there stops showing after that. */
+    var keepRunningPageSeen: Boolean
+        get() = sp.getBoolean(KEY_KEEP_RUNNING_PAGE_SEEN, false)
+        set(v) = sp.edit { putBoolean(KEY_KEEP_RUNNING_PAGE_SEEN, v) }
+
     /** Debug-only: forces isSingleScreen() to return true regardless of actual display count. */
     var debugForceSingleScreen: Boolean
         get() = sp.getBoolean(KEY_DEBUG_FORCE_SINGLE_SCREEN, false)
@@ -1827,6 +1861,11 @@ class Prefs internal constructor(
         const val KEY_HOTKEY_CAPTURE_TAP                   = "hotkey_capture_tap"
         const val KEY_HOTKEY_CHANGE_GAME_LANGUAGE_TAP      = "hotkey_change_game_language_tap"
         const val KEY_QUICK_TILE_ADDED                     = "quick_tile_added"
+        const val KEY_QUICK_TILE_PROMPT_DONE               = "quick_tile_prompt_done"
+        const val KEY_SESSION_ON_BOOT                      = "session_on_boot"
+        const val KEY_SESSION_ON_PROCESS_START             = "session_on_process_start"
+        const val KEY_SESSION_ON_PID                       = "session_on_pid"
+        const val KEY_KEEP_RUNNING_PAGE_SEEN               = "keep_running_page_seen"
         /** Public so the in-app result header's "Show on screen" toggle can
          *  [observe] it and stay in sync with the Settings row. */
         const val KEY_HIDE_GAME_OVERLAYS                   = "hide_game_overlays"

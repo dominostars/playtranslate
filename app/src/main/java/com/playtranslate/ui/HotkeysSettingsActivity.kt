@@ -1,9 +1,6 @@
 package com.playtranslate.ui
 
-import android.app.StatusBarManager
-import android.content.ComponentName
 import android.content.res.ColorStateList
-import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
@@ -12,7 +9,6 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.activity.viewModels
 import androidx.annotation.RequiresApi
-import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -21,7 +17,6 @@ import com.google.android.material.card.MaterialCardView
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.OverlayMode
 import com.playtranslate.PlayTranslateAccessibilityService
-import com.playtranslate.PlayTranslateTileService
 import com.playtranslate.R
 import com.playtranslate.themeColor
 import kotlinx.coroutines.launch
@@ -222,21 +217,7 @@ class HotkeysSettingsActivity : SettingsSubPageActivity() {
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private fun requestAddTile() {
-        val statusBarManager = getSystemService(StatusBarManager::class.java) ?: return
-        val component = ComponentName(this, PlayTranslateTileService::class.java)
-        val icon = Icon.createWithResource(this, R.drawable.ic_qs_tile)
-        statusBarManager.requestAddTileService(
-            component,
-            getString(R.string.tile_label),
-            icon,
-            ContextCompat.getMainExecutor(this),
-        ) { result ->
-            when (result) {
-                StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED,
-                StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED ->
-                    vm.markQuickTileAdded()
-                // Error / not-added: leave the cell visible so the user can retry.
-            }
-        }
+        // Error / not-added: the cell stays visible so the user can retry.
+        QuickTile.requestAdd(this) { vm.markQuickTileAdded() }
     }
 }

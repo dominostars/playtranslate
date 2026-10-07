@@ -46,6 +46,12 @@ class PlayTranslateApplication : Application() {
         // summary for the log-export header). Before the registry init so
         // the first waterfall pass can already record.
         com.playtranslate.diagnostics.TranslationDiag.init(this)
+        // Process-death forensics for the same header: the platform's
+        // record of why earlier processes died, read at export time.
+        com.playtranslate.diagnostics.ProcessExitDiag.init(this)
+        // Was the previous process killed with the floating controls on?
+        // Decided once, here, before any writer can overwrite the record.
+        com.playtranslate.capture.SessionMarker.evaluate(this)
         // Collect Anki screenshot pins orphaned by a crash/process death
         // (their send's finally never ran). Also swept opportunistically on
         // every pin; this catches the "never sends again" tail. Off-main:

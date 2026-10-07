@@ -26,6 +26,14 @@
          gaming handhelds) the Tools cell shows disabled with a reason, so
          users still learn the tool exists; the activity double-checks. -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- The one-tap "stop optimising battery for this app" dialog on the
+         Keep PlayTranslate running page (ACTION_REQUEST_IGNORE_BATTERY_
+         OPTIMIZATIONS; without the permission the system dialog closes
+         itself). Google Play allows this permission only when battery
+         optimisation adversely affects the app's core function, which it
+         does here: the capture session is closed in the background (field
+         reports 2026-10). A Play listing must declare that use. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-feature
         android:name="android.hardware.camera"
         android:required="false" />
@@ -264,6 +272,15 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <!-- "Keep PlayTranslate running" (the settings that stop the phone
+             from closing the app while it is on), launched from Settings →
+             Support and from the kill notice. -->
+        <activity
+            android:name=".ui.KeepRunningActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.PlayTranslate" />
 
         <!-- Hotkeys sub-page (QS tile + hotkeys), launched from Settings → Configure. -->
         <activity

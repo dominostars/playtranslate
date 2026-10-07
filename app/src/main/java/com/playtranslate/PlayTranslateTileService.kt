@@ -30,9 +30,20 @@ import com.playtranslate.capture.CaptureLifecycle
  */
 class PlayTranslateTileService : TileService() {
 
+    // The two lifecycle callbacks are the platform's own word on whether the
+    // tile is in Quick Settings, and fire for the in-app add request and for
+    // the shade's edit mode alike (the app's request only ever learned about
+    // its own adds: Codex, 2026-10-06). The preference feeds the Hotkeys
+    // row, the end-of-onboarding prompt and the Fix-disappearing-icon page.
     override fun onTileAdded() {
         super.onTileAdded()
+        Prefs(this).quickTileAdded = true
         renderState()
+    }
+
+    override fun onTileRemoved() {
+        super.onTileRemoved()
+        Prefs(this).quickTileAdded = false
     }
 
     override fun onStartListening() {

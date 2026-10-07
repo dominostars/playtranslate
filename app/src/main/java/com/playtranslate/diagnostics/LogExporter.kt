@@ -144,6 +144,7 @@ object LogExporter {
         appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE}, ${Build.HARDWARE})")
         appendLine("Android: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}, patch ${Build.VERSION.SECURITY_PATCH})")
         appendTranslationDiagnostics()
+        appendProcessExits()
         appendLine("─".repeat(60))
         appendLine()
     }
@@ -164,6 +165,19 @@ object LogExporter {
             appendLine("Translation diagnostics:")
             cooldowns.forEach { appendLine("- $it") }
             failures.forEach { appendLine("- $it") }
+        }
+    }
+
+    /** Why earlier processes died (see [ProcessExitDiag]), which logcat
+     *  cannot answer once the dying process's lines have rolled. Silent
+     *  when the platform holds no record; best-effort like the block
+     *  above. */
+    private fun StringBuilder.appendProcessExits() {
+        runCatching {
+            val exits = ProcessExitDiag.recentExits()
+            if (exits.isEmpty()) return
+            appendLine("Process exits:")
+            exits.forEach { appendLine("- $it") }
         }
     }
 

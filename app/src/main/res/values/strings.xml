@@ -3788,6 +3788,129 @@
     <!-- Subtitle on the donation row. -->
     <string name="settings_support_donate_subtitle">A free, open source labor of love. Help keep it going.</string>
 
+    <!-- Row title in Support: opens the "Fix disappearing icon" page
+         (KeepRunningActivity), the settings that stop the phone from
+         closing the app while it is on. Leads with the symptom the user
+         is looking for. -->
+    <string name="settings_support_keep_running_title">Fix disappearing icon</string>
+
+    <!-- Subtitle under that row: the mechanism behind the symptom. -->
+    <string name="settings_support_keep_running_subtitle">Stop your phone from closing <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         KILL NOTICE (MainActivity.maybeShowKillNotice): the alert shown
+         once after the system killed the app while the floating controls
+         were on. Same OverlayAlert as the crash prompt.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Alert title. -->
+    <string name="kill_notice_title">Android closed <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <!-- Alert body when the system's exit record says low memory. -->
+    <string name="kill_notice_body_memory">Your phone ran low on memory and closed <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> while it was on. That is why the floating icon disappeared.</string>
+
+    <!-- Alert body for every other kind of kill (a ROM's battery or memory
+         manager, a force stop). -->
+    <string name="kill_notice_body_other">Your phone closed <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> while it was on. That is why the floating icon disappeared. Some phones do this to save battery.</string>
+
+    <!-- Alert body when the record says the package was force-stopped,
+         which the user's own Settings force stop and a ROM's cleaner both
+         produce: the sentence leaves the attribution to the user. -->
+    <string name="kill_notice_body_stopped"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> was stopped while it was on. If you did not stop it yourself, your phone\'s battery or memory manager may have. That is why the floating icon disappeared.</string>
+
+    <!-- Sentence appended to any body when the controls are already back
+         (restored by the app before the user saw the alert). -->
+    <string name="kill_notice_restored">It is back on now.</string>
+
+    <!-- Primary button: opens the Keep-running page. -->
+    <string name="kill_notice_see_options">See options</string>
+
+    <!-- Dismiss button. -->
+    <string name="kill_notice_not_now">Not now</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         KEEP RUNNING PAGE (KeepRunningActivity): one card per setting,
+         each a title plus one line saying what it does for the user.
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Page title (toolbar); the same words as the Support row that opens it. -->
+    <string name="keep_running_title">Fix disappearing icon</string>
+
+    <!-- One line under the title, before the cards. -->
+    <string name="keep_running_intro">These settings make it less likely that your phone closes <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> while you play.</string>
+
+    <!-- Card title: the standard Android per-app battery setting ("Unrestricted"
+         is Android's own word for it, kept so the user can find it). -->
+    <string name="keep_running_battery_title">Set battery usage to Unrestricted</string>
+
+    <!-- Line under the battery card; also used under Xiaomi's battery card. -->
+    <string name="keep_running_battery_line">Without this, your phone may close <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> while you use it.</string>
+
+    <!-- Card title: enable the accessibility service (the "Enhanced
+         auto-translate" mode). Hidden once enabled. -->
+    <string name="keep_running_accessibility_title">Use accessibility mode</string>
+
+    <!-- Line under the accessibility card. -->
+    <string name="keep_running_accessibility_line">Runs <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> with the priority of an accessibility service, which memory cleanups rarely reach.</string>
+
+    <!-- Line under the accessibility card when the service is enabled in
+         Settings but Android has not bound it (the state after a force
+         stop); the card's title is then a11y_stuck_title. -->
+    <string name="keep_running_accessibility_restart_line">Android stopped it and will not restart it on its own. Turn it off and on again in accessibility settings.</string>
+
+    <!-- Card title: the Quick Settings tile (Android 13+). Hidden once added. -->
+    <string name="keep_running_tile_title">Add the Quick Settings tile</string>
+
+    <!-- Line under the tile card. -->
+    <string name="keep_running_tile_line">One swipe and a tap turns <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> back on from any screen.</string>
+
+    <!-- Xiaomi / Redmi / POCO card: the Security app's Autostart switch. -->
+    <string name="keep_running_xiaomi_autostart_title">Allow autostart</string>
+
+    <!-- Line under the Xiaomi autostart card. -->
+    <string name="keep_running_xiaomi_autostart_line">Without this, Xiaomi stops <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> and does not let it come back.</string>
+
+    <!-- Xiaomi card: the per-app "Battery saver" setting, whose "No
+         restrictions" option is Xiaomi's own wording. -->
+    <string name="keep_running_xiaomi_battery_title">Set Battery saver to No restrictions</string>
+
+    <!-- Xiaomi card, instructions only (no screen to open): lock the app's
+         card in the Recents screen. -->
+    <string name="keep_running_xiaomi_lock_title">Lock <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> in Recents</string>
+
+    <!-- Line under the Xiaomi lock card: the steps, then the reason. -->
+    <string name="keep_running_xiaomi_lock_line">Open Recents, hold the <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> card and tap the lock. Memory cleanup skips locked apps.</string>
+
+    <!-- Huawei / Honor card: the "App launch" screen, set to manage manually. -->
+    <string name="keep_running_huawei_app_launch_title">Manage App launch manually</string>
+
+    <!-- Line under the Huawei App launch card: the three switches to turn on. -->
+    <string name="keep_running_huawei_app_launch_line">Turn on Auto-launch, Secondary launch and Run in background for <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>.</string>
+
+    <!-- Huawei / Honor card: the battery option that closes apps at lock. -->
+    <string name="keep_running_huawei_close_after_lock_title">Turn off Close apps after screen lock</string>
+
+    <!-- Line under that card: where the option is, then the reason. -->
+    <string name="keep_running_huawei_close_after_lock_line">In Battery settings, under More battery settings. Otherwise <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> closes whenever the screen locks.</string>
+
+    <!-- OPPO / realme / OnePlus card: ColorOS auto-launch and background activity. -->
+    <string name="keep_running_oppo_auto_launch_title">Allow auto-launch and background activity</string>
+
+    <!-- Line under the OPPO card. -->
+    <string name="keep_running_oppo_auto_launch_line">Without these, the phone closes <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> soon after you leave it.</string>
+
+    <!-- vivo / iQOO card: autostart and background power use. -->
+    <string name="keep_running_vivo_autostart_title">Allow autostart and background power use</string>
+
+    <!-- Line under the vivo card. -->
+    <string name="keep_running_vivo_autostart_line">Without these, the phone closes <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> soon after you leave it.</string>
+
+    <!-- Samsung card: the Device care "Never sleeping apps" list. -->
+    <string name="keep_running_samsung_never_sleeping_title">Add to Never sleeping apps</string>
+
+    <!-- Line under the Samsung card: where the list is, then the reason. -->
+    <string name="keep_running_samsung_never_sleeping_line">In Device care, under Battery and Background usage limits. Sleeping apps are closed when the phone wants memory.</string>
+
     <!-- Row title — manual update check (first row of the Support section). -->
     <string name="settings_support_check_updates_title">Check for updates</string>
 
