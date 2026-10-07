@@ -572,6 +572,9 @@
                         android:id="@+id/rowDiscord" />
 
                     <include layout="@layout/settings_row_hub"
+                        android:id="@+id/rowKeepRunning" />
+
+                    <include layout="@layout/settings_row_hub"
                         android:id="@+id/rowExportLogs" />
 
                     <include layout="@layout/settings_row_hub"

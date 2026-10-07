@@ -1180,14 +1180,23 @@ class SettingsRenderer(
                 onLongClick = { copyUrl(discordUrl) },
             ),
         )
+        // The troubleshooting rows sit together, above the donate row that
+        // closes the section (Gilad, 2026-10-06).
+        bindHubCell(
+            root.findViewById(R.id.rowKeepRunning),
+            HubCell(
+                iconRes = R.drawable.ic_mobile_wrench,
+                title = ctx.getString(R.string.settings_support_keep_running_title),
+                summary = ctx.getString(R.string.settings_support_keep_running_subtitle),
+                onClick = { ctx.startActivity(Intent(ctx, KeepRunningActivity::class.java)) },
+            ),
+        )
         bindHubCell(
             root.findViewById(R.id.rowExportLogs),
             HubCell(
                 iconRes = R.drawable.ic_export_notes,
                 title = ctx.getString(R.string.settings_debug_export_logs_title),
                 summary = ctx.getString(R.string.settings_debug_export_logs_subtitle),
-                // Same external-link affordance as the link rows — export leaves
-                // the app via the system share sheet.
                 trailing = Trailing.EXTERNAL,
                 onClick = { exportLogs() },
                 onLongClick = { copyLogs() },

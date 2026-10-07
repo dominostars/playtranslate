@@ -1410,7 +1410,25 @@ class OverlayUiController(
             // language without a reading hint), applies to the next touch of
             // this same icon; each `when` is exhaustive over its gesture's
             // candidates, so a new one cannot compile until it is wired here.
+            // Every gesture's action needs CaptureService, and on the
+            // accessibility backend this icon outlives it: between a kill
+            // and the service's sticky restart, or after a refused restore
+            // start, there is no instance and the actions used to be silent
+            // no-ops (field report 2026-08-03). A gesture is a user
+            // interaction, so request the start here, plainly. The start is
+            // asynchronous (the instance exists only after the service's
+            // onCreate, a later main-thread message), so THIS gesture still
+            // dispatches against a null instance and is lost; the next one
+            // finds the service. In the normal restore path the service was
+            // started with the icon, milliseconds earlier, and no gesture
+            // meets that window.
+            fun ensureService() {
+                if (CaptureService.instance == null) {
+                    CaptureLifecycle.startCaptureServicePlain(context, "icon gesture")
+                }
+            }
             icon.onTap = {
+                ensureService()
                 when (prefs.iconTapAction) {
                     TapAction.OPEN_QUICK_MENU -> showFloatingMenu(display, icon)
                     // The quick menu's Capture button without the menu: a
@@ -1430,6 +1448,7 @@ class OverlayUiController(
             // resume it when the lens closes, undoing the stop.
             var holdStoppedLive = false
             icon.onDragStart = {
+                ensureService()
                 when (prefs.iconDragAction) {
                     DragAction.LOOKUP_WORDS -> {
                         // Hide region preview so the user can see game text while dragging
@@ -1466,6 +1485,7 @@ class OverlayUiController(
             // closes it, as it closes the quick menu.
             var holdOpenedPicker = false
             icon.onHoldStart = {
+                ensureService()
                 val action = prefs.iconHoldAction
                 heldAction = action
                 when (action) {
@@ -1538,6 +1558,11 @@ class OverlayUiController(
                 clearLivePauseFlag = clearLivePauseFlag,
                 makeIcon = makeWiredIcon,
             )
+            // An icon is on screen: the persisted session record says so
+            // (SessionMarker). This and the last removal in
+            // hideFloatingIconForDisplay are its only writers in normal
+            // operation; the record is the observable, never a derived flag.
+            com.playtranslate.capture.SessionMarker.markOn(context)
             // The error pills keep priority over the icon (Gilad, 2026-09-27).
             errorPills.raise(displayId)
             // Fresh icon → sonar-ping intro. This is the only "icon added to
@@ -1800,6 +1825,11 @@ class OverlayUiController(
         overlayHost.removeOverlayWindow(handle.icon)
         // A parked placement prompt belongs to the appearance that armed it.
         if (iconHandles.isEmpty()) placementPromptPending = false
+        // No icon on screen: whatever removed the last one (Turn Off, Hide
+        // for Now, a Recents swipe, a backend swap, a graceful service end)
+        // ends what the persisted session record stands for. A kill never
+        // reaches here, which is exactly how the record outlives one.
+        if (iconHandles.isEmpty()) com.playtranslate.capture.SessionMarker.markOff(context)
 
         CaptureService.instance?.updateForegroundState()
         CaptureService.instance?.syncIconState()

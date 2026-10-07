@@ -138,6 +138,12 @@ object CaptureLifecycle {
         // above already stopped the recorder via its teardown listener; this
         // makes the stop deterministic for both backend branches.
         CaptureService.instance?.reconcileGameAudio()
+        // The icon removal above cleared the persisted session record when
+        // there was an icon; this covers a Turn Off issued before any icon
+        // is up in this process (a restore still deferred, or already
+        // gated off), where the record is still a dead process's.
+        SessionMarker.consumeCutShort()
+        SessionMarker.markOff(ctx)
     }
 
     /** Accessibility-backend activate: show the floating icon. Gates on the
@@ -159,23 +165,21 @@ object CaptureLifecycle {
                 "enabled=${PlayTranslateAccessibilityService.isEnabled(ctx)}"
         )
         if (!connected) return false
-        // Cold-start CaptureService when this summon is the first thing to
-        // happen this boot (QS tile tap without ever opening the app): the
-        // icon is a11y-hosted, but every feature behind it lives on
-        // CaptureService, whose other starters (MainActivity, the MP tile
-        // branch's ACTION_MP_ACTIVATE) haven't run — leaving the menu's
-        // actions as silent no-ops on a null instance (field report
-        // 2026-08-03). A plain intent is enough: onStartCommand handles the
-        // foreground promotion/demotion, onCreate re-wires the hotkey
-        // callbacks, and the menu actions lazy-configure via configureSaved.
+        // Start CaptureService on every summon, whether or not an instance
+        // exists. The icon is a11y-hosted, but every feature behind it lives
+        // on CaptureService, and an instance alone does not prove the
+        // service is STARTED: Android stops an idle app's started service
+        // after about a minute in the background with the session off, and
+        // MainActivity's binding then keeps the instance alive without the
+        // started state, so the next activity destroy ends it (Moto G
+        // system log, 2026-10-05). A start is idempotent on a started
+        // service: onStartCommand handles the foreground promotion /
+        // demotion, onCreate re-wires the hotkey callbacks on a cold start,
+        // and the menu actions lazy-configure via configureSaved.
         // Background-start is covered by the tile-click tempAllowList grant
         // (the mechanism the MP branch documents), with SYSTEM_ALERT_WINDOW
         // as the backstop for non-tile callers.
-        if (CaptureService.instance == null) {
-            androidx.core.content.ContextCompat.startForegroundService(
-                ctx, Intent(ctx, CaptureService::class.java)
-            )
-        }
+        startCaptureService(ctx)
         Prefs(ctx).showOverlayIcon = true
         // Turn On is an explicit summon — lift the boot / Hide-for-Now
         // suppression before reconciling, or the gate below would eat it.
@@ -210,5 +214,94 @@ object CaptureLifecycle {
             PlayTranslateTileService.TileSync.refresh(it.applicationContext)
         }
         return true
+    }
+
+    /** The one start request for [CaptureService]: a non-null intent,
+     *  which onStartCommand answers with its foreground promotion, so the
+     *  5-second startForeground obligation is always met. Idempotent on a
+     *  started service; on a bind-only instance it restores the started
+     *  state the system's app-idle stop took away (see
+     *  [activateAccessibility]). */
+    fun startCaptureService(ctx: Context) {
+        androidx.core.content.ContextCompat.startForegroundService(
+            ctx, Intent(ctx, CaptureService::class.java)
+        )
+    }
+
+    /** Accessibility backend, at the system's re-bind after a kill with the
+     *  controls on ([SessionMarker.cutShort]), and only while the device is
+     *  awake (the caller's gate): put the icon straight back. The placement
+     *  is not a fresh appearance (no sonar intro, no game-audio prompt); to
+     *  the user the icon was never meant to leave.
+     *
+     *  The icon needs no service (it is hosted by the accessibility
+     *  service); CaptureService, which the menu's actions need, is then
+     *  started with [startCaptureServicePlain], never startForegroundService:
+     *  that call binds the service to promote within seconds, and whether
+     *  the promotion is allowed from here depends on the device being awake
+     *  (the system binding lends its foreground-start allowance only while
+     *  the process sits at bound-foreground-service state, which
+     *  BIND_FOREGROUND_SERVICE_WHILE_AWAKE grants while awake and not
+     *  otherwise: OomAdjuster, AOSP). The promotion goes through the
+     *  service's own gate ([CaptureService.updateForegroundState]), which
+     *  waits for a moment the platform permits. */
+    fun restoreAccessibilitySession(ctx: Context) {
+        Log.i(TAG, "restoreAccessibilitySession")
+        SessionMarker.consumeCutShort()
+        setFloatingIconSuppressed(ctx, false)
+        val ui = CaptureBackendResolver.activeOverlayUi
+        ui?.reconcileFloatingIcons(freshAppearance = false)
+        // The install stamps the record; a reconcile that placed nothing
+        // (the icon preference off, every display unreachable) leaves a
+        // dead process's record behind, which must not read as a session
+        // cut short again.
+        if (ui?.hasAnyFloatingIcon != true) SessionMarker.markOff(ctx)
+        startCaptureServicePlain(ctx, "restore")
+    }
+
+    /** A PLAIN start of [CaptureService] (Context.startService) from the
+     *  accessibility-hosted side, where no activity or tile credits a
+     *  startForegroundService: the re-bind restore, and a floating-icon
+     *  gesture that finds no service (the icon is hosted by the
+     *  accessibility service and outlives CaptureService, whose menu
+     *  actions were silent no-ops on a null instance: field report
+     *  2026-08-03, and the window after a restore whose start was refused).
+     *  Allowed because the accessibility binding keeps this process above
+     *  the background states on which Android refuses a start (OomAdjuster:
+     *  IMPORTANT_FOREGROUND at worst); the promotion then goes through the
+     *  service's own gate. The catch is for a ROM that refuses it anyway:
+     *  the icon stays, a gesture's own request is refused for the same
+     *  reason, and the service's own sticky restart or the next app open
+     *  brings it back. Idempotent on a running service. */
+    fun startCaptureServicePlain(ctx: Context, why: String) {
+        try {
+            ctx.startService(
+                Intent(ctx, CaptureService::class.java).setAction(CaptureService.ACTION_PLAIN_START)
+            )
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "plain service start refused ($why)", e)
+        }
+    }
+
+    /** MediaProjection backend, at the service start MainActivity issues
+     *  in a process that replaced one killed with the controls on: come up
+     *  activated without consent (the post-revoke state the backend already
+     *  supports), so the icon is back without a Settings trip and the next
+     *  capture re-prompts for the single-use token Android discarded with
+     *  the old process. Runs with the app in the foreground, so the
+     *  promotion that follows is credited. */
+    fun restoreMediaProjectionSessionIfCutShort(svc: CaptureService) {
+        if (!SessionMarker.cutShort) return
+        if (CaptureBackendResolver.active().requiresAccessibilityService) return
+        SessionMarker.consumeCutShort()
+        if (svc.mediaProjectionActivated) return
+        Log.i(TAG, "restoreMediaProjectionSession")
+        svc.mediaProjectionActivated = true
+        val ui = CaptureBackendResolver.activeOverlayUi
+        ui?.reconcileFloatingIcons(freshAppearance = false)
+        // As in restoreAccessibilitySession: a reconcile that placed nothing
+        // clears the dead process's record.
+        if (ui?.hasAnyFloatingIcon != true) SessionMarker.markOff(svc)
+        PlayTranslateTileService.TileSync.refresh(svc.applicationContext)
     }
 }

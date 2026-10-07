@@ -22,6 +22,7 @@ import android.view.Display
 import android.view.WindowManager
 import android.os.Binder
 import android.os.Build
+import android.os.PowerManager
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -572,7 +573,19 @@ class CaptureService : Service() {
         // succeeds under the tile-onclick tempAllowList grant; the
         // SPECIAL_USE → SPECIAL_USE|MEDIA_PROJECTION promotion happens later
         // in ensureMediaProjectionForegroundType once the user has granted.
-        if (intent != null) enterForeground()
+        // Every starter but one calls startForegroundService from a context
+        // the platform credits (a foreground activity, the tile's temporary
+        // allowance), which both obliges and allows this promotion.
+        // ACTION_PLAIN_START is a plain start from the accessibility side: no
+        // obligation, and an allowance that depends on the device being
+        // awake, so it goes through the gate in updateForegroundState.
+        if (intent != null && intent.action != ACTION_PLAIN_START) enterForeground()
+        // A process that replaced one killed with the controls on comes
+        // back activated at MainActivity's start (a plain intent, no
+        // action): before the evaluation below, so the promotion holds.
+        if (intent != null && intent.action == null) {
+            CaptureLifecycle.restoreMediaProjectionSessionIfCutShort(this)
+        }
         // Immediately evaluate — may stopForeground if no game-screen presence yet
         updateForegroundState()
         if (intent?.action == ACTION_MP_ACTIVATE) {
@@ -594,6 +607,7 @@ class CaptureService : Service() {
     override fun onDestroy() {
         Log.w(TAG, "onDestroy")
         if (BuildConfig.DEBUG) runCatching { unregisterReceiver(mpProbeReceiver) }
+        cancelDeferredPromotion()
         // Tear down live modes FIRST — while [instance] is still set, so
         // CaptureBackendResolver.activeOverlayUi can still resolve to this
         // service's MediaProjection overlay UI and the cleanup chain (each
@@ -3229,6 +3243,15 @@ class CaptureService : Service() {
          *  which can't assume the service is already alive. */
         const val ACTION_MP_ACTIVATE = "com.playtranslate.action.MP_ACTIVATE"
 
+        /** A PLAIN start (Context.startService, never startForegroundService)
+         *  from the accessibility-hosted side: the re-bind restore, and a
+         *  floating-icon gesture that finds no service. It carries no
+         *  obligation to promote, so onStartCommand leaves the promotion to
+         *  the gate in [updateForegroundState] instead of promoting
+         *  unconditionally. See
+         *  [com.playtranslate.capture.CaptureLifecycle.startCaptureServicePlain]. */
+        const val ACTION_PLAIN_START = "com.playtranslate.action.PLAIN_START"
+
         /** Debug-build-only broadcast that dumps one raw MediaProjection
          *  frame — see [mpProbeReceiver]. */
         const val ACTION_DEBUG_MP_PROBE = "com.playtranslate.debug.MP_PROBE"
@@ -4089,10 +4112,99 @@ class CaptureService : Service() {
         if (iconShowing || isLive || mediaProjectionController.hasConsent ||
             mediaProjectionActivated
         ) {
-            enterForeground()
+            promoteOrDefer()
         } else {
             stopForeground(STOP_FOREGROUND_REMOVE)
+            promoted = false
+            cancelDeferredPromotion()
         }
+    }
+
+    /** True from a successful startForeground until the next
+     *  stopForeground: the ratchet. The platform keeps the allowance it
+     *  granted that first call for every later startForeground on the same
+     *  foreground run (ActiveServices.setFgsRestrictionLocked recomputes
+     *  only when the stored allowance is DENIED, and resets it on
+     *  stopForeground and on the service's destruction, AOSP), so a
+     *  promoted service may change type or re-promote from anywhere. */
+    private var promoted = false
+
+    /** A promotion the platform refused is retried at the next signal that
+     *  can change its answer: the screen turning on, a screensaver ending,
+     *  any later [updateForegroundState], or MainActivity's next start,
+     *  whose credited startForegroundService promotes outright. */
+    private var promotionDeferred = false
+
+    private val deferredPromotionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (!promotionDeferred) return
+            Log.i(TAG, "deferred promotion: re-evaluating on ${intent.action}")
+            updateForegroundState()
+        }
+    }
+
+    /**
+     * The one uncredited promotion path, for calls to [updateForegroundState]
+     * that no startForegroundService obliges: a sticky restart that finds an
+     * icon up (the accessibility re-bind restore), a projection-loss
+     * reinstall, a window being added or removed, the type change before a
+     * capture. Android 12+ refuses startForeground from the background
+     * unless an exemption applies, and the refusal is
+     * ForegroundServiceStartNotAllowedException (field crashes 2026-07-15,
+     * 2026-09-27/30).
+     *
+     * The call is MADE, and the platform's answer is the signal. Predicting
+     * the answer was tried and under-counted the allowed cases (Codex
+     * 2026-10-06: the tile's MediaProjection activation promotes after the
+     * consent activity has finished, allowed by the five-second activity
+     * grace period and the tile's temporary allowance, neither of which a
+     * local rule modelled, so the session ran without its foreground
+     * service). The allowed set is the platform's: top state, a recently
+     * visible activity, the tile's allowance, a visible app overlay on
+     * Android 15+, the accessibility binding while awake, the battery
+     * exemption, and whatever a ROM adds; the set that refuses is the
+     * complement, and both differ by version and vendor. A refusal costs a
+     * deferral, never the process: the promotion is retried at the next
+     * signal that can change the answer (the screen turning on, a
+     * screensaver ending, any later call here, or MainActivity's next
+     * start, whose credited startForegroundService promotes outright).
+     */
+    private fun promoteOrDefer() {
+        try {
+            enterForeground()
+            cancelDeferredPromotion()
+        } catch (e: IllegalStateException) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                e is android.app.ForegroundServiceStartNotAllowedException
+            ) {
+                Log.w(TAG, "promotion refused by the platform, deferring", e)
+                deferPromotion("refused")
+            } else {
+                throw e
+            }
+        }
+    }
+
+    private fun deferPromotion(why: String) {
+        if (promotionDeferred) return
+        promotionDeferred = true
+        Log.i(TAG, "promotion deferred ($why)")
+        // Protected system broadcasts: no export flag needed for a filter
+        // that holds only those (the accessibility service's SCREEN_OFF
+        // receiver is the precedent).
+        registerReceiver(
+            deferredPromotionReceiver,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_DREAMING_STOPPED)
+            },
+        )
+    }
+
+    private fun cancelDeferredPromotion() {
+        if (!promotionDeferred) return
+        promotionDeferred = false
+        runCatching { unregisterReceiver(deferredPromotionReceiver) }
     }
 
     /** Promote the foreground service to include the mediaProjection type.
@@ -4100,9 +4212,12 @@ class CaptureService : Service() {
      *  34+. Routes through [enterForeground], which derives the type from
      *  [MediaProjectionController.hasConsent] — the call carries the
      *  mediaProjection type whenever consent is held, and drops it back to
-     *  SPECIAL_USE only once consent goes away. */
+     *  SPECIAL_USE only once consent goes away. A refusal (an uncredited
+     *  call from the background) is deferred rather than thrown, and the
+     *  getMediaProjection that follows then fails as a lost projection
+     *  instead of this crashing. */
     internal fun ensureMediaProjectionForegroundType() {
-        enterForeground()
+        promoteOrDefer()
     }
 
     /** startForeground with the correct service type(s).
@@ -4126,6 +4241,7 @@ class CaptureService : Service() {
         // Pre-34 has none of the FGS-type machinery below — one proven call.
         if (Build.VERSION.SDK_INT < 34) {
             startForeground(NOTIF_ID, buildNotification())
+            promoted = true
             return
         }
         if (mediaProjectionController.hasConsent) {
@@ -4135,15 +4251,19 @@ class CaptureService : Service() {
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or
                         ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
                 )
+                promoted = true
                 return
-            } catch (e: Exception) {
+            } catch (e: SecurityException) {
                 // The mediaProjection FGS type is only valid while a live
                 // screen-record token is held. The token can lapse out from
                 // under us (single-use on API 34+, or the system stopping
                 // the projection) and the platform then rejects this start
                 // with a SecurityException. Invalidate the consent so
                 // hasConsent reflects reality; the SPECIAL_USE fall-through
-                // below still gets the service to the foreground.
+                // below still gets the service to the foreground. Only that
+                // exception: a background-start refusal is an
+                // IllegalStateException, which must reach the caller's
+                // deferral (promoteOrDefer) with the consent intact.
                 Log.w(TAG, "enterForeground: mediaProjection FGS type rejected, " +
                     "falling back to SPECIAL_USE — ${e.message}")
                 mediaProjectionController.invalidateConsent()
@@ -4154,6 +4274,7 @@ class CaptureService : Service() {
             NOTIF_ID, buildNotification(),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
         )
+        promoted = true
     }
 
     private fun createNotificationChannel() {
