@@ -14,15 +14,16 @@ import org.robolectric.annotation.Config
 
 /**
  * The editor keeps its box ordered and inside the screen, and a drag holds
- * each axis at [RegionDragView.MIN_EXTENT]. Its clamps once assumed the box
- * was already that big: the top edge's upper bound was bottom - MIN_EXTENT,
- * below the lower bound, zero, for a box whose bottom sat in the top 5% of
+ * each axis at [RegionDragView.MIN_EXTENT_DP], a physical size rather than a
+ * share of the screen. Its clamps once assumed the box was already that big:
+ * the top edge's upper bound was the bottom less the minimum, below the lower
+ * bound, zero, for a box whose bottom sat within the minimum of the top of
  * the screen, and Kotlin's coerceIn throws on a crossed range. A 3.3.0 crash
  * (Galaxy S23+, Android 16, 2026-10-07) seeded the editor with the icon
  * menu's drag-to-select box, 42 px wide at the left edge, and the first drag
  * of that box threw from the top-left corner's left clamp.
  *
- * Two rules follow. A seed is kept as it comes, not grown to MIN_EXTENT: the
+ * Two rules follow. A seed is kept as it comes, not grown to the minimum: the
  * camera's crop editor confirms an untouched box back as a change, so growth
  * on open would rerun its review. And of two opposite handles both within
  * reach, the finger is on the nearer one: a sliver has every touch within
@@ -31,7 +32,7 @@ import org.robolectric.annotation.Config
  * could widen it.
  *
  * Phone density: the touch zone is 52 dp, 146 px on the S23+ (2.8x). At
- * Robolectric's default 1x it is 52 px, and a 117 px minimum-size box is
+ * Robolectric's default 1x it is 52 px, and the handle case's 117 px box is
  * then out of reach of both edges at once, so the handle cases would not
  * tell the nearest-edge rule from the old fixed order.
  */
@@ -40,6 +41,11 @@ import org.robolectric.annotation.Config
 class RegionDragViewSeedTest {
 
     private val ctx: Context = ApplicationProvider.getApplicationContext()
+
+    private val density get() = ctx.resources.displayMetrics.density
+    /** The floor as a fraction of each axis at this test's density. */
+    private val minX get() = RegionDragView.MIN_EXTENT_DP * density / W
+    private val minY get() = RegionDragView.MIN_EXTENT_DP * density / H
 
     private fun view(): RegionDragView = RegionDragView(ctx).also {
         it.measure(
@@ -104,12 +110,12 @@ class RegionDragViewSeedTest {
 
     @Test fun `a sliver under the top edge survives a drag of its top edge and grows from its bottom handle`() {
         val v = view()
-        v.setRegion(top = 0f, bottom = SLIVER, left = 0.2f, right = 0.8f)
+        v.setRegion(top = 0f, bottom = SLIVER_TALL, left = 0.2f, right = 0.8f)
         v.drag(fromX = W * 0.5f, fromY = 10f, toX = W * 0.5f, toY = 40f)
         v.assertOnScreen()
         assertEquals(0f, v.topFraction, EPS)
-        assertEquals(SLIVER, v.bottomFraction, EPS)
-        v.drag(fromX = W * 0.5f, fromY = H * SLIVER, toX = W * 0.5f, toY = 400f)
+        assertEquals(SLIVER_TALL, v.bottomFraction, EPS)
+        v.drag(fromX = W * 0.5f, fromY = H * SLIVER_TALL, toX = W * 0.5f, toY = 400f)
         v.assertOnScreen()
         assertEquals(400f / H, v.bottomFraction, EPS)
     }
@@ -159,7 +165,7 @@ class RegionDragViewSeedTest {
         v.setRegion(top = 0.5f, bottom = 0.51f, left = 0.3f, right = 0.7f)
         v.drag(fromX = W * 0.5f, fromY = H * 0.5f, toX = W * 0.5f, toY = H * 0.5f + 1f)
         v.assertOnScreen()
-        assertEquals(0.51f - RegionDragView.MIN_EXTENT, v.topFraction, EPS)
+        assertEquals(0.51f - minY, v.topFraction, EPS)
     }
 
     @Test fun `dragging an edge onto its opposite stops at the minimum size`() {
@@ -167,15 +173,31 @@ class RegionDragViewSeedTest {
         a.setRegion(top = 0.4f, bottom = 0.6f, left = 0.2f, right = 0.8f)
         a.drag(fromX = W * 0.5f, fromY = H * 0.4f, toX = W * 0.5f, toY = H * 0.99f)
         a.assertOnScreen()
-        assertEquals(0.6f - RegionDragView.MIN_EXTENT, a.topFraction, EPS)
+        assertEquals(0.6f - minY, a.topFraction, EPS)
         val b = view()
         b.setRegion(top = 0.4f, bottom = 0.6f, left = 0.2f, right = 0.8f)
         b.drag(fromX = W * 0.5f, fromY = H * 0.6f, toX = W * 0.5f, toY = 0f)
         b.assertOnScreen()
-        assertEquals(0.4f + RegionDragView.MIN_EXTENT, b.bottomFraction, EPS)
+        assertEquals(0.4f + minY, b.bottomFraction, EPS)
+        val c = view()
+        c.setRegion(top = 0.4f, bottom = 0.6f, left = 0.2f, right = 0.8f)
+        c.drag(fromX = W * 0.8f, fromY = H * 0.5f, toX = 0f, toY = H * 0.5f)
+        c.assertOnScreen()
+        assertEquals(0.2f + minX, c.rightFraction, EPS)
     }
 
-    @Test fun `a minimum-size box gives each handle to its own edge`() {
+    @Test fun `the minimum size is the same number of pixels on both axes, not a share of each`() {
+        // 24 dp at this density, 72 px, on a 1080 x 2340 screen: the old 5%
+        // floor would have been 54 px wide and 117 px tall.
+        val v = view()
+        v.setRegion(top = 0.4f, bottom = 0.6f, left = 0.2f, right = 0.8f)
+        v.drag(fromX = W * 0.5f, fromY = H * 0.6f, toX = W * 0.5f, toY = 0f)
+        v.drag(fromX = W * 0.8f, fromY = H * 0.45f, toX = 0f, toY = H * 0.45f)
+        assertEquals(72f, (v.bottomFraction - v.topFraction) * H, 0.01f)
+        assertEquals(72f, (v.rightFraction - v.leftFraction) * W, 0.01f)
+    }
+
+    @Test fun `a box within reach of both edges gives each handle to its own edge`() {
         // 117 px tall: every touch on it is within reach of both edges.
         val v = view()
         v.setRegion(top = 0.55f, bottom = 0.6f, left = 0.2f, right = 0.8f)
@@ -191,5 +213,7 @@ class RegionDragViewSeedTest {
         const val EPS = 1e-5f
         /** The 3.3.0 seed's right edge: 42 px of 1080. */
         const val SLIVER = 0.03930664f
+        /** The same 42 px as a height, under the 72 px minimum on that axis too. */
+        const val SLIVER_TALL = 42f / 2340f
     }
 }
