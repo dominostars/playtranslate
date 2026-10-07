@@ -1640,13 +1640,16 @@ class PinholeOverlayMode(
      * synchronous JPEG write of the frame, wasted whenever the panel is
      * hidden (single-screen mode, the default). Boxes go out in cachedBoxes
      * order, as this tier always has (no reading-order sort — deliberate
-     * byte-parity with the shipped behavior).
+     * byte-parity with the shipped behavior). The gate is this tier's; the
+     * service then drops a delivery identical to what the panel shows (a
+     * remove-then-replace of the same text) before the screenshot write
+     * ([PanelEmissionDedup], at the delivery layer).
      */
     private fun sendFullStateToPanel(screenshotPath: () -> String?) {
         val boxes = cachedBoxes ?: return
         if (!service.appPanelVisible()) return
         service.emitPanelResult(
-            OverlayToolkit.panelTexts(boxes), screenshotPath(),
+            displayId, OverlayToolkit.panelTexts(boxes), screenshotPath,
             ocrProvenance = panelProvenance,
             backendDisplayName = OverlayToolkit.panelBackendLabel(boxes),
         )

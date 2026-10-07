@@ -49,9 +49,13 @@ class TranslationPresenter(
     }
 
     /** Full displayed state to the in-app panel — same shape as the pinhole
-     *  tier's panel sync, gated on the panel actually being visible. The
-     *  screenshot write only runs past the gate (single-screen mode — the
-     *  default — never pays it). */
+     *  tier's panel sync, gated HERE on the panel actually being visible;
+     *  the service then drops a delivery identical to what the panel shows
+     *  (every mutated cycle offers, and a reposition-only cycle is a
+     *  mutation with unchanged text; [PanelEmissionDedup]). The screenshot
+     *  write only runs past both: single-screen mode (the default) never
+     *  pays it, and neither does a cycle that changes nothing the panel
+     *  shows. */
     override suspend fun emitApplied(
         anchors: List<TextBox>,
         ocrResult: OcrManager.OcrResult?,
@@ -61,8 +65,9 @@ class TranslationPresenter(
     ) {
         if (!service.appPanelVisible()) return
         service.emitPanelResult(
+            displayId,
             OverlayToolkit.panelTexts(OverlayToolkit.panelReadingOrder(anchors, ocrResult)),
-            screenshotPath(),
+            screenshotPath,
             ocrProvenance = ocrResult?.let {
                 service.panelOcrProvenance(
                     it, displayId, frameIncludesSystemUi, frameIncludesOwnOverlays,

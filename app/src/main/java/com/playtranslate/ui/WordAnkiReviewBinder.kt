@@ -447,8 +447,9 @@ class WordAnkiReviewBinder(
                 launchWordsFill(newOriginal, "")
             }
 
-            // Fill in any missing pieces asynchronously (fresh binds only —
-            // a restored bundle already carries whatever was applied).
+            // Fill in any missing pieces asynchronously (fresh binds — a
+            // restored bundle carries whatever was applied, and resumes only
+            // a words fill it was saved in the middle of).
             if (restoredArgs == null) {
                 if (sentenceTranslation.isBlank()) {
                     // The launcher's deferred pending (if any) rides the args —
@@ -464,6 +465,9 @@ class WordAnkiReviewBinder(
                 if (args.getStringArray(ARG_SENTENCE_WORDS).isNullOrEmpty()) {
                     launchWordsFill(meaningfulSentence, word)
                 }
+            } else if (SentenceAnkiContentView.wordsFillOwed(restoredArgs)) {
+                // Saved mid-fill: the restored args owe the words, so resume.
+                launchWordsFill(meaningfulSentence, word)
             }
         }
 
@@ -1518,17 +1522,7 @@ class WordAnkiReviewBinder(
                     ctx.applicationContext,
                     sentence,
                 )
-                val entries = payload.results.map { (w, triple) ->
-                    SentenceAnkiHtmlBuilder.WordEntry(
-                        w, triple.first, triple.second, triple.third,
-                        surfaceForm = payload.surfaces[w].orEmpty(),
-                        pitch = payload.enrichment[w]?.pitch.orEmpty(),
-                        frequencies = payload.enrichment[w]?.frequencies.orEmpty(),
-                        isCommon = payload.enrichment[w]?.isCommon ?: false,
-                        senses = payload.enrichment[w]?.senses.orEmpty(),
-                    )
-                }
-                contentView?.applyWords(sentence, entries, targetWord)
+                contentView?.applyWords(sentence, payload.toWordEntries(), targetWord)
             } finally {
                 wordsFillCount--
                 refreshFillingPendingIndicator()

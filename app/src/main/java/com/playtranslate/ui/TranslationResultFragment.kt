@@ -155,6 +155,13 @@ class TranslationResultFragment : Fragment() {
          *  running live mode's flavor in place. Only called while
          *  [liveShowOnScreenState] is non-null. */
         fun setLiveShowOnScreen(on: Boolean)
+
+        /** Whether a live session is running right now. Seeds the Words
+         *  card's live auto-hide when the page's view is (re)created
+         *  ([WordRowsBinder.setLiveMode]); later start/stop edges arrive
+         *  through [onLiveModeChanged]. False for a host that never runs
+         *  live mode. */
+        fun isLiveModeRunning(): Boolean
     }
 
     /** The page content — sections, Words card, lens, popovers and the
@@ -213,6 +220,9 @@ class TranslationResultFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         val c = TranslationResultContent(view, requireContext(), prefs, vm, ContentHost(requireActivity()))
         content = c
+        // The Words card's live flag is per view: a view created during live
+        // mode starts auto-hidden, whatever an earlier view's eye did.
+        c.wordRows.setLiveMode(host?.isLiveModeRunning() == true)
         // Back closes an open popover (the size picker, a header's ⋯ menu)
         // before it can leave the page. Enabled exactly while one is up (the
         // open/close event is synchronous with the state); added with the
@@ -306,6 +316,15 @@ class TranslationResultFragment : Fragment() {
     fun onScreenBoxesDismissed() {
         if (view == null) return
         refreshShowOnScreen()
+    }
+
+    /** The host's live-mode start/stop edge: the Words card auto-hides for
+     *  the session and drops the auto-hide on stop
+     *  ([WordRowsBinder.setLiveMode], which ignores a repeat of the current
+     *  state). Before the view exists the seed in [onViewCreated] covers it. */
+    fun onLiveModeChanged(running: Boolean) {
+        if (view == null) return
+        content.wordRows.setLiveMode(running)
     }
 
     /** Recompute the toggle's visibility + accent from the current mode.

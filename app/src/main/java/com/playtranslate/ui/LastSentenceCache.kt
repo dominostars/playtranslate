@@ -217,6 +217,28 @@ object LastSentenceCache {
         }
     }
 
+    /**
+     * Translation-only write, for a result whose word rows have not settled
+     * (the rows are lazy, so a hidden Words card never settles them). For
+     * the cached sentence it replaces [translation] / [translationSource]
+     * and keeps the word maps, annotation and pending jobs (an Anki fill's
+     * [awaitOrStartWordLookups] may have written the maps); for another
+     * sentence it rotates the cache first, as the await-or-start helpers
+     * do, so the word maps clear. A later [setFromTranslationResult]
+     * replaces the whole snapshot.
+     *
+     * Callers must never pass a blank [translation]: [awaitOrStartTranslation]
+     * treats any cached translation as a hit, so a cached "" would be served
+     * instead of translating.
+     */
+    fun setTranslation(original: String, translation: String, translationSource: String?) {
+        synchronized(lock) {
+            ensureSentenceLocked(original)
+            this.translation = translation
+            this.translationSource = translationSource
+        }
+    }
+
     // ── Public helpers ───────────────────────────────────────────────
 
     /**

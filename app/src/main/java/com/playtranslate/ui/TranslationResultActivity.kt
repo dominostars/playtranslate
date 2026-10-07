@@ -327,6 +327,7 @@ class TranslationResultActivity :
     override fun updateResultBoxesOnScreen(boxes: OnScreenBoxes) {}
     override fun hideResultBoxesOnScreen() {}
     override fun liveShowOnScreenState(): Boolean? = null
+    override fun isLiveModeRunning() = false
     override fun setLiveShowOnScreen(on: Boolean) {}
 
     // ── SentenceContextProvider ───────────────────────────────────────────

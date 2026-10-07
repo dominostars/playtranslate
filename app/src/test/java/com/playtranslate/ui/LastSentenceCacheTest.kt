@@ -4,9 +4,12 @@ import com.playtranslate.language.AnnotatedSpan
 import com.playtranslate.language.AnnotationGenerations
 import com.playtranslate.language.SentenceAnnotation
 import com.playtranslate.language.SourceLangId
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Before
 import org.junit.Test
 
@@ -103,6 +106,76 @@ class LastSentenceCacheTest {
         val snapshot = LastSentenceCache.snapshotFor("一泊")
         assertNotNull("maps must still serve after a bump", snapshot)
         assertNull("stale annotation must be withheld", snapshot?.annotation)
+    }
+
+    // ── setTranslation: the translation-only write ───────────────────────
+    // A result whose rows never settle (hidden Words card) still caches its
+    // translation, so the drag lens's open-in-app is served from the cache.
+
+    private fun cacheWithWords(sentence: String) = LastSentenceCache.setFromTranslationResult(
+        original = sentence,
+        translation = "old translation",
+        translationSource = "old backend",
+        wordResults = mapOf("猫" to Triple("ねこ", "cat", 3)),
+        surfaceForms = mapOf("猫" to "猫"),
+        wordEnrichment = mapOf("猫" to WordEnrichment(pitch = listOf(1))),
+        annotation = annotationFor(sentence),
+    )
+
+    @Test fun `setTranslation for the cached sentence keeps its words`() {
+        cacheWithWords("猫が好き")
+        val results = LastSentenceCache.wordResults
+        val surfaces = LastSentenceCache.surfaceForms
+        val enrichment = LastSentenceCache.wordEnrichment
+        val annotation = LastSentenceCache.sentenceAnnotation
+        assertNotNull(annotation)
+
+        LastSentenceCache.setTranslation("猫が好き", "I like cats", "new backend")
+
+        assertEquals("猫が好き", LastSentenceCache.original)
+        assertEquals("I like cats", LastSentenceCache.translation)
+        assertEquals("new backend", LastSentenceCache.translationSource)
+        assertSame(results, LastSentenceCache.wordResults)
+        assertSame(surfaces, LastSentenceCache.surfaceForms)
+        assertSame(enrichment, LastSentenceCache.wordEnrichment)
+        assertSame(annotation, LastSentenceCache.sentenceAnnotation)
+    }
+
+    @Test fun `setTranslation for another sentence clears the words`() {
+        cacheWithWords("猫が好き")
+
+        LastSentenceCache.setTranslation("犬が好き", "I like dogs", "backend")
+
+        assertEquals("犬が好き", LastSentenceCache.original)
+        assertEquals("I like dogs", LastSentenceCache.translation)
+        assertEquals("backend", LastSentenceCache.translationSource)
+        assertNull("the other sentence's words must not survive", LastSentenceCache.wordResults)
+        assertNull(LastSentenceCache.surfaceForms)
+        assertNull(LastSentenceCache.wordEnrichment)
+        assertNull(LastSentenceCache.sentenceAnnotation)
+    }
+
+    @Test fun `a translation-only write is a translation hit`() = runBlocking {
+        LastSentenceCache.setTranslation("猫が好き", "I like cats", "backend")
+        var translated = false
+        val outcome = LastSentenceCache.awaitOrStartTranslation("猫が好き") {
+            translated = true
+            LastSentenceCache.TranslationOutcome("fresh", "fresh backend")
+        }
+        assertFalse("a cached translation must not hit the backend", translated)
+        assertEquals(LastSentenceCache.TranslationOutcome("I like cats", "backend"), outcome)
+    }
+
+    @Test fun `snapshotFor follows the words a translation-only write kept`() {
+        LastSentenceCache.setTranslation("犬が好き", "I like dogs", "backend")
+        assertNull("a translation alone has no words to snapshot",
+            LastSentenceCache.snapshotFor("犬が好き"))
+
+        cacheWithWords("猫が好き")
+        LastSentenceCache.setTranslation("猫が好き", "I like cats", "backend")
+        val snap = LastSentenceCache.snapshotFor("猫が好き")
+        assertNotNull("the kept words still snapshot", snap)
+        assertEquals("cat", snap!!.results.getValue("猫").second)
     }
 
     // ── One-tap supplied-payload freshness gate ──────────────────────────

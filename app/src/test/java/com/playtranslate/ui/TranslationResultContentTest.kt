@@ -12,7 +12,10 @@ import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.language.AnnotatedSpan
+import com.playtranslate.language.SentenceAnnotation
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.language.TokenSpan
 import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.PendingTranslation
 import com.playtranslate.model.TextSegments
@@ -48,7 +51,9 @@ import org.robolectric.annotation.Config
  * is forced; the section headers' Anki button, the language headers, the
  * Clear button and a word row's tap route to the host; a hidden Edit
  * button when the host has no editor; a settled word list builds after
- * the host's enter-settle gate; and on a narrow page both headers fold
+ * the host's enter-settle gate; an analyzed lookup sets the tap spans
+ * whether or not the Words card is shown and asks for the rows only while
+ * it is; and on a narrow page both headers fold
  * behind ⋯, whose menu runs the same actions (Add to Anki reaches the
  * host, Text size opens the size picker anchored on the target's ⋯).
  */
@@ -234,6 +239,40 @@ class TranslationResultContentTest {
         assertEquals(listOf("猫" to "ねこ"), host.tappedWords)
         content.renderWordLookups(WordLookupsState.Loading)
         assertTrue(content.wordRows.isEmpty)
+    }
+
+    @Test
+    fun `an analyzed lookup sets the tap spans and asks for rows only while the card is shown`() {
+        var wanted = 0
+        content.wordRows.onRowsWanted = { wanted++ }
+        val text = "猫が食べる。"
+        content.render(ResultState.Ready(result(text, "The cat eats.")))
+        idle()
+        assertEquals("the Ready render's visibility pass asks for the shown card", 1, wanted)
+        val analyzed = WordLookupsState.Analyzed(
+            tokenSpans = listOf(TokenSpan("猫", "猫", "ねこ"), TokenSpan("食べる", "食べる", "たべる")),
+            annotation = SentenceAnnotation(
+                text, SourceLangId.JA, 0,
+                listOf(
+                    AnnotatedSpan(0, 1, "猫", lookupForm = "猫", lookupHint = "ねこ"),
+                    AnnotatedSpan(2, 5, "食べる", lookupForm = "食べる", lookupHint = "たべる"),
+                ),
+            ),
+            phrases = emptyList(),
+        )
+        val expected = listOf(Triple(0..0, "猫", "ねこ"), Triple(2..4, "食べる", "たべる"))
+        content.renderWordLookups(analyzed)
+        assertEquals("readings fall back to the analysis's own", expected, content.sourceLens.wordSpans)
+        assertEquals(2, wanted)
+        assertTrue("no rows until they settle", content.wordRows.isEmpty)
+
+        Prefs(app).hideWordsSection = true
+        content.wordRows.applyWordsVisibility()
+        content.renderWordLookups(WordLookupsState.Loading)
+        assertTrue(content.sourceLens.wordSpans.isEmpty())
+        content.renderWordLookups(analyzed)
+        assertEquals("the spans don't depend on the card", expected, content.sourceLens.wordSpans)
+        assertEquals("a hidden card asks for nothing", 2, wanted)
     }
 
     /** One traversal of the page at the display's size. */

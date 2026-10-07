@@ -561,6 +561,11 @@ class MainActivity :
         return !prefs.hideGameOverlays
     }
 
+    // The static instance too: a recreated activity seeds its page before it
+    // re-binds the service (captureService is null until onServiceConnected).
+    override fun isLiveModeRunning() =
+        (captureService ?: CaptureService.instance)?.liveModeState?.value == true
+
     override fun setLiveShowOnScreen(on: Boolean) {
         // Same-process synchronous write; the swap below re-reads it.
         prefs.hideGameOverlays = !on
@@ -1184,6 +1189,9 @@ class MainActivity :
         // The toggle's semantics flip with live mode even when the VM state
         // doesn't change (a stop that keeps the last Ready result on screen).
         resultFragment?.refreshShowOnScreen()
+        // The Words card auto-hides for the live session (rows are lazy, so
+        // a hidden card skips the per-result dictionary work).
+        resultFragment?.onLiveModeChanged(isLive)
         // Dim controller: cancel on any live mode change, recreate only when stopping
         dimController?.cancel()
         dimController = null

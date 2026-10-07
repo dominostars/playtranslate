@@ -46,7 +46,12 @@ import kotlinx.coroutines.launch
  * anchor. The reveal is asynchronous (hide → fit → show across two posts),
  * so every posted step bails when a newer render has moved the generation
  * on — a fast Translating→Status transition must not resurrect stale
- * results over the status screen.
+ * results over the status screen. The word lookup's two tiers render apart
+ * ([WordLookupsState]): the tap spans follow the analysis
+ * ([WordLookupsState.Analyzed]) whether or not the Words card is shown, and
+ * the dictionary rows are built only on the card's request
+ * ([WordRowsBinder.onRowsWanted] → [TranslationResultViewModel.requestWordRows]),
+ * so a hidden card costs no row work.
  */
 class TranslationResultContent(
     val root: View,
@@ -190,6 +195,9 @@ class TranslationResultContent(
                     host.onWordTapped(row.displayWord, row.reading.ifEmpty { null })
             },
         )
+        // The card asks for its rows whenever it is shown and may need them;
+        // the VM no-ops unless an analysis is waiting for its rows.
+        wordRows.onRowsWanted = { vm.requestWordRows(ctx.applicationContext) }
         sourceLens = SourceTextLens(
             ctx, host.lensWindowManager, host.lensDisplayId, host.lensOverlayHost,
             scope = host.scope,
@@ -240,7 +248,8 @@ class TranslationResultContent(
     /** The current Ready result, or null in any other state. */
     fun currentReady(): TranslationResult? = (vm.result.value as? ResultState.Ready)?.result
 
-    /** The settled word lookups, or null while idle/loading. */
+    /** The settled word lookups, or null while idle/loading, and while
+     *  [WordLookupsState.Analyzed] (the rows not requested, or in flight). */
     fun settledLookups(): WordLookupsState.Settled? = vm.wordLookups.value as? WordLookupsState.Settled
 
     /** True iff a translation result is showing (vs status/error/translating). */
@@ -311,8 +320,9 @@ class TranslationResultContent(
     }
 
     /** Mirror a word-lookup state: the tap spans + the lens follow it
-     *  synchronously; the settled rows build after the host's enter-settle
-     *  gate (immediate in-app), unless a newer lookup state arrived first. */
+     *  synchronously (from the analysis on, rows or not); the settled rows
+     *  build after the host's enter-settle gate (immediate in-app), unless a
+     *  newer lookup state arrived first. */
     fun renderWordLookups(state: WordLookupsState) {
         if (!host.isAlive) return
         val generation = ++lookupGeneration
@@ -324,6 +334,17 @@ class TranslationResultContent(
             is WordLookupsState.Loading -> {
                 sourceLens.dismiss()
                 sourceLens.wordSpans = emptyList()
+                wordRows.render(state)
+            }
+            is WordLookupsState.Analyzed -> {
+                // No resolved readings yet: computeSpans falls back to the
+                // token's own lookup hint (TokenSpan.reading), which the lens
+                // passes to its resolve as the reading hint; the rows'
+                // resolved readings replace it when Settled lands.
+                sourceLens.wordSpans = SourceWordLookup.computeTapSpans(
+                    binder.displayedSourceText(), state.tokenSpans, emptyMap(), state.phrases,
+                )
+                // Drawn like Loading; asks for the rows when the card is shown.
                 wordRows.render(state)
             }
             is WordLookupsState.Settled -> {

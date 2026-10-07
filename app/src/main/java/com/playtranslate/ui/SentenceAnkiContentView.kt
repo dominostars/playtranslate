@@ -532,9 +532,9 @@ class SentenceAnkiContentView(
      *  translation/word breakdown was last fetched. The host kicks a
      *  fresh translation + word lookup pipeline; the card has already
      *  reset the Translation field and the Words card to a loading state
-     *  by the time this fires. null = no re-fetch path wired (the
-     *  sentence-only sheet doesn't have one), in which case Original
-     *  edits commit without touching downstream state. */
+     *  by the time this fires. Every host wires one; null = no re-fetch
+     *  path, in which case Original edits commit without touching
+     *  downstream state. */
     var onOriginalCommitted: ((newText: String) -> Unit)? = null
 
     data class CardData(
@@ -1246,11 +1246,12 @@ class SentenceAnkiContentView(
         translationCard.addView(buildEditableFrame(etTranslation))
 
         // Words on card. The host tells us whether a follow-up
-        // `applyWords` call is coming (drag → Anki path) vs. whether
-        // an empty list is the final answer (sentence-only sheet
-        // tapped while VM lookups are still loading). Inferring
-        // "loading" from `words.isEmpty()` would mis-render the latter
-        // as a permanent placeholder over a zero-word card.
+        // `applyWords` call is coming (a lazy words fill: every host
+        // handed no words for a fresh, non-blank sentence) vs. whether
+        // an empty list is the final answer (no fill coming, e.g. a
+        // blank sentence). Inferring "loading" from `words.isEmpty()`
+        // would mis-render the latter as a permanent placeholder over
+        // a zero-word card.
         wordsLoading = args.getBoolean(ARG_WORDS_LOADING, false)
         ankiGroupHeader(root, ctx.getString(R.string.anki_group_words_count, words.size))
         wordsHeaderTitle = (root.getChildAt(root.childCount - 1) as ViewGroup)
@@ -2039,6 +2040,10 @@ class SentenceAnkiContentView(
         args.putStringArray(ARG_READINGS, words.map { it.reading }.toTypedArray())
         args.putStringArray(ARG_MEANINGS, words.map { it.meaning }.toTypedArray())
         args.putIntArray(ARG_FREQ_SCORES, words.map { it.freqScore }.toIntArray())
+        // The fill has landed: a restore from these args must not show the
+        // placeholder again (a definitive empty list stayed "Looking up
+        // words…" forever).
+        args.putBoolean(ARG_WORDS_LOADING, false)
         rebuildWordRows()
         // The list just changed wholesale — the styled payload must follow
         // it (and the previous sentence's payload must not linger).
@@ -2080,6 +2085,11 @@ class SentenceAnkiContentView(
         private const val ARG_SOURCE_LANG     = "source_lang"
         private const val ARG_WORDS_LOADING   = "words_loading"
         private const val ARG_AUDIO_ANCHOR_MS = "audio_anchor_ms"
+
+        /** A words fill was in flight when [args] were saved: a restore owes
+         *  it. [applyWords] clears the flag, so a landed fill never reads as owed. */
+        fun wordsFillOwed(args: Bundle): Boolean =
+            args.getBoolean(ARG_WORDS_LOADING, false) && args.getStringArray(ARG_WORDS).isNullOrEmpty()
 
         /** The launch-state bundle both hosts build — the fragment stores it
          *  as its arguments (so its mutation semantics are unchanged), the
