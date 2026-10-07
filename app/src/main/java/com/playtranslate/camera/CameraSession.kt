@@ -237,10 +237,7 @@ class CameraSession(
     // if some future switch path forgets its session reset.
     private fun langKey(): String =
         "${prefs.sourceLangId}|${prefs.targetLang}|${prefs.targetChineseVariant}|" +
-            (
-                prefs.cameraOcrBackendToken(prefs.sourceLangId)
-                    ?: prefs.ocrBackendToken(prefs.sourceLangId) ?: ""
-            )
+            (prefs.ocrBackendToken(prefs.sourceLangId, com.playtranslate.OcrTokenScope.CAMERA) ?: "")
 
     /** The warp surface; created lazily on main. */
     private var warpView: WarpOverlayView? = null
@@ -336,12 +333,11 @@ class CameraSession(
                     },
                 )
             }
-            val sourceLang = SourceLanguageProfiles[prefs.sourceLangId].translationCode
             OcrManager.instance.recognise(
                 bmp,
-                sourceLang,
+                prefs.sourceLangId,
                 screenshotWidth = bmp.width,
-                engineTokenOverride = prefs.cameraOcrBackendToken(prefs.sourceLangId),
+                scope = com.playtranslate.OcrTokenScope.CAMERA,
             )
             bmp.recycle()
             Log.d(TAG, "prewarm: OCR engine ready in ${System.currentTimeMillis() - t0}ms")
@@ -691,7 +687,6 @@ class CameraSession(
         val selfJob = kotlin.coroutines.coroutineContext[kotlinx.coroutines.Job]
         try {
             prewarmJob.join() // never race the engine's lazy construction
-            val sourceLang = SourceLanguageProfiles[prefs.sourceLangId].translationCode
             val t0 = System.currentTimeMillis()
             // Slow-pass rescue timer, live mode's threshold: fires MID-pass,
             // while the user is staring at a viewfinder that shows nothing
@@ -708,10 +703,10 @@ class CameraSession(
             val ocr = try {
                 OcrManager.instance.recognise(
                     buffers.keyframe,
-                    sourceLang,
+                    prefs.sourceLangId,
                     screenshotWidth = auW,
                     regionPreFilter = cameraRegionPreFilter(),
-                    engineTokenOverride = prefs.cameraOcrBackendToken(prefs.sourceLangId),
+                    scope = com.playtranslate.OcrTokenScope.CAMERA,
                 )
             } finally {
                 slowTimer?.cancel()
@@ -1516,20 +1511,19 @@ class CameraSession(
         gen: Long = snapshotGeneration.get(),
     ) {
         val srcId = prefs.sourceLangId
-        val sourceLang = SourceLanguageProfiles[srcId].translationCode
         val auW = frozen.width
         val auH = frozen.height
         val screenshotPath = saveSnapshotToCache(frozen)
 
         val ocr = OcrManager.instance.recognise(
             frozen,
-            sourceLang,
+            srcId,
             screenshotWidth = auW,
             regionPreFilter = cameraRegionPreFilter(
                 dropEdgeClipped = false, clipTo = regionAu,
                 clipFrameW = auW, clipFrameH = auH,
             ),
-            engineTokenOverride = prefs.cameraOcrBackendToken(srcId),
+            scope = com.playtranslate.OcrTokenScope.CAMERA,
         )
         // The region gate proper lives HERE, at group level, not in the
         // pre-filter: single-model engines (ML Kit) never see the
@@ -1629,7 +1623,7 @@ class CameraSession(
 
         // Recording pair captured BEFORE the translate call — a mid-flight
         // language change must not relabel these rows.
-        val recordSrc = sourceLang
+        val recordSrc = srcId
         val recordTgt = prefs.targetLang
         val perGroup = translator.translateDetailed(groups.map { it.text })
         // Superseded while translating: mirror the post-recognise check for
@@ -1680,7 +1674,7 @@ class CameraSession(
         ocr: OcrManager.OcrResult?,
         srcId: com.playtranslate.language.SourceLangId,
     ): com.playtranslate.model.OcrProvenance? = SnapshotCore.snapshotProvenance(
-        context, ocr, srcId, prefs.cameraOcrBackendToken(srcId),
+        context, ocr, srcId, com.playtranslate.OcrTokenScope.CAMERA,
     )
 
     /** Save the frozen frame under a unique per-cycle name — see

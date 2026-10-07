@@ -130,6 +130,9 @@ class TranslationResultActivity :
                     SentenceTranslationFlow.HistoryRow(
                         id,
                         intent.getStringExtra(EXTRA_HISTORY_SOURCE_LANG),
+                        com.playtranslate.language.SourceLangId.fromCode(
+                            intent.getStringExtra(EXTRA_HISTORY_SOURCE_LANG_ID),
+                        ),
                         intent.getStringExtra(EXTRA_HISTORY_TARGET_LANG),
                     )
                 },
@@ -771,6 +774,9 @@ class TranslationResultActivity :
          *  row and only under a matching pair (see handleSentenceMode). */
         const val EXTRA_HISTORY_ENTRY_ID = "extra_history_entry_id"
         const val EXTRA_HISTORY_SOURCE_LANG = "extra_history_source_lang"
+        /** The row's exact source language ([SourceLangId.code]); absent for a
+         *  row stored before History schema v2. */
+        const val EXTRA_HISTORY_SOURCE_LANG_ID = "extra_history_source_lang_id"
         const val EXTRA_HISTORY_TARGET_LANG = "extra_history_target_lang"
         /** The tapped row's at_ms (epoch): the sentence's capture moment,
          *  passed on to the Anki flow as its game-audio ring anchor — the

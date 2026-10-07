@@ -98,7 +98,7 @@ class DetectThenRecognize(
         // each region to logical order — text + char-box offsets together — once
         // here, so line assembly, lookup, translation and rendering all see storage
         // order. No-op for LTR scripts. See RtlReorder + the atomic OCR contract.
-        val rtl = SourceLanguageProfiles.forCode(image.sourceLang)?.textDirection == TextDirection.RTL
+        val rtl = SourceLanguageProfiles.scriptFor(image.sourceLang)?.textDirection == TextDirection.RTL
         val ordered = if (rtl) recognized.map { RtlReorder.toLogical(it) } else recognized
         // Post-recognition line assembly. A detector that emits sub-line (per-word)
         // boxes — PaddleOCR DBNet on word-spaced scripts — is recognized 1:1 above,
@@ -137,4 +137,4 @@ private fun fmtConf(c: Float): String = if (c < 0f) "-" else "%.2f".format(java.
  *  ja/zh/zh-Hant) don't fragment and may be written vertically, so they are left
  *  untouched. Same profile lookup MlKitOcr uses for word spacing. */
 private fun needsLineAssembly(sourceLang: String): Boolean =
-    SourceLanguageProfiles.forCode(sourceLang)?.wordsSeparatedByWhitespace == true
+    SourceLanguageProfiles.scriptFor(sourceLang)?.wordsSeparatedByWhitespace == true

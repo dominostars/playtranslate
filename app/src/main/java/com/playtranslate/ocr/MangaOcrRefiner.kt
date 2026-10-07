@@ -194,7 +194,7 @@ object MangaOcrRefiner {
     ): Refined {
         val t0 = System.nanoTime()
         val lineJoin =
-            if (SourceLanguageProfiles.forCode(sourceLang)?.wordsSeparatedByWhitespace == true) " " else ""
+            if (SourceLanguageProfiles.scriptFor(sourceLang)?.wordsSeparatedByWhitespace == true) " " else ""
         val image = OcrImage(processed, sourceLang)
         var attempted = 0
         var decoded = 0

@@ -632,7 +632,7 @@ class DragLookupController(
         if (ocrJob === coroutineContext[Job]) revealLensAfterCapture()
         onScreenshotCaptured(bitmap, path)
         val lines = withContext(Dispatchers.Default) {
-            ocrManager.recogniseWithPositions(bitmap, Prefs(popup.ctx).sourceLang)
+            ocrManager.recogniseWithPositions(bitmap, Prefs(popup.ctx).sourceLangId)
         }
         if (lines == null) {
             Log.d(TAG, "No text found in saved screenshot")
@@ -1137,7 +1137,7 @@ class DragLookupController(
         onScreenshotCaptured(bitmap, savedPath)
 
         val lines = withContext(Dispatchers.Default) {
-            ocrManager.recogniseWithPositions(bitmap, Prefs(context).sourceLang)
+            ocrManager.recogniseWithPositions(bitmap, Prefs(context).sourceLangId)
         }
         if (lines == null) {
             Log.d(TAG, "No text found on screen")
@@ -1609,7 +1609,7 @@ class DragLookupController(
         val prefs = Prefs(context)
         CaptureService.instance?.translationLogRecorder?.onShownDeliberate(
             sentence, null, null,
-            com.playtranslate.language.SourceLanguageProfiles[prefs.sourceLangId].translationCode,
+            prefs.sourceLangId,
             prefs.targetLang,
             com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_LOOKUP,
         )

@@ -192,8 +192,8 @@ class SourceLanguageChangeTest {
             .apply { isAccessible = true }.get(svc)!!
         @Suppress("UNCHECKED_CAST")
         val sourceLang = LiveSessionFeedback::class.java.getDeclaredField("sourceLang")
-            .apply { isAccessible = true }.get(feedback) as () -> String
-        assertEquals("zh", sourceLang())
+            .apply { isAccessible = true }.get(feedback) as () -> com.playtranslate.language.SourceLangId
+        assertEquals(com.playtranslate.language.SourceLangId.ZH, sourceLang())
     }
 
     // A change made while no service ran was never applied.

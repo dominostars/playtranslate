@@ -597,12 +597,25 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
             putExtra(AnkiPermissionActivity.EXTRA_FORWARD_TARGET, AnkiPermissionActivity.TARGET_SENTENCE)
             putExtra(SentenceAnkiReviewActivity.EXTRA_SENTENCE, entry.sourceText)
             putExtra(SentenceAnkiReviewActivity.EXTRA_TRANSLATION, entry.translation ?: "")
-            putExtra(SentenceAnkiReviewActivity.EXTRA_SOURCE_LANG, entry.sourceLang)
+            putExtra(SentenceAnkiReviewActivity.EXTRA_SOURCE_LANG, exactSourceLang(entry).code)
             // Game-audio ring anchor: the row's capture moment. A recent row
             // seeds the trim view there; an old one maps outside the ring and
             // the card honestly stays on the TTS floor.
             putExtra(SentenceAnkiReviewActivity.EXTRA_AUDIO_ANCHOR_MS, entry.atMs)
         })
+    }
+
+    /** The exact source language a row was captured under. Rows store it since
+     *  schema v2; an older row carries only the pair code, which ZH and ZH_HANT
+     *  share, so it takes the current source when that is one of the languages
+     *  behind the code, else the code's own language. */
+    private fun exactSourceLang(entry: HistoryEntry): com.playtranslate.language.SourceLangId {
+        entry.sourceLangId?.let { return it }
+        val current = Prefs(this).sourceLangId
+        if (com.playtranslate.language.SourceLanguageProfiles[current].translationCode == entry.sourceLang) {
+            return current
+        }
+        return com.playtranslate.language.SourceLangId.fromCode(entry.sourceLang) ?: current
     }
 
     /** Row tap: the full translation-results page, pushed in-task (plain
@@ -622,6 +635,9 @@ class TranslationHistoryActivity : SettingsSubPageActivity() {
             // exactly this row, and only when the pair still matches.
             putExtra(TranslationResultActivity.EXTRA_HISTORY_ENTRY_ID, entry.id)
             putExtra(TranslationResultActivity.EXTRA_HISTORY_SOURCE_LANG, entry.sourceLang)
+            entry.sourceLangId?.let {
+                putExtra(TranslationResultActivity.EXTRA_HISTORY_SOURCE_LANG_ID, it.code)
+            }
             putExtra(TranslationResultActivity.EXTRA_HISTORY_TARGET_LANG, entry.targetLang)
             putExtra(TranslationResultActivity.EXTRA_HISTORY_AT_MS, entry.atMs)
             putExtra(

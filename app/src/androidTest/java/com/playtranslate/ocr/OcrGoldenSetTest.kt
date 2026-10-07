@@ -146,7 +146,7 @@ class OcrGoldenSetTest {
                     val result = runBlocking {
                         OcrManager.instance.recognise(
                             bitmap = bitmap,
-                            sourceLang = "ja",
+                            source = com.playtranslate.language.SourceLangId.JA,
                             screenshotWidth = bitmap.width,
                             recipe = recipe
                         )
@@ -198,7 +198,7 @@ class OcrGoldenSetTest {
                 val result = runBlocking {
                     OcrManager.instance.recognise(
                         bitmap = bitmap,
-                        sourceLang = "ja",
+                        source = com.playtranslate.language.SourceLangId.JA,
                         screenshotWidth = bitmap.width,
                         recipe = OcrPreprocessingRecipe.Default,
                     )
@@ -247,7 +247,7 @@ class OcrGoldenSetTest {
                 val result = runBlocking {
                     OcrManager.instance.recognise(
                         bitmap = bitmap,
-                        sourceLang = "ja",
+                        source = com.playtranslate.language.SourceLangId.JA,
                         screenshotWidth = bitmap.width,
                         recipe = OcrPreprocessingRecipe.Default,
                     )

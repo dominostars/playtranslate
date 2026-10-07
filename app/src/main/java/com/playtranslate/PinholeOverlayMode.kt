@@ -10,6 +10,7 @@ import android.graphics.Rect
 import android.os.SystemClock
 import android.util.Log
 import android.view.Choreographer
+import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextDirection
 import com.playtranslate.model.OcrProvenance
@@ -117,7 +118,7 @@ class PinholeOverlayMode(
      *  features are off and swallows its own failures. */
     private fun recordShown(
         groups: List<FarGroup>,
-        src: String,
+        src: SourceLangId,
         tgt: String,
         boxFor: (Int) -> TextBox?,
     ) {
@@ -131,10 +132,10 @@ class PinholeOverlayMode(
         }
     }
 
-    /** The recording pair at this instant (translation code + target). */
-    private fun recordPair(): Pair<String, String> {
+    /** The recording pair at this instant (exact source language + target). */
+    private fun recordPair(): Pair<SourceLangId, String> {
         val prefs = Prefs(service)
-        return SourceLanguageProfiles[prefs.sourceLangId].translationCode to prefs.targetLang
+        return prefs.sourceLangId to prefs.targetLang
     }
 
     private enum class PinholeResult { KEEP, REMOVE }

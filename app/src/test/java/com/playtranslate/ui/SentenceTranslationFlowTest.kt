@@ -79,17 +79,17 @@ class SentenceTranslationFlowTest {
         }
 
         override fun attachLookup(
-            source: String, translation: String, sourceLang: String, targetLang: String,
+            source: String, translation: String, sourceLangId: com.playtranslate.language.SourceLangId, targetLang: String,
             backendDisplayName: String?, historyEligible: Boolean, contextEligible: Boolean,
         ) {
-            lookups += listOf(source, translation, sourceLang, targetLang, backendDisplayName, historyEligible, contextEligible)
+            lookups += listOf(source, translation, com.playtranslate.language.SourceLanguageProfiles[sourceLangId].translationCode, targetLang, backendDisplayName, historyEligible, contextEligible)
         }
 
         override fun attachHistoryRow(
-            rowId: Long, source: String, translation: String, sourceLang: String, targetLang: String,
+            rowId: Long, source: String, translation: String, sourceLangId: com.playtranslate.language.SourceLangId, targetLang: String,
             backendDisplayName: String?, contextEligible: Boolean,
         ) {
-            rows += listOf(rowId, source, translation, sourceLang, targetLang, backendDisplayName, contextEligible)
+            rows += listOf(rowId, source, translation, com.playtranslate.language.SourceLanguageProfiles[sourceLangId].translationCode, targetLang, backendDisplayName, contextEligible)
         }
     }
 
@@ -99,7 +99,7 @@ class SentenceTranslationFlowTest {
     @Before
     fun setUp() {
         clearPrefs()
-        prefs.targetLang = "en"
+        prefs.setTarget("en")
         prefs.hideTranslationSection = false
         // Both recording opt-ins ON unless a cell says otherwise: the attach
         // cells assert the lookup-time snapshot rides through as true.
@@ -169,7 +169,7 @@ class SentenceTranslationFlowTest {
         // backend call, nor the attach, nor the displayed result's context.
         val capturedSource = sourceCode
         val capturedSourceId = prefs.sourceLangId
-        prefs.targetLang = "de"
+        prefs.setTarget("de")
         gate.complete(SentenceTranslationFlow.Outcome("Hello", "note", "DeepL"))
         idle()
         val r = ready()
@@ -193,7 +193,7 @@ class SentenceTranslationFlowTest {
         val lookupSourceId = deferred.langContext.sourceLangId
         val lookupSource = SourceLanguageProfiles[lookupSourceId].translationCode
         // Both sides of the pair change between the deferral and the reveal.
-        prefs.targetLang = "de"
+        prefs.setTarget("de")
         prefs.sourceLang = SourceLangId.entries.first { it != lookupSourceId }.code
         prefs.hideTranslationSection = false
         val gate = b.gate()
@@ -341,18 +341,40 @@ class SentenceTranslationFlowTest {
     fun `history row attaches to the exact row only when the pair matches`() {
         val b = FakeBackend()
         b.ready("Hello")
-        flow(b, SentenceTranslationFlow.HistoryRow(42L, sourceCode, "en")).show("こんにちは", null)
+        flow(b, SentenceTranslationFlow.HistoryRow(42L, sourceCode, null, "en")).show("こんにちは", null)
         idle()
         assertEquals(listOf(42L, "こんにちは", "Hello", sourceCode, "en", "DeepL", true), b.rows.single())
         assertTrue(b.lookups.isEmpty())
 
         val b2 = FakeBackend()
         b2.ready("Hallo")
-        flow(b2, SentenceTranslationFlow.HistoryRow(42L, sourceCode, "de")).show("こんにちは", null)
+        flow(b2, SentenceTranslationFlow.HistoryRow(42L, sourceCode, null, "de")).show("こんにちは", null)
         idle()
         assertTrue("cross-pair result stays display-only", b2.rows.isEmpty())
         assertTrue(b2.lookups.isEmpty())
         assertEquals("Hallo", ready().translatedText)
+    }
+
+    /** The two Chinese variants share the pair code: a row stored under one
+     *  must not take a translation made under the other, while a v1 row (no
+     *  exact language stored) still attaches by the pair (Codex adversarial,
+     *  2026-10-06). */
+    @Test
+    fun `history row stored under the other Chinese variant stays display-only`() {
+        prefs.sourceLang = SourceLangId.ZH_HANT.code
+        val b = FakeBackend()
+        b.ready("Hello")
+        flow(b, SentenceTranslationFlow.HistoryRow(42L, "zh", SourceLangId.ZH, "en")).show("這是一個句子", null)
+        idle()
+        assertTrue("the Simplified row keeps its translation slot", b.rows.isEmpty())
+        assertTrue(b.lookups.isEmpty())
+        assertEquals("Hello", ready().translatedText)
+
+        val b2 = FakeBackend()
+        b2.ready("Hello")
+        flow(b2, SentenceTranslationFlow.HistoryRow(42L, "zh", null, "en")).show("這是一個句子", null)
+        idle()
+        assertEquals(1, b2.rows.size)
     }
 
     private fun clearPrefs() {

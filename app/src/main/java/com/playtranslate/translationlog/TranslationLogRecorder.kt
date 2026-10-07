@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Rect
 import android.util.Log
 import com.playtranslate.Prefs
+import com.playtranslate.language.SourceLangId
+import com.playtranslate.language.SourceLanguageProfiles
 import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -61,15 +63,15 @@ class TranslationLogRecorder(
     interface HistorySink {
         suspend fun insert(
             atMs: Long, sourceText: String, translation: String?, sourceLang: String,
-            targetLang: String, provenance: String, sessionId: String, normKey: String,
-            rect: Rect?, backendDisplayName: String?,
+            sourceLangId: SourceLangId, targetLang: String, provenance: String, sessionId: String,
+            normKey: String, rect: Rect?, backendDisplayName: String?,
         ): Long
 
         suspend fun update(rowId: Long, sourceText: String, translation: String?, normKey: String)
 
         suspend fun attachByKey(
             normKey: String, translation: String,
-            sourceLang: String, targetLang: String, backendDisplayName: String?,
+            sourceLang: String, sourceLangId: SourceLangId, targetLang: String, backendDisplayName: String?,
         ): Int
 
         suspend fun attachById(rowId: Long, translation: String, backendDisplayName: String?)
@@ -83,10 +85,10 @@ class TranslationLogRecorder(
     private class StoreSink(private val ctx: Context) : HistorySink {
         override suspend fun insert(
             atMs: Long, sourceText: String, translation: String?, sourceLang: String,
-            targetLang: String, provenance: String, sessionId: String, normKey: String,
-            rect: Rect?, backendDisplayName: String?,
+            sourceLangId: SourceLangId, targetLang: String, provenance: String, sessionId: String,
+            normKey: String, rect: Rect?, backendDisplayName: String?,
         ): Long = TranslationHistoryStore.insert(
-            ctx, atMs, sourceText, translation, sourceLang, targetLang,
+            ctx, atMs, sourceText, translation, sourceLang, sourceLangId, targetLang,
             provenance, sessionId, normKey, rect, backendDisplayName,
         )
 
@@ -95,9 +97,9 @@ class TranslationLogRecorder(
 
         override suspend fun attachByKey(
             normKey: String, translation: String,
-            sourceLang: String, targetLang: String, backendDisplayName: String?,
+            sourceLang: String, sourceLangId: SourceLangId, targetLang: String, backendDisplayName: String?,
         ): Int = TranslationHistoryStore.attachTranslationByKey(
-            ctx, normKey, translation, sourceLang, targetLang, backendDisplayName,
+            ctx, normKey, translation, sourceLang, sourceLangId, targetLang, backendDisplayName,
         )
 
         override suspend fun attachById(rowId: Long, translation: String, backendDisplayName: String?) =
@@ -122,8 +124,11 @@ class TranslationLogRecorder(
      *  ring pairs, and the session id are all meaningless across a pair
      *  change — source OR target (the target-blind version of this let a
      *  re-read line die as an old-target "duplicate" and a supersession
-     *  update cross pairs). */
-    private var gateSourceLang: String? = null
+     *  update cross pairs). The source is the EXACT language, not its pair
+     *  code: ZH and ZH_HANT share "zh", and a code-keyed session let a
+     *  Traditional re-read supersede a Simplified row in place, leaving the
+     *  row tagged with the wrong variant (Codex adversarial, 2026-10-06). */
+    private var gateSourceLangId: SourceLangId? = null
     private var gateTargetLang: String? = null
 
     @Volatile
@@ -135,7 +140,7 @@ class TranslationLogRecorder(
      *  translation onto an old-pair row). */
     private class PendingRow(
         val id: CompletableDeferred<Long>,
-        val sourceLang: String,
+        val sourceLangId: SourceLangId,
         val targetLang: String,
     )
 
@@ -148,12 +153,28 @@ class TranslationLogRecorder(
             size > ROW_ID_CAP
     }
 
+    /** The pair code rows are matched and the gate is keyed by. ZH and ZH_HANT
+     *  share it, so every entry point takes the EXACT language and derives the
+     *  code here: the id rides along into the row for what must not collapse
+     *  (History's Add to Anki), the code does the pair work. */
+    private fun SourceLangId.recordCode(): String = SourceLanguageProfiles[this].translationCode
+
+    /** True while a pair a translation was produced under is still the active
+     *  one. The LLM context ring is session state: a pair switch clears it
+     *  ([ensureGate]), and a translation that completes AFTER the switch (a
+     *  deferred capture, a lookup still in flight) must not refill it with the
+     *  previous pair. The ring's own entries carry only the pair code, which
+     *  ZH and ZH_HANT share, so the exact language is checked here, against
+     *  the live selection (Codex adversarial, 2026-10-06). */
+    private fun pairIsActive(sourceLangId: SourceLangId, targetLang: String): Boolean =
+        sourceLangId == prefs.sourceLangId && targetLang == prefs.targetLang
+
     /** AUTO-provenance stream (live modes): full gate policy. Main only. */
     fun onShown(
         source: String,
         translation: String,
         bounds: Rect,
-        sourceLang: String,
+        sourceLangId: SourceLangId,
         targetLang: String,
         backendDisplayName: String? = null,
     ) = guarded {
@@ -161,11 +182,12 @@ class TranslationLogRecorder(
         val historyOn = prefs.translationHistoryEnabled
         val contextOn = prefs.llmContextEnabled
         if (!historyOn && !contextOn) return@guarded
-        val gate = ensureGate(sourceLang, targetLang)
+        val sourceLang = sourceLangId.recordCode()
+        val gate = ensureGate(sourceLangId, targetLang)
         val now = System.currentTimeMillis()
         apply(
             gate.offer(source, bounds, now, cycle = 0),
-            source, translation, bounds, sourceLang, targetLang,
+            source, translation, bounds, sourceLangId, sourceLang, targetLang,
             TranslationHistoryStore.PROVENANCE_AUTO, backendDisplayName, historyOn, contextOn, now,
         )
     }
@@ -176,7 +198,7 @@ class TranslationLogRecorder(
         source: String,
         translation: String?,
         bounds: Rect?,
-        sourceLang: String,
+        sourceLangId: SourceLangId,
         targetLang: String,
         provenance: String,
         backendDisplayName: String? = null,
@@ -185,11 +207,12 @@ class TranslationLogRecorder(
         val historyOn = prefs.translationHistoryEnabled
         val contextOn = prefs.llmContextEnabled
         if (!historyOn && !contextOn) return@guarded
-        val gate = ensureGate(sourceLang, targetLang)
+        val sourceLang = sourceLangId.recordCode()
+        val gate = ensureGate(sourceLangId, targetLang)
         val now = System.currentTimeMillis()
         apply(
             gate.offerDeliberate(source, now, cycle = 0),
-            source, translation, bounds, sourceLang, targetLang,
+            source, translation, bounds, sourceLangId, sourceLang, targetLang,
             provenance, backendDisplayName, historyOn, contextOn, now,
         )
     }
@@ -233,7 +256,7 @@ class TranslationLogRecorder(
         source: String,
         translation: String?,
         bounds: Rect?,
-        sourceLang: String,
+        sourceLangId: SourceLangId,
         targetLang: String,
         provenance: String,
         backendDisplayName: String? = null,
@@ -243,6 +266,7 @@ class TranslationLogRecorder(
         val historyOn = prefs.translationHistoryEnabled
         val contextOn = prefs.llmContextEnabled
         if (!historyOn && !contextOn) return@guarded
+        val sourceLang = sourceLangId.recordCode()
         val key = LogWriteGate.normalizedKey(source, sourceLang)
         if (key.isEmpty()) return@guarded
         if (!token.seen.add(key)) return@guarded
@@ -251,7 +275,7 @@ class TranslationLogRecorder(
             scope.launch {
                 runCatching {
                     sink.insert(
-                        now, source, translation, sourceLang, targetLang,
+                        now, source, translation, sourceLang, sourceLangId, targetLang,
                         provenance, token.sessionId, key, bounds, backendDisplayName,
                     )
                 }.onFailure { Log.w(TAG, "capture insert failed: ${it.message}") }
@@ -296,15 +320,16 @@ class TranslationLogRecorder(
         sessionId: String?,
         source: String,
         translation: String,
-        sourceLang: String,
+        sourceLangId: SourceLangId,
         targetLang: String,
         contextEligible: Boolean,
         backendDisplayName: String? = null,
     ) = guarded {
         if (source.isBlank() || translation.isBlank()) return@guarded
         val historyOn = prefs.translationHistoryEnabled && sessionId != null
-        val contextOn = prefs.llmContextEnabled && contextEligible
+        val contextOn = prefs.llmContextEnabled && contextEligible && pairIsActive(sourceLangId, targetLang)
         if (!historyOn && !contextOn) return@guarded
+        val sourceLang = sourceLangId.recordCode()
         val key = LogWriteGate.normalizedKey(source, sourceLang)
         if (key.isEmpty()) return@guarded
         val now = System.currentTimeMillis()
@@ -362,7 +387,7 @@ class TranslationLogRecorder(
 
     private fun resetDedupeState() {
         gate = null
-        gateSourceLang = null
+        gateSourceLangId = null
         gateTargetLang = null
         rowIds.clear()
     }
@@ -387,14 +412,15 @@ class TranslationLogRecorder(
         rowId: Long,
         source: String,
         translation: String,
-        sourceLang: String,
+        sourceLangId: SourceLangId,
         targetLang: String,
         backendDisplayName: String? = null,
         contextEligible: Boolean = true,
     ) = guarded {
         if (translation.isBlank()) return@guarded
+        val sourceLang = sourceLangId.recordCode()
         val historyOn = prefs.translationHistoryEnabled
-        val contextOn = prefs.llmContextEnabled && contextEligible
+        val contextOn = prefs.llmContextEnabled && contextEligible && pairIsActive(sourceLangId, targetLang)
         if (historyOn) {
             scope.launch {
                 runCatching { sink.attachById(rowId, translation, backendDisplayName) }
@@ -430,7 +456,7 @@ class TranslationLogRecorder(
     fun onDeliberateTranslation(
         source: String,
         translation: String,
-        sourceLang: String,
+        sourceLangId: SourceLangId,
         targetLang: String,
         provenance: String,
         backendDisplayName: String? = null,
@@ -439,8 +465,9 @@ class TranslationLogRecorder(
     ) = guarded {
         if (source.isBlank() || translation.isBlank()) return@guarded
         val historyOn = prefs.translationHistoryEnabled && historyEligible
-        val contextOn = prefs.llmContextEnabled && contextEligible
+        val contextOn = prefs.llmContextEnabled && contextEligible && pairIsActive(sourceLangId, targetLang)
         if (!historyOn && !contextOn) return@guarded
+        val sourceLang = sourceLangId.recordCode()
         val key = LogWriteGate.normalizedKey(source, sourceLang)
         val now = System.currentTimeMillis()
         // Pair equality is part of row identity: a tracked row recorded
@@ -448,7 +475,7 @@ class TranslationLogRecorder(
         // receive this translation — fall through to the pair-constrained
         // store attach, which then records fresh under the new pair.
         val tracked = rowIds[key]?.takeIf {
-            it.sourceLang == sourceLang && it.targetLang == targetLang
+            it.sourceLangId == sourceLangId && it.targetLang == targetLang
         }
         if (tracked != null) {
             if (historyOn) {
@@ -476,7 +503,9 @@ class TranslationLogRecorder(
             val session = sessionId
             scope.launch {
                 runCatching {
-                    val affected = sink.attachByKey(key, translation, sourceLang, targetLang, backendDisplayName)
+                    val affected = sink.attachByKey(
+                        key, translation, sourceLang, sourceLangId, targetLang, backendDisplayName,
+                    )
                     if (affected == 0) {
                         // Fresh record under THIS pair, inserted directly:
                         // the gate's seen map is pair-blind and would
@@ -485,7 +514,7 @@ class TranslationLogRecorder(
                         // new entry — and its dedupe already happened
                         // pair-correctly in attachByKey.
                         sink.insert(
-                            now, source, translation, sourceLang, targetLang,
+                            now, source, translation, sourceLang, sourceLangId, targetLang,
                             provenance, session, key, null, backendDisplayName,
                         )
                     }
@@ -504,6 +533,7 @@ class TranslationLogRecorder(
         source: String,
         translation: String?,
         bounds: Rect?,
+        sourceLangId: SourceLangId,
         sourceLang: String,
         targetLang: String,
         provenance: String,
@@ -516,13 +546,13 @@ class TranslationLogRecorder(
             is LogWriteGate.Decision.Append -> {
                 if (historyOn) {
                     val deferred = CompletableDeferred<Long>()
-                    rowIds[decision.entry.key] = PendingRow(deferred, sourceLang, targetLang)
+                    rowIds[decision.entry.key] = PendingRow(deferred, sourceLangId, targetLang)
                     val session = sessionId
                     scope.launch {
                         runCatching {
                             deferred.complete(
                                 sink.insert(
-                                    now, source, translation, sourceLang, targetLang,
+                                    now, source, translation, sourceLang, sourceLangId, targetLang,
                                     provenance, session, decision.entry.key, bounds, backendDisplayName,
                                 )
                             )
@@ -549,7 +579,7 @@ class TranslationLogRecorder(
                                 sink.update(rowId, source, translation, decision.entry.key)
                             } else {
                                 sink.insert(
-                                    now, source, translation, sourceLang, targetLang,
+                                    now, source, translation, sourceLang, sourceLangId, targetLang,
                                     provenance, sessionId, decision.entry.key, bounds, backendDisplayName,
                                 )
                             }
@@ -571,14 +601,16 @@ class TranslationLogRecorder(
      *  tracked rows, empty ring, new session id — cross-pair state must
      *  never dedupe, supersede, or contextualize across the switch (the
      *  LunaTranslator failure mode, and the pair-blind supersession bug). */
-    private fun ensureGate(sourceLang: String, targetLang: String): LogWriteGate {
+    private fun ensureGate(sourceLangId: SourceLangId, targetLang: String): LogWriteGate {
         val existing = gate
-        if (existing != null && gateSourceLang == sourceLang && gateTargetLang == targetLang) {
+        if (existing != null && gateSourceLangId == sourceLangId && gateTargetLang == targetLang) {
             return existing
         }
-        val fresh = LogWriteGate(sourceLang)
+        // The gate itself is script-level (content characters, sentence
+        // metrics), so it takes the pair code; the identity above does not.
+        val fresh = LogWriteGate(sourceLangId.recordCode())
         gate = fresh
-        gateSourceLang = sourceLang
+        gateSourceLangId = sourceLangId
         gateTargetLang = targetLang
         ring.clear()
         rowIds.clear()

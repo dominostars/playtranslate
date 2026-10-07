@@ -173,9 +173,9 @@ class LanguageTest {
 
     @Test fun `every SourceLangId resolves to a profile`() {
         // SourceLanguageProfiles.all is a map, not an exhaustive when — a missing
-        // profile fails SILENTLY via forCode (the path OcrModelManager.ALL_PACK_KEYS
-        // uses), so guard every enum value here.
-        val missing = SourceLangId.entries.filter { SourceLanguageProfiles.forCode(it.code) == null }
+        // profile fails SILENTLY via the code lookup (scriptFor, the OCR
+        // pipeline's path), so guard every enum value here.
+        val missing = SourceLangId.entries.filter { SourceLanguageProfiles.scriptFor(it.code) == null }
         assertTrue("SourceLangIds with no profile: $missing", missing.isEmpty())
     }
 

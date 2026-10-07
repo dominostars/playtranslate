@@ -1767,7 +1767,7 @@ object LayoutAnalyzer {
         // Extended-A, and Presentation Forms (e.g. the ﷲ ligature) the recognizer
         // emits, which a base-block-only range would drop from the pipeline.
         else -> {
-            val profile = SourceLanguageProfiles.forCode(sourceLang)
+            val profile = SourceLanguageProfiles.scriptFor(sourceLang)
             if (profile != null) profile.isScriptChar(c) else c.code > 0x007F
         }
     }
@@ -1807,7 +1807,7 @@ object LayoutAnalyzer {
         angleToleranceDeg: Float = DeskewGeometry.DEFAULT_CLUSTER_CAP_DEG,
     ): List<LayoutGroup> {
         if (regions.isEmpty()) return emptyList()
-        val profile = SourceLanguageProfiles.forCode(sourceLang)
+        val profile = SourceLanguageProfiles.scriptFor(sourceLang)
         val ctx = GroupingContext(
             sourceLang = sourceLang,
             screenshotWidthInRegionSpace = screenshotWidthInRegionSpace,

@@ -19,7 +19,7 @@ class LexicalAnnotateOffsetsTest {
     private class FakeEngine(private val tokens: (String) -> List<TokenSpan>) :
         SourceLanguageEngine {
         override val profile: SourceLanguageProfile =
-            SourceLanguageProfiles.forCode(SourceLangId.EN.code)!!
+            SourceLanguageProfiles[SourceLangId.EN]
         override suspend fun preload(): PreloadResult = PreloadResult.Success
         override suspend fun tokenize(text: String): List<TokenSpan> = tokens(text)
         override suspend fun lookup(word: String, reading: String?): DictionaryResponse? = null

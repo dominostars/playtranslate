@@ -240,6 +240,21 @@ enum class HintTextKind {
 }
 
 /**
+ * The script-level facts the OCR pipeline keys on by translation code ("ja",
+ * "zh"): how text runs, whether words are space-separated, which characters
+ * belong to the script. Deliberately NOT the profile: a translation code
+ * collapses variants (ZH and ZH_HANT both OCR as "zh"), so nothing that
+ * identifies the language, its id or its per-language settings, can be
+ * recovered from one. Identity travels as [SourceLangId]; a code only ever
+ * comes back as these traits ([SourceLanguageProfiles.scriptFor]).
+ */
+interface ScriptTraits {
+    val textDirection: TextDirection
+    val wordsSeparatedByWhitespace: Boolean
+    val isScriptChar: (Char) -> Boolean
+}
+
+/**
  * Static, const-like description of one source language. All the knobs that
  * come from *knowing* "this is Japanese" without needing any on-device data.
  * One value per supported language, defined in [SourceLanguageProfiles].
@@ -247,19 +262,19 @@ enum class HintTextKind {
 data class SourceLanguageProfile(
     val id: SourceLangId,
     val scriptFamily: ScriptFamily,
-    val textDirection: TextDirection,
+    override val textDirection: TextDirection,
     /** The ML Kit OCR recognizer that needs no download — the always-available
      *  floor. Null for scripts ML Kit can't read (e.g. Cyrillic), where the only
      *  OCR is a downloadable MNN recognizer (see
      *  [com.playtranslate.ocr.registry.OcrModelManager.hasMlKitFloor]). */
     val mlKitFloor: OcrBackend?,
     val hintTextKind: HintTextKind,
-    val wordsSeparatedByWhitespace: Boolean,
-    val isScriptChar: (Char) -> Boolean,
+    override val wordsSeparatedByWhitespace: Boolean,
+    override val isScriptChar: (Char) -> Boolean,
     val translationCode: String,
     /** When true, dictionary results show traditional headword first. */
     val preferTraditional: Boolean = false,
-) {
+) : ScriptTraits {
     /**
      * On-device OCR backends in PRIORITY order (highest first); [mlKitFloor]
      * (ML Kit) is the floor when present, and null for scripts ML Kit can't
@@ -633,6 +648,10 @@ object SourceLanguageProfiles {
         all[id] ?: error("No profile registered for $id")
 
     /** Defensive raw-string lookup. Returns null for unknown codes. */
-    fun forCode(code: String?): SourceLanguageProfile? =
+    /** The script traits a translation [code] ("zh", "ja") stands for: the one
+     *  lookup the code-keyed OCR pipeline may make. Returns the traits only, never
+     *  the profile, because the code does not identify the language (see
+     *  [ScriptTraits]); whatever needs the language itself takes a [SourceLangId]. */
+    fun scriptFor(code: String?): ScriptTraits? =
         SourceLangId.fromCode(code)?.let { all[it] }
 }

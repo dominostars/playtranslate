@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.util.Log
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.language.SourceLanguageEngines
-import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ui.GrowthLimits
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -201,7 +200,7 @@ class OneShotManager(private val service: CaptureService) {
             // Recording pair captured BEFORE buildBoxes (it translates
             // internally) — a mid-flight language change must not relabel.
             val recordPrefs = Prefs(service)
-            val recordSrc = SourceLanguageProfiles[recordPrefs.sourceLangId].translationCode
+            val recordSrc = recordPrefs.sourceLangId
             val recordTgt = recordPrefs.targetLang
             val processor = createProcessor(cycle.forceMode)
             // The translation step. Every backend failing is an ordinary

@@ -55,7 +55,7 @@ class RootSettingsViewModelTest {
     }
 
     @Test fun `target name projects from prefs`() {
-        Prefs(ctx).targetLang = "en"
+        Prefs(ctx).setTarget("en")
         val vm = RootSettingsViewModel(app)
         assertEquals("English", vm.state.value.targetName)
     }

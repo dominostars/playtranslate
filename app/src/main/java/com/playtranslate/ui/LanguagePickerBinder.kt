@@ -376,7 +376,7 @@ class LanguagePickerBinder(
 
         // Suggested: device-locale language (if supported) + any installed target
         // packs. For Chinese, collapse to a single row (the selected variant, else
-        // Simplified) so the four don't clutter the shortcut list.
+        // the device locale's) so the four don't clutter the shortcut list.
         val deviceLang = Locale.getDefault().language
         val suggestedPlain = TranslateLanguage.getAllLanguages()
             .filter { it != ChineseScriptVariant.BACKEND_CODE }
@@ -384,7 +384,7 @@ class LanguagePickerBinder(
             .map { code -> val n = targetDisplayName(code); n to plainRow(code, n) }
         val suggestedChinese =
             if (deviceLang == ChineseScriptVariant.BACKEND_CODE || chineseInstalled) {
-                val v = if (chineseSelected) currentVariant else ChineseScriptVariant.SIMPLIFIED
+                val v = if (chineseSelected) currentVariant else ChineseScriptVariant.forLocale(Locale.getDefault())
                 listOf(v.displayLabel() to chineseRow(v))
             } else emptyList()
         val suggested = (suggestedPlain + suggestedChinese).sortedWith(compareBy(collator) { it.first })
@@ -418,11 +418,10 @@ class LanguagePickerBinder(
             targetCode = code,
             onSuccess = {
                 val prefs = Prefs(ctx)
-                prefs.targetLang = code
-                // Persist the Chinese script choice atomically with the backend
-                // code. For non-Chinese targets this resets any stale variant to
+                // The code and the Chinese script are one write (Prefs.setTarget).
+                // For non-Chinese targets this resets any stale variant to
                 // Simplified (a no-op for them); for Chinese it selects TW/HK/etc.
-                prefs.targetChineseVariant = chineseVariant
+                prefs.setTarget(code, chineseVariant)
                 if (previousTarget.isNotBlank() && previousTarget != code) {
                     TargetGlossDatabaseProvider.release(previousTarget)
                 }

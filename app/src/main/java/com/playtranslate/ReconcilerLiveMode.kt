@@ -546,7 +546,7 @@ class ReconcilerLiveMode(
             // change must not relabel rows produced under the old pair
             // (the ms gap to the service's own snapshot is accepted).
             val recordPrefs = Prefs(service)
-            val recordSrc = SourceLanguageProfiles[recordPrefs.sourceLangId].translationCode
+            val recordSrc = recordPrefs.sourceLangId
             val recordTgt = recordPrefs.targetLang
 
             // The presenter turns regions into anchors — serially, in-cycle,

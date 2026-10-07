@@ -215,17 +215,17 @@ object SnapshotCore {
         }
 
     /** Mirror of the service's provenance builders: engine from the result
-     *  when OCR ran, else the backend [tokenOverride] resolves — the no-text
+     *  when OCR ran, else the backend the tool's [scope] resolves — the no-text
      *  gear needs a token to key the picker. Full-frame region; frames are
      *  clean images (no system UI, no own overlays). */
     fun snapshotProvenance(
         ctx: Context,
         ocr: OcrManager.OcrResult?,
         srcId: SourceLangId,
-        tokenOverride: String?,
+        scope: com.playtranslate.OcrTokenScope,
     ): OcrProvenance? {
         val backend = ocr?.engineBackend
-            ?: OcrModelManager.selectedBackend(ctx, srcId, tokenOverride)
+            ?: OcrModelManager.selectedBackend(ctx, srcId, scope)
             ?: return null
         val label =
             if (ocr?.mangaOcrUsed == true) "${backend.ocrLabel(ctx)} + MangaOCR"

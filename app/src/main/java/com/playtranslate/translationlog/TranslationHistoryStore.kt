@@ -31,14 +31,19 @@ object TranslationHistoryStore {
      *  rows is a few MB; a knob only if real usage demands one. */
     const val MAX_ROWS = 5000
 
-    private const val SCHEMA_VERSION = 1
+    private const val SCHEMA_VERSION = 2
 
     data class HistoryEntry(
         val id: Long,
         val atMs: Long,
         val sourceText: String,
         val translation: String?,
+        /** The pair code (ML Kit's "zh", "ja"), which the row is matched by. */
         val sourceLang: String,
+        /** The EXACT source language the row was captured under, Chinese variant
+         *  included; null on rows from before schema v2. [sourceLang] cannot
+         *  stand in for it: ZH and ZH_HANT share the code. */
+        val sourceLangId: com.playtranslate.language.SourceLangId?,
         val targetLang: String,
         val provenance: String,
         val sessionId: String,
@@ -91,7 +96,8 @@ object TranslationHistoryStore {
                 "session_id TEXT NOT NULL, " +
                 "norm_key TEXT NOT NULL, " +
                 "rect_l INTEGER, rect_t INTEGER, rect_r INTEGER, rect_b INTEGER, " +
-                "backend TEXT)"
+                "backend TEXT, " +
+                "source_lang_id TEXT)"
         )
         database.execSQL("CREATE INDEX IF NOT EXISTS idx_entries_at ON entries(at_ms)")
         // Per-session UI state (live-card collapse), not primary data —
@@ -101,13 +107,35 @@ object TranslationHistoryStore {
             "CREATE TABLE IF NOT EXISTS collapsed_sessions (session_id TEXT PRIMARY KEY)"
         )
         if (version != SCHEMA_VERSION) {
-            // v1 is the first schema; future versions add ALTER-based
-            // migrations here (primary data — never drop).
-            database.execSQL("PRAGMA user_version = $SCHEMA_VERSION")
+            // Migrations are ALTER-based (primary data — never drop), and each
+            // one is applied with the version bump in ONE transaction and only
+            // when its column is still missing: a process death between the
+            // two steps of an earlier attempt must leave nothing a later open
+            // trips on (an unconditional ALTER would then fail on the
+            // duplicate column at every open and strand the whole store).
+            database.beginTransaction()
+            try {
+                // v2: the exact source language (variant included) beside the
+                // pair code. v1 rows keep NULL and resolve at read time.
+                if (version == 1 && !hasColumn(database, "entries", "source_lang_id")) {
+                    database.execSQL("ALTER TABLE entries ADD COLUMN source_lang_id TEXT")
+                }
+                database.execSQL("PRAGMA user_version = $SCHEMA_VERSION")
+                database.setTransactionSuccessful()
+            } finally {
+                database.endTransaction()
+            }
         }
         db = database
         return database
     }
+
+    private fun hasColumn(database: SQLiteDatabase, table: String, column: String): Boolean =
+        database.rawQuery("PRAGMA table_info($table)", null).use { c ->
+            val name = c.getColumnIndexOrThrow("name")
+            while (c.moveToNext()) if (c.getString(name) == column) return true
+            false
+        }
 
     suspend fun insert(
         ctx: Context,
@@ -115,6 +143,7 @@ object TranslationHistoryStore {
         sourceText: String,
         translation: String?,
         sourceLang: String,
+        sourceLangId: com.playtranslate.language.SourceLangId,
         targetLang: String,
         provenance: String,
         sessionId: String,
@@ -128,6 +157,7 @@ object TranslationHistoryStore {
             put("source_text", sourceText)
             put("translation", translation)
             put("source_lang", sourceLang)
+            put("source_lang_id", sourceLangId.code)
             put("target_lang", targetLang)
             put("provenance", provenance)
             put("session_id", sessionId)
@@ -208,17 +238,21 @@ object TranslationHistoryStore {
         normKey: String,
         translation: String,
         sourceLang: String,
+        sourceLangId: com.playtranslate.language.SourceLangId,
         targetLang: String,
         backendDisplayName: String?,
     ): Int = withContext(dispatcher) {
         val db = openDb(ctx)
         // Pair columns are part of the match: a translation produced under
-        // one pair must never land on a row recorded under another.
+        // one pair must never land on a row recorded under another. The exact
+        // source language is part of it too, since ZH and ZH_HANT share the
+        // pair code; a v1 row (no exact language stored) matches by the code.
         db.execSQL(
             "UPDATE entries SET translation = ?, backend = COALESCE(?, backend) WHERE id = (" +
                 "SELECT id FROM entries WHERE norm_key = ? AND source_lang = ? AND target_lang = ? AND " +
+                "(source_lang_id = ? OR source_lang_id IS NULL) AND " +
                 "(translation IS NULL OR translation = '') ORDER BY id DESC LIMIT 1)",
-            arrayOf(translation, backendDisplayName, normKey, sourceLang, targetLang),
+            arrayOf(translation, backendDisplayName, normKey, sourceLang, targetLang, sourceLangId.code),
         )
         val affected = db.rawQuery("SELECT changes()", null).use { c ->
             c.moveToFirst(); c.getInt(0)
@@ -305,7 +339,8 @@ object TranslationHistoryStore {
         val out = ArrayList<HistoryEntry>(limit)
         openDb(ctx).rawQuery(
             "SELECT id, at_ms, source_text, translation, source_lang, target_lang, " +
-                "provenance, session_id, norm_key, backend FROM entries ORDER BY id DESC LIMIT ?",
+                "provenance, session_id, norm_key, backend, source_lang_id " +
+                "FROM entries ORDER BY id DESC LIMIT ?",
             arrayOf(limit.toString()),
         ).use { c ->
             while (c.moveToNext()) {
@@ -316,6 +351,8 @@ object TranslationHistoryStore {
                         sourceText = c.getString(2),
                         translation = if (c.isNull(3)) null else c.getString(3),
                         sourceLang = c.getString(4),
+                        sourceLangId = if (c.isNull(10)) null
+                            else com.playtranslate.language.SourceLangId.fromCode(c.getString(10)),
                         targetLang = c.getString(5),
                         provenance = c.getString(6),
                         sessionId = c.getString(7),
