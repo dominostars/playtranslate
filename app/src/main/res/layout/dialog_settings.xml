@@ -575,7 +575,7 @@
                         android:id="@+id/rowKeepRunning" />
 
                     <include layout="@layout/settings_row_hub"
-                        android:id="@+id/rowExportLogs" />
+                        android:id="@+id/rowReportBug" />
 
                     <include layout="@layout/settings_row_hub"
                         android:id="@+id/rowDonate" />

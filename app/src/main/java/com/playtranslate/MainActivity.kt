@@ -1900,15 +1900,27 @@ class MainActivity :
             .setMessage(getString(R.string.crash_dialog_message))
             .addButton(getString(R.string.crash_dialog_send), themeColor(R.attr.ptAccent)) {
                 lifecycleScope.launch {
-                    val files = withContext(Dispatchers.IO) {
-                        runCatching {
-                            crashFiles + LogExporter.exportLogcat(this@MainActivity)
-                        }.getOrElse { crashFiles }
+                    // The email carries COPIES of the crash files, staged next
+                    // to the logcat export: the chooser returns before the
+                    // receiving app opens the attachment URIs, and the
+                    // originals are deleted below, so attaching them directly
+                    // lost the stack every time (b74e8ff52 through 2026-10).
+                    val (files, staged) = withContext(Dispatchers.IO) {
+                        val logFile = runCatching { LogExporter.exportLogcat(this@MainActivity) }.getOrNull()
+                        val copies = runCatching { LogExporter.stageCrashFiles(this@MainActivity, crashFiles) }.getOrNull()
+                        Pair((copies ?: crashFiles) + listOfNotNull(logFile), copies != null)
                     }
                     val subject = getString(R.string.crash_email_subject, BuildConfig.VERSION_NAME)
                     val body = getString(R.string.crash_email_body)
-                    LogExporter.emailFiles(this@MainActivity, files, subject, body)
-                    LogExporter.deleteCrashFiles(this@MainActivity)
+                    LogExporter.emailFiles(
+                        this@MainActivity, files, subject, body,
+                        chooserTitle = getString(R.string.crash_email_chooser_title),
+                        noFilesToast = R.string.toast_no_crash_report,
+                    )
+                    // The originals go only once copies are what the email
+                    // holds. A failed copy leaves them for the next launch's
+                    // prompt instead of losing the report.
+                    if (staged) LogExporter.deleteCrashFiles(this@MainActivity)
                 }
             }
             .addButton(

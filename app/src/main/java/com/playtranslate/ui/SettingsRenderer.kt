@@ -86,6 +86,7 @@ import java.util.Date
 import androidx.core.view.isVisible
 import androidx.core.net.toUri
 import androidx.core.view.isGone
+import java.io.File
 
 /** Which accessibility-gated Settings action raised the "accessibility
  *  required" alert — selects the alert's explanatory copy. */
@@ -1192,14 +1193,14 @@ class SettingsRenderer(
             ),
         )
         bindHubCell(
-            root.findViewById(R.id.rowExportLogs),
+            root.findViewById(R.id.rowReportBug),
             HubCell(
                 iconRes = R.drawable.ic_export_notes,
-                title = ctx.getString(R.string.settings_debug_export_logs_title),
-                summary = ctx.getString(R.string.settings_debug_export_logs_subtitle),
+                title = ctx.getString(R.string.settings_support_report_bug_title),
+                summary = ctx.getString(R.string.settings_support_report_bug_subtitle),
                 trailing = Trailing.EXTERNAL,
-                onClick = { exportLogs() },
-                onLongClick = { copyLogs() },
+                onClick = { emailLogs() },
+                onLongClick = { shareLogs() },
             ),
         )
         val donateUrl = "https://go.playtranslate.com/donate"
@@ -1285,58 +1286,62 @@ class SettingsRenderer(
         clipboard.setPrimaryClip(android.content.ClipData.newPlainText(label, text))
     }
 
-    /** Long-press affordance on the Export logs row: the same logs a tap would
-     *  share, onto the clipboard instead of out through the share sheet. */
-    private fun copyLogs() {
+    /** Logcat plus any crash files on disk, gathered off the main thread. */
+    private suspend fun collectLogs(): Result<List<File>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val logFile = LogExporter.exportLogcat(ctx)
+            listOf(logFile) + LogExporter.getCrashFiles(ctx)
+        }
+    }
+
+    /** Tap on the Report a bug row: an email to support with the logs
+     *  attached and the recipient filled in, so the user only has to say
+     *  what went wrong. */
+    private fun emailLogs() {
         lifecycleScope.launch {
-            val text = withContext(Dispatchers.IO) { LogExporter.clipboardLogText() }
-            // A clip this size can still be refused — an OEM clipboard cap, or a
-            // Binder buffer already loaded by other traffic. Toast, don't crash.
-            runCatching {
-                setClip(ctx.getString(R.string.settings_debug_export_logs_subject), text)
-            }.fold(
-                onSuccess = {
-                    Toast.makeText(ctx, ctx.getString(R.string.toast_copied), Toast.LENGTH_SHORT)
-                        .show()
+            collectLogs().fold(
+                onSuccess = { files ->
+                    if (ctx is android.app.Activity) {
+                        LogExporter.emailFiles(
+                            ctx, files,
+                            subject = ctx.getString(
+                                R.string.settings_support_report_bug_email_subject,
+                                BuildConfig.VERSION_NAME,
+                            ),
+                            body = ctx.getString(R.string.settings_support_report_bug_email_body),
+                            chooserTitle = ctx.getString(R.string.settings_support_report_bug_chooser_title),
+                            noFilesToast = R.string.toast_no_logs_to_share,
+                        )
+                    }
                 },
-                onFailure = {
-                    Toast.makeText(
-                        ctx,
-                        ctx.getString(
-                            R.string.settings_debug_export_logs_failed, it.javaClass.simpleName,
-                        ),
-                        Toast.LENGTH_LONG,
-                    ).show()
-                },
+                onFailure = ::toastLogExportFailed,
             )
         }
     }
 
-    private fun exportLogs() {
+    /** Hold on the Report a bug row: the same files through the plain share
+     *  sheet, for sending them somewhere other than email (Discord). */
+    private fun shareLogs() {
         lifecycleScope.launch {
-            val files = withContext(Dispatchers.IO) {
-                runCatching {
-                    val logFile = LogExporter.exportLogcat(ctx)
-                    listOf(logFile) + LogExporter.getCrashFiles(ctx)
-                }
-            }
-            files.fold(
-                onSuccess = {
+            collectLogs().fold(
+                onSuccess = { files ->
                     if (ctx is android.app.Activity) {
                         LogExporter.shareFiles(
-                            ctx, it, ctx.getString(R.string.settings_debug_export_logs_subject),
+                            ctx, files, ctx.getString(R.string.settings_debug_export_logs_subject),
                         )
                     }
                 },
-                onFailure = {
-                    Toast.makeText(
-                        ctx,
-                        ctx.getString(R.string.settings_debug_export_logs_failed, it.javaClass.simpleName),
-                        Toast.LENGTH_LONG,
-                    ).show()
-                },
+                onFailure = ::toastLogExportFailed,
             )
         }
+    }
+
+    private fun toastLogExportFailed(t: Throwable) {
+        Toast.makeText(
+            ctx,
+            ctx.getString(R.string.settings_debug_export_logs_failed, t.javaClass.simpleName),
+            Toast.LENGTH_LONG,
+        ).show()
     }
 
     // ── Hub cell binder ────────────────────────────────────────────────────

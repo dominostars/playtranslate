@@ -46,6 +46,19 @@
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
+        <!-- Email clients. LogExporter.emailFiles asks resolveActivity whether
+             one is installed before offering the pre-addressed composer.
+             Starting the intent needs no declaration; the question does, or
+             API 30+ package visibility hides Gmail and the rest and the check
+             answers "none" on every phone. -->
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="message/rfc822" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND_MULTIPLE" />
+            <data android:mimeType="message/rfc822" />
+        </intent>
     </queries>
 
     <!-- Self-exclusion from our own game-audio capture: excludeUid on the
