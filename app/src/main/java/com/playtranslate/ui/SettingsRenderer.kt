@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
@@ -52,7 +53,7 @@ import com.playtranslate.IconAction
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.UpdateChecker
-import com.playtranslate.diagnostics.LogExporter
+import com.playtranslate.diagnostics.BugReport
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.blendColors
@@ -86,7 +87,6 @@ import java.util.Date
 import androidx.core.view.isVisible
 import androidx.core.net.toUri
 import androidx.core.view.isGone
-import java.io.File
 
 /** Which accessibility-gated Settings action raised the "accessibility
  *  required" alert — selects the alert's explanatory copy. */
@@ -1199,8 +1199,8 @@ class SettingsRenderer(
                 title = ctx.getString(R.string.settings_support_report_bug_title),
                 summary = ctx.getString(R.string.settings_support_report_bug_subtitle),
                 trailing = Trailing.EXTERNAL,
-                onClick = { emailLogs() },
-                onLongClick = { shareLogs() },
+                onClick = { (ctx as? Activity)?.let { BugReport.email(it, lifecycleScope) } },
+                onLongClick = { (ctx as? Activity)?.let { BugReport.share(it, lifecycleScope) } },
             ),
         )
         val donateUrl = "https://go.playtranslate.com/donate"
@@ -1286,63 +1286,6 @@ class SettingsRenderer(
         clipboard.setPrimaryClip(android.content.ClipData.newPlainText(label, text))
     }
 
-    /** Logcat plus any crash files on disk, gathered off the main thread. */
-    private suspend fun collectLogs(): Result<List<File>> = withContext(Dispatchers.IO) {
-        runCatching {
-            val logFile = LogExporter.exportLogcat(ctx)
-            listOf(logFile) + LogExporter.getCrashFiles(ctx)
-        }
-    }
-
-    /** Tap on the Report a bug row: an email to support with the logs
-     *  attached and the recipient filled in, so the user only has to say
-     *  what went wrong. */
-    private fun emailLogs() {
-        lifecycleScope.launch {
-            collectLogs().fold(
-                onSuccess = { files ->
-                    if (ctx is android.app.Activity) {
-                        LogExporter.emailFiles(
-                            ctx, files,
-                            subject = ctx.getString(
-                                R.string.settings_support_report_bug_email_subject,
-                                BuildConfig.VERSION_NAME,
-                            ),
-                            body = ctx.getString(R.string.settings_support_report_bug_email_body),
-                            chooserTitle = ctx.getString(R.string.settings_support_report_bug_chooser_title),
-                            noFilesToast = R.string.toast_no_logs_to_share,
-                        )
-                    }
-                },
-                onFailure = ::toastLogExportFailed,
-            )
-        }
-    }
-
-    /** Hold on the Report a bug row: the same files through the plain share
-     *  sheet, for sending them somewhere other than email (Discord). */
-    private fun shareLogs() {
-        lifecycleScope.launch {
-            collectLogs().fold(
-                onSuccess = { files ->
-                    if (ctx is android.app.Activity) {
-                        LogExporter.shareFiles(
-                            ctx, files, ctx.getString(R.string.settings_debug_export_logs_subject),
-                        )
-                    }
-                },
-                onFailure = ::toastLogExportFailed,
-            )
-        }
-    }
-
-    private fun toastLogExportFailed(t: Throwable) {
-        Toast.makeText(
-            ctx,
-            ctx.getString(R.string.settings_debug_export_logs_failed, t.javaClass.simpleName),
-            Toast.LENGTH_LONG,
-        ).show()
-    }
 
     // ── Hub cell binder ────────────────────────────────────────────────────
 

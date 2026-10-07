@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- "Keep PlayTranslate running": an intro line, then one card per setting
+<!-- "Fix disappearing icon": an intro line, then one card per setting
      (keep_running_item), built in KeepRunningActivity.render from the
-     ROM and the current state. -->
+     ROM and the current state; a centered label takes the cards' place
+     once every setting is made. Under a divider, the Report a bug row
+     from Settings, which always shows. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
@@ -48,6 +50,50 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical" />
+
+            <!-- In place of the cards when there is nothing left to
+                 recommend; the next step is the bug report below. Larger
+                 than the intro and centered, in the tertiary text color
+                 so it reads as a status rather than a setting. -->
+            <TextView
+                android:id="@+id/tvKeepRunningEmpty"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="28dp"
+                android:gravity="center"
+                android:textSize="16sp"
+                android:textColor="?attr/ptTextHint"
+                android:lineSpacingMultiplier="1.35"
+                android:text="@string/keep_running_empty"
+                android:visibility="gone" />
+
+            <!-- Sets the bug report apart from the settings above it. -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="@dimen/pt_group_gap"
+                android:background="?attr/ptDivider" />
+
+            <!-- The Settings Support row's Report a bug, in the same card
+                 shape as the items; KeepRunningActivity.bindReportBugRow
+                 fills the words and wires tap (email) and hold (share). -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardReportBug"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <include
+                    android:id="@+id/rowReportBug"
+                    layout="@layout/settings_row_link" />
+
+            </com.google.android.material.card.MaterialCardView>
 
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>

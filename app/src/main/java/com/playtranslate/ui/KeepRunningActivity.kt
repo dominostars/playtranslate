@@ -15,16 +15,22 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.view.isVisible
+import androidx.lifecycle.lifecycleScope
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.diagnostics.BugReport
 
 /**
  * "Keep PlayTranslate running": the settings that make it less likely the
  * phone closes PlayTranslate while it is on, one card per
  * [KeepRunningItems.Id]. Every "Open settings" row tries the ROM's own
  * screen first and falls back to the app's system settings page, so no
- * row is ever dead; instruction-only rows have no action. Opened from the
+ * row is ever dead; instruction-only rows have no action. When every
+ * setting is already made, a centered label says so in the cards' place.
+ * Under the cards, always, the Report a bug row from Settings → Support
+ * with its words and both gestures ([BugReport]), so a user with nothing
+ * left to change has the next step on the same page. Opened from the
  * Support section and from the kill notice, which stops showing once this
  * page has been seen.
  */
@@ -33,13 +39,30 @@ class KeepRunningActivity : SettingsSubPageActivity() {
     override val layoutResId = R.layout.activity_keep_running
 
     private lateinit var items: ViewGroup
+    private lateinit var empty: TextView
 
     /** See [render]: the accessibility service is enabled but not bound. */
     private var accessibilityStuck = false
 
     override fun onContentCreated(savedInstanceState: Bundle?) {
         items = findViewById(R.id.keepRunningItems)
+        empty = findViewById(R.id.tvKeepRunningEmpty)
+        bindReportBugRow()
         Prefs(this).keepRunningPageSeen = true
+    }
+
+    /** The Settings Support row's Report a bug, same strings, same two
+     *  gestures: tap emails the logs to support, hold opens the share
+     *  sheet. Static in the layout, so it shows whatever [render] decides. */
+    private fun bindReportBugRow() {
+        val row = findViewById<View>(R.id.rowReportBug)
+        row.findViewById<TextView>(R.id.tvRowTitle).setText(R.string.settings_support_report_bug_title)
+        row.findViewById<TextView>(R.id.tvRowSubtitle).apply {
+            setText(R.string.settings_support_report_bug_subtitle)
+            isVisible = true
+        }
+        row.setOnClickListener { BugReport.email(this, lifecycleScope) }
+        row.setOnLongClickListener { BugReport.share(this, lifecycleScope); true }
     }
 
     override fun onResume() {
@@ -65,6 +88,7 @@ class KeepRunningActivity : SettingsSubPageActivity() {
             accessibilityOn = accessibilityEnabled && !accessibilityStuck,
             tileAdded = prefs.quickTileAdded,
         )
+        empty.isVisible = ids.isEmpty()
         val inflater = LayoutInflater.from(this)
         for (id in ids) {
             val card = inflater.inflate(R.layout.keep_running_item, items, false)
