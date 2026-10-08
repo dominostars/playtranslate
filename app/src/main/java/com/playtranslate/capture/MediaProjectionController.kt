@@ -1,6 +1,7 @@
 package com.playtranslate.capture
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
@@ -17,6 +18,7 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.util.Log
 import android.view.Display
+import androidx.annotation.VisibleForTesting
 import com.playtranslate.CaptureService
 import com.playtranslate.DetectionLog
 import com.playtranslate.PlayTranslateTileService
@@ -38,6 +40,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicReference
 import androidx.core.graphics.createBitmap
 
@@ -98,8 +101,64 @@ class MediaProjectionController(private val service: CaptureService) {
     @Volatile private var readerH = 0
 
     /** Non-null while a consent dialog is in flight; every concurrent
-     *  [captureFrame] awaits the same gate so only one dialog shows. */
+     *  [captureFrame] awaits the same gate so only one dialog shows. The
+     *  gate is answered by the one [MediaProjectionConsentActivity] bound
+     *  to it ([consentUi]); see [requestConsent] for the case where that
+     *  activity can no longer answer. */
     @Volatile private var consentGate: CompletableDeferred<Boolean>? = null
+
+    /** The consent activity bound to [consentGate]: the only instance whose
+     *  report completes it. Null while a launch is in flight (the activity
+     *  has not reached onCreate), between a non-finishing destroy and its
+     *  recreation ([consentUiDormant]), and when no gate is pending.
+     *  Touched on the main thread only (the activity's lifecycle and
+     *  [requestConsent], which hops there). */
+    private var consentUi: MediaProjectionConsentActivity? = null
+
+    /** The bound activity was destroyed without finishing: a configuration-
+     *  change relaunch, or the platform reclaiming the instance for memory
+     *  (this process's own GC watcher asks for it once the Java heap passes
+     *  three quarters of its max, ActivityThread; the record, its saved
+     *  state and any parked result survive, ActivityRecord.destroyImmediately).
+     *  The recreation binds again and still receives the result. A relaunch
+     *  recreates at once, in the same main-thread transaction; a reclaim
+     *  recreates only if the task is brought forward, which nothing
+     *  schedules, so until then no instance can answer and a request
+     *  supersedes the gate as it does a hidden one. */
+    private var consentUiDormant = false
+
+    /** Identity of the pending request, carried in the launch intent of the
+     *  activity meant to answer it ([MediaProjectionConsentActivity.EXTRA_REQUEST_ID])
+     *  and checked at [bindConsentUi]. Needed because a superseded dormant
+     *  record keeps its task: the replacement launch lands in that task (a
+     *  destroyed, non-finishing root still counts as its top,
+     *  RootWindowContainer.FindTaskResult) and the platform relaunches the
+     *  old record beneath the translucent newcomer
+     *  (EnsureActivitiesVisibleHelper.makeVisibleAndRestartIfNeeded), so
+     *  without an identity whichever reached onCreate first would bind, and
+     *  the old record's parked result could answer the new request.
+     *
+     *  A random token, not a counter: the record outlives this controller
+     *  (the service is stopped and started again around it, each start a
+     *  fresh controller) and the process (the record is relaunched from its
+     *  saved intent), so a counter restarting with either would hand a
+     *  recreated old record the new request's number. */
+    private var consentRequestToken: String? = null
+
+    /** Whether any instance has bound to the pending gate. The platform's
+     *  refusal of a launch is silent to the caller (no return value, no
+     *  exception: ActivityStarter returns START_ABORTED, a non-fatal code
+     *  startActivity discards), so a refused launch would leave a gate no
+     *  instance can ever answer. [consentTaskIds] reads the platform's own
+     *  state before and after the call; only a launch that created no new
+     *  task gets a bounded wait, which this flag lets stand down the moment
+     *  an instance does bind. */
+    private var consentUiBoundOnce = false
+
+    /** Test seam for [consentTaskIds]: Robolectric's ActivityManager lists
+     *  no tasks, which would read as every launch refused. */
+    @VisibleForTesting
+    internal var consentTaskIdsProbe: (() -> Set<Int>)? = null
 
     // ── Frame stream: delivery seq + latest-frame latch ──────────────────
     //
@@ -357,6 +416,7 @@ class MediaProjectionController(private val service: CaptureService) {
      *  completes so resumed callers observe it. */
     fun onConsentResult(resultCode: Int, data: Intent?) {
         val granted = resultCode == Activity.RESULT_OK && data != null
+        Log.i(TAG, "consent result: granted=$granted gatePending=${consentGate != null}")
         if (granted) {
             this.resultCode = resultCode
             this.resultData = data
@@ -387,11 +447,61 @@ class MediaProjectionController(private val service: CaptureService) {
      * Ensure a MediaProjection consent token is held, prompting the user via
      * [MediaProjectionConsentActivity] when it isn't. Returns true once consent
      * is granted. Safe to call with consent already held — returns true with no
-     * prompt; concurrent callers share the single in-flight dialog.
+     * prompt; concurrent callers share the single in-flight dialog while it is
+     * on screen, and a caller that finds it hidden replaces it (see
+     * [requestConsent]).
      */
     suspend fun ensureConsent(): Boolean {
         if (hasConsent) return true
         return requestConsent()
+    }
+
+    // ── Consent activity binding ──────────────────────────────────────────
+    //
+    // One gate, one activity: the activity binds in its onCreate and is the
+    // only instance whose report completes the gate. Everything here runs
+    // on the main thread (activity lifecycle callbacks and the main-thread
+    // section of requestConsent).
+
+    /** Bind [activity] as the answerer of the pending gate. False when no
+     *  request is pending (an instance restored after a process death),
+     *  when [requestToken] is not the pending request's (a superseded or
+     *  orphaned record the platform recreated, from this controller's
+     *  lifetime or an earlier one), or when another live instance already
+     *  answers it; the activity then finishes itself. Idempotent for the
+     *  bound instance. */
+    fun bindConsentUi(activity: MediaProjectionConsentActivity, requestToken: String?): Boolean {
+        if (consentGate == null || requestToken == null || requestToken != consentRequestToken) {
+            return false
+        }
+        val bound = consentUi
+        if (bound != null && bound !== activity) return false
+        consentUi = activity
+        consentUiDormant = false
+        consentUiBoundOnce = true
+        return true
+    }
+
+    /** The bound instance was destroyed without finishing (see
+     *  [consentUiDormant]): the gate stays for its recreation to bind and
+     *  answer, and a request arriving first supersedes it. */
+    fun consentUiReclaimed(activity: MediaProjectionConsentActivity) {
+        if (consentUi !== activity) return
+        consentUi = null
+        consentUiDormant = true
+    }
+
+    /** The bound activity's one report. A report from any other instance
+     *  (abandoned by a supersede, refused at bind, or already replaced) is
+     *  dropped: it belongs to no pending request. */
+    fun reportConsent(from: MediaProjectionConsentActivity, resultCode: Int, data: Intent?) {
+        if (consentUi !== from) {
+            Log.i(TAG, "consent report from an unbound activity dropped: granted=" +
+                "${resultCode == Activity.RESULT_OK && data != null}")
+            return
+        }
+        consentUi = null
+        onConsentResult(resultCode, data)
     }
 
     /**
@@ -851,25 +961,133 @@ class MediaProjectionController(private val service: CaptureService) {
         return cs.x == size.first && cs.y == size.second
     }
 
-    private suspend fun requestConsent(): Boolean {
-        consentGate?.let { return it.await() }
+    /** Prompt, or join the prompt in flight. On the main thread so the
+     *  bound activity's state and the gate are read and changed together
+     *  with its lifecycle callbacks, never interleaved with them.
+     *
+     *  A pending gate is joined while its activity is on screen (its task
+     *  is visible: the dialog, or the picker above it, is what the user
+     *  sees) or has not reached onCreate yet. An activity that is hidden
+     *  (stopped: another window covers its task) with no result can be
+     *  stuck for good: the platform parks a cancel for a stopped activity
+     *  until it resumes, and a task in the background behind the window
+     *  that covered it resumes only if the user navigates back to it,
+     *  which an excluded-from-recents translucent task never gets (Moto,
+     *  2026-10-08: thirty seconds of Turn On no-ops, then the system
+     *  destroyed the instance). So this request supersedes it: the stale
+     *  instance is abandoned (its task removed, any system dialog above it
+     *  with it, its late report dropped), its gate completes false for
+     *  whoever was waiting, and a fresh prompt opens for this request. Not
+     *  on the activity's own onStop: the single-app picker brings the chosen
+     *  task to the front, stopping the activity, before force-delivering the
+     *  grant to it, so stopped is not cancelled. An activity the platform
+     *  reclaimed for memory without finishing ([consentUiDormant]) is in
+     *  the same position with no instance to read: superseded too, its
+     *  record left for the platform (a recreation of it finds no request
+     *  and finishes).
+     *
+     *  A launch the platform refuses (a background start it blocks: every
+     *  path here holds an exemption, SYSTEM_ALERT_WINDOW on the
+     *  MediaProjection backend and the accessibility binding's
+     *  BIND_ALLOW_BACKGROUND_ACTIVITY_STARTS token on the other, but a ROM
+     *  may add gates of its own) returns normally and never creates the
+     *  activity, so nothing could ever answer its gate. The verdict is read
+     *  from the platform's own state around the call ([consentTaskIds]): a
+     *  launch that created a new consent task is accepted and waits for its
+     *  activity alone; one that did not gets a bounded wait ([boundLaunch])
+     *  that completes the gate false unless an instance binds after all,
+     *  which it does within milliseconds when the launch joined an existing
+     *  task of ours. The fresh happy path never arms it. */
+    private suspend fun requestConsent(): Boolean = withContext(Dispatchers.Main.immediate) {
+        consentGate?.let { gate ->
+            val ui = consentUi
+            val answerable = if (ui != null) !ui.hidden else !consentUiDormant
+            if (answerable) return@withContext gate.await()
+            Log.i(
+                TAG,
+                if (ui != null) "consent activity hidden without a result; superseding it"
+                else "consent activity reclaimed without a result; superseding its request",
+            )
+            consentUi = null
+            consentUiDormant = false
+            ui?.abandon()
+            onConsentResult(Activity.RESULT_CANCELED, null)
+        }
         val gate = CompletableDeferred<Boolean>()
         consentGate = gate
+        consentUiDormant = false
+        consentUiBoundOnce = false
+        val requestToken = UUID.randomUUID().toString()
+        consentRequestToken = requestToken
         // If startActivity throws (e.g. a future BAL tightening blocks the
         // launch, or some OEM-specific restriction kicks in), the exception
         // would otherwise leave consentGate set on a never-completed gate,
         // wedging every subsequent ensureConsent caller on it.await(). Clear
         // the field and complete the gate=false so concurrent waiters return
         // cleanly and the NEXT activate attempt can install a fresh gate.
+        val tasksBefore = consentTaskIds()
         try {
-            MediaProjectionConsentActivity.launch(service)
+            MediaProjectionConsentActivity.launch(service, requestToken)
         } catch (e: Exception) {
             Log.e(TAG, "MediaProjectionConsentActivity launch failed: ${e.message}")
             consentGate = null
             gate.complete(false)
-            return false
+            return@withContext false
         }
-        return gate.await()
+        if ((consentTaskIds() - tasksBefore).isEmpty()) {
+            Log.w(TAG, "consent launch created no new task (refused, or joined an existing one); bounding the wait")
+            boundLaunch(gate)
+        }
+        gate.await()
+    }
+
+    /** The ids of our running tasks rooted in the consent activity, from the
+     *  platform's own state. Read before and after a launch: a new id is the
+     *  platform's word that the launch created its task, a verdict available
+     *  synchronously because an accepted start adds its task to recents
+     *  inside startActivity and a blocked start into a new task is aborted
+     *  by isAllowedToStart before any task exists (Android 16,
+     *  ActivityStarter.startActivityInner); RecentTasks.getAppTasksList
+     *  filters by uid and package only, so a task excluded from Recents is
+     *  still listed. No new id is not a refusal by itself: a launch that
+     *  found an existing consent task of ours joins it (a destroyed but
+     *  non-finishing root still counts, RootWindowContainer.FindTaskResult),
+     *  and such a launch is not aborted even when blocked, only created
+     *  behind. That is why "any consent task exists" is the wrong question
+     *  (a stale task would vouch for a launch a ROM refused outright) and
+     *  why no new id arms a bounded wait rather than a verdict: the joined
+     *  instance binds within milliseconds and stands it down. A failure to
+     *  read yields the empty set and so the same bounded wait. */
+    private fun consentTaskIds(): Set<Int> {
+        consentTaskIdsProbe?.let { return it() }
+        val am = service.getSystemService(ActivityManager::class.java) ?: return emptySet()
+        return runCatching {
+            am.appTasks.mapNotNull { task ->
+                val info = task.taskInfo
+                info.taskId.takeIf {
+                    info.isRunning &&
+                        info.baseIntent.component?.className == MediaProjectionConsentActivity::class.java.name
+                }
+            }.toSet()
+        }.getOrDefault(emptySet())
+    }
+
+    /** Bound the wait on a launch that created no new task: unless an
+     *  instance binds to [gate] after all (it joined an existing task, or a
+     *  ROM lists tasks wrongly), complete it false so the request ends and
+     *  the next one prompts again. The bound is generous because the only
+     *  cost of a late bind is one re-prompt, and only a system_server stall
+     *  of this length could make a real launch arrive late; a busy main
+     *  thread cannot, as the launch is queued on it ahead of this timer. */
+    private fun boundLaunch(gate: CompletableDeferred<Boolean>) {
+        service.serviceScope.launch {
+            delay(CONSENT_LAUNCH_BOUND_MS)
+            if (consentGate !== gate || consentUiBoundOnce) return@launch
+            Log.w(TAG, "consent activity never appeared; ending the request as cancelled")
+            consentUi = null
+            consentUiDormant = false
+            onConsentResult(Activity.RESULT_CANCELED, null)
+        }
     }
 
     /**
@@ -1266,6 +1484,9 @@ class MediaProjectionController(private val service: CaptureService) {
     fun destroy() = teardown()
 
     private companion object {
+        /** See [boundLaunch]. */
+        const val CONSENT_LAUNCH_BOUND_MS = 10_000L
+
         /** Bound on waiting for a delivery when the latch is empty (first
          *  capture after VD creation) or a clean capture awaits its post-blank
          *  frame. Deadline-as-decision: frames serve the instant they land, so
