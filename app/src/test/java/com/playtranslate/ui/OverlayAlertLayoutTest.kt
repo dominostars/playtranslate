@@ -15,23 +15,22 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * The alert card against a window too short for it (a phone in landscape,
- * a large font, a long message): the part above the buttons scrolls and
- * the buttons stay on screen, while a card that fits is laid out at its
- * natural size with nothing to scroll.
+ * a large font, a long message, a picker's column of buttons): the whole
+ * card scrolls, buttons included, and ends inside the window, while a card
+ * that fits is laid out at its natural size with nothing to scroll.
  */
 @RunWith(RobolectricTestRunner::class)
 class OverlayAlertLayoutTest {
 
     private val activity: Activity = Robolectric.buildActivity(KeepRunningActivity::class.java).setup().get()
 
-    private fun show(message: String): FrameLayout {
+    private fun show(message: String, buttons: Int = 1): FrameLayout {
         val host = FrameLayout(activity)
-        OverlayAlert.Builder(activity)
+        val builder = OverlayAlert.Builder(activity)
             .setTitle("Accessibility required")
             .setMessage(message)
-            .addButton("Open Accessibility Settings", Color.BLUE, Color.WHITE) {}
-            .addCancelButton("Cancel")
-            .showInParent(host)
+        repeat(buttons) { builder.addButton("Open Accessibility Settings $it", Color.BLUE, Color.WHITE) {} }
+        builder.addCancelButton("Cancel").showInParent(host)
         return host
     }
 
@@ -43,35 +42,54 @@ class OverlayAlertLayoutTest {
         host.layout(0, 0, width, height)
     }
 
-    private fun FrameLayout.card() = (getChildAt(0) as FrameLayout).getChildAt(0) as LinearLayout
-    private fun LinearLayout.body() = getChildAt(0) as ScrollView
+    /** The card is the scrim's one child, a scroll view around the column. */
+    private fun FrameLayout.card() = (getChildAt(0) as FrameLayout).getChildAt(0) as ScrollView
+    private fun ScrollView.column() = getChildAt(0) as LinearLayout
     private fun LinearLayout.lastButton(): View = getChildAt(childCount - 1)
 
-    /** The buttons must keep the height they have in a window with room
-     *  (a column with no weight would hand the body the whole window and
-     *  squeeze the buttons to nothing, which a bounds check alone passes),
-     *  and end inside the window. */
+    /** The card ends inside a window of [height], its column is taller than
+     *  it (so it scrolls), and scrolled to the end the last button sits in
+     *  the card's visible band at the height it has with room. */
+    private fun assertScrollsToItsButtons(host: FrameLayout, height: Int, naturalButton: Int) {
+        val card = host.card()
+        val column = card.column()
+        assertTrue("card top ${card.top}", card.top >= 0)
+        assertTrue("card bottom ${card.bottom}", card.bottom <= height)
+        assertTrue("column ${column.height} against the card ${card.height}", column.height > card.height)
+        assertEquals(naturalButton, column.lastButton().height)
+        card.scrollTo(0, column.height + card.paddingTop + card.paddingBottom - card.height)
+        val buttonBottom = column.top + column.lastButton().bottom - card.scrollY
+        assertTrue(
+            "last button ends at $buttonBottom in a card ${card.height} tall",
+            buttonBottom <= card.height - card.paddingBottom,
+        )
+    }
+
+    /** The buttons must keep the height they have in a window with room:
+     *  a card that clamps instead of scrolling squeezes them to nothing,
+     *  which a bounds check alone passes. */
     @Test
-    fun `a card taller than the window scrolls its body and keeps its buttons on screen`() {
+    fun `a card taller than the window from its message scrolls as a whole and keeps its buttons`() {
         val host = show("line\n".repeat(200))
         layout(host, 800, 4000)
-        val card = host.card()
-        val naturalButton = card.lastButton().height
+        val naturalButton = host.card().column().lastButton().height
         assertTrue("button height $naturalButton", naturalButton > 0)
 
         layout(host, 800, 300)
-        assertTrue("card top ${card.top}", card.top >= 0)
-        assertTrue("card bottom ${card.bottom}", card.bottom <= 300)
-        val body = card.body()
-        assertTrue(
-            "body ${body.height} against its content ${body.getChildAt(0).height}",
-            body.getChildAt(0).height > body.height,
-        )
-        assertEquals(naturalButton, card.lastButton().height)
-        assertTrue(
-            "buttons end at ${card.top + card.lastButton().bottom}",
-            card.top + card.lastButton().bottom <= 300,
-        )
+        assertScrollsToItsButtons(host, 300, naturalButton)
+    }
+
+    /** A short message under a column of buttons (the OCR picker's shape):
+     *  the buttons are what makes the card tall, and they scroll with it. */
+    @Test
+    fun `a card taller than the window from its buttons alone scrolls as a whole`() {
+        val host = show("Pick a tool.", buttons = 12)
+        layout(host, 800, 4000)
+        val naturalButton = host.card().column().lastButton().height
+        assertTrue("button height $naturalButton", naturalButton > 0)
+
+        layout(host, 800, 300)
+        assertScrollsToItsButtons(host, 300, naturalButton)
     }
 
     @Test
@@ -79,8 +97,7 @@ class OverlayAlertLayoutTest {
         val host = show("Setting hotkeys requires the Accessibility permission.")
         layout(host, 800, 2000)
         val card = host.card()
-        val body = card.body()
-        assertEquals(body.getChildAt(0).height, body.height)
+        assertEquals(card.column().height + card.paddingTop + card.paddingBottom, card.height)
         assertTrue("card height ${card.height}", card.height in 1 until 2000)
     }
 }

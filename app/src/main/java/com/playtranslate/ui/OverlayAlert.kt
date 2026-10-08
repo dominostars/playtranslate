@@ -234,36 +234,36 @@ class OverlayAlert private constructor(
             }
         }
 
-        // Dialog card
-        val dialog = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
+        // Dialog card: a scroll view wearing the card's chrome (surface,
+        // hairline, corners) around one column holding the icon, the
+        // title, the message and the buttons. A card that fits lays out at
+        // its natural size with nothing to scroll; one the window is too
+        // short for (a phone in landscape, a large font, a long message, a
+        // picker's column of buttons) scrolls as a whole, buttons included.
+        // Before this only the part above the buttons scrolled, in a
+        // weighted view inside the column, so a card tall from its buttons
+        // alone still ran off the bottom.
+        val stroke = (1 * dp).toInt()
+        val card = ScrollView(context).apply {
             background = GradientDrawable().apply {
                 setColor(context.themeColor(R.attr.ptSurface))
-                setStroke((1 * dp).toInt(), context.themeColor(R.attr.ptDivider))
+                setStroke(stroke, context.themeColor(R.attr.ptDivider))
                 cornerRadius = 16 * dp
             }
+            // The column scrolls over the background, so it is clipped
+            // just inside the hairline (clipToPadding, the default) rather
+            // than painting a button across it at the top or bottom edge;
+            // the column's own side padding keeps it clear of the corners.
+            setPadding(0, stroke, 0, stroke)
+        }
+        val body = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
             setPadding((24 * dp).toInt(), (24 * dp).toInt(), (24 * dp).toInt(), (16 * dp).toInt())
             gravity = Gravity.CENTER_HORIZONTAL
             // Prevent clicks from passing through to scrim
             setOnClickListener { }
         }
-
-        // Everything above the buttons sits in a scroll view weighted to
-        // take what is left after the buttons: a card that fits lays out
-        // at its natural size, and one the window is too short for (a
-        // phone in landscape, a large font, a long message) scrolls its
-        // body while the buttons stay on screen. Before this the card was
-        // one column and a tall one lost its buttons off the bottom.
-        val body = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-        }
-        dialog.addView(
-            ScrollView(context).apply {
-                addView(body, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            },
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f),
-        )
+        card.addView(body, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         // App icon in a circle ([appIconCircle]). Shown only when the caller
         // opted in via Builder.showIcon() — off by default because the app's
@@ -347,7 +347,7 @@ class OverlayAlert private constructor(
                     cfg.onClick()
                 }
             }
-            dialog.addView(btn)
+            body.addView(btn)
         }
 
         val maxW = (280 * dp).toInt()
@@ -356,13 +356,13 @@ class OverlayAlert private constructor(
             topMargin = (16 * dp).toInt()
             bottomMargin = (16 * dp).toInt()
         }
-        scrimView.addView(dialog, dlp)
+        scrimView.addView(card, dlp)
 
         // Animate in
-        dialog.alpha = 0f
-        dialog.scaleX = 0.9f
-        dialog.scaleY = 0.9f
-        dialog.animate()
+        card.alpha = 0f
+        card.scaleX = 0.9f
+        card.scaleY = 0.9f
+        card.animate()
             .alpha(1f)
             .scaleX(1f)
             .scaleY(1f)
