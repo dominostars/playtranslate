@@ -58,14 +58,12 @@ Installez l'APK, puis réactivez Play Protect pour qu'il continue d'analyser vos
 
 ### Impossible d'activer l'accessibilité ?
 
-Quelques fonctionnalités avancées (comme maintenir un raccourci pour afficher les traductions) vous demanderont d'activer l'autorisation d'accessibilité. Certains fabricants d'appareils Android empêchent par défaut les applications installées en dehors du Play Store d'obtenir cette autorisation : l'option peut alors apparaître grisée dans les Paramètres ou afficher le message « Paramètre restreint ». Pour la débloquer :
+Quelques fonctionnalités avancées (comme maintenir un raccourci pour afficher les traductions) vous demanderont d'activer l'autorisation d'accessibilité. Depuis Android 13, Android grise l'interrupteur d'accessibilité de toute application installée à partir d'un fichier APK téléchargé, et si vous appuyez dessus, le message « Paramètre restreint » s'affiche. Pour le débloquer :
 
-1. Ouvrez **Paramètres → Applications → PlayTranslate**
-2. Appuyez sur le menu **⋮** (en haut à droite)
-3. Appuyez sur **Autoriser les paramètres restreints**
-4. Authentifiez-vous lorsque l'appareil vous le demande
-
-Vous pouvez maintenant activer l'accessibilité pour PlayTranslate.
+1. Dans **Paramètres → Accessibilité**, sélectionnez PlayTranslate et appuyez une fois sur l'interrupteur grisé. Fermez le message « Paramètre restreint ».
+2. Ouvrez la page « Infos sur l'appli » : **Paramètres → Applications → PlayTranslate**.
+3. Appuyez sur le menu **⋮** et choisissez **Autoriser les paramètres restreints**. Cette option n'apparaît qu'après l'étape 1.
+4. Authentifiez-vous si l'appareil vous le demande, puis revenez à l'écran Accessibilité et activez l'interrupteur.
 
 ## Aide et soutien
 
@@ -192,4 +190,4 @@ Installez [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.an
 
 ## Crédits et licence
 
-La liste des bibliothèques, modèles et données linguistiques utilisés figure dans la [section « Credits » du README en anglais](https://github.com/dominostars/playtranslate#credits). PlayTranslate est distribué sous licence [GPL 3.0](https://github.com/dominostars/playtranslate/blob/main/LICENSE).
+La liste des bibliothèques, modèles et données linguistiques utilisés figure dans la [section « Credits » du README en anglais](https://github.com/dominostars/playtranslate#credits). PlayTranslate est distribué sous licence [GPL 3.0](https://github.com/dominostars/playtranslate/blob/main/LICENSE).

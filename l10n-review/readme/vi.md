@@ -100,3 +100,17 @@ Applied the 7 💬 as suggested. The two ⚠️ (“Chế độ cài đặt bị
 bị hạn chế**) are NOT applied: both are from memory, and the README deliberately quotes the app's
 own reviewed `restricted_settings_*` strings, so the README and the app would have to change
 together after a Vietnamese device confirms Android's label. Recorded as a device-check item.
+
+## Delta review 2026-10-08 ("Can't enable accessibility?" rewritten)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] vi -> readme/README.vi.md`, `warning 38 bold spans, English has 37`). The extra span is install step 3's **Cài đặt** (the installer's Install button, bolded in the 2026-10-06 disposition), outside this section; this section has 4 bold spans, as in English. **No 🛑 issues.**
+
+| section | severity | current | suggested | note |
+|---|---|---|---|---|
+| Can't enable accessibility? (intro) | 💬 | "và khi nhấn vào nút này sẽ hiện thông báo “Chế độ cài đặt bị hạn chế”." | "và khi bạn nhấn vào nút này, thông báo “Chế độ cài đặt bị hạn chế” sẽ hiện ra." | After "Android làm mờ …, và" the clause has no subject, so who taps is left to the reader and the sentence reads like speech. Naming "bạn" (the file's register) and making the message the subject reads as written prose. Optional. |
+
+Clean areas: The four steps follow the English order and content, "Mục này chỉ xuất hiện sau bước 1" keeps the only-after-step-1 condition, and the old closing sentence is gone, as in English. Every Android label is byte-identical to AOSP Android 16 Settings (vi) on disk: Cài đặt, Hỗ trợ tiếp cận, Ứng dụng, Thông tin ứng dụng (Android's label, not the English's "AppInfo"), “Chế độ cài đặt bị hạn chế” (`blocked_by_restricted_settings_title`) and **Cho phép các chế độ cài đặt bị hạn chế** (`app_restricted_settings_lockscreen_title`, with "các", which the 2026-10-06 from-memory suggestion lacked). The app's `a11y_restricted_settings_addendum` uses the same words (nút chuyển, bị mờ, trang Thông tin ứng dụng, menu ⋮, the menu label), and the path agrees with "Cài đặt → Hỗ trợ tiếp cận → …" in `overlay_icon_a11y_required_message` and `accessibility_dialog_message`. That settles the 2026-10-06 device-check item from AOSP source: "Cài đặt bị hạn chế" (readable as "installation restricted") is gone from both the README and the app. Register is bạn, with bare imperatives in the steps as in the file's other lists; Hỗ trợ tiếp cận throughout (never Trợ năng), capitalised as elsewhere; diacritics complete, text NFC. Bold sits on the same four labels as English, numbering 1 to 4, curly quotes, spaced arrows, no dashes.
+
+### Disposition (2026-10-08)
+
+Applied the 1 💬 ("khi bạn nhấn vào nút này, thông báo … sẽ hiện ra").

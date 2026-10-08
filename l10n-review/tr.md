@@ -699,3 +699,327 @@ Round-1 fix present: «…bu kartı kaybedersiniz ve onu yeni bir…». Mechanic
 No new findings.
 
 **Verdict (round 2):** **PASS.**
+
+## Delta review 2026-10-07 (41 keys + 2 orphans: bug-report email, Support rows, kill notice, Fix disappearing icon page)
+
+Mechanical layer verified: `python3 PKT/../tools/mech_check.py PKT/../keys.txt tr` reports
+`checked 1 locales x 41 keys; problems: 0` (every key present; `<xliff:g>` spans and
+`%1$s` byte-identical to EN; `\n` count matches in the email body; no unescaped `'`/`"`, no
+stray tags, no double spaces). `python3 scripts/l10n_diff.py --locale
+app/src/main/res/values-tr/strings.xml` reports `values-tr missing=0 orphan=0 modified=0`,
+"in sync". The two orphans (`settings_debug_export_logs_title`, `_subtitle`) are gone,
+`settings_debug_export_logs_subject` stays; no duplicate `name=`; the file parses.
+**No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- `MainActivity.maybeShowKillNotice`: the message is one of the three bodies, plus `' '` and
+  `kill_notice_restored` only when `activeOverlayUi?.hasAnyFloatingIcon` (an icon is on
+  screen). It is an `OverlayAlert` with See options (accent) above Not now.
+- `settings_row_hub.xml`: the summary is `singleLine` + `ellipsize="end"`, titles wrap.
+  `KeepRunningActivity` puts the same two Report a bug strings in a wrapping
+  `settings_row_link`, and sets each card's title and line with `setText` (no format
+  arguments; the app-name span renders its literal text). Xiaomi's battery card reuses
+  `keep_running_battery_line`; the stuck accessibility card pairs `a11y_stuck_title` with
+  the restart line.
+- `LogExporter.emailFiles`: when no email app resolves, it shows the LENGTH_LONG toast
+  `email_no_app_fallback` (with `SUPPORT_EMAIL`), then `shareFiles`, whose chooser is
+  `share_chooser_share_logs` («Günlükleri paylaş»).
+
+### Findings (delta, round 1)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| kill_notice_restored | ⚠️ | Şu anda yeniden açık. | Simge şu anda yeniden ekranda. | Turkish drops the subject, and a dropped subject continues the previous one. After `kill_notice_body_other` ends «Bazı telefonlar bunu pil tasarrufu için yapar.», this reads as "they (the phones) are on again"; English's singular "It" rules the phones out, and Turkish has no such cue. Naming the icon, which is what the code checks, reads right after all three bodies («Uygulama şu anda yeniden açık.» would also work). |
+| settings_support_keep_running_subtitle | 💬 | <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulaması kapatılmasın | <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> kapatılmasın | The jussive reads naturally as a subtitle: Turkish settings state a wanted state this way («… açık kalsın»), and it keeps the mechanism (being closed). But the negation comes at the end of the verb, and that is the part a 360 dp phone clips: at 216 dp the row shows «PlayTranslate uygulaması kapatılm…». A bare brand needs no head noun in the nominative (as in «PlayTranslate açıkken durduruldu»); at 157 dp it fits every width. |
+| keep_running_battery_line | 💬 | Bu ayar yapılmazsa telefonunuz, kullanırken <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasını kapatabilir. | Bu ayar yapılmazsa telefonunuz, siz kullanırken <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasını kapatabilir. | A -ken clause with no subject of its own takes the main clause's subject, so «telefonunuz, kullanırken» says the phone is the one using it (the textbook converb slip). Readers recover the meaning; «siz» removes the slip. This line also sits under the Xiaomi battery card. |
+| keep_running_oppo_auto_launch_line, keep_running_vivo_autostart_line | 💬 | Bunlara izin verilmezse telefon, <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasından çıktıktan kısa süre sonra uygulamayı kapatır. | Bunlara izin verilmezse telefon, siz <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasından çıktıktan kısa süre sonra uygulamayı kapatır. | The same slip: «telefon, … uygulamasından çıktıktan» means after the phone leaves the app. Keep the two lines byte-identical. |
+| keep_running_xiaomi_lock_line | 💬 | Son uygulamaları açın, <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> kartını basılı tutun ve kilide dokunun. Bellek temizliği kilitli uygulamaları atlar. | Son uygulamalar ekranını açın, <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> kartını basılı tutun ve kilide dokunun. Bellek temizliği kilitli uygulamaları atlar. | With the accusative on the label, «Son uygulamaları açın» reads as "open your recent apps", while the card's own title says «Son uygulamalar ekranında». This uses one name for Recents within the card. |
+| keep_running_huawei_close_after_lock_line | 💬 | Pil ayarları → Diğer pil ayarları bölümündedir. Kapatılmazsa <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ekran her kilitlendiğinde kapanır. | Pil → Diğer pil ayarları bölümündedir. Bu seçenek devre dışı bırakılmazsa <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, ekran her kilitlendiğinde kapanır. | Huawei Turkey prints «Ayarlar > Pil > Diğer pil ayarları» (official, tr-tr00428704), so the path's first label is «Pil». «Kapatılmazsa … kapanır» puts "turn off" right beside "closes", although the title already chose «devre dışı bırak»; the comma stops «PlayTranslate ekran» reading as one noun. This is moot if the card is dropped (known issue 1). |
+
+### Clean areas (delta) — checked, no findings
+
+**The kill notice, read as a set.** The title «Android, PlayTranslate uygulamasını kapattı»
+has a comma after the subject, which keeps «Android PlayTranslate» from reading as one noun.
+All three bodies read naturally and keep the attribution where English puts it: «Belleği
+azalan telefonunuz» (memory), «Telefonunuz» (other), and «PlayTranslate açıkken durduruldu.
+Uygulamayı kendiniz durdurmadıysanız … durdurmuş olabilir.» (stopped), which leaves the
+attribution to the user. That body says «durduruldu», not AOSP's «Durmaya zorla», because
+English says "was stopped". «Kayan simgenin kaybolmasının nedeni budur» is a little formal
+but natural. I read the restored sentence after each body (finding above). The buttons are
+«Seçenekleri gör» and «Şimdi değil», the latter identical to `btn_not_now`.
+
+**The Support card in order.** The rows are «Güncellemeleri denetle / Geçerli sürüm: 3.3.0»,
+«Discord'a Katıl», «Kaybolan simgeyi düzelt / … kapatılmasın», «Hata bildir / Günlükleri
+desteğe e-postayla gönderin. Paylaşmak için basılı tutun.» and «PlayTranslate'i Destekle».
+The new titles use sentence case, like «Güncellemeleri denetle» and Android. The capitalized
+verbs in «Katıl» and «Destekle» predate this delta. In the Report a bug subtitle, the tap
+clause is 228 dp and fits 249. What the row shows: at 216 dp «Günlükleri desteğe e-postayla
+gönd…», at 249 dp «…gönderin. P…», at 267 dp «…gönderin. Payl…». The whole string is 388 dp
+against English's 256, for a reason: Turkish needs «e-postayla gönderin» for "email", and
+«Paylaşmak için basılı tutun» is the file's hold phrase. «destek ekibine» would push the tap
+clause past 249 dp, so «desteğe» is the right call. Dropping "instead" loses nothing.
+
+**The Fix disappearing icon page.** The toolbar title is 237 dp of about 272, and it is
+byte-identical to the Support row title. The intro is natural, and «oyun oynarken» needs no
+subject. Card titles are bare imperatives, like the file's «Hızlı Ayarlar kutucuğu ekle»;
+card lines use siz. The stuck card's restart line reuses `a11y_stuck_message` word for word
+under `a11y_stuck_title`. In the empty label, «hata bildirin» matches the row title «Hata
+bildir». «yeniden oluşturun» is the file's word for reproduce («Yeniden oluşturma adımları»
+in `crash_email_body`), and the «Sorun … sorunu» repetition is acceptable. The Report a bug
+row under it carries the same two strings, and here the subtitle wraps.
+
+**The email flow.** The chooser titles «Çökme raporunu gönder» and «Hata raporunu gönder» are
+parallel bare imperatives, like «Günlükleri paylaş». The subject mirrors
+`crash_email_subject`, and the body is natural («… ektedir»). The toast's «E-posta uygulaması
+yok.» departs from the file's «… bulunamadı», used in 7 strings. But at 296 dp «bulunamadı»
+pushes the address onto a third line, which the toast drops, so «yok» is the right trade. As
+written, the toast wraps to 2 lines at both 296 and 320 dp, with the address whole on line 2.
+The colon puts no suffix on the address. The share sheet «Günlükleri paylaş» follows.
+
+**Same words for the same thing.** The page title is the Support row title. «hata bildirin»
+matches «Hata bildir». The battery line («Bu ayar yapılmazsa …») works under both «Pil
+kullanımını “Kısıtlanmamış” olarak ayarla» and Xiaomi's «Pil tasarrufunu “Kısıtlama yok”
+olarak ayarla». The OPPO and vivo lines are byte-identical. «bellek temizliği» appears twice,
+the same both times. Xiaomi, OPPO and vivo all use «Otomatik başlatma», while Huawei keeps its
+own «Oto-başlatma». Reused precedents: günlük(ler), kayan simge, basılı tutun, açık(ken),
+«Hızlı Ayarlar kutucuğu ekle», «Şimdi değil», «hizmeti kapatıp yeniden açın», and «pil
+tasarrufunu “Kısıtlama yok” olarak ayarlayın».
+
+**Platform labels.** AOSP tr «Kısıtlanmamış» is exact. «Pil kullanımını» follows English's
+generic "battery usage"; the AOSP entry reads «Uygulamaların pil kullanımı», but the card
+opens the system dialog «Uygulama arka planda çalışmaya devam etsin mi?» directly. Samsung
+Turkey's official labels are all exact: Cihaz bakımı → Pil → Arka plan kullanım sınırları,
+“Hiç oto. uykuya geçirilmeyen uygulamalar” (with Samsung's own «oto.»), and uyku modundaki
+uygulamalar. Huawei Turkey's official labels are exact too: Uygulama başlatma, Oto-başlatma,
+İkincil başlatma, Arka planda çalışma. «Diğer pil ayarları» is now verified on Huawei
+Turkey's own page, which also has no close-after-lock option (known issue 1 holds in
+Turkish). «manuel olarak yönet» stays unverified: Huawei has no Turkish copy of the page
+that shows the Manage manually pop-up. Xiaomi has secondary sources only: HyperOS «Arka Plan
+Otomatik Başlatma», MIUI «Uygulama Pil Tasarrufu» and «Son uygulamalar»; «Kısıtlama yok» is
+unverified. The delta reuses the reviewed `a11y_stuck_message_xiaomi`, which is right until
+a device shows otherwise. I found no Turkish source for OPPO or vivo; their labels are
+literal renderings and unverified. The Huawei close-after-lock label is a translation, since
+no current Huawei label exists.
+
+**Suffix coverage, all 19 spans.** No suffix touches the app-name span, the version or the
+address. Most of the 17 app-name spans take the head noun «uygulaması / uygulamasını /
+uygulamasından» (subtitle, kill title, intro, battery, accessibility, tile, Xiaomi
+autostart, Xiaomi lock title, OPPO, vivo). The others: «kartını» in the Xiaomi lock line,
+the postposition «için» on the Huawei App launch line, and a bare nominative subject
+(«PlayTranslate açıkken» in the three bodies, and the Huawei close-after-lock line). In the
+subject line the name and version take no suffix («v» before the version), and the toast
+puts the address after a colon. «Android,» and «Xiaomi,» are bare subjects as well.
+
+**Casing, quotes, register.** «İkincil» and «Kısıtlanmamış» are spelled right, and nothing
+is pre-uppercased. Every quoted label uses “ ” (U+201C/U+201D). Every body uses siz; titles,
+buttons and chooser titles are bare imperatives, like their neighbours.
+
+### Verdict (round 1)
+
+1 ⚠️ and 5 💬 (6 keys); no ❌, no 🛑. To apply: `kill_notice_restored` (⚠️);
+`settings_support_keep_running_subtitle`, `keep_running_battery_line`,
+`keep_running_oppo_auto_launch_line` + `keep_running_vivo_autostart_line`,
+`keep_running_xiaomi_lock_line` and `keep_running_huawei_close_after_lock_line` (💬). The
+other 34 keys pass as they are.
+
+## Follow-up review 2026-10-07, round 1 (15 keys after the Fix disappearing icon rewrite, plus the final review of the first pass's 41 keys)
+
+Mechanical layer: `python3 TOOLS/mech_check.py F2/keys2.txt tr` reports `checked 1 locales x
+15 keys; problems: 0`, and `python3 TOOLS/mech_check.py …/scratchpad/keys.txt tr` reports
+`checked 1 locales x 39 keys; problems: 0` (every key present; `<xliff:g>` spans and
+placeholders byte-identical to EN, both `app_name` and `app_name2` in the three two-span lines;
+`\n` counts match; no unescaped `'`/`"`, no stray tags, no double spaces).
+`python3 scripts/l10n_diff.py --locale app/src/main/res/values-tr/strings.xml` reports
+`values-tr missing=0 orphan=0 modified=0`, "in sync". The four keys English removed
+(`restricted_settings_title`, `restricted_settings_message`,
+`keep_running_huawei_close_after_lock_title`, `_line`) are gone; no duplicate `name=`; the
+file parses.
+**No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- `AccessibilityHelp.withRestrictedSettingsStep` appends the addendum as `message + "\n\n" +
+  step`, on Android 13+ only, in `MainActivity.showAccessibilityDialog`,
+  `SettingsRenderer.showOverlayIconA11yAlert` (both system AlertDialogs),
+  `showAccessibilityRequiredAlert` (the 280 dp OverlayAlert, three messages) and
+  `KeepRunningActivity.lineOf` for the accessibility card (not when the service is stuck).
+  `SettingsRenderer.showA11yStuckAlert` builds the stuck alert as `a11y_stuck_message` plus,
+  when `Build.MANUFACTURER` is Xiaomi, `"\n\n"` and `a11y_stuck_message_xiaomi`; no addendum.
+- `KeepRunningActivity.openFirst`: when no candidate screen launches, the LENGTH_LONG toast
+  `keep_running_screen_unavailable`, then `startActivity(appDetails)`, so App info is what
+  the user sees while the toast is up. Each card is `setText(title)` + `text = line`, with
+  no format arguments; the Xiaomi battery card now has its own line and opens
+  `HiddenAppsConfigActivity` (the per-app battery page) directly.
+- `KeepRunningItems.ids`: Xiaomi gets autostart, battery and lock, and no generic battery
+  card; Huawei gets App launch only; then battery (not on Xiaomi), accessibility (API 30+)
+  and tile (API 33+) on every ROM. `MainActivity.maybeShowKillNotice` is unchanged from the
+  first pass (body, then `' '` and `kill_notice_restored` while an icon is on screen).
+
+Scope: 44 keys in all, the 39 first-pass keys (10 of them rewritten in this follow-up) and the
+five follow-up keys outside them (`a11y_restricted_settings_addendum`, `a11y_stuck_message`,
+`a11y_stuck_message_xiaomi`, `keep_running_screen_unavailable`,
+`keep_running_xiaomi_battery_line`).
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| a11y_stuck_message | 💬 | <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> için Erişilebilirlik açık, ancak Android hizmeti durdurdu ve kendiliğinden yeniden başlatmayacak. Cihazınız, erişilebilirlik ayarlarında uygulamanın düzgün çalışmadığını bildirebilir.\n\nDüzeltmek için erişilebilirlik ayarlarından hizmeti kapatıp yeniden açın. | <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> için Erişilebilirlik açık, ancak Android, hizmeti durdurdu ve kendiliğinden yeniden başlatmayacak. Cihazınız, erişilebilirlik ayarlarında uygulamanın düzgün çalışmadığını bildirebilir.\n\nDüzeltmek için erişilebilirlik ayarlarından hizmeti kapatıp yeniden açın. | «Android hizmeti» first reads as the compound "the Android service" (like «sistem hizmeti»), which leaves «durdurdu» without an object until the reader backs up. This delta's Xiaomi paragraph writes «sistem, hizmeti» for exactly this reason, and on a Xiaomi phone both paragraphs sit in one dialog, one with the comma and one without. The kill notice title's «Android, PlayTranslate uygulamasını kapattı» follows the same rule. Only the comma changes; the rest stays the reviewed text. |
+| keep_running_accessibility_restart_line | 💬 | Android hizmeti durdurdu ve kendiliğinden yeniden başlatmayacak. Erişilebilirlik ayarlarından hizmeti kapatıp yeniden açın. | Android, hizmeti durdurdu ve kendiliğinden yeniden başlatmayacak. Erişilebilirlik ayarlarından hizmeti kapatıp yeniden açın. | The same fix. This line repeats the stuck message under `a11y_stuck_title`, and here «Android hizmeti» opens the sentence, where it reads most like a subject noun phrase. Keep the two in step. |
+| keep_running_xiaomi_battery_line | 💬 | <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasının sistem ayarlarında pil ayarını (sürümünüze göre Pil tasarrufu, Pil veya Güç) açın ve “Kısıtlama yok” seçeneğini seçin. | <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasının sistem ayarlarında pil ayarına (sürümünüze göre Pil tasarrufu, Pil veya Güç) dokunun ve “Kısıtlama yok” seçeneğini seçin. | «X ayarını açın» is the everyday Turkish for "turn X on" (the file's own «… seçeneklerini açın» on the Huawei card means exactly that). With the parenthesis, the line can therefore read «Pil tasarrufunu açın», turn Battery saver on, the opposite of No restrictions, until «Kısıtlama yok» undoes it. «dokunun» is the file's tap verb («kilide dokunun», «⋮ menüsüne dokunun») and can only mean opening the entry; «pil bölümünü (…) açın» would also work. The three names remain unverified (see Clean areas). |
+
+### Clean areas — checked, no findings
+
+**The 15 follow-up keys against the English that moved.** A word-level diff against each
+key's previous value shows every small change tracking the English exactly.
+`a11y_stuck_message` lost the cause sentence and nothing else. `a11y_stuck_message_xiaomi`
+changed where the English did: «otomatik başlatmaya izin verin» for "allow autostart" (the
+Xiaomi autostart card's title), «pil kullanımını» for "its battery use" (the Xiaomi battery
+card's title) and «edebilir» for "may". It also gained the comma «sistem, hizmeti», which keeps
+«sistem hizmeti» from reading as "the system service". `keep_running_tile_line` lost «Tek bir
+kaydırma ve dokunuşla» and nothing else; `keep_running_xiaomi_lock_line` keeps round 1's first
+sentence; `keep_running_xiaomi_battery_title` changed one word. The seven rewritten lines
+translate the new English clause by clause, with nothing dropped or added, and each keeps the
+English hedge («başlayabilir», «engelleyebilir», «durdurabilir»).
+
+**The addendum, read after each of its six hosts.** After the two system dialogs (whose path
+ends «→ Etkinleştir yolunu izleyin»), the three OverlayAlert messages and the accessibility
+card's line, it reads as a closing paragraph of its own. «anahtar» is the usual Turkish name
+for a toggle. In every host the text before it is about enabling the service, so it cannot be
+taken for the «API anahtarı» sense of the LLM settings, and the hotkey message calls keys
+«tuşlar», so nothing clashes there either. «Uygulama bilgileri» is AOSP's
+`application_info_label`. «Kısıtlanmış ayarlara izin verme» is AOSP's
+`app_restricted_settings_lockscreen_title` (android16-qpr2), and the quotes earn their place.
+Of the 46 AOSP Turkish Settings strings that end «izin ver…», it is the only one ending «izin
+verme», and AOSP uses a bare «İzin verme» for "Don't allow"
+(`request_manage_credentials_dont_allow`), so unquoted it would read as a prohibition. Quoted
+and followed by «seçeneğini seçin», it reads as the item's name. It is what AOSP phones print,
+which per the brief beats the old reviewed «Kısıtlı ayarlara izin ver». The menu holds one
+such item, and Android confirms the tap with «… için kısıtlanmış ayarlara izin veriliyor».
+Google's Turkish help prints «…izin ver» (translator's note), a prefix of the AOSP label, so a
+phone printing either form is found. The span takes «için», no suffix.
+
+**The toast, then App info.** «O ekran» rather than «Bu ekran» keeps the sentence off App
+info, the page in front of the user while the toast is up. «kullanılamıyor» is AOSP's own word
+for an unavailable setting («Güvenliğiniz için bu ayar şu anda kullanılamıyor»). «ayarı» is the
+setting the card title names, and «arayın» matches AOSP's search label «Ara». Measured with
+`Wrap`, the toast fits 2 lines at 296 dp (277 + 261 dp) and at 320 dp (318 + 221 dp), with
+nothing lost; the English needs 3 lines at 296 dp.
+
+**The cards as title + line.** The battery card's title echoes the body of the dialog the card
+opens («… uygulamasının her zaman arka planda çalıştırılmasına izni vermeniz …»,
+`high_power_prompt_body`), and «bu ayar» in its line points back at it. The tile line now
+leans on its title for the "how", as the English does («açabilirsiniz»; «aç» is the app's
+Turn On). Xiaomi autostart's search word is its title's noun, the Xiaomi battery line ends on
+its title's «“Kısıtlama yok”», and the lock line opens the «Son uygulamalar ekranı» its title
+names. Huawei's line explains its title: turning «Otomatik olarak yönetiliyor» off is managing
+manually. The OPPO and vivo titles' «arka plan etkinliği» and «arka planda güç kullanımı» recur
+in their lines, and the two second sentences are byte-identical. Samsung's line names the list
+its title quotes, byte for byte. In the three two-span lines, the second «PlayTranslate»
+starts a new clause after «Xiaomi,» or «telefon,», so it does not read heavy.
+
+**Converbs.** «kapatıldıktan sonra» (Xiaomi autostart) is passive, so its subject is the app,
+the same as the subject of «yeniden başlamasını». The rewrite removed both converbs that round 1
+had to fix («siz kullanırken», «siz … çıktıktan»). I read the first pass's «oyun oynarken»
+(intro) and «PlayTranslate açıkken» (three bodies) again: the first can only mean the user,
+and the second carries its own subject.
+
+**Labels and search words.** Huawei, verified today on Huawei Turkey's own page
+(tr-tr00414587): «Ayarlar menüsünü açın, Uygulama başlatma öğesini arayın», «ilgili uygulama
+için Otomatik olarak yönetiliyor özelliğini devre dışı bırakın», «Oto-başlatma, İkincil
+başlatma veya Arka planda çalışma». The line matches all five labels in that order, and its
+«kapatın» for Huawei's «devre dışı bırakın» pairs with «açın» for the three switches. Samsung
+Turkey's «Pil», «Arka plan kullanım sınırları» and «Hiç oto. uykuya geçirilmeyen uygulamalar»
+are exact, and «uyku moduna alır» matches Samsung's «Uyku modundaki uygulamalar». Xiaomi: the
+search word «otomatik başlatma» is contained in the secondary HyperOS label «Arka Plan
+Otomatik Başlatma». «Kısıtlama yok», «Pil tasarrufu», «Pil» and «Güç» remain unverified: two
+searches found no Turkish source for the per-app entry, and the Kaspersky Turkish Xiaomi page
+the first pass listed as a lead now redirects to a landing page. One lead for whoever holds a
+Turkish HyperOS 2 phone: DonanımHaber (16 Feb 2025, HyperOS 2) writes «Batarya'ya dokunarak pil
+ayarlarını açın». The label «Batarya» beside the common noun «pil» suggests the Settings entry
+reads «Batarya», but that is the top-level entry, the article cites English sources, and it
+does not say it copies a screen. So «Pil» stays, and a reader shown «Batarya» still knows it.
+OPPO and vivo: no Turkish source (a ColorOS search found none). «otomatik başlatma» is the
+plain term, and Settings search suggests matches as one types, before the word's ending
+matters. The search words take the accusative unquoted («otomatik başlatmayı arayın»,
+«Uygulama başlatmayı arayın»), which is natural Turkish, and the suffix sits on fixed text,
+not a placeholder. Huawei's own page puts «öğesini» after the label instead; either reads well.
+«Ayarlarda» has no apostrophe, like the file's «Ayarlardan» and «Ayarlara».
+
+**The first pass's keys, final read.** Round 1's fixes landed. `kill_notice_restored` is now
+«Simge şu anda yeniden ekranda.»; read again after all three bodies, it names what the code
+checks, an icon on screen. `settings_support_keep_running_subtitle` is now «PlayTranslate
+kapatılmasın» (157 dp, whole at 216). `keep_running_xiaomi_lock_line`'s «Son uygulamalar
+ekranını açın» landed and survives the rewrite. The `keep_running_battery_line` and OPPO/vivo
+fixes landed, then the rewrite replaced those lines; the Huawei close-after-lock fix landed,
+and the key is now gone along with the English. The other first-pass keys pass again, as
+round 1 found them:
+- the kill notice set: the title's comma, the three attributions, «Seçenekleri gör», and
+  «Şimdi değil», which matches `btn_not_now`;
+- the Support rows and the email flow: the subtitle's tap clause is 228 dp of 249, and the
+  email toast fits 2 lines at 296 and 320 dp with the address whole on line 2;
+- the toolbar title, 237 dp of about 272 and byte-identical to the Support row title;
+- the intro, the empty label and the accessibility card;
+- the tile title, identical to `quick_tile_add_row_title`, and the ROM card titles.
+
+**Suffix coverage, all 44 values.** No case or possessive suffix touches a span. The app-name
+spans take «uygulaması / uygulamasının / uygulamasını», «için» or «kartını», or stand as bare
+nominatives («PlayTranslate açıkken», «PlayTranslate kapatılmasın»). The version follows «v»,
+and the address follows a colon. «Android,», «Xiaomi,», «Samsung,», «telefon,» and «sistem,»
+are bare subjects with the comma (two «Android hizmeti» sites excepted: Findings).
+
+**Casing, quotes, register.** «İkincil» is spelled right and nothing is pre-uppercased; a scan
+of all 44 values found no capital I standing for İ. Every quotation mark is “ or ”, and they
+pair up (the addendum, the three Xiaomi strings, Huawei, Samsung twice). Every line and the
+toast use siz, and card titles are bare imperatives like their neighbours.
+
+### Verdict (round 1)
+
+3 💬 (two fixes in three keys); no ❌, no ⚠️, no 🛑. To apply: the comma «Android, hizmeti» in
+`a11y_stuck_message` and `keep_running_accessibility_restart_line` (keep the two in step), and
+«pil ayarına (…) dokunun» in `keep_running_xiaomi_battery_line`. The other 41 of the 44 keys
+pass as they are.
+
+### Follow-up round 2 (2026-10-07), final review after applying round 1
+
+Mechanical layer re-run: `python3 TOOLS/mech_check.py F2/keys2.txt tr` reports `checked 1
+locales x 15 keys; problems: 0`, and the first pass's list (`…/scratchpad/keys.txt`) reports
+`checked 1 locales x 39 keys; problems: 0` (every key present; `<xliff:g>` spans and
+placeholders byte-identical to EN, both `app_name` and `app_name2` in the three two-span lines;
+`\n` counts match; no unescaped `'`/`"`, no stray tags, no double spaces).
+`python3 scripts/l10n_diff.py --locale app/src/main/res/values-tr/strings.xml` reports
+`values-tr missing=0 orphan=0 modified=0`, "in sync". The file parses (1047 entries, no
+duplicate `name=`), and its uncommitted diff touches only this sync's keys and banners.
+**No 🛑 build-breaking issues.**
+
+**Round-1 fixes:**
+- `a11y_stuck_message`: applied, byte-identical to the suggestion («ancak Android, hizmeti
+  durdurdu»). Nothing else in the string moved, and on a Xiaomi phone the alert's two
+  paragraphs now agree with the appended «sistem, hizmeti».
+- `keep_running_accessibility_restart_line`: applied, byte-identical («Android, hizmeti
+  durdurdu»), in step with the alert it repeats under `a11y_stuck_title`.
+- `keep_running_xiaomi_battery_line`: applied, byte-identical («pil ayarına (…) dokunun»). The
+  dative reads cleanly across the parenthesis, «dokunun» can only mean opening the entry, and
+  the line still ends on its title's «“Kısıtlama yok”».
+
+#### Findings (round 2)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| keep_running_vivo_autostart_line | 💬 | Ayarlarda otomatik başlatmayı arayın ve <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> için izin verin, ardından Pil ayarlarında arka planda yüksek güç kullanımına da izin verin. Bunlara izin verilmezse telefon, <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasını arka planda durdurabilir veya yeniden başlamasını engelleyebilir. | Ayarlarda otomatik başlatmayı arayın ve <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> için izin verin, ardından Pil ayarlarında arka planda yüksek güç tüketimine de izin verin. Bunlara izin verilmezse telefon, <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasını arka planda durdurabilir veya yeniden başlamasını engelleyebilir. | vivo's own Turkish user guide (a PDF on vivo's file server, de-gdpr-exstatic-vivofs.vivo.com/sFhAQhTYYDsNOJz1/1704157871051/acd3d4aeda86cad1dd02fb26818b40f1.pdf, made 2023-12-28, no model or OS version named) says, in its Pil section: «Arka plan güç tüketimi yönetimi'nde … belirli uygulamaların arka planda çalışmaya devam etmesine izin verin veya vermeyin». vivo's noun is «güç tüketimi»; «güç kullanımı» is ours. With vivo's noun, the line uses the words the Pil page shows, so the entry is easy to spot. Mind the harmony: «tüketimine de». Round 1 found no Turkish vivo source, so this is the first. It confirms «Pil» but has no autostart entry, so «otomatik başlatma» stays unverified (known issue 2). |
+| keep_running_vivo_autostart_title | 💬 | Otomatik başlatmaya ve arka planda güç kullanımına izin ver | Otomatik başlatmaya ve arka planda güç tüketimine izin ver | Same fix, applied together with the line so the title's noun still recurs in it. |
+
+#### Verdict (round 2)
+
+2 💬 (one optional fix in two keys); no ❌, no ⚠️, no 🛑. All three round-1 fixes landed.
+Optional: vivo's «güç tüketimi» in `keep_running_vivo_autostart_line` and
+`keep_running_vivo_autostart_title`. The other 14 of the 15 keys pass as they are. I read them
+as sets:
+- the addendum after its six hosts (the OverlayAlert body sits in a ScrollView, so its length
+  is safe);
+- the stuck alert with and without the Xiaomi paragraph;
+- every card's title and line;
+- the toast, which still wraps to 2 lines at 296 dp (277 + 261) and 320 dp (318 + 221).
+
+No suffix touches a span, every quote is “ ”, nothing is pre-uppercased, and none of the 15
+keys has a -ken clause. The AOSP label «Kısıtlanmış ayarlara izin verme» stands per the
+AOSP-wins rule: quoted and followed by «seçeneğini seçin», it reads as the item's name.

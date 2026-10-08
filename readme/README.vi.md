@@ -58,14 +58,12 @@ Cài tệp APK xong, hãy bật lại Play Protect để tính năng này tiếp
 
 ### Không bật được Hỗ trợ tiếp cận?
 
-Một vài tính năng nâng cao (như giữ phím tắt để xem trước) sẽ yêu cầu bạn bật quyền Hỗ trợ tiếp cận. Theo mặc định, một số nhà sản xuất thiết bị Android không cho ứng dụng cài từ bên ngoài Cửa hàng Play nhận quyền Hỗ trợ tiếp cận: nút bật/tắt trong Cài đặt có thể bị mờ đi hoặc hiện thông báo “Cài đặt bị hạn chế”. Để bỏ chặn:
+Một vài tính năng nâng cao (như giữ phím tắt để xem trước) sẽ yêu cầu bạn bật quyền Hỗ trợ tiếp cận. Từ Android 13 trở lên, Android làm mờ nút chuyển Hỗ trợ tiếp cận của mọi ứng dụng được cài từ tệp APK tải xuống, và khi bạn nhấn vào nút này, thông báo “Chế độ cài đặt bị hạn chế” sẽ hiện ra. Để bỏ chặn:
 
-1. Mở **Cài đặt → Ứng dụng → PlayTranslate**
-2. Nhấn vào menu **⋮** (góc trên bên phải)
-3. Nhấn vào **Cho phép cài đặt bị hạn chế**
-4. Xác thực khi được yêu cầu
-
-Giờ bạn đã có thể bật Hỗ trợ tiếp cận cho PlayTranslate.
+1. Trong **Cài đặt → Hỗ trợ tiếp cận**, chọn PlayTranslate rồi nhấn vào nút chuyển bị mờ một lần. Đóng thông báo “Chế độ cài đặt bị hạn chế”.
+2. Mở trang Thông tin ứng dụng: **Cài đặt → Ứng dụng → PlayTranslate**.
+3. Nhấn vào menu **⋮** rồi chọn **Cho phép các chế độ cài đặt bị hạn chế**. Mục này chỉ xuất hiện sau bước 1.
+4. Xác thực nếu được yêu cầu, sau đó quay lại Hỗ trợ tiếp cận và bật nút chuyển.
 
 ## Trợ giúp và ủng hộ
 

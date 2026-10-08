@@ -848,3 +848,337 @@ Round-1 fixes present: «Переключаться между переводо�
 No new findings.
 
 **Verdict (round 2):** **PASS.**
+
+## Delta review 2026-10-07 (41 keys + 2 orphans: bug-report email, Support rows, kill notice, Fix disappearing icon page)
+
+Mechanical layer verified: `python3 PKT/../tools/mech_check.py PKT/../keys.txt ru` reports
+"checked 1 locales x 41 keys; problems: 0" (every key present; `<xliff:g>` spans and `%1$s`
+byte-identical to EN; `\n`, `<b>`, `\{ \}`, `&amp;/&lt;/&gt;` counts match; no unescaped
+`'`/`"`, stray tag, `--`, double space or edge whitespace). `python3 scripts/l10n_diff.py
+--locale app/src/main/res/values-ru/strings.xml` reports `missing=0 orphan=0 modified=0`,
+"in sync". Also confirmed by hand: each of the 41 names occurs exactly once, the orphans
+`settings_debug_export_logs_title` / `_subtitle` are gone while `_subject` stays, and the
+file parses as XML. No `<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- `MainActivity.maybeShowKillNotice`: the body is one of the three `kill_notice_body_*`, and
+  only when a floating icon is actually on screen (`hasAnyFloatingIcon`) does it get
+  `' '` + `kill_notice_restored`, so the restored sentence has to bind after each body.
+- `KeepRunningActivity` / `KeepRunningItems`: the Xiaomi battery card reuses
+  `keep_running_battery_line` and opens `com.miui.powerkeeper…HiddenAppsConfigActivity` with
+  the package; the generic battery card opens Android's `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
+  dialog and disappears once exempt; the accessibility card shows only while the mode is off (or
+  stuck: `a11y_stuck_title` + the restart line); ROM cards always show on their ROM, so
+  `keep_running_empty` appears only on other ROMs. The page's Report a bug row binds the same two
+  strings as Settings.
+- `LogExporter`: the no-email toast is `LENGTH_LONG` with `SUPPORT_EMAIL`, then `shareFiles`
+  opens the chooser `share_chooser_share_logs` («Поделиться журналами») with the report's subject.
+
+### Findings (delta, round 1)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| kill_notice_restored | ⚠️ | `Сейчас он снова включён.` | `Сейчас значок снова на экране.` | Follows all three bodies, and «он» binds differently after each: after `_body_memory` the text's last «он» was the phone («и он закрыл»); after `_body_other` the sentence just before is about «телефоны» and «заряда», so the reader reaches back past them, and «телефон … снова включён» is the natural collocation; after `_body_stopped` it lands on «значок», for which «включён» is an odd predicate. Naming the icon answers «значок и исчез» in all three and is exactly what the code checks. If the app must stay the subject: «Сейчас PlayTranslate снова включён.» |
+| email_no_app_fallback | ⚠️ | `Нет почтового приложения. Отправьте файлы на <xliff:g id="email" example="support@playtranslate.com">%1$s</xliff:g> иначе.` | `Нет почтового приложения. Отправьте файлы на <xliff:g id="email" example="support@playtranslate.com">%1$s</xliff:g> сами.` | Asked. Unambiguous (sentence-final «иначе» can only mean "differently", and the first sentence supplies the contrast), but it dangles after the address and reads stilted; a native writes «другим способом», which does not fit (measured: «способом.» falls to line 3). «сами» is natural, says what the plain share sheet needs (the user addresses it), and wraps «Нет почтового приложения. Отправьте» / «файлы на support@playtranslate.com сами.»: line 2 is 280 dp at 296 (now 286, inside the ±10 dp noise); 2 lines at 320 too. |
+| keep_running_battery_title | 💬 | `Установить для батареи режим «Без ограничений»` | `Установить режим расхода заряда «Без ограничений»` | «Без ограничений» matches AOSP. «для батареи режим» reads like a phone-wide battery mode; the setting is the app's battery usage, which AOSP ru calls «Расход заряда батареи приложениями» / «Расход заряда приложением», the page where «Без ограничений» sits. Optional: the card opens Android's own dialog and hides once allowed. |
+| keep_running_accessibility_line | 💬 | `<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> работает с приоритетом службы специальных возможностей, которую очистка памяти почти не затрагивает.` | `В этом режиме <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> работает с приоритетом службы специальных возможностей, которую очистка памяти почти не затрагивает.` | The card shows only while the mode is off, so the bare present states what is not yet true; the English's elided subject is the mode ("Runs PlayTranslate…"), which «В этом режиме» restores. |
+| keep_running_samsung_never_sleeping_line | 💬 | `Находится в разделе «Обслуживание устройства» → «Батарея» → «Ограничения в фоновом режиме». Приложения в режиме сна закрываются, когда телефону нужна память.` | `Список находится в разделе «Обслуживание устройства» → «Батарея» → «Ограничения в фоновом режиме». Приложения в режиме сна закрываются, когда телефону нужна память.` | «Находится» has no subject (it borrows the list from the title); the twin Huawei line has one («Этот параметр находится…»). All four labels match Samsung Russia's own page, read today. |
+
+### Clean areas (delta) — checked, no findings
+
+**Kill notice, read once per body.** The title «Android закрыл PlayTranslate» treats Android as
+masculine, as `a11y_stuck_message` does («Android остановил службу»). PlayTranslate is masculine
+everywhere, as in `crash_dialog_title` («ранее завершился сбоем»): «пока тот был включён»
+(«тот» rightly picks the app, since «он» already names the phone), «был остановлен», «его сами»,
+«не закрывался», «им пользуетесь», «даёт ему», «из него выходите». «Поэтому плавающий значок
+и исчез» is idiomatic, and «ради экономии заряда» is the file's own phrase. The buttons are
+«Что можно сделать», a natural invitation that leads to a page listing exactly that, and
+«Не сейчас», which matches `btn_not_now`. The only problem is the appended sentence (row above).
+
+**Support card, in order.** The rows read «Проверить обновления», «Присоединиться к Discord»,
+«Если значок исчезает», «Сообщить об ошибке», «Поддержать PlayTranslate». The symptom-first
+«Если значок исчезает» breaks the run of infinitives, but it reads as a help-topic title, which
+is what the English comment asks for. It is byte-identical to the toolbar title (226 dp of about
+272). «плавающий» would not fit the toolbar, and the subtitle «Чтобы PlayTranslate не
+закрывался» supplies the context (217 dp: whole at 393 dp, at the edge at 360 dp). Report a
+bug: the tap sentence «Письмо с журналами в поддержку.» is 216 dp, so it fits 249 and sits at
+the 360 dp limit. The hold half clips at every hub width in Russian (424 dp in all, against 267
+at 411 dp). That is this locale's addition to known issue 2: no natural Russian pair fits one
+line, and the page shows the string whole. «Удерживайте», «журналы» and «поделиться» reuse the
+file's hold verb and logs terms.
+
+**Fix disappearing icon page, on every ROM.** The intro is natural. In the empty label,
+«сообщите об ошибке» matches the row's «Сообщить об ошибке», and «Если проблема не исчезла» is
+idiomatic. The battery line shared by the generic and Xiaomi cards reads correctly after both
+titles. The OPPO and vivo lines are byte-identical. The tile title equals
+`quick_tile_add_row_title`. The restart line reuses `a11y_stuck_message`'s wording, and
+«очистка памяти» is used the same way in both places. «свайп» appears only here (the drag hint
+says «Проведите пальцем»), but it is the ordinary colloquial word in a description and is kept.
+vivo's «в фоне» is the file's established form (the onboarding strings).
+
+**OEM labels (three of the four sources were read today).** Samsung: samsung.com/ru confirms all
+four labels, «Обслуживание устройства» → «Батарея» → «Ограничения в фоновом режиме» → «Не уходят
+в сон автоматически», as well as «Приложения в режиме сна». Huawei: the five official labels
+match. ru-ru00428704 confirms «Другие настройки батареи» exactly (the research had only guessed
+«Дополнительные…»). On known issue 1, that page has no close-after-lock option either; in its
+place is «Подключение к сети, когда устройство в спящем режиме», which the developer can use if
+the card is reworked. Lock: «Закрепить» matches Xiaomi's own Russian «Закрепить приложения»
+(AdGuard RU, MIUI 12.0.8 route) and Huawei RU's «Закрепите фоновое приложение». The OPPO and
+vivo titles describe the settings rather than quote labels, which is right because only guesses
+exist for them.
+
+**Xiaomi battery label (asked): keep `keep_running_xiaomi_battery_title` as it is**, byte-consistent
+with the reviewed `a11y_stuck_message_xiaomi`. Today I read AdGuard RU directly (a secondary
+source; mi.com refused the fetch again, and Kaspersky's ru page redirects to English). It prints
+«Без ограничений» for MIUI 13+ and HyperOS, which is what current Xiaomi phones run, and «Нет
+ограничений» for MIUI 12 and earlier, which is close enough to find. «энергосбережение» is not
+an on-screen label on any version: HyperOS shows «Экономия заряда батареи», MIUI 12.0.8 «Контроль
+активности», and MIUI 10–12 «Контроль фоновой активности»; the English entry was renamed again
+in HyperOS 2/3. It should not be a label either. As a lowercase umbrella it covers all of them,
+and the card opens the per-app page itself, so the user lands on the option list. The existing
+string has the same wording and is the weaker of the two only because its user navigates by
+hand. Even there, «энергосбережение» points at HyperOS's «Экономия заряда батареи», and less
+well at MIUI 12's «Контроль активности». No finding. Name the entry in both strings only after
+a Russian-language Xiaomi phone confirms it.
+
+**Email flow.** The chooser titles «Отправить отчёт о сбое» and «Отправить отчёт об ошибке»
+agree with `crash_dialog_message`. The subject «Отчёт об ошибке PlayTranslate – v3.3.0» mirrors
+`crash_email_subject`, en dash kept. The body is natural, and «прикреплены» matches the crash
+body's «прикреплённый». The address goes in undeclined after «на», and the toast leads into
+«Поделиться журналами».
+
+**Register and typography.** Formal вы throughout. « » quotes, never nested. ё wherever the file
+uses it (отчёт, включён, даёт, закреплённые, её). → paths as in
+`overlay_icon_a11y_required_message`. Known issue 3: «телефон» appears only in these strings
+(the rest of the file says «устройство»), as already known.
+
+### Verdict (round 1)
+
+2 ⚠️ + 3 💬 to apply: `kill_notice_restored`, `email_no_app_fallback` (⚠️);
+`keep_running_battery_title`, `keep_running_accessibility_line`,
+`keep_running_samsung_never_sleeping_line` (💬). Every "current" cell was checked byte for byte
+against the file, and every suggestion passes the mechanical rules. No 🛑.
+
+### Round 2 (2026-10-07), final review after applying round 1
+
+Mechanical layer re-run: `python3 PKT/../tools/mech_check.py PKT/../keys.txt ru` reports
+"checked 1 locales x 41 keys; problems: 0", and `python3 scripts/l10n_diff.py --locale
+app/src/main/res/values-ru/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync".
+The file parses as XML, each of the 41 names occurs exactly once, and the orphans
+`settings_debug_export_logs_title` / `_subtitle` are still gone while `_subject` stays.
+**No 🛑 build-breaking issues.**
+
+**Round-1 fixes:** all five are in the file exactly as suggested (compared by script against the
+round-1 table's "suggested" cells).
+- `kill_notice_restored` ⚠️: applied («Сейчас значок снова на экране.»). Read after each body
+  as the code joins them (one space): it follows «Поэтому плавающий значок и исчез.» in `_memory`
+  and `_stopped` and «…ради экономии заряда.» in `_other`, and it names what the code checks
+  before appending it (`hasAnyFloatingIcon`).
+- `email_no_app_fallback` ⚠️: applied (ends «…сами.»). Re-measured with the packet's tools:
+  2 lines at 296 dp (line 2, «файлы на support@playtranslate.com сами.», is 280 dp) and 2 at
+  320 dp; «сами» is the formal-вы form, as in `kill_notice_body_stopped`'s «его сами».
+- `keep_running_battery_title` 💬: applied. AOSP 16 ru heads the per-app choice «Управление
+  расходом заряда», with the option «Без ограничений», so the title names that setting. The
+  generic card never shows on Xiaomi (`KeepRunningItems.ids`), so it never meets the Xiaomi
+  card's wording.
+- `keep_running_accessibility_line` 💬: applied. «В этом режиме» binds to the title right above
+  it; the stuck state swaps in the restart line, so this line never follows `a11y_stuck_title`.
+- `keep_running_samsung_never_sleeping_line` 💬: applied. «Список» picks up the title's list.
+  Samsung Russia's page, read again today, prints the path and the list label exactly as quoted
+  (step 04: «Нажмите «Не уходят в сон автоматически».»).
+
+The identity rules still hold: `keep_running_title` = `settings_support_keep_running_title`
+(«Если значок исчезает», 226 dp of about 272 in the toolbar), the OPPO and vivo lines are
+byte-identical, `keep_running_tile_title` = `quick_tile_add_row_title`, and
+`kill_notice_not_now` = `btn_not_now`. Hub summaries re-measured as round 1 reported:
+`settings_support_keep_running_subtitle` 217 dp (whole from 393 dp, at the edge at 360 dp);
+`settings_support_report_bug_subtitle` 424 dp, its tap sentence 216 dp.
+
+#### Findings (round 2)
+
+No new findings.
+
+Fresh read of all 41, by surface, with PlayTranslate, support@playtranslate.com and 3.3.0 in
+the spans. Kill notice: PlayTranslate stays masculine («тот был включён», «был остановлен»,
+«его сами»), and so does Android («Android закрыл», as in `a11y_stuck_message`). «тот» picks the
+app, not the phone, and «остановлен» / «останавливали» match AOSP ru's Force stop button
+«Остановить». Support card: the five rows read as one help list, and the tap sentence stays
+visible at 249 dp. Page: I read every ROM's card set (Xiaomi, Huawei, OPPO, vivo, Samsung, other)
+and the stuck accessibility state. Each line binds to its own title, the back-to-back «Иначе»
+mirrors the English "Without this", and the empty label points at the row titled «Сообщить об
+ошибке». Email flow: the chooser titles agree with `crash_dialog_message`, the subject mirrors
+`crash_email_subject` with its en dash, and «прикреплены» agrees with its compound subject.
+Terms match the file: журналы, плавающий значок, специальные возможности, очистка памяти, and
+«Быстрые настройки» (also the framework's own label). « » quotes are never nested, and ё appears
+wherever the file uses it. I agree with round 1 on `keep_running_xiaomi_battery_title`: the card
+opens Xiaomi's per-app page itself (`HiddenAppsConfigActivity` with the package), where the
+option «Без ограничений» matches HyperOS, and the string stays byte-consistent with
+`a11y_stuck_message_xiaomi`.
+
+#### Verdict (round 2)
+**PASS.** All five round-1 fixes landed as suggested, nothing around them broke, and there are
+no new findings. No 🛑.
+
+## Follow-up review 2026-10-07, round 1 (15 keys after the Fix disappearing icon rewrite)
+
+Mechanical layer: `python3 TOOLS/mech_check.py F2/keys2.txt ru` reports "checked 1 locales x 15
+keys; problems: 0" (every key present; `<xliff:g>` spans, including both `app_name` /
+`app_name2` spans in the three two-span lines, byte-identical to EN; `\n` count matches in
+`a11y_stuck_message`; no unescaped `'`/`"`, stray tag, `--`, double space or edge whitespace).
+`python3 scripts/l10n_diff.py --locale app/src/main/res/values-ru/strings.xml` reports
+`missing=0 orphan=0 modified=0`, "in sync". Also confirmed by hand: the file parses as XML, each
+of the 15 names occurs exactly once, and the four removed keys (`restricted_settings_title`,
+`restricted_settings_message`, `keep_running_huawei_close_after_lock_title` / `_line`) are gone.
+No `<plurals>` in this delta. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- `AccessibilityHelp.withRestrictedSettingsStep` (API 33+ only) appends the addendum after `\n\n`
+  to `accessibility_dialog_message` (MainActivity) and `overlay_icon_a11y_required_message`
+  (SettingsRenderer), both system AlertDialogs ending in the → path; to the three
+  `a11y_required_*_message` through `AccessibilityAlert` → OverlayAlert, whose message sits in a
+  ScrollView inside the 280 dp card, so length cannot clip; and to `keep_running_accessibility_line`
+  while the service is off. The stuck state swaps in the restart line with no addendum, and
+  `showA11yStuckAlert` adds `a11y_stuck_message_xiaomi` after `\n\n` only when
+  `Build.MANUFACTURER` is Xiaomi.
+- `KeepRunningActivity.openFirst`: when no candidate screen launches, the toast (`LENGTH_LONG`),
+  then App info; the Xiaomi lock card is instruction-only and never toasts. The Xiaomi battery
+  card launches `com.miui.powerkeeper…HiddenAppsConfigActivity` with the package (the per-app
+  page itself), so the entry names in `keep_running_xiaomi_battery_line` are read only when that
+  launch fails.
+- `KeepRunningItems.ids`: the generic battery card (AOSP's `high_power_prompt_title` dialog,
+  hidden once exempt) never shows on Xiaomi, so the two battery titles never meet; Samsung opens
+  its never-sleeping list through the documented intent.
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| keep_running_xiaomi_autostart_line | 💬 | `В настройках найдите автозапуск через поиск и разрешите его для <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>. Без автозапуска Xiaomi может не давать <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> снова запуститься после закрытия.` | `В настройках найдите автозапуск через поиск и разрешите его для <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>. Иначе Xiaomi может не давать <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> снова запуститься после закрытия.` | «Без автозапуска Xiaomi …»: an indeclinable brand right after a noun reads as that noun's attribute (as in «смартфоны Xiaomi»), so the first parse is "without Xiaomi's autostart", and «может не давать» then has no subject until the reader backtracks. The meaning survives either parse, hence a nit. «Иначе Xiaomi» is unambiguous, mirrors "Without it", and is how the reviewed first-pass line began («Иначе Xiaomi останавливает…»). Not «Без него» (автозапуск or PlayTranslate, both masculine) and not «Без этого Xiaomi» ("without this Xiaomi"). The OPPO and vivo lines' «Без этого телефон» are fine, since «телефон» declines. |
+| keep_running_xiaomi_battery_line | 💬 | `В системных настройках приложения <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> откройте пункт «Экономия заряда батареи», «Батарея» или «Питание» (в зависимости от версии) и выберите «Без ограничений».` | `В системных настройках приложения <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> откройте пункт, отвечающий за расход заряда (в зависимости от версии он называется «Экономия заряда батареи», «Батарея» или «Питание»), и выберите «Без ограничений».` | The English instruction is "open the battery entry", with the three names as a parenthetical; the Russian keeps only the names. Two of them («Батарея», «Питание») are unverified guesses (three web searches today found no Russian HyperOS 2/3 source, only DriveQuant's English guides), and the Russian MIUI-era name «Контроль активности» (AdGuard RU, MIUI 12.0.8) is none of the three, so the descriptor is what still guides a user whose phone shows another name. «отвечающий за расход заряда» echoes the title's «режим расхода заряда»; the labels stay nominative after «называется». A nit because the card opens Xiaomi's per-app page itself (`HiddenAppsConfigActivity`), so the line is read only when that launch fails. |
+
+### Clean areas — checked, no findings
+
+**The addendum, after each of its hosts.** Read with PlayTranslate in the span after all six. In
+the two system dialogs it follows «→ PlayTranslate → Включить.», so «переключатель» is the switch
+just reached; after the three OverlayAlert messages and the accessibility card line it has no
+antecedent, exactly as "the switch" has none in English. «Начиная с Android 13» is the natural
+form of "On Android 13 and later", «неактивен» the usual word for a greyed-out control, and «в
+меню ⋮ выберите» folds "tap the ⋮ menu and choose" into one step without losing either. Both
+labels match AOSP 16 QPR2 ru byte for byte (`application_info_label` «О приложении»,
+`app_restricted_settings_lockscreen_title` «Разрешить доступ к настройкам»), so the old reviewed
+«Разрешить ограниченные настройки» rightly gives way; «О приложении» stays nominative under
+«страницу».
+
+**Stuck alert, as one dialog.** Diffed against the reviewed text in `PKT1/packet-ru.md`:
+`a11y_stuck_message` lost exactly the cause sentence and nothing else, and
+`a11y_stuck_message_xiaomi` changed only where the English moved («включите» → «разрешите» for
+allow; «для энергосбережения значение» → «режим расхода заряда» for battery use, the Xiaomi card
+title's phrase; «будет» → «может» for may). Title, body and Xiaomi paragraph read as one alert:
+«также» ties the Xiaomi paragraph to the re-toggle instruction above it, and «Без этого» covers
+both of its settings.
+
+**Every card, title then line.** Battery: the title is AOSP ru's own dialog title («Разрешить
+приложению всегда работать в фоновом режиме?») with PlayTranslate in the undeclined dative slot,
+as in `a11y_required_displays_message` («позволяет PlayTranslate…»), so the card and the dialog
+it opens say the same thing; «С этим разрешением» picks up the title's verb, and «сам» / «его»
+agree with masculine PlayTranslate. Tile: «Плитка» supplies the subject the English elides and
+points back at «Добавить плитку в «Быстрые настройки»»; the rest is the reviewed «снова
+включает … с любого экрана». Xiaomi lock: the first sentence is byte-identical to the reviewed
+one, and the new second one is natural. Huawei: all five labels are Huawei Russia's official
+ones (recorded in the 2026-10-07 section); the new head noun «переключатели» keeps feminine
+«Работа в фоновом режиме» nominative (the reviewed line quoted it bare after «Включите»), and
+«Запуск приложений» / «Автоматическое управление» need none, their accusative being the
+nominative. OPPO and vivo: the closing sentences are byte-identical, as in English, and «не дать
+ему» agrees; vivo quotes «Автозапуск» where the English capitalizes "Autostart" as a label, while
+OPPO and Xiaomi leave «автозапуск» lowercase and unquoted where the English gives a search word.
+Samsung: «Батарея» → «Ограничения в фоновом режиме» → «Не уходят в сон автоматически» are
+Samsung Russia's labels (recorded earlier), «Обслуживание устройства» goes as the English
+dropped Device care, «список» keeps the list label nominative, and «режим сна» matches Samsung's
+«Приложения в режиме сна».
+
+**Toast, then App info.** Measured with the packet's Wrap tool (14 sp Roboto): 548 dp in all, 2
+lines at 296 dp (271 + 274 dp) and 2 at 320 dp (303 + 241 dp), so it meets the stricter target.
+«Найдите этот параметр через поиск в настройках» uses the card lines' «через поиск» frame and
+drops "instead" as Russian would, and the page that opens next is AOSP's «О приложении», the one
+the addendum names. «параметр» is new to the live file but not to this page: the deleted, reviewed
+Huawei line said «Этот параметр находится…»; AOSP ru prefers «этот параметр» (14 strings) to «эту
+настройку» (3); and it avoids «настройку … в настройках».
+
+**Search words and OEM labels.** Huawei's «Запуск приложений» is official. Xiaomi's «автозапуск»
+finds both «Автозапуск» (MIUI) and «Автозапуск в фоновом режиме» (HyperOS, AdGuard RU). OPPO's
+and vivo's «автозапуск» / «Автозапуск» stay unverified (known issue 2). For the Xiaomi battery
+entry, «Экономия заряда батареи» rests on AdGuard RU (secondary, a translation of English steps),
+and «Батарея» / «Питание» are unverified: three searches today found no Russian HyperOS 2/3
+source, only DriveQuant's English guides (second row above). «Без ограничений» matches AdGuard
+RU for HyperOS and AOSP's own option.
+
+**Case, register, typography.** PlayTranslate is masculine throughout («сам», «его», «ему») and
+undeclined after «для», «разрешить», «давать», «карточку», «приложения». Every quoted label is
+nominative, under a head noun («страницу», «режим», «пункт», «переключатели», «В разделе», «в
+список») or where the accusative equals it. Formal imperatives only. Checked by script: « »
+never nested, no em or en dash in the 15 values, and ё wherever the file uses it («её»), with no
+missing one. «в фоновом режиме» appears only in labels and the AOSP-mirroring title, «в фоне» in
+descriptions, as the first pass set.
+
+### Verdict (round 1)
+
+0 ❌, 0 ⚠️, 2 💬: `keep_running_xiaomi_autostart_line` and `keep_running_xiaomi_battery_line`,
+both optional. Every "current" cell is the file's value byte for byte (extracted by script), and
+both suggestions pass the mechanical rules (spans byte-identical to EN, no unescaped quotes, no
+double spaces). No 🛑. **PASS**; the two nits are the developer's call.
+
+### Follow-up round 2 (2026-10-07), final review after applying round 1
+
+Mechanical layer re-run: `python3 TOOLS/mech_check.py F2/keys2.txt ru` reports "checked 1 locales x 15
+keys; problems: 0", and `python3 scripts/l10n_diff.py --locale app/src/main/res/values-ru/strings.xml`
+reports `missing=0 orphan=0 modified=0`, "in sync". The file parses as XML, each of the 15 names occurs
+exactly once, the four removed keys are still gone, and the English of all 15 is unchanged since the
+packet (compared by script with `english-delta-f2.md`). **No 🛑 build-breaking issues.**
+
+**Round-1 fixes:** both are in the file exactly as suggested (compared by script with the round-1 table's
+"suggested" cells).
+- `keep_running_xiaomi_autostart_line` 💬: applied. «Иначе Xiaomi может не давать PlayTranslate снова
+  запуститься после закрытия» parses on the first read: the brand is the subject, and present-tense
+  «может» needs no gender for it. Both spans (`app_name`, `app_name2`) are intact, and the card reads
+  title «Разрешить автозапуск», then «…разрешите его для PlayTranslate. Иначе…».
+- `keep_running_xiaomi_battery_line` 💬: applied. The quotes are not nested. There are four separate « »
+  pairs, three inside the parenthesis and «Без ограничений» after it. The comma that closes «отвечающий за
+  расход заряда» sits correctly after the bracket («…или «Питание»), и выберите…»). «он» resolves to
+  «пункт», since only a menu item can «называться» a label, and the labels stay nominative after
+  «называется». «расход заряда» echoes the card title («Установить режим расхода заряда «Без
+  ограничений»») and the stuck alert's Xiaomi paragraph.
+
+#### Findings (round 2)
+
+No new findings.
+
+Fresh read of the 15 as sets, with PlayTranslate in every span.
+- **Addendum.** Read after each host. In the two system dialogs it follows «→ PlayTranslate → Включить.»,
+  so «переключатель» is that switch. After the three OverlayAlert messages and the accessibility card line
+  it has no antecedent, as in English.
+- **Labels.** Re-checked against the local AOSP 16 QPR2 Settings ru file: «О приложении», «Разрешить
+  доступ к настройкам», «Разрешить приложению всегда работать в фоновом режиме?» (the battery title's
+  model), «Без ограничений» and «Поиск» are all byte-identical. Neither the old «ограниченные настройки»
+  nor «энергосбережение» survives anywhere in the file.
+- **Stuck alert.** Title, body and Xiaomi paragraph read as one dialog.
+- **Cards.** Read title then line on every ROM (Xiaomi has no generic battery card) and in the stuck
+  accessibility state. «нажмите» and «удерживайте» are the file's established tap and hold verbs.
+- **Toast.** Re-measured with the packet's Wrap tool: 548 dp in all, 2 lines at 296 dp and at 320 dp
+  (303 + 241 dp).
+- **Noun case.** PlayTranslate is masculine and undeclined in every slot: after «для»; dative after
+  «Разрешить» and «давать»; accusative after «включает», «остановить» and «добавьте»; in apposition after
+  «карточку» and «приложения». «сам», «его» and «ему» agree with it. Every quoted label is nominative.
+- **Typography (by script).** « » are never nested, there are no em or en dashes, and ё is used where
+  needed («её»; «включены» rightly keeps е).
+
+Xiaomi's HyperOS 2/3 entry names stay unverified (known issue 2, not a finding). Two Russian-language
+web searches today returned only restatements of DriveQuant's English guides and no Russian Xiaomi source,
+so «Батарея» and «Питание» remain educated guesses. The round-1 descriptor «пункт, отвечающий за расход
+заряда» is what keeps the line usable on a phone that shows another name. The card also opens Xiaomi's
+per-app page itself (`HiddenAppsConfigActivity`), so the line is read only when that launch fails. Huawei's
+«Запуск приложений» and Samsung's labels are official (earlier 2026-10-07 sections). Xiaomi's
+«автозапуск» matches MIUI's «Автозапуск» and HyperOS's «Автозапуск в фоновом режиме» (AdGuard RU).
+
+#### Verdict (round 2)
+**PASS.** Both round-1 fixes landed exactly as suggested, nothing around them broke, and there are no new
+findings (0 ❌, 0 ⚠️, 0 💬). No 🛑.

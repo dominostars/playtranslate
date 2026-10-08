@@ -684,3 +684,294 @@ Round-1 fix present: «…بوتيرة أعلى…». Mechanical layer re-run af
 | translation_error_discard_card_message | 💬 | …وسيتعيّن عليك إنشاؤها من جديد من التقاط جديد. | …وسيتعيّن عليك إنشاؤها مرة أخرى من التقاط جديد. | جديد twice (من جديد … جديد). New in round 2; applied at the user's request. |
 
 **Verdict (round 2):** **PASS.** The one 💬 was applied at the user's request; mechanical layer, analyzer and `:app:processDebugResources` re-run clean after it.
+
+## Delta review 2026-10-07 (41 keys + 2 orphans: bug-report email, Support rows, kill notice, Fix disappearing icon page)
+
+Mechanical layer verified: `mech_check.py keys.txt ar` reports `checked 1 locales x 41 keys;
+problems: 0` (all 41 present; every `<xliff:g>` span byte-identical to EN; `%1$s` parity;
+`\n` count 4 = 4 in the email body; no `<b>`, `\{ \}` or entities in this delta; no unescaped
+`'`/`"`, stray tags, double spaces or edge spaces). `l10n_diff.py --locale
+app/src/main/res/values-ar/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync";
+re-run with `--english-base` (the English as of the last sync) it is still `modified=0`, so
+`settings_debug_export_logs_subject` changed only its comment. The two orphans
+`settings_debug_export_logs_title` / `_subtitle` are gone (0 hits); the file parses as XML and
+has no duplicate `name=`. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- `MainActivity.maybeShowKillNotice` builds the body as one of the three `kill_notice_body_*`,
+  plus `' '` + `kill_notice_restored` only when a floating icon is actually on screen.
+  `OverlayAlert` draws the title (17 sp bold) and body (13 sp) with `Gravity.CENTER` and no
+  explicit `textDirection`, so each paragraph takes its direction from its first strong
+  character. Every one of the 41 strings starts with an Arabic letter (bidi class AL, checked
+  by script), so each one resolves RTL in the alert, the toast, the toolbar and the rows.
+- `KeepRunningActivity`: the Xiaomi battery card reuses `keep_running_battery_line`. When the
+  service is enabled but unbound, `a11y_stuck_title` and the restart line replace the
+  accessibility card's title and line. That card opens `ACTION_ACCESSIBILITY_SETTINGS` itself,
+  and the Huawei close-after-lock card opens `ACTION_POWER_USAGE_SUMMARY` (the Battery screen).
+  The Report a bug row under the cards binds the same two strings as `SettingsRenderer`
+  (~1190-1203), whose hub summary is `singleLine` + `ellipsize=end`.
+- `BugReport.email` fills `%1$s` with `BuildConfig.VERSION_NAME`, a String, so the version
+  keeps Latin digits ("3.3.0") under ar. `LogExporter.emailFiles` shows
+  `email_no_app_fallback` (`LENGTH_LONG`, `SUPPORT_EMAIL`) and then `shareFiles` with the
+  same subject under the `share_chooser_share_logs` chooser.
+
+### Findings (delta, round 1)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| keep_running_huawei_close_after_lock_line | ⚠️ | `يوجد في إعدادات البطارية ← المزيد من إعدادات البطارية. وبدونه يُغلَق تطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> كلما قُفلت الشاشة.` | `يوجد في الإعدادات ← البطارية ← إعدادات إضافية. وإلا فسيُغلَق تطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> كلما قُفلت الشاشة.` | This value has two fixes. (1) **Label (official source):** Huawei's Arabic copy of the article whose English says "More battery settings" (consumer.huawei.com/sa, `ar-eg00428704`, read today) gives the path الإعدادات > البطارية > «إعدادات إضافية». «المزيد من إعدادات البطارية» is the research file's GUESS cell. The card lands on البطارية, so «إعدادات إضافية» is the next word the user scans for. (2) **«وبدونه»:** its pronoun most naturally takes the subject of «يوجد», which is the option itself. The line then reads "without the close-apps option, PlayTranslate closes", which reverses the cause. Only the other cards' «بدون ذلك» pattern rescues the intended "without turning it off". EN's "Otherwise" is «وإلا» (with فـ before the future, as جواب الشرط requires). |
+| kill_notice_restored | 💬 | `وقد عاد إلى العمل الآن.` | `وقد عاد التطبيق إلى العمل الآن.` | The agreement is right: masculine «عاد» can only mean the app (تطبيق), never the feminine «الأيقونة» of the sentence before it. Its antecedent, though, is two or three sentences back. After `_body_other` the sentence just before is «تفعل بعض الهواتف ذلك…». After `_body_stopped` the nearest masculine agent is «مدير البطارية أو الذاكرة». In both cases the reader stops to ask what came back. Naming the subject reads cleanly after all three bodies. |
+| keep_running_xiaomi_lock_line, keep_running_tile_line | 💬 | lock: `افتح التطبيقات الحديثة، واضغط مطولاً على بطاقة <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ثم انقر على القفل. عمليات تنظيف الذاكرة تتخطى التطبيقات المقفلة.`<br>tile: `بتمريرة ونقرة فقط، يمكنك تشغيل <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> مجددًا من أي شاشة.` | lock: `افتح التطبيقات الحديثة، واضغط مطولاً على بطاقة <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ثم اضغط على القفل. عمليات تنظيف الذاكرة تتخطى التطبيقات المقفلة.`<br>tile: `بتمريرة وضغطة فقط، يمكنك تشغيل <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> مجددًا من أي شاشة.` | One English term, one verb. The file's word for tap is اضغط / «الضغط» (`icon_gesture_tap`, `status_idle`, `anki_words_helper_hide`, `history_hide_translations_toggle_subtitle`), paired with «الضغط المطوّل» for hold, across 33 strings. These two are the file's only uses of the root نقر. This is a consistency fix only: انقر is standard Arabic for tap (Samsung's own Arabic page writes «انقر على»). |
+| keep_running_oppo_auto_launch_line, keep_running_vivo_autostart_line | 💬 | `بدون ذلك، يغلق الهاتف تطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> بعد وقت قصير من مغادرته.` | `بدون ذلك، يغلق الهاتف تطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> بعد وقت قصير من مغادرتك له.` | A motion masdar takes its pronoun as the subject first, so «مغادرته» reads as "its departure" (the app's, or the phone's). The user, who does the leaving in EN ("after you leave it"), drops out. «مغادرتك له» puts the user back. Apply the change to both keys so they stay byte-identical. |
+| settings_support_report_bug_email_body | 💬 | `ماذا حدث؟\n\n(صف ما كنت تفعله وما المشكلة التي حدثت.)\n\nمعلومات الجهاز والسجلات الأخيرة مرفقة.` | `ماذا حدث؟\n\n(صف ما كنت تفعله وما المشكلة التي واجهتها.)\n\nمعلومات الجهاز والسجلات الأخيرة مرفقة.` | حدث appears twice in two lines («ماذا حدث؟» / «التي حدثت»). «التي واجهتها» ("that you ran into") is the idiomatic way to say "what went wrong" from the user's side. Optional, since the user edits the body before sending. |
+
+### Clean areas (delta) — checked, no findings
+
+**RTL and mixed runs.** No string starts with a Latin token. The title and the restart line put the verb first («أغلق Android تطبيق…», «أوقف Android الخدمة…»), the same order as the reviewed `a11y_stuck_message`. Xiaomi appears as «نظام Xiaomi».
+
+- **Email address and toast.** The address forms one LTR run, because @ and . sit between Latin letters. The toast wraps to 2 lines at both 296 and 320 dp, with the whole address at the start of line 2 (wrap tool re-run: «…أرسل الملفات إلى» at 267 dp | «support@playtranslate.com بطريقة أخرى.» at 244 dp).
+- **Email subject.** In «تقرير خطأ في PlayTranslate – v3.3.0», the spaces and the en dash between the two Latin runs resolve L (UBA N1), and the digits after «v» become L (W7). «PlayTranslate – v3.3.0» therefore renders as one block to the left of the Arabic, the same shape as the reviewed `crash_email_subject`.
+- **Punctuation.** A sentence-final period after a Latin name (`keep_running_huawei_app_launch_line`) takes the paragraph direction and lands at the left end. «» and () are mirrored pairs between Arabic letters. ← is not mirrored, so it points along the RTL reading order, as in `overlay_icon_a11y_required_message`. The delta has no Latin `, ? ; :`, no tatweel, bidi controls or NBSP, and its one question ends in ؟.
+- **Device pass.** One on an ar device should still confirm the toast wrap and the centered alert.
+
+**Kill notice, read as a set.** The VSO title and the three bodies read naturally. «إن لم تكن أنت من أوقفه، فربما أوقفه مدير البطارية أو الذاكرة في هاتفك» keeps the open attribution of the English. Agreement holds throughout:
+
+- masculine for تطبيق PlayTranslate (كان، أوقفه، عاد);
+- feminine for الأيقونة (اختفت) and المشكلة (إليها);
+- «تفعل بعض الهواتف» takes the feminine singular of a non-human plural.
+
+«قيد التشغيل» for "on" matches `onboarding_notif_row_status_sub`. «لتوفير البطارية» matches `a11y_stuck_message`. The buttons are «عرض الخيارات» and «ليس الآن», the second byte-identical to `btn_not_now`.
+
+**Support card, five rows in order.** The two new titles are verbal nouns like their neighbours (التحقق من التحديثات، الانضمام إلى…، دعم PlayTranslate). The subtitles are imperatives like the Discord and donate subtitles.
+
+- «امنع هاتفك من إغلاق PlayTranslate» measures 179 dp and is whole even at 216 dp.
+- The bug-report subtitle measures 265 dp against 256 dp for English, which is within noise. Its first sentence is 151 dp, so the tap action is whole at both 216 and 249 dp, and only the hold hint clips, as it does in English.
+- Dropping "instead" is the right trade at this width: after the email sentence, «للمشاركة» already reads as the alternative. «بالبريد» is clear in a phone row and saves the width «بالبريد الإلكتروني» would cost.
+
+**Fix disappearing icon page.** The toolbar title is byte-identical to the Support row and measures 171 of 272 dp. «إصلاح» + symptom (as in إصلاح بطء الهاتف) is the everyday Arabic heading pattern, and the intro reads naturally.
+
+- **Empty label.** In «إذا استمرت المشكلة، فكرّر ما أدى إليها ثم أبلغ عن خطأ», the فـ correctly opens an imperative جواب الشرط. «أبلغ عن خطأ» is the row's «الإبلاغ عن خطأ» as a verb, so the label points at the row below it in the row's own words.
+- **Battery cards.** The shared battery line reads correctly under both «ضبط البطارية على «الاستخدام بلا قيود»» and «ضبط موفّر البطارية على «بدون قيود»». The generic title drops "usage" to avoid «استخدام… «الاستخدام…»». Nothing is lost: the quoted value is AOSP's exact per-app option, and the card opens Android's own per-app dialog.
+- **Accessibility line.** The present tense of «يعمل تطبيق PlayTranslate بأولوية…» reads as the effect of the mode named in the card title, which is how Arabic setting descriptions are written.
+- **Card titles** are verbal nouns throughout.
+- **One term, one word.** «عمليات تنظيف الذاكرة» appears twice, «التشغيل التلقائي» covers autostart and auto-launch on all four ROMs, and «الأيقونة العائمة», «اضغط مطولاً», «السجلات» and «مربع الإعدادات السريعة» are each reused from their precedents.
+
+**Platform and OEM labels.**
+
+- **AOSP.** «الاستخدام بلا قيود» is exactly AOSP's `manager_battery_usage_unrestricted_title`.
+- **Samsung (official).** Samsung UAE's Arabic page, re-read today, matches all five labels: «العناية بالجهاز»، «البطارية»، «حدود استخدام الخلفية»، «عدم وضع تطبيقات في سكون تلقائي مطلقاً» (tanween on the alif, as Samsung writes it)، «التطبيقات الساكنة».
+- **Huawei.** «تشغيل التطبيقات» and the three switches «التشغيل التلقائي» / «التشغيل الثانوي» / «التشغيل في الخلفية» match the official cells. «يدويًا» describes manual mode instead of quoting an unverified dialog title.
+- **Xiaomi.** «التشغيل التلقائي» / «موفّر البطارية» / «بدون قيود» have no Arabic source: they are UNVERIFIED in oem-labels.md, and my two searches found no Xiaomi page in Arabic. They do repeat the reviewed `a11y_stuck_message_xiaomi` word for word, so the app says one thing.
+- **OPPO and vivo.** Every Arabic cell is a GUESS. The titles describe the switches without quoting them, which is the honest choice.
+- **Recents.** «التطبيقات الحديثة» was not changed. Recents is a button or gesture, not a labelled screen; AOSP's accessibility action calls it «التطبيقات المستخدمة مؤخرًا», and Xiaomi's Arabic label is unverified.
+
+**Accessibility term.** AOSP names the Settings entry «أدوات تسهيل الاستخدام». The app's pre-existing إمكانية الوصول does not matter in this delta, for three reasons:
+
+- the card opens `ACTION_ACCESSIBILITY_SETTINGS` itself;
+- «وضع إمكانية الوصول» is the app's own name for the mode;
+- the restart line reuses the two sentences of `a11y_stuck_message`.
+
+**Email flow.** «إرسال تقرير التعطل» and «إرسال تقرير الخطأ» follow `crash_dialog_message`, and the subject mirrors `crash_email_subject`. «السجلات الأخيرة» matches «سجلات التطبيق الأخيرة». The toast's «بطريقة أخرى» leads naturally into the «مشاركة السجلات» sheet that opens next.
+
+**Web checks (5 of 8).** Huawei SA's Arabic `ar-eg00428704` and Samsung UAE's Arabic battery page were read through the fetch tool's summary, which quoted the Arabic labels. Three searches for Xiaomi and OPPO Arabic labels found no Xiaomi or OPPO page in Arabic.
+
+### Verdict (round 1)
+
+**1 ⚠️, 4 💬** (5 rows covering 7 keys). No ❌, no 🛑.
+
+1. Apply the ⚠️: `keep_running_huawei_close_after_lock_line` (the official «إعدادات إضافية» label, and «وإلا» in place of the ambiguous «وبدونه»).
+2. Recommended 💬: `kill_notice_restored` (name «التطبيق» as the subject); the file's tap verb in `keep_running_xiaomi_lock_line` and `keep_running_tile_line`; «مغادرتك له» in the OPPO and vivo lines (both keys); `settings_support_report_bug_email_body` (optional).
+
+The other 34 keys pass as they are.
+
+### Round 2 (2026-10-07), final review after applying round 1
+
+Mechanical layer re-run: `python3 PKT/../tools/mech_check.py PKT/../keys.txt ar` reports `checked 1 locales x 41 keys; problems: 0` (all 41 present; every `<xliff:g>` span byte-identical to EN; `%1$s` parity; `\n` 4 = 4 in the email body; no unescaped `'`/`"`, stray tags, double spaces or edge spaces). `python3 scripts/l10n_diff.py --locale app/src/main/res/values-ar/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync". The file parses as XML with no duplicate `name=`; the two orphans `settings_debug_export_logs_title` / `_subtitle` have 0 hits and `settings_debug_export_logs_subject` is still present. `git diff` of `values-ar/strings.xml` holds only the 41 keys, the two banners and the two orphan deletions, so no string outside the delta was touched.
+**No 🛑 build-breaking issues.**
+
+**Round-1 fixes:** each value below was compared byte for byte with the round-1 "suggested" cell.
+- `keep_running_huawei_close_after_lock_line` (⚠️): **applied** as suggested. I re-checked the label today: Huawei SA's Arabic page `ar-eg00428704` prints «الإعدادات > البطارية > إعدادات إضافية», with «استمرار الاتصال عند انطفاء شاشة الجهاز» under it. «وإلا فسيُغلَق» is grammatical (فـ before سـ in the جواب الشرط).
+- `kill_notice_restored` (💬): **applied**. It follows each of the three bodies after the code's one ASCII space, and masculine «عاد» agrees with «التطبيق».
+- `keep_running_xiaomi_lock_line`, `keep_running_tile_line` (💬): **applied**. The root نقر now has 0 uses in the file. «بتمريرة وضغطة» matches «بضغطة واحدة» in `onboarding_welcome_learn_body`.
+- `keep_running_oppo_auto_launch_line`, `keep_running_vivo_autostart_line` (💬): **applied**. The two are still byte-identical.
+- `settings_support_report_bug_email_body` (💬): **applied**. It still has 4 `\n`.
+
+No fix touched a view that clips, so the packet's widths stand: toolbar title 171 of 272 dp, the two hub summaries 179 and 265 dp, toast 2 lines with the address whole at the start of line 2. `keep_running_title` and `settings_support_keep_running_title` are still byte-identical, and so are `kill_notice_not_now` and `btn_not_now`.
+
+#### Findings (round 2)
+
+No new findings.
+
+**Fresh read: checked, no finding.**
+- **Kill notice.** I read the title, then each body + " " + restored, then the two buttons. Agreement holds:
+  - masculine for تطبيق PlayTranslate (كان، أوقفه، عاد);
+  - feminine for الأيقونة (اختفت);
+  - feminine singular for the non-human plural (تفعل بعض الهواتف).
+
+  In `_body_memory`, «فأغلق تطبيق» reads correctly whether taken as active (the phone closed it) or passive.
+- **Support card.** The five rows read as a set: verbal-noun titles and imperative subtitles. The bug-report subtitle's tap action (151 dp) is whole at 216 dp.
+- **Fix disappearing icon page.** I read the page in each ROM's card order. On Xiaomi, two adjacent lines open with «بدون ذلك،», as the English does with "Without this,". In the empty label, «فكرّر ما أدى إليها» ("repeat what led to it") is a natural way to say "reproduce the issue".
+- **Email flow.** The chooser titles follow `crash_dialog_message` («تقرير التعطل») and the subject mirrors `crash_email_subject`.
+- **RTL.**
+  - Rendered with the real values, all 41 start with an Arabic letter (bidi class AL).
+  - None has bidi controls, NBSP, zero-width characters or tatweel.
+  - The only punctuation used is ( ) . @ « » ، ؟ – ←.
+  - «PlayTranslate – v3.3.0» and the address each form one LTR run. «أغلق Android تطبيق PlayTranslate» keeps its two Latin runs separate.
+- **Platform labels.**
+  - «الاستخدام بلا قيود» is exactly `manager_battery_usage_unrestricted_title` in the android16-qpr2 Settings ar file.
+  - Samsung and Huawei are official, as in round 1.
+  - Xiaomi stays UNVERIFIED: one more Arabic search today found no Xiaomi page in Arabic. Its labels still repeat `a11y_stuck_message_xiaomi` word for word.
+- **Style, no change needed.** The toast says «لم يُعثر على», while the file's five other not-found strings say «لم يتم العثور على». Both are correct MSA, and the shorter form suits a toast capped at two lines.
+- **Web checks.** I used 2 of 6: the Huawei SA fetch above and one search for Xiaomi in Arabic.
+
+#### Verdict (round 2)
+
+**PASS.** All five round-1 rows (7 keys) landed exactly as suggested. There are no new findings (0 ❌, 0 ⚠️, 0 💬) and no 🛑. Two items are not blocking, both carried over from round 1: a device pass on an ar device to confirm the toast wrap and the centered alert, and the Xiaomi Arabic labels, which no source confirms. The Huawei close-after-lock card itself is the known English-source issue (packet-common, "Already known" 1).
+
+## Follow-up review 2026-10-07, round 1 (15 keys after the Fix disappearing icon rewrite)
+
+Mechanical layer: `python3 TOOLS/mech_check.py F2/keys2.txt ar` reports `checked 1 locales x 15 keys; problems: 0` (all 15 present; every `<xliff:g>` span byte-identical to EN, including both `app_name` / `app_name2` spans in the Xiaomi autostart, OPPO and vivo lines; `%1$s` parity; `\n` 2 = 2 in `a11y_stuck_message`; no unescaped `'`/`"`, stray tags, double spaces or edge spaces). `python3 scripts/l10n_diff.py --locale app/src/main/res/values-ar/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync". The file parses as XML with no duplicate `name=`, and the four keys removed from English (`restricted_settings_title`, `restricted_settings_message`, `keep_running_huawei_close_after_lock_title` / `_line`) have 0 hits. Against `HEAD`, the only string-level differences are the 42 keys the first pass and this delta added, the two existing keys this delta changed (`a11y_stuck_message`, `a11y_stuck_message_xiaomi`), and four deletions (`restricted_settings_title` / `_message` and the first pass's two orphans). All 15 keys sit in English order.
+**No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- `AccessibilityHelp.withRestrictedSettingsStep` appends the addendum on API 33+ as `message + "\n\n" + step`:
+  - in system AlertDialogs after `accessibility_dialog_message` (`MainActivity`) and `overlay_icon_a11y_required_message` (`SettingsRenderer`);
+  - in the OverlayAlert after the three `a11y_required_*` (`AccessibilityAlert`: 13 sp, centered, scrolling, 280 dp wide);
+  - in the accessibility card's 13 sp line.
+
+  The stuck alert never carries it; on Xiaomi it gets `"\n\n"` + `a11y_stuck_message_xiaomi`. No view sets `textDirection`, so each paragraph takes the direction of its first strong character. All 15 values start with an Arabic letter (bidi AL, checked by script), so every paragraph, the appended ones included, lays out RTL.
+- `KeepRunningActivity.openFirst` tries the card's own screens. The Xiaomi battery card goes straight to the per-app battery-saver activity, and the generic battery card to Android's "Let app always run in background?" dialog. When nothing launches, it shows `keep_running_screen_unavailable` as a `LENGTH_LONG` toast and opens App info. Card titles (`Text.PT.RowTitle`, 15 sp medium) and lines (`Text.PT.RowSubtitle`, 13 sp) have no `maxLines`, so the toast is the only width-bound string in the delta.
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+
+No findings.
+
+### Clean areas — checked, no findings
+
+**CHANGED keys: nothing lost, nothing added.** Each was compared with its reviewed value: `HEAD` for the two stuck-alert keys, and the first pass's final values for the rest.
+- `a11y_stuck_message` is the `HEAD` value minus exactly the cause sentence («يحدث هذا عادةً بعد أن يوقف النظام التطبيق إجباريًا لتوفير البطارية.»), checked byte for byte.
+- `a11y_stuck_message_xiaomi` makes the English's three moves and no others:
+  - «فعّل أيضًا التشغيل التلقائي» → «اسمح أيضًا بالتشغيل التلقائي»;
+  - «واضبط موفّر البطارية» → «واضبط استخدامه للبطارية»;
+  - «سيستمر» → «قد يستمر».
+- `keep_running_tile_line` drops «بتمريرة وضغطة فقط،» and keeps the rest byte-identical. Under the tile title, «يمكنك تشغيل PlayTranslate مجددًا من أي شاشة.» reads as the card's benefit, which is how Arabic card lines are written.
+- `keep_running_xiaomi_lock_line` keeps its first sentence byte-identical, round-1 «اضغط» fix included, and replaces only the memory-cleanup claim.
+- `keep_running_xiaomi_battery_title` swaps «موفّر البطارية» for «استخدام البطارية», just as the English swaps the entry's name for "battery use".
+- `keep_running_huawei_app_launch_line` keeps the reviewed switch list word for word and adds the search and Manage-automatically steps in front of it.
+- The other six are new sentences: the generic battery title and line, and the Xiaomi autostart, OPPO, vivo and Samsung lines. Each says what the new English says. The hedges are «قد», no effect claim is stronger than the English, and Xiaomi stays «نظام Xiaomi».
+
+**Read as sets.**
+- **Addendum.** It reads as a closing paragraph after all five messages and after the accessibility card's line.
+  - After the two path messages, «مفتاح التبديل» picks up the path's last step, «تفعيل».
+  - After the three OverlayAlert messages, it is the permission's switch, as "the switch" is in English.
+  - «مفتاح التبديل» is AOSP's own Arabic for a switch (`stylus_handwriting_summary`).
+  - In the hotkey alert it follows «المفاتيح التي تضغط عليها» (keyboard keys), so «مفتاح» may read as a key for a moment. «ظهر … باللون الرمادي» settles that at once.
+- **Stuck alert.** Title, body and Xiaomi paragraph read in order, and «أيضًا» ties the Xiaomi steps to the re-toggle. The paragraph's two steps repeat the two Xiaomi card titles («السماح بالتشغيل التلقائي», «ضبط استخدام البطارية على «بدون قيود»»). Its «في إعدادات النظام الخاصة بالتطبيق» matches the Xiaomi battery line.
+- **Cards.** I read every title + line in each ROM's order. The terms hold across the page:
+  - «العودة إلى العمل» in four lines, as in `kill_notice_restored`;
+  - «بدون ذلك،» for "Without it/these";
+  - «في الإعدادات، ابحث عن «…»» in all four search lines;
+  - «الإصدار / الإصدارات» for versions in the two Xiaomi lines.
+
+  The three two-span lines carry both spans. The second mention opens its own sentence («بدون ذلك، قد … تطبيق PlayTranslate …»), so the repetition reads naturally.
+- **Toast, then App info.** «الشاشة المطلوبة» cannot be taken for the App info page («معلومات التطبيق») that opens under it. «هذا الإعداد» points back to the card just tapped.
+
+**Toast measured** (wrap tool, 14 sp, Noto Naskh Arabic UI).
+- It is 497 dp in all and takes 2 lines at both widths. At 296 dp the lines are «…ابحث عن هذا» (287 dp) and «الإعداد في إعدادات هاتفك بدلًا من ذلك.» (206 dp).
+- It stays at 2 lines at 296 dp with a font up to about 15% wider (wrap at 257 dp) and needs 3 from about 21% wider (245 dp).
+- English needs 3 lines at 296 dp (known issue 1).
+
+**Grammar and agreement.**
+- Masculine for تطبيق PlayTranslate: له، نفسه، استخدامه، يغلقه، يمنعه.
+- «به» refers to التشغيل التلقائي.
+- Feminine for الخدمة (تشغيلها، شغّلها) and for Samsung as a company (تُدخل، تحدّ).
+- Feminine singular for non-human plurals (التطبيقات … يمكنها؛ إعدادات … الخاصة).
+- In the addendum, فـ opens the imperative جواب الشرط («فاضغط»). The battery line's present-tense جواب («يتيح») correctly needs none.
+
+**RTL and punctuation.**
+- No bidi controls, NBSP, zero-width characters or tatweel.
+- The only punctuation is . ، « » ( ) ⋮. There is no question, so no ؟ is needed, and there are no arrow paths, so no ← is needed.
+- «Android 13» is one LTR run (EN after L, W7), as in `requires_android_11_message`.
+- ⋮ is a neutral (ON) between Arabic letters, so it lands in reading order.
+- The Arabic comma after PlayTranslate or Xiaomi is CS and takes the paragraph direction.
+
+**Register and terms.**
+- Formal MSA throughout.
+- The tap verb is اضغط / اضغط مطولاً; نقر has 0 uses.
+- «Android 13 أو أحدث» follows «Android 11 أو أحدث» in `requires_android_11_message`.
+- Tanween placement is mixed, but that predates this delta. «مطولاً» (the file's precedent) and Samsung's «مطلقاً» put it on the alif; «بدلًا» and «دائمًا» put it before. The file already mixes the two, 94 to 23.
+
+**Platform labels** (AOSP android16-qpr2 Settings, `ar` file read locally).
+- «معلومات التطبيق» is `application_info_label`.
+- «السماح بالإعدادات المحظورة» is `app_restricted_settings_lockscreen_title`. AOSP's restricted-settings strings use المحظورة, so the deleted string's «المقيَّدة» is rightly gone.
+- The dialog the greyed switch shows is «الإعداد محظور». It shares the root, so the steps read as one flow.
+- The battery title repeats AOSP's dialog, «هل أردت السماح بتشغيل التطبيق في الخلفية دائمًا؟», whose body says «السماح بتشغيل تطبيق "…" في الخلفية دائمًا».
+- «رمز المزيد ⋮»: the translator's source is Google's Arabic help, which my search did not surface. The phrase is idiomatic, and the glyph itself is printed.
+
+**OEM labels.**
+- **Huawei** (official, `ar-eg00414587`): the search word «تشغيل التطبيقات» and «إدارة تلقائية»، «التشغيل التلقائي»، «التشغيل الثانوي»، «التشغيل في الخلفية» all match.
+- **Samsung** (official, Samsung UAE Arabic): «البطارية»، «حدود استخدام الخلفية»، «عدم وضع تطبيقات في سكون تلقائي مطلقاً» all match.
+- **vivo and OPPO** (unverified; new secondary support). Huawei's Arabic copies of the two articles the English comments cite print:
+  - vivo (`ar-eg15850064`): «iManager > التشغيل التلقائي» and «الإعدادات > البطارية > استهلاك الطاقة المرتفع في الخلفية»;
+  - OPPO (`ar-eg15850071`): «مدير الهاتف > أذونات الخصوصية > تطبيقات بدء التشغيل التلقائي» and «الإعدادات > البطارية > إدارة البطارية للتطبيقات».
+
+  So the shared search word «التشغيل التلقائي» is vivo's label and part of OPPO's. The vivo line's unquoted «استهلاك مرتفع للطاقة في الخلفية» shares every content word with vivo's entry.
+- **Xiaomi** (unverified; one secondary source disagrees). Huawei's Arabic copy of `en-us15850067` (`ar-eg15850067`, Xiaomi on Android 9) prints «تشغيل تلقائي» without the article, «أداة توفير طاقة البطارية», «لا توجد قيود» and «المهام الأخيرة». The English comments cite the same page for "Autostart" and "Battery saver".
+  - No change is suggested. The page is Huawei's rendering of another OEM's screen, from Android 9, and Huawei's own vivo copy writes «التشغيل التلقائي».
+  - The article does matter for search: neither «التشغيل التلقائي» nor «تشغيل تلقائي» contains the other.
+  - The two option labels would still be recognizable from «بدون قيود» and «موفّر البطارية».
+
+**Out of scope, informational (not counted).** The two path messages the addendum follows go through «… ← التطبيقات التي تم تنزيلها ← …». AOSP's Arabic title for that sub-list is «التطبيقات التي نزّلتها» (`user_installed_services_category_title`), and AOSP names the Settings entry «أدوات تسهيل الاستخدام», as round 1 of the 2026-10-07 delta noted. The sub-list is still recognizable; this is for a later full pass.
+
+**Web checks: 6 of 6.**
+- Three Huawei SA Arabic pages: `ar-eg15850067`, `-64` and `-71`.
+- One Kaspersky ar-AE page, a landing page with no content.
+- Two searches, for Arabic Xiaomi labels and for Google's «رمز المزيد». Neither found a usable source.
+
+### Verdict (round 1)
+
+**PASS.** 0 ❌, 0 ⚠️, 0 💬, no 🛑; all 15 keys can stay as they are. Two items are not blocking:
+1. A device pass on an ar device still owes the toast wrap and the centered alerts (carried over).
+2. On a Xiaomi set to Arabic, check that a Settings search for «التشغيل التلقائي» finds the autostart switch. The only Arabic Xiaomi text found (Huawei-authored, Android 9) writes «تشغيل تلقائي» without the article, which a literal search would miss.
+
+### Follow-up round 2 (2026-10-07), final review after applying round 1
+
+Mechanical layer re-run: `python3 TOOLS/mech_check.py F2/keys2.txt ar` reports `checked 1 locales x 15 keys; problems: 0` (all 15 present; every `<xliff:g>` span byte-identical to EN, both `app_name` / `app_name2` spans included; `%1$s` parity; `\n` 2 = 2 in `a11y_stuck_message`; no unescaped `'`/`"`, stray tags, double spaces or edge spaces). `python3 scripts/l10n_diff.py --locale app/src/main/res/values-ar/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync". The file parses as XML with 1047 names and no duplicate; the four keys removed from English and the first pass's two orphans have 0 hits; the 15 keys sit in English order. Against `HEAD` the string-level changes are still exactly the 42 added keys, the two changed stuck-alert keys and the four deletions. With the spans filled in, all 15 start with an Arabic letter (bidi AL) and contain no bidi controls, NBSP, zero-width characters or tatweel.
+**No 🛑 build-breaking issues.**
+
+**Round-1 fixes:** none to apply. Round 1 reported no findings (0 ❌, 0 ⚠️, 0 💬). `values-ar/strings.xml` was last written at 00:14:48, before the round-1 report, and all 15 values are byte-identical to the translator's source (`F2/frag/ar.src`) and to the regenerated packet, so the file still holds exactly what round 1 passed. Round 1 did not cover the first pass's 41 keys for ar (that pass closed with its own round-2 PASS above).
+
+#### Findings (round 2)
+
+No new findings.
+
+**Fresh read: checked, no finding.**
+- **Addendum after each message.** I read it composed (`message + "\n\n" + addendum`) after `accessibility_dialog_message`, `overlay_icon_a11y_required_message`, the three `a11y_required_*` and `keep_running_accessibility_line`. It reads as its own closing paragraph each time; فـ opens the imperative جواب and every later step stays inside it.
+  - AOSP, re-read in the local android16-qpr2 `ar` file: «معلومات التطبيق» is `application_info_label`, «السماح بالإعدادات المحظورة» is `app_restricted_settings_lockscreen_title`, and the greyed switch's dialog «الإعداد محظور» shares المحظور.
+  - After `a11y_required_displays_message` («يتطلب تبديل الشاشات…»), «مفتاح التبديل» echoes تبديل. It is the set term for a toggle, and «ظهر … باللون الرمادي» fixes the sense, as with the hotkey alert's «المفاتيح» in round 1.
+- **Stuck alert.** The body is `HEAD` minus exactly the cause sentence (re-checked by script). In the Xiaomi paragraph, «استخدامه» takes تطبيق PlayTranslate, and its two steps repeat the two Xiaomi card titles.
+- **Cards, title + line, in each ROM's order** (Xiaomi, Huawei, OPPO, vivo, Samsung, then the generic battery, accessibility and tile cards). Titles are verbal nouns; lines are imperatives or benefit statements.
+  - Agreement: masculine for تطبيق PlayTranslate (له، نفسه، استخدامه، يغلقه، يمنعه); feminine for Samsung (تُدخل، تحدّ) and for the non-human plural (يمكنها). «بضعة أيام» has the right number polarity.
+  - The battery line's present-tense جواب after إذا needs no فـ.
+- **Labels and search words.**
+  - The generic battery title repeats AOSP's dialog «هل أردت السماح بتشغيل التطبيق في الخلفية دائمًا؟» (`high_power_prompt_title`).
+  - Huawei's five labels match the official Arabic page recorded in round 1. «تشغيل التطبيقات» is the label itself, so a Settings search finds it.
+  - Samsung's labels are official (Samsung UAE Arabic, as recorded in round 1).
+  - «التشغيل التلقائي» is vivo's label and a contiguous part of OPPO's «تطبيقات بدء التشغيل التلقائي» (both from Huawei-authored copies), so both searches match.
+  - Xiaomi stays unverified (known issue 2).
+- **Toast.** Re-measured with the wrap tool (14 sp, Noto Naskh Arabic UI): 497 dp, 2 lines at both 296 and 320 dp.
+- **RTL and punctuation.**
+  - All 15 start with an Arabic letter, and «Android 13» is one LTR run.
+  - ⋮ and the Arabic comma after a Latin name take the paragraph direction, and the Xiaomi battery line's parentheses are mirrored pairs between Arabic text.
+  - No string asks a question or gives a path, so none needs ؟ or ←.
+  - The tap verb is اضغط throughout; the root نقر has 0 uses in the file.
+- **Web checks: 3 of 4.** Two searches for Xiaomi's Arabic autostart label, and one fetch of the Kaspersky ar-AE page they returned, which is the same support landing page round 1 found. Neither found a Xiaomi label in Arabic, so round 1's device check stands.
+
+#### Verdict (round 2)
+
+**PASS.** Round 1 had no findings, so there was nothing to apply, and the file still holds the values round 1 passed. There are no new findings (0 ❌, 0 ⚠️, 0 💬) and no 🛑. Two items carry over from round 1, neither blocking:
+1. A device pass on an ar device for the toast wrap and the centered alerts.
+2. On a Xiaomi set to Arabic, check that a Settings search for «التشغيل التلقائي» finds the autostart switch. The only Arabic Xiaomi text found (Huawei-authored, Android 9) writes «تشغيل تلقائي», and neither phrase contains the other.

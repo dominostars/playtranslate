@@ -43,3 +43,19 @@ Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] th -> readme/README.th
 
 Applied all 6: the ⚠️ (the app that opens the APK, not the one that downloaded it) and the 5 💬
 as suggested.
+
+## Delta review 2026-10-08 ("Can't enable accessibility?" rewritten)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] th -> readme/README.th.md`, one warning: `38 bold spans, English has 37`; same with `--require-header`). The extra span is “สแกนแอปด้วย Play Protect” in the "Won't install?" closing line, added by the 2026-10-06 disposition, so it comes from outside this section. This section has the same 4 bold spans as the English. **No 🛑 issues.**
+
+| section | severity | current | suggested | note |
+|---|---|---|---|---|
+| Can't enable accessibility? > intro | 💬 | "ใน Android 13 ขึ้นไป Android จะทำให้สวิตช์การช่วยเหลือพิเศษเป็นสีเทา" | "ใน Android 13 ขึ้นไป ระบบจะทำให้สวิตช์การช่วยเหลือพิเศษเป็นสีเทา" | Thai has no comma to close the time phrase. The spaces around a Latin word are there anyway, so they don't mark a boundary, and “Android 13 ขึ้นไป Android” first reads as one noun phrase. Before ระบบ, the space is between two Thai words, which only happens at a phrase boundary. Android stays the agent, named just before, and ระบบ is the section's own word in step 4 (“หากระบบขอ”). |
+
+Clean areas: Nothing is added, dropped or softened. Every intro fact and all four steps are there in the English order. The "only after step 1" condition is kept (“ตัวเลือกนี้จะปรากฏหลังจากทำขั้นตอนที่ 1 แล้วเท่านั้น”), and “หากระบบขอ” keeps "if prompted". Android labels match AOSP Android 16 exactly: การตั้งค่า, การช่วยเหลือพิเศษ, แอป, ข้อมูลแอป for the English "AppInfo", “การตั้งค่าที่จำกัด” twice, and อนุญาตการตั้งค่าที่จำกัด (`settings_label`, `accessibility_settings`, `apps_dashboard_title`, `application_info_label`, `blocked_by_restricted_settings_title`, `app_restricted_settings_lockscreen_title`). The app's reviewed `a11y_restricted_settings_addendum` and `overlay_icon_a11y_required_message` use the same words. OEM skins' Thai labels were not checked. The register is neutral-polite with no particles, and แตะ, เลือก and เปิด are used as in the rest of the file. Only “ ” quotes are used, with no sentence periods. Every seam between Thai and Latin, digits or symbols (Android 13, APK, PlayTranslate, ⋮, →, ขั้นตอนที่ 1) has a space. Otherwise spaces fall only at phrase boundaries and around quotes, with no double spaces. Bold is on the same four labels as the English, and the list is numbered 1 to 4.
+
+Outside this delta (not reviewed, for the record): AOSP Android 16's `external_source_switch_title` is “อนุญาตการติดตั้งจากแหล่งที่มานี้”, while install step 2 bolds “อนุญาตจากแหล่งที่มานี้”. The 2026-10-06 review could only go from memory. `special_access` (สิทธิ์เข้าถึงพิเศษของแอป) matches.
+
+### Disposition (2026-10-08)
+
+Applied the 1 💬 (ระบบ for the second Android). The out-of-scope install-step label note is reported to the developer.

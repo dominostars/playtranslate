@@ -93,3 +93,17 @@ No ❌ findings. One ⚠️ (the installer message, from memory); the rest is po
 
 Applied all 8: the ⚠️ (“O app não foi instalado”, from memory, to be confirmed on a pt-BR device)
 and the 7 💬 as suggested. Settings stays "Configurações" throughout, per the reviewer's ruling.
+
+## Delta review 2026-10-08 ("Can't enable accessibility?" rewritten)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] pt-rBR -> readme/README.pt-BR.md`, no warnings). **No 🛑 issues.**
+
+| section | severity | current | suggested | note |
+|---|---|---|---|---|
+| Não consegue ativar a acessibilidade? (intro) | 💬 | "de qualquer app instalado por um APK baixado" | "de qualquer app instalado a partir de um APK baixado" | "instalado por" can read as the agent ("installed by a downloaded APK"); "a partir de" is the usual pt-BR for installing from a file and mirrors "from a downloaded APK". Optional. |
+
+Clean areas: The four steps follow the English order and content, "Essa opção só aparece depois da etapa 1" keeps the only-after-step-1 condition, and the old closing sentence is gone, as in English. Every Android label is byte-identical to AOSP Android 16 Settings (pt-rBR) on disk: Configurações, Acessibilidade, Apps, Informações do app (Android's label, not the English's "AppInfo"), “Configuração restrita” (`blocked_by_restricted_settings_title`) and **Permitir configurações restritas** (`app_restricted_settings_lockscreen_title`). The app's `a11y_restricted_settings_addendum` uses the same words (chave acinzentada, “Informações do app”, menu ⋮, “Permitir configurações restritas”), and the path agrees with "Configurações → Acessibilidade → …" in `overlay_icon_a11y_required_message` and `accessibility_dialog_message`. Register is você with você-form imperatives (selecione, toque, feche, abra, escolha, faça, volte, ative); vocabulary is Brazilian (baixado, app, chave for the switch as in the addendum, etapa as in install step 4), and "chave" for the switch stays clear of "chave de API" in the backends section. Bold sits on the same four labels as English, numbering 1 to 4, curly quotes, spaced arrows, no dashes, text NFC.
+
+### Disposition (2026-10-08)
+
+Applied the 1 💬 ("a partir de um APK baixado").

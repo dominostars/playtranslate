@@ -58,14 +58,12 @@ Instale o APK e, depois, ative o Play Protect de novo para que ele continue veri
 
 ### Não consegue ativar a acessibilidade?
 
-Alguns recursos avançados (como a visualização ao manter um atalho pressionado) vão pedir que você ative as permissões de acessibilidade. Certos fabricantes de aparelhos Android impedem, por padrão, que apps instalados fora da Play Store recebam permissões de acessibilidade, e a chave nas Configurações pode aparecer em cinza ou mostrar a mensagem “Configuração restrita”. Para desbloquear:
+Alguns recursos avançados (como a visualização ao manter um atalho pressionado) vão pedir que você ative as permissões de acessibilidade. A partir do Android 13, o Android deixa acinzentada a chave de acessibilidade de qualquer app instalado a partir de um APK baixado, e tocar nela mostra a mensagem “Configuração restrita”. Para desbloquear:
 
-1. Abra **Configurações → Apps → PlayTranslate**
-2. Toque no menu **⋮** (canto superior direito)
-3. Toque em **Permitir configurações restritas**
-4. Faça a autenticação quando solicitado
-
-Agora você já pode ativar a acessibilidade para o PlayTranslate.
+1. Em **Configurações → Acessibilidade**, selecione o PlayTranslate e toque uma vez na chave acinzentada. Feche a mensagem “Configuração restrita”.
+2. Abra a página Informações do app: **Configurações → Apps → PlayTranslate**.
+3. Toque no menu **⋮** e escolha **Permitir configurações restritas**. Essa opção só aparece depois da etapa 1.
+4. Faça a autenticação, se solicitado, e depois volte para Acessibilidade e ative a chave.
 
 ## Suporte
 

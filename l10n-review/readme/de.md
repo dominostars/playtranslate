@@ -38,3 +38,17 @@ Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] de -> readme/README.de
 
 Applied all 3 💬 as suggested (Android-Splitscreen with „oder“, fertige Presets, „zu dieser
 Einstellung wechseln“).
+
+## Delta review 2026-10-08 ("Can't enable accessibility?" rewritten)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] de -> readme/README.de.md`, no warnings; the same with `--require-header`). **No 🛑 issues.**
+
+| section | severity | current | suggested | note |
+|---|---|---|---|---|
+| Bedienungshilfen lassen sich nicht aktivieren? > intro | 💬 | "jeder App aus, die aus einer heruntergeladenen APK-Datei installiert wurde" | "jeder App aus, die über eine heruntergeladene APK-Datei installiert wurde" | The separable prefix of „graut … aus“ runs into the preposition: „aus, die aus“. „über eine … APK-Datei installiert“ is just as idiomatic, removes the echo and keeps the meaning. |
+
+Clean areas: du throughout, no Sie. All six Android labels match AOSP Android 16 `de` exactly: Einstellungen (`settings_label`), Bedienungshilfen (`accessibility_settings`), Apps (`apps_dashboard_title`), App-Info (`application_info_label`; the English's "AppInfo" was not copied), „Eingeschränkte Einstellung“ (`blocked_by_restricted_settings_title`) and Eingeschränkte Einstellungen zulassen (`app_restricted_settings_lockscreen_title`). Nothing contradicts the app: `a11y_restricted_settings_addendum` has the same App-Info, ausgegraut, Schalter and menu item, and „Einstellungen → Bedienungshilfen“ is the start of the path in `overlay_icon_a11y_required_message` and `accessibility_dialog_message`. Accurate against the English: four steps in order, „erst nach Schritt 1“ keeps the condition, „falls“ carries the new "if prompted", and the closing sentence and „(oben rechts)“ are gone as in English. Markdown: bold on the two paths, ⋮ and the menu item only, numbering 1 to 4, each step ending with a period like the English. Typography: „ “ quotes, no space before the colon, no dashes; Schalter and ausgegraut stay one term each from the intro through step 4. The German reads natively; the one row above is optional polish.
+
+### Disposition (2026-10-08)
+
+Applied the 1 💬 („über eine heruntergeladene APK-Datei“).

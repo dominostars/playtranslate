@@ -132,3 +132,15 @@ Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] zh-rHK -> readme/READM
 ## Disposition (2026-10-06)
 
 Applied all 4 💬 (網絡連線, 與在視窗中執行, 可無縫整合 Yomitan 詞典, 原文名稱 ×2).
+
+## Delta review 2026-10-08 ("Can't enable accessibility?" rewritten)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] zh-rHK -> readme/README.zh-HK.md`, no warnings; also PASS with `--require-header`). **No 🛑 issues.**
+
+No findings.
+
+Clean areas: The four steps match the English and zh-CN in content and order, with nothing added, dropped or softened. The condition reads 完成第 1 步後才會出現此選項, and the register (你, bare imperatives) matches the rest of the file. A script checked the section for 「」 only, Pangu spacing, full-width punctuation, Big5-only Han and 啟 (not 啓). The bold spans are the English four and flank correctly. Every label is AOSP zh-HK's own wording, not a conversion of zh-CN. 設定 → 無障礙設定 (`accessibility_settings`), 應用程式資料 and 允許受限設定 are identical on Android 16 (on disk) and Android 13 (LineageOS 20's `values-zh-rHK`); 應用程式 and 受限設定 were read on 16 only. They agree with the app's `a11y_restricted_settings_addendum` (which also says 或以上) and with its 設定 → 無障礙設定 → … paths. Against an OpenCC s2hk-style conversion of the zh-CN section (the app's OpenCC4j dictionaries), every Mainland item was swapped: 及更高→或以上, 通過→透過, 應用→應用程式, 菜單→選單, 打開→開啟. The four labels also replace what conversion would leave (無障礙, 應用信息, 受限制的設置, 允許受限制的設置). The unchanged runs are ordinary Hong Kong prose, including 身份驗證. That one is prose, not a label: AOSP zh-HK writes 驗證你的身分, but 身份 is the Hong Kong form (身份證), so it stays. The 2026-10-06 lines above that tie 允許受限設定 to `restricted_settings_title` / `restricted_settings_message` cite keys that are now deleted; the label itself is confirmed on 13 and 16.
+
+### Disposition (2026-10-08)
+
+No findings; nothing to apply.

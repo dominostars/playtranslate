@@ -597,3 +597,331 @@ Round-1 fix present: «…tant que la superposition est visible.» Mechanical la
 No new findings.
 
 **Verdict (round 2):** **PASS.**
+
+## Delta review 2026-10-07 (41 keys + 2 orphans: bug-report email, Support rows, kill notice, Fix disappearing icon page)
+
+Mechanical layer verified: `python3 PKT/../tools/mech_check.py PKT/../keys.txt fr` reports
+"checked 1 locales x 41 keys; problems: 0" (every key present; `<xliff:g>` spans and
+placeholders identical to English; `\n` counts match; no unescaped `'` or `"`, no stray tag,
+no double space, no leading or trailing space), and `python3 scripts/l10n_diff.py --locale
+app/src/main/res/values-fr/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync".
+The two orphans (`settings_debug_export_logs_title`, `settings_debug_export_logs_subtitle`)
+are gone; `settings_debug_export_logs_subject` stays. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- `MainActivity.maybeShowKillNotice` builds the body as `getString(body) + ' ' +
+  getString(kill_notice_restored)`, and only when a floating icon is actually on screen, so
+  the restored sentence must stand after each of the three bodies with nothing in between.
+- `settings_row_hub.xml`: the Support summary is `singleLine` + `ellipsize="end"`;
+  `dialog_settings.xml` orders the rows Check for updates, Discord, Fix disappearing icon,
+  Report a bug, Support PlayTranslate.
+  `KeepRunningActivity` sets the same title and subtitle strings on the Report a bug row under
+  the empty label, and the toolbar takes `@string/keep_running_title`.
+- `LogExporter` shows `email_no_app_fallback` as a `Toast.LENGTH_LONG` with the support
+  address; `BugReport` uses `settings_debug_export_logs_subject` and `share_chooser_share_logs`
+  for the hold path. Widths were re-measured with the packet's own `Measure`/`Wrap` tools,
+  which reproduce the packet's figures (349, 199, 232, 177 dp).
+
+### Findings (delta, round 1)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| settings_support_report_bug_subtitle | ⚠️ | Journaux par e-mail à l\'assistance. Appui long pour partager. | Journaux par e-mail à l\'assistance. Maintenez pour partager. | The file renders "Hold to …" as « Maintenez pour … » (`translate_button_subtitle_hold_*`, the hold-verb precedent the translator's decisions name), and the gesture itself is « Maintenir ». « Appui long » is a third form for the same gesture. The width is unchanged (348 dp), and the first clause (199 dp) still fits 249 dp and even 216 dp. |
+| kill_notice_restored | ⚠️ | Il est de nouveau activé. | PlayTranslate est de nouveau activé. | Appended after each body. Gender rules out the sentence just before it (« l'icône flottante »), so « Il » skips past it to the nearest masculine noun: « votre téléphone » (memory; other, where it lands right after « Certains téléphones font cela… ») or « le gestionnaire de batterie ou de mémoire » (stopped). PlayTranslate is two or three sentences back, and only the echo of « activé » recovers it. Naming the app reads cleanly after all three bodies. Use plain text, as `settings_support_donate_title` does: English has no `<xliff:g>` in this string, so adding a span would fail the span check. « L'application est de nouveau activée. » works equally well. |
+| keep_running_huawei_close_after_lock_line | ⚠️ | Dans Batterie → Plus de paramètres de batterie. Sinon, <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> se ferme à chaque verrouillage de l\'écran. | Dans Batterie → Plus de paramètres batterie. Sinon, <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> se ferme à chaque verrouillage de l\'écran. | Huawei France's own page (consumer.huawei.com, content fr-fr00428704, fetched today) prints the entry without "de": « Allez à Paramètres > Batterie > Plus de paramètres batterie et activez Connexion maintenue lorsque l'appareil est en veille. » This cell was UNVERIFIED in oem-labels.md (it guessed « Autres paramètres de la batterie »); it is now official. |
+| settings_support_keep_running_subtitle | 💬 | Empêcher la fermeture de <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> | Éviter que <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> se ferme | Optional. At 232 dp the current text clips inside the app name on a 360 dp phone (216 dp); the suggestion measures 194 dp and fits every width in the packet. « se ferme » is the delta's own verb for the system closing the app (`keep_running_huawei_close_after_lock_line`). The English clips there too, so this is polish, not a defect. |
+| keep_running_xiaomi_lock_line | 💬 | Ouvrez les applis récentes, appuyez de manière prolongée sur la carte de <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, puis sur le cadenas. Le nettoyage de la mémoire ignore les applis verrouillées. | Ouvrez les applis récentes, appuyez longuement sur la carte de <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, puis appuyez sur le cadenas. Le nettoyage de la mémoire ignore les applis verrouillées. | « puis sur le cadenas » elides the whole verb phrase, so it can read as a second long press, while English says tap. The file's form for a press-and-hold on a target is « appuyez longuement sur » (`status_hold_hint`, `anki_long_press_footer`). |
+
+### Clean areas (delta) — checked, no findings
+
+**Typography.** Formal vous throughout (Envoyez, Décrivez, Ouvrez, Activez, Désactivez-le).
+Every apostrophe is escaped `\'`, and there is no curly ’. There is a plain space before `?`
+and `:` and inside « », as in the rest of the file, which has no NBSP anywhere. The only `"`
+are inside `<xliff:g>` attributes. The en dash in the subject mirrors English, and no em dash
+was added.
+
+**Kill notice, read as a set.** « Android a fermé PlayTranslate », then each body. The tenses
+are natural (« manquait de mémoire et a fermé »). The relative clause « qui était activé »
+spares the memory and other bodies a second « il ». In the stopped body, « alors qu'il était
+activé » and « ne l'avez pas arrêté » both point unambiguously at the subject, and « l'a
+peut-être fait » leaves the attribution to the user, as English does. Closed and stopped
+stay apart (fermé / arrêté). « activé » is the app's on state (`capture_lifecycle_state_on`),
+and « l'icône flottante » matches `settings_show_overlay_icon`. The buttons read « Voir les
+options », then « Pas maintenant », which is byte-identical to `btn_not_now`. The only
+problem is the appended sentence (finding above).
+
+**Support card, read as a set.** The titles read Rechercher des mises à jour, Rejoindre
+Discord, Si l'icône disparaît, Signaler un bug, Soutenir PlayTranslate. « Si l'icône
+disparaît » breaks its neighbours' infinitive pattern, but it leads with the symptom, which
+is what the English comment asks for. It reads as a normal French help heading, and with its
+subtitle it says problem, then remedy. A verb-first form (« Empêcher l'icône de disparaître »,
+306 dp) overflows the 272 dp toolbar; the current 177 dp fits, and it is byte-identical to
+`keep_running_title`. « Signaler un bug » and the empty label's « signalez un bug » use the
+same words. « à l'assistance » matches the header « Assistance ». The Report a bug
+subtitle's first clause is telegraphic, but it carries what, how and to whom in 199 dp, and
+any verb-led form (« Envoyer les journaux à l'assistance par e-mail. », 264 dp) loses the
+end at 249 dp.
+
+**Fix disappearing icon page.** The intro uses « réduisent le risque que » + subjunctive
+correctly. The empty label reads naturally, and « Si le problème persiste » takes its
+problem from the page title. The battery card's « Sans restriction » is the AOSP label, and
+« l'utilisation de la batterie » is the head of AOSP's « Utilisation de la batterie par les
+applis ». The shared battery line (« Sans cela, … ») reads correctly under both the generic
+card and Xiaomi's. The generic card says « Définir … sur » and Xiaomi's says « Régler … sur »
+(from `a11y_stuck_message_xiaomi`). They never show together, because Xiaomi gets its own
+card instead of the generic one, and both verbs are standard, so I left them. The
+accessibility card's « le mode accessibilité » follows the « mode avion » pattern; English
+has no earlier term for it. « que les nettoyages de mémoire atteignent rarement » reads as
+"rarely affect". The restart line reuses `a11y_stuck_message` and names « le service »,
+which is clearer under « L'accessibilité doit être redémarrée » than English "it". The tile
+title is byte-identical to `quick_tile_add_row_title`, and AOSP's own label is « Réglages
+rapides ». The OPPO and vivo lines are identical, as in English. Their « peu après que vous
+l'avez quitté » correctly takes the indicative after « après que », with masculine agreement
+for PlayTranslate.
+
+**OEM labels.** Samsung matches the official Samsung France page: « Maintenance de
+l'appareil », « Batterie », « Limites utilisation arrière-plan » (Samsung's own, without
+"d'"), « Apps jamais mises en veille auto. » and « applications en veille ». « Ajouter aux
+« … » » folds the article in cleanly. Huawei's « Lancement d'application », « Lancement
+automatique », « Lancement secondaire » and « Exécution en arrière-plan » are official.
+« Gérer manuellement » is a paraphrase, not a quoted label; the fr label for "Manage
+manually" is unverified. Xiaomi's « démarrage automatique », « économiseur de batterie » and
+« Aucune restriction » match AdGuard FR (a secondary source) and the reviewed
+`a11y_stuck_message_xiaomi`. For Recents, AdGuard FR (secondary, Xiaomi) and Huawei France's
+own page (for Huawei's screen) say « tâches récentes », but MIUI's Recents screen shows no
+title to match, so « les applis récentes » is fine. The OPPO and vivo titles are UNVERIFIED:
+two searches found no French OPPO or vivo source. They read naturally, and they keep
+auto-launch as « lancement automatique » (Huawei's official term) and autostart as
+« démarrage automatique ». The Huawei close-after-lock title is the known English-source
+problem, rendered faithfully.
+
+**Email flow.** The two chooser titles are parallel (« Envoyer le rapport de plantage / de
+bug ») and match `crash_dialog_message`. The subject mirrors `crash_email_subject`'s
+structure (« Rapport de bug de PlayTranslate – v3.3.0 »). The body is natural, and « Les
+informations … et les journaux récents sont joints » agrees correctly. Logs are « journaux »
+as in `share_chooser_share_logs` and `settings_debug_export_logs_subject`. The toast wraps
+to 2 lines at both 296 and 320 dp, with the address whole on line 2. The file's usual toast
+form (« Aucune appli de messagerie. … ») and the more usual word order (« … à
+support@playtranslate.com par un autre moyen. ») both lose a third line at 296 dp. The
+current « Envoyez les fichiers autrement à … » is the order that fits, and it is grammatical.
+« appli » already appears in running text (`error_single_app_not_fullscreen`,
+`mp_overlay_permission_message`). « e-mail » and « bug » have no precedent in the file and
+are standard in France.
+
+### Verdict (round 1)
+
+3 ⚠️ and 2 💬. Apply all five (the 💬 on `settings_support_keep_running_subtitle` is
+optional). **Not a PASS until the three ⚠️ are applied**:
+`settings_support_report_bug_subtitle` (« Maintenez pour partager. »),
+`kill_notice_restored` (« PlayTranslate est de nouveau activé. ») and
+`keep_running_huawei_close_after_lock_line` (« Plus de paramètres batterie », Huawei France
+official).
+
+## Follow-up review 2026-10-07, round 1 (15 keys after the Fix disappearing icon rewrite, plus the final review of the first pass's 41 keys)
+
+Mechanical layer: `python3 TOOLS/mech_check.py F2/keys2.txt fr` reports "checked 1 locales x
+15 keys; problems: 0", and `python3 TOOLS/mech_check.py …/scratchpad/keys.txt fr` (the first
+pass's keys still in English: 41 less the two Huawei close-after-lock keys, so 39) reports
+"checked 1 locales x 39 keys; problems: 0": every key present, `<xliff:g>` spans (both
+`app_name` and `app_name2` in the three two-span lines) and placeholders identical to
+English, `\n` counts match, no unescaped `'` or `"`, no stray tag, no double space, no
+leading or trailing space. `python3 scripts/l10n_diff.py --locale
+app/src/main/res/values-fr/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync";
+the four keys English removed (`restricted_settings_title`, `restricted_settings_message`,
+`keep_running_huawei_close_after_lock_title`, `keep_running_huawei_close_after_lock_line`)
+are gone from the file.
+**No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- `AccessibilityHelp.withRestrictedSettingsStep` appends `"\n\n"` + the addendum on Android 13+
+  to `accessibility_dialog_message` (MainActivity) and `overlay_icon_a11y_required_message`
+  (SettingsRenderer), both system AlertDialogs, to the three `a11y_required_*_message`
+  (AccessibilityAlert, OverlayAlert), and to `keep_running_accessibility_line` only while the
+  service still has to be enabled (`KeepRunningActivity.lineOf`). The stuck alert never gets
+  it; it gets `"\n\n"` + `a11y_stuck_message_xiaomi` when `Build.MANUFACTURER` is Xiaomi.
+- `KeepRunningActivity.openFirst`: every card with an action (the ROM cards, the battery
+  dialog, accessibility) shows `keep_running_screen_unavailable` as a `LENGTH_LONG` toast when
+  none of its intents launches, then opens App info. `KeepRunningItems.ids`: Xiaomi gets
+  autostart, battery (with its own line) and lock; Huawei, OPPO, vivo and Samsung one card
+  each; then the generic battery card (never on Xiaomi), accessibility (Android 11+) and the
+  tile (Android 13+). `MainActivity.maybeShowKillNotice` still appends `' '` +
+  `kill_notice_restored` only with an icon on screen.
+- The toast, wrapped with `TOOLS/Wrap` at 14 sp: 2 lines at 296 dp (« Page indisponible sur
+  ce téléphone. » / « Recherchez ce paramètre dans les Paramètres. ») and 2 at 320 dp; the
+  English needs 3 at 296.
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| a11y_required_hotkey_message | ⚠️ | Définir des raccourcis nécessite l\'autorisation d\'accessibilité. Elle permet à <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> de détecter les touches que vous appuyez pendant que vous jouez. | Définir des raccourcis nécessite l\'autorisation d\'accessibilité. Elle permet à <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> de détecter les touches sur lesquelles vous appuyez pendant que vous jouez. | **Outside the 15 + 41 keys** (in HEAD, never reported). Found while reading the addendum after its five host messages: in the hotkey alert this paragraph now sits directly above it. « appuyer » is intransitive (« appuyer sur une touche »), so « les touches que vous appuyez » is a solecism. The fix keeps the file's verb for tap and press; « les touches que vous pressez » would also be correct. |
+| quick_tile_added_row_subtitle | ⚠️ | Ajouté aux Paramètres rapides | Ajoutée aux réglages rapides | **Outside the 15 + 41 keys.** Found while checking the tile card's term. The full review renamed the row title to « Ajouter la tuile aux réglages rapides », which matches Android's « Réglages rapides » (framework `accessibility_system_action_quick_settings_label`, android-36 on disk), and `keep_running_tile_title` copies that title. This added-state subtitle kept « Paramètres rapides », so `HotkeysSettingsActivity.renderAddTile` shows both terms on one row. The feminine agrees with « la tuile » in the title above it. |
+
+### Clean areas — checked, no findings
+
+**CHANGED keys moved only as far as the English.** `a11y_stuck_message` is the HEAD text
+with the cause sentence deleted and nothing else changed (string comparison).
+`a11y_stuck_message_xiaomi` differs from HEAD in exactly the three places the English moved:
+« activez » became « autorisez » (enable → allow), « l'économiseur de batterie » became « son
+utilisation de la batterie » (Battery saver → its battery use), and « continuera » became
+« pourrait continuer » (will → may). The tile line keeps « réactiver … depuis n'importe quel
+écran » without the swipe and tap. The Xiaomi battery title swaps only its object. The lock
+line keeps its round-1 first sentence and adds a natural « faites plutôt glisser la carte vers
+le bas ». The Huawei line keeps its three switch labels and adds the path. Where the meaning
+changed (battery title and line, the Xiaomi autostart, OPPO, vivo and Samsung lines), the
+line is translated afresh.
+
+**The addendum, read after each of its six hosts.** It reads as a closing paragraph after
+both system dialogs, whose last line is the « Accédez à Paramètres → … → Activer » path, so
+« l'interrupteur » lands on the switch just named. After the three OverlayAlert messages and
+the accessibility card line it is as unanchored as English "the switch", and no less clear.
+« Infos sur l'appli » and « Autoriser les paramètres restreints » are AOSP's labels, quoted in
+« ». The first is also the framework's `app_info` on disk, and the second matches the
+deleted, reviewed `restricted_settings_message`. « Sur Android 13 ou une version
+ultérieure » follows `requires_android_11_message`. « l'interrupteur » has no precedent (no
+other string names a switch control), but it is the plain French word for an on/off switch
+and is clear here; « le bouton » is more colloquial and « l'option » vaguer, so I left it. It
+is one sentence, as in English.
+
+**Stuck alert as a set.** The title, both paragraphs and the Xiaomi paragraph read in
+sequence. « autorisez également le démarrage automatique » and « réglez son utilisation de la
+batterie sur « Aucune restriction » » repeat the two Xiaomi card titles, as the English
+comment intends, and « son » points at PlayTranslate. Only the constant « Aucune
+restriction » is quoted, as in the card title.
+
+**Cards, title plus line, per ROM.** Every title is an infinitive and every line a vous
+imperative or a subjectless present, as before. The battery title opens with « Toujours
+autoriser », the first words of the dialog the card opens (AOSP « Toujours autoriser en
+arrière-plan ? »). Like English, it quotes no state label (« Sans restriction »). The battery
+line's « cette autorisation » names what the card grants, and « de lui-même » matches the
+stuck message. The three two-span lines keep both spans and read naturally. In the Xiaomi
+line, Xiaomi is the implied subject of « après l'avoir fermé », as in English, and « fermé »
+agrees with « l' ». OPPO's "its battery settings" is « ses paramètres de batterie » (the
+app's), and vivo's "the Battery settings" is « les paramètres de la batterie » (the phone's):
+the same distinction English makes. vivo's line drops "it" from "allow it high background
+power use", but PlayTranslate is the sentence's topic, so nothing is lost, and « consommation
+élevée en arrière-plan » matches the title's « consommation en arrière-plan ». The Xiaomi
+battery line's « paramètres système de PlayTranslate » repeats the stuck paragraph's
+« paramètres système de l'application ». It also keeps the system page apart from
+PlayTranslate's own Settings screen, which « les paramètres de PlayTranslate » would suggest.
+« l'option liée à la batterie » is a natural "battery entry". The Huawei title's « Gérer
+manuellement » pairs with the line's « désactivez « Gérée automatiquement » ». The Samsung
+line moves « sous « Limites utilisation arrière-plan » » after the list name, and it reads
+naturally. Put in path order, the sentence would end on « auto. ». or still carry the
+label's period mid-sentence, so I left it. « jugées inutilisées depuis quelques jours »
+renders "apps it has not seen used" well.
+
+**Labels and search words.** These match official sources: Huawei France's « Lancement
+d'application », « Gérée automatiquement », « Lancement automatique », « Lancement
+secondaire » and « Exécution en arrière-plan » (the search word is the label itself), and
+Samsung France's « Limites utilisation arrière-plan » and « Apps jamais mises en veille
+auto. ». These come from a secondary source (AdGuard FR): Xiaomi's « Démarrage automatique »
+and HyperOS « Démarrage automatique en arrière-plan », both matched by the search word
+« démarrage automatique », plus « Économiseur de batterie » and « Aucune restriction ».
+These are unverified, with no French source found: Xiaomi's « Batterie » (HyperOS 2) and
+« Énergie » (HyperOS 3 "Power"; « Alimentation » is the other plausible rendering), OPPO's
+search word « lancement auto », and vivo's « démarrage automatique ». « lancement auto »
+differs from the card title's « lancement automatique ». As a search query, though, it
+matches the label by prefix whether the label is written short or in full, while the full
+form would miss a short label, so it is the safer word. One search for a French ColorOS
+source found none (the first pass's two searches found none either). A second, for OnePlus,
+was declined, and I made no further web checks.
+
+**The toast, then App info.** The toast fits 2 lines at both widths. « Page » follows the
+addendum's « la page « Infos sur l'appli » » and keeps « écran » free for displays. The
+telegraphic « Page indisponible » is the usual French toast form. Dropping « plutôt » costs
+little, because App info opening under the toast already says "instead". « Cherchez plutôt
+ce paramètre dans les Paramètres. » would also fit 296 dp, but « Recherchez » is the verb of
+the Settings search field (« Rechercher ») the toast sends the user to, so the current wording
+is better. The paramètre / Paramètres echo is harmless.
+
+**The first pass's keys, final review.** The round-1 fixes landed:
+`settings_support_report_bug_subtitle` (« Maintenez pour partager. »), `kill_notice_restored`
+(« PlayTranslate est de nouveau activé. ») and both 💬
+(`settings_support_keep_running_subtitle` « Éviter que PlayTranslate se ferme », and the lock
+line's « appuyez longuement … puis appuyez sur le cadenas »). The third ⚠️'s key,
+`keep_running_huawei_close_after_lock_line`, left English along with its card. I re-measured
+the widths with the packet's tools. The Support summaries are 194 dp (fits 216) and 348 dp,
+whose first clause is 199 dp, so the tap action shows whole at 216 dp. The toolbar title is
+177 dp of 272. `email_no_app_fallback` takes 2 lines at 296 and 320 dp, with the address
+whole on line 2. The kill notice reads correctly after each of the three bodies with the
+restored sentence appended. The Support rows, email flow, intro, empty label, accessibility
+card (both states), tile card and the five ROM titles read as in round 1, and I hold its
+decisions (« Si l'icône disparaît », « Envoyez les fichiers autrement à … »).
+
+**Typography, all 44 values, checked by script.** vous throughout. Every apostrophe is `\'`,
+with no curly ’. « » take plain spaces, and a plain space precedes `?` and `:`; the file has
+no NBSP anywhere. No em dash.
+
+### Verdict (round 1)
+
+In scope (the 15 follow-up keys and the first pass's 39 remaining keys): 0 findings.
+**PASS.** All the round-1 fixes are in place.
+
+Outside the scope, 2 ⚠️ turned up while reading the surfaces as sets. Both are pre-existing
+and do not block this PASS; apply them separately: `a11y_required_hotkey_message` (« les
+touches sur lesquelles vous appuyez ») and `quick_tile_added_row_subtitle` (« Ajoutée aux
+réglages rapides »).
+
+### Follow-up round 2 (2026-10-07), final review after applying round 1
+
+Mechanical layer re-run: `python3 TOOLS/mech_check.py F2/keys2.txt fr` reports "checked 1
+locales x 15 keys; problems: 0". The same check over `F2/keys-extra-f2.txt` (the two round-1
+keys plus `requires_android_11_message`) reports "checked 1 locales x 3 keys; problems: 0",
+and over the first pass's remaining keys (`…/scratchpad/keys.txt`) "checked 1 locales x 39
+keys; problems: 0": every key present, `<xliff:g>` spans (both `app_name` and `app_name2` in
+the three two-span lines) and placeholders identical to English, `\n` counts match, no
+unescaped `'` or `"`, no stray tag, no double space, no leading or trailing space.
+`python3 scripts/l10n_diff.py --locale app/src/main/res/values-fr/strings.xml` reports
+`missing=0 orphan=0 modified=0`, "in sync". The file parses as XML (1047 names, no
+duplicate), and the four keys English removed are still gone.
+**No 🛑 build-breaking issues.**
+
+**Round-1 fixes:**
+- `a11y_required_hotkey_message`: applied as suggested (« les touches sur lesquelles vous
+  appuyez »); against HEAD only that phrase changed. It reads cleanly above the Android 13+
+  addendum in the 280 dp OverlayAlert card, whose message scrolls and has no line cap.
+- `quick_tile_added_row_subtitle`: applied as suggested (« Ajoutée aux réglages rapides »).
+  Under the row title « Ajouter la tuile aux réglages rapides »
+  (`HotkeysSettingsActivity.renderAddTile`) the feminine agrees with « la tuile », and
+  « Paramètres rapides » has no hit left in the file: all three Quick Settings strings now use
+  Android's « réglages rapides ».
+- The first pass's fixes that round 1 confirmed are still in the file:
+  `settings_support_report_bug_subtitle` (« Maintenez pour partager. »),
+  `kill_notice_restored` (« PlayTranslate est de nouveau activé. »),
+  `settings_support_keep_running_subtitle` (« Éviter que PlayTranslate se ferme ») and the
+  lock line's « appuyez longuement … puis appuyez sur le cadenas ».
+
+#### Findings (round 2)
+
+No new findings.
+
+Checked: the addendum after its six hosts (both system dialogs, the three OverlayAlert
+messages, the accessibility card line), with its labels re-read from the Android 16 QPR2
+French Settings file on disk (« Infos sur l'appli », « Autoriser les paramètres restreints »;
+the battery title's « Toujours autoriser » opens like « Toujours autoriser en arrière-plan ? »).
+The stuck alert reads correctly with and without the Xiaomi paragraph, which repeats both
+Xiaomi card titles. Each card's title and line agree. Placeholder grammar holds, with
+PlayTranslate masculine throughout (« après l'avoir fermé », « de lui-même »), and
+« autorisez-le » agrees with the masculine search word. The toast wraps to 2 lines at
+296 dp (second line 294 dp) and at 320 dp (second line 199 dp). Typography, checked by
+script over the 17 values: vous only, every apostrophe `\'`, no curly ’, « » with plain
+spaces, a plain space before `:` `?` `!`, no NBSP and no em dash. The lock line's
+« appuyez longuement sur » is the file's form for a hold on a target (`status_hold_hint`,
+`anki_long_press_footer`), and « Maintenez pour … » is its form for "Hold to …", so the
+two hold wordings do not conflict.
+
+OEM label check (4 web lookups: 2 searches, 2 PDFs). OnePlus France's own user manual for
+the OnePlus Open (OxygenOS,
+https://service.oneplus.com/content/dam/support/user-manuals/fr/OnePlus_Open_User_Manual_fr.pdf)
+lists « Lancement automatique » under Paramètres > Applis as the auto-launch list. The OPPO
+line's search word « lancement auto » is a prefix of it, and the card title's « lancement
+automatique » matches it, so on OnePlus, which gets the OPPO card, both now rest on an
+official source. OPPO and realme French ColorOS stay unverified: OPPO's French ColorOS 7
+guide (https://ipics.oppo.com/oppo_fr/user_manual/ColorOS7_French_User_Guide_V1.0_200710.pdf)
+names no auto-launch entry. vivo « démarrage automatique » and Xiaomi « Batterie » /
+« Énergie » remain unverified (known issue 2).
+
+#### Verdict (round 2)
+**PASS.** Both round-1 fixes landed exactly as suggested, nothing around them broke, and the
+15 follow-up keys have no open items.

@@ -62,3 +62,15 @@ table (fixed in `scripts/readme_lang_tables.java` for every ja/zh locale, not on
 默认使用 Lingva 进行翻译, 单独列出 / 再调整顺序, 后端 URL. Not applied: the video link text keeps
 "Persona 3 Reload" in Latin, as the translation brief lists it with the brand names and
 the link text is replaced by GitHub's video player on render.
+
+## Delta review 2026-10-08 ("Can't enable accessibility?" rewritten)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] zh-rCN -> readme/README.zh-CN.md`, no warnings; also PASS with `--require-header`). **No 🛑 issues.**
+
+No findings.
+
+Clean areas: The four steps are in the English order with nothing added, dropped or softened: 点按一次, 灰色的开关, closing the dialog, 如有提示, and the condition as 完成第 1 步后才会出现此选项. The register is 你 with bare imperatives, as in the rest of the file. A script checked the section for Pangu spacing (including 第 1 步 and the spaced ⋮), “ ” only, full-width punctuation and GB2312-only Han. The bold spans are the English four, and every `**` flanks correctly. The labels were read in AOSP android16-qpr2 on disk and in Android 13 through LineageOS 20's `values-zh-rCN`, which carries AOSP 13's translations. 应用信息, 允许受限制的设置 and step 4's 无障碍设置 (`accessibility_settings_title`) are identical on both versions; 应用 and 受限制的设置 were read on 16 only. All of them agree with the app's `a11y_restricted_settings_addendum`. Checked and kept: 设置 → 无障碍 is not Android 16's `accessibility_settings` (无障碍功能). It is, however, Android 13's exact label (无障碍) and a prefix of the newer one, and it is the app's own path in `accessibility_dialog_message` and `overlay_icon_a11y_required_message`. 无障碍功能 would be exact only on newer versions and stop being exact on 13, the Thor's version. This supersedes the 2026-10-06 lines above that call 允许受限设置 / 受限设置 the OS labels. AOSP says 允许受限制的设置 on 13 and 16, and 受限制的设置 on 16. The keys those lines cite (`restricted_settings_title`, `restricted_settings_message`) are deleted.
+
+### Disposition (2026-10-08)
+
+No findings; nothing to apply.

@@ -103,3 +103,17 @@ Other regional-vocabulary checks:
 
 Applied all 6 💬 (mantengas, modelos de traducción sin conexión, final period on step 2, period
 instead of a second colon, Ayuda y apoyo, En su idioma ×2).
+
+## Delta review 2026-10-08 ("Can't enable accessibility?" rewritten)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] es -> readme/README.es.md`, no warnings; also PASS with `--require-header`). **No 🛑 issues.**
+
+| section | severity | current | suggested | note |
+|---|---|---|---|---|
+| How to Install > Can't enable accessibility? (intro) | 💬 | "A partir de Android 13, Android muestra en gris el interruptor de accesibilidad" | "A partir de Android 13, el sistema muestra en gris el interruptor de accesibilidad" | Optional. The English's "Android 13, Android" carried over; back to back it reads clumsier in Spanish, where "el sistema" is the usual second mention of the OS. Android stays the subject, so the rewrite's point (Android does this, not an OEM) is not softened. |
+
+Clean areas: The intro and the four steps carry the English in order, with nothing added, dropped or softened: the condition is kept ("Esta opción solo aparece después del paso 1"), "si se te pide" renders "if prompted", and the old closing sentence is gone, as in English. Step 1 does not name the "Aplicaciones descargadas" sub-list that the app's own messages include, and the English does not name it either. All six Android labels match AOSP android16-qpr2 `es` on disk (`settings_label` Ajustes, `accessibility_settings` Accesibilidad, `apps_dashboard_title` Aplicaciones, `application_info_label` Información de la app for the English's "AppInfo", `app_restricted_settings_lockscreen_title` Permitir ajustes restringidos, `blocked_by_restricted_settings_title` Ajuste restringido). The app agrees: `a11y_restricted_settings_addendum` has the same two labels and the same "A partir de Android 13", "en gris" and "una vez", and `accessibility_dialog_message` and `overlay_icon_a11y_required_message` start the same "Ajustes → Accesibilidad" path. Tú throughout. Bold sits on exactly the English's four spans (both paths, ⋮, Permitir ajustes restringidos); "Información de la app" stays plain like "AppInfo", and its capital and the colon mark it as a label. Steps run 1 to 4, each ending in a period as in English; ¿…?, “ ” on the dialog name both times, spaced →, "solo" without accent. The labels stay on the es-ES AOSP set, per the file-wide decision of 2026-10-06.
+
+### Disposition (2026-10-08)
+
+Applied the 1 💬 ("el sistema muestra en gris").
