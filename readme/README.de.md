@@ -58,14 +58,12 @@ Installiere die APK und aktiviere Play Protect danach wieder, damit deine andere
 
 ### Bedienungshilfen lassen sich nicht aktivieren?
 
-Bei einigen erweiterten Funktionen (etwa der Vorschau durch Gedrückthalten eines Tastenkürzels) wirst du aufgefordert, die Berechtigung für Bedienungshilfen zu erteilen. Manche Android-Hersteller verhindern standardmäßig, dass Apps, die nicht aus dem Play Store stammen, diese Berechtigung erhalten: Der Schalter in den Einstellungen ist dann möglicherweise ausgegraut, oder beim Antippen erscheint der Hinweis „Eingeschränkte Einstellung“. So hebst du die Sperre auf:
+Bei einigen erweiterten Funktionen (etwa der Vorschau durch Gedrückthalten eines Tastenkürzels) wirst du aufgefordert, die Berechtigung für Bedienungshilfen zu erteilen. Ab Android 13 graut Android den Bedienungshilfen-Schalter jeder App aus, die über eine heruntergeladene APK-Datei installiert wurde, und beim Antippen erscheint der Hinweis „Eingeschränkte Einstellung“. So hebst du die Sperre auf:
 
-1. Öffne **Einstellungen → Apps → PlayTranslate**
-2. Tippe auf das Menü **⋮** (oben rechts)
-3. Tippe auf **Eingeschränkte Einstellungen zulassen**
-4. Authentifiziere dich, wenn du dazu aufgefordert wirst
-
-Jetzt kannst du die Bedienungshilfen für PlayTranslate aktivieren.
+1. Wähle unter **Einstellungen → Bedienungshilfen** PlayTranslate aus und tippe einmal auf den ausgegrauten Schalter. Schließe den Hinweis „Eingeschränkte Einstellung“.
+2. Öffne die App-Info: **Einstellungen → Apps → PlayTranslate**.
+3. Tippe auf das Menü **⋮** und wähle **Eingeschränkte Einstellungen zulassen**. Dieser Eintrag erscheint erst nach Schritt 1.
+4. Authentifiziere dich, falls du dazu aufgefordert wirst, kehre dann zu den Bedienungshilfen zurück und aktiviere den Schalter.
 
 ## Support
 

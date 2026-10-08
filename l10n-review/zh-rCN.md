@@ -707,3 +707,259 @@ Round-1 fixes present: the discard body (重新截取屏幕后再次生成), the
 No new findings.
 
 **Verdict (round 2):** **PASS.**
+
+## Delta review 2026-10-07 (41 keys + 2 orphans: bug-report email, Support rows, kill notice, Fix disappearing icon page)
+
+Mechanical layer verified: `python3 PKT/../tools/mech_check.py PKT/../keys.txt zh-rCN` reports
+`checked 1 locales x 41 keys; problems: 0` (all 41 present; `<xliff:g>` spans and `%1$s`
+byte-identical to EN; `\n` counts match in the email body; no unescaped `'`/`"`, stray tags,
+double spaces or edge spaces), and `python3 scripts/l10n_diff.py --locale
+app/src/main/res/values-zh-rCN/strings.xml` reports `missing=0 orphan=0 modified=0` (in sync).
+Also checked: the file parses, no duplicate `name=`, the two orphans
+(`settings_debug_export_logs_title` / `_subtitle`) are gone and `settings_debug_export_logs_subject`
+stays; every Han character in the delta is in GB2312 (Simplified only); no 您; quotes are “ ”.
+**No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- `MainActivity.maybeShowKillNotice` picks one body by exit kind and appends `' '` + `kill_notice_restored`
+  only when a floating icon is actually on screen; See options (accent fill) opens `KeepRunningActivity`,
+  Not now cancels. After 。 the code's ASCII space shows as a small extra gap in Chinese: harmless, and
+  only the code could drop it.
+- `KeepRunningActivity`: the Report a bug row under the cards binds the Settings row's two strings; the
+  Xiaomi battery card reuses `keep_running_battery_line`; the close-after-lock card opens the system
+  Battery screen (`ACTION_POWER_USAGE_SUMMARY`) and the Samsung card the global firmware's Device care
+  battery activity (`com.samsung.android.lool`), each falling back to App info.
+- `LogExporter`: the no-email toast is `LENGTH_LONG` with the address filled in and is followed at once by
+  the share sheet; the hub summary in `settings_row_hub.xml` is `singleLine` + `ellipsize="end"`.
+
+### Findings (delta, round 1)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| keep_running_huawei_close_after_lock_line | ⚠️ | 该选项位于“电池”>“更多电池设置”中。否则每次锁屏时 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 都会被关闭。 | 该选项位于“电池” → “更多电池设置”中。开启时，每次锁屏都会关闭 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>。 | 否则 needs a condition to negate. Here it follows the sentence that says where the option is, so it attaches to the location ("if it is not there"); ja (オフにしないと) and ko (끄지 않으면) recast it the same way. Separator: next row. 电池 › 更多电池设置 is confirmed on Huawei's own zh-CN page, read today (zh-cn00428704: 进入设置 > 电池 > 更多电池设置). |
+| keep_running_samsung_never_sleeping_line | 💬 | 位于“设备维护”>“电池”>“后台使用限制”中。手机需要内存时，会关闭休眠中的应用程序。 | 位于“设备维护” → “电池” → “后台使用限制”中。手机需要内存时，会关闭休眠中的应用程序。 | Separator only. These two keys hold the file's only bare `>` paths; every other path in the file is a spaced → (设置 → 无障碍 → 已下载的应用), the translator's notes say →, and the other 11 locales use an arrow (ar ←) or prose in both keys. `>` is common in Chinese help pages, so this is consistency, not correctness. |
+
+### Clean areas (delta) — checked, no findings
+
+**Kill notice, read as the user meets it.** Android 关闭了 PlayTranslate; each of the three bodies with
+" 现在已重新开启。" appended reads naturally, because PlayTranslate stays the topic, so the subjectless
+sentence never attaches to 部分手机 or to 手机的电池或内存管理功能. 已开启的 renders "while it was on" in
+all three bodies and pairs with 重新开启, the app's On verb (`capture_lifecycle_start`). The stopped body
+leaves the attribution to the user, as English does. 查看解决方法 says more than a literal 查看选项 and
+echoes the page's 解决; 暂不 = `btn_not_now`.
+
+**Support card and the page.** 解决图标消失问题 is byte-identical in the row and the toolbar (176 dp of
+~272). The five rows read cleanly in order; 支持团队 sits naturally between the 支持 header and the
+支持 PlayTranslate donation row, two ordinary senses of one zh-CN word. `keep_running_empty` says 报告错误,
+the title of the row beneath it, and 重现 as in `crash_email_body`. Each 否则 line follows an imperative
+title (the generic battery card, both Xiaomi uses of the battery line, Xiaomi autostart, OPPO, vivo); the
+OPPO and vivo lines are identical, as in English. The tile and restart cards reuse 添加快捷设置图块 and the
+`a11y_stuck_message` sentences.
+
+**Email flow.** 发送崩溃报告 / 发送错误报告; the subject mirrors `crash_email_subject`
+(PlayTranslate 错误报告 – v3.3.0); the body uses full-width ？（）。 and the precedent's 设备信息 / 近期日志.
+The toast wraps to 2 lines at 296 and 320 dp with the address whole on line 2; the hold path keeps
+分享日志 / PlayTranslate 日志.
+
+**Widths.** Report a bug subtitle 260 dp (English 256); its first sentence, 169 dp, fits even 216 dp, so
+the email action survives the clip on a 360 dp phone. Keep-running subtitle 160 dp.
+
+**Platform labels.** 无限制 is AOSP's; 电池使用 shortens 应用的电池使用情况 in a title whose card opens
+Android's own dialog, so nothing has to be found by name. Huawei 应用启动管理 and the three switches match
+the official cells, and Huawei's zh-CN page zh-cn00428704, read today, confirms 允许后台活动 and the
+电池 › 更多电池设置 path. OPPO (允许应用自启动, 允许完全后台行为) and vivo (自启动, 允许后台高耗电) are
+China-ROM labels from Huawei-authored pages: secondary, but the right ROM for this locale. Xiaomi 自启动 /
+省电策略 / 无限制 repeat `a11y_stuck_message_xiaomi`. 锁屏清理 is the EMUI 5 name of the only firmware that
+had the option (known issue 1) and a better search key than a calque of the English; nothing to add to the
+known issue.
+
+**Samsung (global-firmware wording, unverified).** The choice is right: the card deep-links the global
+firmware's Device care battery screen (`com.samsung.android.lool`), and a China-market Galaxy
+(智能管理器 › 电池 › 后台控制 on samsung.com.cn) has no never-sleeping list for any wording to match.
+设备维护 and 后台使用限制 agree with the one Simplified Chinese path found today, a Samsung community reply
+quoted in a search summary (设置 → 电池和设备维护 → 电池 → 后台使用限制 → 永不休眠的应用程序; the thread
+itself returned 403). That reply names the list without 自动, the newer form that matches the English
+"Never sleeping apps"; 永不自动休眠的应用程序 is the older form Samsung Hong Kong's official page prints.
+Either is recognisable on screen, so no row; one look at a global Galaxy set to 简体中文 would settle it.
+
+**Language mechanics.** 你 throughout, no 您; Simplified only; Pangu spacing checked programmatically (one
+space at each Han/Latin boundary, none at full-width punctuation); “ ” quotes. The ”、“ between the three
+Huawei labels: GB/T 15834 usually drops 、 between quoted items, but both are current practice, so not
+raised. 手机 for "phone" is known issue 3.
+
+### Verdict (round 1)
+
+1 ⚠️ + 1 💬, both to apply: `keep_running_huawei_close_after_lock_line` (the 否则 sentence and the
+separator) and `keep_running_samsung_never_sleeping_line` (the separator).
+
+### Round 2 (2026-10-07), final review after applying round 1
+
+Mechanical layer re-run: `python3 PKT/../tools/mech_check.py PKT/../keys.txt zh-rCN` reports
+`checked 1 locales x 41 keys; problems: 0` (the same check on `a11y_stuck_message_xiaomi`: 0), and
+`python3 scripts/l10n_diff.py --locale app/src/main/res/values-zh-rCN/strings.xml` reports
+`missing=0 orphan=0 modified=0` (in sync). Also re-checked: the file parses, no duplicate `name=`,
+the two orphans are gone and `settings_debug_export_logs_subject` stays; every Han character in the
+delta is in GB2312; no 您; quotes “ ” only; no bare `>` left; Pangu spacing at every Han/Latin and
+Han/placeholder boundary.
+**No 🛑 build-breaking issues.**
+
+**Round-1 fixes:**
+- `keep_running_huawei_close_after_lock_line` (⚠️): applied, byte-identical to the suggestion. 开启时 takes 该选项
+  from the sentence before as its subject, so the line reads correctly under 关闭“锁屏清理”.
+- `keep_running_samsung_never_sleeping_line` (💬): applied, byte-identical. No `>` path is left in the file
+  (the only `&gt;` is the `&lt;img&gt;` sample in `anki_content_picture_desc`); both keys now use the file's
+  spaced → (设置 → 无障碍 → 已下载的应用). zh-rHK writes the same paths unspaced because 「」 carry their own
+  side space; each file is consistent with itself.
+- Nothing around them moved: `keep_running_title` and `settings_support_keep_running_title` are still both
+  解决图标消失问题, the OPPO and vivo lines are still identical, and neither fixed key has a width limit (both
+  are card lines, which wrap).
+
+#### Findings (round 2)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| kill_notice_body_other | 💬 | 你的手机关闭了已开启的 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>。这就是悬浮图标消失的原因。部分手机会为了省电这样做。 | 你的手机关闭了已开启的 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>。这就是悬浮图标消失的原因。部分手机会为了省电而这样做。 | 为了…而… is the written form in a dialog body. This file already says it that way in the string the delta borrows its wording from (`a11y_stuck_message`: 系统为省电而强行停止应用), and zh-rHK has 為了省電而這樣做. Optional polish; the current sentence is not wrong. |
+
+#### Verdict (round 2)
+**PASS.** Both round-1 fixes landed. All 41 strings were re-read as the user meets them: the kill notice
+with each body followed by " 现在已重新开启。", the five Support rows in order, the Fix page in each ROM's
+card order with the empty label and the Report a bug row, and the email flow with PlayTranslate,
+support@playtranslate.com and 3.3.0 filled in. Widths are as measured: the Report a bug subtitle is 260 dp,
+and its email sentence (169 dp) is whole even at 216 dp; the Keep-running subtitle is 160 dp; the toolbar
+title takes 176 of ~272 dp; the toast is 2 lines at both 296 and 320 dp, with the address whole on line 2.
+Open: one optional 💬 (`kill_notice_body_other`). The Samsung global-firmware wording stays unverified, as
+round 1 recorded.
+
+## Follow-up review 2026-10-07, round 1 (15 keys after the Fix disappearing icon rewrite)
+
+Mechanical layer: `python3 TOOLS/mech_check.py F2/keys2.txt zh-rCN` reports
+`checked 1 locales x 15 keys; problems: 0` (all 15 present; every `<xliff:g>` span, including
+`app_name2` in the three two-span lines, byte-identical to EN; `\n` count 2 in `a11y_stuck_message`
+as in EN; no unescaped `'`/`"`, stray tags, double spaces or edge spaces), and `python3
+scripts/l10n_diff.py --locale app/src/main/res/values-zh-rCN/strings.xml` reports
+`missing=0 orphan=0 modified=0` (in sync). Also checked: the file parses, no duplicate `name=`; the
+four keys removed from English (`restricted_settings_title` / `_message`,
+`keep_running_huawei_close_after_lock_title` / `_line`) are gone; every Han character in the 15 values
+is in GB2312 (Simplified only); no 您; quotes “ ” only; Pangu spacing checked programmatically (one
+space at every Han/Latin, Han/⋮ and Han/span boundary, none beside full-width punctuation, none between
+Han runs).
+**No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- `AccessibilityHelp.withRestrictedSettingsStep` appends the addendum on API 33+ only, as `message + "\n\n" + step`,
+  in `MainActivity.showAccessibilityDialog` and `SettingsRenderer.showOverlayIconA11yAlert` (system AlertDialogs),
+  `showAccessibilityRequiredAlert` (OverlayAlert, the three `a11y_required_*` messages) and
+  `KeepRunningActivity.lineOf` (the accessibility card, not in its stuck state). The stuck alert
+  (`SettingsRenderer.showA11yStuckAlert`) never takes it, and adds `a11y_stuck_message_xiaomi` after `\n\n`
+  when `Build.MANUFACTURER` is Xiaomi.
+- `KeepRunningItems.ids`: Xiaomi gets autostart, battery (with its own line now) and lock; the generic battery
+  card is skipped on Xiaomi and hidden once the exemption holds; every other ROM gets its one card first.
+  `openFirst` tries the ROM's screens (Xiaomi battery: `com.miui.powerkeeper` `HiddenAppsConfigActivity` with
+  the package, the app's own battery page; generic battery: `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, the
+  AOSP 要允许应用一直在后台运行吗？ dialog) and, when none opens, shows the `LENGTH_LONG` toast and opens App info.
+- Titles and lines are the `settings_row_link` title and subtitle inside a card and wrap; the toast is the
+  system text toast (2 lines, 14 sp).
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| kill_notice_body_other (outside F, carried from round 2 of the first pass) | 💬 | 你的手机关闭了已开启的 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>。这就是悬浮图标消失的原因。部分手机会为了省电这样做。 | 你的手机关闭了已开启的 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>。这就是悬浮图标消失的原因。部分手机会为了省电而这样做。 | Confirmed, still optional. 为了…而… is the written pattern for a purpose clause in a dialog body; without 而 the sentence reads as speech. The precedent round 2 cited (`a11y_stuck_message`'s 为省电而强行停止应用) left with the deleted cause sentence, but zh-rHK's twin says 為了省電而這樣做 and the two files should not differ here. |
+
+No findings in the 15 keys.
+
+### Clean areas — checked, no findings
+
+**Surfaces read as sets.** The addendum closes each of the five messages naturally. After
+`accessibility_dialog_message` and `overlay_icon_a11y_required_message` it follows 依次前往：设置 → 无障碍 →
+已下载的应用 → PlayTranslate → 启用。, so 开关 is the switch that step names; after the three
+`a11y_required_*` messages and the accessibility card's line it has no earlier antecedent, exactly as the
+English "the switch" has none, and the user meets the switch one tap later. 先…然后… orders the three steps,
+and the one sentence wraps in the 280 dp card. Every card reads as title + line: the generic battery card
+(允许 PlayTranslate 一直在后台运行 / 如果手机关闭了…，此设置可让它自行重新启动), the tile card (添加快捷设置图块 /
+可在任意界面重新开启…), the three Xiaomi cards, and the Huawei, OPPO, vivo and Samsung cards, whose lines open
+with the search word or path, as English does, and close with the 否则 hedge where English has one. The stuck alert reads 无障碍服务需要重启
+→ the two paragraphs → the Xiaomi paragraph, whose 允许…自启动 and 将其电池使用设为“无限制” are the two Xiaomi card
+titles' own words. The toast then App info: 此手机上无法打开该页面 is what the code means (the launch failed), and
+该选项 sends the user back to the card title.
+
+**Measured.** The toast wraps to 2 lines at 296 dp (此手机上无法打开该页面。请改为在手机的设置 | 中搜索该选项。)
+and at 320 dp (…的设置中 | 搜索该选项。), so it fits even the 360 dp phone the English does not.
+
+**Labels.** AOSP zh-CN, read in the cached android16-qpr2 Settings strings: 应用信息 (`application_info_label`),
+允许受限制的设置 (`app_restricted_settings_lockscreen_title`; AOSP wins over the old reviewed 允许受限设置),
+要允许应用一直在后台运行吗？ (`high_power_prompt_title`, which the battery title echoes as 一直在后台运行), 无限制.
+Huawei, official: 应用启动管理, the 自动管理 switch, 允许自启动, 允许关联启动, 允许后台活动. OPPO 完全后台行为 and vivo
+“电池” / 后台高耗电 are the China-ROM words from Huawei-authored pages, secondary but the right ROM for this
+locale, and each line matches its unchanged title. Samsung (unverified for a global Galaxy in 简体中文): “电池”,
+“后台使用限制”, “永不自动休眠的应用程序” agree with the title and with the first pass's decision. Xiaomi
+(unverified): 省电策略, 无限制, 最近任务; a search today found only a 2026-07 multi-brand guide that still calls the
+Xiaomi per-app entry 省电策略, so the “电池” and “电量” offered for HyperOS 2 and 3 have no source either way;
+the line's 电池相关的选项 carries the instruction whatever the entry is called.
+
+**Search words.** One per ROM, as the translator said: “自启动” for Xiaomi, OPPO and vivo, since the China ROMs
+use that word in all three (自启动管理 on MIUI, from a Xiaomi Q&A; 允许应用自启动 on ColorOS, from Huawei's OPPO
+page; 搜索“自启动” on Huawei's vivo page), so a literal second word for "auto-launch" would not be the ROM's. Huawei's
+“应用启动管理” is the official label. Each is quoted as the word to type; the second, bare 自启动 is the verb
+(允许 PlayTranslate 自启动), which English leaves unquoted too. The Xiaomi title 允许“自启动” (outside F) quotes the
+same word the line quotes as the search word, so the card reads as one; the stuck alert's bare 自启动 is the verb.
+No change.
+
+**CHANGED keys moved only where English moved** (compared with HEAD and the pre-rewrite values):
+`a11y_stuck_message` is the reviewed string minus 这通常发生在系统为省电而强行停止应用之后。, byte for byte;
+`a11y_stuck_message_xiaomi` changes only 为…开启“自启动” → 允许…自启动, 省电策略 → 其电池使用 and 会 → 可能会;
+`keep_running_xiaomi_lock_line` keeps its first sentence; `keep_running_xiaomi_battery_title` swaps only the entry
+name; the tile line drops 只需滑动并点按一次 as English dropped the swipe. The rewritten lines carry every clause of
+the new English, the hedges as 可能 and the battery line's verified effect without one.
+
+**Two-span lines.** Xiaomi, OPPO and vivo read naturally with PlayTranslate in both places: the second mention
+sits in the 否则 sentence, a sentence after the first, and 它 then refers back to it unambiguously.
+
+**Other.** 系统设置 for "app settings" mirrors 应用的系统设置 in the stuck alert the same Xiaomi user reads; the file
+uses 系统设置 only for the phone's Settings (`camera_permission_denied`) and the app's own Settings has no 系统
+section, so PlayTranslate 的系统设置 cannot be taken for an in-app page. 在 Android 13 及更高版本中 is the right
+conjunction for "and later" beside `requires_android_11_message`'s 或更高版本 for "or newer". 你 only, 点按 /
+长按 / 菜单 / 图标 as in the file, full-width （）、。， and Pangu spacing throughout.
+
+### Verdict (round 1)
+
+0 ❌, 0 ⚠️, 0 💬 in the 15 keys: **PASS.** The carried optional 💬 on `kill_notice_body_other` is confirmed
+(为了省电而这样做); apply it at discretion. Labels left unverified, as recorded: Xiaomi's names, Samsung in
+简体中文 on global firmware, and the OPPO and vivo China-ROM words (secondary).
+
+### Follow-up round 2 (2026-10-07), final review after applying round 1
+
+Mechanical layer re-run: `python3 TOOLS/mech_check.py F2/keys2.txt zh-rCN` reports
+`checked 1 locales x 15 keys; problems: 0`; the same check on `kill_notice_body_other` (the round-1
+fix, outside the 15), on `F2/keys-extra-f2.txt` and on the five ROM card titles reports 0; and
+`python3 scripts/l10n_diff.py --locale app/src/main/res/values-zh-rCN/strings.xml` reports
+`missing=0 orphan=0 modified=0` (in sync). Also re-checked: the file parses, no duplicate `name=`; the
+four keys removed from English are gone; every Han character in the 15 values and in
+`kill_notice_body_other` is in GB2312; no 您 in the file; quotes “ ” only (56 pairs, no 「」); Pangu
+spacing checked programmatically (one space at every Han/Latin, Han/⋮ and Han/span boundary, none beside
+full-width punctuation, none between Han runs, no half-width punctuation).
+**No 🛑 build-breaking issues.**
+
+**Round-1 fixes:**
+- `kill_notice_body_other` (💬, outside the 15): applied, byte-identical to the suggestion (部分手机会为了省电而这样做).
+  With " 现在已重新开启。" appended it still reads naturally, and the clause now matches zh-rHK's 部分手機會為了省電而這樣做.
+
+#### Findings (round 2)
+
+No new findings.
+
+#### Verdict (round 2)
+**PASS.** The round-1 fix landed and nothing else moved: the regenerated packet matches the file in all 53 rows
+(the 15 keys and the 38 strings around them), and the working-tree diff touches no key outside the two passes'
+sets. The 15 keys were re-read as the user meets them, with PlayTranslate filled in. The addendum closes
+`accessibility_dialog_message`, `overlay_icon_a11y_required_message`, the three `a11y_required_*` messages and the
+accessibility card's line as a paragraph of its own. After the two Settings paths, 开关 is the switch of the 启用 step;
+after the other four it has no earlier antecedent, as in English. Each ROM's cards read title + line in
+`KeepRunningItems` order, every search word is its own title's word (“自启动” for Xiaomi, OPPO and vivo; Huawei's
+“应用启动管理”), and the two-span lines carry PlayTranslate twice without strain. The stuck alert's Xiaomi paragraph
+uses the two Xiaomi card titles' words, and the toast is unchanged (28 characters, 2 lines at 296 and 320 dp).
+AOSP labels re-read in the cached android16-qpr2 zh-CN Settings strings: 应用信息, 允许受限制的设置,
+要允许应用一直在后台运行吗？, 无限制. 及更高版本 here and 或更高版本 in `requires_android_11_message` each fit their
+sentence (a range after 在…中, an alternative after 需要), so zh-rHK's change to 或以上 needs no zh-rCN counterpart.
+Labels left unverified, as recorded: Xiaomi's names, Samsung in 简体中文 on global firmware, and the OPPO and vivo
+China-ROM words (secondary).

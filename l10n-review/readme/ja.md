@@ -86,3 +86,17 @@ came from the zh-CN review and is now in `scripts/readme_lang_tables.java` for e
 The source-side finding (the "Settings → Security" path for Install unknown apps is the legacy
 location; stock Android has it under Apps → Special app access) is reported to the maintainer,
 not changed here.
+
+## Delta review 2026-10-08 ("Can't enable accessibility?" rewritten)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] ja -> readme/README.ja.md`, no warnings; the same with `--require-header`). **No 🛑 issues.**
+
+| section | severity | current | suggested | note |
+|---|---|---|---|---|
+| Can't enable accessibility? > step 2 | 💬 | "アプリ情報のページを開きます：**設定 → アプリ → PlayTranslate**" | "アプリ情報の画面（**設定 → アプリ → PlayTranslate**）を開きます。" | The only numbered step in the README with no closing 。, where the English ends it with a period. After the colon the path trails a finished sentence, English-style; in parentheses it sits next to the screen it names, and the step ends on its verb like steps 1, 3 and 4. 画面 rather than ページ: step 4 of this list says 「ユーザー補助の画面」 and install step 2 「この設定画面」, values-ja uses ページ only for pages of an imported file (「前のページ」), and the addendum's 「アプリ情報」を開き names no noun, so nothing contradicts. アプリ情報 itself stays (AOSP `application_info_label`). The bold is valid inside （） for the same reason as 3点メニュー（**⋮**）, and the checker passes on a scratch copy with this text. |
+
+Clean areas: Accurate against the English: four steps in order with every clause, including 「一度タップ」, closing the message, and the "only after step 1" condition (「この項目は手順1の後にだけ表示されます」); the intro keeps Android 13以降, the downloaded APK and the tap that shows the message; the closing sentence and 「右上の」 are gone as in English, and nothing is added. Labels byte-match AOSP android16-qpr2 ja on disk: 設定 (`settings_label`), ユーザー補助 (`accessibility_settings`), アプリ (`apps_dashboard_title`), アプリ情報 (`application_info_label`), 「制限付き設定」 (`blocked_by_restricted_settings_title`) and 制限付き設定を許可 (`app_restricted_settings_lockscreen_title`). Nothing contradicts the app: `a11y_restricted_settings_addendum` has the same グレー表示, 一度タップ, 3点メニュー（⋮） and 選択, and 設定 → ユーザー補助 and オンにする are the start and end of the path in `overlay_icon_a11y_required_message` and `accessibility_dialog_message`. Register: ます-form steps like the install and Play Protect lists, 手順 as in the section's own intro, no あなた. Markdown: bold on the two paths, ⋮ and the menu item only, as in English; numbering 1 to 4. Typography: all punctuation full-width (、。「」（）：); the only half-width runs are Android 13, digits flush against the Japanese (手順1, 3点), the spaced arrows as elsewhere in the file, and ⋮ (U+22EE, as in English). 「APKファイル」, where the rest of the file says APK, reads naturally and needs no change.
+
+### Disposition (2026-10-08)
+
+Applied the 1 💬 (step 2 restructured with the path in parentheses).

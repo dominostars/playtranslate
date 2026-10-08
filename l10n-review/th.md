@@ -607,3 +607,241 @@ Round-1 fixes present: «ไม่มีท่าทางสัมผัสใ�
 No new findings.
 
 **Verdict (round 2):** **PASS.**
+
+## Delta review 2026-10-07 (41 keys + 2 orphans: bug-report email, Support rows, kill notice, Fix disappearing icon page)
+
+Mechanical layer verified: `python3 tools/mech_check.py keys.txt th` reports `checked 1 locales x 41 keys; problems: 0` (all 41 names present; every `<xliff:g>` span and placeholder identical to EN; `\n` counts match; no unescaped `'`/`"`, stray tags, double spaces or edge spaces), and `python3 scripts/l10n_diff.py --locale app/src/main/res/values-th/strings.xml` reports `values-th missing=0 orphan=0 modified=0`, "in sync" (the two orphans `settings_debug_export_logs_title` / `_subtitle` are gone). **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- `MainActivity.maybeShowKillNotice`: the message is `getString(body) + ' ' + getString(kill_notice_restored)`, and the sentence is added only when `activeOverlayUi?.hasAnyFloatingIcon == true`, so it always directly follows one of the three bodies. See options opens `KeepRunningActivity`; Not now is `addCancelButton`.
+- `SettingsRenderer` 1190-1203 with `settings_row_hub.xml` (summary `singleLine` + `ellipsize="end"`). `KeepRunningActivity.bindReportBugRow` shows the same two Report a bug strings under `tvKeepRunningEmpty` (16 sp, centered, visible only when no card is left). `lineOf()` gives the Xiaomi battery card the generic `keep_running_battery_line`, and a stuck service gets `a11y_stuck_title` + `keep_running_accessibility_restart_line`.
+- `BugReport.email` → `LogExporter.emailFiles`: when nothing resolves `message/rfc822`, the app shows `email_no_app_fallback` (with `SUPPORT_EMAIL`, `LENGTH_LONG`), then calls `shareFiles` with the bug-report subject. Both that fallback and the hold gesture (`BugReport.share`, subject `settings_debug_export_logs_subject`) open the chooser `share_chooser_share_logs`.
+
+### Findings (delta, round 1)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| keep_running_huawei_close_after_lock_line | ⚠️ | `อยู่ในการตั้งค่าแบตเตอรี่ → การตั้งค่าแบตเตอรี่เพิ่มเติม มิฉะนั้น <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> จะปิดทุกครั้งที่ล็อกหน้าจอ` | `อยู่ใน การตั้งค่า → แบตเตอรี่ → การตั้งค่าแบตเตอรี่เพิ่มเติม หากไม่ปิดตัวเลือกนี้ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> จะปิดทุกครั้งที่ล็อกหน้าจอ` | มิฉะนั้น takes the sentence right before it as its condition. Here that sentence is a location ("it is in … → …"), so the line reads "if it is not there, PlayTranslate closes…", while the real condition is the card title's instruction. หากไม่ปิดตัวเลือกนี้ names it (ตัวเลือก echoes the title) and is the "หากไม่…" form the battery, Xiaomi, OPPO and vivo lines already use. The file's other มิฉะนั้น (`a11y_stuck_message_xiaomi`) follows an instruction, which is where it works. The same edit fixes the path: Huawei Thailand's own page (consumer.huawei.com/th/support/content/th-th00428704/, fetched 2026-10-07) prints การตั้งค่า > แบตเตอรี่ > การตั้งค่าแบตเตอรี่เพิ่มเติม. "การตั้งค่าแบตเตอรี่" is not a screen label, and the lead-in takes a space before a path, as in the Samsung line and `overlay_icon_a11y_required_message`. |
+| kill_notice_restored | 💬 | `ตอนนี้กลับมาเปิดอยู่แล้ว` | `ตอนนี้แอปกลับมาเปิดอยู่แล้ว` | A Thai zero subject continues the previous sentence's subject. After `_memory` and `_stopped` that subject is ไอคอนลอย…หายไป, which works (it is back). After `kill_notice_body_other` it is โทรศัพท์บางรุ่น…เพื่อประหยัดแบตเตอรี่, so the reader has to backtrack. แอป makes it read the same after all three bodies. |
+| keep_running_accessibility_line | 💬 | `เรียกใช้ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ด้วยลำดับความสำคัญของบริการการช่วยเหลือพิเศษ ซึ่งการล้างหน่วยความจำแทบไม่แตะต้อง` | `<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> จะทำงานด้วยลำดับความสำคัญของบริการการช่วยเหลือพิเศษ ซึ่งการล้างหน่วยความจำแทบไม่แตะต้อง` | This mirrors "Runs X with…" word for word. Without the English -s, a verb-first line reads like the instruction lines on the Xiaomi and Huawei cards ("Run PlayTranslate with…"). เรียกใช้ (invoke) appears nowhere else in the file, which says ทำงาน for "run" (16 strings). With the subject, the line says what the mode does. |
+
+### Clean areas (delta) — checked, no findings
+
+**Spacing.** A script listed every space in the 41 strings with the real values filled in (PlayTranslate, support@playtranslate.com, 3.3.0).
+- Every Latin run (PlayTranslate, Android, Xiaomi, the address, v3.3.0) and every → and – has a space on each side or sits at the string edge. No Thai character touches Latin directly.
+- Every Thai-to-Thai space falls at one of these points: a sentence break (no periods anywhere), a หาก… clause, the ซึ่ง relative clause, a step break (เปิดหน้าแอปล่าสุด␣กดค้าง…), or before แล้ว meaning "then".
+- The “ ” quotes hug the label and take spaces outside, as in `a11y_stuck_message_xiaomi` and `icon_gestures_no_menu_message`.
+- The Samsung line's space in อยู่ใน␣การดูแลอุปกรณ์ is needed: written together, อยู่ในการดูแล reads "in the care of".
+
+**Register and terms.** No ครับ/ค่ะ. โปรด appears in the toast and the empty label, and คุณ is used as in the rest of the file. Each English term has one translation:
+
+| English | Thai | also used in |
+|---|---|---|
+| phone | โทรศัพท์ | (known issue 3) |
+| device info | ข้อมูลอุปกรณ์ | |
+| logs | บันทึก | `share_chooser_share_logs`, `crash_dialog_message` |
+| floating icon | ไอคอนลอย | |
+| hold | กดค้าง | |
+| share | แชร์ | |
+| on | เปิด | ขณะที่เปิดอยู่ / กลับมาเปิด / เปิด…อีกครั้ง |
+| memory cleanup | การล้างหน่วยความจำ | accessibility and Xiaomi lock lines |
+| Not now | ไม่ใช่ตอนนี้ | `btn_not_now` |
+| Add the Quick Settings tile | เพิ่มไทล์การตั้งค่าด่วน | `quick_tile_add_row_title` |
+
+- Crash report (รายงานข้อขัดข้อง: `crash_dialog_message`, `toast_no_crash_report`) and bug report (รายงานข้อบกพร่อง: AOSP `bugreport_title`) stay distinct.
+- The restart line reuses `a11y_stuck_message` word for word. Its card title (`a11y_stuck_title`, รีสตาร์ท) and line (เริ่มใหม่) pair the same way as the reviewed stuck dialog.
+- The email body's เกิดอะไรขึ้น has no "?". The file has none, and neither does AOSP Thai's ให้แอปทำงานอยู่เบื้องหลังเสมอไหม.
+
+**Surfaces as sets.**
+- **Kill notice.** I read the title, each body, and each body + space + `kill_notice_restored`; the one 💬 is above.
+  - ไอคอนลอยจึงหายไป is identical in all three bodies.
+  - ขณะที่เปิดอยู่ after ปิด mirrors English "closed … while it was on" and uses the file's word for the on state.
+  - หากคุณไม่ได้หยุดเอง … อาจเป็นผู้หยุด leaves the attribution to the user, as the English does.
+  - ดูวิธีแก้ไข leads to a page whose title starts with แก้.
+- **Support card.** The five titles are all verb-first (ตรวจหา / เข้าร่วม / แก้ปัญหา / รายงาน / สนับสนุน). ฝ่ายสนับสนุน (the support team) next to สนับสนุน PlayTranslate (donate) mirrors the English, which uses "support" both ways.
+- **Fix page.**
+  - `keep_running_title` and `settings_support_keep_running_title` are byte-identical.
+  - The empty label ends …แล้วรายงานข้อบกพร่อง, the exact title of the row under it.
+  - `keep_running_battery_line` (หากไม่ตั้งค่านี้…) works under both "ตั้งค่า…เป็น “ไม่จำกัด”" titles.
+  - The OPPO and vivo lines are identical.
+- **Email flow.** The subject reads รายงานข้อบกพร่องของ PlayTranslate – v3.3.0. The body works as a prompt; แนบ…ไว้แล้ว reads as the sender saying "I've attached…". After the toast comes the share sheet titled แชร์บันทึก.
+
+**Platform labels.**
+- **AOSP th.** ไม่จำกัด, การใช้งานแบตเตอรี่ (the head of การใช้งานแบตเตอรี่ของแอป) and Recents = แอปล่าสุด (framework `accessibility_system_action_recents_label`) all match.
+- **Samsung TH (official).** All five labels are exact: การดูแลอุปกรณ์, แบตเตอรี่, ขีดจำกัดการใช้พื้นหลัง, ไม่ต้องพักใช้งานแอปอัตโนมัติ, แอปที่พักการทำงานชั่วคราว.
+- **Huawei TH (official, th-th00414587).** การเปิดใช้งานแอป, เปิดการใช้งานอัตโนมัติ, เปิดใช้งานรอง and ทำงานบนพื้นหลัง are exact. ด้วยตนเอง matches the unverified guess for Manage manually.
+  - Huawei's other Thai page (th-th00428704) calls App launch "เรียกใช้แอป", so Huawei's own Thai pages disagree. Without a device, following the oem-labels official cell is the right call.
+  - That page also confirms การตั้งค่าแบตเตอรี่เพิ่มเติม (now official; used in the row above). Like known issue 1 says, it has no close-after-lock option.
+- **Unverified.** These are stated, not asserted. I used 6 web lookups and none found an official Xiaomi, OPPO or vivo Thai page.
+  - Xiaomi เริ่มอัตโนมัติ / ตัวประหยัดแบตเตอรี่ / “ไม่จำกัด” equal the reviewed `a11y_stuck_message_xiaomi`. The oem-labels guess for "No restrictions" is ไม่มีข้อจำกัด; if a Thai MIUI/HyperOS device shows that, change both strings together.
+  - The OPPO and vivo cards use พื้นหลัง where the app's own prose says เบื้องหลัง. That is defensible: AOSP Thai has both (จำกัดกิจกรรมในพื้นหลังใช่ไหม beside กิจกรรมในเบื้องหลัง), Samsung and Huawei TH use พื้นหลัง, and a search summary (the page itself returned 403) says a Casio Thailand OPPO guide prints อนุญาตกิจกรรมในพื้นหลัง.
+
+**Widths.**
+- Toolbar title: 212 dp of about 272.
+- Keep-running summary: 213 dp, fits in 216.
+- Report a bug summary: I measured its first clause, ส่งบันทึกทางอีเมลถึงฝ่ายสนับสนุน, at 183 dp. (The packet's "first sentence" figure is the whole string, since Thai has no period.) So the tap action is whole at 216 and 249 dp, and the clip falls inside the hold hint. The whole string is 267 dp against English's 256, which is reasonable. Adding แทน would bring it to 292 dp, which is not worth it.
+- Toast: 2 lines at both 296 and 320 dp, with the address whole at the start of line 2.
+
+**Considered and left.**
+- `settings_support_report_bug_subtitle` drops "instead": the contrast between email and hold already carries it.
+- The Samsung title says เพิ่มลงใน “…” without รายการ: the quotes make the label read as a name.
+- In the Huawei App launch line, เปิด “เปิดการใช้งานอัตโนมัติ”… doubles เปิด because the official label starts with it; the quotes keep verb and label apart.
+- The double จึง in `kill_notice_body_memory` reads as a natural causal chain.
+- Known issue 1 (close-after-lock does not exist on current Huawei software) is already reported upstream. The Thai renders it faithfully, and ปิดตัวเลือก keeps the two ปิด apart.
+
+### Verdict (round 1)
+
+1 ⚠️ + 2 💬, to apply: `keep_running_huawei_close_after_lock_line`, `kill_notice_restored`, `keep_running_accessibility_line`. No ❌, no 🛑.
+
+## Follow-up review 2026-10-07, round 1 (15 keys after the Fix disappearing icon rewrite, plus the final review of the first pass's 41 keys)
+
+Mechanical layer: `python3 tools/mech_check.py f2/keys2.txt th` reports `checked 1 locales x 15 keys; problems: 0`; `python3 tools/mech_check.py keys.txt th` (the first pass's 39 keys still in English) reports `checked 1 locales x 39 keys; problems: 0`; `python3 scripts/l10n_diff.py --locale app/src/main/res/values-th/strings.xml` reports `values-th missing=0 orphan=0 modified=0`, "in sync" (the four keys English removed are gone from the file). Every `<xliff:g>` span, including the second `app_name2` span in the Xiaomi, OPPO and vivo lines, is byte-identical to English; `\n` counts match; no unescaped quote, stray tag, double space or edge space. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- `AccessibilityHelp.withRestrictedSettingsStep` returns `message + "\n\n" + a11y_restricted_settings_addendum` on API 33+ only. Callers: `MainActivity.showAccessibilityDialog`, `SettingsRenderer.showOverlayIconA11yAlert`, `showAccessibilityRequiredAlert` (the three `a11y_required_*` in the OverlayAlert) and `KeepRunningActivity.lineOf` (the accessibility card, only while the service is not enabled; a stuck service gets `keep_running_accessibility_restart_line` and no addendum). `SettingsRenderer.showA11yStuckAlert` adds `"\n\n" + a11y_stuck_message_xiaomi` when `Build.MANUFACTURER` is Xiaomi, so that paragraph follows the message's own "To fix it" paragraph.
+- `KeepRunningActivity.openFirst`: when no candidate screen launches, `Toast(keep_running_screen_unavailable, LENGTH_LONG)`, then App info (`RomScreens.appDetails`). The Huawei card tries two startup-manager screens and Huawei's protect screen first, so the search word is what the user has exactly when none of them opens. `KeepRunningItems.ids`: Xiaomi gets autostart, its own battery card (`keep_running_xiaomi_battery_line`) and the lock card, and no generic battery card; Huawei gets the App launch card only.
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| keep_running_huawei_app_launch_line | ⚠️ | `ในการตั้งค่า ให้ค้นหา “การเปิดใช้งานแอป” ปิด “การจัดการโดยอัตโนมัติ” สำหรับ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> แล้วเปิด “เปิดการใช้งานอัตโนมัติ” “เปิดใช้งานรอง” และ “ทำงานบนพื้นหลัง”` | `ในการตั้งค่า ให้ค้นหา “การเปิดใช้งานแอป” หรือ “เรียกใช้แอป” ปิด “การจัดการโดยอัตโนมัติ” สำหรับ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> แล้วเปิด “เปิดการใช้งานอัตโนมัติ” “เปิดใช้งานรอง” และ “ทำงานบนพื้นหลัง”` | Since the rewrite, App launch is the word to type into Settings search, and Huawei Thailand's own pages give two different words for it. th-th00414587 (the oem-labels official cell) prints การเปิดใช้งานแอป. th-th00428704 gives this same step and prints `เปิด การตั้งค่า ค้นหาและเข้าสู่ เรียกใช้แอป` (fetched 2026-10-08). Its other two labels, การจัดการโดยอัตโนมัติ and ทำงานบนพื้นหลัง, match this line word for word, so it describes the same screen. Neither page states a version, and a search for one word will not find the other. The first pass kept การเปิดใช้งานแอป when App launch appeared only in the card title; now that it is the search word, naming both costs one short phrase and works on either version. The title can keep “การเปิดใช้งานแอป”, because the line under it gives the alternative. Leave the switch labels as they are. Huawei's HarmonyOS 2.0+ page (th-th15850069) reaches the same three switches through the app's รายละเอียดการใช้พลังงาน > การตั้งค่าการเปิดใช้งาน and words them เปิดใช้งานอัตโนมัติ / การเปิดใช้งานรอง / ทำงานในพื้นหลัง. That is close enough to recognise on a dialog that shows only those three. |
+
+### Clean areas — checked, no findings
+
+**The first pass's round-1 fixes landed.** `kill_notice_restored` now reads ตอนนี้แอปกลับมาเปิดอยู่แล้ว and `keep_running_accessibility_line` reads `PlayTranslate จะทำงานด้วย…`, both as suggested. `keep_running_huawei_close_after_lock_line` took its fix and was then deleted along with its English card. `git diff` of `values-th` against HEAD touches exactly the expected keys, and nothing outside them:
+- 42 added: the first pass's 39 and the follow-up's 3 new keys;
+- 2 changed: the two stuck-alert strings;
+- 4 removed: the two orphans and `restricted_settings_title` / `_message`.
+
+The close-after-lock pair never reached HEAD and is absent from the file.
+
+**What moved in the CHANGED keys, and what stayed.**
+- `a11y_stuck_message`: only the cause sentence (กรณีนี้มักเกิดขึ้น…) is gone. The rest is byte-identical to the reviewed text.
+- `a11y_stuck_message_xiaomi` has three edits and nothing else:
+  - เปิด → อนุญาต (allow);
+  - ตัวประหยัดแบตเตอรี่ → การใช้แบตเตอรี่ (no longer a label);
+  - จะ → อาจ (may).
+
+  Its two settings now read exactly like the Xiaomi card titles (อนุญาตการเริ่มอัตโนมัติ; ตั้งค่าการใช้แบตเตอรี่เป็น “ไม่จำกัด”), which is what the English comment asks for.
+- `keep_running_tile_line` lost only ปัดและแตะเพียงครั้งเดียวก็. The verb-first เปิด … อีกครั้งได้ reads as "can turn back on", not as an instruction, because of ได้.
+- `keep_running_xiaomi_lock_line` keeps its reviewed first sentence.
+- `keep_running_xiaomi_battery_title` changes only the entry name.
+- The Huawei line keeps its three switch labels.
+
+**Android labels**, read from AOSP's android16-qpr2 Thai Settings file locally:
+- ข้อมูลแอป (`application_info_label`) and อนุญาตการตั้งค่าที่จำกัด (`app_restricted_settings_lockscreen_title`) are quoted exactly in the addendum. The old reviewed ที่ถูกจำกัด came from the first full review, which asked for a device check and cited no source, so replacing it with AOSP's wording is right.
+- The battery title ให้ PlayTranslate ทำงานอยู่เบื้องหลังเสมอ is the words of `high_power_prompt_title` (ให้แอปทำงานอยู่เบื้องหลังเสมอไหม) with the app name. As in English, it quotes neither state label (ไม่จำกัด / ไม่ได้เพิ่มประสิทธิภาพ).
+- ค้นหา (`search_settings`) is the verb in every search instruction and in the toast.
+
+**Surfaces as sets.**
+- **Addendum.** I read it as the closing paragraph after each of the five messages and after the accessibility card line.
+  - After the two dialogs whose path ends in → เปิดใช้งาน, สวิตช์ is that toggle.
+  - After the three OverlayAlert messages and the card line it has no antecedent. That is also true of the English, and each of those surfaces opens the accessibility settings where the switch is.
+  - ใน Android 13 ขึ้นไป matches `requires_android_11_message` (Android 11 ขึ้นไป).
+  - Inline labels are in “ ” with the spaces outside, and the → paths in the messages above are unquoted. These are the file's two established styles.
+- **Stuck alert.** I read the title (ต้องรีสตาร์ท…), the message, then the Xiaomi paragraph. ด้วย carries "also". มิฉะนั้น follows an instruction, which is where it works, as the first pass noted.
+- **Cards**, title + line per ROM:
+  - Xiaomi: three cards.
+  - Huawei: one card.
+  - OPPO and vivo: one card each. Their lines are parallel, and both end on the same hedge (อาจหยุด … หรือไม่ให้แอปเริ่มทำงานอีกครั้ง).
+  - Samsung: one card.
+  - Then the battery, accessibility and tile cards.
+
+  Every search line has the same shape: ในการตั้งค่า ให้ค้นหา “…” แล้ว…. หากไม่อนุญาต covers "Without it/these", since every setting it refers to is an allow.
+- **Toast, then App info.**
+  - หน้าจอนั้น… then ค้นหาการตั้งค่านี้… In this context, การตั้งค่านี้ is the setting on the card the user just tapped.
+  - Width: 2 lines at both 296 and 320 dp, one sentence per line (193 and 267 dp at 14 sp; English needs 3 lines at 296). The whole text is 463 dp, so Android's dictionary line breaking, which may split inside the second sentence, still needs only two lines.
+
+**Spacing.** I listed every space with values filled in (PlayTranslate in both spans).
+- No Thai character touches Latin, ⋮, or the outside of a quote.
+- Every Thai-to-Thai space falls at one of these points: a clause, step or sentence break; after a fronted locative (ในการตั้งค่า␣ให้…, ในการตั้งค่าแบตเตอรี่␣ให้…); or before และ / หรือ joining two long verb phrases.
+- The three Xiaomi battery names are listed with spaces and หรือ, as the Huawei switch list is.
+
+**Two-span lines.** Both spans are present in the Xiaomi, OPPO and vivo lines. The second mention sits where Thai needs an object (ไม่ให้ PlayTranslate เริ่มทำงาน…, อาจหยุด PlayTranslate ในพื้นหลัง), and any later reference is แอป, so the name never appears a third time.
+
+**Terms**, one translation each across the delta:
+
+| English | Thai | where |
+|---|---|---|
+| allow | อนุญาต | |
+| autostart | (การ)เริ่มอัตโนมัติ | Xiaomi title, line, stuck paragraph; vivo |
+| auto-launch | (การ)เปิดอัตโนมัติ | OPPO title and line |
+| start again | เริ่มทำงานอีกครั้ง | battery, Xiaomi, OPPO, vivo lines |
+| battery settings | การตั้งค่าแบตเตอรี่ | OPPO, vivo, Samsung |
+| the app's system settings | การตั้งค่าระบบของ… | stuck paragraph, Xiaomi battery line |
+| Recents | แอปล่าสุด | |
+| version | เวอร์ชัน | |
+| No restrictions | “ไม่จำกัด” | 3 strings |
+
+- "Background" is เบื้องหลัง on the battery card (the AOSP dialog it opens) and พื้นหลัง on the OEM cards (Samsung ขีดจำกัดการใช้พื้นหลัง, Huawei ทำงานบนพื้นหลัง, the OPPO switch). Each follows the screen it names.
+- No ครับ/ค่ะ. The toast's bare ค้นหา… matches the restart line's bare imperative.
+
+**OEM labels.**
+- **Samsung TH (official).** ขีดจำกัดการใช้พื้นหลัง and ไม่ต้องพักใช้งานแอปอัตโนมัติ are exact. พักการทำงาน in the reason echoes Samsung's แอปที่พักการทำงานชั่วคราว.
+- **Huawei TH.** See the finding. การจัดการโดยอัตโนมัติ and ทำงานบนพื้นหลัง are confirmed by both pages that print them.
+- **Xiaomi, OPPO, vivo: unverified (known issue 2).** These are stated, not asserted.
+  - Search words: Xiaomi and vivo “เริ่มอัตโนมัติ”, OPPO “เปิดอัตโนมัติ”. Each is the core of its card title, so it would also match a longer label that contains it, for example a HyperOS background-autostart entry.
+  - Xiaomi's No restrictions has three candidates:
+    - “ไม่จำกัด”, the file's choice and AOSP's Unrestricted;
+    - ไม่มีข้อจำกัด, the oem-labels guess;
+    - ไม่มีการจำกัด, from the translator's search summary of Casio Thailand's Xiaomi guide.
+
+    That guide (casio.com/th/…/xi-set/) returns 403, and two searches found no Thai Xiaomi page. If a Thai MIUI/HyperOS device shows another form, change `a11y_stuck_message_xiaomi`, `keep_running_xiaomi_battery_title` and `keep_running_xiaomi_battery_line` together.
+  - The battery entry names ตัวประหยัดแบตเตอรี่ / แบตเตอรี่ / พลังงาน are also unverified. ตัวประหยัดแบตเตอรี่ is not AOSP's word (AOSP Thai Battery Saver is โหมดประหยัดแบตเตอรี่), but the entry belongs to Xiaomi, not Android, so AOSP is no guide here.
+  - I used 6 web lookups: Xiaomi (two searches and the Casio fetch) and Huawei (one search and two page fetches).
+
+**The first pass's 39 keys, read again in full.**
+- Kill notice: each body + space + `kill_notice_restored` reads cleanly after all three bodies. ไอคอนลอยจึงหายไป is identical in all three, and ดูวิธีแก้ไข leads to a page titled แก้….
+- Support rows and email flow: unchanged and clean.
+- Widths re-measured on the current values:
+  - Keep-running summary: 213 dp, fits in 216.
+  - Report a bug summary: 267 dp in all, with the tap action (183 dp) whole at 216 and 249.
+  - Toolbar title: 212 dp at 22 sp, of about 272.
+  - `email_no_app_fallback`: 2 lines at 296 and 320, with the address whole at the start of line 2.
+- `keep_running_title` and `settings_support_keep_running_title` are byte-identical.
+- The empty label ends with the title of the row under it.
+
+**Considered and left.**
+- `keep_running_xiaomi_autostart_line`: หากไม่อนุญาต Xiaomi อาจไม่ให้… puts a Latin subject right after a clause break, where the mandatory space cannot mark the boundary. It still reads cleanly: หากไม่อนุญาต echoes the อนุญาตให้ just before it, and the first pass passed the same shape.
+- The toast says การตั้งค่า twice (ค้นหาการตั้งค่านี้ในการตั้งค่าของโทรศัพท์แทน). It is unambiguous (object, then place) and matches the cards' ในการตั้งค่า ให้ค้นหา, so it is not worth a change.
+- `keep_running_xiaomi_battery_line` says การตั้งค่าระบบของ PlayTranslate for "app settings". It reuses the stuck paragraph's phrase for the same place, and ระบบ keeps it from being read as the in-app Settings.
+
+### Verdict (round 1)
+
+1 ⚠️, to apply: `keep_running_huawei_app_launch_line` (add หรือ “เรียกใช้แอป” to the search word). No ❌, no 💬, no 🛑. The other 14 follow-up keys and the first pass's 39 keys pass.
+
+### Follow-up round 2 (2026-10-07), final review after applying round 1
+
+Mechanical layer re-run: `python3 tools/mech_check.py f2/keys2.txt th` reports `checked 1 locales x 15 keys; problems: 0`, and `python3 scripts/l10n_diff.py --locale app/src/main/res/values-th/strings.xml` reports `values-th missing=0 orphan=0 modified=0`, "in sync". The first pass's 39 keys (`keys.txt`) also report `problems: 0`. Every `<xliff:g>` span, including `app_name2` in the Xiaomi, OPPO and vivo lines, is byte-identical to English. **No 🛑 build-breaking issues.**
+
+**Round-1 fixes:** `keep_running_huawei_app_launch_line`: applied, byte-identical to the suggested value. The line now says to search for “การเปิดใช้งานแอป” or “เรียกใช้แอป”, turn off “การจัดการโดยอัตโนมัติ” for PlayTranslate, then turn on the three switches. Nothing around the fix broke:
+- หรือ sits between the two quoted names with a space on each side, as in the Xiaomi battery line's list, and the next step (ปิด …) still starts after a space, as it did before the fix.
+- The card title keeps “การเปิดใช้งานแอป”, which is the line's first search word.
+- The diff against HEAD has the same shape round 1 recorded (42 added, 2 changed, 4 removed), and the translator's fragment source equals the file for all 15 keys, so the fix touched nothing else.
+
+Round 1 had no finding on the first pass's 39 keys, and those keys still hold the first pass's fixes (`kill_notice_restored` ตอนนี้แอปกลับมาเปิดอยู่แล้ว, `keep_running_accessibility_line` PlayTranslate จะทำงานด้วย…).
+
+#### Findings (round 2)
+
+No new findings.
+
+What I checked:
+- **Addendum.** I read it as the closing paragraph after each of the five messages: the two system dialogs whose path ends in → เปิดใช้งาน, and the three OverlayAlert messages, whose message sits in a ScrollView, so the longer text cannot clip. I also read it after the accessibility card line. ข้อมูลแอป and อนุญาตการตั้งค่าที่จำกัด byte-match AOSP android16-qpr2 Thai (`application_info_label`, `app_restricted_settings_lockscreen_title`), which I read locally.
+- **Stuck alert.** I read the title, the message, then the Xiaomi paragraph (`SettingsRenderer` appends it after "\n\n").
+- **Cards.** Every title + line pair agrees. The battery title is `high_power_prompt_title` with the app name, and the Samsung and Huawei labels byte-match the official cells (เรียกใช้แอป as round 1 quoted it from th-th00428704).
+- **Toast.** I re-measured it at 14 sp: 193 + 267 dp (463 in all), so it takes 2 lines at both 296 and 320 dp.
+- **Spacing.** A script listed every space with PlayTranslate filled in.
+  - No Thai character touches Latin, a number, ⋮, a parenthesis or the outside of a quote.
+  - Every Thai-to-Thai space falls at a clause, step or sentence break, after a fronted locative, or before และ / หรือ.
+  - There are no zero-width or stray characters, and the “ ” quotes are paired.
+- **Register and spelling.** No ครับ/ค่ะ. The spellings match the rest of the file (เวอร์ชัน, แอป, ล็อก, สวิตช์, no variants).
+- **OEM lookups (4).** None reached a Thai source:
+  - The Thai edition of Xiaomi's MIUI 13 generic user guide, the source the pt-BR reviewer used, returned 404 under both ` TH` and ` Thai`, and a search of that folder listed no Thai edition.
+  - An oppo.com search found no Thai auto-launch page.
+  - So Xiaomi “เริ่มอัตโนมัติ”, its battery-entry names and “ไม่จำกัด”, OPPO “เปิดอัตโนมัติ” and vivo “เริ่มอัตโนมัติ” stay unverified (known issue 2).
+  - A note for the device check: AOSP Thai uses เปิดอัตโนมัติ for Battery Saver's "Turn on automatically" (`battery_saver_auto_title`), so on an OPPO phone that search may also list that row. That adds noise to the results but does not make the search word wrong.
+
+#### Verdict (round 2)
+
+PASS. The round-1 fix landed; no new findings (no 🛑, ❌, ⚠️ or 💬). Open, but not findings: the Xiaomi, OPPO and vivo labels are unverified (known issue 2).

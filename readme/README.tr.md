@@ -58,14 +58,12 @@ APK dosyasını yükleyin, ardından diğer uygulamalarınızın taranmaya devam
 
 ### Erişilebilirlik açılmıyor mu?
 
-Bazı gelişmiş özellikler (örneğin kısayol tuşuyla basılı tutarak önizleme) sizden Erişilebilirlik iznini açmanızı ister. Bazı Android cihaz üreticileri, Play Store dışından yüklenen uygulamaların Erişilebilirlik izni almasını varsayılan olarak engeller; bu durumda Ayarlardaki düğme gri görünebilir veya “Kısıtlı ayar” mesajı çıkabilir. Engeli kaldırmak için:
+Bazı gelişmiş özellikler (örneğin kısayol tuşuyla basılı tutarak önizleme) sizden Erişilebilirlik iznini açmanızı ister. Android 13 ve sonraki sürümlerde sistem, indirilen bir APK dosyasından yüklenen her uygulamanın Erişilebilirlik anahtarını gri gösterir; anahtara dokunulduğunda da “Kısıtlanmış ayar” mesajı çıkar. Engeli kaldırmak için:
 
-1. **Ayarlar → Uygulamalar → PlayTranslate** sayfasını açın
-2. Sağ üstteki **⋮** menüsüne dokunun
-3. **Kısıtlı ayarlara izin ver** seçeneğine dokunun
-4. İstendiğinde kimliğinizi doğrulayın
-
-Artık PlayTranslate için Erişilebilirlik iznini açabilirsiniz.
+1. **Ayarlar → Erişilebilirlik** bölümünde PlayTranslate uygulamasını seçin ve gri görünen anahtara bir kez dokunun. “Kısıtlanmış ayar” mesajını kapatın.
+2. Uygulama bilgileri sayfasını açın: **Ayarlar → Uygulamalar → PlayTranslate**.
+3. **⋮** menüsüne dokunun ve **Kısıtlanmış ayarlara izin verme** seçeneğini seçin. Bu seçenek yalnızca 1. adımdan sonra görünür.
+4. İstenirse kimliğinizi doğrulayın, ardından Erişilebilirlik ayarlarına dönüp anahtarı açın.
 
 ## Destek
 

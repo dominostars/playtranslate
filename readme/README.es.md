@@ -58,14 +58,12 @@ Instala el APK y, después, vuelve a activar Play Protect para que siga analizan
 
 ### ¿No puedes activar la accesibilidad?
 
-Algunas funciones avanzadas (como la vista previa al mantener presionado un atajo) te pedirán que actives el permiso de accesibilidad. Ciertos fabricantes de Android impiden de forma predeterminada que las apps instaladas desde fuera de Google Play reciban permisos de accesibilidad, así que el interruptor de Ajustes puede aparecer en gris o mostrar el mensaje “Ajuste restringido”. Para desbloquearlo:
+Algunas funciones avanzadas (como la vista previa al mantener presionado un atajo) te pedirán que actives el permiso de accesibilidad. A partir de Android 13, el sistema muestra en gris el interruptor de accesibilidad de cualquier app instalada desde un APK descargado, y al tocarlo aparece el mensaje “Ajuste restringido”. Para desbloquearlo:
 
-1. Abre **Ajustes → Aplicaciones → PlayTranslate**
-2. Toca el menú **⋮** (arriba a la derecha)
-3. Toca **Permitir ajustes restringidos**
-4. Autentícate cuando se te pida
-
-Ya puedes activar la accesibilidad para PlayTranslate.
+1. En **Ajustes → Accesibilidad**, selecciona PlayTranslate y toca una vez el interruptor en gris. Cierra el mensaje “Ajuste restringido”.
+2. Abre la página Información de la app: **Ajustes → Aplicaciones → PlayTranslate**.
+3. Toca el menú **⋮** y elige **Permitir ajustes restringidos**. Esta opción solo aparece después del paso 1.
+4. Autentícate si se te pide y, después, vuelve a Accesibilidad y activa el interruptor.
 
 ## Ayuda y apoyo
 

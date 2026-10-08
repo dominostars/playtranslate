@@ -781,3 +781,417 @@ Round-1 fix present: 오버레이가 표시되는 동안 화면 가장자리가 
 No new findings.
 
 **Verdict (round 2):** **PASS.**
+
+## Delta review 2026-10-07 (41 keys + 2 orphans: bug-report email, Support rows, kill notice, Fix disappearing icon page)
+
+Mechanical layer verified: `python3 PKT/../tools/mech_check.py PKT/../keys.txt ko` reports
+"checked 1 locales x 41 keys; problems: 0" (every key present; `<xliff:g>` spans and
+`%1$s` placeholders byte-identical to EN; `\n`, `<b>`, `\{ \}`, `&amp;/&lt;/&gt;` counts
+match; no unescaped `'`/`"`, stray tag, double space or edge whitespace), and
+`python3 scripts/l10n_diff.py --locale app/src/main/res/values-ko/strings.xml` reports
+`values-ko missing=0 orphan=0 modified=0`, "in sync". Each of the 41 names occurs exactly
+once; the two orphans `settings_debug_export_logs_title` / `_subtitle` are gone while
+`settings_debug_export_logs_subject` stays; the file parses as XML. **No 🛑 build-breaking
+issues.**
+
+**Render code read before reviewing.**
+- `MainActivity.maybeShowKillNotice` (l. 2235-2263): the body is one of the three
+  `kill_notice_body_*`, then `append(' ').append(kill_notice_restored)` only when an icon is
+  on screen; title, accent `kill_notice_see_options` (opens `KeepRunningActivity`), cancel
+  `kill_notice_not_now`. So 지금은 다시 켜져 있습니다 was read after all three bodies.
+- `SettingsRenderer.setupSupportSection` (l. 1170-1214): Check for updates, Discord, Fix
+  disappearing icon, Report a bug (tap `BugReport.email`, hold `BugReport.share`), Donate;
+  `settings_row_hub.xml` makes the summary `singleLine` + `ellipsize="end"`.
+  `KeepRunningActivity` (l. 57-63, 114-142) binds the same two Report a bug strings under the
+  cards, gives the Xiaomi battery card `keep_running_battery_line`, and swaps in
+  `a11y_stuck_title` + `keep_running_accessibility_restart_line` when the service is stuck.
+- `LogExporter.emailFiles` (l. 112-121): the no-email toast is `LENGTH_LONG` with
+  `SUPPORT_EMAIL`, then `shareFiles` opens the plain share sheet titled
+  `share_chooser_share_logs` (로그 공유), so the toast's 파일 is followed by a sheet about 로그.
+
+### Findings (delta, round 1)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| kill_notice_body_other | ⚠️ | `휴대전화가 켜져 있던 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>를 종료했습니다. 플로팅 아이콘이 사라진 것은 이 때문입니다. 일부 휴대전화는 배터리를 절약하려고 이렇게 합니다.` | `켜져 있던 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>를 휴대전화가 종료했습니다. 플로팅 아이콘이 사라진 것은 이 때문입니다. 일부 휴대전화는 배터리를 절약하려고 이렇게 합니다.` | Garden path: 휴대전화가 켜져 있던 first parses as one relative clause, "the … in which the phone was on" (휴대전화가 켜지다 is the everyday phrase for the phone itself being on), so 휴대전화가 has to be re-read as the subject of 종료했습니다 once PlayTranslate를 arrives. Fronting the object removes the misparse. It also keeps 켜져 있던 PlayTranslate parallel with `_body_stopped` and with the 다시 켜져 있습니다 echo in `kill_notice_restored`, and it stresses 휴대전화가, which the next sentence (일부 휴대전화는…) explains. |
+| keep_running_empty | 💬 | `더 이상 권장하는 설정이 없습니다. 문제가 계속되면 문제를 재현한 다음 버그를 신고해 주세요.` | `더 이상 권장하는 설정이 없습니다. 문제가 계속되면 증상을 재현한 다음 버그를 신고해 주세요.` | 문제가 계속되면 문제를 has 문제 twice in three words. 증상을 재현 is the usual Korean bug-report phrase and keeps the meaning. The "report a bug" half (버그를 신고해 주세요) already matches the 버그 신고 row under the label. |
+
+### Clean areas (delta) — checked, no findings
+
+**Particles.** After the fixed name PlayTranslate (vowel-final): 를 in `kill_notice_title`,
+`_body_other`, `keep_running_intro`, `_battery_line`, `_accessibility_line`, `_tile_line`,
+`_xiaomi_autostart_line`; 가 in `_body_memory`, `_body_stopped`,
+`_huawei_close_after_lock_line`; 의 in `_huawei_app_launch_line`; 에서 (no alternation) in the
+OPPO and vivo lines; none where the name modifies a noun (PlayTranslate 자동 종료 방지,
+PlayTranslate 카드를, PlayTranslate 잠그기, the email subject). After the address placeholder
+the toast uses 에, which does not alternate, so no combined form is needed (a (으)로 would
+have needed one after …com), and ~에 보내다 reads naturally with a destination. Also right:
+Android가, Xiaomi가 (샤오미), “백그라운드에서 실행”을 (consonant-final 행), 제한 없음으로,
+배터리 세이버를, 배터리 사용량을, 메일로 (ㄹ-final takes 로), 스와이프와, 기기 정보와 최근 로그가,
+우선순위로.
+
+**Register and title forms.** Titles are Sino-Korean verbal nouns (설정, 허용, 추가, 관리,
+사용, 신고) or ~기 forms of native verbs (잠그기, 끄기, 보내기, 보기), the file's noun / ~하기
+convention; `kill_notice_title` is a sentence title without a period, like
+`crash_dialog_title` and `a11y_stuck_title`. Bodies are 합니다체 with requests in ~하세요 /
+~해 주세요, as in `a11y_stuck_message` and `crash_email_body`. The email prompt 무슨 일이
+있었나요? uses the softer ~나요 question the file already has (`onboarding_welcome_play_title`
+언어를 모르시나요?); 무슨 일이 있었습니까? would sound like an interrogation in a fill-in
+template. The page and row title 아이콘이 사라질 때 is neither a noun nor ~하기, but it is the
+idiomatic Korean heading for a troubleshooting entry (the help-centre "~할 때" form), it
+leads with the symptom as the EN comment asks, and it is byte-identical in both keys at
+173 dp of the toolbar's 272. In the Support card its summary PlayTranslate 자동 종료 방지
+supplies the "fix", and the kill notice's 해결 방법 보기 lands on it naturally. The noun form
+아이콘이 사라지는 문제 해결 measures 259 dp, which fits with little margin and is no clearer.
+Passed. The Report a bug summary uses 개조식 noun endings (전송. / 공유.), terse but standard
+for a one-line Korean summary, and its hold clause follows the file's 길게 눌러 … pattern
+(`translate_button_subtitle_hold_*`). The whole is 241 dp: it fits 249 dp and is shorter than
+EN's 256. The first clause is 157 dp, so the tap action stays whole even at 216 dp.
+
+**Surfaces read as sets.** The kill notice: title, each body, each body + " 지금은 다시
+켜져 있습니다.", 해결 방법 보기 / 나중에. The restored sentence's null subject resolves to
+PlayTranslate through the 켜져 있던 echo after all three bodies, including after
+`_body_other`'s 일부 휴대전화는 (phones being "back on" makes no sense there), and the
+contrastive 지금은 carries "now, unlike before". 해결 방법 보기 names what the page holds;
+나중에 = `btn_not_now` / `crash_dialog_later`. The Support card in order: 업데이트 확인 ·
+Discord 참여하기 · 아이콘이 사라질 때 · 버그 신고 · PlayTranslate 후원하기. The Fix page as each
+ROM gets it: Samsung (never-sleeping, battery, accessibility, tile), Xiaomi (autostart,
+battery saver, lock), Huawei (App launch, close-after-lock), OPPO and vivo (one card each),
+then the empty label and the Report a bug row. The battery line (설정하지 않으면…) works under
+both the 배터리 사용량을… and the 배터리 세이버를… titles; the OPPO and vivo lines are
+byte-identical; the restart line under `a11y_stuck_title` reads as one unit. The email flow
+in order:
+- 충돌 보고서 보내기, the crash precedent of `crash_dialog_message`.
+- 버그 신고 보내기 and PlayTranslate 버그 신고 – v3.3.0. 버그 신고 is Android's own Korean
+  noun for a bug report (framework `global_action_bug_report` and `bugreport_title`), so the
+  two families stay apart as EN's "crash report" and "bug report" do.
+- The body, mirroring `crash_email_body` (설명해 주세요, 첨부되어 있습니다, 기기 정보).
+- The toast: 2 lines at 296 and at 320 dp, with the address whole at the start of line 2.
+  Line 2 measures 286 dp, within the ±10 dp noise of 296, so on a 360 dp phone at worst the
+  final 보내세요 could clip, never the address.
+- Then the 로그 공유 sheet.
+
+**Terms.** 종료 for every "close" (title, bodies, intro, the battery, OPPO, vivo, Huawei and
+Samsung lines, the summary's 자동 종료) and 중지 for every "stop" (`_body_stopped`, the Xiaomi
+autostart line, the restart line), mirroring EN's split. 중지 is also the file's own
+force-stop word (강제 중지 in `a11y_stuck_message`); EN names no Force stop button here, so
+AOSP's 강제 종료 is not a label to match. Also:
+- 휴대전화 for "phone" in all 8 places (known issue 3), with 기기 for "Device info" in the
+  email body, as in `crash_email_body`.
+- 플로팅 아이콘 (`settings_show_overlay_icon`); 메모리 정리 for "memory cleanup" in both
+  lines; 로그 (`share_chooser_share_logs`); 지원팀 for "support".
+- autostart → 자동 시작 (Xiaomi, vivo) and auto-launch → 자동 실행 (OPPO title, Huawei switch).
+- Reused verbatim: the restart line's wording from `a11y_stuck_message`; 빠른 설정 타일 추가
+  (`quick_tile_add_row_title`); 자동 시작 and 배터리 세이버를 제한 없음으로 설정
+  (`a11y_stuck_message_xiaomi`).
+- `keep_running_empty`'s 버그를 신고해 주세요 = the 버그 신고 row title.
+
+**Platform labels.**
+- AOSP ko: 제한 없음 (`manager_battery_usage_unrestricted_title`), 배터리 사용량 (the page is
+  앱 배터리 사용량, shortened as in EN), 접근성.
+- Samsung (OFFICIAL): re-checked today on samsung.com/sec/support/galaxy-battery/optimization,
+  which prints 설정 > 디바이스 케어 > 배터리 > 백그라운드 앱 사용 제한 > 자동 절전 예외 앱 and
+  절전 상태 앱, and no newer 절전 예외 앱 form. The card title and line match every label.
+- Xiaomi (UNVERIFIED in oem-labels.md, though Xiaomi does sell in Korea): 자동 시작 / 배터리
+  세이버 / 제한 없음 / 최근 앱 match the reviewed `a11y_stuck_message_xiaomi`. One Korean
+  secondary source (a yellowit.co.kr article on a Redmi Note 12 bought abroad; the UI language
+  is not stated) prints 자동 시작, 제한 없음 and 최근 앱, but 배터리 절약 / 배터리 사용량 for the
+  per-app entry. That source is not official, and EN's entry name itself changes per HyperOS
+  version (Battery saver / Battery / Power), so no change is asked. 최근 앱 is also Android's
+  own ko label for Recents (framework `accessibility_system_action_recents_label`).
+- Huawei, OPPO, vivo (no Korean source; judged as plain Korean): 앱 실행, 자동 실행, 보조 실행,
+  백그라운드에서 실행, 추가 배터리 설정, 화면 잠금 후 앱 닫기, 백그라운드 활동, 백그라운드 전력
+  사용 are all plain, readable renderings. 보조 실행 is the least self-explanatory, but it
+  names a switch shown beside the other two. Known issue 1 is not re-reported.
+- Quotes: “ ” wrap the labels that are verb phrases (the three Huawei switches, and 화면 잠금
+  후 앱 닫기 before 끄기), where an unquoted label would run into the sentence's own verb. Noun
+  labels stay unquoted as in `a11y_stuck_message_xiaomi`, and paths use → as in
+  `overlay_icon_a11y_required_message`.
+
+**Typography.** 띄어쓰기 checked on all 41 (해 주세요, 이 때문, 게임 중에, 한 번, 때마다, 직후,
+지원팀). There is no NBSP, zero-width character or em dash. The only non-Hangul, non-ASCII
+glyphs are the en dash in the subject (as in `crash_email_subject`), “ ” and →.
+
+### Verdict (round 1)
+
+1 ⚠️, 1 💬. To apply: `kill_notice_body_other`, `keep_running_empty`. The other 39 keys pass.
+
+### Round 2 (2026-10-07), final review after applying round 1
+
+Mechanical layer re-run: `python3 PKT/../tools/mech_check.py PKT/../keys.txt ko` reports
+"checked 1 locales x 41 keys; problems: 0", and
+`python3 scripts/l10n_diff.py --locale app/src/main/res/values-ko/strings.xml` reports
+`values-ko missing=0 orphan=0 modified=0`, "in sync". The file parses as XML; each of the 41
+names occurs exactly once, in English order (the KILL NOTICE and KEEP RUNNING PAGE banners
+sit where English has them, between `settings_support_report_bug_chooser_title` and
+`settings_support_check_updates_title`); `settings_debug_export_logs_title` / `_subtitle`
+are gone and `settings_debug_export_logs_subject` stays. **No 🛑 build-breaking issues.**
+
+**Round-1 fixes:**
+- `kill_notice_body_other` (⚠️): applied, byte-identical to the suggestion (켜져 있던 PlayTranslate를
+  휴대전화가 종료했습니다. …). The fronted object removes the misparse, the body now opens like
+  `_body_stopped` (켜져 있던 PlayTranslate가 중지되었습니다.), and body + " 지금은 다시 켜져 있습니다."
+  still reads as one unit; the 를 after PlayTranslate is unchanged.
+- `keep_running_empty` (💬): applied, byte-identical (문제가 계속되면 증상을 재현한 다음 버그를 신고해
+  주세요.). 문제 no longer repeats, and 버그를 신고해 주세요 still names the 버그 신고 row beneath it.
+- Nothing around the fixes broke: `keep_running_title` = `settings_support_keep_running_title`
+  (아이콘이 사라질 때, re-measured at 173 dp of the 272 dp toolbar); the OPPO and vivo lines are
+  byte-identical; `kill_notice_not_now` = `btn_not_now`; the hub summaries re-measure at 161 dp
+  and 241 dp (tap clause 157 dp); the toast still wraps to 2 lines at 296 and 320 dp with the
+  address whole at the start of line 2 (286 dp); `a11y_stuck_message_xiaomi` is unchanged from HEAD.
+
+#### Findings (round 2)
+
+No new findings.
+
+#### Verdict (round 2)
+
+**PASS** (0 ❌, 0 ⚠️, 0 💬). All 41 strings were read again as the four surfaces: the kill
+notice with each body alone and with the restored sentence, the Support card in row order, the
+Fix disappearing icon page as Samsung, Xiaomi, Huawei, OPPO and vivo users get it (including the
+stuck-accessibility card and the empty label over the Report a bug row), and the email flow from
+chooser to toast to the 로그 공유 sheet. Every particle contact point was checked again (를/가/의/에서
+straight after PlayTranslate, 가 after Android and Xiaomi, 에 after the address, which needs no
+combined form), along with 띄어쓰기, the “ ” quotes, the arrows, and the 합니다체 bodies under noun or
+~기 titles. Samsung's labels were re-confirmed today on Samsung Korea's own page
+(samsung.com/sec/support/galaxy-battery/optimization: 디바이스 케어 > 배터리 > 백그라운드 앱
+사용 제한 > 자동 절전 예외 앱, 절전 상태 앱), and a Korean secondary guide uses the same names. A
+Korean search for Xiaomi's on-device labels again found no source, so the reviewed
+`a11y_stuck_message_xiaomi` wording stands. No round-1 decision is disputed.
+
+## Follow-up review 2026-10-07, round 1 (15 keys after the Fix disappearing icon rewrite)
+
+Mechanical layer: `python3 TOOLS/mech_check.py F2/keys2.txt ko` reports "checked 1 locales x
+15 keys; problems: 0" (every key present; `<xliff:g>` spans, including both `app_name` and
+`app_name2` in the Xiaomi autostart, OPPO and vivo lines, byte-identical to EN; `\n` count
+matches in `a11y_stuck_message`; no unescaped `'`/`"`, stray tag, double space or edge
+whitespace), and `python3 scripts/l10n_diff.py --locale app/src/main/res/values-ko/strings.xml`
+reports `values-ko missing=0 orphan=0 modified=0`, "in sync". The file parses as XML; each of
+the 15 names occurs exactly once, between the same neighbours as in English; the four removed
+keys (`restricted_settings_title` / `_message`, `keep_running_huawei_close_after_lock_title` /
+`_line`) are gone. The only non-Hangul, non-ASCII glyphs in the 15 are “ ” and ⋮; no NBSP or
+zero-width character. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- `AccessibilityHelp.withRestrictedSettingsStep` returns `message + "\n\n" + addendum` on API 33+
+  and the message alone below it. Callers: `MainActivity.showAccessibilityDialog`
+  (`accessibility_dialog_message`), `SettingsRenderer.showOverlayIconA11yAlert`
+  (`overlay_icon_a11y_required_message`), `AccessibilityAlert` (the three
+  `a11y_required_*_message` in the OverlayAlert card, button 접근성 설정 열기) and
+  `KeepRunningActivity.lineOf` (`keep_running_accessibility_line`, not while the service is
+  stuck). `SettingsRenderer.showA11yStuckAlert` adds no addendum: `a11y_stuck_message`, plus
+  `"\n\n" + a11y_stuck_message_xiaomi` when `Build.MANUFACTURER` is Xiaomi.
+- `KeepRunningItems.ids`: Xiaomi gets autostart, its own battery card (title + the new line) and
+  the lock card (no action), never the generic battery card; Huawei, OPPO, vivo and Samsung get
+  one card each, then the generic battery card while the exemption is missing (its tap opens
+  `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, AOSP's 앱이 항상 백그라운드에서 실행되도록
+  허용하시겠습니까? dialog), accessibility (API 30+) and the tile (API 33+).
+- `KeepRunningActivity.openFirst`: when no candidate screen launches, a `LENGTH_LONG` toast with
+  `keep_running_screen_unavailable`, then `startActivity(appDetails)`. So the toast is read on
+  top of App info, right after the tap on a card.
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| keep_running_oppo_auto_launch_line, keep_running_vivo_autostart_line (one fix: the second sentence, byte-identical in both values) | ⚠️ | `허용하지 않으면 휴대전화가 백그라운드에서 <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g>를 중지하거나 다시 시작하지 못하게 할 수 있습니다.` | `허용하지 않으면 휴대전화가 백그라운드에서 <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g>를 중지하거나, 앱이 다시 시작하지 못하게 할 수 있습니다.` | Scope garden path. "X를 A하거나 B하지 못하게 하다" is the everyday pattern for "keep from doing A or B" (앱을 삭제하거나 수정하지 못하게 하다), so the default parse is that the phone may keep PlayTranslate from being stopped or restarted. For the stop half that is the opposite of EN, and the reader reaches EN's "may stop it, or keep it from starting again" only on a second pass. With 앱이 the second clause gets its own subject, so 중지하거나 can only coordinate at the top (the phone stops it, or keeps the app from restarting); the comma marks the same boundary. Using 앱이 for PlayTranslate is the translator's own device in the battery line (PlayTranslate를 종료해도 앱이 스스로 다시 시작할 수 있습니다). Replace this sentence in both values; the first sentences stay. Both spans stay; mechanical rules re-checked on the full suggested values. |
+| keep_running_xiaomi_autostart_line | 💬 | `설정에서 자동 시작을 검색하여 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>에 허용하세요. 허용하지 않으면 <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g>가 종료된 뒤 Xiaomi가 다시 시작하지 못하게 할 수 있습니다.` | `설정에서 자동 시작을 검색하여 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>에 허용하세요. 허용하지 않으면 <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g>가 종료된 뒤 Xiaomi가 앱을 다시 시작하지 못하게 할 수 있습니다.` | The causee is dropped, and its only antecedent is the subject of the subordinate clause (PlayTranslate가 종료된 뒤), so Xiaomi가 sits directly before 다시 시작하지. That locally invites the "phone restarts" reading the translator kept out of the battery line with 앱이. The causative settles it at 할 수 있습니다, so this is polish. 앱을 names what does not restart and matches the OPPO and vivo fix above. Both spans stay. |
+
+### Clean areas — checked, no findings
+
+**Particles.** After the fixed name PlayTranslate (vowel-final): 의 in the addendum, both stuck
+messages, the Xiaomi battery line and the Huawei line; 가 in the battery title and the Xiaomi
+autostart line's second span; 를 in the battery, tile and Samsung lines and the OPPO and vivo
+second spans; 에 (no alternation) in the Xiaomi, OPPO and vivo first spans; none where the name
+modifies a noun (PlayTranslate 카드를). Also right: Android가, Xiaomi가 (샤오미), Samsung은
+(삼성), “제한된 설정 허용”을 and “백그라운드에서 실행”을 (consonant-final), “자동 관리”를
+(vowel-final), 제한 없음으로 / 제한 없음을, 배터리 항목(…)을 (the particle agrees with 항목,
+before the parenthesis), 자동 시작을, 자동 실행을, 앱 실행을, 배터리 사용량을, 절전 상태로,
+자동 절전 예외 앱에.
+
+**Register and title forms.** Bodies are 합니다체 with requests in ~하세요, as on the rest of the
+page. The two changed titles end in verbal nouns (허용, 설정), the file's title convention. The
+battery title is AOSP's `high_power_prompt_title` with 앱이 → PlayTranslate가 and the question
+ending dropped, so the card names the dialog its tap opens, word for word.
+
+**CHANGED keys: only what English moved.** Compared with the reviewed first-pass values
+(`PKT1/packet-ko.md`; HEAD for the two stuck messages):
+- `a11y_stuck_message` lost exactly the cause sentence (보통 시스템이 … 발생합니다.) and is
+  otherwise byte-identical.
+- `a11y_stuck_message_xiaomi` changed 사용 설정하고 → 허용하고 (enable → allow), 배터리 세이버를 →
+  배터리 사용량을 (Battery saver → its battery use) and 중지합니다 → 중지할 수 있습니다
+  (will → may), and nothing else.
+- `keep_running_tile_line` lost 스와이프와 탭 한 번이면 and keeps the rest.
+- `keep_running_xiaomi_lock_line` keeps its first sentence and replaces the memory-cleanup
+  sentence.
+- `keep_running_huawei_app_launch_line` keeps the three quoted switches and adds the search
+  step and “자동 관리”.
+- `keep_running_xiaomi_battery_title` swaps only the entry noun.
+- The rewritten lines (battery, Xiaomi autostart, OPPO, vivo, Samsung) carry every clause of
+  their new English: where, what to do, and the hedged effect (할 수 있습니다 for "may").
+
+**Surfaces read as sets.**
+- The addendum after each host. `accessibility_dialog_message` and
+  `overlay_icon_a11y_required_message` end on the 설정 → 접근성 → 다운로드된 앱 → PlayTranslate →
+  사용 설정 path, so 스위치 is the switch that path ends on. After the three
+  `a11y_required_*_message` (OverlayAlert card), the switch has no antecedent in the message,
+  exactly as in English, and the 접근성 설정 열기 button under it supplies one. After
+  `keep_running_accessibility_line` it closes the 접근성 모드 사용 card, whose tap opens
+  accessibility settings. The steps read in order (한 번 탭한 다음, … 열고, … 탭한 후, …
+  선택하세요), with 다음 / 후 varying the two "then"s. It is not appended to the stuck alert,
+  which matches the code.
+- Each card, title then line:
+  - 자동 시작 허용, then 설정에서 자동 시작을 검색하여….
+  - 배터리 사용량을 제한 없음으로 설정, then 배터리 항목(…)을 열고 제한 없음을 선택하세요
+    ("battery use" in the title, "battery entry" in the line, as in EN).
+  - 최근 앱에서 PlayTranslate 잠그기, then the gesture.
+  - 앱 실행을 수동으로 관리, then the 앱 실행 search and “자동 관리” off.
+  - 자동 실행 및 백그라운드 활동 허용, then the 자동 실행 search and 백그라운드 활동.
+  - 자동 시작 및 백그라운드 전력 사용 허용, then the 자동 시작 search and 백그라운드 고전력
+    사용 (EN's own pair, "background power use" / "high background power use").
+  - 자동 절전 예외 앱에 추가, then the Samsung path.
+  - The battery title, then 허용하면…: 허용하면 picks up the title's 허용, and 앱이 keeps 다시
+    시작 on the app, not the phone.
+  - 빠른 설정 타일 추가, then 어느 화면에서든….
+- The stuck alert: 접근성을 다시 시작해야 합니다, the message, then on Xiaomi the paragraph.
+  Its two settings now repeat the two Xiaomi card titles (자동 시작 … 허용, 배터리 사용량을 제한
+  없음으로 설정), and its 도 (자동 시작도) ties it to the re-toggle step above.
+
+**Toast.** Measured with `TOOLS/Wrap` (14 sp, Noto Sans CJK KR). It takes 2 lines at 296 dp,
+breaking at the sentence boundary (269 dp, then 266 dp), and 2 lines at 320 dp; it is 538 dp in
+all. The tool breaks Korean only at spaces, while Android may also break between syllables, so
+this is the worst case. The wording uses 해당 화면 for "that screen" and 이 항목 for "the
+setting". 이 항목 is read right after the tap that raised the toast, so it points back at the
+card the user just tapped. App info has opened under the toast, but nothing on it is singled
+out for 이 to point at. 해당 항목 would be the strictly anaphoric choice but repeats the first
+sentence's 해당. Passed.
+
+**Two-span lines.** The Xiaomi, OPPO and vivo lines carry both spans: the first as the
+recipient (PlayTranslate에 허용…), the second in the consequence sentence (PlayTranslate가
+종료된 뒤 / PlayTranslate를 중지하거나). Repeating the name across two sentences reads naturally
+in Korean. Only the consequence clauses are in the findings.
+
+**Labels.**
+- AOSP ko: 앱 정보 (`application_info_label`) and “제한된 설정 허용”
+  (`app_restricted_settings_lockscreen_title`), quoted as the reviewed
+  `restricted_settings_message` quoted it. The "Restricted setting" dialog is described, not
+  named, as in EN. The battery title mirrors `high_power_prompt_title`, and 제한 없음 matches
+  `manager_battery_usage_unrestricted_title` (as Xiaomi's option it is unverified). The ⋮ menu
+  keeps the reviewed 점 3개(⋮): the glyph identifies the icon whatever a help page calls it
+  (Google's ko help says 더보기), and AOSP shows no text label on that button, so there is
+  nothing to mismatch.
+- Samsung (official; re-verified on samsung.com/sec/support/galaxy-battery/optimization in both
+  first-pass rounds, not re-fetched): 배터리, 백그라운드 앱 사용 제한 and 자동 절전 예외 앱, and
+  절전 상태 for "sleep" (절전 상태 앱). All four match.
+- Xiaomi (sold in Korea; no official Korean page readable). AdGuard's Korean KB
+  (adguard.com/kb/ko/adguard-for-android/solving-problems/background-work, crowd-translated,
+  secondary, read today) prints 자동 시작 (MIUI 12) and 백그라운드 자동 시작 (MIUI 13+/HyperOS,
+  설정 → 앱 → 권한), 제한 없음, and 잠금 아이콘을 탭합니다. So the search word 자동 시작 matches
+  either form as a substring, and 제한 없음 and the lock step agree.
+- One open Xiaomi point, not a finding. For the per-app entry, AdGuard prints 배터리 절약
+  (MIUI 13+/HyperOS and MIUI 12), with 앱 배터리 세이버 only in an older all-devices section.
+  Together with the yellowit.co.kr article the first pass cited, two secondary sources now lean
+  to 배터리 절약 for the first name in `keep_running_xiaomi_battery_line`'s parenthesis. Neither
+  is official, and the KB disagrees with itself. The line also says 배터리 항목 and lists 배터리,
+  so a user finds the entry under either name. No change is asked, but a Korean-UI Xiaomi or an
+  official page should settle this first. 전원 for HyperOS 3's "Power" is the usual Korean
+  rendering of a "Power" menu (전원 옵션, 전원 버튼); also unverified. Two Korean searches found
+  no on-device source.
+- Huawei, OPPO, vivo (not sold in Korea; plain-Korean renderings, consistent with the first
+  pass): 앱 실행 (the title and the search word agree), “자동 관리”, “자동 실행”, “보조 실행”,
+  “백그라운드에서 실행”, 자동 실행 (OPPO), 백그라운드 활동, 자동 시작 (vivo) and 백그라운드
+  고전력 사용.
+- Search words are unquoted, as in EN (자동 시작, 앱 실행, 자동 실행), and each repeats its card
+  title's noun, so it reads as the term to type. “자동 관리” is quoted like the three switches in
+  its sentence; unquoted, 자동 관리를 끈 다음 would blur into the prose.
+
+**Terms.**
+- 종료 for "close" (the battery line; the Xiaomi line's 종료된) and 중지 for "stop" (OPPO, vivo,
+  both stuck messages): the split the first pass set.
+- 휴대전화 for "phone" in all 5 places (4 keys; known issue 3), and 기기 where EN says "device"
+  (Xiaomi 기기에서는, 기기의 접근성 설정).
+- 허용 for every "allow".
+- autostart → 자동 시작; auto-launch → 자동 실행 (the OPPO search word and the Huawei switch
+  alike); launch → 실행 (앱 실행, 보조 실행).
+- 앱 설정 for "app settings" and 앱의 시스템 설정 for "the app's system settings", as EN
+  distinguishes them; 최근 앱 for Recents (AOSP's ko label).
+
+**Typography.** 띄어쓰기 checked on all 15 (한 번, 탭한 다음, 탭한 후, 점 3개(⋮), 열 수 없습니다,
+종료된 뒤, 끈 다음, 며칠 동안, 할 수 있는). 끌어내리세요 is one word (끌어내리다). Parentheses
+attach to the preceding word (항목(…), 3개(⋮)). No NBSP, zero-width character or em dash.
+
+### Verdict (round 1)
+
+1 ⚠️ (one fix in two keys), 1 💬, 0 ❌. To apply: `keep_running_oppo_auto_launch_line` and
+`keep_running_vivo_autostart_line` (the shared second sentence, ⚠️), then
+`keep_running_xiaomi_autostart_line` (💬). The other 12 keys pass. One open label question, not a
+finding: Xiaomi's per-app battery entry, 배터리 세이버 or 배터리 절약 (secondary sources only).
+
+### Follow-up round 2 (2026-10-07), final review after applying round 1
+
+Mechanical layer re-run: `python3 TOOLS/mech_check.py F2/keys2.txt ko` reports "checked 1 locales
+x 15 keys; problems: 0", and `python3 scripts/l10n_diff.py --locale
+app/src/main/res/values-ko/strings.xml` reports `values-ko missing=0 orphan=0 modified=0`, "in
+sync". The file parses as XML; each of the 15 names occurs exactly once; the four removed keys
+(`restricted_settings_title` / `_message`, `keep_running_huawei_close_after_lock_title` / `_line`)
+are still gone. The only non-Hangul, non-ASCII glyphs in the 15 are “ ” (the addendum, the Huawei
+line) and ⋮ (the addendum). **No 🛑 build-breaking issues.**
+
+**Round-1 fixes:**
+- `keep_running_oppo_auto_launch_line`, `keep_running_vivo_autostart_line` (⚠️, one fix in two keys):
+  applied, byte-identical to the suggestion in both (…PlayTranslate를 중지하거나, 앱이 다시 시작하지
+  못하게 할 수 있습니다.). A character diff against the first applied values (`F2/frag/ko.tsv`) shows only
+  the inserted ", 앱이" in each. The first sentences are untouched, and the two second sentences are still
+  byte-identical. Now that the second clause has its own subject, 중지하거나 can only coordinate at the top
+  level: the phone may stop PlayTranslate, or keep the app from starting again, as EN says.
+- `keep_running_xiaomi_autostart_line` (💬): applied, byte-identical (…Xiaomi가 앱을 다시 시작하지 못하게
+  할 수 있습니다.). The diff shows only the inserted 앱을, the causee of the usual "keep X from" pattern
+  (X를 ~지 못하게 하다). It takes 을 where OPPO and vivo take 이, and each is right: this line has no
+  coordination for a subject to disambiguate.
+- Nothing around the fixes broke. Both spans stay in all three lines, each followed by its right particle
+  (에 on the first; 가 or 를 on the second). The other 12 keys are byte-identical to the values round 1
+  reviewed. No other ko key moved: `git diff HEAD` shows only the first pass's keys and these 15, and none of
+  `F2/keys-extra-f2.txt` changed in ko. Each of the 15 still sits between its English neighbours. The titles
+  above the three lines are unchanged (자동 시작 허용, 자동 실행 및 백그라운드 활동 허용, 자동 시작 및
+  백그라운드 전력 사용 허용), and 허용하지 않으면 still picks up their 허용. The toast is unchanged and
+  re-measures (`TOOLS/Wrap`, 14 sp) at 2 lines at 296 dp, broken at the sentence boundary (269 and 266 dp),
+  and 2 lines at 320 dp; it is 538 dp in all.
+
+#### Findings (round 2)
+
+No new findings.
+
+#### Verdict (round 2)
+
+**PASS** (0 ❌, 0 ⚠️, 0 💬). All 15 strings were read again as sets, against the English and its comments:
+- The addendum after each of its five hosts. After `accessibility_dialog_message` and
+  `overlay_icon_a11y_required_message`, its 스위치 is the 사용 설정 switch their path ends on. After the three
+  `a11y_required_*_message` and `keep_running_accessibility_line`, the switch is on the screen that the
+  접근성 설정 열기 button or the card opens, as in EN. The steps read in order (한 번 탭한 다음, … 열고,
+  … 탭한 후, … 선택하세요).
+- Each card, title then line, as Xiaomi, Huawei, OPPO, vivo and Samsung users get them, then the generic
+  battery, accessibility and tile cards.
+- The stuck alert with and without the Xiaomi paragraph, whose two settings still repeat the two Xiaomi card
+  titles.
+- The toast, read over App info right after the tap, where 해당 화면 and 이 항목 point back at the card just
+  tapped.
+
+Particles: after PlayTranslate (vowel-final), 의, 가, 를 and 에 are right in the 13 keys that carry the name,
+with none before 카드. Also right: Android가, Xiaomi가 (샤오미), Samsung은 (삼성), 앱이 / 앱을, “제한된 설정
+허용”을, “자동 관리”를, “백그라운드에서 실행”을, 제한 없음으로 / 제한 없음을, 항목(…)을 and 절전 상태로.
+Register: 합니다체 statements with ~하세요 steps throughout, and the two changed titles end in 허용 and 설정.
+띄어쓰기 re-checked (한 번, 탭한 다음, 열 수 없습니다, 종료된 뒤, 못하게 할 수 있습니다, 며칠 동안).
+
+Labels: AOSP ko 앱 정보, 제한된 설정 허용, 제한 없음 and the `high_power_prompt_title` wording match.
+Samsung's official 배터리, 백그라운드 앱 사용 제한, 자동 절전 예외 앱 and 절전 상태 also match; they were not
+re-fetched, since two earlier rounds read Samsung Korea's page. Huawei, OPPO and vivo stay plain-Korean
+renderings, and each search word repeats its card title's noun.
+
+Xiaomi is still unverified (known issue 2). Two Korean searches today found no Xiaomi Korea page; the only
+Korean hit was the yellowit.co.kr article round 1 cited. mi.com/kr's copy of the Background autostart FAQ
+(KA-507608) returned 403. So round 1's open question on the per-app battery entry (배터리 세이버 or 배터리
+절약) stays open. It is still a label question, not a finding: the line's 배터리 항목, with 배터리 among its
+alternatives, leads to the entry under either name.
+
+No round-1 decision is disputed. Samsung은 and Xiaomi가 in Latin letters follow the file's spelling of brand
+names (Android, Google Play); 삼성 / 샤오미 would make these two the only transliterated brands.

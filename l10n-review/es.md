@@ -583,3 +583,330 @@ Round-1 fixes present: «Mantener» as the gesture, and the alert now says «al 
 No new findings.
 
 **Verdict (round 2):** **PASS.**
+
+## Delta review 2026-10-07 (41 keys + 2 orphans: bug-report email, Support rows, kill notice, Fix disappearing icon page)
+
+Mechanical layer verified: `python3 PKT/../tools/mech_check.py PKT/../keys.txt es` reports
+`checked 1 locales x 41 keys; problems: 0` (all 41 present; every `<xliff:g>` span and
+`%1$s` byte-identical to EN; the email body's four `\n` kept; no unescaped `'`/`"`, no stray
+tag, no double space, no leading/trailing space). `python3 scripts/l10n_diff.py --locale
+app/src/main/res/values-es/strings.xml` reports `values-es missing=0 orphan=0 modified=0`
+("in sync"), so the orphans `settings_debug_export_logs_title` / `_subtitle` are gone (grep: 0
+hits) and their neighbour `settings_debug_export_logs_subject` stays. No `<plurals>` in this
+delta. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- `MainActivity.maybeShowKillNotice`: one body by exit kind, then `append(' ').append(kill_notice_restored)`
+  only when a floating icon is really on screen (`hasAnyFloatingIcon`), so «Ya vuelve a estar
+  activado.» has to stand after each body; buttons are `addButton` (See options) then `addCancelButton`.
+- `settings_row_hub.xml` `hubRowSummary` is `singleLine` + `ellipsize="end"`; the Fix page's
+  Report a bug row (`KeepRunningActivity.bindReportBugRow`, `settings_row_link.xml`) shows the
+  same two strings with a wrapping subtitle. `lineOf` gives `keep_running_battery_line` to both
+  BATTERY and XIAOMI_BATTERY, and `KeepRunningItems.ids` never shows the generic battery card on
+  Xiaomi, so the two battery titles never appear together.
+- `LogExporter.emailFiles`: with no email app, `email_no_app_fallback` (LENGTH_LONG) and then
+  `shareFiles` with the same subject; `BugReport.share` (hold) uses
+  `settings_debug_export_logs_subject` and the chooser `share_chooser_share_logs`.
+
+### Findings (delta, round 1)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| settings_support_report_bug_subtitle | ⚠️ | `Envía los registros por correo a soporte. Mantén para compartir.` | `Envía los registros por correo a soporte. Mantén presionado para compartir.` | A bare «Mantén» has no complement. Every hold instruction in the file is «Mantén presionado para…» (status_hold_hint, the four translate_button_subtitle_hold_*, hotkey_show_translations_title, hotkey_show_hint_title), and so is this delta's «mantén presionada la tarjeta»; «Mantener» (icon_gesture_hold) is a label, not a sentence. Costs nothing on the hub row, which shows only the 230 dp first sentence on any phone; on the Fix page it still wraps to 2 lines (measured at 232 and 260 dp). |
+| keep_running_tile_line | 💬 | `Con deslizar y tocar una vez, vuelves a activar <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> desde cualquier pantalla.` | `Con solo deslizar y tocar, vuelves a activar <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> desde cualquier pantalla.` | For "it only takes…", «con + infinitivo» needs «solo». Without it the opening reads like a calque of "One swipe and a tap", and «una vez» could apply to either action. |
+| keep_running_accessibility_line | 💬 | `Ejecuta <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> con la prioridad de un servicio de accesibilidad, al que las limpiezas de memoria rara vez llegan.` | `Ejecuta <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> con la prioridad de un servicio de accesibilidad, al que rara vez afectan las limpiezas de memoria.` | Both the word order and the verb follow the English ("which memory cleanups rarely reach"). In Spanish the long subject goes after the verb in a relative clause, and «afectar» is the verb a native would use for a cleanup. |
+| keep_running_samsung_never_sleeping_title | 💬 | `Añadir a “Aplicaciones sin autosuspensión”` | `Añadir a “Aplicaciones sin autosuspensión” (o “nunca inactivas”)` | This label is official for Latin America (oem-labels es-419). values-es also serves Spain, whose One UI names these lists with «inactivas» (official Spain page: «Apps inactivas», «Aplicaciones siempre inactivas»). Only SECONDARY sources give Spain's never-sleeping list: «Apps/Aplicaciones nunca inactivas» (Xataka Android, One UI 3.0, fetched; Samsung EU community threads, search summary only). The card line already uses Spain's official path. Optional. The title wraps to 2 lines (435 dp at 15 sp medium). |
+
+### Clean areas (delta) — checked, no findings
+
+**Form and placeholders.** tú throughout, with no usted and no vosotros. «¿Qué ha pasado?» has its
+opening mark. Accents are right (reprodúcelo, Desactívalo, continúa, tú, más). «si no» (two words)
+means "otherwise" where it should, «e informa» comes before the i- sound, and «Se adjuntan» is
+plural for the compound subject. The subject keeps the en dash and «v» of crash_email_subject. With
+real values: «Informe de error de PlayTranslate – v3.3.0» and «…de otra forma a
+support@playtranslate.com.» read correctly. PlayTranslate is a bare direct object (cierre / cerró
+/ detiene PlayTranslate), with no article and no personal «a».
+
+**Kill notice, as read.** PlayTranslate is masculine throughout (fue detenido, activado, lo
+detuviste), as in notif_title «está activo». "On" is «activado», the file's
+capture_lifecycle_state_on. The memory and other bodies say «cerró PlayTranslate, que estaba
+activado»; «mientras estaba activado» would have made the phone the subject, so this was a good
+choice. I read `kill_notice_restored` after each body, joined by the code's one space:
+- memory: it follows «…el icono flotante.»
+- other: the masculine singular rules out «Algunos teléfonos», and the echo of «estaba activado» points to PlayTranslate.
+- stopped: PlayTranslate is the topic, so «el gestor» two sentences back does not take over.
+
+Every reading lands on PlayTranslate or the icon, and both are true. Perfect tense in the title
+and preterite in the bodies read naturally. «detenido / lo detuviste» matches what a user who
+force-stopped the app saw (AOSP «Forzar detención»). The buttons are «Ver opciones» and «Ahora
+no» (= btn_not_now).
+
+**Support card and Fix page.** The rows read Buscar actualizaciones · Unirse a Discord · Si el
+icono desaparece · Informar de un error · Apoyar a PlayTranslate, and every subtitle is a tú
+imperative. «Si el icono desaparece» is the only title that is not an infinitive, and I passed it:
+- It leads with the symptom, as the English asks, and reads as a help-topic link.
+- It sits well above «Evita que tu teléfono cierre PlayTranslate».
+- It is byte-identical to keep_running_title and measures 220 of 272 dp. Infinitive versions («Evitar que el icono desaparezca», «Arreglar el icono que desaparece») measure 310-321 dp and would be cut off in the toolbar.
+
+Widths: that subtitle is 237 dp against 249, and the bug subtitle's first sentence is 230 dp
+against 249. On the page, the intro comes first, then the cards: infinitive titles (Configurar,
+Usar, Añadir, Permitir, Bloquear, Gestionar, Desactivar) over tú lines. The stuck variant's line
+names «el servicio», so «Desactívalo» still agrees under «Hay que reiniciar la accesibilidad».
+The empty label's «informa de un error» matches the «Informar de un error» row under it.
+
+**Email flow.** «Enviar informe de fallos» (crash) and «Enviar informe de error» (bug) keep the
+two reports apart. Each matches its own family: crash_dialog_message and toast_no_crash_report for
+the crash, the row title for the bug. The body follows crash_email_body. The toast wraps to 2
+lines at both 296 and 320 dp, with the address whole on line 2, and «Compartir registros» opens
+after it. «registros» is used everywhere.
+
+**Same words.** One battery line serves both battery cards, and «Si no lo haces» fits both titles.
+The oppo and vivo lines are byte-identical. These are reused from their precedents: «icono
+flotante», «Añadir mosaico a Ajustes rápidos», «ajustes de accesibilidad», «inicio automático»,
+«ahorro de batería», “Sin restricciones” and «no lo reiniciará por sí solo».
+
+**Platform labels.**
+- AOSP: «Sin restricciones», «Batería», and «uso de batería» (AOSP has «Gestionar el uso de batería» and «Uso de batería de las aplicaciones»).
+- Huawei, official for Spain: «Inicio de aplicaciones», «Inicio automático», «Inicio secundario», «Ejecutar en segundo plano». «Más ajustes de batería» was confirmed this run on Huawei Spain's es-es00428704 page, which also uses «Tareas recientes» and «Bloquear» for the Recents lock; that supports the Xiaomi card's words.
+- «Gestionar manualmente» is unverified; it is the counterpart of the official «Gestionar automáticamente».
+- Close-after-lock is known issue 1. The Spain page names no such option either.
+- OPPO: both labels (Huawei-authored, es-us) appear in its title.
+- vivo: the labels are UNVERIFIED; «consumo de energía en segundo plano» is a plausible fragment.
+- Xiaomi: the labels are secondary (AdGuard ES) and match the reviewed a11y_stuck_message_xiaomi.
+- Samsung: the path is Spain's official one.
+
+Web use: 7 of the 8 allowed calls (2 searches; Xataka and Huawei Spain fetched; the
+samsung.com/es optimization page returned 404 and two Spanish forum threads returned 403).
+
+**Quotes.** The delta puts “ ” around OEM and Android option and list labels, which follows the
+closest precedent: a11y_stuck_message_xiaomi (“Sin restricciones”) and
+onboarding_a11y_enable_title. Straight \" stays with the app's own names
+(icon_gestures_no_menu_message, overlay_hide_controls_message). Screen names and → paths stay
+unquoted, as in overlay_icon_a11y_required_message. This is consistent, so I left it as is.
+
+**Vocabulary.** «teléfono» avoids both móvil and celular, and app/aplicación follows the file.
+«gestor», «Añadir» and «Ajustes» follow the file's es-ES base from Google. «¿Qué ha pasado? … qué
+salió mal» mixes perfect and preterite, which reads naturally in both regions, so I left it as is.
+
+### Verdict (round 1)
+
+1 ⚠️ + 3 💬. To apply: settings_support_report_bug_subtitle (⚠️), keep_running_tile_line,
+keep_running_accessibility_line. keep_running_samsung_never_sleeping_title is the developer's call,
+because the evidence for Spain's label is secondary.
+
+## Follow-up review 2026-10-07, round 1 (15 keys after the Fix disappearing icon rewrite, plus the final review of the first pass's 41 keys)
+
+Mechanical layer: `python3 TOOLS/mech_check.py F2/keys2.txt es` reports `checked 1 locales x
+15 keys; problems: 0`, and `python3 TOOLS/mech_check.py …/scratchpad/keys.txt es` reports
+`checked 1 locales x 39 keys; problems: 0` (the first pass's 41 less the two close-after-lock keys
+English removed): every key present, every `<xliff:g>` span (both `app_name` and `app_name2` in
+the three two-span lines) and placeholder byte-identical to English, the `\n` counts kept, no
+unescaped `'`/`"`, no stray tag, no double space, no leading or trailing space.
+`python3 scripts/l10n_diff.py --locale app/src/main/res/values-es/strings.xml` reports
+`values-es missing=0 orphan=0 modified=0` ("in sync"), so `restricted_settings_title` /
+`_message` and the two `keep_running_huawei_close_after_lock_*` keys are gone. No `<plurals>` in
+scope. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- `AccessibilityHelp.withRestrictedSettingsStep` returns `message + "\n\n" + addendum`, on API 33+
+  only. Its callers are `MainActivity.showAccessibilityDialog` and
+  `SettingsRenderer.showOverlayIconA11yAlert` (system AlertDialogs, both bodies ending «→ Activar.»),
+  `AccessibilityAlert` (the three `a11y_required_*` in the 280 dp OverlayAlert, where the message is
+  13 sp, centered, inside a ScrollView), and `KeepRunningActivity.lineOf` for the accessibility card
+  unless the service is stuck. `showA11yStuckAlert` takes no addendum. It appends
+  `a11y_stuck_message_xiaomi` after `\n\n` when `Build.MANUFACTURER` is Xiaomi.
+- `KeepRunningActivity.openFirst`: when no candidate intent starts, the app shows
+  `keep_running_screen_unavailable` (LENGTH_LONG), then App info. The battery card fires
+  `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, which shows AOSP's «¿Permitir que la aplicación se
+  ejecute siempre en segundo plano?». The Xiaomi battery card targets powerkeeper's per-app page.
+  The lock card and the tile card never toast.
+- `KeepRunningItems.ids`: Xiaomi shows autostart, Xiaomi battery and lock, and never the generic
+  battery card. Every other ROM shows its one card, then battery (until exempt), accessibility (API
+  30+) and the tile (API 33+). Titles (15 sp medium) and lines (13 sp) wrap freely.
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+
+None.
+
+### Clean areas — checked, no findings
+
+**The addendum after each of the five messages.** «A partir de Android 13» means "13 and later".
+«Información de la app» and «Permitir ajustes restringidos» are AOSP's `application_info_label` and
+`app_restricted_settings_lockscreen_title`, checked against the android16-qpr2 es Settings strings
+on disk. The «Ajuste restringido» dialog goes unnamed, as in English. Two of the five messages,
+`accessibility_dialog_message` and `overlay_icon_a11y_required_message`, end «→ PlayTranslate →
+Activar.», so «el interruptor» is the switch that step turns on. After the three `a11y_required_*`
+bodies and the card line, it reads as its own closing paragraph, with the same unanchored "the
+switch" as the English. It is one sentence in tú, and «selecciona» is the verb the deleted
+`restricted_settings_message` used. Labels take “ ”, as in `onboarding_a11y_enable_title` and
+`a11y_stuck_message_xiaomi`, and paths stay unquoted. «la página “Información de la app” de
+PlayTranslate» needs its quotes, or the label would run into «de PlayTranslate».
+
+**Stuck alert.** Against HEAD, `a11y_stuck_message` lost only the cause sentence. The Xiaomi
+paragraph makes exactly the English's three moves: activa → permite, el ahorro de batería → el uso
+de batería, seguirá → podría seguir. It now uses the words of the two Xiaomi card titles («Permitir el
+inicio automático», «Configurar el uso de batería como “Sin restricciones”»). Title, body, Xiaomi
+paragraph and «Abrir ajustes de accesibilidad» read as one alert.
+
+**Cards, title + line.**
+- Battery: the title is AOSP's `high_power_prompt_title` with the app name and without ¿?, so the
+  dialog the card opens repeats the card's words. Like the English, it names neither «Sin
+  restricciones» nor «No optimizada». The line's «por sí solo» agrees with masculine PlayTranslate,
+  as «no lo reiniciará por sí solo» does.
+- Tile: «Vuelve a activar PlayTranslate…» is third person with the tile as its subject, the form of
+  `quick_tile_add_row_subtitle` («Activa o desactiva…») and the accessibility line («Ejecuta…»).
+- Verbs pair up between titles and lines: Permitir / permítelo / permítele, Añadir / añade,
+  Gestionar manualmente / desactiva “Gestionar automáticamente”. «Si no lo permites» follows Xiaomi's
+  one action, and «Si no lo haces» the two actions of OPPO and vivo.
+- Hedges: «podría» stands wherever the English says "may" (Xiaomi, OPPO, vivo, the stuck paragraph).
+  Nothing is hedged that the English states flatly (the battery line, Samsung's description).
+- Search words are in “ ”: lowercase where the English gives a search word (autostart,
+  auto-launch), capitalized where it gives a label (vivo's Autostart, Huawei's App launch).
+
+**Changed keys, minimal edits.** In `keep_running_xiaomi_battery_title`, only the entry changed
+(«el ahorro de batería» → «el uso de batería»). The lock line's first sentence and the three Huawei
+switch labels are byte-identical to the reviewed versions.
+
+**Two-span lines.** All three keep both spans. The second mention opens a new sentence («Si no lo
+permites, Xiaomi podría impedir que PlayTranslate…», «Si no lo haces, el teléfono podría detener
+PlayTranslate…»), so the repetition reads naturally.
+
+**Toast, then App info.** The toast fits in 2 lines at both widths, where the English needs 3 at
+296 dp:
+- 296 dp: «Esa pantalla no está disponible en este | teléfono. Busca la opción en Ajustes.»
+- 320 dp: the line breaks after «teléfono.»
+
+«Esa» points at the screen the card failed to open. «la opción» is the setting the card title
+names, and AOSP calls this kind of setting «esta opción» too (`high_power_prompt_body`). "Instead"
+and "your phone's" drop without loss, because App info opens next, inside Ajustes.
+
+**Labels (web: 4 of 6 calls).**
+- Huawei: all five labels are official for Spain (earlier section).
+- Xiaomi: AdGuard ES (fetched) gives these labels:
+  - «Inicio automático en segundo plano» on HyperOS (Configuración → Aplicaciones → Permisos)
+  - «Inicio automático» on the app page
+  - «Ahorro de batería» → «Sin restricciones»
+  - «Tareas recientes» and the «candado»
+
+  A Xataka search result gives «Autoinicio en segundo plano» instead. The two sources disagree on
+  HyperOS, and the line's two search words match both. «Batería» and «Energía» stay unverified: one
+  search found only DriveQuant's English "Battery" / "Power".
+- OPPO: AdGuard ES's ColorOS section has «Aplicaciones → Inicio automático» and «Permitir actividad
+  en segundo plano». Both are secondary, and both match the line.
+- vivo: Huawei's es-us15977905 (fetched, Huawei-authored) says «busca la opción Inicio automático».
+  «alto consumo de energía» is unverified and, as in English, unquoted.
+- Samsung:
+  - «Límites de uso en segundo plano» is official in both regions.
+  - «Aplicaciones sin autosuspensión» is official for Latin America.
+  - For Spain's «nunca inactivas», Samsung's EU community threads in Spanish (search result) name
+    «Aplicaciones nunca inactivas» under Mantenimiento del dispositivo → Batería → Límites de uso
+    en segundo plano. That makes two secondary sources, still none official.
+  - AdGuard ES's «Nunca autodormir apps» translates AdGuard's own English; it is not a label.
+
+**The first pass's keys, final.** The round-1 fixes landed verbatim:
+- `settings_support_report_bug_subtitle`: «Mantén presionado para compartir»
+- `keep_running_accessibility_line`: «al que rara vez afectan las limpiezas de memoria»
+- `keep_running_samsung_never_sleeping_title`: with «(o “nunca inactivas”)»
+- the tile fix «Con solo deslizar y tocar…» (in the PKT1 packet), since superseded by the rewrite
+
+Kill notice: «Ya vuelve a estar activado.» after each of the three bodies lands on PlayTranslate or
+the icon. Widths, re-measured:
+- the Support subtitles: 237 dp, and 230 dp for the bug subtitle's first sentence, against 249
+- the toolbar title: 220 dp against 272
+- the email toast: 2 lines at 296 and 320 dp, with the address whole on line 2
+
+All 39 keys were re-read alongside the follow-up keys. The page reads in one voice: infinitive
+titles over tú lines, with «ajustes», «teléfono», «registros» and «icono flotante» throughout. The
+diff against HEAD touches only the in-scope keys, the two banners and four deletions
+(`restricted_settings_*` and the first pass's two orphans).
+
+**Spain and Latin America.** The Android labels follow es-ES AOSP («Ajustes», «Información de la
+app», «Permitir ajustes restringidos»), like every Settings path already in the file. A phone set to
+Latin-American Spanish shows its own strings; that is a file-wide choice outside this delta. The
+vocabulary is neutral: teléfono, app/aplicación, «Mantén presionado(a)», icono.
+
+### Verdict (round 1)
+
+0 🛑, 0 ❌, 0 ⚠️, 0 💬. **PASS.** Nothing to apply. The unverified labels are Xiaomi's «Batería» and
+«Energía», vivo's battery wording and Spain's «nunca inactivas»; all are known issues or
+developer's-call items already recorded.
+
+### Follow-up round 2 (2026-10-07), final review after applying round 1
+
+Mechanical layer re-run: `python3 TOOLS/mech_check.py F2/keys2.txt es` reports `checked 1 locales
+x 15 keys; problems: 0` (every key present; every `<xliff:g>` span, both `app_name` and
+`app_name2` in the three two-span lines, byte-identical to English; the stuck message's two `\n`
+kept; no unescaped `'`/`"`, no stray tag, no double space, no leading or trailing space). The
+same check reports `checked 1 locales x 39 keys; problems: 0` over the first pass's remaining keys
+(`…/scratchpad/keys.txt`) and `checked 1 locales x 3 keys; problems: 0` over
+`F2/keys-extra-f2.txt`. `python3 scripts/l10n_diff.py --locale
+app/src/main/res/values-es/strings.xml` reports `values-es missing=0 orphan=0 modified=0` ("in
+sync"). The file parses as XML (1047 names, no duplicate), and `restricted_settings_*`, the two
+`keep_running_huawei_close_after_lock_*` keys and the first pass's two orphans have 0 hits. No
+`<plurals>` in scope.
+**No 🛑 build-breaking issues.**
+
+**Round-1 fixes:** none to apply. Round 1 (the 15 keys plus the final read of the first pass's
+39) reported no findings, and the file still holds what it passed: all 15 values equal the
+translator's source (`F2/frag/es.src`), the regenerated packet and the values round 1 quoted.
+The first pass's fixes that round 1 confirmed are still in place:
+- `settings_support_report_bug_subtitle`: «… Mantén presionado para compartir.»
+- `keep_running_accessibility_line`: «… al que rara vez afectan las limpiezas de memoria.»
+- `keep_running_samsung_never_sleeping_title`: «… (o “nunca inactivas”)»
+- The tile fix «Con solo deslizar y tocar…» was superseded by the rewrite.
+
+#### Findings (round 2)
+
+No new findings.
+
+**Fresh read: checked, no finding.**
+- **The addendum after its six hosts**, each composed as `message + "\n\n" + addendum`: the two
+  system dialogs ending «→ PlayTranslate → Activar.», the three `a11y_required_*` in the
+  OverlayAlert card, and the accessibility card line. It reads as its own closing paragraph every
+  time: one sentence in tú, with its four steps in English's order (tócalo, abre, toca,
+  selecciona). «Información de la app» and «Permitir ajustes restringidos» match the
+  android16-qpr2 es Settings file on disk, and the «Ajuste restringido» dialog goes unnamed, as in
+  English. The unanchored «el interruptor» after the three in-app alerts is the English's own gap.
+- **Stuck alert.** The body is HEAD minus exactly the cause sentence. The Xiaomi paragraph repeats
+  the two Xiaomi card titles («permite … el inicio automático», «configura el uso de batería como
+  “Sin restricciones”»), and «podría» carries the English "may".
+- **Cards, title + line, per ROM, then the shared cards.** Infinitive titles sit over tú lines;
+  the two lines that describe (battery, tile) are third person, like
+  `quick_tile_add_row_subtitle`. PlayTranslate stays masculine («por sí solo») and takes no
+  article and no personal «a». Every hedge sits where English hedges, and «mantén presionada la
+  tarjeta» agrees with «tarjeta».
+- **Labels and search words.**
+  - The battery title is AOSP's `high_power_prompt_title` with the app name and without ¿?.
+  - Huawei's five labels are official for Spain, and the Mexico page prints the same three
+    switches.
+  - The Samsung line names Latin America's official «Aplicaciones sin autosuspensión» and
+    Spain's secondary «nunca inactivas», under «Límites de uso en segundo plano», which is
+    official in both regions.
+  - «autoinicio» and «inicio automático» cover both Xiaomi sources. «inicio automático» is also
+    OPPO's and vivo's search word (secondary: Huawei-authored pages and AdGuard ES).
+  - No string asks a question or exclaims, so none needs ¿ or ¡.
+- **Toast.** Re-measured with the wrap tool (14 sp Roboto): 475 dp in all, so 2 lines at 296 dp
+  («Esa pantalla no está disponible en este | teléfono. Busca la opción en Ajustes.», 242 and
+  230 dp) and at 320 dp (break after «teléfono.»).
+- **Typography, by script over the 15 values:** “ ” only, balanced and alternating; no straight
+  quote, NBSP or space before punctuation. Accents read correct.
+- **Web: 3 of 4 calls.**
+  - A search for Xiaomi's Spanish per-app «Energía» found only DriveQuant's English "Power".
+  - A fetched mundoxiaomi.com HyperOS guide (2026-03-11) confirms «Ajustes» as Xiaomi's Spanish
+    Settings name but names no battery entry.
+  - A search for vivo's Spanish battery label found only English sources.
+
+  Xiaomi «Batería» / «Energía» and vivo's «alto consumo de energía en segundo plano» stay
+  unverified (known issue 2).
+
+#### Verdict (round 2)
+
+**PASS** (0 🛑, 0 ❌, 0 ⚠️, 0 💬). Round 1 had no findings, so nothing was applied, and the file
+still holds what round 1 passed; the first pass's fixes are intact. Two items carry over, neither
+blocking:
+1. The unverified labels: Xiaomi «Batería» / «Energía» and vivo's battery wording (known issue 2).
+2. Spain's «nunca inactivas» for Samsung, which rests on secondary sources only (developer's call,
+   recorded in the first pass).

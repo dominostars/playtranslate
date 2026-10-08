@@ -61,7 +61,7 @@ Install the APK, then re-enable Play Protect afterward to keep scanning your oth
 A few advanced features (like hotkey hold-to-preview) will prompt you to enable accessibility permissions. On Android 13 and later, Android greys out the accessibility switch for any app installed from a downloaded APK, and tapping it shows a "Restricted setting" message. To unblock it:
 
 1. In **Settings → Accessibility**, select PlayTranslate and tap the greyed-out switch once. Close the "Restricted setting" message.
-2. Open the AppInfo page: **Settings → Apps → PlayTranslate**.
+2. Open the App Info page: **Settings → Apps → PlayTranslate**.
 3. Tap the **⋮** menu and choose **Allow restricted settings**. This item only appears after step 1.
 4. Authenticate if prompted, then go back to Accessibility and turn the switch on.
 

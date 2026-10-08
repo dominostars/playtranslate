@@ -85,3 +85,17 @@ This reads like a Turkish technical writer's README. Sentences are rebuilt in Tu
 Applied all 4 💬 (bölünmüş ekran modunda / pencere modundaki, metinlerin dili, parenthetical
 model notes ×7, **Özel URL** parenthetical). "Kısıtlı" stays, matching the app's own strings;
 the AOSP wording question is left for a device check.
+
+## Delta review 2026-10-08 ("Can't enable accessibility?" rewritten)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS with one warning, `warning 38 bold spans, English has 37` (the same with `--require-header`). The warning predates this delta and does not come from this section. At HEAD the counts were 37 and 36, and the extra span is **Özel URL** in the Custom backend bullet, which the 2026-10-06 review added on purpose. This section has 4 bold spans in both files. **No 🛑 issues.**
+
+| section | severity | current | suggested | note |
+|---|---|---|---|---|
+| Can't enable accessibility? (intro paragraph) | 💬 | "Android 13 ve sonraki sürümlerde Android, indirilen bir APK dosyasından yüklenen her uygulamanın Erişilebilirlik anahtarını gri gösterir;" | "Android 13 ve sonraki sürümlerde sistem, indirilen bir APK dosyasından yüklenen her uygulamanın Erişilebilirlik anahtarını gri gösterir;" | The second «Android» comes five words after the first. The English repeats it too, but in Turkish the two sit close enough to read as a stumble. «sistem» keeps the agent, which is the point of the rewrite (Android itself greys the switch out, not an OEM), and the subject comma stays. The Russian translation made the same choice. Optional. |
+
+Clean areas: The four steps match the English in order, with nothing added or dropped. «Bu seçenek yalnızca 1. adımdan sonra görünür» keeps the condition, «İstenirse» is "if prompted", and «Sağ üstteki» and the closing sentence went with the English. Every Android label matches AOSP 16 QPR2 tr byte for byte: Ayarlar, Erişilebilirlik, Uygulamalar, Uygulama bilgileri, “Kısıtlanmış ayar” and Kısıtlanmış ayarlara izin verme. They also match the app's reviewed `a11y_restricted_settings_addendum` and the path in `overlay_icon_a11y_required_message`. This closes the 2026-10-06 open item on «Kısıtlı» vs «Kısıtlanmış»: no «Kısıtlı» is left in the file. The menu label ends in «izin verme», which on its own reads as "don't allow". Here it is bold and followed by «seçeneğini seçin», so it reads as the item's name, the same reasoning that kept the quotes in the app string. Every suffix sits on a Turkish head noun (bölümünde, uygulamasını, mesajını, sayfasını, menüsüne, seçeneğini, 1. adımdan), never on a label or on PlayTranslate. Polite siz is used throughout, quotes are “ ”, bold sits on the same four spans as the English, items 1 to 4 end in periods like the English, and «anahtar» (switch) matches the app.
+
+### Disposition (2026-10-08)
+
+Applied the 1 💬 («sürümlerde sistem,»).

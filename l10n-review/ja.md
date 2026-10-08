@@ -602,3 +602,350 @@ No round-1 changes in this locale. Mechanical layer re-run after the fixes: 0 pr
 No new findings.
 
 **Verdict (round 2):** **PASS.**
+
+## Delta review 2026-10-07 (41 keys + 2 orphans: bug-report email, Support rows, kill notice, Fix disappearing icon page)
+
+Mechanical layer verified: `python3 tools/mech_check.py keys.txt ja` reports `checked 1
+locales x 41 keys; problems: 0` (all 41 names present; every `<xliff:g>` span byte-identical
+to EN; `%1$s` parity; `\n`, `<b>`, `\{ \}`, `&amp;/&lt;/&gt;` counts match; no unescaped
+`'`/`"`, no stray tag, no leading/trailing or double space), and `python3 scripts/l10n_diff.py
+--locale app/src/main/res/values-ja/strings.xml` reports `values-ja missing=0 orphan=0
+modified=0`, "in sync." Also checked: both orphans (`settings_debug_export_logs_title`,
+`_subtitle`) are gone and their neighbour `settings_debug_export_logs_subject` stays; no
+duplicate `name=`; the file parses (`xmllint --noout`). No `<plurals>` in this delta.
+**No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- Kill notice (`MainActivity.maybeShowKillNotice`): the body is `getString(body)` and, only when
+  an icon is on screen, `append(' ')` plus `kill_notice_restored`; title and bodies take no
+  format args, so the `app_name` span renders as its literal text. In ja the code's ASCII space
+  leaves a slightly wider gap after 「。」; the translation cannot remove it.
+- Support row summary (`settings_row_hub.xml`): `singleLine` + `ellipsize="end"`. Toast
+  (`LogExporter.emailFiles`): shown when `resolveActivity` finds no handler for the
+  `message/rfc822` intent, with `SUPPORT_EMAIL`, `LENGTH_LONG`, then the share sheet titled
+  `share_chooser_share_logs` (「ログを共有」). Keep-running page (`KeepRunningActivity`,
+  `activity_keep_running.xml`): the intro is static and stays above the empty label; the Report
+  a bug row takes the two Settings keys; the stuck accessibility card swaps in `a11y_stuck_title`
+  and the restart line. The empty label is 16 sp, centered, 296 dp wide at 360 dp (18 full-width
+  characters a line), so ja wraps it by character and line 1 ends 「…ありません。ま」. That is
+  layout, not wording (`android:lineBreakWordStyle="phrase"`, API 33+, would break at phrases).
+- **Measurement caveat (the packet's ja numbers):** the AWT tool draws 「ー」 (U+30FC, script
+  Common) with Roboto at about 6 dp instead of one em. Counted by full-width characters instead:
+  `settings_support_report_bug_subtitle` is 19 × 13 = **247 dp** (packet: 233; still inside
+  249 dp and under English's 256), its first sentence 12 × 13 = 156 dp (fits 216 dp); the
+  toast's first line is 21 × 14 = **294 dp** of 296 (packet: 286), and line 2 keeps about 65 dp
+  spare, so the toast still wraps to 2 lines with the address whole. `keep_running_title`
+  (220 dp of ~272) and `settings_support_keep_running_subtitle` (183 dp, fits even 216 dp) have
+  no 「ー」 and stand.
+
+### Findings (delta, round 1)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| keep_running_huawei_close_after_lock_line | ⚠️ | `「バッテリー」→「その他のバッテリー設定」にあります。オフにしないと、画面がロックされるたびに<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>が終了します。` | `「電池」→「その他のバッテリー設定」にあります。オフにしないと、画面がロックされるたびに<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>が終了します。` | Huawei Japan's own page (consumer.huawei.com/jp/support/content/ja-jp00428704/, fetched 2026-10-07) prints 「設定 > 電池 > その他のバッテリー設定」: Huawei's ja Settings names Battery 「電池」 (the same page has 「電池の最適化」), so the mixed 電池/バッテリー path is Huawei's own. The page also confirms 「その他のバッテリー設定」, a guess in oem-labels.md. No Honor Japan page found. Known issue 1 (the option itself is gone) is unaffected. |
+| email_no_app_fallback | 💬 | `メールアプリがありません。ファイルは別の方法で<xliff:g id="email" example="support@playtranslate.com">%1$s</xliff:g>へ。` | `メールアプリが見つかりません。ファイルは別の方法で<xliff:g id="email" example="support@playtranslate.com">%1$s</xliff:g>へ。` | Six of the file's seven "No … found" keys say 〜が見つかりません (`anki_deck_picker_empty`, `settings_no_displays_found`, `image_import_empty`, …; the exception `update_none_title` 「更新はありません」 means "up to date"), as does Android's `app_not_found` 「この操作を行うアプリが見つかりません」. It is also more accurate: the code found no app for the intent, and the user may have one. Still 2 lines at 296 dp: 「メールアプリが見つかりません。ファイルは別」 (294 dp) / 「の方法でsupport@playtranslate.comへ。」 (about 256 dp). |
+| keep_running_empty | 💬 | `ほかにおすすめの設定はありません。まだ問題が起きる場合は、問題を再現してからバグを報告してください。` | `ほかにおすすめの設定はありません。まだ問題が起きる場合は、再現してからバグを報告してください。` | 「問題が…、問題を…」 repeats the noun across one comma; what to reproduce is plain from the clause before. Optional polish; still 3 lines. |
+
+### Clean areas (delta) — checked, no findings
+
+**The toast's 「…へ。」 reads naturally.** 「ファイルは別の方法でsupport@…へ。」 is the elided-predicate
+notice form (「お問い合わせはこちらへ。」); the reader supplies 送ってください, and the share sheet that
+opens next is the "other way". 「まで。」 would be just as idiomatic for an address, so there is no
+reason to change it. Writing the verb out (「…へ送ってください。」) needs a third line (line 2
+would be about 326 dp), which the toast clips mid-word.
+
+**スマートフォン reads naturally in every sentence that has it** (the three bodies, the intro, the
+battery line, the OPPO/vivo line, the Samsung line); never スマホ, and 端末 appears only in
+「端末情報」, which renders the English "Device info" as `crash_email_body` does. In
+`kill_notice_body_other` the comma in 「スマートフォンが、オンにしていた…」 keeps
+「スマートフォンがオンにしていた」 from parsing as a relative clause.
+
+**Kill notice as a set.** Title 「AndroidがPlayTranslateを終了しました」. Every body names
+「オンにしていたPlayTranslate」, so the appended 「現在は再びオンになっています。」 echoes 「オン」 and its
+omitted subject resolves to the app after all three bodies, not to the phone or the icon.
+「ご自身で停止していない場合は」 leaves the attribution to the user without あなた. 「対処法を見る」 says
+what the page offers (「オプションを見る」 would be a calque); 「後で」 is `btn_not_now`. "close" is
+終了 and "stop" is 停止 throughout the delta, keeping the English distinction.
+
+**Support card in order:** 更新を確認 / Discordに参加 / アイコンが消える場合 / バグを報告 /
+PlayTranslateを支援する. 「アイコンが消える場合」 is the usual Japanese help-topic heading
+(「〜が起動しない場合」), leads with the symptom as the English comment asks, and is byte-identical
+in `keep_running_title`. 「PlayTranslateの自動終了を防ぐ」 is a common way to say the system closes an
+app. The bug subtitle puts the tap action first; 「長押しで共有」 is the hold pattern of
+`translate_button_subtitle_hold_to_hide_translations`, and 共有 matches 「ログを共有」.
+
+**Email flow.** 「バグ報告を送信」 and 「PlayTranslateのバグ報告 – v3.3.0」 mirror
+`crash_email_chooser_title` / `crash_email_subject`; 「バグ報告」 is the noun of the row's
+「バグを報告」 (Android's developer options say バグレポート; both are standard, and the two choosers
+never show together). The body has full-width ？ and （）, 「ご記入ください」 and 端末情報 as in
+`crash_email_body`, 最近のログ as in `crash_dialog_message`.
+
+**Platform labels.** 「制限なし」 byte-matches AOSP; 「バッテリー使用量」 is the head of AOSP
+「アプリのバッテリー使用量」, shortened as the English shortens it. Samsung: デバイスケア, バッテリー,
+バックグラウンドでの使用を制限, 自動的にスリープ状態にしないアプリ and スリープ中のアプリ all match Samsung
+Japan. Huawei: アプリ起動, 自動起動, 他のアプリによる起動 and バックグラウンドで実行 match Huawei Japan;
+「手動で管理」 is unverified (Huawei has no ja copy of its Honor page; ja-jp15848660 returns an empty
+search page) but is the natural counterpart of the official 「自動的に管理」. OPPO: 「自動起動」 and
+「バックグラウンドアクティビティ」 followed by 「を許可」 rebuild OPPO Japan's two switch labels, with
+the guide's バックグランド typo corrected. Xiaomi: 「自動起動」, バッテリーセーバー and 「制限なし」 stay
+unverified (no ja source found today either) and reuse `a11y_stuck_message_xiaomi` verbatim,
+bracket pattern included; 「最近使ったアプリ」 is AOSP's own Recents label
+(`accessibility_system_action_recents_label`), the safer pick for an unverified OEM screen.
+vivo's title carries no brackets because there is no ja label to quote (vivo does not sell in
+Japan), a sound distinction from the bracketed, sourced labels.
+
+**Same words for the same thing.** Page title = row title; 「バグを報告してください」 = row title;
+the battery line's 「設定しないと、」 fits both 「…に設定」 titles it sits under; the OPPO and vivo
+lines are byte-identical, and they and the Xiaomi autostart line open 「許可しないと、」 to match
+their 「…を許可」 titles; 「メモリのクリーンアップ」 is one term in both keys; ログ, フローティングアイコン,
+長押し, オン, ユーザー補助設定, ユーザー補助サービス and クイック設定タイル match precedent, and the restart
+line is `a11y_stuck_message`'s own wording.
+
+**Form.** No あなた; full-width 、。？「」（）; half-width placeholders; no spaces between Japanese and
+Latin, as in the rest of the file. Card titles end in a noun stem (許可, 設定, 追加, 使用, ロック, 管理)
+except 「…をオフにする」, a plain form the register rules allow. The paths 「A」→「B」 differ from
+`overlay_icon_a11y_required_message`'s spaced 「設定 → …」, but the brackets let a path run
+straight into 「にあります」, and both new path lines share the style. 「これらを設定すると」 points at the
+cards on screen and still works in the empty state, where the intro stays above the label
+(「以下の」 would point at nothing there). In the OPPO/vivo line, 「〜から離れて」 is the usual app
+idiom (「アプリから離れている間」), and the に-passive 「スマートフォンに終了されます」 is natural for a
+system agent.
+
+### Verdict (round 1)
+
+**1 ⚠️, 2 💬, 0 ❌.** Apply `keep_running_huawei_close_after_lock_line` (「バッテリー」 → 「電池」,
+Huawei Japan's own label). The two 💬 are optional. Everything else in the delta passes as is.
+
+### Round 2 (2026-10-07), final review after applying round 1
+
+Mechanical layer re-run: `python3 tools/mech_check.py keys.txt ja` reports `checked 1 locales
+x 41 keys; problems: 0` (all 41 names present; every `<xliff:g>` span byte-identical to EN;
+`%1$s` parity; `\n`, `<b>`, `\{ \}`, `&amp;/&lt;/&gt;` counts match; no unescaped `'`/`"`, no
+stray tag, no leading/trailing or double space), and `python3 scripts/l10n_diff.py --locale
+app/src/main/res/values-ja/strings.xml` reports `values-ja missing=0 orphan=0 modified=0`, "in
+sync." Also re-checked: `xmllint --noout` passes; both orphans (`settings_debug_export_logs_title`,
+`_subtitle`) are still gone and `settings_debug_export_logs_subject` stays; no duplicate `name=`.
+**No 🛑 build-breaking issues.**
+
+**Round-1 fixes:**
+- `keep_running_huawei_close_after_lock_line` (⚠️, 「バッテリー」 → 「電池」): applied, byte-identical to the
+  suggestion. Huawei Japan's ja-jp00428704, fetched again today, prints 「設定 > 電池 > その他のバッテリー設定」,
+  so both labels in the path are Huawei's own. The card opens the system Battery screen, which Huawei names
+  「電池」, so the path starts where the tap lands, and 「オフにしないと、」 still answers the title's 「…をオフにする」.
+- `email_no_app_fallback` (💬, 〜がありません → 〜が見つかりません): applied, byte-identical; it now matches the
+  file's other 「…が見つかりません」 strings. Still 2 lines at 296 dp (「メールアプリが見つかりません。ファイルは別」
+  294 dp, then 「の方法でsupport@playtranslate.comへ。」 256 dp) and at 320 dp, with the address whole on line 2.
+  If line 1 held one character fewer, line 2 would be about 270 dp, so it stays at 2 lines.
+- `keep_running_empty` (💬, drop the second 「問題を」): applied, byte-identical. 「再現して」 takes its object from
+  「問題が起きる」 just before it, and 「バグを報告してください」 still byte-matches the row title under it. Still 3 lines
+  at 296 dp; at 360 dp, line 2 now ends 「…再現してからバ」, which is the character wrap round 1 described, not wording.
+- Invariants unchanged: 「アイコンが消える場合」 is byte-identical in both title keys, and the OPPO and vivo lines are
+  byte-identical. Widths: hub summaries 183 dp and 247 dp (the tap sentence alone is 156 dp), toolbar 220 dp. The
+  packet's corrected numbers now agree with round 1's hand count.
+
+#### Findings (round 2)
+
+No new findings.
+
+Fresh read of all 41 strings, by surface. Kill notice: the title, each body with the ASCII space and
+「現在は再びオンになっています。」 appended, then 「対処法を見る」 and 「後で」. After all three bodies, the restored
+sentence's omitted subject resolves to the app through 「オンにしていた」. Support card in screen order (更新を確認,
+Discordに参加, アイコンが消える場合, バグを報告, PlayTranslateを支援する): the bug row's tap sentence is whole at
+216 dp, and the full line fits 249 dp. Fix disappearing icon page, one ROM set at a time: Xiaomi's three cards;
+Huawei's two; the single OPPO, vivo or Samsung card; then the battery card (not on Xiaomi), accessibility (and its
+stuck form under 「ユーザー補助の再起動が必要です」) and the tile; also the empty label and the Report a bug row. Every
+line fits the title it sits under, including the shared battery line under Xiaomi's 「バッテリーセーバーを「制限なし」に設定」.
+Email flow: both chooser titles, 「PlayTranslateのバグ報告 – v3.3.0」, the body and the toast. The register holds
+throughout, with no あなた, full-width punctuation and 「」. So do the terms: 終了 for close, 停止 for stop, ログ,
+フローティングアイコン, ユーザー補助設定, クイック設定タイル, メモリのクリーンアップ and スマートフォン.
+
+Platform labels, re-checked today with the brief's 6 web calls:
+- AOSP: 「制限なし」, 「アプリのバッテリー使用量」 and 「最近使ったアプリ」 confirmed on disk (Settings
+  android16-qpr2, framework android-36).
+- Huawei: ja-jp00428704 also prints 「アプリ起動」, 「自動的に管理」 and 「バックグラウンドで実行」. 「手動で管理」 is still
+  not printed (the page says only that a dialog opens once 自動的に管理 is off), so it remains the natural
+  counterpart that round 1 accepted.
+- OPPO: a search summary of CASIO Japan's OPPO setup page (May 2024; the page itself returned 403) uses
+  「バックグラウンドアクティビティを許可」 and 「自動起動」. That is weak but consistent support for the title.
+- Xiaomi: still unverified. SoftBank's Xiaomi 14T Pro manual (fetched) uses 「バッテリーセーバー」 only for the
+  phone-wide mode, mentions 「アプリの自動起動の許可」 in passing and has no 「制限なし」.
+- Samsung: no newer Japanese page that drops 「自動的に」 was found, so Samsung Japan's
+  「自動的にスリープ状態にしないアプリ」 stands.
+
+#### Verdict (round 2)
+**PASS.** 0 ❌, 0 ⚠️, 0 💬. All three round-1 fixes landed byte-exact and broke nothing around them. Nothing is open
+in the ja translation. Two known items lie outside it: Huawei's close-after-lock option (packet known issue 1), and
+the unverified Xiaomi ja labels, which reuse `a11y_stuck_message_xiaomi`.
+
+## Follow-up review 2026-10-07, round 1 (15 keys after the Fix disappearing icon rewrite)
+
+Mechanical layer: `python3 tools/mech_check.py f2/keys2.txt ja` reports `checked 1 locales x 15
+keys; problems: 0` (all 15 names present; every `<xliff:g>` span byte-identical to EN, both
+`app_name` and `app_name2` in the three two-span lines; placeholder parity; `\n` count 2 in
+`a11y_stuck_message` as in EN; no `<b>`, `\{ \}` or entity drift; no unescaped `'`/`"`, no stray
+tag, no leading/trailing or double space), and `python3 scripts/l10n_diff.py --locale
+app/src/main/res/values-ja/strings.xml` reports `values-ja missing=0 orphan=0 modified=0`, "in
+sync." Also checked: `xmllint --noout` passes; no duplicate `name=`; the four keys removed from
+English (`restricted_settings_title`, `restricted_settings_message`,
+`keep_running_huawei_close_after_lock_title`, `_line`) are gone from the file.
+**No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- `AccessibilityHelp.withRestrictedSettingsStep` returns `message + "\n\n" + addendum` on Android 13+
+  only. Callers: `MainActivity.showAccessibilityDialog` and `SettingsRenderer.showOverlayIconA11yAlert`
+  (system AlertDialogs whose messages end in the 「設定 → … → オンにする の順に進んでください。」 path),
+  `showAccessibilityRequiredAlert` for the three `a11y_required_*` messages (OverlayAlert: message at
+  13 sp in a ScrollView, at most 280 dp wide, so the longer text scrolls and never clips), and
+  `KeepRunningActivity.lineOf` for the accessibility card while the service still has to be enabled.
+  `showA11yStuckAlert` takes no addendum; it appends `a11y_stuck_message_xiaomi` after `"\n\n"` only
+  when `Build.MANUFACTURER` is Xiaomi.
+- `KeepRunningActivity.openFirst`: when no candidate screen launches, a `LENGTH_LONG` toast with
+  `keep_running_screen_unavailable`, then App info (`ACTION_APPLICATION_DETAILS_SETTINGS`), so the toast
+  is read over App info after the card is gone. The Xiaomi battery card targets MIUI's per-app power
+  page (`com.miui.powerkeeper`); the generic battery card opens Android's "Let app always run in
+  background?" request (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`).
+- `KeepRunningItems.ids`: Xiaomi gets autostart, battery and lock and never the generic battery card;
+  Huawei, OPPO, vivo and Samsung get one card each; then the battery card (hidden once exempt),
+  accessibility (API 30+) and the tile (API 33+). Titles and lines wrap freely.
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| keep_running_vivo_autostart_line | 💬 | `設定アプリで「自動起動」を検索して<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>に許可してから、バッテリー設定で、バックグラウンドでの高い電力使用を許可してください。許可しないと、スマートフォンが<xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g>をバックグラウンドで停止したり、再起動させなかったりすることがあります。` | `設定アプリで「自動起動」を検索して<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>に許可してから、バッテリー設定で、バックグラウンドで電力を多く使用することを許可してください。許可しないと、スマートフォンが<xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g>をバックグラウンドで停止したり、再起動させなかったりすることがあります。` | 「高い電力使用」 calques "high … power use": 高い does not sit naturally on the verbal noun 使用, and AOSP Settings ja never pairs 高い with 使用 or 電力 (its 13 uses are 機密性の高い and 優先度の高い). For high background usage it says 「バックグラウンドでバッテリー使用量が多い」 (`battery_app_item_hint_in_bg`) and 「電力消費量の多いバックグラウンド アクティビティ」 (`battery_tip_dialog_message_footer`). 「電力を多く使用すること」 is the plain native phrasing and keeps the title's 電力 and 使用, so 「自動起動とバックグラウンドでの電力使用を許可」 still heads the line. No vivo label is quoted (vivo does not sell in Japan), so nothing on a phone has to match. Only this clause changes; the second sentence stays byte-identical to OPPO's. |
+
+### Clean areas — checked, no findings
+
+**Android labels, re-read on disk** (Settings android16-qpr2 and main, ja). 「アプリ情報」
+(`application_info_label`), 「制限付き設定を許可」 (`app_restricted_settings_lockscreen_title`) and the dialog
+title 「アプリにバックグラウンドでの常時実行を許可しますか？」 (`high_power_prompt_title`) all byte-match. The
+addendum replaces the old reviewed 「Android設定ページ」 with AOSP's 「アプリ情報」, as the packet asks, keeps that
+message's 「3点メニュー（⋮）」, and drops its 「右上の」 as the English dropped the position. The battery title is
+the dialog's own wording, with アプリ → PlayTranslate and the question turned into the page's noun-stem title
+form (〜を許可), so the card says what the dialog it opens will ask.
+
+**OEM labels.** Huawei (search word 「アプリ起動」, 「自動的に管理」, 「自動起動」「他のアプリによる起動」「バックグラウンドで実行」)
+and Samsung (「バックグラウンドでの使用を制限」, 「自動的にスリープ状態にしないアプリ」) match Huawei Japan and Samsung
+Japan as verified in the first pass. OPPO: 「自動起動」 and 「バックグラウンドアクティビティ」 + を許可 rebuild OPPO
+Japan's two switch labels, as the reviewed title does. Xiaomi, checked again today (5 of the 6 web calls):
+SoftBank's Xiaomi 13T Pro manual (detail/86634, fetched) has the per-app list 「アプリバッテリーセーバー」 on the
+バッテリー tab of 「バッテリーとパフォーマンス」. That supports the translator's 「バッテリーセーバー」 as the MIUI key
+word, with one nuance: the page names the list, not the App info entry, and prints no option names. A December
+2025 Japanese HyperOS/MIUI guide (gadgetzamurai.jp, fetched) shows 「自動起動」 and 「バッテリー」 on the app's page
+(設定 → アプリ → アプリ管理 → 対象アプリ): secondary support for the autostart search word and for the HyperOS 2
+entry. It hedges the option itself (「「制限なし」「最適化しない」みたいな選択肢」), so 「制限なし」 stays unverified;
+it is AOSP's own word for Unrestricted and the likeliest rendering. 「電力」 for HyperOS 3's "Power" is still a
+guess; no Japanese source was found. Neither gap strands the user: the line says to open the battery entry and
+gives the three names only as by-version examples. vivo: no ja label exists (vivo does not sell in Japan), so
+its search word 「自動起動」 is unverified, and its title rightly quotes nothing.
+
+**Search words and 設定アプリ.** Each line puts the word to type in 「」: 「アプリ起動」 (Huawei, official) and
+「自動起動」 (Xiaomi, OPPO, vivo). Every sourced Xiaomi and OPPO label contains 自動起動 (「自動起動を許可」,
+「アプリの自動起動の許可」, the app page's 「自動起動」), so a Settings search on it matches whichever variant the
+version shows. 「設定アプリ」 for the phone's Settings is right and needed. In this file a bare 「設定で」 means
+PlayTranslate's own settings (`note_mlkit_account_issue`, `overlay_hide_controls_message`), and the system's
+are 「システム設定」 or 「Androidの設定」. 設定アプリ is the usual Japanese help wording, used in all five lines and
+the toast.
+
+**CHANGED keys against the previous reviewed wording** (HEAD for the two stuck keys, the first-pass packet for
+the page). `a11y_stuck_message` lost exactly 「これは通常、システムがバッテリー節約のためにアプリを強制停止した後に起こります。」
+and is otherwise byte-identical. `a11y_stuck_message_xiaomi` changed in exactly three places, each following
+the English: 有効にし → 許可し (enable → allow), バッテリーセーバー → バッテリーの使用 (Battery saver → its battery use),
+停止し続けます → 停止し続けることがあります (will → may). `keep_running_tile_line` lost only 「スワイプしてタップするだけで、」.
+The lock line keeps its first sentence byte-identical. The Xiaomi battery title changed only バッテリーセーバー →
+バッテリーの使用. The rewritten Xiaomi autostart, OPPO and vivo lines keep the reviewed opener 「許可しないと、」 under
+their 「…を許可」 titles.
+
+**Surfaces as sets.** The addendum reads as a closing paragraph after all six bodies. After the two path
+messages, 「スイッチ」 is the switch their 「オンにする」 step turns on. After the three `a11y_required_*` messages
+and the card line it has no antecedent, exactly as in English, and the 「ユーザー補助設定を開く」 button or the
+card's tap supplies one. The stuck alert reads title, body, 「解決するには…」, then the Xiaomi paragraph, which
+repeats both Xiaomi card titles verbatim (「「自動起動」を許可」, 「バッテリーの使用を「制限なし」に設定」), as the
+English comment intends; keeping 「自動起動」 bracketed there matches the unchanged title and the search word.
+Its "also" is not rendered, as in the 2026-07-25 wording that passed. The paragraph order and
+「これらを設定しないと、…停止し続けることがあります」 still frame it as an addition to the re-toggle, not a
+replacement. Every card reads as title + line: the battery line states the effect of the title's permission
+(「…再起動できるようになります」); the Xiaomi battery line ends 「「制限なし」を選択」 under 「…「制限なし」に設定」; the
+Huawei line turns 「自動的に管理」 off under 「…を手動で管理」; Samsung's second sentence explains sleeping with its
+list's own 「スリープ状態」. In 「設定アプリでPlayTranslateのバッテリーの項目」 the step away from "PlayTranslate's app
+settings" is right: 「PlayTranslateのアプリ設定」 would read as the app's own Settings screen.
+
+**Toast.** `Wrap` gives 2 lines at 296 dp (「その画面はこのスマートフォンにありません。」 294 dp, 「設定アプリでこの設定を検索してください。」
+280 dp) and 2 at 320 dp. The tool now draws 「ー」 at one em (14 dp at 14 sp), so it agrees with a hand count
+of 21 + 20 full-width characters, and round 1's measurement caveat no longer applies. 「ありません」 rather than
+AOSP's 「利用できません」 is what reaches the 296 dp target: 「…このスマートフォンでは利用できません。」 fits 320 dp
+(308 + 308) but needs 3 lines at 296 dp. Dropping "instead" costs nothing in Japanese. 「その画面」 points at the
+screen the card promised; 「この設定」 at the card's setting, the one the user just tapped.
+
+**Two-span lines.** Both spans stand in the Xiaomi, OPPO and vivo lines, one per sentence, and each sentence
+reads naturally with the app named again (「XiaomiはPlayTranslateを終了した後」, 「スマートフォンがPlayTranslateをバックグラウンドで停止したり」).
+The OPPO and vivo second sentences are byte-identical, as their English is.
+
+**Terms and form.** close = 終了 (battery and Xiaomi lines) and stop = 停止 (OPPO, vivo, stuck), as in the first
+pass. start again = 再起動 in all four lines; its object is always the app, so it cannot read as rebooting the
+phone. The service's restart stays 再開. phone = スマートフォン, device = 端末, following the English. No あなた;
+full-width 、。「」（）; the only half-width space is in 「Android 13以降」, as in `requires_android_11_message`.
+Titles end in noun stems (許可, 設定). The lock line's new sentence keeps the reviewed first sentence's 〜します
+form, and 「下にスワイプ」 is AOSP's own phrasing for a downward swipe (「画面上部から下にスワイプ」).
+「グレー表示されている」 is the natural Japanese for a greyed-out control.
+
+### Verdict (round 1)
+
+**1 💬, 0 ⚠️, 0 ❌: PASS.** The one 💬 (`keep_running_vivo_autostart_line`, 「高い電力使用」 → 「電力を多く使用すること」)
+is optional. Outside the wording, Xiaomi's 「制限なし」 and HyperOS 3's 「電力」 are still unverified: no Japanese
+source turned up today (packet known issue 2).
+
+### Follow-up round 2 (2026-10-07), final review after applying round 1
+
+Mechanical layer re-run: `python3 tools/mech_check.py f2/keys2.txt ja` reports `checked 1 locales x 15
+keys; problems: 0` (all 15 names present; every `<xliff:g>` span byte-identical to EN, both `app_name` and
+`app_name2` in the three two-span lines; placeholder parity; `\n` count 2 in `a11y_stuck_message` as in EN;
+no `<b>`, `\{ \}` or entity drift; no unescaped `'`/`"`, no stray tag, no leading/trailing or double space),
+and `python3 scripts/l10n_diff.py --locale app/src/main/res/values-ja/strings.xml` reports `values-ja
+missing=0 orphan=0 modified=0`, "in sync." Also re-checked: `xmllint --noout` passes; no duplicate `name=`;
+the four keys removed from English (`restricted_settings_title`, `restricted_settings_message`,
+`keep_running_huawei_close_after_lock_title`, `_line`) are still gone.
+**No 🛑 build-breaking issues.**
+
+**Round-1 fixes:**
+- `keep_running_vivo_autostart_line` (💬, 「バックグラウンドでの高い電力使用を許可」 → 「バックグラウンドで電力を多く使用することを許可」):
+  applied, byte-identical to the suggestion. Both spans are intact (mechanical check above), the second sentence is
+  still byte-identical to the OPPO line's, and the clause keeps the title's 電力 and 使用 under
+  「自動起動とバックグラウンドでの電力使用を許可」. The comma after 「バッテリー設定で」 keeps the two 〜で phrases apart, and
+  the line still wraps freely (13 sp, no line cap).
+- Nothing else moved: all 15 values are byte-identical to the translator's current fragment (`f2/frag/ja.tsv`), whose
+  fix tool (`tools/fix_key.py`) edits inside one key only, and every Japanese fragment round 1 quoted from these strings
+  still occurs verbatim in the file (its other quotes are AOSP or OEM wording, removed text or rejected alternatives).
+  The toast is untouched: `Wrap` still gives 2 lines at 296 dp (「その画面はこのスマートフォンにありません。」 /
+  「設定アプリでこの設定を検索してください。」) and at 320 dp.
+
+#### Findings (round 2)
+
+No new findings.
+
+Fresh read of the 15 keys as sets, from the file. The addendum reads as its own closing paragraph after each body it is
+appended to (`AccessibilityHelp` and its four call sites): the two Settings-path dialogs, where its 「スイッチ」 is the
+switch their 「オンにする」 step names; the three `a11y_required_*` OverlayAlert messages and the accessibility card's
+line, where it has no antecedent, as in English, and the button or the card's tap supplies one. 「アプリ情報」 and
+「制限付き設定を許可」 byte-match AOSP android16-qpr2 ja on disk, as does the battery title's source dialog, and the ⋮ is
+U+22EE, as in English. The stuck alert reads title, body (only the cause sentence gone), 「解決するには…」, then the
+Xiaomi paragraph, whose 「バッテリーの使用を「制限なし」に設定」 is the Xiaomi battery card's title verbatim; the unrendered
+"also" stays carried by the paragraph order, as round 1 found. Every card reads as title + line within its ROM's set
+(Xiaomi's three; Huawei, OPPO, vivo or Samsung; then the battery card off Xiaomi, accessibility and the tile). The
+search words sit in 「」 after 「設定アプリで」: 「アプリ起動」 (Huawei, official) and 「自動起動」 (Xiaomi, OPPO, vivo). Each
+PlayTranslate span takes its particle naturally (の, に, を, は). Terms hold: close 終了, stop 停止, start again 再起動
+(always the app's), the service's restart 再開, phone スマートフォン. No あなた; full-width 、。「」（）; the only half-width
+space is in 「Android 13以降」, as in `requires_android_11_message`'s 「Android 11以降」.
+
+Labels, with the brief's 4 web calls, all on Xiaomi, the only open labels with a Japanese ROM to check. SoftBank's Japanese manual page for the
+Redmi Note 9T (detail/30673, fetched) names the per-app list 「アプリバッテリーセーバー」 under 「バッテリーとパフォーマンス」, as
+round 1 found for the 13T Pro, and gives the choice only as 「項目をタップ」, with no option names. A SoftBank-only search
+returned the same page for the 12T Pro, 13T Pro, 14T Pro, Redmi 12 5G and Redmi Note 10T, and none of its results
+showed 「制限なし」. The one other Japanese hit (assist-all.co.jp, 2025-09-26) is a generic Android guide. So 「制限なし」
+and HyperOS 3's 「電力」 remain unverified (packet known issue 2). Nothing contradicts them, and the line gives the entry
+names only as by-version examples.
+
+#### Verdict (round 2)
+**PASS.** 0 ❌, 0 ⚠️, 0 💬. The one round-1 fix landed byte-exact and broke nothing around it; nothing is open in the ja
+translation. Outside it, three words stay unverified (packet known issue 2): Xiaomi's 「制限なし」, HyperOS 3's 「電力」,
+and vivo's search word 「自動起動」 (vivo does not sell in Japan, so there is no Japanese ROM to check).

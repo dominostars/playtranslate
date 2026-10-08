@@ -70,3 +70,17 @@ There are no trailing spaces or double spaces.
 Applied all 12: the ⚠️ (ML Kit fallback wording from `tr_service_offline_footer`) and the 11 💬
 as suggested. Install step 2 had been rewritten in English (Apps → Special app access path) and
 re-translated by the translator before this review, so the reviewed step is the current one.
+
+## Delta review 2026-10-08 ("Can't enable accessibility?" rewritten)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] ru -> readme/README.ru.md`, no warnings; also PASS with `--require-header`). **No 🛑 issues.**
+
+| section | severity | current | suggested | note |
+|---|---|---|---|---|
+| Can't enable accessibility? (intro paragraph) | 💬 | "а при нажатии на него появляется сообщение «Настройки с ограниченным доступом»." | "а при нажатии на переключатель появляется сообщение «Настройки с ограниченным доступом»." | «на него» has three grammatical antecedents (переключатель, приложения, APK-файла). The intended one is the farthest, and «APK-файла» sits right before the pronoun. The sense resolves it (a switch is what you tap), so this is a nit. Naming the noun costs one repeat in the sentence. Moving «для любого приложения, установленного из скачанного APK-файла,» up to follow «Начиная с Android 13» also fixes it, without the repeat. |
+
+Clean areas: The four steps match the English in order, with nothing added or dropped. «Этот пункт появляется только после шага 1» keeps the condition, and "(top right)" and the closing sentence went with the English. «система» stands in for the English's second "Android" and still says who greys the switch out. Every Android label matches AOSP 16 QPR2 ru byte for byte: Настройки, Специальные возможности, Приложения, «О приложении», Разрешить доступ к настройкам and «Настройки с ограниченным доступом». They also match the app's reviewed `a11y_restricted_settings_addendum` («Начиная с Android 13», «неактивен», «страницу «О приложении»») and the «Настройки → Специальные возможности» path in `overlay_icon_a11y_required_message`. The old «Разрешить ограниченные настройки» is gone from the file. Quoted labels stay nominative in apposition, and the return trip uses the inflected «в раздел специальных возможностей», as the app's running text does. Formal вы is used throughout, quotes are « » with the period outside, bold sits on the same four spans as the English (both paths, ⋮ and the menu item), and items 1 to 4 end in periods like the English.
+
+### Disposition (2026-10-08)
+
+Applied the 1 💬 («при нажатии на переключатель»).

@@ -122,3 +122,19 @@ suffix, and 백엔드 URL. Not applied: the video link text keeps "Persona 3 Rel
 translation brief lists it with the brand names and GitHub's video player replaces the link text on
 render. Install step 2 was rewritten in English after this review (Apps → Special app access path)
 and re-translated separately.
+
+## Delta review 2026-10-08 ("Can't enable accessibility?" rewritten)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] ko -> readme/README.ko.md`, no warnings; the same with `--require-header`). **No 🛑 issues.**
+
+| section | severity | current | suggested | note |
+|---|---|---|---|---|
+| Can't enable accessibility? > step 2 | 💬 | "앱 정보 페이지를 여세요: **설정 → 앱 → PlayTranslate**" | "앱 정보 페이지(**설정 → 앱 → PlayTranslate**)를 여세요." | A colon after the sentence-final 여세요 is the English punctuation the 2026-10-06 review took off the Ko-fi line (after 합니다); this is now the file's only instance. The step also has no closing period, where the English and steps 1, 3 and 4 of this list have one. 를 agrees with 페이지 across the parenthesis, as in "**게임 언어 26개**(…)를", and the parenthesis attaches without a space, as everywhere in the file. 앱 정보 페이지 stays, matching the app's addendum. The checker passes on a scratch copy with this text. |
+
+Clean areas: Accurate against the English: four steps in order with every clause, including 한 번 탭, closing the message and the "only after step 1" condition (이 항목은 1단계를 마친 뒤에만 표시됩니다); the intro keeps Android 13 이상, the downloaded APK and the tap that shows the message; the closing sentence and 오른쪽 상단의 are gone as in English, and nothing is added. Labels byte-match AOSP android16-qpr2 ko on disk: 설정 (`settings_label`), 접근성 (`accessibility_settings`), 앱 (`apps_dashboard_title`), 앱 정보 (`application_info_label`), “제한된 설정” (`blocked_by_restricted_settings_title`) and 제한된 설정 허용 (`app_restricted_settings_lockscreen_title`); step 4's 접근성 설정 is AOSP `accessibility_settings_title` and the app's own name for that screen (`accessibility_dialog_open` 접근성 설정 열기). Nothing contradicts the app: `a11y_restricted_settings_addendum` has the same 회색으로 표시, 한 번 탭, 앱 정보 페이지 and 선택하세요, and 설정 → 접근성 starts the path in `overlay_icon_a11y_required_message` and `accessibility_dialog_message`. The bare **⋮** 메뉴 follows the English and the README's reviewed earlier wording; the addendum's 점 3개(⋮) names the same unlabeled button. Particles are all right: PlayTranslate를 (vowel-final), APK로, 메시지가 / 메시지를, 메뉴를, 허용을, 1단계를, 설정으로, 요청이. Sentence endings match the rest of the README: 합니다체 for statements (표시됩니다) and ~하세요 for every instruction, as in the install and Play Protect lists. Markdown: bold on the two paths, ⋮ and the menu item only, as in English; numbering 1 to 4. Typography: “ ” quotes, 띄어쓰기 (한 번, 마친 뒤에만, 인증한 다음), no space before a parenthesis. The intro's 회색으로 비활성화되며 (kept from the reviewed earlier wording) and step 1's 회색으로 표시된 describe the same switch and read naturally together.
+
+Out of scope (app strings, not this README): values-ko `accessibility_dialog_message` and `overlay_icon_a11y_required_message` print 설정 → 접근성 → 다운로드된 앱, while AOSP android16-qpr2 ko `user_installed_services_category_title` is 다운로드한 앱 (values-ja's ダウンロードしたアプリ matches its AOSP label). The first app-string review proposed 다운로드된 앱 as stock Android's label; older Android releases were not checked here.
+
+### Disposition (2026-10-08)
+
+Applied the 1 💬 (step 2 restructured with the path in parentheses). The out-of-scope app-string note (다운로드된 앱 vs AOSP 다운로드한 앱) is reported to the developer, not changed here.

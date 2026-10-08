@@ -613,3 +613,344 @@ Round-1 fix present: «…solange das Overlay zu sehen ist.» Mechanical layer r
 No new findings.
 
 **Verdict (round 2):** **PASS.**
+
+## Delta review 2026-10-07 (41 keys + 2 orphans: bug-report email, Support rows, kill notice, Fix disappearing icon page)
+
+Mechanical layer verified: `python3 PKT/../tools/mech_check.py PKT/../keys.txt de` reports
+"checked 1 locales x 41 keys; problems: 0" (every key present; `<xliff:g>` spans and
+`%1$s` byte-identical to EN; `\n`, `<b>`, `\{ \}`, `&amp;/&lt;/&gt;` counts match; no
+unescaped `'`/`"`, stray tags, double spaces or edge whitespace). `python3
+scripts/l10n_diff.py --locale app/src/main/res/values-de/strings.xml` reports
+`missing=0 orphan=0 modified=0`, "in sync". The two orphans
+(`settings_debug_export_logs_title`, `_subtitle`) are gone, `_subject` stays; no duplicate
+`name=`; the file parses as XML. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- `MainActivity.maybeShowKillNotice`: the body is one of the three `kill_notice_body_*`, plus
+  `' '` + `kill_notice_restored` only when `CaptureBackendResolver.activeOverlayUi?.hasAnyFloatingIcon`
+  is true, so that sentence shows exactly when a floating icon is back on screen.
+  `OverlayAlert`: 280 dp card, title 17 sp bold, body 13 sp, both centered and wrapping;
+  See options / Not now stacked full width.
+- `KeepRunningActivity.titleOf/lineOf`: the Xiaomi battery card reuses `keep_running_battery_line`;
+  an enabled-but-unbound accessibility service swaps in `a11y_stuck_title` + the restart line; the
+  Report a bug row binds the two Settings strings in a wrapping `settings_row_link`. The Samsung
+  card opens `com.samsung.android.lool …BatteryActivity`, the Xiaomi battery card the per-app
+  `HiddenAppsConfigActivity` (package extras), Huawei close-after-lock `ACTION_POWER_USAGE_SUMMARY`,
+  so the paths in those lines matter mostly for the App info fallback.
+- `SettingsRenderer.setupSupportSection` + `settings_row_hub.xml` (summary `singleLine`,
+  `ellipsize=end`); `LogExporter.emailFiles`: no email app → `email_no_app_fallback` toast
+  (LENGTH_LONG, `SUPPORT_EMAIL`) → `shareFiles` with chooser `share_chooser_share_logs`. The
+  packet's Measure/Wrap tools reproduce its figures (226, 378, 214, 219 dp), so the alternatives
+  below were measured the same way.
+
+### Findings (delta, round 1)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| kill_notice_restored | ⚠️ | `Jetzt ist es wieder eingeschaltet.` | `Das Symbol ist jetzt wieder da.` | „es“ has three neuter candidates (Smartphone, PlayTranslate, Symbol) and binds differently per body. After `_memory` and `_stopped` the nearest is „das schwebende Symbol“, and an icon is not „eingeschaltet“. After `_other` the sentence before is „Manche Smartphones tun das, um Akku zu sparen.“: „es“ can pick up its „das“ ("that battery saving is on again") or reach back to „Dein Smartphone“, the strongest collocation for „wieder eingeschaltet“. The sentence shows only when an icon is back on screen; „wieder da“ answers „verschwunden“ after all three bodies. („PlayTranslate ist jetzt wieder an.“ also works.) |
+| keep_running_tile_line | ⚠️ | `Einmal wischen und tippen, und <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ist auf jedem Bildschirm wieder an.` | `Mit einmal Wischen und Tippen schaltest du <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> von jedem Bildschirm aus wieder ein.` | „auf jedem Bildschirm“ attaches to „ist … wieder an“: PlayTranslate is back on *on every screen* (on a dual-screen handheld, on every display), not that the tile works *from any* screen. „von jedem Bildschirm aus“ is the English meaning; „schaltest … ein“ is the file's Einschalten. |
+| keep_running_oppo_auto_launch_line, keep_running_vivo_autostart_line | ⚠️ | `Sonst beendet das Smartphone <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> kurz nachdem du es verlässt.` | `Sonst beendet das Smartphone <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, kurz nachdem du es verlässt.` | Missing comma before the subordinate clause; with „kurz nachdem“ it goes before the whole group (Duden: „Er kam, kurz bevor das Spiel begann.“). Same fix in both keys, which stay byte-identical. |
+| keep_running_accessibility_line | 💬 | `Führt <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> mit der Priorität eines Bedienungshilfen-Dienstes aus, den Speicherbereinigungen kaum erreichen.` | `Führt <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> mit der Priorität eines Bedienungshilfen-Dienstes aus, den die Speicherbereinigung kaum erreicht.` | Garden path: „den Speicherbereinigungen“ first parses as a dative plural ("to the cleanups"); only „erreichen“ shows „den“ is the relative pronoun. The singular with its article removes the misparse and matches the Xiaomi lock line's „Die Speicherbereinigung überspringt …“. |
+| keep_running_xiaomi_lock_line | 💬 | `Öffne die letzten Apps, halte die Karte von <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> gedrückt und tippe auf das Schloss. Die Speicherbereinigung überspringt gesperrte Apps.` | `Öffne die Übersicht der letzten Apps, halte die Karte von <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> gedrückt und tippe auf das Schloss. Die Speicherbereinigung überspringt gesperrte Apps.` | „Öffne die letzten Apps“ first reads as "open your most recent apps". Naming the screen fixes it; the title's „in den letzten Apps“ can stay. No official Xiaomi DE label exists for Recents (AOSP's framework says „Kürzlich geöffnete Apps“; a HyperOS 2 guide, TechBone, secondary, „Kürzliche Apps“), and the card is instructions only, so plain words beat a guessed label. |
+| keep_running_xiaomi_autostart_title | 💬 | `Autostart erlauben` | `Autostart zulassen` | Same English "Allow autostart" as the vivo title („Autostart und … zulassen“). The file renders "Allow …" as „… zulassen“ in 4 of 5 strings (Benachrichtigungen, Eingeschränkte Einstellungen, Bildschirmaufnahme, Installation von Updates), and AOSP's German button is „Zulassen“. Xiaomi's own switch is just „Autostart“, so no OEM label is at stake. |
+| keep_running_battery_title, keep_running_xiaomi_battery_title | 💬 | `Akkunutzung auf „Uneingeschränkt“ setzen` · `Energiesparmodus auf „Keine Einschränkungen“ setzen` | `Akkunutzung auf „Uneingeschränkt“ stellen` · `Energiesparmodus auf „Keine Einschränkungen“ stellen` | Values in name order. The reviewed `a11y_stuck_message_xiaomi` renders the same English ("set Battery saver to No restrictions") as „stelle den Energiesparmodus … auf „Keine Einschränkungen““, the file's only other "set … to"; „auf … stellen“ is the everyday verb for a setting, „setzen“ leans IT jargon. |
+
+### Clean areas (delta) — checked, no findings
+
+**Kill notice, read as the user meets it.** „Android hat PlayTranslate beendet“, then each body
+alone and with the appended sentence (finding above). Every other „es“ binds cleanly:
+`_body_memory`'s „deshalb hat es …“ can only be the Smartphone (Arbeitsspeicher is masculine);
+in `_body_stopped`, „Wenn du es nicht selbst gestoppt hast“ is PlayTranslate and „war es
+vielleicht …“ is a cleft's dummy subject. The bodies keep English's closed/stopped split
+(beendet, as in the title; gestoppt, as in the reviewed `a11y_stuck_message`), and „im
+laufenden Betrieb“ renders "while it was on" without a pronoun. „Optionen ansehen“; „Nicht
+jetzt“ byte-matches `btn_not_now`.
+
+**Support card, five rows in order.** „Nach Updates suchen“, „Discord beitreten“, „Symbol
+verschwindet?“, „Fehler melden“, „PlayTranslate unterstützen“. The question title follows the
+„Passwort vergessen?“ pattern and leads with the symptom, as the English comment asks; an
+infinitive („Verschwindendes Symbol beheben“) measures 342 dp against the 272 dp toolbar. Row
+and page titles are byte-identical. „Damit PlayTranslate nicht beendet wird“ is 226 dp, whole at
+249 dp. Report a bug: the first sentence is 214 dp, whole at 249 dp; a 360 dp phone shows
+„Protokolle per E-Mail an den Suppo…“, which still says what a tap does. The full 378 dp comes
+from the hold hint „Zum Teilen gedrückt halten“, the Android idiom (bare „Halten“ reads as
+"stop", as the 2026-09-29 round decided); no natural German gets both sentences near English's
+256 dp, and on the Fix page the row wraps in full.
+
+**Fix disappearing icon page.** Toolbar 219 of 272 dp. Intro natural („beim Spielen
+seltener“). Empty label: „melde dann einen Fehler“ points at the „Fehler melden“ row beneath;
+„reproduziere es“ binds to „das Problem“ and echoes the crash body's „Reproduzieren“. The shared
+battery line reads right under both the generic and the Xiaomi title, and its „während du es
+nutzt“ works whether „es“ is the app or the phone. The OPPO and vivo lines are byte-identical.
+Accessibility: „Bedienungshilfen-Dienst“ as in `accessibility_service_description`; the stuck
+variant repeats `a11y_stuck_message` word for word under `a11y_stuck_title`, with „den Dienst“
+making English's "it" explicit. The tile title byte-matches `quick_tile_add_row_title`. In the
+Xiaomi autostart line, „lässt es nicht wieder starten“ can only be PlayTranslate.
+
+**Platform labels.** AOSP: „Akkunutzung“ (from „Akkunutzung von Apps“), „Uneingeschränkt“,
+„Bedienungshilfen“, „Schnelleinstellungen“, all exact. Samsung DE, fetched today
+(samsung.com/de/support/mobile-devices/hintergrundnutzung-von-apps/, updated 19.12.2023, Galaxy
+Z Flip5): „Einstellungen“ › „Akku und Gerätewartung“ › „Akku“ › „Grenzen der
+Hintergrundnutzung“, lists „Apps im Standby“ and „Apps, die nie im Standby sind“. The title and
+line match exactly; the page prints „und“, so the „&“ in oem-labels.md came from the video
+transcript. On One UI 6.1+ the entry is „Akku“ directly; the line's „Akku → Grenzen der
+Hintergrundnutzung“ still leads there, and the card opens Samsung's battery screen itself.
+Huawei DE: „App-Start“, „Manuell verwalten“, „Auto-Start“, „Sekundärer Start“, „Im Hintergrund
+ausführen“ (official), and „Akku“ › „Weitere Akkueinstellungen“, a GUESS in oem-labels.md, now
+confirmed on consumer.huawei.com/de/support/content/de-de00428704/ (fetched today). The
+close-after-lock label itself is known issue 1. OPPO („Autostart zulassen“,
+„Hintergrundaktivität zulassen“) and vivo („Autostart“, „Hohe Akkunutzung im Hintergrund“) match
+the Huawei-authored German pages (secondary); folding „hohe“ into the vivo title follows the
+on-screen label rather than English's "background power use". Xiaomi: „Autostart“ (official FAQ
+titles) and „Keine Einschränkungen“ (secondary) match; „Energiesparmodus“ follows the reviewed
+`a11y_stuck_message_xiaomi`. Unverified and left alone: a German HyperOS 1/2 guide (TechBone,
+secondary, seen through a search) puts the per-app setting on the app's „Akku“ page, with
+„Energiesparmodus“ as one of the options beside „Keine Einschränkungen“, and another of its
+articles says „Keine Beschränkungen“. The card opens the per-app screen directly and quotes the
+value to pick, so this needs a device check, not a rewrite.
+
+**Email flow.** „Absturzbericht senden“ / „Fehlerbericht senden“; the subject
+„PlayTranslate-Fehlerbericht – v3.3.0“ mirrors `crash_email_subject`; the body is natural, with
+„aktuelle Protokolle“ as in `crash_dialog_message`. Toast: two lines at 296 and 320 dp, address
+whole on line 2 (285 of 296 dp: tight, inside the noise). It drops "found", unlike the file's
+seven „… gefunden“ strings, because „Keine E-Mail-App gefunden.“ with „auf anderem Weg“ pushes
+the address to line 3 at 296 dp; „… anderweitig an …“ fits but puts line 1 at 287 dp and reads
+stiffer. „Keine E-Mail-App.“ is ordinary toast German (like „Keine Internetverbindung“), so the
+trade-off stands. Then the share sheet, „Protokolle teilen“.
+
+**Register and typography.** du throughout (Beschreibe, Aktiviere, Öffne, Schalte, Sende,
+melde; du nutzt, du verlässt), never Sie. „ “ quotes, balanced; → paths as in
+`overlay_icon_a11y_required_message`; the subject's en dash mirrors English; no em dash.
+Compounds read naturally (Absturzbericht, Fehlerbericht, Geräteinformationen, Akkunutzung,
+Bildschirmsperre, Speicherbereinigung); the two hyphenated ones follow the file's
+„Bedienungshilfen-Dienst“. „Smartphone“ for "phone" is known issue 3 (on handhelds and tablets
+it is as off as the English; the rest of the app says „Gerät“). „Speicher“ alone can mean
+storage, but each use is pinned by context, and the low-memory body says „Arbeitsspeicher“.
+
+### Verdict (round 1)
+
+3 ⚠️ and 4 💬 across 9 keys; no ❌, no 🛑. Apply the three ⚠️: `kill_notice_restored`,
+`keep_running_tile_line`, and the comma in `keep_running_oppo_auto_launch_line` /
+`keep_running_vivo_autostart_line`. The 💬 are optional; the two consistency ones
+(`keep_running_xiaomi_autostart_title`, the two battery titles) cost nothing to take.
+
+## Follow-up review 2026-10-07, round 1 (15 keys after the Fix disappearing icon rewrite, plus the final review of the first pass's 41 keys)
+
+Mechanical layer: `python3 TOOLS/mech_check.py F2/keys2.txt de` reports "checked 1 locales x
+15 keys; problems: 0", and `python3 TOOLS/mech_check.py …/scratchpad/keys.txt de` "checked 1
+locales x 39 keys; problems: 0" (every key present; `<xliff:g>` spans, `app_name2` included,
+and `%1$s` byte-identical to EN; `\n`, `<b>`, `\{ \}`, `&amp;/&lt;/&gt;` counts match; no
+unescaped `'`/`"`, stray tags, double spaces or edge whitespace). `python3 scripts/l10n_diff.py
+--locale app/src/main/res/values-de/strings.xml` reports `missing=0 orphan=0 modified=0`, "in
+sync". The four keys English removed (`restricted_settings_title`, `_message`,
+`keep_running_huawei_close_after_lock_title`, `_line`) are gone from the file; no duplicate
+`name=`; the file parses as XML. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- `AccessibilityHelp.withRestrictedSettingsStep` appends `"\n\n" + a11y_restricted_settings_addendum`
+  on API 33+ to `accessibility_dialog_message` (MainActivity, AlertDialog),
+  `overlay_icon_a11y_required_message` (SettingsRenderer, AlertDialog), the three
+  `a11y_required_*_message` (AccessibilityAlert → OverlayAlert, 280 dp card) and, on the Fix page,
+  `keep_running_accessibility_line` while the service is not enabled. The stuck alert
+  (`SettingsRenderer.showA11yStuckAlert`) is `a11y_stuck_message` plus, on Xiaomi only,
+  `"\n\n" + a11y_stuck_message_xiaomi`, without the addendum.
+- `KeepRunningActivity`: cards in `KeepRunningItems.ids` order, title + line in a wrapping
+  `settings_row_link`; the Xiaomi battery card now has its own line; `openFirst` tries the ROM's
+  screens (Xiaomi autostart list and per-app battery screen, Huawei startup list, ColorOS
+  startup list, vivo background-startup manager, Samsung's never-sleeping list), and only when
+  none launches shows `keep_running_screen_unavailable` (Toast, LENGTH_LONG) and opens App info.
+  So the search words in the lines are read on the fallback path, with App info open.
+- Kill notice unchanged (`body + ' ' + kill_notice_restored` only when an icon is on screen);
+  hub summary still `singleLine` + `ellipsize=end`, the Fix page's Report a bug row wraps.
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| keep_running_vivo_autostart_line | 💬 | `Suche in den Einstellungen nach „Autostart“ und lass ihn für <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> zu. Lass dann in den Akkueinstellungen für die App hohe Akkunutzung im Hintergrund zu. Ohne diese Einstellungen stoppt das Smartphone <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> womöglich im Hintergrund oder verhindert, dass die App wieder startet.` | `Suche in den Einstellungen nach „Autostart“ und lass ihn für <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> zu. Lass dann in den Akkueinstellungen hohe Akkunutzung im Hintergrund für die App zu. Ohne diese Einstellungen stoppt das Smartphone <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> womöglich im Hintergrund oder verhindert, dass die App wieder startet.` | Right after „Akkueinstellungen“, „für die App“ can attach to the noun ("the app's battery settings", which is what the OPPO line rightly says for English's "its battery settings") instead of to the allowing. For vivo, English means the system's Battery section ("the Battery settings", Settings › Battery in the comment's source) and "allow it" there. With „für die App“ after the object, only that reading is left; nothing else changes. Optional. |
+
+### Clean areas — checked, no findings
+
+**Round-1 fixes of the first pass, verified in the file.** `kill_notice_restored` „Das Symbol ist
+jetzt wieder da.“, `keep_running_accessibility_line` „…, den die Speicherbereinigung kaum
+erreicht.“, `keep_running_xiaomi_lock_line`'s „Öffne die Übersicht der letzten Apps, …“ (kept
+word for word through the rewrite), `keep_running_xiaomi_autostart_title` „Autostart zulassen“,
+and „stellen“ in `keep_running_xiaomi_battery_title`. The rewrite superseded the rest: the tile
+line keeps its fix („von jedem Bildschirm aus … wieder ein“), the OPPO/vivo sentence that lacked
+the comma is gone, and the generic battery title was rewritten.
+
+**CHANGED keys moved exactly as far as English** (compared with HEAD and the first-pass packet).
+`a11y_stuck_message`: only the cause sentence is gone; the rest is byte-identical.
+`a11y_stuck_message_xiaomi`: „Aktiviere … den Autostart“ → „Lass … den Autostart … zu“ (allow),
+„den Energiesparmodus“ → „die Akkunutzung“ (its battery use), „stoppt … immer wieder“ → „stoppt …
+möglicherweise immer wieder“ (may); nothing else touched. `keep_running_tile_line`: „Mit einmal
+Wischen und Tippen“ → „Damit“, the rest byte-identical. `keep_running_xiaomi_battery_title`: only
+the entry noun changed.
+
+**The addendum after each of its six hosts.** AOSP: „App-Info“ and „Eingeschränkte Einstellungen
+zulassen“ exact (the latter also the deleted, reviewed `restricted_settings_title`); „ausgegraut“
+is the usual UI word, „Dreipunkt-Menü (⋮)“ the common German name with the glyph. After
+`accessibility_dialog_message` and `overlay_icon_a11y_required_message`, whose paths end
+„→ PlayTranslate → Aktivieren“, „der Schalter“ is that switch and „darauf“ binds to it; under the
+Fix page's accessibility card it reads as the card's own next step. „unter Android 13 oder
+neuer“ inside the wenn-clause scopes as English does (the paragraph exists only on 13+). du
+imperatives throughout (tippe, öffne, tippe, wähle). The three in-app alerts: see the known gap
+below.
+
+**Cards, title then line.** Xiaomi: „Autostart zulassen“ over the search word „Autostart“ and
+„lass ihn … zu“ (der Autostart); „Akkunutzung auf „Keine Einschränkungen“ stellen“ over a line
+that names the entry by version and the value to pick; the lock card's „Bei manchen Versionen
+ziehst du die Karte stattdessen nach unten.“ is natural instruction German. Huawei: the path,
+then the switches, all five labels official. OPPO and vivo: search word, the battery step as its
+own sentence, then the hedged effect (last sentence byte-identical in both, as in English).
+Samsung: „Öffne in den Akkueinstellungen „Grenzen der Hintergrundnutzung“ und füge … zu „Apps,
+die nie im Standby sind“ hinzu.“ matches its title, and „Standby“ is Samsung's own German word for
+sleep. Generic battery: the title echoes AOSP's „Soll die App immer im Hintergrund ausgeführt
+werden?“, and the line's „die App“ avoids an „es“ that could be the Smartphone. Tile: „Damit
+schaltest du … von jedem Bildschirm aus wieder ein.“ The three two-span lines carry both spans
+and read naturally with the name twice. Closed and stopped stay apart as in the first pass
+(„beendet“, „nach dem Beenden“ for close; „stoppt“ for stop).
+
+**Labels.** Huawei DE official (first pass): „App-Start“, „Automatisch verwalten“, „Auto-Start“,
+„Sekundärer Start“, „Im Hintergrund ausführen“. Samsung DE official (first pass): „Grenzen der
+Hintergrundnutzung“, „Apps, die nie im Standby sind“. vivo (Huawei-authored, secondary):
+„Autostart“, „Hohe Akkunutzung im Hintergrund“. OPPO, checked today through a search summary
+(secondary): TechBone gives OxygenOS 12 „Einstellungen → Apps → Automatisch starten“
+(techbone.de/oneplus/smartphone/apps-autostart-aktivieren-oder-deaktivieren) and ColorOS 13 „App →
+Akkuverbrauch → Automatisch Starten erlauben“
+(techbone.de/oppo/smartphone/apps-automatisches-starten-einer-app-zulassen); an older OxygenOS
+guide (schieb.de/766343) has „Berechtigung → Autostart“. A search for „Automatisch starten“
+matches both current forms and „Autostart“ only the old one, so the translator's choice over the
+Huawei-authored „Autostart zulassen“ stands; the title's generic „Autostart“ and „lass den
+Autostart … zu“ bridge to it without confusion. Xiaomi, two TechBone pages read today (HyperOS 2,
+Android 15, secondary): „Einstellungen → Apps → Hintergrund-Autostart“
+(techbone.de/xiaomi/smartphone/autostart-von-apps?from=12), which contains the search word
+„Autostart“, and the per-app „Apps → App-Info → Akku“ with „App einschränken“ and, in its FAQ,
+„Keine Einschränkungen“ (techbone.de/xiaomi/akku-optimierung-fuer-apps-deaktivieren-oder-aktivieren).
+That supports „Akku“ for HyperOS 2 and the value; „Energiesparmodus“ (MIUI / HyperOS 1) and
+„Energie“ (HyperOS 3) stay unverified (known issue 2), and another TechBone article says „Keine
+Beschränkungen“, as the first pass recorded. The card opens the per-app screen itself, so the
+list matters on the fallback path only. „Systemeinstellungen von PlayTranslate“ for "app
+settings" keeps the line from pointing into PlayTranslate's own settings and matches
+`a11y_stuck_message_xiaomi`'s „Systemeinstellungen der App“.
+
+**Toast, then App info.** „Die Seite fehlt auf diesem Smartphone. Suche die Option in den
+Einstellungen.“ wraps to 2 lines at 296 dp (line 1 284 dp) and at 320 dp (306 dp). „Die Seite“,
+not „Diese“, keeps it off the App-Info page opening underneath; „Option“ avoids „Einstellung …
+Einstellungen“ and echoes the kill notice's „Optionen ansehen“, which leads to this page.
+Dropping "instead" was a choice, not a constraint („… Suche die Option stattdessen in den
+Einstellungen.“ also fits: 284/272 dp at 296, 306/250 dp at 320); the sentence reads complete
+without it, and sentence 1's „auf diesem Smartphone“ carries English's "your phone's".
+
+**Stuck alert, as a set.** Title, the two-sentence body, the repair line and, on Xiaomi, the
+paragraph whose two settings now say what the two Xiaomi cards say („Autostart … zulassen“,
+„Akkunutzung … auf „Keine Einschränkungen““). Two „möglicherweise“ in separate paragraphs are fine.
+
+**The first pass's keys, final read.** Email flow, Support rows, kill notice (each body alone
+and with „Das Symbol ist jetzt wieder da.“), intro, empty label, accessibility and restart lines,
+card titles: nothing new. Widths reproduce: `settings_support_keep_running_subtitle` 226 dp
+(whole at 249), Report a bug's first sentence 214 dp, toolbar „Symbol verschwindet?“ 219 of 272
+dp, `email_no_app_fallback` 2 lines at 296 and 320 dp with the address whole on line 2. Row and
+page titles are byte-identical; the tile title byte-matches `quick_tile_add_row_title`.
+
+**Register and typography.** du throughout, no Sie/Ihr/Ihnen in the 44 keys (the 39 plus the 5
+follow-up keys outside them); „ “ balanced; no straight quotes, em dashes or double spaces.
+
+**Known gap, English source (reported, not a German finding).** As the translator noted, „der
+Schalter“ names no switch in the three `a11y_required_*` alerts, exactly like English's "the
+switch". It is sharpest after `a11y_required_enhanced_message`: that alert opens from the
+„Verbesserte automatische Übersetzung“ row, whose own switch (unchecked, not greyed) sits right
+behind the card, and the sentence before says „diese erweiterten Steuerelemente“, so the in-app
+switch is the nearest candidate in both languages. If English names it ("if PlayTranslate's
+switch in accessibility settings is greyed out"), German follows as „Wenn der Schalter für
+PlayTranslate in den Bedienungshilfen unter Android 13 oder neuer ausgegraut ist, …“ (with
+whatever span English adds).
+
+### Verdict (round 1)
+
+0 🛑, 0 ❌, 0 ⚠️, 1 💬. **PASS** for the 15 follow-up keys and the final review of the first
+pass's 39 remaining keys. The 💬 (`keep_running_vivo_autostart_line`, move „für die App“ behind
+the object) is optional and costs nothing to take. One English-source gap is reported above for
+the developer.
+
+### Follow-up round 2 (2026-10-07), final review after applying round 1
+
+Mechanical layer re-run: `python3 TOOLS/mech_check.py F2/keys2.txt de` reports "checked 1
+locales x 15 keys; problems: 0" (every key present; `<xliff:g>` spans, `app_name2` included,
+byte-identical to EN; none of the 15 has a printf placeholder; `\n` counts match; no
+unescaped `'`/`"`, stray tags, double spaces or edge whitespace). The same check reports
+"checked 1 locales x 39 keys; problems: 0" over the first pass's remaining keys
+(`…/scratchpad/keys.txt`) and "checked 1 locales x 3 keys; problems: 0" over
+`F2/keys-extra-f2.txt`. `python3 scripts/l10n_diff.py --locale
+app/src/main/res/values-de/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync".
+The file parses as XML (1047 names, no duplicate). Against `HEAD` the string-level changes are
+exactly the 42 added keys, the two changed stuck-alert keys and four deletions
+(`restricted_settings_title` / `_message` and the first pass's two orphans).
+`keep_running_huawei_close_after_lock_title` / `_line` are absent, and the 15 values equal
+`F2/frag/de.src`.
+**No 🛑 build-breaking issues.**
+
+**Round-1 fixes:**
+- `keep_running_vivo_autostart_line` (💬, move „für die App“ behind the object): applied,
+  byte-identical to the suggestion („Lass dann in den Akkueinstellungen hohe Akkunutzung im
+  Hintergrund für die App zu.“). Only that phrase moved. The last sentence is still
+  byte-identical to the OPPO line's, as in English. Under the title „Autostart und hohe
+  Akkunutzung im Hintergrund zulassen“, „für die App“ now attaches only to the allowing or to
+  „Akkunutzung“, which mean the same thing, so the "the app's battery settings" reading has
+  not come back.
+- The first pass's fixes, confirmed in round 1, are still in the file: `kill_notice_restored`
+  („Das Symbol ist jetzt wieder da.“), `keep_running_accessibility_line` („…, den die
+  Speicherbereinigung kaum erreicht.“), `keep_running_xiaomi_lock_line` („Öffne die Übersicht
+  der letzten Apps, …“), `keep_running_xiaomi_autostart_title` („Autostart zulassen“), „…
+  stellen“ in `keep_running_xiaomi_battery_title`, and the tile line's „von jedem Bildschirm
+  aus … wieder ein“.
+
+#### Findings (round 2)
+
+No new findings.
+
+**Fresh read: checked, no finding.**
+- **The addendum after its six hosts:** the two system dialogs, the three OverlayAlert
+  messages and the accessibility card line, each composed as `message + "\n\n" + addendum`.
+  It reads as a closing paragraph every time, and its four imperatives (tippe, öffne, tippe,
+  wähle) run in English's order. „App-Info“ and „Eingeschränkte Einstellungen zulassen“ are
+  AOSP's exact labels. The OverlayAlert message scrolls above the buttons, so the German
+  length costs nothing. The English-source gap round 1 reported (the unanchored "the switch"
+  after the three in-app alerts) is unchanged in English; it is still not a German finding.
+- **The stuck alert:** the body is `HEAD` minus exactly the cause sentence. The Xiaomi
+  paragraph's two steps repeat the two Xiaomi card titles.
+- **Each card, title then line, per ROM, then the shared cards:**
+  - Xiaomi: in „lass ihn … zu“, „ihn“ can only be „der Autostart“. The battery entries are
+    listed in English's order.
+  - Huawei: all five labels are official.
+  - OPPO: „Automatisch starten“ is secondary, as round 1 recorded.
+  - vivo: the search word and the line match the title (Huawei-authored label, secondary).
+  - Samsung: both labels are official, and „Standby“ is Samsung's own word.
+  - Generic battery card: the title echoes AOSP's „Soll die App immer im Hintergrund ausgeführt
+    werden?“.
+  - Close („beendet“) and stop („stoppt“) stay apart. The hedged effects stay hedged
+    („womöglich“), and the battery line's verified effect stays plain, as in English.
+- **Placeholder grammar:** PlayTranslate never takes an article or a genitive -s („von
+  PlayTranslate“, „für PlayTranslate“). None of the three two-span lines uses „es“ for the app,
+  so no pronoun can bind to the wrong noun: OPPO and vivo say „die App“ after the second
+  mention, and the Xiaomi line needs no pronoun.
+- **The toast, then App info:** re-measured with `TOOLS/Wrap` at 14 sp. It is 483 dp in all and
+  wraps to 2 lines at 296 dp (284 + 195 dp) and at 320 dp (306 + 173 dp).
+- **Register and typography** (checked by script over the 15): du only, no Sie/Ihr/Ihnen. The
+  „ “ quotes are balanced and never nested, with no other quote characters and no em dash.
+  Every subordinate clause has its comma.
+- **Web checks: 3 of 4.**
+  - One search for the German name of HyperOS 3's per-app battery entry found no German source,
+    so „Energie“ stays unverified (known issue 2). Its summary attributes „Energiesparmodus“ as
+    the HyperOS 1 entry to TechBone (secondary, not read).
+  - One fetch of a German OnePlus manual URL, built from the French one's pattern, returned 404.
+  - One search of oneplus.com and oppo.com for the German auto-launch label found no German
+    page.
+
+#### Verdict (round 2)
+
+**PASS** (0 🛑, 0 ❌, 0 ⚠️, 0 💬). The one round-1 fix landed exactly as suggested, and nothing
+around it broke. The 15 follow-up keys and the first pass's 39 keys have no open items. Two items
+carry over, neither blocking:
+1. A device check of the unverified Xiaomi and OPPO labels (known issue 2).
+2. The English-source "the switch" gap that round 1 reported.
