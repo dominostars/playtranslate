@@ -3,13 +3,16 @@ package com.playtranslate.ui
 import android.os.Build
 
 /**
- * What the "Keep PlayTranslate running" page lists, decided from the ROM
- * and the current state so the page carries only the settings likely to
- * stop the phone from closing PlayTranslate while it is on. The ROM's own
- * kill switches come first, then what holds everywhere: the battery
- * exemption, accessibility mode (measured priority 100 against 200 on the
- * Moto G, below the level that kill wave reached) and the Quick Settings
- * tile as the one-tap way back.
+ * What the "Fix disappearing icon" page lists, decided from the ROM and
+ * the current state so the page carries only the settings likely to stop
+ * the phone from closing PlayTranslate while it is on, or to bring it back
+ * when it does. The ROM's own switches come first (no app can read them,
+ * so those cards stay), then what holds everywhere: the battery exemption,
+ * accessibility mode (measured priority 100 against 200 on the Moto G,
+ * below the level that phone's kill wave reached) and the Quick Settings
+ * tile as the way back. The accessibility card needs Android 11 and the
+ * tile card Android 13, the versions where each exists. The words on
+ * every card are sourced in the string comments.
  */
 object KeepRunningItems {
 
@@ -17,7 +20,7 @@ object KeepRunningItems {
 
     enum class Id {
         XIAOMI_AUTOSTART, XIAOMI_BATTERY, XIAOMI_LOCK_RECENTS,
-        HUAWEI_APP_LAUNCH, HUAWEI_CLOSE_AFTER_LOCK,
+        HUAWEI_APP_LAUNCH,
         OPPO_AUTO_LAUNCH,
         VIVO_AUTOSTART,
         SAMSUNG_NEVER_SLEEPING,
@@ -48,21 +51,28 @@ object KeepRunningItems {
         when (rom) {
             Rom.XIAOMI -> {
                 add(Id.XIAOMI_AUTOSTART)
-                // Xiaomi's own battery manager replaces the generic item.
+                // Xiaomi's own per-app battery entry replaces the generic
+                // card and, like every ROM switch, stays: no app can read
+                // it. The standard exemption is no proxy. One decompile of
+                // China HyperOS on Android 16 (secondary) says "No
+                // restrictions" also adds the exemption, but nothing says
+                // the reverse, and the exemption can be granted from the
+                // system's own screens with Xiaomi's entry left restrictive.
                 add(Id.XIAOMI_BATTERY)
                 add(Id.XIAOMI_LOCK_RECENTS)
             }
-            Rom.HUAWEI -> {
-                add(Id.HUAWEI_APP_LAUNCH)
-                add(Id.HUAWEI_CLOSE_AFTER_LOCK)
-            }
+            Rom.HUAWEI -> add(Id.HUAWEI_APP_LAUNCH)
             Rom.OPPO -> add(Id.OPPO_AUTO_LAUNCH)
             Rom.VIVO -> add(Id.VIVO_AUTOSTART)
             Rom.SAMSUNG -> add(Id.SAMSUNG_NEVER_SLEEPING)
             Rom.OTHER -> Unit
         }
         if (rom != Rom.XIAOMI && !batteryUnrestricted) add(Id.BATTERY)
-        if (!accessibilityOn) add(Id.ACCESSIBILITY)
+        // Below Android 11 the service is disabled in the manifest (no
+        // takeScreenshot before API 30, res/values/bools.xml), so the
+        // phone's accessibility list never shows PlayTranslate and the
+        // card would send the user to a mode the phone cannot have.
+        if (!accessibilityOn && sdkInt >= Build.VERSION_CODES.R) add(Id.ACCESSIBILITY)
         if (!tileAdded && sdkInt >= Build.VERSION_CODES.TIRAMISU) add(Id.QUICK_TILE)
     }
 }

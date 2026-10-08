@@ -132,11 +132,7 @@
 
     <string name="btn_open_overlay_settings">เปิดการตั้งค่า</string>
 
-    <string name="restricted_settings_title">อนุญาตการตั้งค่าที่ถูกจำกัด</string>
-
-    <string name="restricted_settings_message">ในหน้าการตั้งค่า Android ของ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ให้แตะปุ่มจุดสามจุด (⋮) ที่มุมขวาบน แล้วเลือก “อนุญาตการตั้งค่าที่ถูกจำกัด” หลังจากยืนยันตัวตนแล้ว คุณจะสามารถเปิดสิทธิ์การช่วยเหลือพิเศษได้</string>
-
-    <string name="btn_open_app_settings">เปิดการตั้งค่า <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+    <string name="a11y_restricted_settings_addendum">ใน Android 13 ขึ้นไป หากสวิตช์เป็นสีเทา ให้แตะสวิตช์นั้นหนึ่งครั้ง จากนั้นเปิดหน้า “ข้อมูลแอป” ของ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> แตะเมนู ⋮ แล้วเลือก “อนุญาตการตั้งค่าที่จำกัด”</string>
 
     <!-- ═══ WORD DETAIL ═══ -->
 
@@ -408,9 +404,9 @@
 
     <string name="a11y_stuck_title">ต้องรีสตาร์ทการช่วยเหลือพิเศษ</string>
 
-    <string name="a11y_stuck_message">เปิดใช้การช่วยเหลือพิเศษสำหรับ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> แล้ว แต่ Android หยุดบริการนี้และจะไม่เริ่มใหม่เอง อุปกรณ์ของคุณอาจแจ้งว่าแอปทำงานผิดปกติในการตั้งค่าการช่วยเหลือพิเศษ กรณีนี้มักเกิดขึ้นหลังจากระบบบังคับหยุดแอปเพื่อประหยัดแบตเตอรี่\n\nวิธีแก้ไขคือปิดแล้วเปิดบริการอีกครั้งในการตั้งค่าการช่วยเหลือพิเศษ</string>
+    <string name="a11y_stuck_message">เปิดใช้การช่วยเหลือพิเศษสำหรับ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> แล้ว แต่ Android หยุดบริการนี้และจะไม่เริ่มใหม่เอง อุปกรณ์ของคุณอาจแจ้งว่าแอปทำงานผิดปกติในการตั้งค่าการช่วยเหลือพิเศษ\n\nวิธีแก้ไขคือปิดแล้วเปิดบริการอีกครั้งในการตั้งค่าการช่วยเหลือพิเศษ</string>
 
-    <string name="a11y_stuck_message_xiaomi">บนอุปกรณ์ Xiaomi ให้เปิดการเริ่มอัตโนมัติสำหรับ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ด้วย และตั้งค่าตัวประหยัดแบตเตอรี่เป็น “ไม่จำกัด” ในการตั้งค่าระบบของแอป มิฉะนั้นระบบจะหยุดบริการนี้ต่อไป</string>
+    <string name="a11y_stuck_message_xiaomi">บนอุปกรณ์ Xiaomi ให้อนุญาตการเริ่มอัตโนมัติสำหรับ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ด้วย และตั้งค่าการใช้แบตเตอรี่เป็น “ไม่จำกัด” ในการตั้งค่าระบบของแอป มิฉะนั้นระบบอาจหยุดบริการนี้ต่อไป</string>
 
     <!-- ═══ ACCESSIBILITY-REQUIRED ALERT ═══ -->
 
@@ -1296,6 +1292,10 @@
 
     <string name="crash_email_body">ขั้นตอนการทำซ้ำ:\n\n(ไม่บังคับ — อธิบายว่าคุณกำลังทำอะไรอยู่เมื่อเกิดเหตุการณ์นี้)\n\nข้อมูลอุปกรณ์รวมอยู่ในไฟล์แนบ</string>
 
+    <string name="crash_email_chooser_title">ส่งรายงานข้อขัดข้อง</string>
+
+    <string name="email_no_app_fallback">ไม่พบแอปอีเมล โปรดส่งไฟล์ไปที่ <xliff:g id="email" example="support@playtranslate.com">%1$s</xliff:g> ด้วยวิธีอื่น</string>
+
     <string name="update_dialog_title">มีการอัปเดต</string>
 
     <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> พร้อมใช้งานบน <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> แล้ว</string>
@@ -1858,7 +1858,6 @@
 
     <string name="anki_deck_not_selected_subtitle">ยังไม่ได้เลือก</string>
 
-
     <!-- ═══ SETTINGS — Support section rows ═══ -->
 
     <string name="settings_support_discord_title">เข้าร่วม <xliff:g id="brand_discord" example="Discord">Discord</xliff:g></string>
@@ -1868,6 +1867,88 @@
     <string name="settings_support_donate_title">สนับสนุน PlayTranslate</string>
 
     <string name="settings_support_donate_subtitle">โปรเจกต์โอเพนซอร์สที่ใช้ฟรีและสร้างด้วยใจรัก ช่วยให้โปรเจกต์นี้ดำเนินต่อไปได้</string>
+
+    <string name="settings_support_keep_running_title">แก้ปัญหาไอคอนหายไป</string>
+
+    <string name="settings_support_keep_running_subtitle">ป้องกันไม่ให้โทรศัพท์ปิด <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="settings_support_report_bug_title">รายงานข้อบกพร่อง</string>
+
+    <string name="settings_support_report_bug_subtitle">ส่งบันทึกทางอีเมลถึงฝ่ายสนับสนุน กดค้างเพื่อแชร์</string>
+
+    <string name="settings_support_report_bug_email_subject">รายงานข้อบกพร่องของ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> – v<xliff:g id="version" example="2.2.0">%1$s</xliff:g></string>
+
+    <string name="settings_support_report_bug_email_body">เกิดอะไรขึ้น\n\n(อธิบายว่าคุณกำลังทำอะไรอยู่และเกิดปัญหาอะไรขึ้น)\n\nแนบข้อมูลอุปกรณ์และบันทึกล่าสุดไว้แล้ว</string>
+
+    <string name="settings_support_report_bug_chooser_title">ส่งรายงานข้อบกพร่อง</string>
+
+    <!-- ═══ KILL NOTICE ═══ -->
+
+    <string name="kill_notice_title">Android ปิด <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> แล้ว</string>
+
+    <string name="kill_notice_body_memory">โทรศัพท์มีหน่วยความจำเหลือน้อยจึงปิด <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ขณะที่เปิดอยู่ ไอคอนลอยจึงหายไป</string>
+
+    <string name="kill_notice_body_other">โทรศัพท์ปิด <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ขณะที่เปิดอยู่ ไอคอนลอยจึงหายไป โทรศัพท์บางรุ่นทำเช่นนี้เพื่อประหยัดแบตเตอรี่</string>
+
+    <string name="kill_notice_body_stopped"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ถูกหยุดขณะที่เปิดอยู่ หากคุณไม่ได้หยุดเอง ตัวจัดการแบตเตอรี่หรือหน่วยความจำของโทรศัพท์อาจเป็นผู้หยุด ไอคอนลอยจึงหายไป</string>
+
+    <string name="kill_notice_restored">ตอนนี้แอปกลับมาเปิดอยู่แล้ว</string>
+
+    <string name="kill_notice_see_options">ดูวิธีแก้ไข</string>
+
+    <string name="kill_notice_not_now">ไม่ใช่ตอนนี้</string>
+
+    <!-- ═══ KEEP RUNNING PAGE ═══ -->
+
+    <string name="keep_running_title">แก้ปัญหาไอคอนหายไป</string>
+
+    <string name="keep_running_intro">การตั้งค่าเหล่านี้ช่วยลดโอกาสที่โทรศัพท์จะปิด <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ขณะที่คุณเล่นเกม</string>
+
+    <string name="keep_running_empty">ไม่มีการตั้งค่าที่แนะนำเพิ่มเติมแล้ว หากยังพบปัญหา โปรดทำให้ปัญหาเกิดขึ้นอีกครั้ง แล้วรายงานข้อบกพร่อง</string>
+
+    <string name="keep_running_battery_title">ให้ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ทำงานอยู่เบื้องหลังเสมอ</string>
+
+    <string name="keep_running_battery_line">หากโทรศัพท์ปิด <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> การตั้งค่านี้จะช่วยให้แอปเริ่มทำงานอีกครั้งได้เอง</string>
+
+    <string name="keep_running_accessibility_title">ใช้โหมดการช่วยเหลือพิเศษ</string>
+
+    <string name="keep_running_accessibility_line"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> จะทำงานด้วยลำดับความสำคัญของบริการการช่วยเหลือพิเศษ ซึ่งการล้างหน่วยความจำแทบไม่แตะต้อง</string>
+
+    <string name="keep_running_accessibility_restart_line">Android หยุดบริการนี้และจะไม่เริ่มใหม่เอง ปิดแล้วเปิดบริการอีกครั้งในการตั้งค่าการช่วยเหลือพิเศษ</string>
+
+    <string name="keep_running_tile_title">เพิ่มไทล์การตั้งค่าด่วน</string>
+
+    <string name="keep_running_tile_line">เปิด <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> อีกครั้งได้จากทุกหน้าจอ</string>
+
+    <string name="keep_running_screen_unavailable">หน้าจอนั้นไม่มีในโทรศัพท์เครื่องนี้ ค้นหาการตั้งค่านี้ในการตั้งค่าของโทรศัพท์แทน</string>
+
+    <string name="keep_running_xiaomi_autostart_title">อนุญาตการเริ่มอัตโนมัติ</string>
+
+    <string name="keep_running_xiaomi_autostart_line">ในการตั้งค่า ให้ค้นหา “เริ่มอัตโนมัติ” แล้วอนุญาตให้ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> เริ่มอัตโนมัติ หากไม่อนุญาต Xiaomi อาจไม่ให้ <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> เริ่มทำงานอีกครั้งหลังจากถูกปิด</string>
+
+    <string name="keep_running_xiaomi_battery_title">ตั้งค่าการใช้แบตเตอรี่เป็น “ไม่จำกัด”</string>
+
+    <string name="keep_running_xiaomi_battery_line">ในการตั้งค่าระบบของ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ให้เปิดเมนูแบตเตอรี่ (“ตัวประหยัดแบตเตอรี่” “แบตเตอรี่” หรือ “พลังงาน” ขึ้นอยู่กับเวอร์ชัน) แล้วเลือก “ไม่จำกัด”</string>
+
+    <string name="keep_running_xiaomi_lock_title">ล็อก <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ในแอปล่าสุด</string>
+
+    <string name="keep_running_xiaomi_lock_line">เปิดหน้าแอปล่าสุด กดค้างที่การ์ด <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> แล้วแตะไอคอนแม่กุญแจ ในบางเวอร์ชัน ให้ดึงการ์ดลงแทน</string>
+
+    <string name="keep_running_huawei_app_launch_title">จัดการ “การเปิดใช้งานแอป” ด้วยตนเอง</string>
+
+    <string name="keep_running_huawei_app_launch_line">ในการตั้งค่า ให้ค้นหา “การเปิดใช้งานแอป” หรือ “เรียกใช้แอป” ปิด “การจัดการโดยอัตโนมัติ” สำหรับ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> แล้วเปิด “เปิดการใช้งานอัตโนมัติ” “เปิดใช้งานรอง” และ “ทำงานบนพื้นหลัง”</string>
+
+    <string name="keep_running_oppo_auto_launch_title">อนุญาตการเปิดอัตโนมัติและกิจกรรมในพื้นหลัง</string>
+
+    <string name="keep_running_oppo_auto_launch_line">ในการตั้งค่า ให้ค้นหา “เปิดอัตโนมัติ” แล้วอนุญาตให้ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> เปิดอัตโนมัติ จากนั้นในการตั้งค่าแบตเตอรี่ของแอป ให้อนุญาตกิจกรรมในพื้นหลัง หากไม่อนุญาต โทรศัพท์อาจหยุด <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> ในพื้นหลัง หรือไม่ให้แอปเริ่มทำงานอีกครั้ง</string>
+
+    <string name="keep_running_vivo_autostart_title">อนุญาตการเริ่มอัตโนมัติและการใช้พลังงานในพื้นหลัง</string>
+
+    <string name="keep_running_vivo_autostart_line">ในการตั้งค่า ให้ค้นหา “เริ่มอัตโนมัติ” แล้วอนุญาตให้ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> เริ่มอัตโนมัติ จากนั้นในการตั้งค่าแบตเตอรี่ ให้อนุญาตการใช้พลังงานสูงในพื้นหลัง หากไม่อนุญาต โทรศัพท์อาจหยุด <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> ในพื้นหลัง หรือไม่ให้แอปเริ่มทำงานอีกครั้ง</string>
+
+    <string name="keep_running_samsung_never_sleeping_title">เพิ่มลงใน “ไม่ต้องพักใช้งานแอปอัตโนมัติ”</string>
+
+    <string name="keep_running_samsung_never_sleeping_line">ในการตั้งค่าแบตเตอรี่ ให้เปิด “ขีดจำกัดการใช้พื้นหลัง” แล้วเพิ่ม <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ลงใน “ไม่ต้องพักใช้งานแอปอัตโนมัติ” Samsung จะพักการทำงานของแอปที่ไม่พบการใช้งานมาสองสามวัน และจำกัดสิ่งที่แอปเหล่านั้นทำได้ในพื้นหลัง</string>
 
     <string name="settings_support_check_updates_title">ตรวจหาการอัปเดต</string>
 
@@ -1906,10 +1987,6 @@
     <string name="dictionary_status_no_results">ไม่มีผลลัพธ์</string>
 
     <string name="dictionary_status_error">ค้นหาไม่สำเร็จ</string>
-
-    <string name="settings_debug_export_logs_title">ส่งออกบันทึก</string>
-
-    <string name="settings_debug_export_logs_subtitle">แชร์บันทึกล่าสุดสำหรับรายงานข้อบกพร่อง</string>
 
     <string name="settings_debug_export_logs_subject">บันทึกของ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
 

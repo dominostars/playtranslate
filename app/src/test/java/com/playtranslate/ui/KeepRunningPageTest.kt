@@ -1,10 +1,15 @@
 package com.playtranslate.ui
 
 import android.app.Activity
+import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.pm.ResolveInfo
+import android.net.Uri
 import android.os.Looper
 import android.os.PowerManager
+import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
@@ -26,6 +31,7 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
+import org.robolectric.shadows.ShadowToast
 
 /**
  * The Fix disappearing icon page around its cards: the centered label that
@@ -133,6 +139,37 @@ class KeepRunningPageTest {
         val send = IntentCompat.getParcelableExtra(chooser, Intent.EXTRA_INTENT, Intent::class.java)!!
         assertEquals(Intent.ACTION_SEND, send.action)
         assertEquals(ctx.getString(R.string.settings_debug_export_logs_subject), send.getStringExtra(Intent.EXTRA_SUBJECT))
+    }
+
+    /** robolectric.properties pins SDK 34, so the Android 13+ step applies. */
+    @Test
+    fun `the accessibility card carries the restricted-settings step on Android 13 and later`() {
+        val activity = launch().get()
+        // ROM OTHER: battery, accessibility, tile.
+        val line = activity.items().getChildAt(1)
+            .findViewById<TextView>(R.id.tvRowSubtitle).text.toString()
+        assertTrue(line.startsWith(ctx.getString(R.string.keep_running_accessibility_line)))
+        assertTrue(line.endsWith(ctx.getString(R.string.a11y_restricted_settings_addendum)))
+    }
+
+    /** With activity resolution enforced, the battery card's system dialog
+     *  has no handler here, so the row falls back to App info and says so. */
+    @Test
+    fun `a card whose screen cannot open says so and opens App info`() {
+        val activity = launch().get()
+        shadowOf(ctx as Application).checkActivities(true)
+        shadowOf(ctx.packageManager).addResolveInfoForIntent(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}")),
+            ResolveInfo().apply {
+                activityInfo = ActivityInfo().apply {
+                    packageName = "com.android.settings"
+                    name = "AppInfo"
+                }
+            },
+        )
+        activity.items().getChildAt(0).findViewById<View>(R.id.rowKeepRunningItem).performClick()
+        assertEquals(ctx.getString(R.string.keep_running_screen_unavailable), ShadowToast.getTextOfLatestToast())
+        assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, shadowOf(activity).nextStartedActivity.action)
     }
 
     /** The logs are gathered on the IO dispatcher and the chooser launched

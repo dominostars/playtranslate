@@ -139,11 +139,7 @@
 
     <string name="btn_open_overlay_settings">設定を開く</string>
 
-    <string name="restricted_settings_title">制限付き設定を許可</string>
-
-    <string name="restricted_settings_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>のAndroid設定ページで、右上の3点メニュー（⋮）をタップし、「制限付き設定を許可」を選択してください。認証後、ユーザー補助の権限をオンにできるようになります。</string>
-
-    <string name="btn_open_app_settings"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>の設定を開く</string>
+    <string name="a11y_restricted_settings_addendum">Android 13以降で、スイッチがグレー表示されている場合は、一度タップしてから<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>の「アプリ情報」を開き、3点メニュー（⋮）をタップして「制限付き設定を許可」を選択してください。</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          WORD DETAIL
@@ -451,9 +447,9 @@
 
     <string name="a11y_stuck_title">ユーザー補助の再起動が必要です</string>
 
-    <string name="a11y_stuck_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>のユーザー補助は有効になっていますが、Androidがサービスを停止しており、自動的には再開されません。端末のユーザー補助設定で、アプリが正常に動作していないと表示される場合があります。これは通常、システムがバッテリー節約のためにアプリを強制停止した後に起こります。\n\n解決するには、ユーザー補助設定でサービスを一度オフにしてから、もう一度オンにしてください。</string>
+    <string name="a11y_stuck_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>のユーザー補助は有効になっていますが、Androidがサービスを停止しており、自動的には再開されません。端末のユーザー補助設定で、アプリが正常に動作していないと表示される場合があります。\n\n解決するには、ユーザー補助設定でサービスを一度オフにしてから、もう一度オンにしてください。</string>
 
-    <string name="a11y_stuck_message_xiaomi">Xiaomiの端末では、アプリのシステム設定で<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>の「自動起動」を有効にし、バッテリーセーバーを「制限なし」に設定してください。これらを設定しないと、システムがサービスを停止し続けます。</string>
+    <string name="a11y_stuck_message_xiaomi">Xiaomiの端末では、アプリのシステム設定で<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>の「自動起動」を許可し、バッテリーの使用を「制限なし」に設定してください。これらを設定しないと、システムがサービスを停止し続けることがあります。</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          ACCESSIBILITY-REQUIRED ALERT
@@ -1421,6 +1417,10 @@
 
     <string name="crash_email_body">再現手順：\n\n（任意：発生時に何をしていたかをご記入ください。）\n\n端末情報は添付ファイルに含まれています。</string>
 
+    <string name="crash_email_chooser_title">クラッシュレポートを送信</string>
+
+    <string name="email_no_app_fallback">メールアプリが見つかりません。ファイルは別の方法で<xliff:g id="email" example="support@playtranslate.com">%1$s</xliff:g>へ。</string>
+
     <string name="update_dialog_title">更新があります</string>
 
     <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g>が<xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>で公開されています。</string>
@@ -1997,7 +1997,6 @@
 
     <string name="anki_deck_not_selected_subtitle">未選択</string>
 
-
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Support section rows
          ═══════════════════════════════════════════════════════════════ -->
@@ -2009,6 +2008,92 @@
     <string name="settings_support_donate_title">PlayTranslateを支援する</string>
 
     <string name="settings_support_donate_subtitle">無料・オープンソースの愛情のこもったアプリです。継続にご協力ください。</string>
+
+    <string name="settings_support_keep_running_title">アイコンが消える場合</string>
+
+    <string name="settings_support_keep_running_subtitle"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>の自動終了を防ぐ</string>
+
+    <string name="settings_support_report_bug_title">バグを報告</string>
+
+    <string name="settings_support_report_bug_subtitle">ログをサポートにメール。長押しで共有。</string>
+
+    <string name="settings_support_report_bug_email_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>のバグ報告 – v<xliff:g id="version" example="2.2.0">%1$s</xliff:g></string>
+
+    <string name="settings_support_report_bug_email_body">何が起きましたか？\n\n（何をしていたときに、どのような問題が起きたかをご記入ください。）\n\n端末情報と最近のログが添付されています。</string>
+
+    <string name="settings_support_report_bug_chooser_title">バグ報告を送信</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         KILL NOTICE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="kill_notice_title">Androidが<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>を終了しました</string>
+
+    <string name="kill_notice_body_memory">スマートフォンのメモリが不足したため、オンにしていた<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>が終了しました。フローティングアイコンが消えたのはこのためです。</string>
+
+    <string name="kill_notice_body_other">スマートフォンが、オンにしていた<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>を終了しました。フローティングアイコンが消えたのはこのためです。スマートフォンによっては、バッテリーを節約するためにこのような動作をします。</string>
+
+    <string name="kill_notice_body_stopped">オンにしていた<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>が停止されました。ご自身で停止していない場合は、スマートフォンのバッテリー管理機能やメモリ管理機能によって停止された可能性があります。フローティングアイコンが消えたのはこのためです。</string>
+
+    <string name="kill_notice_restored">現在は再びオンになっています。</string>
+
+    <string name="kill_notice_see_options">対処法を見る</string>
+
+    <string name="kill_notice_not_now">後で</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         KEEP RUNNING PAGE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="keep_running_title">アイコンが消える場合</string>
+
+    <string name="keep_running_intro">これらを設定すると、プレイ中にスマートフォンが<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>を終了しにくくなります。</string>
+
+    <string name="keep_running_empty">ほかにおすすめの設定はありません。まだ問題が起きる場合は、再現してからバグを報告してください。</string>
+
+    <string name="keep_running_battery_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>にバックグラウンドでの常時実行を許可</string>
+
+    <string name="keep_running_battery_line"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>は、スマートフォンに終了されても自動的に再起動できるようになります。</string>
+
+    <string name="keep_running_accessibility_title">ユーザー補助モードを使用</string>
+
+    <string name="keep_running_accessibility_line"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>をユーザー補助サービスの優先度で実行します。メモリのクリーンアップで終了されることはほとんどありません。</string>
+
+    <string name="keep_running_accessibility_restart_line">Androidがサービスを停止しており、自動的には再開されません。ユーザー補助設定で一度オフにしてから、もう一度オンにしてください。</string>
+
+    <string name="keep_running_tile_title">クイック設定タイルを追加</string>
+
+    <string name="keep_running_tile_line">どの画面からでも<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>を再びオンにできます。</string>
+
+    <string name="keep_running_screen_unavailable">その画面はこのスマートフォンにありません。設定アプリでこの設定を検索してください。</string>
+
+    <string name="keep_running_xiaomi_autostart_title">「自動起動」を許可</string>
+
+    <string name="keep_running_xiaomi_autostart_line">設定アプリで「自動起動」を検索して<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>に許可してください。許可しないと、Xiaomiは<xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g>を終了した後、再起動させないことがあります。</string>
+
+    <string name="keep_running_xiaomi_battery_title">バッテリーの使用を「制限なし」に設定</string>
+
+    <string name="keep_running_xiaomi_battery_line">設定アプリで<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>のバッテリーの項目（バージョンにより「バッテリーセーバー」「バッテリー」「電力」のいずれか）を開き、「制限なし」を選択してください。</string>
+
+    <string name="keep_running_xiaomi_lock_title">最近使ったアプリで<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>をロック</string>
+
+    <string name="keep_running_xiaomi_lock_line">最近使ったアプリの画面を開き、<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>のカードを長押しして鍵アイコンをタップします。バージョンによっては、代わりにカードを下にスワイプします。</string>
+
+    <string name="keep_running_huawei_app_launch_title">「アプリ起動」を手動で管理</string>
+
+    <string name="keep_running_huawei_app_launch_line">設定アプリで「アプリ起動」を検索し、<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>の「自動的に管理」をオフにしてから、「自動起動」「他のアプリによる起動」「バックグラウンドで実行」をオンにしてください。</string>
+
+    <string name="keep_running_oppo_auto_launch_title">「自動起動」と「バックグラウンドアクティビティ」を許可</string>
+
+    <string name="keep_running_oppo_auto_launch_line">設定アプリで「自動起動」を検索して<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>に許可してから、アプリのバッテリー設定で「バックグラウンドアクティビティ」を許可してください。許可しないと、スマートフォンが<xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g>をバックグラウンドで停止したり、再起動させなかったりすることがあります。</string>
+
+    <string name="keep_running_vivo_autostart_title">自動起動とバックグラウンドでの電力使用を許可</string>
+
+    <string name="keep_running_vivo_autostart_line">設定アプリで「自動起動」を検索して<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>に許可してから、バッテリー設定で、バックグラウンドで電力を多く使用することを許可してください。許可しないと、スマートフォンが<xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g>をバックグラウンドで停止したり、再起動させなかったりすることがあります。</string>
+
+    <string name="keep_running_samsung_never_sleeping_title">「自動的にスリープ状態にしないアプリ」に追加</string>
+
+    <string name="keep_running_samsung_never_sleeping_line">バッテリー設定の「バックグラウンドでの使用を制限」で、<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>を「自動的にスリープ状態にしないアプリ」に追加してください。Samsungは、数日間使われていないと判断したアプリをスリープ状態にし、バックグラウンドでの動作を制限します。</string>
 
     <string name="settings_support_check_updates_title">更新を確認</string>
 
@@ -2049,10 +2134,6 @@
     <string name="dictionary_status_no_results">結果がありません</string>
 
     <string name="dictionary_status_error">検索できませんでした</string>
-
-    <string name="settings_debug_export_logs_title">ログをエクスポート</string>
-
-    <string name="settings_debug_export_logs_subtitle">バグ報告用に最近のログを共有</string>
 
     <string name="settings_debug_export_logs_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>のログ</string>
 

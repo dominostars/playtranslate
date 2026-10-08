@@ -14,6 +14,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import com.playtranslate.PlayTranslateAccessibilityService
@@ -22,17 +23,21 @@ import com.playtranslate.R
 import com.playtranslate.diagnostics.BugReport
 
 /**
- * "Keep PlayTranslate running": the settings that make it less likely the
- * phone closes PlayTranslate while it is on, one card per
- * [KeepRunningItems.Id]. Every "Open settings" row tries the ROM's own
- * screen first and falls back to the app's system settings page, so no
- * row is ever dead; instruction-only rows have no action. When every
- * setting is already made, a centered label says so in the cards' place.
- * Under the cards, always, the Report a bug row from Settings → Support
- * with its words and both gestures ([BugReport]), so a user with nothing
- * left to change has the next step on the same page. Opened from the
- * Support section and from the kill notice, which stops showing once this
- * page has been seen.
+ * "Fix disappearing icon": the settings that make it less likely the phone
+ * closes PlayTranslate while it is on, or that bring it back when it does,
+ * one card per [KeepRunningItems.Id]. Every "Open settings" row tries the
+ * ROM's own screen first and falls back to the app's App info page with a
+ * toast saying so: none of the ROM screens can be verified here, and a
+ * silent landing on App info after a card promised another screen would be
+ * a dead end, so the toast sends the user to search Settings for the
+ * setting the card title names. Instruction-only rows have no action. When
+ * every setting is already made, a centered label says so in the cards'
+ * place. Under the cards, always, the Report a bug row from Settings →
+ * Support with its words and both gestures ([BugReport]), so a user with
+ * nothing left to change has the next step on the same page. Opened from
+ * the Support section and from the kill notice, which stops showing once
+ * this page has been seen. The words on every card are sourced in the
+ * string comments.
  */
 class KeepRunningActivity : SettingsSubPageActivity() {
 
@@ -76,10 +81,11 @@ class KeepRunningActivity : SettingsSubPageActivity() {
         items.removeAllViews()
         val prefs = Prefs(this)
         val powerManager = getSystemService(PowerManager::class.java)
-        // Enabled in Settings but not bound: after a force stop Android
-        // leaves the service listed as enabled and never re-binds it until
-        // the user toggles it off and on (the same state Settings' "needs a
-        // restart" alert repairs). The card stays, worded as that repair.
+        // Enabled in Settings but not bound: a kill whose restart was
+        // blocked leaves the service listed as enabled, and Android does
+        // not re-bind it until the user toggles it off and on (the state
+        // Settings' "needs a restart" alert repairs). The card stays,
+        // worded as that repair.
         val accessibilityEnabled = PlayTranslateAccessibilityService.isEnabled(this)
         accessibilityStuck = accessibilityEnabled && !PlayTranslateAccessibilityService.isConnected
         val ids = KeepRunningItems.ids(
@@ -95,7 +101,7 @@ class KeepRunningActivity : SettingsSubPageActivity() {
             val row = card.findViewById<View>(R.id.rowKeepRunningItem)
             row.findViewById<TextView>(R.id.tvRowTitle).setText(titleOf(id))
             row.findViewById<TextView>(R.id.tvRowSubtitle).apply {
-                setText(lineOf(id))
+                text = lineOf(id)
                 isVisible = true
             }
             val action = actionOf(id)
@@ -116,7 +122,6 @@ class KeepRunningActivity : SettingsSubPageActivity() {
         KeepRunningItems.Id.XIAOMI_BATTERY -> R.string.keep_running_xiaomi_battery_title
         KeepRunningItems.Id.XIAOMI_LOCK_RECENTS -> R.string.keep_running_xiaomi_lock_title
         KeepRunningItems.Id.HUAWEI_APP_LAUNCH -> R.string.keep_running_huawei_app_launch_title
-        KeepRunningItems.Id.HUAWEI_CLOSE_AFTER_LOCK -> R.string.keep_running_huawei_close_after_lock_title
         KeepRunningItems.Id.OPPO_AUTO_LAUNCH -> R.string.keep_running_oppo_auto_launch_title
         KeepRunningItems.Id.VIVO_AUTOSTART -> R.string.keep_running_vivo_autostart_title
         KeepRunningItems.Id.SAMSUNG_NEVER_SLEEPING -> R.string.keep_running_samsung_never_sleeping_title
@@ -126,20 +131,28 @@ class KeepRunningActivity : SettingsSubPageActivity() {
         KeepRunningItems.Id.QUICK_TILE -> R.string.keep_running_tile_title
     }
 
-    private fun lineOf(id: KeepRunningItems.Id): Int = when (id) {
-        KeepRunningItems.Id.XIAOMI_AUTOSTART -> R.string.keep_running_xiaomi_autostart_line
-        KeepRunningItems.Id.XIAOMI_BATTERY -> R.string.keep_running_battery_line
-        KeepRunningItems.Id.XIAOMI_LOCK_RECENTS -> R.string.keep_running_xiaomi_lock_line
-        KeepRunningItems.Id.HUAWEI_APP_LAUNCH -> R.string.keep_running_huawei_app_launch_line
-        KeepRunningItems.Id.HUAWEI_CLOSE_AFTER_LOCK -> R.string.keep_running_huawei_close_after_lock_line
-        KeepRunningItems.Id.OPPO_AUTO_LAUNCH -> R.string.keep_running_oppo_auto_launch_line
-        KeepRunningItems.Id.VIVO_AUTOSTART -> R.string.keep_running_vivo_autostart_line
-        KeepRunningItems.Id.SAMSUNG_NEVER_SLEEPING -> R.string.keep_running_samsung_never_sleeping_line
-        KeepRunningItems.Id.BATTERY -> R.string.keep_running_battery_line
+    /** The line under the title. The accessibility card's carries the
+     *  Android 13+ restricted-settings step ([AccessibilityHelp]) when the
+     *  service still has to be enabled; a stuck service was enabled once,
+     *  so it was already allowed. */
+    private fun lineOf(id: KeepRunningItems.Id): CharSequence = when (id) {
+        KeepRunningItems.Id.XIAOMI_AUTOSTART -> getString(R.string.keep_running_xiaomi_autostart_line)
+        KeepRunningItems.Id.XIAOMI_BATTERY -> getString(R.string.keep_running_xiaomi_battery_line)
+        KeepRunningItems.Id.XIAOMI_LOCK_RECENTS -> getString(R.string.keep_running_xiaomi_lock_line)
+        KeepRunningItems.Id.HUAWEI_APP_LAUNCH -> getString(R.string.keep_running_huawei_app_launch_line)
+        KeepRunningItems.Id.OPPO_AUTO_LAUNCH -> getString(R.string.keep_running_oppo_auto_launch_line)
+        KeepRunningItems.Id.VIVO_AUTOSTART -> getString(R.string.keep_running_vivo_autostart_line)
+        KeepRunningItems.Id.SAMSUNG_NEVER_SLEEPING -> getString(R.string.keep_running_samsung_never_sleeping_line)
+        KeepRunningItems.Id.BATTERY -> getString(R.string.keep_running_battery_line)
         KeepRunningItems.Id.ACCESSIBILITY ->
-            if (accessibilityStuck) R.string.keep_running_accessibility_restart_line
-            else R.string.keep_running_accessibility_line
-        KeepRunningItems.Id.QUICK_TILE -> R.string.keep_running_tile_line
+            if (accessibilityStuck) {
+                getString(R.string.keep_running_accessibility_restart_line)
+            } else {
+                AccessibilityHelp.withRestrictedSettingsStep(
+                    this, getString(R.string.keep_running_accessibility_line),
+                )
+            }
+        KeepRunningItems.Id.QUICK_TILE -> getString(R.string.keep_running_tile_line)
     }
 
     /** The row's tap, or null for an instruction-only row. */
@@ -148,10 +161,9 @@ class KeepRunningActivity : SettingsSubPageActivity() {
         KeepRunningItems.Id.XIAOMI_BATTERY -> openFirst(RomScreens.xiaomiBatterySaver(this))
         KeepRunningItems.Id.XIAOMI_LOCK_RECENTS -> null
         KeepRunningItems.Id.HUAWEI_APP_LAUNCH -> openFirst(RomScreens.huaweiAppLaunch())
-        KeepRunningItems.Id.HUAWEI_CLOSE_AFTER_LOCK -> openFirst(RomScreens.batterySettings())
         KeepRunningItems.Id.OPPO_AUTO_LAUNCH -> openFirst(RomScreens.oppoAutoLaunch())
         KeepRunningItems.Id.VIVO_AUTOSTART -> openFirst(RomScreens.vivoAutostart())
-        KeepRunningItems.Id.SAMSUNG_NEVER_SLEEPING -> openFirst(RomScreens.samsungDeviceCareBattery())
+        KeepRunningItems.Id.SAMSUNG_NEVER_SLEEPING -> openFirst(RomScreens.samsungNeverSleepingApps())
         KeepRunningItems.Id.BATTERY -> openFirst(RomScreens.batteryExemption(this))
         KeepRunningItems.Id.ACCESSIBILITY -> openFirst(listOf(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)))
         KeepRunningItems.Id.QUICK_TILE -> {
@@ -166,8 +178,10 @@ class KeepRunningActivity : SettingsSubPageActivity() {
         }
     }
 
-    /** Starts the first of [candidates] the platform can launch, and the
-     *  app's own system settings page when none can. */
+    /** Starts the first of [candidates] the platform can launch. When none
+     *  can, says so in a toast and opens the app's App info page, so the
+     *  user knows the screen they were promised is not the one in front of
+     *  them and goes looking for the setting by the card's name. */
     private fun openFirst(candidates: List<Intent>): () -> Unit = {
         val launched = candidates.any { intent ->
             try {
@@ -178,14 +192,21 @@ class KeepRunningActivity : SettingsSubPageActivity() {
                 false
             }
         }
-        if (!launched) startActivity(RomScreens.appDetails(this))
+        if (!launched) {
+            Toast.makeText(this, R.string.keep_running_screen_unavailable, Toast.LENGTH_LONG).show()
+            startActivity(RomScreens.appDetails(this))
+        }
     }
 
-    /** The ROM-specific settings screens, by component name. Component names
-     *  are the ROMs' own and change across versions; every list is tried in
-     *  order and the caller falls back to [appDetails]. Sources: the Xiaomi
-     *  and Samsung pages of dontkillmyapp.com, and the component lists
-     *  other overlay apps ship for the same purpose. */
+    /** The ROM-specific settings screens. Samsung's is the one documented
+     *  entry point (developer.samsung.com/mobile/app-management.html, read
+     *  2026-10-07: action com.samsung.android.sm.ACTION_OPEN_CHECKABLE_LISTACTIVITY
+     *  on package com.samsung.android.lool with extra activity_type 2 for
+     *  Never sleeping apps); its older BatteryActivity component follows
+     *  as a fallback. The other component names are the ROMs' own as
+     *  carried by community lists of this kind; none was verified on a
+     *  device, and they change across versions, so every list is tried in
+     *  order and the caller falls back to [appDetails] with a toast. */
     internal object RomScreens {
         private fun component(pkg: String, cls: String) =
             Intent().setComponent(ComponentName(pkg, cls))
@@ -195,7 +216,7 @@ class KeepRunningActivity : SettingsSubPageActivity() {
             Uri.parse("package:${ctx.packageName}"),
         ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
-        /** The one-tap "stop optimising battery for this app" dialog, which
+        /** The one-tap "Let app always run in background?" dialog, which
          *  needs the REQUEST_IGNORE_BATTERY_OPTIMIZATIONS permission the
          *  manifest declares; the app's system page is the fallback. */
         fun batteryExemption(ctx: Context) = listOf(
@@ -204,10 +225,6 @@ class KeepRunningActivity : SettingsSubPageActivity() {
                 Uri.parse("package:${ctx.packageName}"),
             ),
         )
-
-        /** The system battery screen; Huawei's "Close apps after screen
-         *  lock" sits under its More battery settings. */
-        fun batterySettings() = listOf(Intent(Intent.ACTION_POWER_USAGE_SUMMARY))
 
         fun xiaomiAutostart() = listOf(
             component("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"),
@@ -237,7 +254,10 @@ class KeepRunningActivity : SettingsSubPageActivity() {
             component("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity"),
         )
 
-        fun samsungDeviceCareBattery() = listOf(
+        fun samsungNeverSleepingApps() = listOf(
+            Intent("com.samsung.android.sm.ACTION_OPEN_CHECKABLE_LISTACTIVITY")
+                .setPackage("com.samsung.android.lool")
+                .putExtra("activity_type", 2),
             component("com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity"),
         )
     }

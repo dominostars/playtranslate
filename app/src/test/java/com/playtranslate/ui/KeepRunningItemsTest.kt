@@ -40,9 +40,18 @@ class KeepRunningItemsTest {
         )
     }
 
-    @Test fun `the other ROMs get their card before the generic ones`() {
-        assertEquals(Id.HUAWEI_APP_LAUNCH, ids(Rom.HUAWEI).first())
-        assertEquals(Id.HUAWEI_CLOSE_AFTER_LOCK, ids(Rom.HUAWEI)[1])
+    @Test fun `xiaomi's battery card outlives the exemption and the generic one never shows there`() {
+        assertEquals(
+            listOf(Id.XIAOMI_AUTOSTART, Id.XIAOMI_BATTERY, Id.XIAOMI_LOCK_RECENTS, Id.ACCESSIBILITY, Id.QUICK_TILE),
+            ids(Rom.XIAOMI, batteryUnrestricted = true),
+        )
+    }
+
+    @Test fun `the other ROMs get their one card before the generic ones`() {
+        assertEquals(
+            listOf(Id.HUAWEI_APP_LAUNCH, Id.BATTERY, Id.ACCESSIBILITY, Id.QUICK_TILE),
+            ids(Rom.HUAWEI),
+        )
         assertEquals(Id.OPPO_AUTO_LAUNCH, ids(Rom.OPPO).first())
         assertEquals(Id.VIVO_AUTOSTART, ids(Rom.VIVO).first())
         assertEquals(Id.SAMSUNG_NEVER_SLEEPING, ids(Rom.SAMSUNG).first())
@@ -57,5 +66,12 @@ class KeepRunningItemsTest {
 
     @Test fun `the tile card needs Android 13`() {
         assertEquals(listOf(Id.BATTERY, Id.ACCESSIBILITY), ids(Rom.OTHER, sdk = 32))
+    }
+
+    /** The service is disabled in the manifest below API 30, so an Android
+     *  10 phone has no accessibility mode to offer. */
+    @Test fun `the accessibility card needs Android 11`() {
+        assertEquals(listOf(Id.BATTERY), ids(Rom.OTHER, sdk = 29))
+        assertEquals(listOf(Id.BATTERY, Id.ACCESSIBILITY), ids(Rom.OTHER, sdk = 30))
     }
 }

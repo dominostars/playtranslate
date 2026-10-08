@@ -139,11 +139,7 @@
 
     <string name="btn_open_overlay_settings">Abrir configurações</string>
 
-    <string name="restricted_settings_title">Permitir configurações restritas</string>
-
-    <string name="restricted_settings_message">Na página de configurações do Android do <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, toque no botão de três pontos (⋮) no canto superior direito e selecione \"Permitir configurações restritas\". Após a autenticação, você poderá ativar as permissões de acessibilidade.</string>
-
-    <string name="btn_open_app_settings">Abrir configurações do <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+    <string name="a11y_restricted_settings_addendum">No Android 13 ou mais recente, se a chave estiver acinzentada, toque nela uma vez e depois abra a página “Informações do app” do <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, toque no menu ⋮ e selecione “Permitir configurações restritas”.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          WORD DETAIL
@@ -443,9 +439,9 @@
 
     <string name="a11y_stuck_title">A acessibilidade precisa ser reiniciada</string>
 
-    <string name="a11y_stuck_message">A acessibilidade está ativada para o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, mas o Android parou o serviço e não vai reiniciá-lo sozinho. Seu dispositivo pode indicar que o app não está funcionando corretamente nas configurações de acessibilidade. Isso costuma acontecer depois que o sistema força a parada do app para economizar bateria.\n\nPara resolver, desative e ative o serviço novamente nas configurações de acessibilidade.</string>
+    <string name="a11y_stuck_message">A acessibilidade está ativada para o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, mas o Android parou o serviço e não vai reiniciá-lo sozinho. Seu dispositivo pode indicar que o app não está funcionando corretamente nas configurações de acessibilidade.\n\nPara resolver, desative e ative o serviço novamente nas configurações de acessibilidade.</string>
 
-    <string name="a11y_stuck_message_xiaomi">Em dispositivos Xiaomi, ative também a inicialização automática do <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> e defina a economia de bateria como “Sem restrições” nas configurações do sistema do app. Sem isso, o sistema vai continuar parando o serviço.</string>
+    <string name="a11y_stuck_message_xiaomi">Em dispositivos Xiaomi, permita também a inicialização automática do <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> e defina o uso da bateria como “Sem restrições” nas configurações do sistema do app. Sem isso, o sistema pode continuar parando o serviço.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          ACCESSIBILITY-REQUIRED ALERT
@@ -1369,6 +1365,10 @@
 
     <string name="crash_email_body">Passos para reproduzir:\n\n(Opcional — descreva o que você estava fazendo quando isso aconteceu.)\n\nAs informações do dispositivo estão incluídas no arquivo anexado.</string>
 
+    <string name="crash_email_chooser_title">Enviar relatório de erro</string>
+
+    <string name="email_no_app_fallback">Nenhum app de e-mail. Envie os arquivos para <xliff:g id="email" example="support@playtranslate.com">%1$s</xliff:g> de outra forma.</string>
+
     <string name="update_dialog_title">Atualização disponível</string>
 
     <string name="update_dialog_message">O <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> está disponível no <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
@@ -1929,7 +1929,6 @@
 
     <string name="anki_deck_not_selected_subtitle">Não selecionado</string>
 
-
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Support section rows
          ═══════════════════════════════════════════════════════════════ -->
@@ -1941,6 +1940,92 @@
     <string name="settings_support_donate_title">Apoiar o PlayTranslate</string>
 
     <string name="settings_support_donate_subtitle">Um projeto gratuito e de código aberto, feito com carinho. Ajude a mantê-lo.</string>
+
+    <string name="settings_support_keep_running_title">Se o ícone desaparecer</string>
+
+    <string name="settings_support_keep_running_subtitle">Impeça o celular de fechar o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="settings_support_report_bug_title">Relatar um bug</string>
+
+    <string name="settings_support_report_bug_subtitle">Envie os registros por e-mail ao suporte. Segure para compartilhar.</string>
+
+    <string name="settings_support_report_bug_email_subject">Relatório de bug do <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> – v<xliff:g id="version" example="2.2.0">%1$s</xliff:g></string>
+
+    <string name="settings_support_report_bug_email_body">O que aconteceu?\n\n(Descreva o que você estava fazendo e o que deu errado.)\n\nAs informações do dispositivo e os registros recentes estão anexados.</string>
+
+    <string name="settings_support_report_bug_chooser_title">Enviar relatório de bug</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         KILL NOTICE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="kill_notice_title">O Android fechou o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="kill_notice_body_memory">Seu celular ficou com pouca memória e fechou o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, que estava ativado. Por isso o ícone flutuante desapareceu.</string>
+
+    <string name="kill_notice_body_other">Seu celular fechou o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, que estava ativado. Por isso o ícone flutuante desapareceu. Alguns celulares fazem isso para economizar bateria.</string>
+
+    <string name="kill_notice_body_stopped">O <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> foi parado enquanto estava ativado. Se não foi você que o parou, o gerenciador de bateria ou de memória do seu celular pode ter feito isso. Por isso o ícone flutuante desapareceu.</string>
+
+    <string name="kill_notice_restored">Ele já está ativado de novo.</string>
+
+    <string name="kill_notice_see_options">Ver opções</string>
+
+    <string name="kill_notice_not_now">Agora não</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         KEEP RUNNING PAGE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="keep_running_title">Se o ícone desaparecer</string>
+
+    <string name="keep_running_intro">Essas configurações diminuem a chance de o celular fechar o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> enquanto você joga.</string>
+
+    <string name="keep_running_empty">Não há mais configurações recomendadas. Se o problema continuar, reproduza-o e depois relate um bug.</string>
+
+    <string name="keep_running_battery_title">Permitir a execução contínua do <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> em segundo plano</string>
+
+    <string name="keep_running_battery_line">Se o celular fechar o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, isso permite que o app reinicie sozinho.</string>
+
+    <string name="keep_running_accessibility_title">Usar o modo de acessibilidade</string>
+
+    <string name="keep_running_accessibility_line">Executa o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> com a prioridade de um serviço de acessibilidade, que as limpezas de memória raramente atingem.</string>
+
+    <string name="keep_running_accessibility_restart_line">O Android parou o serviço e não vai reiniciá-lo sozinho. Desative e ative o serviço novamente nas configurações de acessibilidade.</string>
+
+    <string name="keep_running_tile_title">Adicionar bloco às Configurações rápidas</string>
+
+    <string name="keep_running_tile_line">Reativa o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> em qualquer tela.</string>
+
+    <string name="keep_running_screen_unavailable">Essa tela não está disponível neste celular. Pesquise a configuração nas Configurações.</string>
+
+    <string name="keep_running_xiaomi_autostart_title">Permitir a inicialização automática</string>
+
+    <string name="keep_running_xiaomi_autostart_line">Nas Configurações, pesquise “inicialização automática” e permita-a para o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>. Sem isso, a Xiaomi pode impedir que o <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> reinicie depois de fechá-lo.</string>
+
+    <string name="keep_running_xiaomi_battery_title">Definir o uso da bateria como “Sem restrições”</string>
+
+    <string name="keep_running_xiaomi_battery_line">Nas configurações do sistema do <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, abra a opção de bateria (“Economia de bateria”, “Bateria” ou “Energia”, dependendo da versão) e escolha “Sem restrições”.</string>
+
+    <string name="keep_running_xiaomi_lock_title">Bloquear o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> em Recentes</string>
+
+    <string name="keep_running_xiaomi_lock_line">Abra Recentes, mantenha pressionada a janela do <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> e toque no cadeado. Em algumas versões, em vez disso, deslize a janela para baixo.</string>
+
+    <string name="keep_running_huawei_app_launch_title">Gerenciar a inicialização dos aplicativos manualmente</string>
+
+    <string name="keep_running_huawei_app_launch_line">Nas Configurações, pesquise “Inicialização dos aplicativos”, desative o gerenciamento automático do <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> e depois ative “Início automático”, “Início secundário” e “Executar em segundo plano”.</string>
+
+    <string name="keep_running_oppo_auto_launch_title">Permitir a inicialização automática e a atividade em segundo plano</string>
+
+    <string name="keep_running_oppo_auto_launch_line">Nas Configurações, pesquise “inicialização automática” e permita-a para o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>; depois, nas configurações de bateria do app, permita a atividade em segundo plano. Sem isso, o celular pode encerrar o <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> em segundo plano ou impedir que ele reinicie.</string>
+
+    <string name="keep_running_vivo_autostart_title">Permitir a inicialização automática e o consumo de energia em segundo plano</string>
+
+    <string name="keep_running_vivo_autostart_line">Nas Configurações, pesquise “inicialização automática” e permita-a para o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>; depois, nas configurações de bateria, permita que ele tenha alto consumo de energia em segundo plano. Sem isso, o celular pode encerrar o <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> em segundo plano ou impedir que ele reinicie.</string>
+
+    <string name="keep_running_samsung_never_sleeping_title">Adicionar a “Apps nunca suspensos automáticos”</string>
+
+    <string name="keep_running_samsung_never_sleeping_line">Nas configurações de bateria, em “Limites de uso em segundo plano”, adicione o <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> a “Apps nunca suspensos automáticos”. A Samsung suspende os apps sem uso há alguns dias e limita o que eles podem fazer em segundo plano.</string>
 
     <string name="settings_support_check_updates_title">Buscar atualizações</string>
 
@@ -1982,10 +2067,6 @@
     <string name="dictionary_status_no_results">Nenhum resultado</string>
 
     <string name="dictionary_status_error">Não foi possível consultar</string>
-
-    <string name="settings_debug_export_logs_title">Exportar registros</string>
-
-    <string name="settings_debug_export_logs_subtitle">Compartilhar registros recentes para um relatório de bug</string>
 
     <string name="settings_debug_export_logs_subject">Registros do <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
 

@@ -853,7 +853,11 @@ class SettingsRenderer(
     private fun showOverlayIconA11yAlert() {
         AlertDialog.Builder(ctx)
             .setTitle(R.string.overlay_icon_a11y_required_title)
-            .setMessage(R.string.overlay_icon_a11y_required_message)
+            .setMessage(
+                AccessibilityHelp.withRestrictedSettingsStep(
+                    ctx, ctx.getString(R.string.overlay_icon_a11y_required_message),
+                ),
+            )
             .setPositiveButton(R.string.btn_open_a11y_settings) { _, _ ->
                 ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             }
@@ -861,11 +865,13 @@ class SettingsRenderer(
             .show()
     }
 
-    /** Enabled in system Settings but not bound to our process — the
-     *  force-stop zombie state the system's accessibility page reports as
-     *  "malfunctioning". Checked BEFORE the toggle branches (power button,
-     *  Game Screen Controls row) so a tap in that state repairs instead of
-     *  writing prefs against a service that cannot host the icon. */
+    /** Enabled in system Settings but not bound to our process — the state
+     *  the system's accessibility page reports as "malfunctioning", left by
+     *  a kill whose restart was blocked (a force stop disables the service
+     *  outright on stock Android). Checked BEFORE the toggle branches
+     *  (power button, Game Screen Controls row) so a tap in that state
+     *  repairs instead of writing prefs against a service that cannot host
+     *  the icon. */
     private fun a11yServiceStuck(): Boolean =
         PlayTranslateAccessibilityService.isEnabled(ctx) &&
             !PlayTranslateAccessibilityService.isConnected
@@ -873,19 +879,21 @@ class SettingsRenderer(
     /** Repair-prompt dispatch for a failed
      *  [CaptureLifecycle.activateAccessibility]: enabled-but-unbound is the
      *  state the system's accessibility page reports as "malfunctioning"
-     *  (Android never rebinds a force-stopped service until the user
-     *  re-toggles it) and gets the stuck alert; not enabled at all gets the
-     *  ordinary enable prompt. */
+     *  (Android does not rebind it until the user re-toggles the service)
+     *  and gets the stuck alert; not enabled at all gets the ordinary
+     *  enable prompt. */
     private fun showA11yActivationBlockedAlert() {
         if (PlayTranslateAccessibilityService.isEnabled(ctx)) showA11yStuckAlert()
         else showOverlayIconA11yAlert()
     }
 
+    /** No restricted-settings step here: a service that was enabled once
+     *  has already been allowed. */
     private fun showA11yStuckAlert() {
         var message = ctx.getString(R.string.a11y_stuck_message)
-        // Xiaomi's battery manager force-stops apps that lack its Autostart
-        // permission, which is what strands the service in this state — the
-        // generic re-toggle fixes the symptom, these settings stop the loop.
+        // The Keep-running page's two Xiaomi settings, suspected (not
+        // established) to be what stops the service there; the re-toggle
+        // fixes the symptom either way.
         if (Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true)) {
             message += "\n\n" + ctx.getString(R.string.a11y_stuck_message_xiaomi)
         }

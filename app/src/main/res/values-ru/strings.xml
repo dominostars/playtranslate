@@ -139,11 +139,7 @@
 
     <string name="btn_open_overlay_settings">Открыть настройки</string>
 
-    <string name="restricted_settings_title">Разрешить ограниченные настройки</string>
-
-    <string name="restricted_settings_message">На странице настроек Android приложения <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> нажмите кнопку с тремя точками (⋮) в правом верхнем углу и выберите «Разрешить ограниченные настройки». После аутентификации вы сможете включить разрешения специальных возможностей.</string>
-
-    <string name="btn_open_app_settings">Открыть настройки <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+    <string name="a11y_restricted_settings_addendum">Начиная с Android 13, если переключатель неактивен, нажмите на него один раз, затем откройте страницу «О приложении» для <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> и в меню ⋮ выберите «Разрешить доступ к настройкам».</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          WORD DETAIL
@@ -460,9 +456,9 @@
 
     <string name="a11y_stuck_title">Требуется перезапуск специальных возможностей</string>
 
-    <string name="a11y_stuck_message">Специальные возможности для <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> включены, но Android остановил службу и не перезапустит её самостоятельно. В настройках специальных возможностей устройство может сообщать, что приложение работает некорректно. Обычно так бывает после того, как система принудительно остановила приложение ради экономии заряда.\n\nЧтобы это исправить, выключите и снова включите службу в настройках специальных возможностей.</string>
+    <string name="a11y_stuck_message">Специальные возможности для <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> включены, но Android остановил службу и не перезапустит её самостоятельно. В настройках специальных возможностей устройство может сообщать, что приложение работает некорректно.\n\nЧтобы это исправить, выключите и снова включите службу в настройках специальных возможностей.</string>
 
-    <string name="a11y_stuck_message_xiaomi">На устройствах Xiaomi также включите автозапуск для <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> и установите для энергосбережения значение «Без ограничений» в системных настройках приложения. Без этого система будет и дальше останавливать службу.</string>
+    <string name="a11y_stuck_message_xiaomi">На устройствах Xiaomi также разрешите автозапуск для <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> и установите режим расхода заряда «Без ограничений» в системных настройках приложения. Без этого система может и дальше останавливать службу.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          ACCESSIBILITY-REQUIRED ALERT
@@ -1426,6 +1422,10 @@
 
     <string name="crash_email_body">Шаги для воспроизведения:\n\n(Необязательно — опишите, что вы делали, когда это произошло.)\n\nИнформация об устройстве включена в прикреплённый файл.</string>
 
+    <string name="crash_email_chooser_title">Отправить отчёт о сбое</string>
+
+    <string name="email_no_app_fallback">Нет почтового приложения. Отправьте файлы на <xliff:g id="email" example="support@playtranslate.com">%1$s</xliff:g> сами.</string>
+
     <string name="update_dialog_title">Доступно обновление</string>
 
     <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> доступен на <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
@@ -2023,7 +2023,6 @@
 
     <string name="anki_deck_not_selected_subtitle">Не выбрано</string>
 
-
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Support section rows
          ═══════════════════════════════════════════════════════════════ -->
@@ -2035,6 +2034,92 @@
     <string name="settings_support_donate_title">Поддержать PlayTranslate</string>
 
     <string name="settings_support_donate_subtitle">Бесплатный проект с открытым исходным кодом, сделанный с любовью. Помогите ему развиваться.</string>
+
+    <string name="settings_support_keep_running_title">Если значок исчезает</string>
+
+    <string name="settings_support_keep_running_subtitle">Чтобы <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> не закрывался</string>
+
+    <string name="settings_support_report_bug_title">Сообщить об ошибке</string>
+
+    <string name="settings_support_report_bug_subtitle">Письмо с журналами в поддержку. Удерживайте, чтобы поделиться.</string>
+
+    <string name="settings_support_report_bug_email_subject">Отчёт об ошибке <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> – v<xliff:g id="version" example="2.2.0">%1$s</xliff:g></string>
+
+    <string name="settings_support_report_bug_email_body">Что произошло?\n\n(Опишите, что вы делали и что пошло не так.)\n\nИнформация об устройстве и недавние журналы прикреплены.</string>
+
+    <string name="settings_support_report_bug_chooser_title">Отправить отчёт об ошибке</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         KILL NOTICE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="kill_notice_title">Android закрыл <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="kill_notice_body_memory">Телефону не хватило памяти, и он закрыл <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, пока тот был включён. Поэтому плавающий значок и исчез.</string>
+
+    <string name="kill_notice_body_other">Телефон закрыл <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, пока тот был включён. Поэтому плавающий значок и исчез. Некоторые телефоны делают так ради экономии заряда.</string>
+
+    <string name="kill_notice_body_stopped"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> был остановлен, пока был включён. Если вы не останавливали его сами, это могла сделать система управления батареей или памятью телефона. Поэтому плавающий значок и исчез.</string>
+
+    <string name="kill_notice_restored">Сейчас значок снова на экране.</string>
+
+    <string name="kill_notice_see_options">Что можно сделать</string>
+
+    <string name="kill_notice_not_now">Не сейчас</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         KEEP RUNNING PAGE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="keep_running_title">Если значок исчезает</string>
+
+    <string name="keep_running_intro">С этими настройками телефон реже закрывает <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> во время игры.</string>
+
+    <string name="keep_running_empty">Других рекомендуемых настроек нет. Если проблема не исчезла, воспроизведите её и сообщите об ошибке.</string>
+
+    <string name="keep_running_battery_title">Разрешить <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> всегда работать в фоновом режиме</string>
+
+    <string name="keep_running_battery_line">С этим разрешением <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> сможет снова запуститься сам, если телефон его закроет.</string>
+
+    <string name="keep_running_accessibility_title">Использовать режим специальных возможностей</string>
+
+    <string name="keep_running_accessibility_line">В этом режиме <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> работает с приоритетом службы специальных возможностей, которую очистка памяти почти не затрагивает.</string>
+
+    <string name="keep_running_accessibility_restart_line">Android остановил службу и не перезапустит её самостоятельно. Выключите и снова включите её в настройках специальных возможностей.</string>
+
+    <string name="keep_running_tile_title">Добавить плитку в «Быстрые настройки»</string>
+
+    <string name="keep_running_tile_line">Плитка снова включает <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> с любого экрана.</string>
+
+    <string name="keep_running_screen_unavailable">На телефоне нет такого экрана. Найдите этот параметр через поиск в настройках.</string>
+
+    <string name="keep_running_xiaomi_autostart_title">Разрешить автозапуск</string>
+
+    <string name="keep_running_xiaomi_autostart_line">В настройках найдите автозапуск через поиск и разрешите его для <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>. Иначе Xiaomi может не давать <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> снова запуститься после закрытия.</string>
+
+    <string name="keep_running_xiaomi_battery_title">Установить режим расхода заряда «Без ограничений»</string>
+
+    <string name="keep_running_xiaomi_battery_line">В системных настройках приложения <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> откройте пункт, отвечающий за расход заряда (в зависимости от версии он называется «Экономия заряда батареи», «Батарея» или «Питание»), и выберите «Без ограничений».</string>
+
+    <string name="keep_running_xiaomi_lock_title">Закрепить <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> в недавних приложениях</string>
+
+    <string name="keep_running_xiaomi_lock_line">Откройте недавние приложения, удерживайте карточку <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> и нажмите на замок. В некоторых версиях вместо этого потяните карточку вниз.</string>
+
+    <string name="keep_running_huawei_app_launch_title">Управлять запуском приложений вручную</string>
+
+    <string name="keep_running_huawei_app_launch_line">В настройках найдите «Запуск приложений» через поиск, выключите для <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> «Автоматическое управление», затем включите переключатели «Автозапуск», «Косвенный запуск» и «Работа в фоновом режиме».</string>
+
+    <string name="keep_running_oppo_auto_launch_title">Разрешить автозапуск и фоновую активность</string>
+
+    <string name="keep_running_oppo_auto_launch_line">В настройках найдите автозапуск через поиск и разрешите его для <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, затем в настройках батареи приложения разрешите фоновую активность. Без этого телефон может остановить <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> в фоне или не дать ему снова запуститься.</string>
+
+    <string name="keep_running_vivo_autostart_title">Разрешить автозапуск и энергопотребление в фоне</string>
+
+    <string name="keep_running_vivo_autostart_line">В настройках найдите «Автозапуск» через поиск и разрешите его для <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, затем в настройках батареи разрешите приложению высокое энергопотребление в фоне. Без этого телефон может остановить <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> в фоне или не дать ему снова запуститься.</string>
+
+    <string name="keep_running_samsung_never_sleeping_title">Добавить в список «Не уходят в сон автоматически»</string>
+
+    <string name="keep_running_samsung_never_sleeping_line">В разделе «Батарея» → «Ограничения в фоновом режиме» добавьте <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> в список «Не уходят в сон автоматически». Samsung переводит в режим сна приложения, которыми не пользовались несколько дней, и ограничивает их работу в фоне.</string>
 
     <string name="settings_support_check_updates_title">Проверить обновления</string>
 
@@ -2078,10 +2163,6 @@
     <string name="dictionary_status_no_results">Нет результатов</string>
 
     <string name="dictionary_status_error">Не удалось найти</string>
-
-    <string name="settings_debug_export_logs_title">Экспорт журналов</string>
-
-    <string name="settings_debug_export_logs_subtitle">Поделиться недавними журналами для отчёта об ошибке</string>
 
     <string name="settings_debug_export_logs_subject">Журналы <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
 

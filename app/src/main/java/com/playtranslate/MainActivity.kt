@@ -72,6 +72,7 @@ import com.playtranslate.language.StalePack
 import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.translation.OfflineModelReclaimer
+import com.playtranslate.ui.AccessibilityHelp
 import com.playtranslate.ui.AppReadiness
 import com.playtranslate.ui.sentenceTranslationBackend
 import com.playtranslate.ui.HomeAction
@@ -1892,7 +1893,11 @@ class MainActivity :
     private fun showAccessibilityDialog() {
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.accessibility_dialog_title))
-            .setMessage(getString(R.string.accessibility_dialog_message))
+            .setMessage(
+                AccessibilityHelp.withRestrictedSettingsStep(
+                    this, getString(R.string.accessibility_dialog_message),
+                ),
+            )
             .setPositiveButton(getString(R.string.accessibility_dialog_open)) { _, _ ->
                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             }
@@ -2156,23 +2161,6 @@ class MainActivity :
             // UpdateChecker.maybeCheck — no per-dismissal bookkeeping needed.
             updateInstaller.promptUpdate(release)
         }
-    }
-
-    private fun showRestrictedSettingsDialog() {
-        OverlayAlert.Builder(this)
-            .setTitle(getString(R.string.restricted_settings_title))
-            .setMessage(getString(R.string.restricted_settings_message))
-            .addButton(
-                getString(R.string.btn_open_app_settings),
-                themeColor(R.attr.ptAccent)
-            ) {
-                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                    data = Uri.fromParts("package", packageName, null)
-                }
-                startActivity(intent)
-            }
-            .addCancelButton()
-            .show()
     }
 
     /** Apply [current] readiness to the UI — show the onboarding pages (with the

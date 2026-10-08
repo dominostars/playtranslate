@@ -124,13 +124,16 @@ class PlayTranslateTileService : TileService() {
                 }
                 renderState()
             }
-            // Not bound: either never enabled, or enabled but force-stopped —
-            // the system then reports the service as malfunctioning and never
-            // rebinds it until the user toggles it off and on. Both repairs
-            // live on the accessibility settings screen, so send the user
-            // there rather than dropping the tap. (A tap landing in the tiny
-            // healthy window between process start and bind also ends up
-            // here; the user backs out and the next tap works.)
+            // Not bound while enabled: the resolver picks this backend only
+            // with the service enabled, and the nothing-granted case went to
+            // onboarding above, so this is a kill whose restart was blocked.
+            // The system then reports the service as malfunctioning and does
+            // not rebind it until the user toggles it off and on, which
+            // lives on the accessibility settings screen, so send the user
+            // there rather than dropping the tap. (A tap landing in the
+            // tiny healthy window between process start and bind also ends
+            // up here; the user backs out and the next tap works.) The
+            // enabled flag is logged so a field log can refute this.
             else -> {
                 Log.i(
                     "PlayTranslateTile",
