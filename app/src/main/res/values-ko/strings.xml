@@ -32,7 +32,7 @@
 
     <string name="accessibility_dialog_title">접근성 권한이 필요합니다</string>
 
-    <string name="accessibility_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>는 아래쪽 화면에서 열린 상태로 위쪽 화면의 게임 화면을 캡처하기 위해 접근성 권한이 필요합니다.\n\n<xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g>는 UI 콘텐츠를 읽거나 입력을 모니터링하거나 개인 데이터에 접근하지 않습니다. 번역을 누르거나 실시간 모드를 시작할 때만 화면을 캡처합니다.\n\n설정 → 접근성 → 다운로드된 앱 → <xliff:g id="app_name3" example="PlayTranslate">PlayTranslate</xliff:g> → 사용 설정으로 이동하세요.</string>
+    <string name="accessibility_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>는 아래쪽 화면에서 열린 상태로 위쪽 화면의 게임 화면을 캡처하기 위해 접근성 권한이 필요합니다.\n\n<xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g>는 UI 콘텐츠를 읽거나 입력을 모니터링하거나 개인 데이터에 접근하지 않습니다. 번역을 누르거나 실시간 모드를 시작할 때만 화면을 캡처합니다.\n\n설정 → 접근성 → 다운로드한 앱 → <xliff:g id="app_name3" example="PlayTranslate">PlayTranslate</xliff:g> → 사용 설정으로 이동하세요.</string>
 
     <string name="accessibility_dialog_open">접근성 설정 열기</string>
 
@@ -140,11 +140,7 @@
 
     <string name="btn_open_overlay_settings">설정 열기</string>
 
-    <string name="restricted_settings_title">제한된 설정 허용</string>
-
-    <string name="restricted_settings_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>의 Android 설정 페이지에서 오른쪽 상단의 점 3개(⋮) 버튼을 누른 다음 “제한된 설정 허용”을 선택하세요. 인증 후 접근성 권한을 켤 수 있습니다.</string>
-
-    <string name="btn_open_app_settings"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 설정 열기</string>
+    <string name="a11y_restricted_settings_addendum">Android 13 이상에서 스위치가 회색으로 표시되어 있으면 한 번 탭한 다음, <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>의 앱 정보 페이지를 열고 점 3개(⋮) 메뉴를 탭한 후 “제한된 설정 허용”을 선택하세요.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          WORD DETAIL
@@ -437,13 +433,13 @@
 
     <string name="overlay_icon_a11y_required_title">접근성 필요</string>
 
-    <string name="overlay_icon_a11y_required_message">플로팅 아이콘을 게임 화면 위에 표시하려면 접근성 권한이 필요합니다.\n\n설정 → 접근성 → 다운로드된 앱 → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → 사용 설정으로 이동하세요.</string>
+    <string name="overlay_icon_a11y_required_message">플로팅 아이콘을 게임 화면 위에 표시하려면 접근성 권한이 필요합니다.\n\n설정 → 접근성 → 다운로드한 앱 → <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> → 사용 설정으로 이동하세요.</string>
 
     <string name="a11y_stuck_title">접근성을 다시 시작해야 합니다</string>
 
-    <string name="a11y_stuck_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>의 접근성이 사용 설정되어 있지만, Android가 서비스를 중지했고 스스로 다시 시작하지 않습니다. 기기의 접근성 설정에서 앱이 오작동 중인 것으로 표시될 수 있습니다. 보통 시스템이 배터리를 절약하려고 앱을 강제 중지한 뒤에 발생합니다.\n\n해결하려면 접근성 설정에서 서비스를 껐다가 다시 켜세요.</string>
+    <string name="a11y_stuck_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>의 접근성이 사용 설정되어 있지만, Android가 서비스를 중지했고 스스로 다시 시작하지 않습니다. 기기의 접근성 설정에서 앱이 오작동 중인 것으로 표시될 수 있습니다.\n\n해결하려면 접근성 설정에서 서비스를 껐다가 다시 켜세요.</string>
 
-    <string name="a11y_stuck_message_xiaomi">Xiaomi 기기에서는 앱의 시스템 설정에서 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>의 자동 시작도 사용 설정하고, 배터리 세이버를 제한 없음으로 설정하세요. 그렇게 하지 않으면 시스템이 계속 서비스를 중지합니다.</string>
+    <string name="a11y_stuck_message_xiaomi">Xiaomi 기기에서는 앱의 시스템 설정에서 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>의 자동 시작도 허용하고, 배터리 사용량을 제한 없음으로 설정하세요. 그렇게 하지 않으면 시스템이 계속 서비스를 중지할 수 있습니다.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          ACCESSIBILITY-REQUIRED ALERT
@@ -1369,6 +1365,10 @@
 
     <string name="crash_email_body">재현 단계:\n\n(선택 사항 — 이 문제가 발생했을 때 무엇을 하고 있었는지 설명해 주세요.)\n\n기기 정보는 첨부된 파일에 포함되어 있습니다.</string>
 
+    <string name="crash_email_chooser_title">충돌 보고서 보내기</string>
+
+    <string name="email_no_app_fallback">이메일 앱이 없습니다. 다른 방법으로 <xliff:g id="email" example="support@playtranslate.com">%1$s</xliff:g>에 파일을 보내세요.</string>
+
     <string name="update_dialog_title">업데이트 사용 가능</string>
 
     <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g>을(를) <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>에서 받을 수 있습니다.</string>
@@ -1925,7 +1925,6 @@
 
     <string name="anki_deck_not_selected_subtitle">선택 안 됨</string>
 
-
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Support section rows
          ═══════════════════════════════════════════════════════════════ -->
@@ -1937,6 +1936,92 @@
     <string name="settings_support_donate_title">PlayTranslate 후원하기</string>
 
     <string name="settings_support_donate_subtitle">사랑으로 만든 무료 오픈소스 프로젝트입니다. 계속될 수 있도록 도와주세요.</string>
+
+    <string name="settings_support_keep_running_title">아이콘이 사라질 때</string>
+
+    <string name="settings_support_keep_running_subtitle"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 자동 종료 방지</string>
+
+    <string name="settings_support_report_bug_title">버그 신고</string>
+
+    <string name="settings_support_report_bug_subtitle">지원팀에 로그를 메일로 전송. 길게 눌러 공유.</string>
+
+    <string name="settings_support_report_bug_email_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 버그 신고 – v<xliff:g id="version" example="2.2.0">%1$s</xliff:g></string>
+
+    <string name="settings_support_report_bug_email_body">무슨 일이 있었나요?\n\n(무엇을 하고 있었는지, 어떤 문제가 생겼는지 설명해 주세요.)\n\n기기 정보와 최근 로그가 첨부되어 있습니다.</string>
+
+    <string name="settings_support_report_bug_chooser_title">버그 신고 보내기</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         KILL NOTICE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="kill_notice_title">Android가 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>를 종료했습니다</string>
+
+    <string name="kill_notice_body_memory">휴대전화의 메모리가 부족해져서 켜져 있던 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>가 종료되었습니다. 플로팅 아이콘이 사라진 것은 이 때문입니다.</string>
+
+    <string name="kill_notice_body_other">켜져 있던 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>를 휴대전화가 종료했습니다. 플로팅 아이콘이 사라진 것은 이 때문입니다. 일부 휴대전화는 배터리를 절약하려고 이렇게 합니다.</string>
+
+    <string name="kill_notice_body_stopped">켜져 있던 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>가 중지되었습니다. 직접 중지하지 않았다면 휴대전화의 배터리 또는 메모리 관리 기능이 중지했을 수 있습니다. 플로팅 아이콘이 사라진 것은 이 때문입니다.</string>
+
+    <string name="kill_notice_restored">지금은 다시 켜져 있습니다.</string>
+
+    <string name="kill_notice_see_options">해결 방법 보기</string>
+
+    <string name="kill_notice_not_now">나중에</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         KEEP RUNNING PAGE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="keep_running_title">아이콘이 사라질 때</string>
+
+    <string name="keep_running_intro">이 설정을 하면 게임 중에 휴대전화가 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>를 종료할 가능성이 줄어듭니다.</string>
+
+    <string name="keep_running_empty">더 이상 권장하는 설정이 없습니다. 문제가 계속되면 증상을 재현한 다음 버그를 신고해 주세요.</string>
+
+    <string name="keep_running_battery_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>가 항상 백그라운드에서 실행되도록 허용</string>
+
+    <string name="keep_running_battery_line">허용하면 휴대전화가 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>를 종료해도 앱이 스스로 다시 시작할 수 있습니다.</string>
+
+    <string name="keep_running_accessibility_title">접근성 모드 사용</string>
+
+    <string name="keep_running_accessibility_line"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>를 접근성 서비스의 우선순위로 실행합니다. 메모리 정리로 종료되는 일이 거의 없습니다.</string>
+
+    <string name="keep_running_accessibility_restart_line">Android가 서비스를 중지했고 스스로 다시 시작하지 않습니다. 접근성 설정에서 서비스를 껐다가 다시 켜세요.</string>
+
+    <string name="keep_running_tile_title">빠른 설정 타일 추가</string>
+
+    <string name="keep_running_tile_line">어느 화면에서든 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>를 다시 켤 수 있습니다.</string>
+
+    <string name="keep_running_screen_unavailable">이 휴대전화에서는 해당 화면을 열 수 없습니다. 대신 휴대전화 설정에서 이 항목을 검색하세요.</string>
+
+    <string name="keep_running_xiaomi_autostart_title">자동 시작 허용</string>
+
+    <string name="keep_running_xiaomi_autostart_line">설정에서 자동 시작을 검색하여 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>에 허용하세요. 허용하지 않으면 <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g>가 종료된 뒤 Xiaomi가 앱을 다시 시작하지 못하게 할 수 있습니다.</string>
+
+    <string name="keep_running_xiaomi_battery_title">배터리 사용량을 제한 없음으로 설정</string>
+
+    <string name="keep_running_xiaomi_battery_line"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>의 앱 설정에서 배터리 항목(버전에 따라 배터리 세이버, 배터리 또는 전원)을 열고 제한 없음을 선택하세요.</string>
+
+    <string name="keep_running_xiaomi_lock_title">최근 앱에서 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 잠그기</string>
+
+    <string name="keep_running_xiaomi_lock_line">최근 앱 화면을 열고 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 카드를 길게 누른 다음 잠금 아이콘을 탭하세요. 일부 버전에서는 대신 카드를 아래로 끌어내리세요.</string>
+
+    <string name="keep_running_huawei_app_launch_title">앱 실행을 수동으로 관리</string>
+
+    <string name="keep_running_huawei_app_launch_line">설정에서 앱 실행을 검색하고, <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>의 “자동 관리”를 끈 다음 “자동 실행”, “보조 실행”, “백그라운드에서 실행”을 켜세요.</string>
+
+    <string name="keep_running_oppo_auto_launch_title">자동 실행 및 백그라운드 활동 허용</string>
+
+    <string name="keep_running_oppo_auto_launch_line">설정에서 자동 실행을 검색하여 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>에 허용한 다음, 앱의 배터리 설정에서 백그라운드 활동도 허용하세요. 허용하지 않으면 휴대전화가 백그라운드에서 <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g>를 중지하거나, 앱이 다시 시작하지 못하게 할 수 있습니다.</string>
+
+    <string name="keep_running_vivo_autostart_title">자동 시작 및 백그라운드 전력 사용 허용</string>
+
+    <string name="keep_running_vivo_autostart_line">설정에서 자동 시작을 검색하여 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>에 허용한 다음, 배터리 설정에서 백그라운드 고전력 사용도 허용하세요. 허용하지 않으면 휴대전화가 백그라운드에서 <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g>를 중지하거나, 앱이 다시 시작하지 못하게 할 수 있습니다.</string>
+
+    <string name="keep_running_samsung_never_sleeping_title">자동 절전 예외 앱에 추가</string>
+
+    <string name="keep_running_samsung_never_sleeping_line">배터리 설정의 백그라운드 앱 사용 제한에서 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>를 자동 절전 예외 앱에 추가하세요. Samsung은 며칠 동안 사용하지 않은 앱을 절전 상태로 전환하고 백그라운드에서 할 수 있는 작업을 제한합니다.</string>
 
     <string name="settings_support_check_updates_title">업데이트 확인</string>
 
@@ -1977,10 +2062,6 @@
     <string name="dictionary_status_no_results">결과 없음</string>
 
     <string name="dictionary_status_error">검색할 수 없음</string>
-
-    <string name="settings_debug_export_logs_title">로그 내보내기</string>
-
-    <string name="settings_debug_export_logs_subtitle">버그 신고를 위해 최근 로그 공유</string>
 
     <string name="settings_debug_export_logs_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 로그</string>
 

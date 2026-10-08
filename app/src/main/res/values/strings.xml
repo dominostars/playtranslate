@@ -275,19 +275,22 @@
          apps) Settings. -->
     <string name="btn_open_overlay_settings">Open Settings</string>
 
-    <!-- Title of the "Restricted Settings" dialog shown on Android 13+
-         when the OS has blocked the Accessibility toggle for sideloaded
-         apps. -->
-    <string name="restricted_settings_title">Allow Restricted Settings</string>
-
-    <!-- Body of the "Restricted Settings" dialog — walks the user
-         through enabling restricted settings via the three-dot (⋮) menu
-         on the app's system Settings page. -->
-    <string name="restricted_settings_message">From <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>\'s Android settings page, select the button on the top right with three dots (⋮) and then select \"Allow restricted settings\". After authenticating, you should be able to turn on accessibility permissions.</string>
-
-    <!-- Button that opens the system App Info / Settings page for
-         PlayTranslate. -->
-    <string name="btn_open_app_settings">Open <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> Settings</string>
+    <!-- Paragraph appended, on Android 13 and later only, to every prompt
+         that sends the user to enable the accessibility service
+         (AccessibilityHelp). Source: AOSP main, read 2026-10-07. The system
+         package installer tags an APK installed from a downloaded or local
+         file, which greys the service's switch; tapping the greyed switch
+         shows the "Restricted setting" dialog
+         (blocked_by_restricted_settings_title), whose activity marks the
+         app op IGNORED (ActionDisabledByAppOpsDialog), and only in that
+         state does App info's overflow menu show "Allow restricted
+         settings" (AppInfoDashboardFragment.shouldShowAccessRestrictedSettings,
+         app_restricted_settings_lockscreen_title). "App info" is
+         application_info_label. OEM installers and OEM App info layouts
+         were not checked, so the line says "if" and gives the menu no
+         position (also top left in RTL). One sentence: it rides the
+         280dp OverlayAlert card as well as the system dialogs. -->
+    <string name="a11y_restricted_settings_addendum">On Android 13 and later, if the switch is greyed out, tap it once, then open <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>\'s App info page, tap the ⋮ menu and choose Allow restricted settings.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          WORD DETAIL (bottom-sheet shown when tapping a tokenized word)
@@ -1056,15 +1059,20 @@
     <!-- Title of the alert shown when the accessibility service is enabled
          in system Settings but Android has stopped it and will not rebind
          it (the state the system's accessibility page reports as
-         "malfunctioning", typically after a force stop). -->
+         "malfunctioning"). The cause is a kill whose restart was blocked;
+         it is not a force stop, which on stock Android disables the
+         service outright. -->
     <string name="a11y_stuck_title">Accessibility needs a restart</string>
 
-    <!-- Body of the same alert. -->
-    <string name="a11y_stuck_message">Accessibility is enabled for <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, but Android has stopped the service and will not restart it on its own. Your device may report the app as malfunctioning in accessibility settings. This usually happens after the system force-stops the app to save battery.\n\nTo fix it, turn the service off and back on in your accessibility settings.</string>
+    <!-- Body of the same alert. Names no cause, since none is established
+         for any one phone. -->
+    <string name="a11y_stuck_message">Accessibility is enabled for <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, but Android has stopped the service and will not restart it on its own. Your device may report the app as malfunctioning in accessibility settings.\n\nTo fix it, turn the service off and back on in your accessibility settings.</string>
 
-    <!-- Extra paragraph appended to the same alert on Xiaomi devices, whose
-         battery manager force-stops apps without the Autostart permission. -->
-    <string name="a11y_stuck_message_xiaomi">On Xiaomi devices, also enable Autostart for <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> and set Battery saver to No restrictions in the app\'s system settings. Without these, the system will keep stopping the service.</string>
+    <!-- Extra paragraph appended to the same alert on Xiaomi devices: the
+         two settings of the Fix disappearing icon page's Xiaomi cards
+         (sources in their comments). Neither entry's label is quoted,
+         since both vary by MIUI / HyperOS version. -->
+    <string name="a11y_stuck_message_xiaomi">On Xiaomi devices, also allow autostart for <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> and set its battery use to No restrictions in the app\'s system settings. Without these, the system may keep stopping the service.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          ACCESSIBILITY-REQUIRED ALERT (capture-display picker, hotkeys,
@@ -3872,81 +3880,151 @@
 
     <!-- Centered label in the cards' place when every setting on the page
          is already made: nothing left to recommend, so it points at the
-         Report a bug row beneath. NOT YET LOCALIZED (en only until the
-         next localization sync). -->
+         Report a bug row beneath. -->
     <string name="keep_running_empty">There are no other recommended settings. If you are still having problems, please reproduce the issue then report a bug.</string>
 
-    <!-- Card title: the standard Android per-app battery setting ("Unrestricted"
-         is Android's own word for it, kept so the user can find it). -->
-    <string name="keep_running_battery_title">Set battery usage to Unrestricted</string>
+    <!-- Every card below names a setting the user must find alone, so each
+         string's comment records the source its words were read from, with
+         the version scope the source states. An effect claim appears only
+         with a source or a measurement behind it; the rest is hedged. -->
 
-    <!-- Line under the battery card; also used under Xiaomi's battery card. -->
-    <string name="keep_running_battery_line">Without this, your phone may close <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> while you use it.</string>
+    <!-- Card title: the standard Android battery exemption, worded after
+         the system dialog the row opens, "Let app always run in
+         background?" (AOSP Settings high_power_prompt_title, main, read
+         2026-10-07). The resulting state is labelled "Unrestricted" on
+         Android 12+ and "Not optimized" on 10 and 11
+         (manager_battery_usage_unrestricted_title, high_power_on), so
+         neither label is quoted. Hidden once held. -->
+    <string name="keep_running_battery_title">Let <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> always run in the background</string>
+
+    <!-- Line under the battery card. A verified effect: the exemption lets
+         Android's own restart of the killed service promote to the
+         foreground and restore the icon with no app open (AOSP read
+         2026-10-06, commit 08be2403; Moto G pass 2026-10-07: icon back
+         about 36 s after a kill while locked, and without the exemption
+         only at the next app open). -->
+    <string name="keep_running_battery_line">If your phone closes <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, this lets it start again on its own.</string>
 
     <!-- Card title: enable the accessibility service (the "Enhanced
-         auto-translate" mode). Hidden once enabled. -->
+         auto-translate" mode). Hidden once enabled and bound. -->
     <string name="keep_running_accessibility_title">Use accessibility mode</string>
 
-    <!-- Line under the accessibility card. -->
+    <!-- Line under the accessibility card. A measurement, not a page:
+         process priority 100 with the service bound against 200 on the
+         MediaProjection backend (Moto G 2025 and the Thor), and the Moto's
+         low-memory kill wave of 2026-10-05 stopped above 100. On Android
+         13+ AccessibilityHelp appends a11y_restricted_settings_addendum. -->
     <string name="keep_running_accessibility_line">Runs <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> with the priority of an accessibility service, which memory cleanups rarely reach.</string>
 
     <!-- Line under the accessibility card when the service is enabled in
-         Settings but Android has not bound it (the state after a force
-         stop); the card's title is then a11y_stuck_title. -->
+         Settings but Android has not bound it (a kill whose restart was
+         blocked); the card's title is then a11y_stuck_title. -->
     <string name="keep_running_accessibility_restart_line">Android stopped it and will not restart it on its own. Turn it off and on again in accessibility settings.</string>
 
     <!-- Card title: the Quick Settings tile (Android 13+). Hidden once added. -->
     <string name="keep_running_tile_title">Add the Quick Settings tile</string>
 
-    <!-- Line under the tile card. -->
-    <string name="keep_running_tile_line">One swipe and a tap turns <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> back on from any screen.</string>
+    <!-- Line under the tile card. No tap count is promised: on the
+         MediaProjection backend the tap is followed by the system's
+         screen-capture consent. -->
+    <string name="keep_running_tile_line">Turns <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> back on from any screen.</string>
 
-    <!-- Xiaomi / Redmi / POCO card: the Security app's Autostart switch. -->
+    <!-- Toast shown when a card's own settings screen cannot be opened and
+         the app's App info page opens instead; the card title names the
+         setting to search for. -->
+    <string name="keep_running_screen_unavailable">Couldn\'t open that screen. Search your phone\'s Settings for the setting instead.</string>
+
+    <!-- Xiaomi / Redmi / POCO card. The switch is "Background autostart"
+         under Settings > Apps > Permissions on HyperOS (mi.com FAQ
+         KA-507608 for the Xiaomi 14T, quoted through a search engine, as
+         mi.com refuses automated reads; DriveQuant's HyperOS 1, 2 and 3
+         guides, secondary, undated) and "Autostart" on older MIUI
+         (consumer.huawei.com en-us15850067 for Xiaomi on Android 9, read
+         2026-10-07), so the line gives "autostart" as a search word rather
+         than either label. -->
     <string name="keep_running_xiaomi_autostart_title">Allow autostart</string>
 
-    <!-- Line under the Xiaomi autostart card. -->
-    <string name="keep_running_xiaomi_autostart_line">Without this, Xiaomi stops <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> and does not let it come back.</string>
+    <!-- Line under the Xiaomi autostart card. The effect is hedged: the
+         switch governs starting in the background by its own description
+         ("allowed to start in background", the DriveQuant guides); no
+         source states what happens without it. -->
+    <string name="keep_running_xiaomi_autostart_line">In Settings, search for autostart and allow it for <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>. Without it, Xiaomi may keep <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> from starting again after closing it.</string>
 
-    <!-- Xiaomi card: the per-app "Battery saver" setting, whose "No
-         restrictions" option is Xiaomi's own wording. -->
-    <string name="keep_running_xiaomi_battery_title">Set Battery saver to No restrictions</string>
+    <!-- Xiaomi card: the per-app battery entry, whose "No restrictions"
+         option is the one constant. The entry is "Battery saver" on MIUI
+         and HyperOS 1 (consumer.huawei.com en-us15850067, Android 9;
+         DriveQuant HyperOS guide), "Battery" on HyperOS 2 and "Power" on
+         HyperOS 3 (DriveQuant per-version guides, secondary, undated), so
+         the title avoids it and the line lists all three. Always shown:
+         no app can read the setting, and Android's battery exemption is
+         no proxy for it (one decompile of China HyperOS on Android 16,
+         secondary, says No restrictions adds the exemption; nothing says
+         the reverse). -->
+    <string name="keep_running_xiaomi_battery_title">Set battery use to No restrictions</string>
+
+    <!-- Line under the Xiaomi battery card: where the entry is, by version. -->
+    <string name="keep_running_xiaomi_battery_line">In <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>\'s app settings, open the battery entry (Battery saver, Battery or Power, depending on your version) and choose No restrictions.</string>
 
     <!-- Xiaomi card, instructions only (no screen to open): lock the app's
-         card in the Recents screen. -->
+         card in the Recents screen. Gesture: touch and hold the card, then
+         lock (consumer.huawei.com en-us15850067 for Xiaomi on Android 9);
+         some versions lock on pulling the card down (dontkillmyapp.com/xiaomi,
+         secondary). No source states what locking spares the app from, so
+         the line claims nothing. -->
     <string name="keep_running_xiaomi_lock_title">Lock <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> in Recents</string>
 
-    <!-- Line under the Xiaomi lock card: the steps, then the reason. -->
-    <string name="keep_running_xiaomi_lock_line">Open Recents, hold the <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> card and tap the lock. Memory cleanup skips locked apps.</string>
+    <!-- Line under the Xiaomi lock card: the gesture. -->
+    <string name="keep_running_xiaomi_lock_line">Open Recents, hold the <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> card and tap the lock. On some versions, pull the card down instead.</string>
 
-    <!-- Huawei / Honor card: the "App launch" screen, set to manage manually. -->
+    <!-- Huawei / Honor card: the "App launch" screen, where an app goes
+         from "Manage automatically" to three manual switches. Labels and
+         the search path from consumer.huawei.com en-us00414587 (read
+         2026-10-07, no version stated); Huawei's localized 00428704
+         articles carry the same labels per language. -->
     <string name="keep_running_huawei_app_launch_title">Manage App launch manually</string>
 
-    <!-- Line under the Huawei App launch card: the three switches to turn on. -->
-    <string name="keep_running_huawei_app_launch_line">Turn on Auto-launch, Secondary launch and Run in background for <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>.</string>
+    <!-- Line under the Huawei App launch card: the path, then the switches. -->
+    <string name="keep_running_huawei_app_launch_line">In Settings, search for App launch, turn off Manage automatically for <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, then turn on Auto-launch, Secondary launch and Run in background.</string>
 
-    <!-- Huawei / Honor card: the battery option that closes apps at lock. -->
-    <string name="keep_running_huawei_close_after_lock_title">Turn off Close apps after screen lock</string>
-
-    <!-- Line under that card: where the option is, then the reason. -->
-    <string name="keep_running_huawei_close_after_lock_line">In Battery settings, under More battery settings. Otherwise <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> closes whenever the screen locks.</string>
-
-    <!-- OPPO / realme / OnePlus card: ColorOS auto-launch and background activity. -->
+    <!-- OPPO / realme / OnePlus card. "Auto-launch apps" under Phone
+         Manager > Privacy permissions, and Settings > Battery > App battery
+         management (consumer.huawei.com en-us15850071 for OPPO on Android
+         10+, read 2026-10-07); on OxygenOS 14 the per-app switches sit
+         under the app's Battery usage as "Allow background activity"
+         (DriveQuant guide, secondary). The line gives search words, not a
+         path, since the two ROMs differ. -->
     <string name="keep_running_oppo_auto_launch_title">Allow auto-launch and background activity</string>
 
-    <!-- Line under the OPPO card. -->
-    <string name="keep_running_oppo_auto_launch_line">Without these, the phone closes <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> soon after you leave it.</string>
+    <!-- Line under the OPPO card. The effect is hedged; no source states it. -->
+    <string name="keep_running_oppo_auto_launch_line">In Settings, search for auto-launch and allow it for <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, then in its battery settings allow background activity. Without these, the phone may stop <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> in the background or keep it from starting again.</string>
 
-    <!-- vivo / iQOO card: autostart and background power use. -->
+    <!-- vivo / iQOO card. "Autostart" (in iManager, or Settings > More
+         settings > Applications on newer versions) and Settings > Battery >
+         "High background power consumption" (consumer.huawei.com
+         en-us15850064 for vivo on Android 10+, read 2026-10-07;
+         dontkillmyapp.com/vivo, secondary). The battery label is not quoted,
+         since an older vivo post has it as "usage". -->
     <string name="keep_running_vivo_autostart_title">Allow autostart and background power use</string>
 
-    <!-- Line under the vivo card. -->
-    <string name="keep_running_vivo_autostart_line">Without these, the phone closes <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> soon after you leave it.</string>
+    <!-- Line under the vivo card. The effect is hedged; no source states it. -->
+    <string name="keep_running_vivo_autostart_line">In Settings, search for Autostart and allow it for <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, then in the Battery settings allow it high background power use. Without these, the phone may stop <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> in the background or keep it from starting again.</string>
 
-    <!-- Samsung card: the Device care "Never sleeping apps" list. -->
+    <!-- Samsung card: the "Never sleeping apps" list under "Background
+         usage limits" in the Battery settings (samsung.com/us ANS00088422,
+         read 2026-10-07: Settings > Battery and device care > Battery >
+         Background usage limits; developer.samsung.com app-management,
+         One UI 6: Settings > Device care > Battery > Background usage
+         limits). Only the two words every version shares are quoted. The
+         row opens the list through Samsung's documented intent. -->
     <string name="keep_running_samsung_never_sleeping_title">Add to Never sleeping apps</string>
 
-    <!-- Line under the Samsung card: where the list is, then the reason. -->
-    <string name="keep_running_samsung_never_sleeping_line">In Device care, under Battery and Background usage limits. Sleeping apps are closed when the phone wants memory.</string>
+    <!-- Line under the Samsung card: where the list is, then what sleeping
+         means in Samsung's own words (developer page: an app unused for
+         about 3 days with poor system health is put to sleep and its jobs,
+         alarms and foreground services restricted; support page:
+         never-sleeping apps "will never turn off or sleep in the
+         background"). -->
+    <string name="keep_running_samsung_never_sleeping_line">In the Battery settings, under Background usage limits, add <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> to Never sleeping apps. Samsung puts apps it has not seen used for a few days to sleep and limits what they can do in the background.</string>
 
     <!-- Row title — manual update check (first row of the Support section). -->
     <string name="settings_support_check_updates_title">Check for updates</string>

@@ -129,11 +129,7 @@
 
     <string name="btn_open_overlay_settings">فتح الإعدادات</string>
 
-    <string name="restricted_settings_title">السماح بالإعدادات المقيَّدة</string>
-
-    <string name="restricted_settings_message">من صفحة إعدادات Android الخاصة بـ <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>، اضغط على زر النقاط الثلاث (⋮) في أعلى اليسار ثم اختر «السماح بالإعدادات المقيَّدة». بعد المصادقة، ستتمكن من تفعيل أذونات إمكانية الوصول.</string>
-
-    <string name="btn_open_app_settings">فتح إعدادات <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+    <string name="a11y_restricted_settings_addendum">في Android 13 أو أحدث، إذا ظهر مفتاح التبديل باللون الرمادي، فاضغط عليه مرة واحدة، ثم افتح صفحة «معلومات التطبيق» الخاصة بتطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>، واضغط على رمز المزيد ⋮ واختر «السماح بالإعدادات المحظورة».</string>
 
     <!-- ═══ WORD DETAIL ═══ -->
 
@@ -432,9 +428,9 @@
 
     <string name="a11y_stuck_title">إمكانية الوصول تحتاج إلى إعادة تشغيل</string>
 
-    <string name="a11y_stuck_message">إمكانية الوصول مفعّلة لتطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>، لكن Android أوقف الخدمة ولن يعيد تشغيلها من تلقاء نفسه. قد يشير جهازك إلى أن التطبيق لا يعمل بشكل صحيح في إعدادات إمكانية الوصول. يحدث هذا عادةً بعد أن يوقف النظام التطبيق إجباريًا لتوفير البطارية.\n\nلإصلاح ذلك، أوقف الخدمة ثم شغّلها مرة أخرى من إعدادات إمكانية الوصول.</string>
+    <string name="a11y_stuck_message">إمكانية الوصول مفعّلة لتطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>، لكن Android أوقف الخدمة ولن يعيد تشغيلها من تلقاء نفسه. قد يشير جهازك إلى أن التطبيق لا يعمل بشكل صحيح في إعدادات إمكانية الوصول.\n\nلإصلاح ذلك، أوقف الخدمة ثم شغّلها مرة أخرى من إعدادات إمكانية الوصول.</string>
 
-    <string name="a11y_stuck_message_xiaomi">على أجهزة Xiaomi، فعّل أيضًا التشغيل التلقائي لتطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> واضبط موفّر البطارية على «بدون قيود» في إعدادات النظام الخاصة بالتطبيق. بدون ذلك، سيستمر النظام في إيقاف الخدمة.</string>
+    <string name="a11y_stuck_message_xiaomi">على أجهزة Xiaomi، اسمح أيضًا بالتشغيل التلقائي لتطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> واضبط استخدامه للبطارية على «بدون قيود» في إعدادات النظام الخاصة بالتطبيق. بدون ذلك، قد يستمر النظام في إيقاف الخدمة.</string>
 
     <!-- ═══ ACCESSIBILITY-REQUIRED ALERT ═══ -->
 
@@ -1295,6 +1291,10 @@
 
     <string name="crash_email_body">خطوات إعادة الإنتاج:\n\n(اختياري — صف ما كنت تفعله عند حدوث ذلك.)\n\nمعلومات الجهاز مُضمَّنة في الملف المرفق.</string>
 
+    <string name="crash_email_chooser_title">إرسال تقرير التعطل</string>
+
+    <string name="email_no_app_fallback">لم يُعثر على تطبيق بريد إلكتروني. أرسل الملفات إلى <xliff:g id="email" example="support@playtranslate.com">%1$s</xliff:g> بطريقة أخرى.</string>
+
     <string name="update_dialog_title">تحديث متاح</string>
 
     <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> متاح على <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>.</string>
@@ -1882,7 +1882,6 @@
 
     <string name="anki_deck_not_selected_subtitle">غير محدد</string>
 
-
     <!-- ═══ SETTINGS — Support section rows ═══ -->
 
     <string name="settings_support_discord_title">الانضمام إلى <xliff:g id="brand_discord" example="Discord">Discord</xliff:g></string>
@@ -1892,6 +1891,88 @@
     <string name="settings_support_donate_title">دعم PlayTranslate</string>
 
     <string name="settings_support_donate_subtitle">مشروع مجاني ومفتوح المصدر صُنع بشغف. ساعد في استمراره.</string>
+
+    <string name="settings_support_keep_running_title">إصلاح اختفاء الأيقونة</string>
+
+    <string name="settings_support_keep_running_subtitle">امنع هاتفك من إغلاق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="settings_support_report_bug_title">الإبلاغ عن خطأ</string>
+
+    <string name="settings_support_report_bug_subtitle">أرسل السجلات إلى الدعم بالبريد. اضغط مطولاً للمشاركة.</string>
+
+    <string name="settings_support_report_bug_email_subject">تقرير خطأ في <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> – v<xliff:g id="version" example="2.2.0">%1$s</xliff:g></string>
+
+    <string name="settings_support_report_bug_email_body">ماذا حدث؟\n\n(صف ما كنت تفعله وما المشكلة التي واجهتها.)\n\nمعلومات الجهاز والسجلات الأخيرة مرفقة.</string>
+
+    <string name="settings_support_report_bug_chooser_title">إرسال تقرير الخطأ</string>
+
+    <!-- ═══ KILL NOTICE ═══ -->
+
+    <string name="kill_notice_title">أغلق Android تطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="kill_notice_body_memory">انخفضت الذاكرة المتاحة في هاتفك، فأغلق تطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> بينما كان قيد التشغيل. ولهذا اختفت الأيقونة العائمة.</string>
+
+    <string name="kill_notice_body_other">أغلق هاتفك تطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> بينما كان قيد التشغيل. ولهذا اختفت الأيقونة العائمة. تفعل بعض الهواتف ذلك لتوفير البطارية.</string>
+
+    <string name="kill_notice_body_stopped">تم إيقاف تطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> بينما كان قيد التشغيل. إن لم تكن أنت من أوقفه، فربما أوقفه مدير البطارية أو الذاكرة في هاتفك. ولهذا اختفت الأيقونة العائمة.</string>
+
+    <string name="kill_notice_restored">وقد عاد التطبيق إلى العمل الآن.</string>
+
+    <string name="kill_notice_see_options">عرض الخيارات</string>
+
+    <string name="kill_notice_not_now">ليس الآن</string>
+
+    <!-- ═══ KEEP RUNNING PAGE ═══ -->
+
+    <string name="keep_running_title">إصلاح اختفاء الأيقونة</string>
+
+    <string name="keep_running_intro">تقلّل هذه الإعدادات احتمال أن يغلق هاتفك تطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> أثناء اللعب.</string>
+
+    <string name="keep_running_empty">لا توجد إعدادات أخرى موصى بها. إذا استمرت المشكلة، فكرّر ما أدى إليها ثم أبلغ عن خطأ.</string>
+
+    <string name="keep_running_battery_title">السماح بتشغيل <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> في الخلفية دائمًا</string>
+
+    <string name="keep_running_battery_line">إذا أغلق هاتفك تطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>، يتيح له هذا الإعداد العودة إلى العمل من تلقاء نفسه.</string>
+
+    <string name="keep_running_accessibility_title">استخدام وضع إمكانية الوصول</string>
+
+    <string name="keep_running_accessibility_line">يعمل تطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> بأولوية خدمة إمكانية الوصول، ونادرًا ما تطالها عمليات تنظيف الذاكرة.</string>
+
+    <string name="keep_running_accessibility_restart_line">أوقف Android الخدمة ولن يعيد تشغيلها من تلقاء نفسه. أوقفها ثم شغّلها مرة أخرى من إعدادات إمكانية الوصول.</string>
+
+    <string name="keep_running_tile_title">إضافة مربع الإعدادات السريعة</string>
+
+    <string name="keep_running_tile_line">يمكنك تشغيل <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> مجددًا من أي شاشة.</string>
+
+    <string name="keep_running_screen_unavailable">الشاشة المطلوبة غير متاحة على هذا الهاتف. ابحث عن هذا الإعداد في إعدادات هاتفك بدلًا من ذلك.</string>
+
+    <string name="keep_running_xiaomi_autostart_title">السماح بالتشغيل التلقائي</string>
+
+    <string name="keep_running_xiaomi_autostart_line">في الإعدادات، ابحث عن «التشغيل التلقائي» واسمح به لتطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>. بدون ذلك، قد يمنع نظام Xiaomi تطبيق <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> من العودة إلى العمل بعد أن يغلقه.</string>
+
+    <string name="keep_running_xiaomi_battery_title">ضبط استخدام البطارية على «بدون قيود»</string>
+
+    <string name="keep_running_xiaomi_battery_line">في إعدادات النظام الخاصة بتطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>، افتح خيار البطارية («موفّر البطارية» أو «البطارية» أو «الطاقة»، حسب إصدار النظام) واختر «بدون قيود».</string>
+
+    <string name="keep_running_xiaomi_lock_title">قفل <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> في التطبيقات الحديثة</string>
+
+    <string name="keep_running_xiaomi_lock_line">افتح التطبيقات الحديثة، واضغط مطولاً على بطاقة <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> ثم اضغط على القفل. في بعض الإصدارات، اسحب البطاقة إلى الأسفل بدلًا من ذلك.</string>
+
+    <string name="keep_running_huawei_app_launch_title">إدارة «تشغيل التطبيقات» يدويًا</string>
+
+    <string name="keep_running_huawei_app_launch_line">في الإعدادات، ابحث عن «تشغيل التطبيقات»، وعطّل «إدارة تلقائية» لتطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>، ثم فعّل «التشغيل التلقائي» و«التشغيل الثانوي» و«التشغيل في الخلفية».</string>
+
+    <string name="keep_running_oppo_auto_launch_title">السماح بالتشغيل التلقائي والنشاط في الخلفية</string>
+
+    <string name="keep_running_oppo_auto_launch_line">في الإعدادات، ابحث عن «التشغيل التلقائي» واسمح به لتطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>، ثم اسمح بالنشاط في الخلفية من إعدادات البطارية الخاصة بالتطبيق. بدون ذلك، قد يوقف الهاتف تطبيق <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> في الخلفية أو يمنعه من العودة إلى العمل.</string>
+
+    <string name="keep_running_vivo_autostart_title">السماح بالتشغيل التلقائي واستهلاك الطاقة في الخلفية</string>
+
+    <string name="keep_running_vivo_autostart_line">في الإعدادات، ابحث عن «التشغيل التلقائي» واسمح به لتطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>، ثم اسمح له باستهلاك مرتفع للطاقة في الخلفية من إعدادات البطارية. بدون ذلك، قد يوقف الهاتف تطبيق <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> في الخلفية أو يمنعه من العودة إلى العمل.</string>
+
+    <string name="keep_running_samsung_never_sleeping_title">الإضافة إلى «عدم وضع تطبيقات في سكون تلقائي مطلقاً»</string>
+
+    <string name="keep_running_samsung_never_sleeping_line">في إعدادات البطارية، ضمن «حدود استخدام الخلفية»، أضف تطبيق <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> إلى قائمة «عدم وضع تطبيقات في سكون تلقائي مطلقاً». تُدخل Samsung في وضع السكون التطبيقات التي لم يُرصد استخدامها منذ بضعة أيام، وتحدّ مما يمكنها فعله في الخلفية.</string>
 
     <string name="settings_support_check_updates_title">التحقق من التحديثات</string>
 
@@ -1935,10 +2016,6 @@
     <string name="dictionary_status_no_results">لا توجد نتائج</string>
 
     <string name="dictionary_status_error">تعذّر البحث عن ذلك</string>
-
-    <string name="settings_debug_export_logs_title">تصدير السجلات</string>
-
-    <string name="settings_debug_export_logs_subtitle">مشاركة السجلات الأخيرة لتقرير خطأ</string>
 
     <string name="settings_debug_export_logs_subject">سجلات <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
 

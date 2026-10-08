@@ -42,7 +42,7 @@ fun Activity.showAccessibilityRequiredAlert(requirement: AccessibilityRequiremen
     }
     OverlayAlert.Builder(this)
         .setTitle(getString(R.string.a11y_required_alert_title))
-        .setMessage(message)
+        .setMessage(AccessibilityHelp.withRestrictedSettingsStep(this, message))
         .addButton(
             getString(R.string.btn_open_a11y_settings),
             themeColor(R.attr.ptAccent),

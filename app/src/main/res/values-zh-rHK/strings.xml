@@ -140,11 +140,7 @@
 
     <string name="btn_open_overlay_settings">開啟設定</string>
 
-    <string name="restricted_settings_title">允許受限設定</string>
-
-    <string name="restricted_settings_message">在 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 的 Android 設定頁面，點按右上角的三點（⋮）按鈕，然後選擇「允許受限設定」。完成身份驗證後，你應該就能開啟無障礙權限了。</string>
-
-    <string name="btn_open_app_settings">開啟 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 設定</string>
+    <string name="a11y_restricted_settings_addendum">在 Android 13 或以上版本中，如果開關顯示為灰色，請先點按一次，然後開啟 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 的「應用程式資料」頁面，點按 ⋮ 選單並選擇「允許受限設定」。</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          WORD DETAIL
@@ -442,9 +438,9 @@
 
     <string name="a11y_stuck_title">無障礙服務需要重新啟動</string>
 
-    <string name="a11y_stuck_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 的無障礙權限已啟用，但 Android 已停止該服務且不會自行重新啟動。你的裝置可能會在無障礙設定中提示此應用程式運作異常。這通常發生在系統為省電而強制停止應用程式後。\n\n要解決此問題，請在無障礙設定中將該服務關閉後重新開啟。</string>
+    <string name="a11y_stuck_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 的無障礙權限已啟用，但 Android 已停止該服務且不會自行重新啟動。你的裝置可能會在無障礙設定中提示此應用程式運作異常。\n\n要解決此問題，請在無障礙設定中將該服務關閉後重新開啟。</string>
 
-    <string name="a11y_stuck_message_xiaomi">在小米裝置上，你亦需在應用程式的系統設定中為 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 開啟「自啟動」，並將省電策略設為「無限制」。否則系統會不斷停止該服務。</string>
+    <string name="a11y_stuck_message_xiaomi">在小米裝置上，你亦需在應用程式的系統設定中允許 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 自動啟動，並將其電池用量設為「無限制」。否則系統可能會不斷停止該服務。</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          ACCESSIBILITY-REQUIRED ALERT
@@ -459,7 +455,7 @@
     <string name="a11y_required_enhanced_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 使用這些增強控制來改善自動翻譯體驗。</string>
 
     <string name="requires_android_11_title">需要 Android 11</string>
-    <string name="requires_android_11_message">此功能需要 Android 11 或更高版本。</string>
+    <string name="requires_android_11_message">此功能需要 Android 11 或以上版本。</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          ENHANCED AUTO-TRANSLATE ROW
@@ -1408,6 +1404,10 @@
 
     <string name="crash_email_body">重現步驟：\n\n（可選——描述發生此問題時你正在進行的操作。）\n\n裝置資訊已附於附件中。</string>
 
+    <string name="crash_email_chooser_title">傳送崩潰報告</string>
+
+    <string name="email_no_app_fallback">找不到電郵應用程式。請透過其他方式將檔案傳送至 <xliff:g id="email" example="support@playtranslate.com">%1$s</xliff:g>。</string>
+
     <string name="update_dialog_title">有可用更新</string>
 
     <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> 已在 <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> 上發佈。</string>
@@ -1984,7 +1984,6 @@
 
     <string name="anki_deck_not_selected_subtitle">未選擇</string>
 
-
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Support section rows
          ═══════════════════════════════════════════════════════════════ -->
@@ -1996,6 +1995,92 @@
     <string name="settings_support_donate_title">支持 PlayTranslate</string>
 
     <string name="settings_support_donate_subtitle">一款免費、開源的用心之作。幫助它持續發展。</string>
+
+    <string name="settings_support_keep_running_title">解決圖示消失問題</string>
+
+    <string name="settings_support_keep_running_subtitle">防止手機關閉 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="settings_support_report_bug_title">報告錯誤</string>
+
+    <string name="settings_support_report_bug_subtitle">將日誌電郵給支援團隊。長按改為分享。</string>
+
+    <string name="settings_support_report_bug_email_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 錯誤報告 – v<xliff:g id="version" example="2.2.0">%1$s</xliff:g></string>
+
+    <string name="settings_support_report_bug_email_body">發生了什麼事？\n\n（請描述你當時在做什麼，以及出了什麼問題。）\n\n已附上裝置資訊和近期日誌。</string>
+
+    <string name="settings_support_report_bug_chooser_title">傳送錯誤報告</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         KILL NOTICE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="kill_notice_title">Android 關閉了 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="kill_notice_body_memory">你的手機記憶體不足，關閉了已開啟的 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>。這就是懸浮圖示消失的原因。</string>
+
+    <string name="kill_notice_body_other">你的手機關閉了已開啟的 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>。這就是懸浮圖示消失的原因。部分手機會為了省電而這樣做。</string>
+
+    <string name="kill_notice_body_stopped">已開啟的 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 被停止了。如果不是你自己停止的，可能是手機的電池或記憶體管理功能停止了它。這就是懸浮圖示消失的原因。</string>
+
+    <string name="kill_notice_restored">現在已重新開啟。</string>
+
+    <string name="kill_notice_see_options">查看解決方法</string>
+
+    <string name="kill_notice_not_now">暫不</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         KEEP RUNNING PAGE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="keep_running_title">解決圖示消失問題</string>
+
+    <string name="keep_running_intro">這些設定可以降低你在玩遊戲時手機關閉 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 的機會。</string>
+
+    <string name="keep_running_empty">沒有其他推薦的設定了。如果問題仍然存在，請先重現問題，然後報告錯誤。</string>
+
+    <string name="keep_running_battery_title">允許 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 一律在背景中執行</string>
+
+    <string name="keep_running_battery_line">如果手機關閉了 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>，此設定可讓它自行重新啟動。</string>
+
+    <string name="keep_running_accessibility_title">使用無障礙模式</string>
+
+    <string name="keep_running_accessibility_line">以無障礙服務的優先次序執行 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>，記憶體清理很少會關閉它。</string>
+
+    <string name="keep_running_accessibility_restart_line">Android 已停止該服務且不會自行重新啟動。請在無障礙設定中將其關閉後重新開啟。</string>
+
+    <string name="keep_running_tile_title">新增快速設定圖塊</string>
+
+    <string name="keep_running_tile_line">可在任何畫面重新開啟 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>。</string>
+
+    <string name="keep_running_screen_unavailable">此手機上無法開啟該頁面。請改為在手機的設定中搜尋該選項。</string>
+
+    <string name="keep_running_xiaomi_autostart_title">允許「自動啟動」</string>
+
+    <string name="keep_running_xiaomi_autostart_line">在設定中搜尋「自動啟動」，並允許 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 自動啟動。否則小米系統關閉 <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> 後，可能會阻止它重新啟動。</string>
+
+    <string name="keep_running_xiaomi_battery_title">將電池用量設為「無限制」</string>
+
+    <string name="keep_running_xiaomi_battery_line">在 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 的系統設定中，開啟電池相關的選項（視系統版本而定，名為「省電策略」、「電池」或「電量」），然後選擇「無限制」。</string>
+
+    <string name="keep_running_xiaomi_lock_title">在最近任務中鎖定 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g></string>
+
+    <string name="keep_running_xiaomi_lock_line">開啟最近任務，長按 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 的卡片並點按鎖定圖示。在部分版本中，請改為將卡片下拉。</string>
+
+    <string name="keep_running_huawei_app_launch_title">在「應用程式啟動管理」中改為手動管理</string>
+
+    <string name="keep_running_huawei_app_launch_line">在設定中搜尋「應用程式啟動管理」，關閉 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 的「自動管理」開關，然後開啟「允許自動啟動」、「允許二次啟動」和「允許背景活動」。</string>
+
+    <string name="keep_running_oppo_auto_launch_title">允許自動啟動和背景活動</string>
+
+    <string name="keep_running_oppo_auto_launch_line">在設定中搜尋「自動啟動」，並允許 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 自動啟動，然後在它的電池設定中允許背景活動。否則手機可能會在背景停止 <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g>，或阻止它重新啟動。</string>
+
+    <string name="keep_running_vivo_autostart_title">允許自動啟動和背景高耗電</string>
+
+    <string name="keep_running_vivo_autostart_line">在設定中搜尋「自動啟動」，並允許 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 自動啟動，然後在「電池」設定中允許它背景高耗電。否則手機可能會在背景停止 <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g>，或阻止它重新啟動。</string>
+
+    <string name="keep_running_samsung_never_sleeping_title">加入「永不自動休眠的應用程式」</string>
+
+    <string name="keep_running_samsung_never_sleeping_line">在「電量」設定的「背景使用量限制」中，將 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 加入「永不自動休眠的應用程式」。三星會將幾天未使用的應用程式置於休眠狀態，並限制它們在背景的活動。</string>
 
     <string name="settings_support_check_updates_title">檢查更新</string>
 
@@ -2036,10 +2121,6 @@
     <string name="dictionary_status_no_results">無結果</string>
 
     <string name="dictionary_status_error">無法查詢該詞</string>
-
-    <string name="settings_debug_export_logs_title">匯出日誌</string>
-
-    <string name="settings_debug_export_logs_subtitle">分享近期日誌以提交錯誤報告</string>
 
     <string name="settings_debug_export_logs_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> 日誌</string>
 

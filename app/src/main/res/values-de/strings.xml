@@ -139,11 +139,7 @@
 
     <string name="btn_open_overlay_settings">Einstellungen öffnen</string>
 
-    <string name="restricted_settings_title">Eingeschränkte Einstellungen zulassen</string>
-
-    <string name="restricted_settings_message">Tippe auf der Android-Einstellungsseite von <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> oben rechts auf die Schaltfläche mit den drei Punkten (⋮) und wähle dann „Eingeschränkte Einstellungen zulassen“. Nach der Authentifizierung kannst du die Bedienungshilfen-Berechtigungen aktivieren.</string>
-
-    <string name="btn_open_app_settings"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>-Einstellungen öffnen</string>
+    <string name="a11y_restricted_settings_addendum">Wenn der Schalter unter Android 13 oder neuer ausgegraut ist, tippe einmal darauf, öffne dann die App-Info von <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>, tippe auf das Dreipunkt-Menü (⋮) und wähle „Eingeschränkte Einstellungen zulassen“.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          WORD DETAIL
@@ -444,9 +440,9 @@
 
     <string name="a11y_stuck_title">Bedienungshilfen müssen neu gestartet werden</string>
 
-    <string name="a11y_stuck_message">Die Bedienungshilfen sind für <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> aktiviert, aber Android hat den Dienst gestoppt und startet ihn nicht von selbst neu. Dein Gerät meldet die App in den Bedienungshilfen möglicherweise als fehlerhaft. Das passiert meist, nachdem das System die App zum Energiesparen beendet hat.\n\nSchalte den Dienst zum Beheben in den Bedienungshilfen aus und wieder ein.</string>
+    <string name="a11y_stuck_message">Die Bedienungshilfen sind für <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> aktiviert, aber Android hat den Dienst gestoppt und startet ihn nicht von selbst neu. Dein Gerät meldet die App in den Bedienungshilfen möglicherweise als fehlerhaft.\n\nSchalte den Dienst zum Beheben in den Bedienungshilfen aus und wieder ein.</string>
 
-    <string name="a11y_stuck_message_xiaomi">Aktiviere auf Xiaomi-Geräten außerdem den Autostart für <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> und stelle den Energiesparmodus in den Systemeinstellungen der App auf „Keine Einschränkungen“. Ohne diese Einstellungen stoppt das System den Dienst immer wieder.</string>
+    <string name="a11y_stuck_message_xiaomi">Lass auf Xiaomi-Geräten außerdem den Autostart für <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> zu und stelle die Akkunutzung in den Systemeinstellungen der App auf „Keine Einschränkungen“. Ohne diese Einstellungen stoppt das System den Dienst möglicherweise immer wieder.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          ACCESSIBILITY-REQUIRED ALERT
@@ -1372,6 +1368,10 @@
 
     <string name="crash_email_body">Schritte zum Reproduzieren:\n\n(Optional – beschreibe, was du getan hast, als dies geschah.)\n\nGeräteinformationen sind in der angehängten Datei enthalten.</string>
 
+    <string name="crash_email_chooser_title">Absturzbericht senden</string>
+
+    <string name="email_no_app_fallback">Keine E-Mail-App. Sende die Dateien auf anderem Weg an <xliff:g id="email" example="support@playtranslate.com">%1$s</xliff:g>.</string>
+
     <string name="update_dialog_title">Update verfügbar</string>
 
     <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> ist auf <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g> verfügbar.</string>
@@ -1951,7 +1951,6 @@
 
     <string name="anki_deck_not_selected_subtitle">Nicht ausgewählt</string>
 
-
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Support section rows
          ═══════════════════════════════════════════════════════════════ -->
@@ -1963,6 +1962,92 @@
     <string name="settings_support_donate_title">PlayTranslate unterstützen</string>
 
     <string name="settings_support_donate_subtitle">Ein kostenloses Open-Source-Projekt aus Leidenschaft. Hilf mit, es am Leben zu halten.</string>
+
+    <string name="settings_support_keep_running_title">Symbol verschwindet?</string>
+
+    <string name="settings_support_keep_running_subtitle">Damit <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> nicht beendet wird</string>
+
+    <string name="settings_support_report_bug_title">Fehler melden</string>
+
+    <string name="settings_support_report_bug_subtitle">Protokolle per E-Mail an den Support. Zum Teilen gedrückt halten.</string>
+
+    <string name="settings_support_report_bug_email_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>-Fehlerbericht – v<xliff:g id="version" example="2.2.0">%1$s</xliff:g></string>
+
+    <string name="settings_support_report_bug_email_body">Was ist passiert?\n\n(Beschreibe, was du getan hast und was schiefgelaufen ist.)\n\nGeräteinformationen und aktuelle Protokolle sind angehängt.</string>
+
+    <string name="settings_support_report_bug_chooser_title">Fehlerbericht senden</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         KILL NOTICE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="kill_notice_title">Android hat <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> beendet</string>
+
+    <string name="kill_notice_body_memory">Deinem Smartphone wurde der Arbeitsspeicher knapp, deshalb hat es <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> im laufenden Betrieb beendet. Darum ist das schwebende Symbol verschwunden.</string>
+
+    <string name="kill_notice_body_other">Dein Smartphone hat <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> im laufenden Betrieb beendet. Darum ist das schwebende Symbol verschwunden. Manche Smartphones tun das, um Akku zu sparen.</string>
+
+    <string name="kill_notice_body_stopped"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> wurde im laufenden Betrieb gestoppt. Wenn du es nicht selbst gestoppt hast, war es vielleicht die Akku- oder Speicherverwaltung deines Smartphones. Darum ist das schwebende Symbol verschwunden.</string>
+
+    <string name="kill_notice_restored">Das Symbol ist jetzt wieder da.</string>
+
+    <string name="kill_notice_see_options">Optionen ansehen</string>
+
+    <string name="kill_notice_not_now">Nicht jetzt</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         KEEP RUNNING PAGE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="keep_running_title">Symbol verschwindet?</string>
+
+    <string name="keep_running_intro">Mit diesen Einstellungen beendet dein Smartphone <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> beim Spielen seltener.</string>
+
+    <string name="keep_running_empty">Es gibt keine weiteren empfohlenen Einstellungen. Wenn das Problem weiter auftritt, reproduziere es bitte und melde dann einen Fehler.</string>
+
+    <string name="keep_running_battery_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> immer im Hintergrund ausführen lassen</string>
+
+    <string name="keep_running_battery_line">Wenn dein Smartphone <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> beendet, kann die App damit von selbst wieder starten.</string>
+
+    <string name="keep_running_accessibility_title">Bedienungshilfen-Modus verwenden</string>
+
+    <string name="keep_running_accessibility_line">Führt <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> mit der Priorität eines Bedienungshilfen-Dienstes aus, den die Speicherbereinigung kaum erreicht.</string>
+
+    <string name="keep_running_accessibility_restart_line">Android hat den Dienst gestoppt und startet ihn nicht von selbst neu. Schalte ihn in den Bedienungshilfen aus und wieder ein.</string>
+
+    <string name="keep_running_tile_title">Kachel zu Schnelleinstellungen hinzufügen</string>
+
+    <string name="keep_running_tile_line">Damit schaltest du <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> von jedem Bildschirm aus wieder ein.</string>
+
+    <string name="keep_running_screen_unavailable">Die Seite fehlt auf diesem Smartphone. Suche die Option in den Einstellungen.</string>
+
+    <string name="keep_running_xiaomi_autostart_title">Autostart zulassen</string>
+
+    <string name="keep_running_xiaomi_autostart_line">Suche in den Einstellungen nach „Autostart“ und lass ihn für <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> zu. Ohne Autostart verhindert Xiaomi womöglich, dass <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> nach dem Beenden wieder startet.</string>
+
+    <string name="keep_running_xiaomi_battery_title">Akkunutzung auf „Keine Einschränkungen“ stellen</string>
+
+    <string name="keep_running_xiaomi_battery_line">Öffne in den Systemeinstellungen von <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> den Akku-Eintrag (je nach Version „Energiesparmodus“, „Akku“ oder „Energie“) und wähle „Keine Einschränkungen“.</string>
+
+    <string name="keep_running_xiaomi_lock_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> in den letzten Apps sperren</string>
+
+    <string name="keep_running_xiaomi_lock_line">Öffne die Übersicht der letzten Apps, halte die Karte von <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> gedrückt und tippe auf das Schloss. Bei manchen Versionen ziehst du die Karte stattdessen nach unten.</string>
+
+    <string name="keep_running_huawei_app_launch_title">App-Start manuell verwalten</string>
+
+    <string name="keep_running_huawei_app_launch_line">Suche in den Einstellungen nach „App-Start“, deaktiviere für <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> „Automatisch verwalten“ und aktiviere dann „Auto-Start“, „Sekundärer Start“ und „Im Hintergrund ausführen“.</string>
+
+    <string name="keep_running_oppo_auto_launch_title">Autostart und Hintergrundaktivität zulassen</string>
+
+    <string name="keep_running_oppo_auto_launch_line">Suche in den Einstellungen nach „Automatisch starten“ und lass den Autostart für <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> zu. Lass dann in den Akkueinstellungen der App die Hintergrundaktivität zu. Ohne diese Einstellungen stoppt das Smartphone <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> womöglich im Hintergrund oder verhindert, dass die App wieder startet.</string>
+
+    <string name="keep_running_vivo_autostart_title">Autostart und hohe Akkunutzung im Hintergrund zulassen</string>
+
+    <string name="keep_running_vivo_autostart_line">Suche in den Einstellungen nach „Autostart“ und lass ihn für <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> zu. Lass dann in den Akkueinstellungen hohe Akkunutzung im Hintergrund für die App zu. Ohne diese Einstellungen stoppt das Smartphone <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> womöglich im Hintergrund oder verhindert, dass die App wieder startet.</string>
+
+    <string name="keep_running_samsung_never_sleeping_title">Zu „Apps, die nie im Standby sind“ hinzufügen</string>
+
+    <string name="keep_running_samsung_never_sleeping_line">Öffne in den Akkueinstellungen „Grenzen der Hintergrundnutzung“ und füge <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> zu „Apps, die nie im Standby sind“ hinzu. Samsung versetzt Apps, die einige Tage nicht genutzt wurden, in den Standby und schränkt ihre Aktivität im Hintergrund ein.</string>
 
     <string name="settings_support_check_updates_title">Nach Updates suchen</string>
 
@@ -2004,10 +2089,6 @@
     <string name="dictionary_status_no_results">Keine Ergebnisse</string>
 
     <string name="dictionary_status_error">Konnte nicht nachgeschlagen werden</string>
-
-    <string name="settings_debug_export_logs_title">Protokolle exportieren</string>
-
-    <string name="settings_debug_export_logs_subtitle">Aktuelle Protokolle für einen Fehlerbericht teilen</string>
 
     <string name="settings_debug_export_logs_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>-Protokolle</string>
 

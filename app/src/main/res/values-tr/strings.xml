@@ -120,11 +120,7 @@
 
     <string name="btn_open_overlay_settings">Ayarları Aç</string>
 
-    <string name="restricted_settings_title">Kısıtlı Ayarlara İzin Ver</string>
-
-    <string name="restricted_settings_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasının Android ayarlar sayfasında, sağ üstteki üç noktalı (⋮) düğmeyi seçin ve ardından \"Kısıtlı ayarlara izin ver\" seçeneğini seçin. Kimliğinizi doğruladıktan sonra erişilebilirlik izinlerini açabilmeniz gerekir.</string>
-
-    <string name="btn_open_app_settings"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> Ayarlarını Aç</string>
+    <string name="a11y_restricted_settings_addendum">Android 13 ve sonraki sürümlerde, anahtar gri görünüyorsa üzerine bir kez dokunun, ardından <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> için Uygulama bilgileri sayfasını açın, ⋮ menüsüne dokunun ve “Kısıtlanmış ayarlara izin verme” seçeneğini seçin.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          WORD DETAIL
@@ -436,9 +432,9 @@
 
     <string name="a11y_stuck_title">Erişilebilirliğin yeniden başlatılması gerekiyor</string>
 
-    <string name="a11y_stuck_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> için Erişilebilirlik açık, ancak Android hizmeti durdurdu ve kendiliğinden yeniden başlatmayacak. Cihazınız, erişilebilirlik ayarlarında uygulamanın düzgün çalışmadığını bildirebilir. Bu genellikle sistem, pil tasarrufu için uygulamayı zorla durdurduktan sonra olur.\n\nDüzeltmek için erişilebilirlik ayarlarından hizmeti kapatıp yeniden açın.</string>
+    <string name="a11y_stuck_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> için Erişilebilirlik açık, ancak Android, hizmeti durdurdu ve kendiliğinden yeniden başlatmayacak. Cihazınız, erişilebilirlik ayarlarında uygulamanın düzgün çalışmadığını bildirebilir.\n\nDüzeltmek için erişilebilirlik ayarlarından hizmeti kapatıp yeniden açın.</string>
 
-    <string name="a11y_stuck_message_xiaomi">Xiaomi cihazlarda ayrıca <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> için Otomatik başlatma seçeneğini etkinleştirin ve uygulamanın sistem ayarlarında pil tasarrufunu “Kısıtlama yok” olarak ayarlayın. Bunlar yapılmazsa sistem hizmeti durdurmaya devam eder.</string>
+    <string name="a11y_stuck_message_xiaomi">Xiaomi cihazlarda ayrıca <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> için otomatik başlatmaya izin verin ve uygulamanın sistem ayarlarında pil kullanımını “Kısıtlama yok” olarak ayarlayın. Bunlar yapılmazsa sistem, hizmeti durdurmaya devam edebilir.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          ACCESSIBILITY-REQUIRED ALERT
@@ -1396,6 +1392,10 @@
 
     <string name="crash_email_body">Yeniden oluşturma adımları:\n\n(İsteğe bağlı — bu olduğunda ne yaptığınızı açıklayın.)\n\nCihaz bilgileri ekteki dosyada yer alır.</string>
 
+    <string name="crash_email_chooser_title">Çökme raporunu gönder</string>
+
+    <string name="email_no_app_fallback">E-posta uygulaması yok. Dosyaları başka yolla gönderin: <xliff:g id="email" example="support@playtranslate.com">%1$s</xliff:g></string>
+
     <string name="update_dialog_title">Güncelleme mevcut</string>
 
     <string name="update_dialog_message"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> <xliff:g id="version_tag" example="v2.3.0">%1$s</xliff:g> sürümü <xliff:g id="brand_github" example="GitHub">GitHub</xliff:g>\'da mevcut.</string>
@@ -1887,7 +1887,6 @@
 
     <string name="anki_deck_not_selected_subtitle">Seçilmedi</string>
 
-
     <!-- ═══════════════════════════════════════════════════════════════
          SETTINGS — Support section
          ═══════════════════════════════════════════════════════════════ -->
@@ -1899,6 +1898,92 @@
     <string name="settings_support_donate_title">PlayTranslate\'i Destekle</string>
 
     <string name="settings_support_donate_subtitle">Ücretsiz, açık kaynaklı bir gönül emeği. Devam etmesine yardımcı olun.</string>
+
+    <string name="settings_support_keep_running_title">Kaybolan simgeyi düzelt</string>
+
+    <string name="settings_support_keep_running_subtitle"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> kapatılmasın</string>
+
+    <string name="settings_support_report_bug_title">Hata bildir</string>
+
+    <string name="settings_support_report_bug_subtitle">Günlükleri desteğe e-postayla gönderin. Paylaşmak için basılı tutun.</string>
+
+    <string name="settings_support_report_bug_email_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> hata raporu – v<xliff:g id="version" example="2.2.0">%1$s</xliff:g></string>
+
+    <string name="settings_support_report_bug_email_body">Ne oldu?\n\n(Ne yaptığınızı ve neyin ters gittiğini açıklayın.)\n\nCihaz bilgileri ve son günlükler ektedir.</string>
+
+    <string name="settings_support_report_bug_chooser_title">Hata raporunu gönder</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         KILL NOTICE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="kill_notice_title">Android, <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasını kapattı</string>
+
+    <string name="kill_notice_body_memory">Belleği azalan telefonunuz, <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> açıkken uygulamayı kapattı. Kayan simgenin kaybolmasının nedeni budur.</string>
+
+    <string name="kill_notice_body_other">Telefonunuz, <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> açıkken uygulamayı kapattı. Kayan simgenin kaybolmasının nedeni budur. Bazı telefonlar bunu pil tasarrufu için yapar.</string>
+
+    <string name="kill_notice_body_stopped"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> açıkken durduruldu. Uygulamayı kendiniz durdurmadıysanız telefonunuzun pil veya bellek yöneticisi durdurmuş olabilir. Kayan simgenin kaybolmasının nedeni budur.</string>
+
+    <string name="kill_notice_restored">Simge şu anda yeniden ekranda.</string>
+
+    <string name="kill_notice_see_options">Seçenekleri gör</string>
+
+    <string name="kill_notice_not_now">Şimdi değil</string>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         KEEP RUNNING PAGE
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <string name="keep_running_title">Kaybolan simgeyi düzelt</string>
+
+    <string name="keep_running_intro">Bu ayarlar, oyun oynarken telefonunuzun <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasını kapatma olasılığını azaltır.</string>
+
+    <string name="keep_running_empty">Önerilen başka ayar yok. Sorun devam ediyorsa lütfen sorunu yeniden oluşturun ve ardından hata bildirin.</string>
+
+    <string name="keep_running_battery_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasının her zaman arka planda çalışmasına izin ver</string>
+
+    <string name="keep_running_battery_line">Telefonunuz <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasını kapatırsa bu ayar sayesinde uygulama kendiliğinden yeniden başlayabilir.</string>
+
+    <string name="keep_running_accessibility_title">Erişilebilirlik modunu kullan</string>
+
+    <string name="keep_running_accessibility_line"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasını, bellek temizliğinin nadiren dokunduğu bir erişilebilirlik hizmeti önceliğiyle çalıştırır.</string>
+
+    <string name="keep_running_accessibility_restart_line">Android, hizmeti durdurdu ve kendiliğinden yeniden başlatmayacak. Erişilebilirlik ayarlarından hizmeti kapatıp yeniden açın.</string>
+
+    <string name="keep_running_tile_title">Hızlı Ayarlar kutucuğu ekle</string>
+
+    <string name="keep_running_tile_line"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasını her ekrandan yeniden açabilirsiniz.</string>
+
+    <string name="keep_running_screen_unavailable">O ekran telefonunuzda kullanılamıyor. Bunun yerine ayarı Ayarlar uygulamasında arayın.</string>
+
+    <string name="keep_running_xiaomi_autostart_title">Otomatik başlatmaya izin ver</string>
+
+    <string name="keep_running_xiaomi_autostart_line">Ayarlarda otomatik başlatmayı arayın ve <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> için izin verin. Bu izin verilmezse Xiaomi, <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasının kapatıldıktan sonra yeniden başlamasını engelleyebilir.</string>
+
+    <string name="keep_running_xiaomi_battery_title">Pil kullanımını “Kısıtlama yok” olarak ayarla</string>
+
+    <string name="keep_running_xiaomi_battery_line"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasının sistem ayarlarında pil ayarına (sürümünüze göre Pil tasarrufu, Pil veya Güç) dokunun ve “Kısıtlama yok” seçeneğini seçin.</string>
+
+    <string name="keep_running_xiaomi_lock_title"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasını Son uygulamalar ekranında kilitle</string>
+
+    <string name="keep_running_xiaomi_lock_line">Son uygulamalar ekranını açın, <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> kartını basılı tutun ve kilide dokunun. Bazı sürümlerde bunun yerine kartı aşağı çekin.</string>
+
+    <string name="keep_running_huawei_app_launch_title">Uygulama başlatmayı manuel olarak yönet</string>
+
+    <string name="keep_running_huawei_app_launch_line">Ayarlarda Uygulama başlatmayı arayın, <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> için “Otomatik olarak yönetiliyor” seçeneğini kapatın, ardından Oto-başlatma, İkincil başlatma ve Arka planda çalışma seçeneklerini açın.</string>
+
+    <string name="keep_running_oppo_auto_launch_title">Otomatik başlatmaya ve arka plan etkinliğine izin ver</string>
+
+    <string name="keep_running_oppo_auto_launch_line">Ayarlarda otomatik başlatmayı arayın ve <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> için izin verin, ardından uygulamanın pil ayarlarında arka plan etkinliğine de izin verin. Bunlara izin verilmezse telefon, <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasını arka planda durdurabilir veya yeniden başlamasını engelleyebilir.</string>
+
+    <string name="keep_running_vivo_autostart_title">Otomatik başlatmaya ve arka planda güç tüketimine izin ver</string>
+
+    <string name="keep_running_vivo_autostart_line">Ayarlarda otomatik başlatmayı arayın ve <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> için izin verin, ardından Pil ayarlarında arka planda yüksek güç tüketimine de izin verin. Bunlara izin verilmezse telefon, <xliff:g id="app_name2" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasını arka planda durdurabilir veya yeniden başlamasını engelleyebilir.</string>
+
+    <string name="keep_running_samsung_never_sleeping_title">“Hiç oto. uykuya geçirilmeyen uygulamalar” listesine ekle</string>
+
+    <string name="keep_running_samsung_never_sleeping_line">Pil ayarlarında, Arka plan kullanım sınırları bölümünde <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasını “Hiç oto. uykuya geçirilmeyen uygulamalar” listesine ekleyin. Samsung, birkaç gün boyunca kullanıldığını görmediği uygulamaları uyku moduna alır ve arka planda yapabileceklerini sınırlar.</string>
 
     <string name="settings_support_check_updates_title">Güncellemeleri denetle</string>
 
@@ -1933,10 +2018,6 @@
     <string name="dictionary_lang_pair"><xliff:g id="source" example="Japanese">%1$s</xliff:g> → <xliff:g id="target" example="English">%2$s</xliff:g></string>
     <string name="dictionary_status_no_results">Sonuç yok</string>
     <string name="dictionary_status_error">Aranamadı</string>
-
-    <string name="settings_debug_export_logs_title">Günlükleri dışa aktar</string>
-
-    <string name="settings_debug_export_logs_subtitle">Hata raporu için son günlükleri paylaş</string>
 
     <string name="settings_debug_export_logs_subject"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> günlükleri</string>
 
