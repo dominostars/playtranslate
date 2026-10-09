@@ -2,6 +2,7 @@ package com.playtranslate.dictionary
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.playtranslate.dictionary.deinflect.JapaneseDeinflector
 import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.PreloadResult
 import com.playtranslate.language.SourceLangId
@@ -69,11 +70,15 @@ import com.worksap.nlp.sudachi.Dictionary as SudachiDictionary
  *  - `survey.json`: the same shape over `ja/inflection_survey.txt`.
  *  - `lookups.json`: [DictionaryManager.lookup] for every distinct
  *    (lookupForm, reading) among the corpus tokens: the first entry's pack id,
- *    the entry count, and the first entry's first-sense parts of speech
- *    (where the lookup's deinflection stage injects its `[reason]`).
- *  - `timing.json`: [Deinflector.candidates] over every distinct corpus
- *    lookupForm, one warm-up pass then five timed passes. Taken inside the
- *    Robolectric sandbox, so it compares runs of this harness, not device cost.
+ *    the entry count, the first entry's first-sense parts of speech, and the
+ *    response's deinflection chain (tag names, empty on a direct match).
+ *  - `timing.json`: [JapaneseDeinflector.candidates] over every distinct
+ *    corpus lookupForm, one warm-up pass then five timed passes. The facade
+ *    memoizes in a 256-entry LRU and the corpus has more distinct forms than
+ *    that (1354 at the S0 baseline), so a pass in fixed order evicts every
+ *    form before the next pass reaches it again: the timed calls are cache
+ *    misses, plus the LRU's own cost. Taken inside the Robolectric sandbox,
+ *    so it compares runs of this harness, not device cost.
  *
  * The Yomitan phrase oracle is off for every dump: the engine passes
  * `phraseOracle()`, which is null when no term dictionary is imported, and the
@@ -213,7 +218,8 @@ class JaPackDumpTest {
     }
 
     private suspend fun lookupRecord(dict: DictionaryManager, form: String, reading: String?): JSONObject {
-        val entries = dict.lookup(form, reading)?.entries.orEmpty()
+        val response = dict.lookup(form, reading)
+        val entries = response?.entries.orEmpty()
         val first = entries.firstOrNull()
         return JSONObject()
             .put("lookupForm", form)
@@ -224,16 +230,17 @@ class JaPackDumpTest {
                 "firstSensePos",
                 first?.senses?.firstOrNull()?.let { JSONArray(it.partsOfSpeech) } ?: JSONObject.NULL,
             )
+            .put("deinflection", JSONArray(response?.deinflection.orEmpty().map { it.name }))
     }
 
     private fun deinflectorTiming(forms: List<String>): JSONObject {
-        forms.forEach { Deinflector.candidates(it) }
+        forms.forEach { JapaneseDeinflector.candidates(it) }
         var totalNanos = 0L
         var maxNanos = 0L
         repeat(TIMED_PASSES) {
             for (form in forms) {
                 val start = System.nanoTime()
-                Deinflector.candidates(form)
+                JapaneseDeinflector.candidates(form)
                 val elapsed = System.nanoTime() - start
                 totalNanos += elapsed
                 if (elapsed > maxNanos) maxNanos = elapsed

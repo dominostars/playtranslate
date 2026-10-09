@@ -1,5 +1,7 @@
 package com.playtranslate.model
 
+import com.playtranslate.language.InflectionTag
+
 /**
  * Generic bilingual-dictionary result model. Originally modelled after the
  * Jisho REST API (which is why the shape still looks like a search response),
@@ -13,7 +15,15 @@ package com.playtranslate.model
  * language (English today).
  */
 data class DictionaryResponse(
-    val entries: List<DictionaryEntry>
+    val entries: List<DictionaryEntry>,
+    /** The conjugation chain between the looked-up word and the [entries]'
+     *  dictionary form, dictionary form outward (食べませんでした: -ます,
+     *  negative, -た). Set only by the JA pack's deinflection stage
+     *  ([com.playtranslate.dictionary.DictionaryManager.lookup]), when the
+     *  word itself missed and a candidate resolved; empty for a direct
+     *  match, for an entry synthesized from an imported dictionary on a pack
+     *  miss, and for every other language's dictionary. */
+    val deinflection: List<InflectionTag> = emptyList(),
 )
 
 data class DictionaryEntry(
