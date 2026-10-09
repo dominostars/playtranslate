@@ -182,10 +182,10 @@ class SourceTextLens(
         binder.setWordHighlight(span)
         val size = screenSize()
         lens.show(rect.centerX(), rect.top, size.x, size.y, anchorHeight = rect.height())
-        bindBody(lens)
+        bindBody(lens, LensScroll.Top)
         backfillDecks(lens, resolved.data, resolved.word) { updated ->
             currentDecks = updated.ankiDecks
-            bindBody(lens)
+            bindBody(lens, LensScroll.Keep)
         }
         lens.makeInteractive()
         if (fromController) lens.focusPillForController()
@@ -198,8 +198,12 @@ class SourceTextLens(
      *  identity) plus the related units (the containing phrase above it on
      *  Latin scripts; member words and then alternative entries below it
      *  on JA), each with its own drill-in, and the "Load more (n)" row
-     *  last ([SourceWordLookup.loadMoreFor]). Otherwise the single body. */
-    private fun bindBody(lens: MagnifierLens) {
+     *  last ([SourceWordLookup.loadMoreFor]). Otherwise the single body.
+     *  [scroll] places the split body's viewport ([LensScroll]): the first
+     *  show passes Top, the deck back-fill Keep, a [loadMore] a Reveal of
+     *  its first loaded section. The single body takes no policy and binds
+     *  at its top. */
+    private fun bindBody(lens: MagnifierLens, scroll: LensScroll) {
         val at = currentAt ?: return
         val resolved = at.word
         val data = currentDecks?.let { resolved.data.copy(ankiDecks = it) } ?: resolved.data
@@ -212,6 +216,7 @@ class SourceTextLens(
                 secondaries.map { LensSection(it.data, it.label, opens = true, caption = it.caption) },
                 secondariesOnTop = at.phrase != null,
                 loadMore,
+                scroll,
             )
         } else {
             lens.setDefinitions(data, resolved.label, opens = canOpen)
@@ -221,7 +226,9 @@ class SourceTextLens(
     /** The "Load more (n)" tap: resolves the showing lens's pending
      *  sections ([SourceWordLookup.resolvePending]) with the row reading
      *  "Looking up…", then re-wires the lens's actions on the filled
-     *  resolution and rebinds the body with the sections appended. No-op
+     *  resolution and rebinds the body with each loaded section in its
+     *  key's place ([SourceWordLookup.mergeLoaded]), the viewport on the
+     *  first of them ([firstLoadedIndex], [LensScroll.Reveal]). No-op
      *  while a load runs or with nothing pending. The result is dropped
      *  when [lens] is no longer the showing one (its onDismiss also
      *  cancels the job) or the displayed text changed since the tap. A
@@ -239,7 +246,8 @@ class SourceTextLens(
                 currentAt = filled
                 loadingMore = false
                 wireActions(lens, filled)
-                bindBody(lens)
+                val firstLoaded = firstLoadedIndex(filled.keys, at.pending)
+                bindBody(lens, firstLoaded?.let(LensScroll::Reveal) ?: LensScroll.Keep)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

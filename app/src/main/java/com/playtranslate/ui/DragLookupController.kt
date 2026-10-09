@@ -1009,7 +1009,7 @@ class DragLookupController(
                 }
                 withContext(Dispatchers.Main) {
                     sentenceToRecord?.let { recordLookupSentence(it) }
-                    publishCurrent()
+                    publishCurrent(LensScroll.Top)
                     magnifier.makeInteractive()
                     // Lens is now in DEFINITIONS mode — the zoom no longer
                     // renders, so the bitmap can be released.
@@ -1032,7 +1032,7 @@ class DragLookupController(
                         if (decks.isNotEmpty()) withContext(Dispatchers.Main) {
                             if (currentResolution?.word === popupData) {
                                 currentAnkiDecks = decks
-                                publishCurrent()
+                                publishCurrent(LensScroll.Keep)
                             }
                         }
                     }
@@ -1564,12 +1564,16 @@ class DragLookupController(
      *  otherwise. [ankiDecks] rides the PRIMARY section. The sticky lens
      *  binds only through [publishCurrent] (the release, the deck badge
      *  fill, a finished load), so none of them can drop what another
-     *  added; the dwell preview binds here directly, its row untappable
-     *  until the release makes the lens interactive. */
+     *  added; the dwell preview binds here directly, with the default
+     *  [scroll], its row untappable until the release makes the lens
+     *  interactive. [scroll] places the split body's viewport
+     *  ([LensScroll]); the single-unit body takes no policy and binds at
+     *  its top. */
     private fun publishLensDefinitions(
         res: LookupResolution,
         ankiDecks: List<String> = emptyList(),
         loadMoreLoading: Boolean = false,
+        scroll: LensScroll = LensScroll.Top,
     ) {
         val wordData = res.word.toLensData()
             .let { if (ankiDecks.isEmpty()) it else it.copy(ankiDecks = ankiDecks) }
@@ -1584,16 +1588,19 @@ class DragLookupController(
                 },
                 secondariesOnTop = res.phrase != null,
                 loadMore = loadMore,
+                scroll = scroll,
             )
         } else {
             magnifier.setDefinitions(wordData, wordLabel)
         }
     }
 
-    /** Bind the sticky lens's body from its state fields; no-op without a
-     *  [currentResolution]. */
-    private fun publishCurrent() {
-        currentResolution?.let { publishLensDefinitions(it, currentAnkiDecks, secondaryLoading) }
+    /** Bind the sticky lens's body from its state fields, its viewport
+     *  placed by [scroll]: Top for the release, Keep for the deck badge
+     *  fill, a Reveal of the first loaded section for [loadSecondaries].
+     *  No-op without a [currentResolution]. */
+    private fun publishCurrent(scroll: LensScroll) {
+        currentResolution?.let { publishLensDefinitions(it, currentAnkiDecks, secondaryLoading, scroll) }
     }
 
     /** Resolves the sections held back behind the "Load more" row for the
@@ -1601,7 +1608,8 @@ class DragLookupController(
      *  place in [LookupResolution.keys] ([placeLoaded]): a held-back member
      *  lands before the members whose keys follow it, an alternative
      *  likewise, so the lens reads in section order as it would have with
-     *  nothing held back, and nothing is left pending. The row reads
+     *  nothing held back, and nothing is left pending; the viewport lands
+     *  on the first loaded section ([firstLoadedIndex]). The row reads
      *  "Looking up…" meanwhile and a failure restores it so the tap can be
      *  retried. No-op while a load runs, with nothing pending, or before
      *  the lens is interactive. A newer drag or a dismiss cancels the job
@@ -1630,7 +1638,8 @@ class DragLookupController(
                     // section indexes the filled list.
                     currentSecondaryPopups = filled.secondaries()
                     secondaryLoading = false
-                    publishCurrent()
+                    val firstLoaded = firstLoadedIndex(filled.keys, res.pending)
+                    publishCurrent(firstLoaded?.let(LensScroll::Reveal) ?: LensScroll.Keep)
                 }
             } catch (e: CancellationException) {
                 throw e

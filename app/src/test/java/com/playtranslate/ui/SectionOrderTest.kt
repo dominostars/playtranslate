@@ -6,6 +6,7 @@ import com.playtranslate.ui.SecondaryKind.ALTERNATIVE
 import com.playtranslate.ui.SecondaryKind.MEMBER
 import com.playtranslate.ui.SecondaryKind.PHRASE
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
@@ -13,7 +14,8 @@ import org.junit.Test
  * word's secondary sections stay in their keys' order within each kind,
  * before and after the held-back ones load. The sections are plain strings
  * here; the tap lens places [SourceWordLookup.Resolved] and the drag lens
- * its popup data the same way.
+ * its popup data the same way. [firstLoadedIndex] finds the first loaded
+ * section a load scrolls to.
  */
 class SectionOrderTest {
 
@@ -82,5 +84,19 @@ class SectionOrderTest {
         val slots = placeLoaded(mixed, shownBeforeLoad, pendingKeys = listOf(m1, a2), loaded = listOf(null, "a2"))
         assertEquals(listOf(null, "m2", "a1", "a2"), slots)
         assertEquals(Sections(null, listOf("m2"), listOf("a1", "a2")), sectionsByKind(mixed, slots))
+    }
+
+    @Test
+    fun `firstLoadedIndex is the index of the first key that was pending`() {
+        assertEquals(0, firstLoadedIndex(mixed, listOf(m1, a2)))
+        assertEquals(3, firstLoadedIndex(mixed, listOf(a2)))
+        assertNull(firstLoadedIndex(mixed, emptyList()))
+    }
+
+    @Test
+    fun `firstLoadedIndex tells a pending key by identity, not by an equal key`() {
+        val equalToA2 = key(ALTERNATIVE, "弾く", needsMt = true)
+        assertEquals(a2, equalToA2)
+        assertNull(firstLoadedIndex(mixed, listOf(equalToA2)))
     }
 }
