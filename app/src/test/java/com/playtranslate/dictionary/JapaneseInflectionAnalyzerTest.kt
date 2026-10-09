@@ -56,8 +56,8 @@ import org.junit.Test
  * Sudachi's own command line run on the same dictionary file, for rows the
  * survey has no specimen of.
  *
- * Chains whose auxiliary verb, 無い or そう sits in the glue are what the fold
- * stage will hand the analyzer; the re-glob does not fold them yet.
+ * Chains whose auxiliary verb, 無い or そう sits in the glue are what the
+ * re-glob's fold hands the analyzer; ReglobTokensTest drives them end to end.
  */
 class JapaneseInflectionAnalyzerTest {
 
@@ -117,6 +117,16 @@ class JapaneseInflectionAnalyzerTest {
             tok("見れ", VERB, "見れる", "見る", "連用形-一般", "下一段-ラ行", aux = true),
             tok("た", AUX, "た", "た", "終止形-一般", "助動詞-タ"),
         )
+    }
+
+    @Test
+    fun `a span looked up under the potential itself does not repeat it`() {
+        val mire = tok("見れ", VERB, "見れる", "見る", "連用形-一般", "下一段-ラ行", aux = true)
+        val ta = tok("た", AUX, "た", "た", "終止形-一般", "助動詞-タ")
+        // 見れた shown as 見れる: the word is the potential.
+        assertEquals(listOf(TA), JapaneseInflectionAnalyzer.analyze(mire, listOf(ta), lookupForm = "見れる"))
+        // 見れた shown as 見る: the potential is the chain's first step.
+        assertEquals(listOf(POTENTIAL, TA), JapaneseInflectionAnalyzer.analyze(mire, listOf(ta), lookupForm = "見る"))
     }
 
     @Test
@@ -286,6 +296,41 @@ class JapaneseInflectionAnalyzerTest {
             listOf(MASU, VOLITIONAL), // 行きましょう
             tok("行き", VERB, "行く", "行く", "連用形-一般", "五段-カ行", aux = true),
             tok("ましょう", AUX, "ます", "ます", "意志推量形", "助動詞-マス"),
+        )
+    }
+
+    @Test
+    fun `volitional follows any morpheme in 意志推量形 but the copula`() {
+        assertTags(
+            listOf(IKU, VOLITIONAL), // corpus: じゃ、ファミレスでも寄ってこうか。
+            tok("寄っ", VERB, "寄る", "寄る", "連用形-促音便", "五段-ラ行"),
+            tok("てこう", AUX, "てく", "てく", "意志推量形", "五段-カ行"),
+            tok("か", PARTICLE, "か", "か", null, null),
+        )
+        assertTags(
+            listOf(TE, MIRU, VOLITIONAL), // corpus: 中を探ってみようぜ!
+            tok("探っ", VERB, "探る", "探る", "連用形-促音便", "五段-ラ行"),
+            tok("て", PARTICLE, "て", "て", null, null, conj = true),
+            tok("みよう", VERB, "みる", "見る", "意志推量形", "上一段-マ行", aux = true),
+            tok("ぜ", PARTICLE, "ぜ", "ぜ", null, null),
+        )
+        assertTags(
+            listOf(TE, YARU, VOLITIONAL), // corpus: 絶対にやってやろうぜ!
+            tok("やっ", VERB, "やる", "遣る", "連用形-促音便", "五段-ラ行", aux = true),
+            tok("て", PARTICLE, "て", "て", null, null, conj = true),
+            tok("やろう", VERB, "やる", "遣る", "意志推量形", "五段-ラ行", aux = true),
+            tok("ぜ", PARTICLE, "ぜ", "ぜ", null, null),
+        )
+        assertTags(
+            listOf(CHIMAU, VOLITIONAL), // corpus: …解除しちまおうぜ!
+            tok("し", VERB, "する", "為る", "連用形-一般", "サ行変格", aux = true),
+            tok("ちまおう", AUX, "ちまう", "ちまう", "意志推量形", "五段-ワア行"),
+            tok("ぜ", PARTICLE, "ぜ", "ぜ", null, null),
+        )
+        assertTags(
+            emptyList(), // 食べるだろう: だ in 意志推量形 is the copula's
+            tok("食べる", VERB, "食べる", "食べる", "終止形-一般", "下一段-バ行"),
+            tok("だろう", AUX, "だ", "だ", "意志推量形", "助動詞-ダ"),
         )
     }
 

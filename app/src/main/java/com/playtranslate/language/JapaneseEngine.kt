@@ -249,6 +249,9 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
         val spans = dict.reglobSpansForTokens(
             tokens, yomitan.phraseOracle(), excludePhrases = setOf(headword),
             excludeExpressionJoins = true,
+            // Here 行く in 連れて行く is a member word, not an auxiliary: folded,
+            // the whole headword would be one span, which the filter below drops.
+            foldAuxiliaries = false,
         ).orEmpty()
         val ordered = memberUnits(tokens, spans, expressionClass)
         if (ordered.isEmpty()) return emptyList()

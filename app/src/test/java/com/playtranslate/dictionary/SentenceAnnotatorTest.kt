@@ -1,10 +1,12 @@
 package com.playtranslate.dictionary
 
+import com.playtranslate.dictionary.DictionaryManager.Companion.admissiblePhraseCandidates
 import com.playtranslate.dictionary.DictionaryManager.Companion.phraseCandidatesFor
 import com.playtranslate.dictionary.DictionaryManager.Companion.reglobSpans
 import com.playtranslate.dictionary.SentenceAnnotator.ResolutionKey
 import com.playtranslate.dictionary.SentenceAnnotator.WordResolution
 import com.playtranslate.language.EntryRef
+import com.playtranslate.language.InflectionTag
 import com.playtranslate.language.SourceLangId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -25,12 +27,20 @@ class SentenceAnnotatorTest {
         cat: JaCategory,
         readingKatakana: String? = null,
         dict: String = surface,
+        norm: String = dict,
+        infl: String? = null,
+        conj: Boolean = false,
+        aux: Boolean = false,
+        punct: Boolean = false,
+        auxStem: Boolean = false,
     ): JaToken {
         val begin = pos; pos += surface.length
         return JaToken(
             surface = surface, begin = begin, end = begin + surface.length,
-            category = cat, dictionaryForm = dict, normalizedForm = dict,
-            reading = readingKatakana, isOov = false,
+            category = cat, dictionaryForm = dict, normalizedForm = norm,
+            reading = readingKatakana, isOov = false, inflectionForm = infl,
+            isConjunctiveParticle = conj, isPunctuation = punct, isAuxiliaryCapable = aux,
+            isAuxiliaryStem = auxStem,
         )
     }
 
@@ -41,9 +51,19 @@ class SentenceAnnotatorTest {
         knownForms: Set<String> = emptySet(),
         resolutions: Map<ResolutionKey, WordResolution> = emptyMap(),
         full: Boolean = true,
+        /** When given, candidates pass the production admissibility gate with
+         *  these headwords (and no kana-native readings) before matching. */
+        headwords: Set<String>? = null,
     ) = SentenceAnnotator.annotate(
         text, SourceLangId.JA, tokens,
-        reglob = if (full) reglobSpans(tokens, phraseCandidatesFor(tokens), knownPhrases, knownForms) else null,
+        reglob = if (full) {
+            val candidates = phraseCandidatesFor(tokens).let { all ->
+                if (headwords == null) all else admissiblePhraseCandidates(all, headwords, emptySet())
+            }
+            reglobSpans(tokens, candidates, knownPhrases, knownForms)
+        } else {
+            null
+        },
         resolutions = resolutions,
         importGeneration = 0,
     ).also { ann ->
@@ -186,5 +206,114 @@ class SentenceAnnotatorTest {
             listOf("泊" to "と", "ま" to null, "り" to null, "込" to "こ", "み" to null),
             span.furigana.map { it.text to it.reading },
         )
+    }
+
+    // ── Auxiliary fold, with real offsets ────────────────────────────────
+    // Chains and katakana readings from Sudachi's command line on the pack's
+    // system_core.dic (0.7.4, mode A).
+
+    /** 飲んでいなかった。 */
+    private fun nondeInakatta(): List<JaToken> {
+        pos = 0
+        return listOf(
+            tok("飲ん", JaCategory.VERB, "ノン", dict = "飲む", infl = "連用形-撥音便"),
+            tok("で", JaCategory.PARTICLE, "デ", conj = true),
+            tok("い", JaCategory.VERB, "イ", dict = "いる", norm = "居る", infl = "未然形-一般", aux = true),
+            tok("なかっ", JaCategory.AUX, "ナカッ", dict = "ない", infl = "連用形-促音便"),
+            tok("た", JaCategory.AUX, "タ", infl = "終止形-一般"),
+            tok("。", JaCategory.OTHER, "。", punct = true),
+        )
+    }
+
+    @Test fun `a folded chain tiles as one span with per-token ruby`() {
+        val ann = annotate("飲んでいなかった。", nondeInakatta(), knownForms = setOf("飲む", "いる"))
+        assertEquals(listOf("飲んでいなかった", "。"), ann.spans.map { it.surface })
+        val span = ann.spans[0]
+        assertEquals("飲む", span.lookupForm)
+        assertEquals("のんでいなかった", span.reading)
+        assertEquals(
+            listOf(InflectionTag.TE, InflectionTag.IRU, InflectionTag.NEGATIVE, InflectionTag.TA),
+            span.inflections,
+        )
+        assertEquals(
+            listOf("飲" to "の", "ん" to null, "で" to null, "い" to null, "なかっ" to null, "た" to null),
+            span.furigana.map { it.text to it.reading },
+        )
+    }
+
+    @Test fun `a folded auxiliary asks for no resolution of its own`() {
+        val tokens = nondeInakatta()
+        val keys = SentenceAnnotator.resolutionKeys(reglobSpans(tokens, phraseCandidatesFor(tokens), emptySet(), setOf("飲む", "いる")))
+        assertEquals(setOf(ResolutionKey("飲む", "のん")), keys)
+    }
+
+    @Test fun `an auxiliary 来 keeps its own ruby inside the やる span`() {
+        // やって来た with no phrase membership: the fold makes one やる span.
+        pos = 0
+        val tokens = listOf(
+            tok("やっ", JaCategory.VERB, "ヤッ", dict = "やる", norm = "遣る", infl = "連用形-促音便", aux = true),
+            tok("て", JaCategory.PARTICLE, "テ", conj = true),
+            tok("来", JaCategory.VERB, "キ", dict = "来る", infl = "連用形-一般", aux = true),
+            tok("た", JaCategory.AUX, "タ", infl = "終止形-一般"),
+        )
+        val span = annotate("やって来た", tokens, knownForms = setOf("やる", "来る")).spans.single()
+        assertEquals("やる", span.lookupForm)
+        assertEquals(listOf(InflectionTag.TE, InflectionTag.KURU, InflectionTag.TA), span.inflections)
+        assertEquals(
+            listOf("やっ" to null, "て" to null, "来" to "き", "た" to null),
+            span.furigana.map { it.text to it.reading },
+        )
+    }
+
+    @Test fun `the いるか reading never splits a folded chain`() {
+        pos = 0
+        val tokens = listOf(
+            tok("知っ", JaCategory.VERB, "シッ", dict = "知る", infl = "連用形-促音便"),
+            tok("て", JaCategory.PARTICLE, "テ", conj = true),
+            tok("いる", JaCategory.VERB, "イル", norm = "居る", infl = "終止形-一般", aux = true),
+            tok("か", JaCategory.PARTICLE, "カ"),
+        )
+        val ann = annotate("知っているか", tokens, knownPhrases = setOf("いるか"), knownForms = setOf("知る", "いる"))
+        assertEquals(listOf("知っているか"), ann.spans.map { it.surface })
+        assertEquals("知る", ann.spans[0].lookupForm)
+    }
+
+    @Test fun `a phrase taking a fold's tail recomputes the head's tags`() {
+        // 言うじゃないの: 言う folds じゃ, ない (無い after だ's 連用形) and の, so
+        // the raw span reads negative; the reading phrase じゃない then takes
+        // じゃ and ない, and the trimmed 言う must not keep the negative.
+        pos = 0
+        val tokens = listOf(
+            tok("言う", JaCategory.VERB, "ユウ", infl = "終止形-一般"),
+            tok("じゃ", JaCategory.AUX, "ジャ", dict = "だ", infl = "連用形-融合"),
+            tok("ない", JaCategory.ADJ_I, "ナイ", norm = "無い", infl = "連体形-一般", aux = true),
+            tok("の", JaCategory.PARTICLE, "ノ"),
+        )
+        val raw = reglobSpans(tokens, phraseCandidatesFor(tokens), setOf("じゃない"), setOf("言う"))
+        assertEquals(4, raw[0].tokenCount)
+        assertEquals(listOf(InflectionTag.NEGATIVE), raw[0].inflections)
+        val ann = annotate("言うじゃないの", tokens, knownPhrases = setOf("じゃない"), knownForms = setOf("言う"))
+        assertEquals(listOf("言う", "じゃない", "の"), ann.spans.map { it.surface })
+        assertEquals(emptyList<InflectionTag>(), ann.spans[0].inflections)
+    }
+
+    @Test fun `a reading inside a fold's tail does not split the display`() {
+        // corpus: 入れそうにないわ. With the admissibility gate on, にない (担い's
+        // reading) cannot start at the folded に, so the cover keeps the span.
+        pos = 0
+        val tokens = listOf(
+            tok("入れ", JaCategory.VERB, "イレ", dict = "入れる", infl = "連用形-一般"),
+            tok("そう", JaCategory.ADJ_NA, "ソウ", auxStem = true),
+            tok("に", JaCategory.AUX, "ニ", dict = "だ", infl = "連用形-ニ"),
+            tok("ない", JaCategory.ADJ_I, "ナイ", norm = "無い", infl = "終止形-一般", aux = true),
+            tok("わ", JaCategory.PARTICLE, "ワ"),
+        )
+        val ann = annotate(
+            "入れそうにないわ", tokens,
+            knownPhrases = setOf("にない"), knownForms = setOf("入れる"), headwords = emptySet(),
+        )
+        assertEquals(listOf("入れそうにないわ"), ann.spans.map { it.surface })
+        assertEquals("入れる", ann.spans[0].lookupForm)
+        assertEquals(listOf(InflectionTag.SOU, InflectionTag.NEGATIVE), ann.spans[0].inflections)
     }
 }

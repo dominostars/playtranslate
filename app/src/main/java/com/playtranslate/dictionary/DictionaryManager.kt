@@ -280,13 +280,20 @@ class DictionaryManager private constructor(private val context: Context) {
          *  (Jitendex lists 瞬く間 too) can't re-admit them as JMdict misses.
          *  Oracle-only joins carry no POS and still fuse. */
         excludeExpressionJoins: Boolean = false,
+        /** Fold an auxiliary verb after て/で, the negative adjective 無い and
+         *  the appearance stem そう into the word before them (see
+         *  [continuesConjugation]), so 飲んでいなかった is one span. Member mode
+         *  passes false: decomposing 連れて行く must keep 行く a unit of its
+         *  own, or the one folded span would equal the headword and the member
+         *  list would come out empty. */
+        foldAuxiliaries: Boolean = true,
     ): List<ReglobSpan>? = withContext(Dispatchers.IO) {
         val database = ensureOpen() ?: return@withContext null
 
         // Batch existence query: candidate N-gram phrases PLUS each content
         // token's dictionaryForm/normalizedForm (layer 1 — lets us pick the
         // form that actually resolves, e.g. キミ→君).
-        val candidates = phraseCandidatesFor(tokens)
+        val candidates = phraseCandidatesFor(tokens, foldAuxiliaries)
             .filter { it.lookupForm !in excludePhrases }
         // Single content-token forms (layer 1: dictionaryForm / normalizedForm).
         val formCandidates = mutableSetOf<String>()
@@ -327,7 +334,7 @@ class DictionaryManager private constructor(private val context: Context) {
             if (forOracle.isNotEmpty()) knownPhrases = knownPhrases + phraseOracle(forOracle)
         }
 
-        reglobSpans(tokens, admissible, knownPhrases, knownForms)
+        reglobSpans(tokens, admissible, knownPhrases, knownForms, foldAuxiliaries)
     }
 
     /** Fallback when the JMdict DB isn't ready: content words on their own
@@ -1033,13 +1040,15 @@ class DictionaryManager private constructor(private val context: Context) {
         internal data class PhraseCandidate(
             /** Window start in the token list. */
             val startIndex: Int,
-            /** Tokens inside the window (excluding any trailing folded glue). */
+            /** Tokens inside the window, excluding the trailing tokens a lemma
+             *  variant folds after it: glue, and with folding on an auxiliary
+             *  verb, 無い or そう with their own glue ([continuesConjugation]). */
             val windowLen: Int,
             /** String checked against the membership set; becomes the result's lookupForm. */
             val lookupForm: String,
             /** Actual input surfaces for the consumed span. */
             val surface: String,
-            /** Total tokens to advance past on a match (windowLen + folded glue). */
+            /** Total tokens to advance past on a match (windowLen + the folded tokens). */
             val tokensConsumed: Int,
             /** False = exact surface join; true = last-token lemma variant. */
             val isVariant: Boolean,
@@ -1059,10 +1068,13 @@ class DictionaryManager private constructor(private val context: Context) {
          * 接続助詞 with attachable material to its left (がどう after た; at a
          * line start or after punctuation nothing can be severed, so
          * 、ていうか stays fusable), starts on glue bound to an incomplete stem
-         * (いただい|ており, 言って|たな), is itself an incomplete stem plus its
-         * own AUXILIARY glue (した; see [CONVERB_CUT] for particle glue), or
+         * (いただい|ており, 言って|たな; with folding on, also to an auxiliary
+         * stem: 入れそう|にない), is itself an incomplete stem plus its
+         * own AUXILIARY glue (した; see [CONVERB_CUT] for particle glue),
          * ends at an incomplete stem whose glue sits just outside the window
-         * (ことし|て, となり|ます). Vetoed outright: JMdict entries reachable
+         * (ことし|て, となり|ます), or, with folding on, starts at a token the
+         * fold attaches to the word before it, even in a complete form
+         * (知って|いる|か: いるか is 海豚's reading). Vetoed outright: JMdict entries reachable
          * only this way are conjugation-spanning grammar patterns
          * (ないわけにはいかない) or reading coincidences — neither is a WORD the
          * app is trying to surface.
@@ -1078,6 +1090,14 @@ class DictionaryManager private constructor(private val context: Context) {
          * stem+glue shape, restricting to particle-only glue selects 207,
          * none of which is a plain verb entry once the priority bar drops
          * the unranked ones — the 593 auxiliary-glue forms are untouched.
+         *
+         * [AUXILIARY_CUT]: a [CONVERB_CUT] window whose next token is an
+         * auxiliary verb the fold attaches through its て (従っ|て + いる,
+         * 通じ|て + いる). The verb conjugates on there rather than standing as
+         * the fossilized converb, so even a priority headword (従って, 除いて)
+         * must not take the window: never admissible, and the fold reads
+         * 従う -て « -いる. Only with folding on; without it the converb
+         * keeps its priority rule.
          *
          * "Incomplete" = 連用形/未然形/語幹 — forms that grammatically require
          * a continuation. 終止形-adjacent joins stay clean, which is what
@@ -1097,7 +1117,7 @@ class DictionaryManager private constructor(private val context: Context) {
          * garbage-removal; だから/でも/かな/かもしれない/ストレスかいしょう keep
          * fusing.
          */
-        internal enum class Suspicion { CONJUGATION_CUT, CONVERB_CUT, FUNCTION_RUN }
+        internal enum class Suspicion { CONJUGATION_CUT, CONVERB_CUT, AUXILIARY_CUT, FUNCTION_RUN }
 
         /** Tiered phrase membership from [batchCheckPhrases] — see its doc. */
         internal data class PhraseMembership(
@@ -1125,8 +1145,9 @@ class DictionaryManager private constructor(private val context: Context) {
          * Drop candidates whose [Suspicion] their membership tier can't
          * license: converb cuts (押して) need a PRIORITY headword; conjugation
          * cuts (した/知らせる) and function runs admit via any headword, plus a
-         * kana-native reading for function runs. Clean candidates pass
-         * through. Pure; the matcher then needs no admissibility knowledge.
+         * kana-native reading for function runs; auxiliary cuts (従って before
+         * いる) never admit. Clean candidates pass through. Pure; the matcher
+         * then needs no admissibility knowledge.
          */
         internal fun admissiblePhraseCandidates(
             candidates: List<PhraseCandidate>,
@@ -1138,6 +1159,7 @@ class DictionaryManager private constructor(private val context: Context) {
                 null -> true
                 Suspicion.CONJUGATION_CUT -> c.lookupForm in headwords
                 Suspicion.CONVERB_CUT -> c.lookupForm in priorityHeadwords
+                Suspicion.AUXILIARY_CUT -> false
                 Suspicion.FUNCTION_RUN ->
                     c.lookupForm in headwords || c.lookupForm in kanaNativeReadings
             }
@@ -1150,13 +1172,111 @@ class DictionaryManager private constructor(private val context: Context) {
         private val JaToken.hasIncompleteInflection: Boolean
             get() = inflectionForm?.let { f -> INCOMPLETE_INFLECTIONS.any(f::startsWith) } == true
 
+        /** The written forms of the 接続助詞 an auxiliary verb attaches through. */
+        private val TE_SURFACES = setOf("て", "で")
+
+        /** The particles that may sit between a 連用形 and the 無い negating it. */
+        private val NAI_INTERPOSED_PARTICLES = setOf("は", "も")
+
+        /** Inflection-form prefixes the appearance stem そう attaches to. */
+        private val SOU_STEM_INFLECTIONS = arrayOf("連用形", "語幹")
+
+        /**
+         * Whether [tok] is an auxiliary verb the fold attaches through [prev]:
+         * a 動詞 非自立可能 on the allow-list ([JapaneseInflectionAnalyzer.AUX_VERB_TAGS],
+         * keyed on normalizedForm because the written form varies: いる and
+         * おる are 居る, いけ is 行く, 頂け is 頂く) right after a 接続助詞 written
+         * て or で. Built from the survey chains 飲ん|で|い(いる, 居る)|なかっ|た,
+         * 持っ|て|いっ(いく, 行く)|て|しまっ(しまう, 仕舞う)|た, 来|て|頂け(頂ける,
+         * 頂く)|ます and 教え|て|ください(くださる, 下さる). Positional, not by
+         * role: 見 in 見|て|みる is 非自立可能 too. The particle is checked by
+         * surface because ては is one morpheme (食べ|ては|いけ|ない) and ちゃ
+         * normalizes to て (食べ|ちゃ|いけ|ない, Sudachi CLI); both stay split,
+         * as does ても (食べ|て|も|いる). A 非自立可能 verb off the list stays a
+         * word of its own (みせる in やっ|て|みせる).
+         */
+        internal fun isTeAuxiliary(prev: JaToken, tok: JaToken): Boolean =
+            tok.category == JaCategory.VERB && tok.isAuxiliaryCapable &&
+                prev.isConjunctiveParticle && prev.surface in TE_SURFACES &&
+                tok.normalizedForm in JapaneseInflectionAnalyzer.AUX_VERB_TAGS
+
+        /**
+         * Whether [tok], at [index] in [tokens] after [prev], is the negative
+         * adjective 無い (形容詞 非自立可能) negating a 連用形: an i-adjective's
+         * (高く|ない, 高く|なかっ|た), an auxiliary's (食べ|たく|ない; だ's で or
+         * じゃ, as in 静か|で|は|ない), or either of those with は or も between
+         * (高く|は|ない and 食べ|たく|も|ない, Sudachi CLI). After a verb's 未然形
+         * Sudachi gives the 助動詞 ない instead (食べ|ない), which is glue
+         * already; another 非自立可能 adjective (いい in 食べ|て|も|いい) never
+         * qualifies. The fold only reaches 無い from a word that starts a
+         * conjugation, which the 形状詞 静か is not, so 静か|ではない stays split.
+         */
+        internal fun isNaiAdjective(prev: JaToken, tok: JaToken, tokens: List<JaToken>, index: Int): Boolean {
+            if (tok.category != JaCategory.ADJ_I || !tok.isAuxiliaryCapable || tok.normalizedForm != "無い") {
+                return false
+            }
+            if (prev.isNegatableContinuative) return true
+            return prev.category == JaCategory.PARTICLE && prev.surface in NAI_INTERPOSED_PARTICLES &&
+                tokens.getOrNull(index - 2)?.isNegatableContinuative == true
+        }
+
+        /** An i-adjective or auxiliary in 連用形: what 無い attaches to. */
+        private val JaToken.isNegatableContinuative: Boolean
+            get() = (category == JaCategory.ADJ_I || category == JaCategory.AUX) &&
+                inflectionForm?.startsWith("連用形") == true
+
+        /**
+         * Whether [tok] is the appearance stem そう (形状詞 助動詞語幹) attached to
+         * [prev], a verb in 連用形 or an i-adjective in 語幹: 食べ|そう|だ and
+         * 高|そう in the survey. Hearsay そう follows a complete form (食べる|そう|だ,
+         * 食べる in 連体形) and stays its own span, as does よう (食べる|よう|だ).
+         */
+        internal fun isSouStem(prev: JaToken, tok: JaToken): Boolean =
+            tok.isAuxiliaryStem && tok.normalizedForm == "そう" &&
+                prev.category.startsConjugation &&
+                prev.inflectionForm?.let { f -> SOU_STEM_INFLECTIONS.any(f::startsWith) } == true
+
+        /**
+         * Whether the token at [j] is a content token the fold attaches to
+         * the word before it, the token at j - 1 (so [j] >= 1): an auxiliary
+         * verb after て/で ([isTeAuxiliary]), 無い after a 連用形
+         * ([isNaiAdjective]) or そう after a 連用形 or 語幹 ([isSouStem]).
+         */
+        internal fun isFoldTarget(tokens: List<JaToken>, j: Int): Boolean {
+            val prev = tokens[j - 1]
+            val tok = tokens[j]
+            return isTeAuxiliary(prev, tok) || isNaiAdjective(prev, tok, tokens, j) || isSouStem(prev, tok)
+        }
+
+        /**
+         * Whether the token at [j] continues the conjugation of the word
+         * before it (so [j] >= 1): any particle or auxiliary (glue), and with
+         * [foldAuxiliaries] also an [isFoldTarget]. The single-token fold in
+         * [reglobSpans] and the lemma variant's trailing fold in
+         * [phraseCandidatesFor] both scan with it, so they cannot disagree. A
+         * folded auxiliary's own glue follows it, and so may a further て and
+         * auxiliary (持っ|て|いっ|て|しまっ|た).
+         */
+        internal fun continuesConjugation(tokens: List<JaToken>, j: Int, foldAuxiliaries: Boolean): Boolean =
+            tokens[j].category.isConjugationGlue || (foldAuxiliaries && isFoldTarget(tokens, j))
+
         /**
          * Classify a candidate window's [Suspicion]. Lemma variants are never
          * suspect: candidate generation already restricts them to content
          * starts, and their whole mechanism is deliberate lemma-swap + glue
-         * folding of the final stem.
+         * folding of the final stem. [foldAuxiliaries] adds the fold's three
+         * rules ([Suspicion.AUXILIARY_CUT], and [Suspicion.CONJUGATION_CUT]
+         * for a window starting at an [isFoldTarget] or at glue after an
+         * auxiliary stem); without folding they would protect a fold that
+         * never happens.
          */
-        internal fun suspicionFor(tokens: List<JaToken>, start: Int, windowLen: Int, isVariant: Boolean): Suspicion? {
+        internal fun suspicionFor(
+            tokens: List<JaToken>,
+            start: Int,
+            windowLen: Int,
+            isVariant: Boolean,
+            foldAuxiliaries: Boolean,
+        ): Suspicion? {
             if (isVariant) return null
             val first = tokens[start]
             if (first.category.isConjugationGlue) {
@@ -1176,6 +1296,11 @@ class DictionaryManager private constructor(private val context: Context) {
                     if ((prev.category == JaCategory.AUX || prev.category.isContent) &&
                         prev.hasIncompleteInflection
                     ) return Suspicion.CONJUGATION_CUT
+                    // A 助動詞語幹 has no 活用形 to read, but it is incomplete
+                    // by definition: そう needs the だ, な or に after it, and
+                    // with folding on that glue is the fold's (入れ|そう|に|ない,
+                    // where にない is 担い's reading).
+                    if (foldAuxiliaries && prev.isAuxiliaryStem) return Suspicion.CONJUGATION_CUT
                 }
                 // Clean-context glue start: fall through to the mirror /
                 // function-run shapes below.
@@ -1184,15 +1309,30 @@ class DictionaryManager private constructor(private val context: Context) {
             ) {
                 // PARTICLE-only glue disagrees with the parse about part of
                 // speech (押し|て); AUX glue derives a real word that agrees
-                // with it (知ら|せる→知らせる). See [Suspicion.CONVERB_CUT].
-                return if ((start + 1 until start + windowLen).all {
-                        tokens[it].category == JaCategory.PARTICLE
+                // with it (知ら|せる→知らせる). See [Suspicion.CONVERB_CUT]. An
+                // auxiliary verb right after the window means the verb
+                // conjugates on through its て (従っ|て|いる): see
+                // [Suspicion.AUXILIARY_CUT].
+                val end = start + windowLen
+                return if ((start + 1 until end).all { tokens[it].category == JaCategory.PARTICLE }) {
+                    if (foldAuxiliaries && end < tokens.size && isTeAuxiliary(tokens[end - 1], tokens[end])) {
+                        Suspicion.AUXILIARY_CUT
+                    } else {
+                        Suspicion.CONVERB_CUT
                     }
-                ) {
-                    Suspicion.CONVERB_CUT
                 } else {
                     Suspicion.CONJUGATION_CUT
                 }
+            }
+            // A window starting at a token the fold attaches to the word
+            // before it cuts that conjugation even when the token is in a
+            // complete form (知っ|て|いる|か, いるか being 海豚's reading;
+            // 高く|ない|か; 食べ|そう|だ). After shape 2 on purpose: a window
+            // starting at an auxiliary's 連用形 with particle glue (置い|て in
+            // 書い|て|置い|て) keeps CONVERB_CUT, which asks for a priority
+            // headword where CONJUGATION_CUT accepts any.
+            if (foldAuxiliaries && start > 0 && isFoldTarget(tokens, start)) {
+                return Suspicion.CONJUGATION_CUT
             }
             val last = tokens[start + windowLen - 1]
             if (last.category.isContent && last.category.startsConjugation &&
@@ -1216,13 +1356,17 @@ class DictionaryManager private constructor(private val context: Context) {
          *  - exact: the surfaces joined as-is (かもしれない);
          *  - lemma variant: for windows ENDING at an inflected conjugating
          *    content token, the last surface is swapped for its
-         *    dictionaryForm (気+に+なっ → 気になる), and the trailing
-         *    auxiliary/particle glue (た) is folded into the surface span /
-         *    advance count — mirroring the single-token folding in
-         *    [reglobTokens]. This lets dictionary headwords match inflected
-         *    expressions (気になった) the exact join can't.
+         *    dictionaryForm (気+に+なっ → 気になる), and the tokens
+         *    [continuesConjugation] folds after it (た; with
+         *    [foldAuxiliaries] also て+い+た) join the surface span /
+         *    advance count, the same scan as the single-token fold in
+         *    [reglobSpans]. This lets dictionary headwords match inflected
+         *    expressions (気になった, 気になっていた) the exact join can't.
          */
-        internal fun phraseCandidatesFor(tokens: List<JaToken>): List<PhraseCandidate> {
+        internal fun phraseCandidatesFor(
+            tokens: List<JaToken>,
+            foldAuxiliaries: Boolean = true,
+        ): List<PhraseCandidate> {
             val surfaces = tokens.map { it.surface }
             val out = mutableListOf<PhraseCandidate>()
             for (i in tokens.indices) {
@@ -1233,7 +1377,7 @@ class DictionaryManager private constructor(private val context: Context) {
                         out.add(PhraseCandidate(
                             startIndex = i, windowLen = n, lookupForm = phrase,
                             surface = phrase, tokensConsumed = n, isVariant = false,
-                            suspicion = suspicionFor(tokens, i, n, isVariant = false),
+                            suspicion = suspicionFor(tokens, i, n, isVariant = false, foldAuxiliaries),
                         ))
                     }
                     // Lemma variant: window ends at an inflected verb/i-adjective.
@@ -1256,7 +1400,7 @@ class DictionaryManager private constructor(private val context: Context) {
                         surfaces.subList(i, i + n - 1).joinToString("") + last.dictionaryForm
                     if (lemmaPhrase == phrase || !isLookupWorthy(lemmaPhrase)) continue
                     var j = i + n
-                    while (j < tokens.size && tokens[j].category.isConjugationGlue) j++
+                    while (j < tokens.size && continuesConjugation(tokens, j, foldAuxiliaries)) j++
                     out.add(PhraseCandidate(
                         startIndex = i, windowLen = n, lookupForm = lemmaPhrase,
                         surface = surfaces.subList(i, j).joinToString(""),
@@ -1281,7 +1425,9 @@ class DictionaryManager private constructor(private val context: Context) {
          * opening particles of a phrase that then matches at its own start
          * (言われる folds かも, then かもしれない matches at か). The overlap
          * is load-bearing for the words list; SentenceAnnotator computes a
-         * disjoint display cover from these spans, phrase-priority.
+         * disjoint display cover from these spans, phrase-priority. No span
+         * starts at a content token an earlier span folded (an auxiliary verb,
+         * 無い or そう): [reglobSpans] skips it.
          */
         internal data class ReglobSpan(
             val tokenStart: Int,
@@ -1313,22 +1459,37 @@ class DictionaryManager private constructor(private val context: Context) {
          *
          * At each position the longest matching window wins (exact surface
          * join before lemma variant at equal length); otherwise the token's
-         * base form is emitted if it's a content word, with trailing
-         * auxiliary/particle morphemes folded into a conjugating word's
-         * surface span (e.g. ない after 使わ).
+         * base form is emitted if it's a content word, with the tokens
+         * [continuesConjugation] admits folded into a conjugating word's
+         * surface span: ない after 使わ, and with [foldAuxiliaries] an
+         * auxiliary verb after て/で with its own glue, so 飲んでいなかった is
+         * one span, 飲む with the chain -て « -いる « negative « -た.
          */
         internal fun reglobSpans(
             tokens: List<JaToken>,
             candidates: List<PhraseCandidate>,
             knownPhrases: Set<String>,
             knownForms: Set<String>,
+            foldAuxiliaries: Boolean = true,
         ): List<ReglobSpan> {
             val byStart = candidates.groupBy { it.startIndex }.mapValues { (_, group) ->
                 group.sortedWith(compareByDescending<PhraseCandidate> { it.windowLen }.thenBy { it.isVariant })
             }
             val result = mutableListOf<ReglobSpan>()
+            // End (exclusive) of the last single-token span's fold. Glue is
+            // never content, so a content token before it is an auxiliary
+            // verb, 無い or そう that span already covers.
+            var foldedUntil = 0
             var i = 0
             while (i < tokens.size) {
+                // A folded auxiliary is neither a word of its own nor a phrase
+                // start: a phrase there is a reading coincidence (いるか, 海豚)
+                // or a re-spelling of the auxiliary itself (頂きます), and
+                // letting it win would trim the span that folded it.
+                if (i < foldedUntil && tokens[i].category.isContent) {
+                    i++
+                    continue
+                }
                 val match = byStart[i]?.firstOrNull { it.lookupForm in knownPhrases }
                 if (match != null) {
                     // Lemma-variant phrases (気になった → 気になる) carry a productive
@@ -1340,6 +1501,7 @@ class DictionaryManager private constructor(private val context: Context) {
                         JapaneseInflectionAnalyzer.analyze(
                             tokens[i + match.windowLen - 1],
                             tokens.subList(i + match.windowLen, i + match.tokensConsumed),
+                            match.lookupForm,
                         )
                     } else {
                         emptyList()
@@ -1383,7 +1545,7 @@ class DictionaryManager private constructor(private val context: Context) {
                         val glue = mutableListOf<JaToken>()
                         if (t.category.startsConjugation) {
                             var j = i + 1
-                            while (j < tokens.size && tokens[j].category.isConjugationGlue) {
+                            while (j < tokens.size && continuesConjugation(tokens, j, foldAuxiliaries)) {
                                 surfaceSpan += tokens[j].surface
                                 glue.add(tokens[j])
                                 j++
@@ -1394,17 +1556,20 @@ class DictionaryManager private constructor(private val context: Context) {
                             tokenStart = i, tokenCount = 1 + glue.size,
                             surface = surfaceSpan, lookupForm = lookupForm,
                             reading = reading,
-                            inflections = JapaneseInflectionAnalyzer.analyze(t, glue),
+                            inflections = JapaneseInflectionAnalyzer.analyze(t, glue, lookupForm),
                             isPhrase = false,
                         ))
+                        // Only an emitted span claims its fold: when the stem
+                        // is not lookup-worthy, its auxiliary gets its own span.
+                        foldedUntil = i + 1 + glue.size
                     }
                 }
-                // NOTE: i advances by ONE even after glue folding — the folded
-                // tokens are revisited (they're non-content, so they emit
-                // nothing themselves) BUT a phrase candidate starting inside
-                // the folded glue still gets its chance to match (言われるかも
-                // then かもしれない). That overlap is intentional; see
-                // [ReglobSpan].
+                // NOTE: i advances by ONE even after folding. The folded
+                // tokens are revisited so a phrase candidate starting at
+                // folded GLUE still gets its chance to match (言われるかも
+                // then かもしれない); that overlap is intentional, see
+                // [ReglobSpan]. Folded glue emits nothing itself (it is not
+                // content), and a folded auxiliary is skipped above.
                 i++
             }
             return result

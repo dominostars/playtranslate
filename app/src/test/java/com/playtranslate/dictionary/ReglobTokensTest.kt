@@ -4,8 +4,10 @@ import com.playtranslate.dictionary.DictionaryManager.Companion.PhraseCandidate
 import com.playtranslate.dictionary.DictionaryManager.Companion.Suspicion
 import com.playtranslate.dictionary.DictionaryManager.Companion.admissiblePhraseCandidates
 import com.playtranslate.dictionary.DictionaryManager.Companion.phraseCandidatesFor
+import com.playtranslate.dictionary.DictionaryManager.Companion.reglobSpans
 import com.playtranslate.dictionary.DictionaryManager.Companion.reglobTokens
 import com.playtranslate.language.InflectionTag
+import com.playtranslate.language.memberUnits
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -690,25 +692,29 @@ class ReglobTokensTest {
     @Test
     fun `glue after an incomplete stem is a conjugation cut - the teori specimen`() {
         // いただい|て|おり|ます — ており is 手織り's reading, but て is bound to
-        // いただい's 連用形-イ音便. The join severs the conjugation.
+        // いただい's 連用形-イ音便. The join severs the conjugation. Chain from
+        // seg-runs/s3/survey.json (いただいております): both verbs are 非自立可能,
+        // and おり normalizes to おる.
         val tokens = listOf(
-            jaToken("いただい", JaCategory.VERB, dict = "いただく", infl = "連用形-イ音便"),
+            jaToken("いただい", JaCategory.VERB, dict = "いただく", norm = "頂く", infl = "連用形-イ音便",
+                conjType = "五段-カ行", aux = true),
             jaToken("て", JaCategory.PARTICLE, conj = true),
-            jaToken("おり", JaCategory.VERB, dict = "おる", infl = "連用形-一般"),
-            jaToken("ます", JaCategory.AUX, infl = "終止形-一般"),
+            jaToken("おり", JaCategory.VERB, dict = "おる", infl = "連用形-一般", conjType = "五段-ラ行", aux = true),
+            jaToken("ます", JaCategory.AUX, infl = "終止形-一般", conjType = "助動詞-マス"),
         )
         assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(tokens, "ており"))
 
         // End to end: even with ており in the membership set (JMdict has it),
-        // admissibility drops the candidate and the parse comes out right.
+        // admissibility drops the candidate, and the fold carries いただく
+        // through the auxiliary おる to the end.
         val admissible = admissiblePhraseCandidates(
             phraseCandidatesFor(tokens), headwords = emptySet(), kanaNativeReadings = emptySet(),
         )
         assertTrue(admissible.none { it.lookupForm == "ており" })
         val r = reglobTokens(tokens, admissible, setOf("ており"), setOf("いただく", "おる"))
-        assertEquals(listOf("いただく", "おる"), r.map { it.lookupForm })
-        assertEquals("いただいて", r[0].surface)
-        assertEquals("おります", r[1].surface)
+        assertEquals(listOf("いただく"), r.map { it.lookupForm })
+        assertEquals("いただいております", r[0].surface)
+        assertEquals(listOf(InflectionTag.TE, InflectionTag.IRU, InflectionTag.MASU), r[0].inflections)
     }
 
     @Test
@@ -782,11 +788,13 @@ class ReglobTokensTest {
     @Test
     fun `stealing a stem from its upcoming glue is a conjugation cut - mirror shape`() {
         // こんな|こと|し|て|くる — ことし (今年) would strip し from its て.
+        // The くる after て is the auxiliary 来る the fold attaches; the
+        // window ends before it, so the suspicion is unchanged.
         val tokens = listOf(
             jaToken("こと", JaCategory.NOUN),
             jaToken("し", JaCategory.VERB, dict = "する", infl = "連用形-一般"),
             jaToken("て", JaCategory.PARTICLE, conj = true),
-            jaToken("くる", JaCategory.VERB, infl = "終止形-一般"),
+            jaToken("くる", JaCategory.VERB, norm = "来る", infl = "終止形-一般", aux = true),
         )
         assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(tokens, "ことし"))
     }
@@ -925,5 +933,517 @@ class ReglobTokensTest {
             priorityHeadwords = setOf("従って"),
         )
         assertTrue(admissible.any { it.lookupForm == "従って" })
+    }
+
+    // ── Auxiliary fold ───────────────────────────────────────────────────
+    // A verb span continues through an auxiliary verb after て/で, through the
+    // adjective 無い after a 連用形 and through the appearance stem そう. Unless a
+    // comment names another source, each chain is copied from
+    // seg-runs/s3/survey.json (Sudachi 0.7.4, mode A, the pack's
+    // system_core.dic); "CLI" names Sudachi's command line on the same
+    // dictionary, which also gave the katakana readings where a test reads one.
+
+    private fun spans(
+        tokens: List<JaToken>,
+        knownPhrases: Set<String> = emptySet(),
+        knownForms: Set<String> = emptySet(),
+        fold: Boolean = true,
+    ) = reglobSpans(tokens, phraseCandidatesFor(tokens, fold), knownPhrases, knownForms, fold)
+
+    /** 飲んでいなかった. */
+    private val nondeInakatta = listOf(
+        jaToken("飲ん", JaCategory.VERB, dict = "飲む", reading = "ノン", infl = "連用形-撥音便", conjType = "五段-マ行"),
+        jaToken("で", JaCategory.PARTICLE, reading = "デ", conj = true),
+        jaToken("い", JaCategory.VERB, dict = "いる", norm = "居る", reading = "イ", infl = "未然形-一般",
+            conjType = "上一段-ア行", aux = true),
+        jaToken("なかっ", JaCategory.AUX, dict = "ない", reading = "ナカッ", infl = "連用形-促音便", conjType = "助動詞-ナイ"),
+        jaToken("た", JaCategory.AUX, reading = "タ", infl = "終止形-一般", conjType = "助動詞-タ"),
+    )
+
+    /** 持っていってしまった. */
+    private val motteItteShimatta = listOf(
+        jaToken("持っ", JaCategory.VERB, dict = "持つ", infl = "連用形-促音便", conjType = "五段-タ行"),
+        jaToken("て", JaCategory.PARTICLE, conj = true),
+        jaToken("いっ", JaCategory.VERB, dict = "いく", norm = "行く", infl = "連用形-促音便", conjType = "五段-カ行", aux = true),
+        jaToken("て", JaCategory.PARTICLE, conj = true),
+        jaToken("しまっ", JaCategory.VERB, dict = "しまう", norm = "仕舞う", infl = "連用形-促音便",
+            conjType = "五段-ワア行", aux = true),
+        jaToken("た", JaCategory.AUX, infl = "終止形-一般", conjType = "助動詞-タ"),
+    )
+
+    private val tabe = jaToken("食べ", JaCategory.VERB, dict = "食べる", infl = "連用形-一般", conjType = "下一段-バ行")
+    private val ike = jaToken("いけ", JaCategory.VERB, dict = "いける", norm = "行く", infl = "未然形-一般",
+        conjType = "下一段-カ行", aux = true)
+    private val naiAux = jaToken("ない", JaCategory.AUX, infl = "終止形-一般", conjType = "助動詞-ナイ")
+    private val iruAux = jaToken("いる", JaCategory.VERB, norm = "居る", infl = "終止形-一般", conjType = "上一段-ア行", aux = true)
+    private val te = jaToken("て", JaCategory.PARTICLE, conj = true)
+
+    @Test
+    fun `an auxiliary verb after て joins the verb's span with its own glue`() {
+        val r = spans(nondeInakatta, knownForms = setOf("飲む", "いる"))
+        val s = r.single()
+        assertEquals(0, s.tokenStart)
+        assertEquals(5, s.tokenCount)
+        assertEquals("飲んでいなかった", s.surface)
+        assertEquals("飲む", s.lookupForm)
+        assertEquals("のん", s.reading)
+        assertEquals(
+            listOf(InflectionTag.TE, InflectionTag.IRU, InflectionTag.NEGATIVE, InflectionTag.TA),
+            s.inflections,
+        )
+        // Folding off (member mode) leaves the two spans of before.
+        assertEquals(
+            listOf("飲んで", "いなかった"),
+            spans(nondeInakatta, knownForms = setOf("飲む", "いる"), fold = false).map { it.surface },
+        )
+    }
+
+    @Test
+    fun `ては is one morpheme and keeps the auxiliary its own word`() {
+        val tokens = listOf(tabe, jaToken("ては", JaCategory.PARTICLE, conj = true), ike, naiAux)
+        val r = spans(tokens, knownForms = setOf("食べる", "いける"))
+        assertEquals(listOf("食べては", "いけない"), r.map { it.surface })
+        // Looked up under いける itself, the auxiliary's span does not repeat
+        // its potential.
+        assertEquals(listOf(InflectionTag.NEGATIVE), r[1].inflections)
+    }
+
+    @Test
+    fun `ちゃ normalizes to て but does not attach an auxiliary`() {
+        // CLI: 食べちゃいけない. The predicate reads the particle's surface.
+        val tokens = listOf(tabe, jaToken("ちゃ", JaCategory.PARTICLE, norm = "て", conj = true), ike, naiAux)
+        assertEquals(
+            listOf("食べちゃ", "いけない"),
+            spans(tokens, knownForms = setOf("食べる", "いける")).map { it.surface },
+        )
+    }
+
+    @Test
+    fun `a particle between て and the auxiliary keeps them apart`() {
+        // CLI: 食べてもいる.
+        val temo = listOf(tabe, te, jaToken("も", JaCategory.PARTICLE), iruAux)
+        assertEquals(listOf("食べても", "いる"), spans(temo, knownForms = setOf("食べる", "いる")).map { it.surface })
+        // 食べてばかりいる (replaces 家にいる, where no fold ever starts).
+        val tebakari = listOf(tabe, te, jaToken("ばかり", JaCategory.PARTICLE), iruAux)
+        val r = spans(tebakari, knownForms = setOf("食べる", "いる"))
+        assertEquals(listOf("食べてばかり", "いる"), r.map { it.surface })
+        assertEquals(listOf(InflectionTag.TE), r[0].inflections)
+    }
+
+    @Test
+    fun `an auxiliary-capable stem folds like any verb`() {
+        // 見てみる: 見 is 非自立可能 too; the fold is positional.
+        val tokens = listOf(
+            jaToken("見", JaCategory.VERB, dict = "見る", infl = "連用形-一般", conjType = "上一段-マ行", aux = true),
+            te,
+            jaToken("みる", JaCategory.VERB, norm = "見る", infl = "終止形-一般", conjType = "上一段-マ行", aux = true),
+        )
+        val s = spans(tokens, knownForms = setOf("見る", "みる")).single()
+        assertEquals("見てみる", s.surface)
+        assertEquals("見る", s.lookupForm)
+        assertEquals(listOf(InflectionTag.TE, InflectionTag.MIRU), s.inflections)
+    }
+
+    @Test
+    fun `the fold continues through a further て and auxiliary`() {
+        val s = spans(motteItteShimatta, knownForms = setOf("持つ", "いく", "しまう")).single()
+        assertEquals(6, s.tokenCount)
+        assertEquals("持つ", s.lookupForm)
+        assertEquals(
+            listOf(InflectionTag.TE, InflectionTag.IKU, InflectionTag.TE, InflectionTag.SHIMAU, InflectionTag.TA),
+            s.inflections,
+        )
+    }
+
+    @Test
+    fun `くださる in 命令形 closes the chain with imperative`() {
+        // 教えてください
+        val tokens = listOf(
+            jaToken("教え", JaCategory.VERB, dict = "教える", infl = "連用形-一般", conjType = "下一段-ア行"),
+            te,
+            jaToken("ください", JaCategory.VERB, dict = "くださる", norm = "下さる", infl = "命令形",
+                conjType = "五段-ラ行", aux = true),
+        )
+        val s = spans(tokens, knownForms = setOf("教える", "くださる")).single()
+        assertEquals("教えてください", s.surface)
+        assertEquals(
+            listOf(InflectionTag.TE, InflectionTag.KUDASARU, InflectionTag.IMPERATIVE),
+            s.inflections,
+        )
+    }
+
+    @Test
+    fun `an auxiliary-capable verb off the allow-list stays its own word`() {
+        // やってみせる: みせる is 非自立可能 but not an auxiliary the fold knows.
+        val tokens = listOf(
+            jaToken("やっ", JaCategory.VERB, dict = "やる", norm = "遣る", infl = "連用形-促音便",
+                conjType = "五段-ラ行", aux = true),
+            te,
+            jaToken("みせる", JaCategory.VERB, norm = "見せる", infl = "終止形-一般", conjType = "下一段-サ行", aux = true),
+        )
+        assertEquals(
+            listOf("やって", "みせる"),
+            spans(tokens, knownForms = setOf("やる", "みせる")).map { it.surface },
+        )
+    }
+
+    @Test
+    fun `a potential auxiliary keeps its potential inside the fold`() {
+        // 来て頂けます: the span is looked up under 来る, so 頂ける's potential
+        // is information the headword does not carry.
+        val tokens = listOf(
+            jaToken("来", JaCategory.VERB, dict = "来る", infl = "連用形-一般", conjType = "カ行変格", aux = true),
+            te,
+            jaToken("頂け", JaCategory.VERB, dict = "頂ける", norm = "頂く", infl = "連用形-一般",
+                conjType = "下一段-カ行", aux = true),
+            jaToken("ます", JaCategory.AUX, infl = "終止形-一般", conjType = "助動詞-マス"),
+        )
+        val s = spans(tokens, knownForms = setOf("来る", "頂ける")).single()
+        assertEquals("来る", s.lookupForm)
+        assertEquals(
+            listOf(InflectionTag.TE, InflectionTag.ITADAKU, InflectionTag.POTENTIAL, InflectionTag.MASU),
+            s.inflections,
+        )
+    }
+
+    @Test
+    fun `a phrase never starts at a folded auxiliary - the いるか specimen`() {
+        // 知っているか: いるか is 海豚's reading. Unfolded, it took the
+        // auxiliary and the question particle.
+        val tokens = listOf(
+            jaToken("知っ", JaCategory.VERB, dict = "知る", infl = "連用形-促音便", conjType = "五段-ラ行"),
+            te,
+            iruAux,
+            jaToken("か", JaCategory.PARTICLE),
+        )
+        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(tokens, "いるか"))
+        val r = spans(tokens, knownPhrases = setOf("いるか"), knownForms = setOf("知る", "いる"))
+        assertEquals(listOf("知っているか"), r.map { it.surface })
+        assertEquals("知る", r[0].lookupForm)
+        assertEquals(listOf(InflectionTag.TE, InflectionTag.IRU), r[0].inflections)
+        assertTrue(r.none { it.tokenStart == 2 })
+        assertEquals(
+            listOf("知って", "いるか"),
+            spans(tokens, knownPhrases = setOf("いるか"), knownForms = setOf("知る", "いる"), fold = false)
+                .map { it.surface },
+        )
+    }
+
+    @Test
+    fun `only an emitted span claims its fold`() {
+        // Constructed stem: no dump has a verb whose dictionary form is not
+        // lookup-worthy, but the guard must not swallow an auxiliary that no
+        // span covers. て and いる as in the survey.
+        val tokens = listOf(
+            jaToken("ggっ", JaCategory.VERB, dict = "gg", infl = "連用形-促音便"),
+            te,
+            iruAux,
+        )
+        val r = spans(tokens, knownForms = setOf("いる"))
+        assertEquals(listOf("いる"), r.map { it.lookupForm })
+        assertEquals(2, r[0].tokenStart)
+    }
+
+    @Test
+    fun `a lemma variant folds the auxiliary after its stem`() {
+        // CLI: 気になっていた.
+        val tokens = listOf(
+            jaToken("気", JaCategory.NOUN),
+            jaToken("に", JaCategory.PARTICLE),
+            jaToken("なっ", JaCategory.VERB, dict = "なる", norm = "成る", infl = "連用形-促音便",
+                conjType = "五段-ラ行", aux = true),
+            te,
+            jaToken("い", JaCategory.VERB, dict = "いる", norm = "居る", infl = "連用形-一般",
+                conjType = "上一段-ア行", aux = true),
+            jaToken("た", JaCategory.AUX, infl = "終止形-一般", conjType = "助動詞-タ"),
+        )
+        val s = spans(tokens, knownPhrases = setOf("気になる"), knownForms = setOf("気", "なる", "いる")).single()
+        assertTrue(s.isPhrase)
+        assertEquals("気になる", s.lookupForm)
+        assertEquals("気になっていた", s.surface)
+        assertEquals(6, s.tokenCount)
+        assertEquals(listOf(InflectionTag.TE, InflectionTag.IRU, InflectionTag.TA), s.inflections)
+    }
+
+    @Test
+    fun `a variant ending at an auxiliary folds the auxiliaries after it`() {
+        // 持っていってしまった with 持っていく a headword: the variant's stem is
+        // いっ, and its fold takes て, しまっ and た.
+        val s = spans(motteItteShimatta, knownPhrases = setOf("持っていく"), knownForms = setOf("持つ")).single()
+        assertTrue(s.isPhrase)
+        assertEquals("持っていく", s.lookupForm)
+        assertEquals(6, s.tokenCount)
+        assertEquals(listOf(InflectionTag.TE, InflectionTag.SHIMAU, InflectionTag.TA), s.inflections)
+    }
+
+    @Test
+    fun `member mode keeps the auxiliary a unit of its own`() {
+        // 連れて行く decomposed into its members, the headword excluded.
+        val tokens = listOf(
+            jaToken("連れ", JaCategory.VERB, dict = "連れる", infl = "連用形-一般", conjType = "下一段-ラ行"),
+            te,
+            jaToken("行く", JaCategory.VERB, infl = "終止形-一般", conjType = "五段-カ行", aux = true),
+        )
+        val forms = setOf("連れる", "行く")
+        val unfolded = spans(tokens, knownForms = forms, fold = false)
+        assertEquals(listOf("連れて", "行く"), unfolded.map { it.surface })
+        assertEquals(
+            listOf("連れる", "行く"),
+            memberUnits(tokens, unfolded, expressionClass = false).map { it.lookupForm },
+        )
+        assertEquals(listOf(0 to 3), spans(tokens, knownForms = forms).map { it.tokenStart to it.tokenCount })
+    }
+
+    @Test
+    fun `a converb before an auxiliary is an auxiliary cut and the fold wins`() {
+        // CLI: 従っている. 従って is a priority headword (rank 2,000,000).
+        val tokens = listOf(
+            jaToken("従っ", JaCategory.VERB, dict = "従う", infl = "連用形-促音便", conjType = "五段-ワア行"),
+            te,
+            iruAux,
+        )
+        assertEquals(Suspicion.AUXILIARY_CUT, exactSuspicion(tokens, "従って"))
+        val admissible = admissiblePhraseCandidates(
+            phraseCandidatesFor(tokens), headwords = setOf("従って"), kanaNativeReadings = emptySet(),
+            priorityHeadwords = setOf("従って"),
+        )
+        assertTrue(admissible.none { it.lookupForm == "従って" })
+        val s = reglobSpans(tokens, admissible, setOf("従って"), setOf("従う", "いる")).single()
+        assertEquals("従う", s.lookupForm)
+        assertEquals(3, s.tokenCount)
+        assertEquals(listOf(InflectionTag.TE, InflectionTag.IRU), s.inflections)
+        // Without folding the converb keeps its priority rule.
+        val unfolded = phraseCandidatesFor(tokens, foldAuxiliaries = false)
+        assertEquals(Suspicion.CONVERB_CUT, unfolded.first { it.lookupForm == "従って" && !it.isVariant }.suspicion)
+    }
+
+    @Test
+    fun `a converb window starting at an auxiliary stays a converb cut`() {
+        // CLI: 書いて置いて. [置い, て] starts at the auxiliary 置く; shape 2 sees
+        // it first, so it needs a priority headword, not just any headword.
+        val tokens = listOf(
+            jaToken("書い", JaCategory.VERB, dict = "書く", infl = "連用形-イ音便", conjType = "五段-カ行"),
+            te,
+            jaToken("置い", JaCategory.VERB, dict = "置く", infl = "連用形-イ音便", conjType = "五段-カ行", aux = true),
+            te,
+        )
+        assertEquals(Suspicion.CONVERB_CUT, exactSuspicion(tokens, "置いて"))
+        val s = spans(tokens, knownForms = setOf("書く", "置く")).single()
+        assertEquals(listOf(InflectionTag.TE, InflectionTag.OKU, InflectionTag.TE), s.inflections)
+    }
+
+    @Test
+    fun `contracted auxiliaries are glue and fold with or without the flag`() {
+        val chains = listOf(
+            // 飲んでる
+            listOf(
+                jaToken("飲ん", JaCategory.VERB, dict = "飲む", infl = "連用形-撥音便", conjType = "五段-マ行"),
+                jaToken("でる", JaCategory.AUX, norm = "てる", infl = "連体形-一般", conjType = "下一段-ダ行"),
+            ) to listOf(InflectionTag.IRU),
+            // 食べちゃった
+            listOf(
+                tabe,
+                jaToken("ちゃっ", JaCategory.AUX, dict = "ちゃう", infl = "連用形-促音便", conjType = "五段-ワア行"),
+                jaToken("た", JaCategory.AUX, infl = "終止形-一般", conjType = "助動詞-タ"),
+            ) to listOf(InflectionTag.CHAU, InflectionTag.TA),
+            // 持ってった
+            listOf(
+                jaToken("持っ", JaCategory.VERB, dict = "持つ", infl = "連用形-促音便", conjType = "五段-タ行"),
+                jaToken("てっ", JaCategory.AUX, dict = "てく", infl = "連用形-促音便", conjType = "五段-カ行"),
+                jaToken("た", JaCategory.AUX, infl = "終止形-一般", conjType = "助動詞-タ"),
+            ) to listOf(InflectionTag.IKU, InflectionTag.TA),
+            // CLI: 食べてて
+            listOf(
+                tabe,
+                jaToken("て", JaCategory.AUX, dict = "てる", infl = "連用形-一般", conjType = "下一段-タ行"),
+                te,
+            ) to listOf(InflectionTag.IRU, InflectionTag.TE),
+        )
+        for ((tokens, tags) in chains) {
+            for (fold in listOf(true, false)) {
+                val s = spans(tokens, knownForms = setOf(tokens[0].dictionaryForm), fold = fold).single()
+                assertEquals(tokens.size, s.tokenCount)
+                assertEquals(tags, s.inflections)
+            }
+        }
+    }
+
+    @Test
+    fun `potential is not repeated under the potential's own headword`() {
+        // 見れた: looked up under 見れる the potential is the word itself;
+        // looked up under 見る (only the normalized form resolves) it is the
+        // first step of the chain.
+        val tokens = listOf(
+            jaToken("見れ", JaCategory.VERB, dict = "見れる", norm = "見る", infl = "連用形-一般",
+                conjType = "下一段-ラ行", aux = true),
+            jaToken("た", JaCategory.AUX, infl = "終止形-一般", conjType = "助動詞-タ"),
+        )
+        val own = spans(tokens, knownForms = setOf("見れる")).single()
+        assertEquals("見れる", own.lookupForm)
+        assertEquals(listOf(InflectionTag.TA), own.inflections)
+        val base = spans(tokens, knownForms = setOf("見る")).single()
+        assertEquals("見る", base.lookupForm)
+        assertEquals(listOf(InflectionTag.POTENTIAL, InflectionTag.TA), base.inflections)
+    }
+
+    // ── 無い after a 連用形 ──────────────────────────────────────────────
+
+    private val takaku = jaToken("高く", JaCategory.ADJ_I, dict = "高い", infl = "連用形-一般", conjType = "形容詞")
+    private fun naiAdj(surface: String = "ない", infl: String = "終止形-一般") =
+        jaToken(surface, JaCategory.ADJ_I, dict = "ない", norm = "無い", infl = infl, conjType = "形容詞", aux = true)
+
+    @Test
+    fun `無い after an adjective's 連用形 folds as negative`() {
+        val s = spans(listOf(takaku, naiAdj()), knownForms = setOf("高い", "ない")).single()
+        assertEquals("高くない", s.surface)
+        assertEquals("高い", s.lookupForm)
+        assertEquals(listOf(InflectionTag.NEGATIVE), s.inflections)
+
+        // 高くなかった: 無い's own glue follows it.
+        val past = listOf(
+            takaku, naiAdj("なかっ", "連用形-促音便"),
+            jaToken("た", JaCategory.AUX, infl = "終止形-一般", conjType = "助動詞-タ"),
+        )
+        val p = spans(past, knownForms = setOf("高い", "ない")).single()
+        assertEquals(3, p.tokenCount)
+        assertEquals(listOf(InflectionTag.NEGATIVE, InflectionTag.TA), p.inflections)
+    }
+
+    @Test
+    fun `無い after an auxiliary's 連用形 folds as negative`() {
+        // 食べたくない
+        val tokens = listOf(
+            tabe,
+            jaToken("たく", JaCategory.AUX, dict = "たい", infl = "連用形-一般", conjType = "助動詞-タイ"),
+            naiAdj(),
+        )
+        val s = spans(tokens, knownForms = setOf("食べる", "ない")).single()
+        assertEquals("食べる", s.lookupForm)
+        assertEquals(listOf(InflectionTag.TAI, InflectionTag.NEGATIVE), s.inflections)
+    }
+
+    @Test
+    fun `は between a 連用形 and 無い still folds`() {
+        // CLI: 高くはない
+        val tokens = listOf(takaku, jaToken("は", JaCategory.PARTICLE), naiAdj())
+        val s = spans(tokens, knownForms = setOf("高い", "ない")).single()
+        assertEquals(3, s.tokenCount)
+        assertEquals(listOf(InflectionTag.NEGATIVE), s.inflections)
+    }
+
+    @Test
+    fun `いい after ても is another adjective and stays its own word`() {
+        // 食べてもいい
+        val tokens = listOf(
+            tabe, te, jaToken("も", JaCategory.PARTICLE),
+            jaToken("いい", JaCategory.ADJ_I, norm = "良い", infl = "終止形-一般", conjType = "形容詞", aux = true),
+        )
+        assertEquals(
+            listOf("食べても", "いい"),
+            spans(tokens, knownForms = setOf("食べる", "いい")).map { it.surface },
+        )
+    }
+
+    @Test
+    fun `a 形状詞 does not start a conjugation, so 静かではない stays split`() {
+        // 静か is a 形状詞, which starts no conjugation, so no span reaches
+        // the ない and the ではない phrase keeps it: 静か | ではない for now.
+        val tokens = listOf(
+            jaToken("静か", JaCategory.ADJ_NA),
+            jaToken("で", JaCategory.AUX, dict = "だ", infl = "連用形-一般", conjType = "助動詞-ダ"),
+            jaToken("は", JaCategory.PARTICLE),
+            naiAdj(),
+        )
+        assertEquals(
+            listOf("静か", "ではない"),
+            spans(tokens, knownPhrases = setOf("ではない"), knownForms = setOf("静か", "ない")).map { it.surface },
+        )
+    }
+
+    // ── The appearance stem そう ────────────────────────────────────────
+
+    private fun auxStem(surface: String) = jaToken(surface, JaCategory.ADJ_NA, auxStem = true)
+    private val daFinal = jaToken("だ", JaCategory.AUX, infl = "終止形-一般", conjType = "助動詞-ダ")
+
+    @Test
+    fun `そう after a 連用形 folds as -そう, ahead of the そうだ phrase`() {
+        // 食べそうだ: そうだ (a JMdict reading) would win at the folded そう.
+        val s = spans(
+            listOf(tabe, auxStem("そう"), daFinal),
+            knownPhrases = setOf("そうだ"), knownForms = setOf("食べる", "そう"),
+        ).single()
+        assertEquals("食べそうだ", s.surface)
+        assertEquals("食べる", s.lookupForm)
+        assertEquals(listOf(InflectionTag.SOU), s.inflections)
+    }
+
+    @Test
+    fun `そう after an adjective's 語幹 folds as -そう`() {
+        // 高そう
+        val tokens = listOf(
+            jaToken("高", JaCategory.ADJ_I, dict = "高い", infl = "語幹-一般", conjType = "形容詞"),
+            auxStem("そう"),
+        )
+        val s = spans(tokens, knownForms = setOf("高い", "そう")).single()
+        assertEquals("高い", s.lookupForm)
+        assertEquals(listOf(InflectionTag.SOU), s.inflections)
+    }
+
+    @Test
+    fun `hearsay そう and よう after a complete form stay split`() {
+        // 食べるそうだ and 食べるようだ: 食べる is 連体形.
+        val taberu = jaToken("食べる", JaCategory.VERB, infl = "連体形-一般", conjType = "下一段-バ行")
+        assertEquals(
+            listOf("食べる", "そうだ"),
+            spans(listOf(taberu, auxStem("そう"), daFinal), knownPhrases = setOf("そうだ"), knownForms = setOf("食べる"))
+                .map { it.surface },
+        )
+        assertEquals(
+            listOf("食べる", "ようだ"),
+            spans(listOf(taberu, auxStem("よう"), daFinal), knownPhrases = setOf("ようだ"), knownForms = setOf("食べる"))
+                .map { it.surface },
+        )
+    }
+
+    // ── Phrases inside a fold's tail ────────────────────────────────────
+    // The phrase check still runs at folded glue (the かもしれない overlap,
+    // pinned above by the kamoshirenai test). These windows start inside a
+    // fold and must not take its tail on a reading.
+
+    @Test
+    fun `glue after a folded そう is a conjugation cut - the にない specimen`() {
+        // corpus: 穏便に中へ入れそうにないわ。 にない is 担い's reading; before the
+        // fold the longer そうにない took the window at そう.
+        val tokens = listOf(
+            jaToken("入れ", JaCategory.VERB, dict = "入れる", infl = "連用形-一般", conjType = "下一段-ラ行"),
+            auxStem("そう"),
+            jaToken("に", JaCategory.AUX, dict = "だ", infl = "連用形-ニ", conjType = "助動詞-ダ"),
+            naiAdj(),
+            jaToken("わ", JaCategory.PARTICLE),
+        )
+        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(tokens, "にない"))
+        val admissible = admissiblePhraseCandidates(
+            phraseCandidatesFor(tokens), headwords = emptySet(), kanaNativeReadings = emptySet(),
+        )
+        val s = reglobSpans(tokens, admissible, setOf("にない"), setOf("入れる")).single()
+        assertEquals("入れそうにないわ", s.surface)
+        assertEquals("入れる", s.lookupForm)
+        assertEquals(5, s.tokenCount)
+        assertEquals(listOf(InflectionTag.SOU, InflectionTag.NEGATIVE), s.inflections)
+    }
+
+    @Test
+    fun `a window starting at a folded 無い or そう is a conjugation cut`() {
+        // 高くないか: ないか is a reading in the pack.
+        val takakuNaika = listOf(takaku, naiAdj(), jaToken("か", JaCategory.PARTICLE))
+        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(takakuNaika, "ないか"))
+        val admissible = admissiblePhraseCandidates(
+            phraseCandidatesFor(takakuNaika), headwords = emptySet(), kanaNativeReadings = emptySet(),
+        )
+        val s = reglobSpans(takakuNaika, admissible, setOf("ないか"), setOf("高い", "ない")).single()
+        assertEquals("高くないか", s.surface)
+        assertEquals(listOf(InflectionTag.NEGATIVE), s.inflections)
+        // 食べそうだ: the window [そう, だ] starts at the folded そう.
+        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(listOf(tabe, auxStem("そう"), daFinal), "そうだ"))
     }
 }

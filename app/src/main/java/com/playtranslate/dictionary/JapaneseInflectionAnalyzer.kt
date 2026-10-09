@@ -16,9 +16,10 @@ import com.playtranslate.language.InflectionTag
  *
  * The stem speaks first. POTENTIAL when Sudachi lexicalized a potential, giving
  * the potential as the dictionary form and the base verb as the normalized form
- * (泳げ: 泳げる, 泳ぐ; 見れ: 見れる, 見る; いけ: いける, 行く); see
- * [isPotentialLexeme]. VOLITIONAL when its 活用形 is 意志推量形 (食べよう and 行こう
- * are one morpheme each).
+ * (泳げ: 泳げる, 泳ぐ; 見れ: 見れる, 見る; いけ: いける, 行く; see
+ * [isPotentialLexeme]), unless the span is looked up under that potential itself,
+ * so the word shown already is the potential (見れた under 見れる); 泳げた looked
+ * up under 泳ぐ keeps it.
  *
  * Then each glue morpheme, by kind:
  *  - particle, by dictionary form: て/で only as a 接続助詞 → -て (ては and ちゃ are
@@ -32,6 +33,11 @@ import com.playtranslate.language.InflectionTag
  *  - auxiliary stem そう → -そう (食べそうだ).
  * Everything else reads nothing: も, よ, か, ばかり, だろう, よう, いい.
  *
+ * VOLITIONAL follows any morpheme, stem or glue, whose 活用形 is 意志推量形,
+ * except the copula だ or です (だろう, でしょう): the stem (食べよう and 行こう are
+ * one morpheme each), ます (ましょう), a contracted auxiliary (寄っ|てこう) or an
+ * auxiliary verb (探っ|て|みよう).
+ *
  * Last, IMPERATIVE when the last morpheme that has a 活用形 is in 命令形 (食べろよ,
  * 教えてください, くださいませ).
  */
@@ -40,7 +46,8 @@ object JapaneseInflectionAnalyzer {
     /**
      * Auxiliary-capable verb (動詞 非自立可能) after て/で, keyed on its normalized
      * form because the written form varies (いる and おる both normalize to 居る,
-     * おり to おる). The fold stage reads the keys as its allow-list.
+     * おり to おる). The fold reads the keys as its allow-list
+     * ([DictionaryManager.Companion.isTeAuxiliary]).
      */
     internal val AUX_VERB_TAGS: Map<String, InflectionTag> = mapOf(
         "居る" to InflectionTag.IRU,
@@ -72,15 +79,20 @@ object JapaneseInflectionAnalyzer {
     /** Conjugation types whose れる/られる reads potential or passive. */
     private val ICHIDAN_OR_KAHEN = listOf("上一段", "下一段", "カ行変格")
 
+    /** The copula auxiliaries, whose 意志推量形 (だろう, でしょう) is not volitional. */
+    private val COPULAS = setOf("だ", "です")
+
     /**
      * @param stem the content morpheme (only verbs / i-adjectives conjugate)
      * @param glue the morphemes folded into its surface span, in order
+     * @param lookupForm the form the span is looked up under, when known; the
+     *   stem's POTENTIAL is dropped when it equals the stem's dictionary form
      */
-    fun analyze(stem: JaToken, glue: List<JaToken>): List<InflectionTag> {
+    fun analyze(stem: JaToken, glue: List<JaToken>, lookupForm: String? = null): List<InflectionTag> {
         if (!stem.category.startsConjugation) return emptyList()
         val tags = mutableListOf<InflectionTag>()
-        if (isPotentialLexeme(stem)) tags += InflectionTag.POTENTIAL
-        if (stem.inflectionForm.isForm("意志推量形")) tags += InflectionTag.VOLITIONAL
+        if (isPotentialLexeme(stem) && lookupForm != stem.dictionaryForm) tags += InflectionTag.POTENTIAL
+        tags.addVolitional(stem)
         var previous = stem
         for (g in glue) {
             when (g.category) {
@@ -97,6 +109,7 @@ object JapaneseInflectionAnalyzer {
                 else ->
                     if (g.isAuxiliaryStem && g.normalizedForm == "そう") tags += InflectionTag.SOU
             }
+            tags.addVolitional(g)
             previous = g
         }
         // Scan from the end past morphemes with no 活用形 (よ in 食べろよ).
@@ -113,8 +126,8 @@ object JapaneseInflectionAnalyzer {
     }
 
     /**
-     * た → -た, or -たら in 仮定形; ます → -ます, plus volitional in 意志推量形
-     * (ましょう); です → -です (でしょう too); だ → -なら in 仮定形, else nothing
+     * た → -た, or -たら in 仮定形; ます → -ます (its volitional ましょう is
+     * [addVolitional]'s); です → -です (でしょう too); だ → -なら in 仮定形, else nothing
      * (だろう, な, に); ない → negative; ず: the ん of ません → negative, any other
      * ん → -ん, ぬ → -ぬ, ず → -ず; たい → -たい; たがる → -たい, -がる; せる/させる →
      * causative; れる/られる by the morpheme before it (see [passiveOrPotential]);
@@ -124,10 +137,7 @@ object JapaneseInflectionAnalyzer {
     private fun MutableList<InflectionTag>.addAuxiliaryTags(aux: JaToken, previous: JaToken) {
         when (aux.normalizedForm) {
             "た" -> add(if (aux.inflectionForm.isForm("仮定形")) InflectionTag.TARA else InflectionTag.TA)
-            "ます" -> {
-                add(InflectionTag.MASU)
-                if (aux.inflectionForm.isForm("意志推量形")) add(InflectionTag.VOLITIONAL)
-            }
+            "ます" -> add(InflectionTag.MASU)
             "です" -> add(InflectionTag.DESU)
             "だ" -> if (aux.inflectionForm.isForm("仮定形")) add(InflectionTag.NARA)
             "ない" -> add(InflectionTag.NEGATIVE)
@@ -153,6 +163,13 @@ object JapaneseInflectionAnalyzer {
             "とく" -> add(InflectionTag.OKU)
             "てく" -> add(InflectionTag.IKU)
         }
+    }
+
+    /** VOLITIONAL after [morpheme]'s own step when it is in 意志推量形, unless it is the copula. */
+    private fun MutableList<InflectionTag>.addVolitional(morpheme: JaToken) {
+        if (!morpheme.inflectionForm.isForm("意志推量形")) return
+        if (morpheme.category == JaCategory.AUX && morpheme.normalizedForm in COPULAS) return
+        add(InflectionTag.VOLITIONAL)
     }
 
     /**
