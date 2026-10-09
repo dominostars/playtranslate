@@ -140,11 +140,9 @@ class ImageImportSession(
         overlayRenderBoost = boost
     }
 
+    /** Measures furigana the way the overlay draws it ([com.playtranslate.ui.FuriganaMetrics]). */
     private val furiganaPaint by lazy {
-        TextPaint().apply {
-            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
-            textSize = 100f // arbitrary — only relative proportions matter
-        }
+        com.playtranslate.ui.FuriganaMetrics.measuringPaint(context.resources.displayMetrics.density)
     }
 
     /** A new image is about to be reviewed: re-arm the slow-OCR prompt (a

@@ -78,15 +78,18 @@ class LayoutAnalyzerAngleClusterTest {
     }
 
     @Test
-    fun groupLines_areTheOriginalInstances() {
+    fun groupLines_keepTheirOriginalBoxes() {
+        // The join addresses each line into the group text (a copy past the
+        // first line); the geometry must still be the input's, never a
+        // deskewed box.
         val lines = stack(listOf("alpha", "beta"), 20f, 500f, 400f)
-        val inputLineInstances = lines.flatMap { it.lines }
+        val inputBoxes = lines.flatMap { it.lines }.map { it.box }
         val groups = analyze(lines)
         assertEquals(1, groups.size)
         for (l in groups.single().lines) {
             assertTrue(
-                "group line must be an ORIGINAL instance, not a deskewed copy",
-                inputLineInstances.any { it === l },
+                "group line must carry its ORIGINAL box, not a deskewed copy",
+                inputBoxes.any { it === l.box },
             )
         }
     }

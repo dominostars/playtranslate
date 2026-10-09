@@ -14,6 +14,7 @@ import com.playtranslate.language.withFrontierHeld
 import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.model.TextSegments
+import com.playtranslate.ui.FuriganaMetrics
 import com.playtranslate.ui.TextBox
 import androidx.core.graphics.get
 import androidx.core.graphics.createBitmap
@@ -218,11 +219,18 @@ object OverlayToolkit {
 
     // ── Furigana box building ─────────────────────────────────────────────
 
-    /** A group of furigana boxes with their source OCR group text and bounds. */
+    /** A group of furigana boxes with their source OCR group text and bounds.
+     *  [held]: built under the frontier hold, so a reading is withheld and the
+     *  display is deliberately incomplete — [FuriganaMode] never reuses a held
+     *  group and never serves its boxes from the dedup fast path; the held
+     *  text repeating is the confirmation that rebuilds it released. Tracked
+     *  with or without [boxes]: the record is what the next cycle reads for
+     *  growth, hold and confirmation. */
     data class FuriganaGroup(
         val groupText: String,
         val groupBounds: Rect,
-        val boxes: List<TextBox>
+        val boxes: List<TextBox>,
+        val held: Boolean = false,
     )
 
     /**
@@ -253,8 +261,8 @@ object OverlayToolkit {
     /** Per-group variant of [buildFuriganaBoxesByGroup] — the annotation
      *  machinery for exactly one OCR group. [FuriganaMode]'s reuse-or-rebuild
      *  loop re-annotates only the groups whose text or bounds changed.
-     *  [debugTiming] ([Prefs.debugLiveMode] at the live call sites) logs
-     *  per-line annotation wall time — the live-cell measurement the
+     *  [debugTiming] ([Prefs.debugLiveMode] at the live call sites) logs the
+     *  group's annotation wall time — the live-cell measurement the
      *  refactor's §6 gate needs, produced by a normal debug-flagged run. */
     suspend fun buildFuriganaBoxesForGroup(
         group: OcrManager.OcrGroup,
@@ -262,49 +270,50 @@ object OverlayToolkit {
         furiganaPaint: TextPaint,
         debugTiming: Boolean = false,
         /** Typewriter frontier-hold: this group's text is still being
-         *  revealed, so the LAST line's final span withholds its ruby
+         *  revealed, so the span touching its end withholds its ruby
          *  ([withFrontierHeld]) — the one word whose reading could revise
          *  as glyphs arrive. */
         holdFrontier: Boolean = false,
     ): List<TextBox> {
         val lines = group.lines
-        if (lines.isEmpty()) return emptyList()
+        if (lines.isEmpty() || group.text.isEmpty()) return emptyList()
 
-        var timedLines = 0
-        var timedTotalMs = 0.0
+        // ONE annotation of the group text — the string the translator, the
+        // panel and the segments already share — projected onto each line
+        // through the line's address in it ([OcrManager.LineBox.textStart]).
+        // Annotating a line on its own re-tokenized whatever the game's wrap
+        // had cut: 終わ|り read as 終う (しま over 終) while the panel showed お.
+        // FULL-depth: live furigana shows the SAME dictionary-corrected
+        // readings the result sheet displays and TTS speaks (一泊 →
+        // いっぱく) — never the raw per-token readings. The engine's
+        // annotation LRU makes a settled group (live re-OCRs the same text
+        // every cycle) near-free, and its per-word resolution memo keeps a
+        // typewriter step, which re-annotates the whole growing group, near
+        // one line's cost: only the frontier's new words query. Thor
+        // measurement rides [debugTiming].
+        val annotateStartNs = if (debugTiming) System.nanoTime() else 0L
+        val groupAnnotations = engine.annotate(group.text)
+            .let { if (holdFrontier) it.withFrontierHeld() else it }
+            .hintAnnotations()
+        if (debugTiming) {
+            // Warm LRU hits log ~0ms; cold groups carry the real cost — the
+            // duration distribution separates them without engine plumbing.
+            Log.i(
+                FURIGANA_TIMING_TAG,
+                "annotate %.1fms len=%d lines=%d ann=%d '%s'".format(
+                    (System.nanoTime() - annotateStartNs) / 1e6, group.text.length,
+                    lines.size, groupAnnotations.size, group.text.take(12),
+                ),
+            )
+        }
+
         val groupBoxes = mutableListOf<TextBox>()
         for (line in lines) {
             val isVertical = line.orientation == com.playtranslate.language.TextOrientation.VERTICAL
             if (line.text.isEmpty()) continue
-            // FULL-depth: live furigana shows the SAME dictionary-corrected
-            // readings the result sheet displays and TTS speaks (一泊 →
-            // いっぱく) — never the raw per-token readings. The engine's
-            // annotation LRU makes repeated lines (live re-OCRs the same
-            // text every cycle) near-free; Thor measurement of the cold-line
-            // cost (typewriter sequences included) rides [debugTiming] — if
-            // a budget problem appears, cap the re-glob candidate WINDOWS,
-            // never skip the pass (refactor doc §6: the fallback must stay
-            // reading-neutral).
-            val annotateStartNs = if (debugTiming) System.nanoTime() else 0L
-            val isLastLine = line === lines.last()
-            val annotations = engine.annotate(line.text)
-                .let { if (holdFrontier && isLastLine) it.withFrontierHeld() else it }
-                .hintAnnotations()
-            if (debugTiming) {
-                val ms = (System.nanoTime() - annotateStartNs) / 1e6
-                timedLines++
-                timedTotalMs += ms
-                // Warm LRU hits log ~0ms; cold lines carry the real cost —
-                // the duration distribution separates them without engine
-                // plumbing.
-                Log.i(
-                    FURIGANA_TIMING_TAG,
-                    "annotate %.1fms len=%d ann=%d '%s'".format(
-                        ms, line.text.length, annotations.size,
-                        line.text.take(12),
-                    ),
-                )
-            }
+            // This line's share of the annotation, in its own offsets (the
+            // symbols' charOffset space).
+            val annotations = groupAnnotations.within(line.textStart, line.text.length)
             // Slanted line: the rotated sibling ([FuriganaSlantPlacement]) does
             // its placement + merge in the deskewed frame; the upright
             // arithmetic below stays byte-identical.
@@ -419,12 +428,18 @@ object OverlayToolkit {
 
             groupBoxes += mergeOverlappingFurigana(lineBoxes, furiganaPaint, isVertical)
         }
-
-        if (debugTiming && timedLines > 0) {
-            Log.i(FURIGANA_TIMING_TAG, "group done: %d lines %.1fms total".format(timedLines, timedTotalMs))
-        }
         return groupBoxes
     }
+
+    /** The annotations that START in the window [start, start + length) of
+     *  the annotated text, re-based to the window's own offsets and clipped
+     *  to it. A ruby part the wrap cut in two is drawn once, over its first
+     *  fragment; the continuation on the next line draws nothing. */
+    private fun List<HintTextAnnotation>.within(start: Int, length: Int): List<HintTextAnnotation> =
+        mapNotNull { a ->
+            if (a.baseStart < start || a.baseStart >= start + length) null
+            else a.copy(baseStart = a.baseStart - start, baseEnd = minOf(a.baseEnd, start + length) - start)
+        }
 
     /** Convenience: build flat list of furigana boxes (for callers that don't need group tracking). */
     suspend fun buildFuriganaBoxes(
@@ -533,18 +548,14 @@ object OverlayToolkit {
      * The text is rendered at 0.7× the box height, positioned from box.left.
      */
     private fun estimateFuriganaRight(box: TextBox, paint: TextPaint): Int {
-        val textSizePx = (box.bounds.height() * 0.7f).coerceAtLeast(4f)
-        val savedSize = paint.textSize
-        paint.textSize = textSizePx
-        val textWidth = paint.measureText(box.translatedText)
-        paint.textSize = savedSize
+        val textWidth = FuriganaMetrics.renderedWidth(box.translatedText, box.bounds.height().toFloat(), paint)
         return maxOf(box.bounds.right, (box.bounds.left + textWidth).toInt())
     }
 
     /** Estimate the bottom edge of a vertical furigana label (text rendered top-to-bottom). */
     private fun estimateFuriganaBottom(box: TextBox, paint: TextPaint): Int {
         // Each character stacks vertically; estimate total height from char count × char width
-        val textSizePx = (box.bounds.width() * 0.7f).coerceAtLeast(4f)
+        val textSizePx = FuriganaMetrics.textSizePx(box.bounds.width().toFloat())
         val charHeight = textSizePx * 1.2f  // line spacing factor
         val totalHeight = box.translatedText.length * charHeight
         return maxOf(box.bounds.bottom, (box.bounds.top + totalHeight).toInt())

@@ -113,15 +113,18 @@ class FuriganaMode(
 
     private var lastOcrText: String? = null
 
-    /** Texts of groups whose frontier ruby was WITHHELD last cycle
-     *  ([com.playtranslate.language.withFrontierHeld]). Non-empty means the
-     *  display is deliberately incomplete, so the dedup-skip fast path must
-     *  not re-show it: the first settled frame after a reveal has to fall
-     *  through to the rebuild, which re-annotates exactly these groups
-     *  without the hold and releases the final word's reading. Without this,
-     *  the cached held boxes replay forever and the last furigana of every
-     *  typewriter sentence never appears (device-observed). */
-    private var heldFrontierTexts: Set<String> = emptySet()
+    /** A group was built under the frontier hold last cycle
+     *  ([OverlayToolkit.FuriganaGroup.held]): the display is deliberately
+     *  incomplete, so the dedup-skip fast path must not re-show it — the
+     *  first settled frame after a reveal has to fall through to the
+     *  rebuild, which re-annotates exactly those groups without the hold and
+     *  releases the final word's reading. Without this, the cached held
+     *  boxes replay forever and the last furigana of every typewriter
+     *  sentence never appears (device-observed). Read off the tracked
+     *  records, never kept beside them: a parallel set of held texts let a
+     *  held group whose build had no boxes drop out of tracking and come
+     *  back unheld (Codex, 2026-10-08). */
+    private val revealInFlight: Boolean get() = furiganaGroups.any { it.held }
     private var cropLeft = 0
     private var cropTop = 0
     private var screenshotW = 0
@@ -142,12 +145,12 @@ class FuriganaMode(
      *  poke from [processPipeline] alone is not enough: it fires from the
      *  async OCR job, landing mid-park, where it wouldn't be read until the
      *  following iteration (and with user intervals above the window it
-     *  would expire unread — 2026-08-06 review). [heldFrontierTexts] is the
+     *  would expire unread — 2026-08-06 review). [revealInFlight] is the
      *  "reveal in flight / release pending" signal the previous cycle
      *  already computed; the async poke still covers the reveal's first
      *  frames before any hold exists. */
     private fun pokeIfRevealInFlight() {
-        if (heldFrontierTexts.isNotEmpty()) {
+        if (revealInFlight) {
             liveSource()
                 ?.pokeFastPoll(displayId, FAST_POLL_WINDOW_MS)
         }
@@ -158,7 +161,6 @@ class FuriganaMode(
         furiganaGroups = emptyList()
         cachedFuriganaBoxes = null
         lastOcrText = null
-        heldFrontierTexts = emptySet()
         cleanRefBitmap?.recycle()
         cleanRefBitmap = null
         emptyRectsStallCount = 0
@@ -382,17 +384,17 @@ class FuriganaMode(
         // ruby and completes the panel settle) arrives one floor interval
         // away instead of a full user interval later. Self-expiring window
         // — pacing decays on its own once the reveal stops refreshing it.
-        if (frameEvolving || heldFrontierTexts.isNotEmpty()) {
+        if (frameEvolving || revealInFlight) {
             liveSource()
                 ?.pokeFastPoll(displayId, FAST_POLL_WINDOW_MS)
         }
 
         // Dedup: if text unchanged (and not evolving) with cached
         // furigana, re-show — and complete any pending panel settle.
-        // A non-empty heldFrontierTexts disqualifies the fast path: the
-        // cache is missing ruby by design, and this settled frame is the
-        // confirmation that releases it (see the field's kdoc).
-        if (prevText != null && !frameEvolving && heldFrontierTexts.isEmpty() &&
+        // A held group disqualifies the fast path: the cache is missing
+        // ruby by design, and this settled frame is the confirmation that
+        // releases it (see [revealInFlight]).
+        if (prevText != null && !frameEvolving && !revealInFlight &&
             !OverlayToolkit.isSignificantChange(prevText, dedupKey)) {
             val boxes = cachedFuriganaBoxes
             if (boxes != null) {
@@ -433,46 +435,20 @@ class FuriganaMode(
         //    reading.
         val engine = SourceLanguageEngines.get(service, Prefs(service).sourceLangId)
         val prevGroups = furiganaGroups
-        val prevHeld = heldFrontierTexts
-        val newHeld = mutableSetOf<String>()
         val rebuilt = mutableListOf<OverlayToolkit.FuriganaGroup>()
         for (g in ocrResult.groups) {
-            val evolving = prevGroups.any { pg ->
-                Rect.intersects(pg.groupBounds, g.bounds) &&
-                    OverlayToolkit.isEvolvingText(pg.groupText, g.text)
-            }
-            // Release demands CONFIRMATION, not just non-growth: an OCR
-            // jitter frame mid-reveal (half-drawn glyph misread) is neither
-            // evolving nor equal to the held text. Treating it as settled
-            // would render the frontier ruby early and risk the visible
-            // revision the hold exists to prevent — so a text that overlaps
-            // a held group without matching its held text keeps holding;
-            // whatever the reveal truly ends on repeats next frame and
-            // releases then.
-            val overlapsHeld = prevGroups.any { pg ->
-                Rect.intersects(pg.groupBounds, g.bounds) && pg.groupText in prevHeld
-            }
-            val holdNow = evolving || (overlapsHeld && g.text !in prevHeld)
-            if (!holdNow && g.text !in prevHeld) {
-                val prior = prevGroups.firstOrNull { pg ->
-                    pg.groupText == g.text && pg.groupBounds == g.bounds
+            when (val plan = planGroup(prevGroups, g.text, g.bounds)) {
+                is GroupPlan.Reuse -> rebuilt += plan.prior
+                is GroupPlan.Rebuild -> {
+                    val boxes = OverlayToolkit.buildFuriganaBoxesForGroup(
+                        g, engine, service.furiganaPaint,
+                        debugTiming = Prefs(service).debugLiveMode,
+                        holdFrontier = plan.hold,
+                    )
+                    rebuilt += OverlayToolkit.FuriganaGroup(g.text, g.bounds, boxes, held = plan.hold)
                 }
-                if (prior != null) {
-                    rebuilt += prior
-                    continue
-                }
-            }
-            if (holdNow) newHeld += g.text
-            val boxes = OverlayToolkit.buildFuriganaBoxesForGroup(
-                g, engine, service.furiganaPaint,
-                debugTiming = Prefs(service).debugLiveMode,
-                holdFrontier = holdNow,
-            )
-            if (boxes.isNotEmpty()) {
-                rebuilt += OverlayToolkit.FuriganaGroup(g.text, g.bounds, boxes)
             }
         }
-        heldFrontierTexts = newHeld
         furiganaGroups = rebuilt
         val furigana = furiganaGroups.flatMap { it.boxes }
         cachedFuriganaBoxes = furigana
@@ -483,6 +459,13 @@ class FuriganaMode(
 
         if (furigana.isNotEmpty()) {
             service.showLiveOverlay(furigana, left, top, raw.width, raw.height, displayId = displayId)
+        } else {
+            // A show replaces the view's boxes, and an empty show is never
+            // sent, so a cycle with nothing to draw (every ruby held, or a
+            // group that lost its kanji) must take last cycle's boxes down
+            // itself or they stay up over text they no longer belong to.
+            val shown = prevGroups.flatMap { it.boxes }
+            if (shown.isNotEmpty()) service.removeOverlayBoxes(shown, displayId)
         }
 
         // Save clean reference for patching raw frames (mutable for updateCleanRef)
@@ -767,4 +750,41 @@ class FuriganaMode(
      *  irrelevant for furigana overlay staleness. */
     private fun kanjiOnly(s: String): String =
         s.filter { it in '\u4E00'..'\u9FFF' || it in '\u3400'..'\u4DBF' || it in '\uF900'..'\uFAFF' }
+}
+
+/** The reuse-or-rebuild loop's one decision for an OCR group, from the
+ *  groups tracked last cycle ([OverlayToolkit.FuriganaGroup]). Pure, so the
+ *  hold bookkeeping is testable without a frame. */
+internal sealed interface GroupPlan {
+    /** Same text and bounds as an unheld tracked group: its boxes stand. */
+    data class Reuse(val prior: OverlayToolkit.FuriganaGroup) : GroupPlan
+
+    /** Annotate again; [hold] withholds the frontier word's ruby. */
+    data class Rebuild(val hold: Boolean) : GroupPlan
+}
+
+internal fun planGroup(
+    prev: List<OverlayToolkit.FuriganaGroup>,
+    text: String,
+    bounds: Rect,
+): GroupPlan {
+    // Mid-reveal: a tracked neighbour's text grown by a few glyphs.
+    val evolving = prev.any { pg ->
+        Rect.intersects(pg.groupBounds, bounds) && OverlayToolkit.isEvolvingText(pg.groupText, text)
+    }
+    // Release demands CONFIRMATION, not just non-growth: an OCR jitter
+    // frame mid-reveal (half-drawn glyph misread) is neither evolving nor
+    // equal to the held text. Treating it as settled would render the
+    // frontier ruby early and risk the visible revision the hold exists to
+    // prevent — so a text that overlaps a held group without matching its
+    // held text keeps holding; whatever the reveal truly ends on repeats
+    // next frame and releases then.
+    val overlapsHeld = prev.any { pg -> pg.held && Rect.intersects(pg.groupBounds, bounds) }
+    val confirmed = prev.any { pg -> pg.held && pg.groupText == text }
+    val hold = evolving || (overlapsHeld && !confirmed)
+    if (!hold && !confirmed) {
+        prev.firstOrNull { pg -> pg.groupText == text && pg.groupBounds == bounds }
+            ?.let { return GroupPlan.Reuse(it) }
+    }
+    return GroupPlan.Rebuild(hold)
 }

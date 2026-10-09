@@ -5,6 +5,7 @@ import android.text.TextPaint
 import com.playtranslate.language.HintTextAnnotation
 import com.playtranslate.ocr.core.AngleFrame
 import com.playtranslate.ocr.core.DeskewGeometry
+import com.playtranslate.ui.FuriganaMetrics
 import com.playtranslate.ui.TextBox
 
 /**
@@ -80,14 +81,8 @@ internal object FuriganaSlantPlacement {
         val fh = (oh * 0.75f).coerceAtLeast(1f)
 
         // Merge along u on rendered extents (upright merge policy, one axis).
-        fun renderedEnd(sp: Span): Float {
-            val sizePx = (fh * 0.7f).coerceAtLeast(4f)
-            val saved = furiganaPaint.textSize
-            furiganaPaint.textSize = sizePx
-            val w = furiganaPaint.measureText(sp.text)
-            furiganaPaint.textSize = saved
-            return maxOf(sp.u2, sp.u1 + w)
-        }
+        fun renderedEnd(sp: Span): Float =
+            maxOf(sp.u2, sp.u1 + FuriganaMetrics.renderedWidth(sp.text, fh, furiganaPaint))
 
         val sorted = spans.sortedBy { it.u1 }
         val merged = mutableListOf<Span>()

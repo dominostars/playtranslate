@@ -92,6 +92,7 @@ import com.playtranslate.translation.ShortTextOfflineRoute
 import com.playtranslate.translation.dispatchPartitioned
 import com.playtranslate.translation.shouldBypassForLlm
 import com.playtranslate.ui.DegradedWarningKind
+import com.playtranslate.ui.FuriganaMetrics
 import com.playtranslate.ui.GrowthLimits
 import com.playtranslate.ui.OverlayRenderConfig
 import com.playtranslate.ui.TextBox
@@ -140,12 +141,8 @@ class CaptureService : Service() {
     // ── Pipeline ──────────────────────────────────────────────────────────
 
     /** TextPaint for measuring relative character widths (furigana positioning). */
-    internal val furiganaPaint by lazy {
-        TextPaint().apply {
-            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-            textSize = 100f  // arbitrary — only relative proportions matter
-        }
-    }
+    /** Measures furigana the way the overlay draws it ([FuriganaMetrics]). */
+    internal val furiganaPaint by lazy { FuriganaMetrics.measuringPaint(resources.displayMetrics.density) }
 
     internal val ocrManager get() = OcrManager.instance
 

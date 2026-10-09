@@ -178,6 +178,8 @@ class TranslationOverlayView(
     private val growMaxTextSizeSp = 18
     /** Small inset so text doesn't touch the edges of the background. */
     private val textMargin = (3f * dp).toInt()
+    /** Measures a reading the way this view draws it; see [FuriganaMetrics]. */
+    private val furiganaMeasure by lazy { FuriganaMetrics.measuringPaint(dp) }
     /** Bold paint at the legibility floor, used to measure each vertical box's minimum legible
      *  horizontal width (reused across boxes; see [computeMinWidthPx]). */
     private val minWidthPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -438,34 +440,44 @@ class TranslationOverlayView(
                     // about the center like SOURCE_ANGLE — bounds are the
                     // band's exact AABB, so the center pin lands the band on
                     // its baseline offset.
-                    val fw = (box.orientedWidth * scaleX).toInt().coerceAtLeast(1)
+                    val bandW = (box.orientedWidth * scaleX).toInt().coerceAtLeast(1)
                     val fh = (box.orientedHeight * scaleY).toInt().coerceAtLeast(1)
-                    val textSizePx = (fh * 0.7f).coerceAtLeast(4f)
-                    val strokeW = 3f * dp
+                    val textSizePx = FuriganaMetrics.textSizePx(fh.toFloat())
+                    val strokeW = FuriganaMetrics.outlinePx(dp)
                     val child = OutlinedTextView(context).apply {
                         text = box.translatedText
                         setTextColor(Color.WHITE)
                         outlineColor = Color.BLACK
                         outlineWidth = strokeW
-                        typeface = Typeface.DEFAULT_BOLD
+                        typeface = FuriganaMetrics.typeface
                         includeFontPadding = false
                         setShadowLayer(strokeW, 0f, 0f, Color.TRANSPARENT)
                         setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
                         gravity = Gravity.BOTTOM or Gravity.START
                     }
                     child.setTag(R.id.tag_bg_color, Color.BLACK)
+                    // Wrap the reading along the baseline, as the upright
+                    // path's WRAP_CONTENT does: the band is the base's
+                    // extent, and a reading wider than its base (わたし over
+                    // 私, or a compound the wrap cut after its first kanji)
+                    // clipped in a fixed-width view. Measured by the one
+                    // metric the placement's collision merge uses, so what
+                    // passed the merge fits; anchored at the band's start,
+                    // which is what the merge assumed.
+                    val textW = FuriganaMetrics.renderedWidth(box.translatedText, fh.toFloat(), furiganaMeasure).toInt()
+                    val fw = maxOf(bandW, textW)
+                    val extra = (fw - bandW) / 2f
+                    val rad = Math.toRadians(box.angleDeg.toDouble())
+                    val cx = rect.centerX() + extra * kotlin.math.cos(rad).toFloat()
+                    val cy = rect.centerY() + extra * kotlin.math.sin(rad).toFloat()
                     addView(child, LayoutParams(fw, fh))
-                    applyRotatedPin(child, rect.centerX(), rect.centerY(), fw, fh, box.angleDeg)
+                    applyRotatedPin(child, cx, cy, fw, fh, box.angleDeg)
                     return@forEach
                 }
                 val isVerticalFurigana = box.orientation == TextOrientation.VERTICAL
                 // Vertical furigana: size from box width; horizontal: from box height
-                val textSizePx = if (isVerticalFurigana) {
-                    (rect.width() * 0.7f).coerceAtLeast(4f)
-                } else {
-                    (rect.height() * 0.7f).coerceAtLeast(4f)
-                }
-                val strokeW = 3f * dp
+                val textSizePx = FuriganaMetrics.textSizePx(if (isVerticalFurigana) rect.width() else rect.height())
+                val strokeW = FuriganaMetrics.outlinePx(dp)
                 val strokePad = (strokeW / 2f + 0.5f).toInt()
                 // Vertical: stack characters top-to-bottom with newlines
                 val displayText = if (isVerticalFurigana) {
@@ -478,7 +490,7 @@ class TranslationOverlayView(
                     setTextColor(Color.WHITE)
                     outlineColor = Color.BLACK
                     outlineWidth = strokeW
-                    typeface = Typeface.DEFAULT_BOLD
+                    typeface = FuriganaMetrics.typeface
                     includeFontPadding = false
                     setShadowLayer(strokeW, 0f, 0f, Color.TRANSPARENT)
                     setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)

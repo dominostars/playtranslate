@@ -180,7 +180,36 @@ data class RecognizedLine(
     /** Recognition confidence 0..1, or -1 when the engine doesn't report one.
      *  Consumers must treat -1 as "unknown", never as "low". */
     val confidence: Float = -1f,
+    /** Offset of [text] in the group's text — the address a group-level
+     *  annotation needs to land on this line's [chars]. Assigned by
+     *  [joinLines], the one place a group's text is built; 0 before grouping. */
+    val textStart: Int = 0,
 )
+
+/** A group's text with its lines addressed into it; see [joinLines]. */
+data class JoinedLines(val text: String, val lines: List<RecognizedLine>)
+
+/**
+ * The ONE join of a group's lines into its text: the lines' texts joined by
+ * [separator] and trimmed, each line's [RecognizedLine.textStart] set to its
+ * offset in that text. Both writers of a group's text go through here — the
+ * layout builder and the manga-ocr refiner — so the text and the addresses
+ * cannot drift apart. A line whose address is already right keeps its
+ * instance (the refiner reads identity as "unchanged").
+ */
+fun joinLines(lines: List<RecognizedLine>, separator: String): JoinedLines {
+    val joined = lines.joinToString(separator) { it.text }
+    // The normalizer edge-strips every line, so the trim is a no-op in
+    // practice; the addresses follow it exactly either way.
+    val lead = joined.length - joined.trimStart().length
+    var at = 0
+    val addressed = lines.map { line ->
+        val start = at - lead
+        at += line.text.length + separator.length
+        if (line.textStart == start) line else line.copy(textStart = start)
+    }
+    return JoinedLines(joined.trim(), addressed)
+}
 
 /**
  * An engine's output unit, before paragraph grouping. For a line-level engine

@@ -11,6 +11,7 @@ import com.playtranslate.ocr.core.OcrImage
 import com.playtranslate.ocr.core.RecognizedLine
 import com.playtranslate.ocr.core.RecognizedRegion
 import com.playtranslate.ocr.core.RegionOrigin
+import com.playtranslate.ocr.core.joinLines
 import com.playtranslate.ocr.core.synthesizeEvenCharBoxes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -76,13 +77,16 @@ class MangaOcrRefinerTest {
         orientation = if (vertical) TextOrientation.VERTICAL else TextOrientation.HORIZONTAL,
     )
 
-    private fun group(lines: List<RecognizedLine>, vertical: Boolean) = LayoutGroup(
-        text = lines.joinToString("") { it.text },
-        lines = lines,
-        bounds = Rect(0, lines.first().box.bounds.top, 40, lines.last().box.bounds.bottom),
-        orientation = if (vertical) TextOrientation.VERTICAL else TextOrientation.HORIZONTAL,
-        alignment = TextAlignment.LEFT,
-    )
+    private fun group(lines: List<RecognizedLine>, vertical: Boolean): LayoutGroup {
+        val joined = joinLines(lines, "")
+        return LayoutGroup(
+            text = joined.text,
+            lines = joined.lines,
+            bounds = Rect(0, lines.first().box.bounds.top, 40, lines.last().box.bounds.bottom),
+            orientation = if (vertical) TextOrientation.VERTICAL else TextOrientation.HORIZONTAL,
+            alignment = TextAlignment.LEFT,
+        )
+    }
 
     @Test
     fun `an eligible group is decoded once as a whole block and spliced per line`() = runBlocking {
@@ -96,7 +100,9 @@ class MangaOcrRefinerTest {
         assertEquals("re-joined with no separator for ja", "いったい何をする", rg.text)
         assertEquals("いったい", rg.lines[0].text)
         assertTrue("adopted line gets a char tier", rg.lines[0].chars.isNotEmpty())
-        assertSame("untouched line keeps its instance", g.lines[1], rg.lines[1])
+        assertEquals("untouched line keeps its text", "何をする", rg.lines[1].text)
+        assertSame("untouched line keeps its box", g.lines[1].box, rg.lines[1].box)
+        assertEquals("its address follows the line that grew", 4, rg.lines[1].textStart)
     }
 
     @Test
