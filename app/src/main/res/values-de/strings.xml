@@ -335,6 +335,7 @@
 
     <string name="lens_loading">Wird nachgeschlagen…</string>
     <string name="lens_also_matches">Auch möglich</string>
+    <string name="load_more_count">Mehr laden (<xliff:g id="count" example="2">%1$d</xliff:g>)</string>
     <string name="section_other_matches">Weitere Treffer</string>
 
     <!-- ═══════════════════════════════════════════════════════════════

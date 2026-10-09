@@ -342,6 +342,7 @@
 
     <string name="lens_loading">検索中…</string>
     <string name="lens_also_matches">他の候補</string>
+    <string name="load_more_count">さらに読み込む（<xliff:g id="count" example="2">%1$d</xliff:g>）</string>
     <string name="section_other_matches">他の候補</string>
 
     <!-- ═══════════════════════════════════════════════════════════════

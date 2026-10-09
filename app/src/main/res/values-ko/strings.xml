@@ -332,6 +332,7 @@
 
     <string name="lens_loading">검색 중…</string>
     <string name="lens_also_matches">다른 후보</string>
+    <string name="load_more_count">더 불러오기 (<xliff:g id="count" example="2">%1$d</xliff:g>)</string>
     <string name="section_other_matches">다른 후보</string>
 
     <!-- ═══════════════════════════════════════════════════════════════

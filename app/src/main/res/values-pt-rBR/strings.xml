@@ -334,6 +334,7 @@
 
     <string name="lens_loading">Consultando…</string>
     <string name="lens_also_matches">Outra correspondência</string>
+    <string name="load_more_count">Carregar mais (<xliff:g id="count" example="2">%1$d</xliff:g>)</string>
     <string name="section_other_matches">Outras correspondências</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
