@@ -865,6 +865,9 @@
          headword. -->
     <string name="lens_also_matches">Also matches</string>
 
+    <!-- Tappable row at the bottom of the word lookup lens. It loads the extra sections for the looked-up word (the phrase it is part of, its member words, or other dictionary entries it could be) that were held back because their definitions need machine translation. %1$d = how many sections will load. -->
+    <string name="load_more_count">Load more (<xliff:g id="count" example="2">%1$d</xliff:g>)</string>
+
     <!-- Group header on the word-detail page above a list of other
          dictionary entries the looked-up word could also be (a different
          word with the same spelling, or another verb that conjugates to the

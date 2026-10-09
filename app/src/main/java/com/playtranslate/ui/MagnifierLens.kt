@@ -34,6 +34,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.annotation.VisibleForTesting
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.graphics.drawable.DrawableCompat
 import com.playtranslate.dictionary.Deinflector
@@ -133,6 +134,11 @@ data class LensSection(
     val opens: Boolean,
     val caption: String? = null,
 )
+
+/** The lens's "Load more (n)" row ([MagnifierLens.setSplitDefinitions]):
+ *  [count] sections a host will add on tap; [loading] while the host
+ *  resolves them (the row reads "Looking up…" and ignores taps). */
+data class LensLoadMore(val count: Int, val loading: Boolean = false)
 
 /**
  * Clamped card-body height for the post-release grow-to-fit. The card grows
@@ -326,6 +332,11 @@ class MagnifierLens(
      *  secondaries list — the containing phrase on the space-delimited
      *  surfaces, a member word on JA. Never fires outside split mode. */
     var onSecondaryOpenTap: ((Int) -> Unit)? = null
+    /** Fires when the split body's "Load more" row ([setSplitDefinitions]
+     *  with a [LensLoadMore]) is tapped or activated by the controller,
+     *  never while the row is loading. The host resolves the held-back
+     *  sections and rebinds the split with them. */
+    var onLoadMoreTap: (() -> Unit)? = null
     /** Fires when the right chip (Anki) is tapped in sticky mode. */
     var onAnkiTap: (() -> Unit)? = null
     /** Fires when the right chip (Anki) is long-pressed in sticky mode.
@@ -416,15 +427,32 @@ class MagnifierLens(
      *  expression order, then its alternative entries). Sections bind flat
      *  instantly; any section whose data carries a structured Yomitan
      *  payload upgrades to its own styled (WebView) renderer once painted,
-     *  exactly like the single-unit body. */
+     *  exactly like the single-unit body. [loadMore], when set, appends a
+     *  "Load more (n)" row after the last section, below a divider, whose
+     *  tap fires [onLoadMoreTap]; [secondaries] may then be empty, and the
+     *  primary renders alone above the row. */
     fun setSplitDefinitions(
         primary: LensSection,
         secondaries: List<LensSection>,
         secondariesOnTop: Boolean = true,
+        loadMore: LensLoadMore? = null,
     ) {
-        lensView?.setSplitDefinitions(primary, secondaries, secondariesOnTop)
+        lensView?.setSplitDefinitions(primary, secondaries, secondariesOnTop, loadMore)
         if (isInteractive) fitHeightToContent()
     }
+
+    /** Flips the "Load more" row between its label and its loading text in
+     *  place: no rebind, no height change (both are one line). No-op
+     *  without a row. */
+    fun setLoadMoreLoading(loading: Boolean) {
+        lensView?.setLoadMoreLoading(loading)
+    }
+
+    @VisibleForTesting
+    internal fun loadMoreRowForTest(): TextView? = lensView?.loadMoreRow
+
+    @VisibleForTesting
+    internal fun navSectionsForTest(): List<View> = lensView?.navSections().orEmpty()
 
     fun setLoading(word: String?, reading: String?) {
         lensView?.setLoading(word, reading)
@@ -809,6 +837,7 @@ class MagnifierLens(
             density = density,
             onOpenTap = { onOpenTap?.invoke() },
             onSecondaryOpenTap = { i -> onSecondaryOpenTap?.invoke(i) },
+            onLoadMoreTap = { onLoadMoreTap?.invoke() },
             onAnkiTap = { onAnkiTap?.invoke() },
             onAnkiLongPress = { onAnkiLongPress?.invoke() },
             onSpeakTap = { onSpeakTap?.invoke() },
@@ -975,6 +1004,7 @@ class MagnifierLens(
         private val density: Float,
         private val onOpenTap: () -> Unit,
         private val onSecondaryOpenTap: (Int) -> Unit,
+        private val onLoadMoreTap: () -> Unit,
         private val onAnkiTap: () -> Unit,
         private val onAnkiLongPress: () -> Unit,
         private val onSpeakTap: () -> Unit,
@@ -1393,8 +1423,16 @@ class MagnifierLens(
         /** The split body's tappable section roots in VISUAL order (top →
          *  bottom) — the nav walk's candidates and activation targets
          *  (activation is the section's own click, so the wiring lives in
-         *  one place). Non-opening sections aren't listed. */
+         *  one place). Non-opening sections aren't listed; the "Load more"
+         *  row, when bound, is listed last. */
         private var splitSectionViews: List<View> = emptyList()
+        /** The split body's "Load more" row, built by [setSplitDefinitions]
+         *  when the bind carries a [LensLoadMore]; null otherwise. */
+        var loadMoreRow: TextView? = null
+            private set
+        /** The bound row's state: [setLoadMoreLoading] flips its loading
+         *  flag and [fireLoadMoreTap] reads it. */
+        private var loadMoreState: LensLoadMore? = null
 
         /** The open-cue chevron every body cell carries — trailing a split
          *  section's header, or floating over a headerless body. */
@@ -1725,6 +1763,8 @@ class MagnifierLens(
             splitBindSeq++
             applySectionTint(null)
             splitSectionViews = emptyList()
+            loadMoreRow = null
+            loadMoreState = null
             // Pool views come OUT of the dying section columns (they're
             // reused next split bind — never destroyed here); the columns
             // themselves are discarded wholesale.
@@ -1996,7 +2036,7 @@ class MagnifierLens(
 
         /** Debounce so the open handlers can't fire twice from a single
          *  gesture that crosses the open detector and any other receiver —
-         *  shared between the word and phrase opens (one gesture, one open). */
+         *  shared by the opens and the "Load more" row (one gesture, one action). */
         private var lastOpenTapMs = 0L
         private fun fireOpenTap() {
             val now = SystemClock.uptimeMillis()
@@ -2010,6 +2050,16 @@ class MagnifierLens(
             if (now - lastOpenTapMs < 300L) return
             lastOpenTapMs = now
             onSecondaryOpenTap(index)
+        }
+
+        /** The "Load more" row's click: inert while the host resolves the
+         *  sections ([LensLoadMore.loading]), debounced with the opens. */
+        private fun fireLoadMoreTap() {
+            if (loadMoreState?.loading == true) return
+            val now = SystemClock.uptimeMillis()
+            if (now - lastOpenTapMs < 300L) return
+            lastOpenTapMs = now
+            onLoadMoreTap()
         }
 
         private val tapDetector = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
@@ -2501,9 +2551,12 @@ class MagnifierLens(
             primary: LensSection,
             secondaries: List<LensSection>,
             secondariesOnTop: Boolean,
+            loadMore: LensLoadMore?,
         ) {
             mode = Mode.DEFINITIONS
             setLabel(primary.data.word, primary.data.reading, primary.data.pitch)
+            // Read before the teardown below drops the row.
+            val cursorOnRow = loadMoreRow != null && navCursor === loadMoreRow
             // Styled steps aside; any prior split is torn down for rebuild.
             showFlatBody()
             definitionsContent.visibility = GONE
@@ -2531,12 +2584,70 @@ class MagnifierLens(
                 if (i > 0) splitContent.addView(buildSplitDivider())
                 addSplitSection(section, fire, showHeader)?.let { views += it }
             }
+            if (loadMore != null) {
+                splitContent.addView(buildSplitDivider())
+                views += addLoadMoreRow(loadMore)
+            }
             splitSectionViews = views
             splitActive = true
             splitContent.visibility = VISIBLE
             definitionsScroll.scrollTo(0, 0)
             definitionsScroll.visibility = VISIBLE
+            // The controller cursor was on the row this rebind tore down
+            // (the host rebinding with the sections it loaded): it lands on
+            // the first section, which the scroll reset just brought into
+            // view, instead of on a detached view.
+            if (cursorOnRow) {
+                navCursor = views.firstOrNull()
+                syncNavRing()
+            }
             invalidate()
+        }
+
+        /** Builds the "Load more" row into [splitContent] and returns it,
+         *  the split body's last nav target. The controller's selection tint
+         *  is written to (and cleared from) a target's background
+         *  ([applySectionTint]), so the touch ripple rides the foreground. */
+        private fun addLoadMoreRow(state: LensLoadMore): TextView {
+            val ripple = TypedValue().also {
+                context.theme.resolveAttribute(android.R.attr.selectableItemBackground, it, true)
+            }
+            val row = TextView(context).apply {
+                text = loadMoreText(state)
+                setTextColor(context.themeColor(R.attr.ptTextLink))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                gravity = Gravity.CENTER
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                minHeight = dp(40f)
+                setPadding(bodyHPaddingPx - dp(6f), 0, bodyHPaddingPx - dp(6f), 0)
+                foreground = context.getDrawable(ripple.resourceId)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { fireLoadMoreTap() }
+            }
+            splitContent.addView(
+                row,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            loadMoreRow = row
+            loadMoreState = state
+            return row
+        }
+
+        private fun loadMoreText(state: LensLoadMore): String =
+            if (state.loading) context.getString(R.string.lens_loading)
+            else context.getString(R.string.load_more_count, state.count)
+
+        /** See [MagnifierLens.setLoadMoreLoading]. */
+        fun setLoadMoreLoading(loading: Boolean) {
+            val row = loadMoreRow ?: return
+            val state = loadMoreState?.copy(loading = loading) ?: return
+            loadMoreState = state
+            row.text = loadMoreText(state)
         }
 
         /** Builds one split section into [splitContent]: the
@@ -2913,7 +3024,7 @@ class MagnifierLens(
         private fun navChromeRow(): List<View> =
             listOf(leftChip, pillView, rightChip).filter { it.isShown }
 
-        private fun navSections(): List<View> =
+        fun navSections(): List<View> =
             splitSectionViews.filter { it.isShown }
 
         /** Item rect in THIS view's coordinates. Chips ring their 32dp visible
@@ -3089,8 +3200,9 @@ class MagnifierLens(
                 v === pillView -> fireOpenTap()
                 v === leftChip -> onSpeakTap()
                 v === rightChip -> onAnkiTap()
-                // Sections carry their own (debounced) open action as their
-                // click listener — one wiring for touch and controller.
+                // Sections, and the "Load more" row, carry their own
+                // (debounced) action as their click listener: one wiring
+                // for touch and controller.
                 v in splitSectionViews -> v.performClick()
             }
         }
