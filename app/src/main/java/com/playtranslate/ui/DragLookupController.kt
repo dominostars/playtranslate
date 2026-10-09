@@ -25,9 +25,11 @@ import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.InflectedForm
 import com.playtranslate.language.InflectionTag
 import com.playtranslate.language.OfflineFallbackTranslators
+import com.playtranslate.language.SourceLanguageEngine
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.model.DictionaryEntry
+import com.playtranslate.model.DictionaryResponse
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.yomitan.YomitanDataStore
 import com.playtranslate.model.headwordDisplay
@@ -1265,11 +1267,7 @@ class DragLookupController(
 
         // Dictionary lookup using the base/dictionary form + reading hint
         val prefs = Prefs(context)
-        val targetGlossDb = TargetGlossDatabaseProvider.get(context, prefs.targetLang)
-        val resolver = DefinitionResolver(engine, targetGlossDb,
-            OfflineFallbackTranslators.forPair(engine.profile.translationCode, prefs.targetLang), prefs.targetLang,
-            OfflineFallbackTranslators.forTarget(prefs.targetLang),
-            ChineseScriptConverter.forTarget(prefs.targetLang, prefs.targetChineseVariant))
+        val resolver = newResolver(engine, prefs)
         val defResult = withContext(Dispatchers.IO) { resolver.lookup(lookupForm, readingHint) }
         val response = defResult?.response
         val entries = response?.entries.orEmpty()
@@ -1347,97 +1345,121 @@ class DragLookupController(
         currentSentence = sentence
         prefetchWordLookups(sentence)
 
-        // Phrase section: the expression's own lookup, kept only when it
-        // lands a real entry (the membership gates make a miss unlikely,
-        // but an empty phrase section would be pure noise). Carries its
-        // styled payload like the primary — split sections render styled
-        // per section.
-        val phrasePopup: PopupData? = phraseKey?.let { key ->
-            relatedPopupData(resolver, prefs.targetLang, key, key, null, excludeSlug = null)
-        }
-
-        // JA inverse: the dragged token may itself be an engine-fused unit —
-        // offer ALL its qualifying member words as secondary sections
-        // (position-independent; an unresolvable member — 手当たり has no
-        // JMdict entry — simply doesn't appear). The engine's policy sets
-        // the strictness by class: phrases (exp-tagged or glue-bearing)
-        // loose — 気になる → 気, 瞬く間に → 瞬く and 間; transparent
-        // compounds (放送番組/ペース配分) need every unit accounted for —
-        // kanji words render, katakana words and particles are excused —
-        // so 図書館 stays whole. The display reading rides along so the
-        // members' hints align with it.
-        val memberPopups: List<PopupData> = if (phraseKey == null && entry != null) {
+        // The secondary sections: the multi-word expression containing the
+        // dragged word (Latin) alone; else, on JA, the member words of the
+        // fused expression the dragged token is (the engine's policy sets
+        // how strictly: 気になる offers 気, 図書館 stays whole) and the
+        // other dictionary entries the dragged token could be, each under
+        // its own key on the dragged surface. [collectSecondaryKeys] decides
+        // them, and every one resolves before the lens shows.
+        val memberSpans = if (phraseKey == null && entry != null) {
             withContext(Dispatchers.IO) {
                 engine.memberWordsOf(
                     popupData.word, expressionClass = entry.isExpression, headwordReading = popupData.reading,
                 )
             }
-                .mapNotNull { m ->
-                    relatedPopupData(
-                        resolver, prefs.targetLang, m.lookupForm, m.surface, m.reading,
-                        excludeSlug = entry.slug,
-                    )
-                }
-                .distinctBy { it.word }
         } else {
             emptyList()
         }
-
-        // The other dictionary entries the dragged token could be (homographs
-        // its reading hint narrowed away, other dictionary forms it
-        // deinflects to), below the members: each resolves under its own key
-        // and keeps the dragged surface for its conjugation line and
-        // drill-in; one section per entry, never the word's own.
         val primaryIds = entries.mapNotNullTo(mutableSetOf()) { it.packId }
-        val alternativePopups: List<PopupData> = if (phraseKey == null && matchedToken != null) {
-            val caption = context.getString(R.string.lens_also_matches)
-            SourceWordLookup.distinctAlternatives(
-                withContext(Dispatchers.IO) { engine.alternativesOf(matchedToken, primaryIds) }
-                    .mapNotNull { alt ->
-                        relatedPopupData(
-                            resolver, prefs.targetLang, alt.lookupForm, alt.lookupForm, alt.reading,
-                            excludeSlug = null, foundAs = alt.surface, foundTags = alt.inflections,
-                            caption = caption,
-                        )
-                    },
-                primaryIds,
-                packIdOf = { it.entry?.packId },
-                fallbackKeyOf = { it.word to it.reading },
-            )
+        val alternativeSpans = if (phraseKey == null && matchedToken != null) {
+            withContext(Dispatchers.IO) { engine.alternativesOf(matchedToken, primaryIds) }
         } else {
             emptyList()
         }
+        val keys = collectSecondaryKeys(
+            engine, resolver, entries, popupData.word, phraseKey, memberSpans, alternativeSpans,
+        )
 
         // The "already in Anki" deck badge is filled in AFTER the definitions
         // render (see onDragEnd), so the dictionary lookup is never delayed by
         // the Anki content-provider query.
-        return LookupResolution(
-            word = popupData, phrase = phrasePopup, members = memberPopups, alternatives = alternativePopups,
+        return resolveKeys(LookupResolution(word = popupData, phrase = null), keys.all, resolver, prefs.targetLang)
+    }
+
+    /** The definition resolver for [engine] under [prefs]: the target gloss
+     *  pack, offline translators and Chinese script converter they select. */
+    private fun newResolver(engine: SourceLanguageEngine, prefs: Prefs): DefinitionResolver =
+        DefinitionResolver(
+            engine, TargetGlossDatabaseProvider.get(context, prefs.targetLang),
+            OfflineFallbackTranslators.forPair(engine.profile.translationCode, prefs.targetLang), prefs.targetLang,
+            OfflineFallbackTranslators.forTarget(prefs.targetLang),
+            ChineseScriptConverter.forTarget(prefs.targetLang, prefs.targetChineseVariant),
         )
+
+    /** [res] with [keys] resolved into its sections by kind: a phrase key's
+     *  section becomes [LookupResolution.phrase], member and alternative
+     *  sections are appended after the ones [res] has, in [keys]' order.
+     *  Nothing is left pending. */
+    private suspend fun resolveKeys(
+        res: LookupResolution,
+        keys: List<SecondaryKey>,
+        resolver: DefinitionResolver,
+        targetLang: String,
+    ): LookupResolution {
+        val caption = context.getString(R.string.lens_also_matches)
+        var phrase = res.phrase
+        val members = res.members.toMutableList()
+        val alternatives = res.alternatives.toMutableList()
+        for (key in keys) {
+            val popup = popupFor(key, resolver, targetLang, caption) ?: continue
+            when (key.kind) {
+                SecondaryKind.PHRASE -> phrase = popup
+                SecondaryKind.MEMBER -> members += popup
+                SecondaryKind.ALTERNATIVE -> alternatives += popup
+            }
+        }
+        return res.copy(phrase = phrase, members = members, alternatives = alternatives, pending = emptyList())
+    }
+
+    /** [key]'s section, resolved on the response it carries: a phrase under
+     *  its own key; a member under its span, its surface picking the
+     *  displayed headword; an alternative under its key with the dragged
+     *  surface, its chain to that surface and [caption]. */
+    private suspend fun popupFor(
+        key: SecondaryKey,
+        resolver: DefinitionResolver,
+        targetLang: String,
+        caption: String,
+    ): PopupData? {
+        val span = key.span
+        return when (key.kind) {
+            SecondaryKind.PHRASE -> relatedPopupData(
+                resolver, targetLang, span.lookupForm, span.lookupForm, null, response = key.response,
+            )
+            SecondaryKind.MEMBER -> relatedPopupData(
+                resolver, targetLang, span.lookupForm, span.surface, span.reading, response = key.response,
+            )
+            SecondaryKind.ALTERNATIVE -> relatedPopupData(
+                resolver, targetLang, span.lookupForm, span.lookupForm, span.reading,
+                foundAs = span.surface, foundTags = span.inflections, caption = caption, response = key.response,
+            )
+        }
     }
 
     /** Resolve one related-unit key (phrase, member or alternative) into the
-     *  section shape [resolveLookupData] returns: null when no real entry
-     *  lands, or when it lands back on [excludeSlug]'s own entry. [surface]
-     *  picks the displayed headword. An alternative passes [foundAs], the
-     *  dragged surface it is offered for, and [foundTags], its chain from
-     *  [lookupForm] to that surface: they become its surface and its
-     *  conjugation line. [caption] is the section's [LensSection.caption]. */
+     *  section shape [resolveLookupData] returns, running the tier chain on
+     *  [response], the dictionary response [collectSecondaryKeys] looked up
+     *  for it (which also decided the key is not the dragged word's own):
+     *  null when [response] has no entry. [surface] picks the displayed
+     *  headword. An alternative passes [foundAs], the dragged surface it is
+     *  offered for, and [foundTags], its chain from [lookupForm] to that
+     *  surface: they become its surface and its conjugation line.
+     *  [caption] is the section's [LensSection.caption]. */
     private suspend fun relatedPopupData(
-        resolver: com.playtranslate.language.DefinitionResolver,
+        resolver: DefinitionResolver,
         targetLang: String,
         lookupForm: String,
         surface: String,
         readingHint: String?,
-        excludeSlug: String?,
         foundAs: String? = null,
         foundTags: List<InflectionTag> = emptyList(),
         caption: String? = null,
+        response: DictionaryResponse,
     ): PopupData? {
-        val result = withContext(Dispatchers.IO) { resolver.lookup(lookupForm, readingHint) }
-        val entries = result?.response?.entries.orEmpty()
+        val result = withContext(Dispatchers.IO) { resolver.resolve(response, lookupForm, readingHint) }
+        val entries = result.response.entries
         val entry = entries.firstOrNull() ?: return null
-        if (excludeSlug != null && entry.slug == excludeSlug) return null
         val display = entry.headwordDisplay(
             entry.selectHeadword(surface, lookupForm, readingHint), surface,
         )
@@ -1448,9 +1470,9 @@ class DragLookupController(
             // conjugation line. An alternative keeps the dragged surface.
             surface = foundAs,
             inflectedForms = foundAs?.let {
-                listOfNotNull(InflectionChain.compose(it, result?.response?.deinflection.orEmpty(), foundTags))
+                listOfNotNull(InflectionChain.compose(it, result.response.deinflection, foundTags))
             }.orEmpty(),
-            senses = buildSenseDisplays(result!!, entries, targetLang),
+            senses = buildSenseDisplays(result, entries, targetLang),
             freqScore = entry.freqScore,
             isCommon = entry.isCommon == true,
             entry = entry,
@@ -1479,6 +1501,9 @@ class DragLookupController(
         val phrase: PopupData?,
         val members: List<PopupData> = emptyList(),
         val alternatives: List<PopupData> = emptyList(),
+        /** The secondaries held back from this resolution; empty when
+         *  everything is resolved. */
+        val pending: List<SecondaryKey> = emptyList(),
     ) {
         /** The secondary sections in list order, the shape of
          *  [SourceWordLookup.ResolvedAt.secondaries]: [phrase] alone, else
