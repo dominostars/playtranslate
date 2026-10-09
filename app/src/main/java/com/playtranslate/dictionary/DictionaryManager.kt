@@ -1069,7 +1069,8 @@ class DictionaryManager private constructor(private val context: Context) {
          * line start or after punctuation nothing can be severed, so
          * 、ていうか stays fusable), starts on glue bound to an incomplete stem
          * (いただい|ており, 言って|たな; with folding on, also to an auxiliary
-         * stem: 入れそう|にない), is itself an incomplete stem plus its
+         * stem: 入れそう|にない) or a 助動詞 bound to a 形状詞 (静か|だった), is
+         * itself an incomplete stem plus its
          * own AUXILIARY glue (した; see [CONVERB_CUT] for particle glue),
          * ends at an incomplete stem whose glue sits just outside the window
          * (ことし|て, となり|ます), or, with folding on, starts at a token the
@@ -1166,7 +1167,8 @@ class DictionaryManager private constructor(private val context: Context) {
         }
 
         /** Inflection-form prefixes that grammatically require a continuation.
-         *  A stem in one of these cannot end a word's surface on its own. */
+         *  A stem in one of these cannot end a word's surface on its own. A
+         *  形状詞 reports no 活用形, so the stem shapes below never fire on one. */
         private val INCOMPLETE_INFLECTIONS = arrayOf("連用形", "未然形", "語幹")
 
         private val JaToken.hasIncompleteInflection: Boolean
@@ -1208,8 +1210,8 @@ class DictionaryManager private constructor(private val context: Context) {
          * (高く|は|ない and 食べ|たく|も|ない, Sudachi CLI). After a verb's 未然形
          * Sudachi gives the 助動詞 ない instead (食べ|ない), which is glue
          * already; another 非自立可能 adjective (いい in 食べ|て|も|いい) never
-         * qualifies. The fold only reaches 無い from a word that starts a
-         * conjugation, which the 形状詞 静か is not, so 静か|ではない stays split.
+         * qualifies. A 形状詞 reaches it through だ's で or じゃ (静か|で|は|ない,
+         * 静か|じゃ|ない).
          */
         internal fun isNaiAdjective(prev: JaToken, tok: JaToken, tokens: List<JaToken>, index: Int): Boolean {
             if (tok.category != JaCategory.ADJ_I || !tok.isAuxiliaryCapable || tok.normalizedForm != "無い") {
@@ -1301,6 +1303,13 @@ class DictionaryManager private constructor(private val context: Context) {
                     // with folding on that glue is the fold's (入れ|そう|に|ない,
                     // where にない is 担い's reading).
                     if (foldAuxiliaries && prev.isAuxiliaryStem) return Suspicion.CONJUGATION_CUT
+                    // Nor does a 形状詞: the 助動詞 right after it is its own
+                    // conjugation, already in its span (静か|だっ|た, 静か|で|は|ない,
+                    // where だった and ではない are readings). A particle after
+                    // one may end it (静か|ね), so only the 助動詞 counts.
+                    if (prev.category == JaCategory.ADJ_NA && first.category == JaCategory.AUX) {
+                        return Suspicion.CONJUGATION_CUT
+                    }
                 }
                 // Clean-context glue start: fall through to the mirror /
                 // function-run shapes below.
@@ -1389,6 +1398,8 @@ class DictionaryManager private constructor(private val context: Context) {
                     if (!tokens[i].category.isContent) continue
                     val last = tokens[i + n - 1]
                     if (!last.category.isContent || !last.category.startsConjugation) continue
+                    // Uninflected: nothing to swap. A 形状詞 does not inflect,
+                    // so it always stops here.
                     if (last.surface == last.dictionaryForm) continue
                     // 語幹 (bare stem) is an incomplete inflection awaiting a
                     // derivational continuation (良さ before そう) — lemma-swapping

@@ -83,7 +83,8 @@ object JapaneseInflectionAnalyzer {
     private val COPULAS = setOf("だ", "です")
 
     /**
-     * @param stem the content morpheme (only verbs / i-adjectives conjugate)
+     * @param stem the content morpheme; only a verb, i-adjective or 形状詞 conjugates,
+     *   a 形状詞 only through the glue after it (静か|だっ|た reads -た, 静か|じゃ|ない negative)
      * @param glue the morphemes folded into its surface span, in order
      * @param lookupForm the form the span is looked up under, when known; the
      *   stem's POTENTIAL is dropped when it equals the stem's dictionary form

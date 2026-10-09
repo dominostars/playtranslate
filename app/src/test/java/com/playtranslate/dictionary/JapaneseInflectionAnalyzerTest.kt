@@ -3,6 +3,7 @@ package com.playtranslate.dictionary
 import com.playtranslate.dictionary.JaCategory.ADJ_I
 import com.playtranslate.dictionary.JaCategory.ADJ_NA
 import com.playtranslate.dictionary.JaCategory.AUX
+import com.playtranslate.dictionary.JaCategory.NOUN
 import com.playtranslate.dictionary.JaCategory.PARTICLE
 import com.playtranslate.dictionary.JaCategory.VERB
 import com.playtranslate.language.InflectionTag
@@ -159,10 +160,49 @@ class JapaneseInflectionAnalyzerTest {
     @Test
     fun `a stem that does not conjugate reads nothing`() {
         assertTags(
-            emptyList(), // 静かだった
-            tok("静か", ADJ_NA, "静か", "静か", null, null),
+            emptyList(), // 学生だった: a noun
+            tok("学生", NOUN, "学生", "学生", null, null),
             tok("だっ", AUX, "だ", "だ", "連用形-促音便", "助動詞-ダ"),
             tok("た", AUX, "た", "た", "終止形-一般", "助動詞-タ"),
+        )
+    }
+
+    @Test
+    fun `a 形状詞 reads the steps of the glue after it`() {
+        val shizuka = tok("静か", ADJ_NA, "静か", "静か", null, null)
+        assertTags(
+            listOf(TA), // 静かだった
+            shizuka,
+            tok("だっ", AUX, "だ", "だ", "連用形-促音便", "助動詞-ダ"),
+            tok("た", AUX, "た", "た", "終止形-一般", "助動詞-タ"),
+        )
+        assertTags(
+            listOf(DESU, TA), // 綺麗でした
+            tok("綺麗", ADJ_NA, "綺麗", "奇麗", null, null),
+            tok("でし", AUX, "です", "です", "連用形-一般", "助動詞-デス"),
+            tok("た", AUX, "た", "た", "終止形-一般", "助動詞-タ"),
+        )
+        assertTags(
+            listOf(NEGATIVE), // 静かではない
+            shizuka,
+            tok("で", AUX, "だ", "だ", "連用形-一般", "助動詞-ダ"),
+            tok("は", PARTICLE, "は", "は", null, null),
+            tok("ない", ADJ_I, "ない", "無い", "終止形-一般", "形容詞", aux = true),
+        )
+        assertTags(
+            listOf(NARA), // 静かなら
+            shizuka,
+            tok("なら", AUX, "だ", "だ", "仮定形-一般", "助動詞-ダ"),
+        )
+        assertTags(
+            emptyList(), // 静かな
+            shizuka,
+            tok("な", AUX, "だ", "だ", "連体形-一般", "助動詞-ダ"),
+        )
+        assertTags(
+            emptyList(), // 静かだろう
+            shizuka,
+            tok("だろう", AUX, "だ", "だ", "意志推量形", "助動詞-ダ"),
         )
     }
 

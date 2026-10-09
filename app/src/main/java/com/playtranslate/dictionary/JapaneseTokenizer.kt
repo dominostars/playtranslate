@@ -93,13 +93,19 @@ enum class JaCategory {
             this == ADJ_NA || this == ADVERB || this == INTERJECTION ||
             this == CONJUNCTION || this == PRENOMINAL
 
-    /** Verb / i-adjective: conjugation pulls trailing auxiliary morphemes into
-     *  the surface span (see DictionaryManager.tokenizeWithSurfaces). */
+    /** Verb, i-adjective or 形状詞 (na-adjective): the word heads a span that
+     *  takes in the morphemes continuing it
+     *  ([DictionaryManager.Companion.continuesConjugation]). A 形状詞 reports no
+     *  活用形 of its own; its conjugation is the だ family after it (静か|だっ|た,
+     *  静か|じゃ|ない, 静か|なら). A noun never starts one, even one UniDic marks
+     *  形状詞可能 (学生|だっ|た, 元気|を). */
     val startsConjugation: Boolean
-        get() = this == VERB || this == ADJ_I
+        get() = this == VERB || this == ADJ_I || this == ADJ_NA
 
-    /** Particle / auxiliary verb — the trailing morphemes folded into a
-     *  conjugating word's surface span. */
+    /** Particle / auxiliary (助動詞): the morphemes that always continue a
+     *  conjugating word's span. With folding on, the span also takes certain
+     *  content tokens after them (an auxiliary verb after て/で, 無い, そう);
+     *  see [DictionaryManager.Companion.continuesConjugation]. */
     val isConjugationGlue: Boolean
         get() = this == PARTICLE || this == AUX
 

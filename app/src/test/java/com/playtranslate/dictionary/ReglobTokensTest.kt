@@ -1345,19 +1345,24 @@ class ReglobTokensTest {
     }
 
     @Test
-    fun `a 形状詞 does not start a conjugation, so 静かではない stays split`() {
-        // 静か is a 形状詞, which starts no conjugation, so no span reaches
-        // the ない and the ではない phrase keeps it: 静か | ではない for now.
+    fun `無い after a 形状詞's で and は folds, ahead of the ではない reading`() {
+        // 静かではない: the 形状詞 folds its だ (here で) and は, and 無い after
+        // them. ではない is a reading in the pack; starting at the 形状詞's own
+        // 助動詞 it is a conjugation cut, which a reading cannot clear.
         val tokens = listOf(
             jaToken("静か", JaCategory.ADJ_NA),
             jaToken("で", JaCategory.AUX, dict = "だ", infl = "連用形-一般", conjType = "助動詞-ダ"),
             jaToken("は", JaCategory.PARTICLE),
             naiAdj(),
         )
-        assertEquals(
-            listOf("静か", "ではない"),
-            spans(tokens, knownPhrases = setOf("ではない"), knownForms = setOf("静か", "ない")).map { it.surface },
+        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(tokens, "ではない"))
+        val admissible = admissiblePhraseCandidates(
+            phraseCandidatesFor(tokens), headwords = emptySet(), kanaNativeReadings = setOf("ではない"),
         )
+        val s = reglobSpans(tokens, admissible, setOf("ではない"), setOf("静か", "ない")).single()
+        assertEquals("静かではない", s.surface)
+        assertEquals("静か", s.lookupForm)
+        assertEquals(listOf(InflectionTag.NEGATIVE), s.inflections)
     }
 
     // ── The appearance stem そう ────────────────────────────────────────
@@ -1445,5 +1450,127 @@ class ReglobTokensTest {
         assertEquals(listOf(InflectionTag.NEGATIVE), s.inflections)
         // 食べそうだ: the window [そう, だ] starts at the folded そう.
         assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(listOf(tabe, auxStem("そう"), daFinal), "そうだ"))
+    }
+
+    // ── 形状詞 (na-adjectives) ───────────────────────────────────────────
+    // A 形状詞 starts a conjugation: its span takes the だ family and other
+    // glue after it, as a verb's does. Chains from seg-runs/s3/survey.json
+    // unless a comment names the corpus or the CLI.
+
+    private val shizuka = jaToken("静か", JaCategory.ADJ_NA)
+    private fun da(surface: String, infl: String) =
+        jaToken(surface, JaCategory.AUX, dict = "だ", infl = infl, conjType = "助動詞-ダ")
+    private fun desu(surface: String, infl: String) =
+        jaToken(surface, JaCategory.AUX, dict = "です", infl = infl, conjType = "助動詞-デス")
+    private val taFinal = jaToken("た", JaCategory.AUX, infl = "終止形-一般", conjType = "助動詞-タ")
+
+    @Test
+    fun `a 形状詞 folds the だ family and reads its steps`() {
+        val cases = listOf(
+            listOf(shizuka, da("だっ", "連用形-促音便"), taFinal) to listOf(InflectionTag.TA),
+            listOf(shizuka, desu("です", "終止形-一般")) to listOf(InflectionTag.DESU),
+            listOf(shizuka, desu("でし", "連用形-一般"), taFinal) to listOf(InflectionTag.DESU, InflectionTag.TA),
+            listOf(shizuka, da("じゃ", "連用形-融合"), naiAdj()) to listOf(InflectionTag.NEGATIVE),
+            listOf(shizuka, da("じゃ", "連用形-融合"), naiAdj("なかっ", "連用形-促音便"), taFinal) to
+                listOf(InflectionTag.NEGATIVE, InflectionTag.TA),
+            listOf(shizuka, da("なら", "仮定形-一般")) to listOf(InflectionTag.NARA),
+            listOf(shizuka, da("に", "連用形-ニ")) to emptyList(),
+            listOf(shizuka, da("な", "連体形-一般")) to emptyList(),
+            listOf(shizuka, da("だろう", "意志推量形")) to emptyList(),
+            listOf(shizuka, desu("でしょう", "意志推量形")) to listOf(InflectionTag.DESU),
+        )
+        for ((tokens, tags) in cases) {
+            val s = spans(tokens, knownForms = setOf("静か")).single()
+            assertEquals(tokens.joinToString("") { it.surface }, s.surface)
+            assertEquals("静か", s.lookupForm)
+            assertEquals(tokens.size, s.tokenCount)
+            assertEquals(s.surface, tags, s.inflections)
+        }
+        // 綺麗でした: looked up under its dictionary form, not the normalized 奇麗.
+        val kirei = listOf(jaToken("綺麗", JaCategory.ADJ_NA, norm = "奇麗"), desu("でし", "連用形-一般"), taFinal)
+        val k = spans(kirei, knownForms = setOf("綺麗", "奇麗")).single()
+        assertEquals("綺麗", k.lookupForm)
+        assertEquals(listOf(InflectionTag.DESU, InflectionTag.TA), k.inflections)
+    }
+
+    @Test
+    fun `a reading phrase cannot take a 形状詞's own 助動詞`() {
+        // 静かだった: だった is a reading (rank 1,000,000) that the function-run
+        // tier would admit; at the 形状詞's だっ it is a conjugation cut.
+        val dattaTokens = listOf(shizuka, da("だっ", "連用形-促音便"), taFinal)
+        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(dattaTokens, "だった"))
+        val admissible = admissiblePhraseCandidates(
+            phraseCandidatesFor(dattaTokens), headwords = emptySet(), kanaNativeReadings = setOf("だった"),
+        )
+        val s = reglobSpans(dattaTokens, admissible, setOf("だった"), setOf("静か")).single()
+        assertEquals("静かだった", s.surface)
+        assertEquals(listOf(InflectionTag.TA), s.inflections)
+    }
+
+    @Test
+    fun `a particle after a 形状詞 folds but a phrase may still start there`() {
+        // corpus: ワイルドの力. The span absorbs の, as a verb's does.
+        val wild = listOf(
+            jaToken("ワイルド", JaCategory.ADJ_NA),
+            jaToken("の", JaCategory.PARTICLE),
+            jaToken("力", JaCategory.NOUN),
+        )
+        assertEquals(
+            listOf("ワイルドの", "力"),
+            spans(wild, knownForms = setOf("ワイルド", "力")).map { it.surface },
+        )
+        // CLI: 大丈夫かな. A particle may end a 形状詞 (静かね), so a window
+        // starting at one is not a cut: the かな reading keeps fusing, as
+        // after 行く.
+        val daijoubuKana = listOf(
+            jaToken("大丈夫", JaCategory.ADJ_NA),
+            jaToken("か", JaCategory.PARTICLE),
+            jaToken("な", JaCategory.PARTICLE),
+        )
+        assertEquals(Suspicion.FUNCTION_RUN, exactSuspicion(daijoubuKana, "かな"))
+        val admissible = admissiblePhraseCandidates(
+            phraseCandidatesFor(daijoubuKana), headwords = emptySet(), kanaNativeReadings = setOf("かな"),
+        )
+        assertTrue(admissible.any { it.lookupForm == "かな" })
+    }
+
+    @Test
+    fun `a noun does not fold its copula`() {
+        // 学生だった: 学生 is a noun; だった stays its own (function-run) phrase.
+        val tokens = listOf(jaToken("学生", JaCategory.NOUN), da("だっ", "連用形-促音便"), taFinal)
+        assertEquals(Suspicion.FUNCTION_RUN, exactSuspicion(tokens, "だった"))
+        val r = spans(tokens, knownPhrases = setOf("だった"), knownForms = setOf("学生"))
+        assertEquals(listOf("学生", "だった"), r.map { it.surface })
+        assertEquals(1, r[0].tokenCount)
+        // 元気を出す: 元気 is 名詞 形状詞可能, a noun, so を stays outside its span.
+        val genki = listOf(
+            jaToken("元気", JaCategory.NOUN),
+            jaToken("を", JaCategory.PARTICLE),
+            jaToken("出す", JaCategory.VERB, infl = "終止形-一般", conjType = "五段-サ行", aux = true),
+        )
+        assertEquals(
+            listOf("元気", "出す"),
+            spans(genki, knownForms = setOf("元気", "出す")).map { it.surface },
+        )
+        assertEquals("元気を出す", spans(genki, knownPhrases = setOf("元気を出す")).single().lookupForm)
+    }
+
+    @Test
+    fun `a 形状詞 never makes a lemma variant or trips a stem shape`() {
+        // Its surface is its dictionary form, so no window ending at one
+        // swaps a lemma; it has no 活用形, so neither stem shape reads it as
+        // incomplete. corpus: コイツが悪質なのは.
+        val tokens = listOf(
+            jaToken("コイツ", JaCategory.PRONOUN),
+            jaToken("が", JaCategory.PARTICLE),
+            jaToken("悪質", JaCategory.ADJ_NA),
+            da("な", "連体形-一般"),
+            jaToken("の", JaCategory.PARTICLE),
+            jaToken("は", JaCategory.PARTICLE),
+        )
+        assertTrue(phraseCandidatesFor(tokens).none { it.isVariant })
+        assertNull(exactSuspicion(tokens, "悪質な"))       // shape 2 would start here
+        assertNull(exactSuspicion(tokens, "コイツが悪質"))  // the mirror shape would end here
+        assertNull(exactSuspicion(tokens, "が悪質"))
     }
 }
