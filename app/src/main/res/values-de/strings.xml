@@ -334,6 +334,8 @@
     <string name="words_loading">Wörter werden nachgeschlagen…</string>
 
     <string name="lens_loading">Wird nachgeschlagen…</string>
+    <string name="lens_also_matches">Auch möglich</string>
+    <string name="section_other_matches">Weitere Treffer</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          REGION PICKER
@@ -2192,6 +2194,7 @@
     <string name="inflection_passive">Passiv</string>
     <string name="inflection_potential">Potenzial</string>
     <string name="inflection_potential_or_passive">Potenzial/Passiv</string>
+    <string name="inflection_continuative">Verbindungsform</string>
     <string name="inflection_negative">Verneinung</string>
     <string name="inflection_volitional">Volitiv</string>
     <string name="inflection_imperative">Imperativ</string>

@@ -332,6 +332,8 @@
     <string name="words_loading">正在查詢詞語…</string>
 
     <string name="lens_loading">正在查詢…</string>
+    <string name="lens_also_matches">其他相符</string>
+    <string name="section_other_matches">其他相符</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          REGION PICKER
@@ -2224,6 +2226,7 @@
     <string name="inflection_passive">被動</string>
     <string name="inflection_potential">可能</string>
     <string name="inflection_potential_or_passive">可能/被動</string>
+    <string name="inflection_continuative">連用形</string>
     <string name="inflection_negative">否定</string>
     <string name="inflection_volitional">意志</string>
     <string name="inflection_imperative">命令</string>

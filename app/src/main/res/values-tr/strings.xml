@@ -326,6 +326,8 @@
     <string name="words_loading">Sözcükler aranıyor…</string>
 
     <string name="lens_loading">Aranıyor…</string>
+    <string name="lens_also_matches">Diğer eşleşme</string>
+    <string name="section_other_matches">Diğer eşleşmeler</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          REGION PICKER
@@ -2117,6 +2119,7 @@
     <string name="inflection_passive">Edilgen</string>
     <string name="inflection_potential">Yeterlilik</string>
     <string name="inflection_potential_or_passive">Yeterlilik/Edilgen</string>
+    <string name="inflection_continuative">Bağlayıcı biçim</string>
     <string name="inflection_negative">Olumsuz</string>
     <string name="inflection_volitional">Niyet</string>
     <string name="inflection_imperative">Emir</string>

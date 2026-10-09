@@ -332,6 +332,8 @@
     <string name="words_loading">جارٍ البحث عن الكلمات…</string>
 
     <string name="lens_loading">جارٍ البحث…</string>
+    <string name="lens_also_matches">تطابق آخر</string>
+    <string name="section_other_matches">تطابقات أخرى</string>
 
     <!-- ═══ REGION PICKER ═══ -->
 
@@ -2117,6 +2119,7 @@
     <string name="inflection_passive">المبني للمجهول</string>
     <string name="inflection_potential">الإمكان</string>
     <string name="inflection_potential_or_passive">الإمكان/المبني للمجهول</string>
+    <string name="inflection_continuative">صيغة الربط</string>
     <string name="inflection_negative">النفي</string>
     <string name="inflection_volitional">العزم</string>
     <string name="inflection_imperative">الأمر</string>

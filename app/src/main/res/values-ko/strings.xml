@@ -331,6 +331,8 @@
     <string name="words_loading">단어 검색 중…</string>
 
     <string name="lens_loading">검색 중…</string>
+    <string name="lens_also_matches">다른 후보</string>
+    <string name="section_other_matches">다른 후보</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          REGION PICKER
@@ -2163,6 +2165,7 @@
     <string name="inflection_passive">수동</string>
     <string name="inflection_potential">가능</string>
     <string name="inflection_potential_or_passive">가능/수동</string>
+    <string name="inflection_continuative">연용형</string>
     <string name="inflection_negative">부정</string>
     <string name="inflection_volitional">의지</string>
     <string name="inflection_imperative">명령</string>

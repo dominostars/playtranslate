@@ -308,6 +308,8 @@
     <string name="words_loading">กำลังค้นหาคำ…</string>
 
     <string name="lens_loading">กำลังค้นหา…</string>
+    <string name="lens_also_matches">อีกคำที่ตรงกัน</string>
+    <string name="section_other_matches">คำอื่นที่ตรงกัน</string>
 
     <!-- ═══ REGION PICKER ═══ -->
 
@@ -2088,6 +2090,7 @@
     <string name="inflection_passive">ถูกกระทำ</string>
     <string name="inflection_potential">ทำได้</string>
     <string name="inflection_potential_or_passive">ทำได้/ถูกกระทำ</string>
+    <string name="inflection_continuative">รูปเชื่อม</string>
     <string name="inflection_negative">ปฏิเสธ</string>
     <string name="inflection_volitional">ความตั้งใจ</string>
     <string name="inflection_imperative">คำสั่ง</string>

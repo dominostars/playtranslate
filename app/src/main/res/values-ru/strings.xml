@@ -350,6 +350,8 @@
     <string name="words_loading">Поиск слов…</string>
 
     <string name="lens_loading">Поиск…</string>
+    <string name="lens_also_matches">Также подходит</string>
+    <string name="section_other_matches">Другие варианты</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          REGION PICKER
@@ -2262,6 +2264,7 @@
     <string name="inflection_passive">Пассив</string>
     <string name="inflection_potential">Потенциалис</string>
     <string name="inflection_potential_or_passive">Потенциалис/пассив</string>
+    <string name="inflection_continuative">Соединительная форма</string>
     <string name="inflection_negative">Отрицание</string>
     <string name="inflection_volitional">Волитив</string>
     <string name="inflection_imperative">Повелительное</string>

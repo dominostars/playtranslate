@@ -333,6 +333,8 @@
     <string name="words_loading">Buscando palabras…</string>
 
     <string name="lens_loading">Buscando…</string>
+    <string name="lens_also_matches">Otra coincidencia</string>
+    <string name="section_other_matches">Otras coincidencias</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          REGION PICKER
@@ -2189,6 +2191,7 @@
     <string name="inflection_passive">Pasivo</string>
     <string name="inflection_potential">Potencial</string>
     <string name="inflection_potential_or_passive">Potencial/Pasivo</string>
+    <string name="inflection_continuative">Forma conjuntiva</string>
     <string name="inflection_negative">Negativo</string>
     <string name="inflection_volitional">Volitivo</string>
     <string name="inflection_imperative">Imperativo</string>
