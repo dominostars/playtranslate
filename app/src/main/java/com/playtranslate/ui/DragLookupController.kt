@@ -120,8 +120,8 @@ class DragLookupController(
      *  member words and the word's alternative entries on JA), driving the
      *  split secondary sections' open actions by index. Overwritten by
      *  every release lookup (empty when the released word has no resolved
-     *  related units) and by a finished [loadSecondaries], which appends
-     *  the sections it resolved. */
+     *  related units) and by a finished [loadSecondaries], which places
+     *  the sections it resolved in section order. */
     private var currentSecondaryPopups: List<PopupData> = emptyList()
 
     // The sticky lens's body state, read by [publishCurrent]: set by the
@@ -1020,7 +1020,7 @@ class DragLookupController(
                 // lookupJob (a new lookup cancels it) and is isolated so an
                 // Anki failure can't dismiss an already-shown lens. The
                 // badge joins the lens's current state, so it keeps any
-                // sections a load appended meanwhile (a load keeps the
+                // sections a load added meanwhile (a load keeps the
                 // word, hence the word identity); a lens dismissed meanwhile
                 // has cleared that state and takes nothing.
                 try {
@@ -1408,8 +1408,9 @@ class DragLookupController(
         // The "already in Anki" deck badge is filled in AFTER the definitions
         // render (see onDragEnd), so the dictionary lookup is never delayed by
         // the Anki content-provider query.
-        return resolveKeys(LookupResolution(word = popupData, phrase = null), keys.eager, resolver, prefs.targetLang)
-            .copy(pending = keys.pending)
+        val caption = context.getString(R.string.lens_also_matches)
+        val slots = keys.all.map { if (it.needsMt) null else popupFor(it, resolver, prefs.targetLang, caption) }
+        return LookupResolution(word = popupData, phrase = null).withSections(keys.all, slots, pending = keys.pending)
     }
 
     /** The definition resolver for [engine] under [prefs]: the target gloss
@@ -1422,29 +1423,28 @@ class DragLookupController(
             ChineseScriptConverter.forTarget(prefs.targetLang, prefs.targetChineseVariant),
         )
 
-    /** [res] with [keys] resolved into its sections by kind: a phrase key's
-     *  section becomes [LookupResolution.phrase], member and alternative
-     *  sections are appended after the ones [res] has, in [keys]' order.
-     *  Nothing is left pending. */
-    private suspend fun resolveKeys(
-        res: LookupResolution,
+    /** This resolution with [keys]' sections: [slots], index-parallel to
+     *  [keys], placed by kind in [keys]' order ([sectionsByKind]), and
+     *  [pending] the keys still to resolve, whose slots are null. A null
+     *  slot whose key is not [pending] is a key whose [popupFor] came back
+     *  null, which cannot happen ([collectSecondaryKeys] keeps only keys
+     *  whose response has an entry, and only an entry-less response gives
+     *  null): that key is left out of [LookupResolution.keys] as if never
+     *  collected, so the sections stay the keys minus [pending] by kind,
+     *  the shape [placeLoaded] needs. */
+    private fun LookupResolution.withSections(
         keys: List<SecondaryKey>,
-        resolver: DefinitionResolver,
-        targetLang: String,
+        slots: List<PopupData?>,
+        pending: List<SecondaryKey>,
     ): LookupResolution {
-        val caption = context.getString(R.string.lens_also_matches)
-        var phrase = res.phrase
-        val members = res.members.toMutableList()
-        val alternatives = res.alternatives.toMutableList()
-        for (key in keys) {
-            val popup = popupFor(key, resolver, targetLang, caption) ?: continue
-            when (key.kind) {
-                SecondaryKind.PHRASE -> phrase = popup
-                SecondaryKind.MEMBER -> members += popup
-                SecondaryKind.ALTERNATIVE -> alternatives += popup
-            }
-        }
-        return res.copy(phrase = phrase, members = members, alternatives = alternatives, pending = emptyList())
+        val sections = sectionsByKind(keys, slots)
+        return copy(
+            phrase = sections.phrase,
+            members = sections.members,
+            alternatives = sections.alternatives,
+            keys = keys.filterIndexed { i, key -> slots[i] != null || pending.any { it === key } },
+            pending = pending,
+        )
     }
 
     /** [key]'s section, resolved on the response it carries: a phrase under
@@ -1530,13 +1530,20 @@ class DragLookupController(
      *  containing multi-word expression ([phrase], Latin), or else a fused
      *  expression's member words ([members], JA) and the word's other
      *  dictionary entries ([alternatives]). With a [phrase], the other two
-     *  are empty. */
+     *  are empty. The sections are always in [keys]' order within each
+     *  kind, before and after [loadSecondaries]: a held-back section takes
+     *  its key's place among the ones already shown. */
     private data class LookupResolution(
         val word: PopupData,
         val phrase: PopupData?,
         val members: List<PopupData> = emptyList(),
         val alternatives: List<PopupData> = emptyList(),
-        /** The secondaries held back from this resolution because their
+        /** The secondary keys in section order ([SecondaryKeys.all]),
+         *  resolved or [pending], less a key whose popup came back null
+         *  ([withSections]): the order [loadSecondaries] places loaded
+         *  sections by. */
+        val keys: List<SecondaryKey> = emptyList(),
+        /** The [keys] held back from this resolution because their
          *  definitions would be machine-translated ([SecondaryKeys.pending],
          *  in section order): the lens counts them on its "Load more" row
          *  and [loadSecondaries] resolves them. Empty when everything is
@@ -1590,12 +1597,16 @@ class DragLookupController(
     }
 
     /** Resolves the sections held back behind the "Load more" row for the
-     *  sticky lens's current word and re-publishes with them appended in
-     *  section order; the row reads "Looking up…" meanwhile and a failure
-     *  restores it so the tap can be retried. No-op while a load runs,
-     *  with nothing pending, or before the lens is interactive. A newer
-     *  drag or a dismiss cancels the job ([clearSecondaryLoad]) and makes a
-     *  late result moot (the identity guard). */
+     *  sticky lens's current word and re-publishes with each in its key's
+     *  place in [LookupResolution.keys] ([placeLoaded]): a held-back member
+     *  lands before the members whose keys follow it, an alternative
+     *  likewise, so the lens reads in section order as it would have with
+     *  nothing held back, and nothing is left pending. The row reads
+     *  "Looking up…" meanwhile and a failure restores it so the tap can be
+     *  retried. No-op while a load runs, with nothing pending, or before
+     *  the lens is interactive. A newer drag or a dismiss cancels the job
+     *  ([clearSecondaryLoad]) and makes a late result moot (the identity
+     *  guard). */
     private fun loadSecondaries() {
         val res = currentResolution ?: return
         if (secondaryLoading || res.pending.isEmpty() || !magnifier.isInteractive) return
@@ -1605,11 +1616,17 @@ class DragLookupController(
             try {
                 val prefs = Prefs(context)
                 val engine = SourceLanguageEngines.get(context, prefs.sourceLangId)
-                val filled = resolveKeys(res, res.pending, newResolver(engine, prefs), prefs.targetLang)
+                val resolver = newResolver(engine, prefs)
+                val caption = context.getString(R.string.lens_also_matches)
+                val loaded = res.pending.map { popupFor(it, resolver, prefs.targetLang, caption) }
+                val slots = placeLoaded(
+                    res.keys, Sections(res.phrase, res.members, res.alternatives), res.pending, loaded,
+                )
+                val filled = res.withSections(res.keys, slots, pending = emptyList())
                 withContext(Dispatchers.Main) {
                     if (currentResolution !== res) return@withContext
                     currentResolution = filled
-                    // Before the rebind, so a drill-in into an appended
+                    // Before the rebind, so a drill-in into a loaded
                     // section indexes the filled list.
                     currentSecondaryPopups = filled.secondaries()
                     secondaryLoading = false

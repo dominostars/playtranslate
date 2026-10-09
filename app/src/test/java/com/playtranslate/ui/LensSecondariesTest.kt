@@ -12,7 +12,8 @@ import org.junit.Test
  * The lens's secondary sections: [SourceWordLookup.ResolvedAt.secondaries]'s
  * order, [SourceWordLookup.distinctAlternatives]'s entry identity, which
  * the tap path and the drag lens share, [SourceWordLookup.assemble]'s
- * placement of resolved keys, and [SourceWordLookup.loadMoreFor]'s row.
+ * placement of resolved keys, [SourceWordLookup.mergeLoaded]'s placement of
+ * loaded ones, and [SourceWordLookup.loadMoreFor]'s row.
  */
 class LensSecondariesTest {
 
@@ -83,9 +84,7 @@ class LensSecondariesTest {
             key(SecondaryKind.MEMBER, "気"), key(SecondaryKind.ALTERNATIVE, "弾く"),
             key(SecondaryKind.MEMBER, "間"), key(SecondaryKind.ALTERNATIVE, "弾く"),
         )
-        val at = SourceWordLookup.assemble(
-            word, keys, listOf(member, hiku, ma, hajiku), caption = "Also matches", pending = emptyList(),
-        )
+        val at = SourceWordLookup.assemble(word, keys, listOf(member, hiku, ma, hajiku), caption = "Also matches")
         assertEquals(word, at.word)
         assertNull(at.phrase)
         assertEquals(listOf(member, ma), at.members)
@@ -93,27 +92,52 @@ class LensSecondariesTest {
             listOf(hiku.copy(caption = "Also matches"), hajiku.copy(caption = "Also matches")),
             at.alternatives,
         )
+        assertEquals(keys, at.keys)
+        assertEquals(emptyList<SecondaryKey>(), at.pending)
     }
 
     @Test
     fun `assemble makes a phrase key's section the phrase, uncaptioned`() {
         val at = SourceWordLookup.assemble(
-            word, listOf(key(SecondaryKind.PHRASE, "一番")), listOf(phrase),
-            caption = "Also matches", pending = emptyList(),
+            word, listOf(key(SecondaryKind.PHRASE, "一番")), listOf(phrase), caption = "Also matches",
         )
         assertEquals(phrase, at.phrase)
         assertEquals(listOf(phrase), at.secondaries())
     }
 
     @Test
-    fun `assemble carries the pending keys unresolved`() {
-        val pending = listOf(key(SecondaryKind.ALTERNATIVE, "弾く", needsMt = true))
-        val at = SourceWordLookup.assemble(
-            word, listOf(key(SecondaryKind.MEMBER, "気")), listOf(member),
-            caption = "Also matches", pending = pending,
-        )
-        assertEquals(pending, at.pending)
+    fun `assemble holds the keys of unresolved slots as pending`() {
+        val kiKey = key(SecondaryKind.MEMBER, "気")
+        val hajikuKey = key(SecondaryKind.ALTERNATIVE, "弾く", needsMt = true)
+        val at = SourceWordLookup.assemble(word, listOf(kiKey, hajikuKey), listOf(member, null), caption = "Also matches")
+        assertEquals(listOf(hajikuKey), at.pending)
+        assertEquals(listOf(kiKey, hajikuKey), at.keys)
         assertEquals(listOf(member), at.secondaries())
+    }
+
+    @Test
+    fun `a load places each held-back section in its key's place`() {
+        // 気 and 弾く read はじく would machine-translate; 間 and 弾く read
+        // ひく would not. Appending the load would read 間 before 気.
+        val kiKey = key(SecondaryKind.MEMBER, "気", needsMt = true)
+        val maKey = key(SecondaryKind.MEMBER, "間")
+        val hikuKey = key(SecondaryKind.ALTERNATIVE, "弾く")
+        val hajikuKey = key(SecondaryKind.ALTERNATIVE, "弾く", needsMt = true)
+        val keys = listOf(kiKey, maKey, hikuKey, hajikuKey)
+        val captioned = { r: SourceWordLookup.Resolved -> r.copy(caption = "Also matches") }
+
+        val before = SourceWordLookup.assemble(word, keys, listOf(null, ma, hiku, null), caption = "Also matches")
+        assertEquals(listOf(ma), before.members)
+        assertEquals(listOf(captioned(hiku)), before.alternatives)
+        assertEquals(listOf(kiKey, hajikuKey), before.pending)
+
+        val after = SourceWordLookup.mergeLoaded(before, listOf(member, hajiku), caption = "Also matches")
+        assertEquals(listOf(member, ma), after.members)
+        assertEquals(listOf(captioned(hiku), captioned(hajiku)), after.alternatives)
+        assertEquals(emptyList<SecondaryKey>(), after.pending)
+        assertEquals(keys, after.keys)
+        assertEquals(listOf(member, ma, captioned(hiku), captioned(hajiku)), after.secondaries())
+        assertNull(SourceWordLookup.loadMoreFor(after, loading = false))
     }
 
     @Test

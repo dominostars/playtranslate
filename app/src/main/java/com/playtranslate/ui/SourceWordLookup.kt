@@ -166,14 +166,21 @@ object SourceWordLookup {
      *  ([com.playtranslate.language.SourceLanguageEngine.alternativesOf]),
      *  rendered below the members. With a [phrase], the other two are
      *  empty. [secondaries] is the one list the lens and its drill-ins
-     *  read. */
+     *  read. The sections are always in [keys]' order within each kind,
+     *  before and after [resolvePending]: a held-back section takes its
+     *  key's place among the ones already shown. */
     data class ResolvedAt(
         val word: Resolved,
         val phrase: Resolved? = null,
         val members: List<Resolved> = emptyList(),
         val alternatives: List<Resolved> = emptyList(),
-        /** The secondaries held back from this resolution, resolved by
-         *  [resolvePending]; empty when everything is resolved. */
+        /** Every secondary key of the word, resolved or [pending], in
+         *  section order ([SecondaryKeys.all]): the order [resolvePending]
+         *  places loaded sections by. */
+        val keys: List<SecondaryKey> = emptyList(),
+        /** The [keys] held back from this resolution, in section order,
+         *  resolved by [resolvePending]; empty when everything is
+         *  resolved. */
         val pending: List<SecondaryKey> = emptyList(),
     ) {
         /** The lens's secondary sections in their list order (the order the
@@ -236,7 +243,8 @@ object SourceWordLookup {
      * machine translation ([SecondaryKeys.eager]) resolve before this
      * returns; the rest ([SecondaryKeys.pending]) come back unresolved in
      * [ResolvedAt.pending], in section order, for [resolvePending] when the
-     * user asks for them.
+     * user asks for them, with every key in [ResolvedAt.keys] so the load
+     * can place them.
      */
     suspend fun resolveAt(
         appCtx: Context,
@@ -277,32 +285,35 @@ object SourceWordLookup {
             engine, newResolver(appCtx, prefs), word.entries, word.word, phraseKey, memberSpans, alternativeSpans,
         )
         // Only the sections that need no machine translation resolve before
-        // the lens shows; the rest wait in pending for resolvePending.
-        return assemble(
-            word, keys.eager, resolveKeys(appCtx, keys.eager), appCtx.getString(R.string.lens_also_matches),
-            pending = keys.pending,
-        )
+        // the lens shows; the rest keep a null slot and wait in pending for
+        // resolvePending. keys.eager is keys.all without the needsMt ones,
+        // in order, so its resolutions fill the non-null slots in turn.
+        val eager = resolveKeys(appCtx, keys.eager).iterator()
+        val resolved = keys.all.map { if (it.needsMt) null else eager.next() }
+        return assemble(word, keys.all, resolved, appCtx.getString(R.string.lens_also_matches))
     }
 
     /** [word]'s lens result from its secondary [keys] and their [resolved]
-     *  sections, index-parallel: a [SecondaryKind.PHRASE] key's section is
-     *  the [ResolvedAt.phrase], the members and the alternatives keep
-     *  [keys]' order, and each alternative carries [caption]. [pending]
-     *  rides along unresolved. */
+     *  sections, index-parallel, a null slot being a key not resolved yet:
+     *  a [SecondaryKind.PHRASE] key's section is the [ResolvedAt.phrase],
+     *  the members and the alternatives keep [keys]' order
+     *  ([sectionsByKind]), and each alternative carries [caption]. The
+     *  result keeps [keys] and holds the null slots' keys, in order, as
+     *  [ResolvedAt.pending]. */
     internal fun assemble(
         word: Resolved,
         keys: List<SecondaryKey>,
-        resolved: List<Resolved>,
+        resolved: List<Resolved?>,
         caption: String,
-        pending: List<SecondaryKey>,
     ): ResolvedAt {
-        val byKind = keys.zip(resolved).groupBy({ it.first.kind }, { it.second })
+        val sections = sectionsByKind(keys, resolved)
         return ResolvedAt(
             word = word,
-            phrase = byKind[SecondaryKind.PHRASE]?.firstOrNull(),
-            members = byKind[SecondaryKind.MEMBER].orEmpty(),
-            alternatives = byKind[SecondaryKind.ALTERNATIVE].orEmpty().map { it.copy(caption = caption) },
-            pending = pending,
+            phrase = sections.phrase,
+            members = sections.members,
+            alternatives = sections.alternatives.map { it.copy(caption = caption) },
+            keys = keys,
+            pending = keys.filterIndexed { i, _ -> resolved[i] == null },
         )
     }
 
@@ -327,22 +338,25 @@ object SourceWordLookup {
             )
         }
 
-    /** [at] with its [ResolvedAt.pending] secondaries resolved and placed
-     *  after the sections it already has: the phrase from either, the
-     *  members and the alternatives each existing first. Nothing is left
+    /** [at] with its [ResolvedAt.pending] secondaries resolved
+     *  ([resolveKeys]) and merged by [mergeLoaded]: each section in its
+     *  key's place in [ResolvedAt.keys], so the lens reads in section order
+     *  after the load as it would have with nothing held back. Nothing is
+     *  left pending. */
+    suspend fun resolvePending(appCtx: Context, at: ResolvedAt): ResolvedAt =
+        mergeLoaded(at, resolveKeys(appCtx, at.pending), appCtx.getString(R.string.lens_also_matches))
+
+    /** [at] with [loaded], index-parallel to its [ResolvedAt.pending], placed
+     *  among its sections by [ResolvedAt.keys] ([placeLoaded]): a held-back
+     *  member lands before the members whose keys follow it, an alternative
+     *  likewise, and every alternative carries [caption]. Nothing is left
      *  pending. */
-    suspend fun resolvePending(appCtx: Context, at: ResolvedAt): ResolvedAt {
-        val loaded = assemble(
-            at.word, at.pending, resolveKeys(appCtx, at.pending), appCtx.getString(R.string.lens_also_matches),
-            pending = emptyList(),
+    internal fun mergeLoaded(at: ResolvedAt, loaded: List<Resolved>, caption: String): ResolvedAt =
+        assemble(
+            at.word, at.keys,
+            placeLoaded(at.keys, Sections(at.phrase, at.members, at.alternatives), at.pending, loaded),
+            caption,
         )
-        return ResolvedAt(
-            word = at.word,
-            phrase = at.phrase ?: loaded.phrase,
-            members = at.members + loaded.members,
-            alternatives = at.alternatives + loaded.alternatives,
-        )
-    }
 
     /** Resolve [lookupForm] (+ optional disambiguating [reading]) into lens data,
      *  using the same resolver + tier branching as the in-app results page.

@@ -10,6 +10,7 @@ import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.selectHeadword
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.IdentityHashMap
 
 /** What a lens secondary section is: the multi-word expression containing
  *  the looked-up word ([PHRASE]), a member word of the fused expression the
@@ -37,6 +38,63 @@ data class SecondaryKey(
 data class SecondaryKeys(val all: List<SecondaryKey>) {
     val eager: List<SecondaryKey> = all.filterNot { it.needsMt }
     val pending: List<SecondaryKey> = all.filter { it.needsMt }
+}
+
+/** A word's secondary sections by kind, each kind in its keys' order: the
+ *  containing [phrase], or else the [members] and the [alternatives]. Both
+ *  lenses place their sections through it, whatever a section is ([T]). */
+data class Sections<T>(val phrase: T?, val members: List<T>, val alternatives: List<T>)
+
+/** Places [resolved], index-parallel to [keys], by each key's kind, keeping
+ *  [keys]' order within each kind: a [SecondaryKind.PHRASE] key's section is
+ *  [Sections.phrase], member and alternative sections are listed in key
+ *  order. A null slot, a key without a section (yet), places nothing. */
+fun <T> sectionsByKind(keys: List<SecondaryKey>, resolved: List<T?>): Sections<T> {
+    var phrase: T? = null
+    val members = mutableListOf<T>()
+    val alternatives = mutableListOf<T>()
+    keys.forEachIndexed { i, key ->
+        val section = resolved[i] ?: return@forEachIndexed
+        when (key.kind) {
+            SecondaryKind.PHRASE -> phrase = section
+            SecondaryKind.MEMBER -> members += section
+            SecondaryKind.ALTERNATIVE -> alternatives += section
+        }
+    }
+    return Sections(phrase, members, alternatives)
+}
+
+/** The index-parallel list [sectionsByKind] reads, rebuilt after a load: for
+ *  each key in [keys]' order, its [loaded] item (index-parallel to
+ *  [pendingKeys]) when the key is one of [pendingKeys], else the next
+ *  [existing] section of its kind. So a held-back member that comes before
+ *  an already-shown one lands before it, not after it, and likewise an
+ *  alternative. A key is one of [pendingKeys] by identity, not equality.
+ *  [existing] must hold exactly the sections of [keys] minus [pendingKeys],
+ *  by kind in [keys]' order, and [loaded] one item per pending key; a null
+ *  [loaded] item leaves its key's slot null, so it places nothing. */
+fun <T> placeLoaded(
+    keys: List<SecondaryKey>,
+    existing: Sections<T>,
+    pendingKeys: List<SecondaryKey>,
+    loaded: List<T?>,
+): List<T?> {
+    val loadedFor = IdentityHashMap<SecondaryKey, T?>()
+    pendingKeys.forEachIndexed { i, key -> loadedFor[key] = loaded[i] }
+    val phrase = listOfNotNull(existing.phrase).iterator()
+    val members = existing.members.iterator()
+    val alternatives = existing.alternatives.iterator()
+    return keys.map { key ->
+        if (loadedFor.containsKey(key)) {
+            loadedFor[key]
+        } else {
+            when (key.kind) {
+                SecondaryKind.PHRASE -> phrase.next()
+                SecondaryKind.MEMBER -> members.next()
+                SecondaryKind.ALTERNATIVE -> alternatives.next()
+            }
+        }
+    }
 }
 
 /**
