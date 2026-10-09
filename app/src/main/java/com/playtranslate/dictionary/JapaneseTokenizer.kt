@@ -53,6 +53,20 @@ data class JaToken(
      *  short-text route vetoes any text containing one — it goes online
      *  instead. False for analyzers that don't report level-2 POS. */
     val isProperNoun: Boolean = false,
+    /** UniDic conjugation type (活用型, e.g. 五段-カ行, 下一段-サ行, 助動詞-タ),
+     *  or null for non-conjugating morphemes / analyzers that don't report
+     *  it. Auxiliaries carry one too (させ is 下一段-サ行), which is how the
+     *  inflection analyzer tells 書かれる's passive from 食べられる's potential
+     *  or passive. */
+    val conjugationType: String? = null,
+    /** UniDic 非自立可能: a verb or adjective that can attach as an auxiliary
+     *  (いる after て, ない after 高く). False for analyzers that don't report
+     *  level-2 POS. */
+    val isAuxiliaryCapable: Boolean = false,
+    /** UniDic 助動詞語幹: an auxiliary stem filed under 形状詞 (そう in
+     *  食べそうだ, よう in 食べるようだ). False for analyzers that don't report
+     *  level-2 POS. */
+    val isAuxiliaryStem: Boolean = false,
 )
 
 /**

@@ -4,79 +4,188 @@ import com.playtranslate.language.InflectionTag
 
 /**
  * Derives the [InflectionTag]s a conjugated Japanese surface expresses from its
- * morpheme decomposition: the content [stem] plus the ordered [glue] chain that
- * [DictionaryManager.Companion.reglobTokens] folds into the surface span. Pure
- * and Sudachi-independent — unit-tested with hand-authored [JaToken] chains.
+ * morphemes: the content stem plus the ordered glue that
+ * [DictionaryManager.Companion.reglobTokens] folds into its span. Pure and
+ * Sudachi-independent. Every row is pinned by JapaneseInflectionAnalyzerTest
+ * with chains copied from the S0 harness's survey dump
+ * (seg-runs/baseline-s1/survey.json), except where that test names the corpus
+ * dump or the Sudachi command line on the same dictionary as its source.
  *
- * The label is a function of the chain, not a single field: causative lives in
- * the せる auxiliary, -て in the て particle, -た in た. Two sources combine:
- *  1. trailing auxiliary/conjunctive-particle DICTIONARY FORMS, via [AUX_TAGS] —
- *     a tighter allow-list than [JaCategory.isConjugationGlue], so the
- *     non-conjugational particles (は/を/が) that the fold also pulls into the
- *     surface span are ignored for labeling.
- *  2. the FINAL morpheme's inflectionForm (活用形) for the imperative (命令形),
- *     the one stem-internal form carried by no auxiliary.
+ * Tags come in morpheme order, dictionary form outward, and a repeated step is
+ * kept: 食べてみて reads -て, -みる, -て.
  *
- * Tags are emitted in morpheme order and de-duplicated: 食べさせられた reads
- * [CAUSATIVE, PASSIVE, TA], and ませんでした (ませ + ん + でし + た) reads
- * [MASU, NU, DESU, TA], since ます and です are distinct steps.
+ * The stem speaks first. POTENTIAL when Sudachi lexicalized a potential, giving
+ * the potential as the dictionary form and the base verb as the normalized form
+ * (泳げ: 泳げる, 泳ぐ; 見れ: 見れる, 見る; いけ: いける, 行く); see
+ * [isPotentialLexeme]. VOLITIONAL when its 活用形 is 意志推量形 (食べよう and 行こう
+ * are one morpheme each).
  *
- * Volitional is deliberately NOT emitted yet: 〜う/よう is one auxiliary shared by
- * volitional (食べよう), conjecture (〜だろう/でしょう) and likeness (〜ようだ/ように), so
- * it can't be labeled safely from the lemma or 意志推量形 alone — deferred until the
- * Phase 0 survey pins the disambiguating segmentation, then re-enabled with
- * negative tests for ように/ようだ/だろう.
+ * Then each glue morpheme, by kind:
+ *  - particle, by dictionary form: て/で only as a 接続助詞 → -て (ては and ちゃ are
+ *    morphemes of their own and read nothing); ば → -ば; たり/だり → -たり.
+ *  - auxiliary (助動詞), by normalized form, because the written form varies
+ *    (じゃっ is ちゃう, でる is てる, ん is ず, and the past after a euphonic stem
+ *    is written だ but normalizes to た): see [addAuxiliaryTags].
+ *  - auxiliary-capable verb (動詞 非自立可能), by normalized form: [AUX_VERB_TAGS],
+ *    plus POTENTIAL after its step when the verb is itself a potential (頂け).
+ *  - auxiliary-capable adjective 無い → negative (高くない).
+ *  - auxiliary stem そう → -そう (食べそうだ).
+ * Everything else reads nothing: も, よ, か, ばかり, だろう, よう, いい.
  *
- * TODO(phase0): a few lemma spellings / segmentations below are taken from UniDic
- * convention and the reglob test corpus; reconcile against the
- * JapaneseInflectionSurveyTest dump (suru-verb causative split, exact ぬ/ず
- * negative lemma, て/で after euphonic ん, and the volitional re-enable rule)
- * before treating this table as final.
+ * Last, IMPERATIVE when the last morpheme that has a 活用形 is in 命令形 (食べろよ,
+ * 教えてください, くださいませ).
  */
 object JapaneseInflectionAnalyzer {
 
     /**
-     * Auxiliary / conjunctive-particle dictionary form → tag, keyed on the
-     * lemma ([JaToken.dictionaryForm]) so 言わ+せ+て reads せ's lemma せる (not せ)
-     * and 飲ん+だ reads だ's lemma た. Entries NOT here (case particles は/を/が/に,
-     * etc.) are intentionally unlabeled even when folded into the surface.
+     * Auxiliary-capable verb (動詞 非自立可能) after て/で, keyed on its normalized
+     * form because the written form varies (いる and おる both normalize to 居る,
+     * おり to おる). The fold stage reads the keys as its allow-list.
      */
-    private val AUX_TAGS: Map<String, InflectionTag> = mapOf(
-        "せる" to InflectionTag.CAUSATIVE,
-        "させる" to InflectionTag.CAUSATIVE,
-        "れる" to InflectionTag.PASSIVE,   // passive AND potential — one form, one lemma
-        "られる" to InflectionTag.PASSIVE,
-        "ない" to InflectionTag.NEGATIVE,
-        "ぬ" to InflectionTag.NU,
-        "ず" to InflectionTag.ZU,
-        "た" to InflectionTag.TA,
-        "ます" to InflectionTag.MASU,
-        "です" to InflectionTag.DESU,
-        "たい" to InflectionTag.TAI,
-        "たがる" to InflectionTag.TAI,
-        // NOTE: 〜う/よう (volitional) intentionally absent — that lemma is shared
-        // with conjecture (だろう) and likeness (ようだ), so labeling it from the
-        // lemma alone misfires. Deferred to Phase 0; see the class doc.
-        "て" to InflectionTag.TE,
-        "で" to InflectionTag.TE,          // euphonic て after ん (読んで)
-        "ば" to InflectionTag.BA,
+    internal val AUX_VERB_TAGS: Map<String, InflectionTag> = mapOf(
+        "居る" to InflectionTag.IRU,
+        "おる" to InflectionTag.IRU,
+        "有る" to InflectionTag.ARU,
+        "仕舞う" to InflectionTag.SHIMAU,
+        "おく" to InflectionTag.OKU,
+        "置く" to InflectionTag.OKU,
+        "見る" to InflectionTag.MIRU,
+        "行く" to InflectionTag.IKU,
+        "来る" to InflectionTag.KURU,
+        "上げる" to InflectionTag.AGERU,
+        "呉れる" to InflectionTag.KURERU,
+        "貰う" to InflectionTag.MORAU,
+        "遣る" to InflectionTag.YARU,
+        "下さる" to InflectionTag.KUDASARU,
+        "頂く" to InflectionTag.ITADAKU,
     )
+
+    /** A verb's final kana and the え-row kana its potential takes before る. */
+    private val E_ROW: Map<Char, Char> = mapOf(
+        'う' to 'え', 'く' to 'け', 'ぐ' to 'げ', 'す' to 'せ', 'つ' to 'て',
+        'ぬ' to 'ね', 'ぶ' to 'べ', 'む' to 'め', 'る' to 'れ',
+    )
+
+    /** Potentials written in kana whose normalized form is the kanji base verb. */
+    private val KANA_POTENTIALS = setOf("いける", "いただける", "もらえる")
+
+    /** Conjugation types whose れる/られる reads potential or passive. */
+    private val ICHIDAN_OR_KAHEN = listOf("上一段", "下一段", "カ行変格")
 
     /**
      * @param stem the content morpheme (only verbs / i-adjectives conjugate)
-     * @param glue the trailing PARTICLE/AUX morphemes folded into its surface span
+     * @param glue the morphemes folded into its surface span, in order
      */
     fun analyze(stem: JaToken, glue: List<JaToken>): List<InflectionTag> {
         if (!stem.category.startsConjugation) return emptyList()
         val tags = mutableListOf<InflectionTag>()
-        for (g in glue) AUX_TAGS[g.dictionaryForm]?.let(tags::add)
-        // Endings with no carrying auxiliary live in the LAST CONJUGATING
-        // morpheme's 活用形. Scan stem+glue from the end, skipping trailing
-        // particles (sentence-final よ/ね/さ carry no inflectionForm) so 食べろよ
-        // still reads the 命令形 on 食べろ instead of stopping at the よ.
-        val finalForm = (listOf(stem) + glue)
-            .lastOrNull { it.inflectionForm != null }?.inflectionForm
-        if (finalForm?.startsWith("命令形") == true) tags.add(InflectionTag.IMPERATIVE)
-        return tags.distinct()
+        if (isPotentialLexeme(stem)) tags += InflectionTag.POTENTIAL
+        if (stem.inflectionForm.isForm("意志推量形")) tags += InflectionTag.VOLITIONAL
+        var previous = stem
+        for (g in glue) {
+            when (g.category) {
+                JaCategory.PARTICLE -> particleTag(g)?.let(tags::add)
+                JaCategory.AUX -> tags.addAuxiliaryTags(g, previous)
+                JaCategory.VERB -> if (g.isAuxiliaryCapable) {
+                    AUX_VERB_TAGS[g.normalizedForm]?.let { step ->
+                        tags += step
+                        if (isPotentialLexeme(g)) tags += InflectionTag.POTENTIAL
+                    }
+                }
+                JaCategory.ADJ_I ->
+                    if (g.isAuxiliaryCapable && g.normalizedForm == "無い") tags += InflectionTag.NEGATIVE
+                else ->
+                    if (g.isAuxiliaryStem && g.normalizedForm == "そう") tags += InflectionTag.SOU
+            }
+            previous = g
+        }
+        // Scan from the end past morphemes with no 活用形 (よ in 食べろよ).
+        val finalForm = (listOf(stem) + glue).lastOrNull { it.inflectionForm != null }?.inflectionForm
+        if (finalForm.isForm("命令形")) tags += InflectionTag.IMPERATIVE
+        return tags
     }
+
+    private fun particleTag(particle: JaToken): InflectionTag? = when (particle.dictionaryForm) {
+        "て", "で" -> InflectionTag.TE.takeIf { particle.isConjunctiveParticle }
+        "ば" -> InflectionTag.BA
+        "たり", "だり" -> InflectionTag.TARI
+        else -> null
+    }
+
+    /**
+     * た → -た, or -たら in 仮定形; ます → -ます, plus volitional in 意志推量形
+     * (ましょう); です → -です (でしょう too); だ → -なら in 仮定形, else nothing
+     * (だろう, な, に); ない → negative; ず: the ん of ません → negative, any other
+     * ん → -ん, ぬ → -ぬ, ず → -ず; たい → -たい; たがる → -たい, -がる; せる/させる →
+     * causative; れる/られる by the morpheme before it (see [passiveOrPotential]);
+     * the contractions ちゃう, ちまう, てる and とる (→ -いる), とく (→ -おく), てく
+     * (→ -いく).
+     */
+    private fun MutableList<InflectionTag>.addAuxiliaryTags(aux: JaToken, previous: JaToken) {
+        when (aux.normalizedForm) {
+            "た" -> add(if (aux.inflectionForm.isForm("仮定形")) InflectionTag.TARA else InflectionTag.TA)
+            "ます" -> {
+                add(InflectionTag.MASU)
+                if (aux.inflectionForm.isForm("意志推量形")) add(InflectionTag.VOLITIONAL)
+            }
+            "です" -> add(InflectionTag.DESU)
+            "だ" -> if (aux.inflectionForm.isForm("仮定形")) add(InflectionTag.NARA)
+            "ない" -> add(InflectionTag.NEGATIVE)
+            "ず" -> add(
+                when {
+                    aux.dictionaryForm == "ず" -> InflectionTag.ZU
+                    previous.category == JaCategory.AUX && previous.normalizedForm == "ます" ->
+                        InflectionTag.NEGATIVE
+                    aux.surface == "ん" -> InflectionTag.N
+                    else -> InflectionTag.NU
+                },
+            )
+            "たい" -> add(InflectionTag.TAI)
+            "たがる" -> {
+                add(InflectionTag.TAI)
+                add(InflectionTag.GARU)
+            }
+            "せる", "させる" -> add(InflectionTag.CAUSATIVE)
+            "れる", "られる" -> add(passiveOrPotential(previous))
+            "ちゃう" -> add(InflectionTag.CHAU)
+            "ちまう" -> add(InflectionTag.CHIMAU)
+            "てる", "とる" -> add(InflectionTag.IRU)
+            "とく" -> add(InflectionTag.OKU)
+            "てく" -> add(InflectionTag.IKU)
+        }
+    }
+
+    /**
+     * れる/られる read potential or passive after an ichidan or kahen morpheme
+     * (食べられた; 食べさせられる, whose させ is 下一段-サ行) and passive otherwise
+     * (書かれる after 五段, される after サ行変格). The class is the immediately
+     * preceding morpheme's, stem or auxiliary.
+     */
+    private fun passiveOrPotential(previous: JaToken): InflectionTag {
+        val type = previous.conjugationType.orEmpty()
+        return if (ICHIDAN_OR_KAHEN.any(type::startsWith)) {
+            InflectionTag.POTENTIAL_OR_PASSIVE
+        } else {
+            InflectionTag.PASSIVE
+        }
+    }
+
+    /**
+     * True when the morpheme is a lexicalized potential: its dictionary form is
+     * the potential and its normalized form the base verb. Either the base's last
+     * kana moves to the え row and る follows (泳げる of 泳ぐ, 頂ける of 頂く; for a
+     * base ending in る this is also the ら抜き shape, 見れる of 見る), or it is a
+     * kana potential of a kanji base ([KANA_POTENTIALS]). 弾ける normalizes to
+     * itself and is not one.
+     */
+    private fun isPotentialLexeme(token: JaToken): Boolean {
+        val potential = token.dictionaryForm
+        val base = token.normalizedForm
+        if (potential == base) return false
+        if (potential in KANA_POTENTIALS) return true
+        val eRow = E_ROW[base.last()] ?: return false
+        return potential == "${base.dropLast(1)}${eRow}る"
+    }
+
+    private fun String?.isForm(prefix: String): Boolean = this?.startsWith(prefix) == true
 }

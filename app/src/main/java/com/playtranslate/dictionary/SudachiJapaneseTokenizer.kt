@@ -61,6 +61,10 @@ class SudachiJapaneseTokenizer private constructor(
                     pos.getOrElse(0) { "" }.let { it == "補助記号" || it == "空白" },
                 isProperNoun =
                     pos.getOrElse(0) { "" } == "名詞" && pos.getOrElse(1) { "" } == "固有名詞",
+                conjugationType = pos.getOrElse(4) { "" }
+                    .takeIf { it.isNotEmpty() && it != "*" },
+                isAuxiliaryCapable = pos.getOrElse(1) { "" } == "非自立可能",
+                isAuxiliaryStem = pos.getOrElse(1) { "" } == "助動詞語幹",
             )
         }
 
