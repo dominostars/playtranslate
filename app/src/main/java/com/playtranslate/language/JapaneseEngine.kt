@@ -7,6 +7,7 @@ import com.playtranslate.dictionary.DictionaryManager.Companion.ReglobSpan
 import com.playtranslate.dictionary.JaToken
 import com.playtranslate.dictionary.SentenceAnnotator
 import com.playtranslate.dictionary.SudachiJapaneseTokenizer
+import com.playtranslate.dictionary.deinflect.JapaneseDeinflector
 import com.playtranslate.model.selectHeadword
 import com.playtranslate.model.CharacterDetail
 import com.playtranslate.model.DictionaryResponse
@@ -82,14 +83,15 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
         }
 
     /** Pack lookup, then shared Yomitan enrichment: imported term groups merge
-     *  in (deinflection candidates are the fallback forms), with pitch +
-     *  frequency attached. Behaviour is identical to the pre-extraction inline
-     *  path — [YomitanEnrichment] is a verbatim move of it. */
+     *  in (the distinct texts of [JapaneseDeinflector.candidates], in order,
+     *  are the fallback forms), with pitch + frequency attached.
+     *  [YomitanEnrichment] is a verbatim move of the pre-extraction inline
+     *  path. */
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? =
         yomitan.applyTo(
             dict.lookup(word, reading),
             word, reading,
-            fallbackForms = Deinflector.candidates(word).map { it.text },
+            fallbackForms = JapaneseDeinflector.candidates(word).map { it.text }.distinct(),
         )
 
     /**

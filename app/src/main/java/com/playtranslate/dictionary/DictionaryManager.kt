@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.util.Log
+import com.playtranslate.dictionary.deinflect.JapaneseDeinflector
 import com.playtranslate.language.InflectionTag
 import com.playtranslate.language.LanguagePackCatalogLoader
 import com.playtranslate.language.LanguagePackStore
@@ -339,8 +340,13 @@ class DictionaryManager private constructor(private val context: Context) {
     /**
      * Look up [word] in the local JMdict database.
      *
-     * If no direct match is found, de-inflection candidates are tried in
-     * order.  Returns null if nothing matches or the database isn't ready.
+     * If no direct match is found, the deinflection stage runs
+     * ([firstAcceptedDeinflection]): the first of [JapaneseDeinflector.candidates]
+     * whose text has pack entries accepting it (an entry accepts a candidate
+     * when its senses' parts of speech match the candidate's conditions)
+     * resolves [word] to those entries alone, and the candidate's chain rides
+     * on [DictionaryResponse.deinflection]. Returns null if nothing matches or
+     * the database isn't ready.
      *
      * This is a suspend function; do NOT call on the main thread.
      */
@@ -363,15 +369,9 @@ class DictionaryManager private constructor(private val context: Context) {
                 return@withRefcount buildResponse(database, directIds)
             }
 
-            // 3. Try de-inflected candidates (first dictionary hit wins)
-            for (candidate in Deinflector.candidates(word)) {
-                val ids = queryEntryIds(database, candidate.text)
-                if (ids.isNotEmpty()) {
-                    return@withRefcount buildResponse(database, ids, candidate.reason)
-                }
-            }
-
-            null
+            // 3. Deinflection: the first candidate some entry's senses accept
+            val hit = deinflectedHit(database, word) ?: return@withRefcount null
+            buildResponse(database, hit.entryIds, hit.deinflection)
         }
     }
 
@@ -753,6 +753,29 @@ class DictionaryManager private constructor(private val context: Context) {
         return ids
     }
 
+    /** [firstAcceptedDeinflection] over the open pack: [queryEntryIds] for each
+     *  candidate's text, [sensePosTokens] for the ids it returns. The one
+     *  deinflection stage of both [lookup] and [lookupReadingsOnly]. */
+    private fun deinflectedHit(db: SQLiteDatabase, word: String): DeinflectedHit? =
+        firstAcceptedDeinflection(word, { queryEntryIds(db, it) }, { sensePosTokens(db, it) })
+
+    /** Part-of-speech tokens of every sense of each entry in [entryIds] (all
+     *  senses, where [buildEntry] keeps the first 8), split by
+     *  [PosVocabulary.parse] as [buildEntry] splits them. One query; an id with
+     *  no sense rows is absent from the map. */
+    private fun sensePosTokens(db: SQLiteDatabase, entryIds: List<Long>): Map<Long, List<String>> {
+        val out = HashMap<Long, MutableList<String>>()
+        db.rawQuery(
+            "SELECT entry_id, pos FROM sense WHERE entry_id IN (${entryIds.joinToString(",") { "?" }})",
+            Array(entryIds.size) { entryIds[it].toString() },
+        ).use { c ->
+            while (c.moveToNext()) {
+                out.getOrPut(c.getLong(0)) { mutableListOf() } += PosVocabulary.parse(c.getString(1))
+            }
+        }
+        return out
+    }
+
     /**
      * The entry's headword list — kanji forms + reading forms paired by
      * [buildHeadwords]. Shared VERBATIM by [buildEntry] and
@@ -833,16 +856,17 @@ class DictionaryManager private constructor(private val context: Context) {
 
     /**
      * Readings-only resolution for the annotator: the SAME entry choice as
-     * [lookup] (narrowed → direct → deinflection, identical ranked SQL) and
-     * the SAME headword pairing ([loadHeadwords]) — but no senses, examples,
-     * or imported enrichment. Returns a senses-free [DictionaryEntry]
-     * skeleton (packId + headwords) or null when the pack has nothing —
-     * callers fall back to the full two-store lookup, where imported-
-     * dictionary synthesis may still resolve. Parity with the full path's
-     * entry choice holds BY CONSTRUCTION (shared SQL, shared pairing, and
-     * YomitanEnrichment.mergeImportedTerms anchors on the first pack entry
-     * without reordering); cost is 2–3 indexed queries, which is what keeps
-     * FULL-depth annotation affordable on the live cycle.
+     * [lookup] (narrowed → direct → deinflection, identical ranked SQL and
+     * the one [deinflectedHit] gate) and the SAME headword pairing
+     * ([loadHeadwords]), but no senses, examples, or imported enrichment.
+     * Returns a senses-free [DictionaryEntry] skeleton (packId + headwords),
+     * or null when the pack has nothing; callers then fall back to the full
+     * two-store lookup, where imported-dictionary synthesis may still
+     * resolve. Parity with the full path's entry choice holds BY
+     * CONSTRUCTION (shared SQL, shared deinflection gate, shared pairing,
+     * and YomitanEnrichment.mergeImportedTerms anchors on the first pack
+     * entry without reordering); cost is 2–3 indexed queries, which is what
+     * keeps FULL-depth annotation affordable on the live cycle.
      */
     suspend fun lookupReadingsOnly(word: String, reading: String? = null): DictionaryEntry? =
         withContext(Dispatchers.IO) {
@@ -853,12 +877,7 @@ class DictionaryManager private constructor(private val context: Context) {
                     id = queryEntryIdsWithReading(database, word, reading).firstOrNull()
                 }
                 if (id == null) id = queryEntryIds(database, word).firstOrNull()
-                if (id == null) {
-                    for (candidate in Deinflector.candidates(word)) {
-                        id = queryEntryIds(database, candidate.text).firstOrNull()
-                        if (id != null) break
-                    }
-                }
+                if (id == null) id = deinflectedHit(database, word)?.entryIds?.first()
                 val entryId = id ?: return@withRefcount null
                 val headwords = loadHeadwords(database, entryId.toString())
                 if (headwords.isEmpty()) return@withRefcount null
@@ -878,13 +897,11 @@ class DictionaryManager private constructor(private val context: Context) {
     private fun buildResponse(
         db: SQLiteDatabase,
         entryIds: List<Long>,
-        inflectionNote: String? = null
-    ): DictionaryResponse {
-        val entries = entryIds.mapNotNull { buildEntry(db, it, inflectionNote) }
-        return DictionaryResponse(entries = entries)
-    }
+        deinflection: List<InflectionTag> = emptyList(),
+    ): DictionaryResponse =
+        DictionaryResponse(entries = entryIds.mapNotNull { buildEntry(db, it) }, deinflection = deinflection)
 
-    private fun buildEntry(db: SQLiteDatabase, id: Long, inflectionNote: String?): DictionaryEntry? {
+    private fun buildEntry(db: SQLiteDatabase, id: Long): DictionaryEntry? {
         val idStr = id.toString()
 
         var isCommon = false
@@ -932,14 +949,10 @@ class DictionaryManager private constructor(private val context: Context) {
                 val posList   = PosVocabulary.parse(c.getString(1))
                 val glossList = c.getString(2).split('\t').filter { it.isNotBlank() }
                 val miscList  = c.getString(3).split('\t').filter { it.isNotBlank() }
-                val finalPos  = if (inflectionNote != null && senses.isEmpty())
-                    listOf("[$inflectionNote]") + posList
-                else
-                    posList
                 senses.add(
                     Sense(
                         targetDefinitions = glossList,
-                        partsOfSpeech = finalPos,
+                        partsOfSpeech = posList,
                         tags = emptyList(),
                         restrictions = emptyList(),
                         info = emptyList(),
@@ -1472,6 +1485,50 @@ class DictionaryManager private constructor(private val context: Context) {
             WHERE h.text = ? AND r.text = ?
             ORDER BY e.freq_score DESC LIMIT 8
         """
+
+        /** What the deinflection stage resolved a word to: [entryIds], the ids
+         *  the winning candidate's text returned that accept it, in the order
+         *  they were returned, and [deinflection], its chain as tags,
+         *  dictionary form outward. */
+        internal data class DeinflectedHit(
+            val entryIds: List<Long>,
+            val deinflection: List<InflectionTag>,
+        )
+
+        /**
+         * The deinflection stage of [lookup] and [lookupReadingsOnly], one
+         * function so the two cannot resolve a word differently. Walks
+         * [JapaneseDeinflector.candidates] of [word] in their order (shortest
+         * chain first); for each, [entryIdsFor] its text and keeps the ids
+         * whose part-of-speech tokens ([posTokensFor]), as
+         * [JapaneseDeinflector.posFlags], pass [JapaneseDeinflector.accepts]
+         * for the candidate. The first candidate that keeps an id wins, with
+         * its transform keys mapped through [InflectionTag.fromKey]. A candidate whose text has no
+         * entries, or whose entries all reject it, is skipped; a candidate
+         * with conditions 0 (kansai-ben -たら, for one) accepts any entry,
+         * one with no recognized class included. Null when no candidate
+         * wins. Takes the pack reads as functions so it runs without a
+         * database; the instance binds them to [queryEntryIds] and
+         * [sensePosTokens].
+         */
+        internal fun firstAcceptedDeinflection(
+            word: String,
+            entryIdsFor: (String) -> List<Long>,
+            posTokensFor: (List<Long>) -> Map<Long, List<String>>,
+        ): DeinflectedHit? {
+            for (candidate in JapaneseDeinflector.candidates(word)) {
+                val ids = entryIdsFor(candidate.text)
+                if (ids.isEmpty()) continue
+                val posTokens = posTokensFor(ids)
+                val accepted = ids.filter { id ->
+                    JapaneseDeinflector.accepts(candidate, JapaneseDeinflector.posFlags(posTokens[id].orEmpty()))
+                }
+                if (accepted.isNotEmpty()) {
+                    return DeinflectedHit(accepted, candidate.transformKeys.mapNotNull(InflectionTag::fromKey))
+                }
+            }
+            return null
+        }
 
         /**
          * Ranked prefix-scan entry IDs for [query], the core of [searchPrefix].
