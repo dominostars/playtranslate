@@ -45,6 +45,7 @@ import com.playtranslate.R
 import com.playtranslate.isEffectivelyDark
 import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
+import androidx.core.view.doOnNextLayout
 import androidx.core.view.isVisible
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -139,6 +140,24 @@ data class LensSection(
  *  [count] sections a host will add on tap; [loading] while the host
  *  resolves them (the row reads "Looking up…" and ignores taps). */
 data class LensLoadMore(val count: Int, val loading: Boolean = false)
+
+/** Where the split body's viewport lands after
+ *  [MagnifierLens.setSplitDefinitions] rebuilds it. */
+sealed class LensScroll {
+    /** The top (a first show). */
+    object Top : LensScroll()
+
+    /** Where it was before the rebind, clamped to the new content (a rebind
+     *  that adds nothing the user asked for, such as the Anki deck
+     *  back-fill). */
+    object Keep : LensScroll()
+
+    /** The secondary section at [secondaryIndex] (an index into the
+     *  `secondaries` list as passed) at the body's resting position, where
+     *  the first row sits at scroll 0, clamped to the content's end (after a
+     *  "Load more"). An index outside the list behaves as [Keep]. */
+    data class Reveal(val secondaryIndex: Int) : LensScroll()
+}
 
 /**
  * Clamped card-body height for the post-release grow-to-fit. The card grows
@@ -430,14 +449,28 @@ class MagnifierLens(
      *  exactly like the single-unit body. [loadMore], when set, appends a
      *  "Load more (n)" row after the last section, below a divider, whose
      *  tap fires [onLoadMoreTap]; [secondaries] may then be empty, and the
-     *  primary renders alone above the row. */
+     *  primary renders alone above the row.
+     *
+     *  [scroll] is where the body's viewport lands ([LensScroll]):
+     *  [LensScroll.Top] scrolls at once; [LensScroll.Keep] and
+     *  [LensScroll.Reveal] scroll in the layout pass that lays the rebuilt
+     *  sections out, before that pass draws. The grow-to-fit below requests
+     *  its layout in the same call, so that one pass also lays the card out
+     *  at the grow's end state ([animateCardGrowInside]) and the scroll is
+     *  clamped against the grown viewport; the grow's frames are draw-only
+     *  (translation and clip, see [LensView.setGrowFrame]) and never touch
+     *  the scroll offset, so the grow does not undo it. A later relayout
+     *  keeps the offset in pixels: a section above the viewport that swaps
+     *  to its styled renderer afterwards changes height and shifts what
+     *  the viewport shows. */
     fun setSplitDefinitions(
         primary: LensSection,
         secondaries: List<LensSection>,
         secondariesOnTop: Boolean = true,
         loadMore: LensLoadMore? = null,
+        scroll: LensScroll = LensScroll.Top,
     ) {
-        lensView?.setSplitDefinitions(primary, secondaries, secondariesOnTop, loadMore)
+        lensView?.setSplitDefinitions(primary, secondaries, secondariesOnTop, loadMore, scroll)
         if (isInteractive) fitHeightToContent()
     }
 
@@ -453,6 +486,14 @@ class MagnifierLens(
 
     @VisibleForTesting
     internal fun navSectionsForTest(): List<View> = lensView?.navSections().orEmpty()
+
+    @VisibleForTesting
+    internal fun scrollYForTest(): Int = lensView?.definitionsScroll?.scrollY ?: 0
+
+    @VisibleForTesting
+    internal fun scrollToForTest(y: Int) {
+        lensView?.definitionsScroll?.scrollTo(0, y)
+    }
 
     fun setLoading(word: String?, reading: String?) {
         lensView?.setLoading(word, reading)
@@ -1473,7 +1514,9 @@ class MagnifierLens(
                 },
             )
         }
-        private val definitionsScroll = ScrollView(ctx).apply {
+        /** Not private: [MagnifierLens.scrollYForTest] and
+         *  [MagnifierLens.scrollToForTest] read and set its offset. */
+        val definitionsScroll = ScrollView(ctx).apply {
             isVerticalScrollBarEnabled = true
             isFillViewport = false
             // clipToPadding stays false so scrolled rows fill the body
@@ -2552,11 +2595,14 @@ class MagnifierLens(
             secondaries: List<LensSection>,
             secondariesOnTop: Boolean,
             loadMore: LensLoadMore?,
+            scroll: LensScroll,
         ) {
             mode = Mode.DEFINITIONS
             setLabel(primary.data.word, primary.data.reading, primary.data.pitch)
             // Read before the teardown below drops the row.
             val cursorOnRow = loadMoreRow != null && navCursor === loadMoreRow
+            // Read before the teardown: the offset [LensScroll.Keep] restores.
+            val savedY = definitionsScroll.scrollY
             // Styled steps aside; any prior split is torn down for rebuild.
             showFlatBody()
             definitionsContent.visibility = GONE
@@ -2566,23 +2612,29 @@ class MagnifierLens(
             // on top) drops its header — the pill directly above already
             // carries the same headword + reading, and repeating them costs
             // a row. A bottom-rendered primary (Latin: word under the
-            // phrase) keeps its header for scannability.
-            val ordered: List<Triple<LensSection, () -> Unit, Boolean>> = buildList {
-                val secs = secondaries.mapIndexed { i, s ->
-                    Triple(s, { fireSecondaryOpenTap(i) }, true)
-                }
+            // phrase) keeps its header for scannability. Each part carries
+            // its index into [secondaries], null for the primary.
+            val ordered: List<Triple<LensSection, Int?, Boolean>> = buildList {
+                val secs = secondaries.mapIndexed { i, s -> Triple(s, i, true) }
                 if (secondariesOnTop) {
                     addAll(secs)
-                    add(Triple(primary, ::fireOpenTap, true))
+                    add(Triple(primary, null, true))
                 } else {
-                    add(Triple(primary, ::fireOpenTap, false))
+                    add(Triple(primary, null, false))
                     addAll(secs)
                 }
             }
             val views = mutableListOf<View>()
-            ordered.forEachIndexed { i, (section, fire, showHeader) ->
+            // Every secondary's column, opening or not, in [secondaries]
+            // order (they are added as one run in that order).
+            val secondaryColumns = mutableListOf<View>()
+            ordered.forEachIndexed { i, (section, secondaryIndex, showHeader) ->
                 if (i > 0) splitContent.addView(buildSplitDivider())
-                addSplitSection(section, fire, showHeader)?.let { views += it }
+                val fire: () -> Unit =
+                    if (secondaryIndex == null) ::fireOpenTap else ({ fireSecondaryOpenTap(secondaryIndex) })
+                val col = addSplitSection(section, fire, showHeader)
+                if (section.opens) views += col
+                if (secondaryIndex != null) secondaryColumns += col
             }
             if (loadMore != null) {
                 splitContent.addView(buildSplitDivider())
@@ -2591,14 +2643,36 @@ class MagnifierLens(
             splitSectionViews = views
             splitActive = true
             splitContent.visibility = VISIBLE
-            definitionsScroll.scrollTo(0, 0)
             definitionsScroll.visibility = VISIBLE
-            // The controller cursor was on the row this rebind tore down
-            // (the host rebinding with the sections it loaded): it lands on
-            // the first section, which the scroll reset just brought into
-            // view, instead of on a detached view.
+            val revealed = (scroll as? LensScroll.Reveal)
+                ?.let { secondaryColumns.getOrNull(it.secondaryIndex) }
+            if (scroll == LensScroll.Top) {
+                definitionsScroll.scrollTo(0, 0)
+            } else {
+                // After the layout that places the rebuilt columns: a
+                // column's top is its offset in [splitContent] (a direct
+                // child; [splitContent] sits at the scroll content's top),
+                // the same resting offset [moveNav] scrolls a section to.
+                // On the scroll, not on [splitContent], so it runs after the
+                // ScrollView's own onLayout re-claims its offset; still in
+                // the same pass, before it draws. The ScrollView clamps an
+                // offset past the content's end. A newer bind (any
+                // [hideSplitBody]) makes this one's scroll moot.
+                val bindSeq = splitBindSeq
+                definitionsScroll.doOnNextLayout {
+                    if (bindSeq == splitBindSeq) definitionsScroll.scrollTo(0, revealed?.top ?: savedY)
+                }
+            }
+            // The controller cursor was on the row this rebind tore down:
+            // it lands on the revealed section when that is a nav target
+            // (the host rebinding with the sections it loaded), else on the
+            // rebuilt row when the rebind still has one (a deck back-fill
+            // landing while the row reads "Looking up..."), else on the
+            // first nav target, which a [LensScroll.Top] scroll brings into
+            // view and a [LensScroll.Keep] one may leave outside it. Never
+            // on a detached view.
             if (cursorOnRow) {
-                navCursor = views.firstOrNull()
+                navCursor = revealed?.takeIf { it in views } ?: loadMoreRow ?: views.firstOrNull()
                 syncNavRing()
             }
             invalidate()
@@ -2657,14 +2731,16 @@ class MagnifierLens(
          *  [showHeader] false skips the header entirely (the top-rendered
          *  primary: the pill already names it). The caption and header sit
          *  outside the body's holder, so a styled swap-in
-         *  ([attachSectionStyled]) keeps them. Returns the section root when
-         *  it's a tap target ([LensSection.opens]), null otherwise. [fire]
-         *  is the section's (already-debounced) open action. */
+         *  ([attachSectionStyled]) keeps them. Returns the section's root
+         *  column, a direct child of [splitContent], whether or not it opens;
+         *  it is a tap target, and so a nav target, only when
+         *  [LensSection.opens]. [fire] is the section's (already-debounced)
+         *  open action. */
         private fun addSplitSection(
             section: LensSection,
             fire: () -> Unit,
             showHeader: Boolean,
-        ): View? {
+        ): View {
             val col = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
             }
@@ -2806,7 +2882,7 @@ class MagnifierLens(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                 ),
             )
-            return col.takeIf { section.opens }
+            return col
         }
 
         /** The section's styled (WebView) upgrade, mirroring the single-unit

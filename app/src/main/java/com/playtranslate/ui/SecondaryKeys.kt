@@ -97,6 +97,16 @@ fun <T> placeLoaded(
     }
 }
 
+/** The index in [keys] of the first key that is one of [pendingBefore], by
+ *  identity; null when none is. [keys] are in section order (the phrase
+ *  alone, else the members then the alternatives, as
+ *  [collectSecondaryKeys] lists them), and after a load that left nothing
+ *  pending each key has its section, so [keys]' order is the lens's
+ *  secondary list order and this is the index of the first newly loaded
+ *  section in that list: the one a [LensScroll.Reveal] brings into view. */
+fun firstLoadedIndex(keys: List<SecondaryKey>, pendingBefore: List<SecondaryKey>): Int? =
+    keys.indexOfFirst { key -> pendingBefore.any { it === key } }.takeIf { it >= 0 }
+
 /**
  * Decides the secondary sections of a looked-up word with dictionary
  * lookups only (nothing is translated here); both lenses
