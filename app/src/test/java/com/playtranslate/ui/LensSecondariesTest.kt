@@ -11,8 +11,8 @@ import org.junit.Test
 /**
  * The lens's secondary sections: [SourceWordLookup.ResolvedAt.secondaries]'s
  * order, [SourceWordLookup.distinctAlternatives]'s entry identity, which
- * the tap path and the drag lens share, and [SourceWordLookup.assemble]'s
- * placement of resolved keys.
+ * the tap path and the drag lens share, [SourceWordLookup.assemble]'s
+ * placement of resolved keys, and [SourceWordLookup.loadMoreFor]'s row.
  */
 class LensSecondariesTest {
 
@@ -114,5 +114,24 @@ class LensSecondariesTest {
         )
         assertEquals(pending, at.pending)
         assertEquals(listOf(member), at.secondaries())
+    }
+
+    @Test
+    fun `no load-more row when nothing is pending`() {
+        val at = SourceWordLookup.ResolvedAt(word, members = listOf(member))
+        assertNull(SourceWordLookup.loadMoreFor(at, loading = false))
+        assertNull(SourceWordLookup.loadMoreFor(at, loading = true))
+    }
+
+    @Test
+    fun `the load-more row counts the pending sections and carries the loading flag`() {
+        val at = SourceWordLookup.ResolvedAt(
+            word, members = listOf(member),
+            pending = listOf(
+                key(SecondaryKind.MEMBER, "間", needsMt = true), key(SecondaryKind.ALTERNATIVE, "弾く", needsMt = true),
+            ),
+        )
+        assertEquals(LensLoadMore(2, loading = false), SourceWordLookup.loadMoreFor(at, loading = false))
+        assertEquals(LensLoadMore(2, loading = true), SourceWordLookup.loadMoreFor(at, loading = true))
     }
 }
