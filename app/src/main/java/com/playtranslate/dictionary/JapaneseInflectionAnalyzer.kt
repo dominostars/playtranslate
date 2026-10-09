@@ -9,7 +9,7 @@ import com.playtranslate.language.InflectionTag
  * and Sudachi-independent — unit-tested with hand-authored [JaToken] chains.
  *
  * The label is a function of the chain, not a single field: causative lives in
- * the せる auxiliary, te-form in the て particle, past in た. Two sources combine:
+ * the せる auxiliary, -て in the て particle, -た in た. Two sources combine:
  *  1. trailing auxiliary/conjunctive-particle DICTIONARY FORMS, via [AUX_TAGS] —
  *     a tighter allow-list than [JaCategory.isConjugationGlue], so the
  *     non-conjugational particles (は/を/が) that the fold also pulls into the
@@ -17,9 +17,9 @@ import com.playtranslate.language.InflectionTag
  *  2. the FINAL morpheme's inflectionForm (活用形) for the imperative (命令形),
  *     the one stem-internal form carried by no auxiliary.
  *
- * Tags are emitted in morpheme order and de-duplicated, so ませんでした's doubled
- * politeness (ます + でし→です) collapses to a single [InflectionTag.POLITE]
- * while the negation and past survive: [POLITE, NEGATIVE, PAST].
+ * Tags are emitted in morpheme order and de-duplicated: 食べさせられた reads
+ * [CAUSATIVE, PASSIVE, TA], and ませんでした (ませ + ん + でし + た) reads
+ * [MASU, NU, DESU, TA], since ます and です are distinct steps.
  *
  * Volitional is deliberately NOT emitted yet: 〜う/よう is one auxiliary shared by
  * volitional (食べよう), conjecture (〜だろう/でしょう) and likeness (〜ようだ/ように), so
@@ -47,19 +47,19 @@ object JapaneseInflectionAnalyzer {
         "れる" to InflectionTag.PASSIVE,   // passive AND potential — one form, one lemma
         "られる" to InflectionTag.PASSIVE,
         "ない" to InflectionTag.NEGATIVE,
-        "ぬ" to InflectionTag.NEGATIVE,
-        "ず" to InflectionTag.NEGATIVE,
-        "た" to InflectionTag.PAST,
-        "ます" to InflectionTag.POLITE,
-        "です" to InflectionTag.POLITE,
-        "たい" to InflectionTag.DESIDERATIVE,
-        "たがる" to InflectionTag.DESIDERATIVE,
+        "ぬ" to InflectionTag.NU,
+        "ず" to InflectionTag.ZU,
+        "た" to InflectionTag.TA,
+        "ます" to InflectionTag.MASU,
+        "です" to InflectionTag.DESU,
+        "たい" to InflectionTag.TAI,
+        "たがる" to InflectionTag.TAI,
         // NOTE: 〜う/よう (volitional) intentionally absent — that lemma is shared
         // with conjecture (だろう) and likeness (ようだ), so labeling it from the
         // lemma alone misfires. Deferred to Phase 0; see the class doc.
-        "て" to InflectionTag.TE_FORM,
-        "で" to InflectionTag.TE_FORM,     // euphonic て after ん (読んで)
-        "ば" to InflectionTag.CONDITIONAL,
+        "て" to InflectionTag.TE,
+        "で" to InflectionTag.TE,          // euphonic て after ん (読んで)
+        "ば" to InflectionTag.BA,
     )
 
     /**

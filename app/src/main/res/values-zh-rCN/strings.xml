@@ -2220,13 +2220,10 @@
     <string name="misc_dialectal">方言</string>
 
     <string name="inflection_causative">使役</string>
-    <string name="inflection_passive">被动/可能</string>
+    <string name="inflection_passive">被动</string>
+    <string name="inflection_potential">可能</string>
+    <string name="inflection_potential_or_passive">可能/被动</string>
     <string name="inflection_negative">否定</string>
-    <string name="inflection_past">过去</string>
-    <string name="inflection_polite">礼貌</string>
-    <string name="inflection_te_form">て形</string>
-    <string name="inflection_desiderative">愿望</string>
-    <string name="inflection_conditional">条件</string>
     <string name="inflection_volitional">意志</string>
     <string name="inflection_imperative">命令</string>
     <string name="inflection_more">还有<xliff:g id="count" example="2">%1$d</xliff:g>个</string>

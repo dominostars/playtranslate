@@ -2160,13 +2160,10 @@
     <string name="misc_yojijukugo">사자성어</string>
     <string name="misc_dialectal">방언</string>
     <string name="inflection_causative">사역</string>
-    <string name="inflection_passive">수동/가능</string>
+    <string name="inflection_passive">수동</string>
+    <string name="inflection_potential">가능</string>
+    <string name="inflection_potential_or_passive">가능/수동</string>
     <string name="inflection_negative">부정</string>
-    <string name="inflection_past">과거</string>
-    <string name="inflection_polite">정중</string>
-    <string name="inflection_te_form">て형</string>
-    <string name="inflection_desiderative">희망</string>
-    <string name="inflection_conditional">조건</string>
     <string name="inflection_volitional">의지</string>
     <string name="inflection_imperative">명령</string>
     <string name="inflection_more"><xliff:g id="count" example="2">%1$d</xliff:g>개 더</string>

@@ -124,7 +124,7 @@ class ReglobTokensTest {
         val result = glob(tokens, knownForms = setOf("歩く", "づらい"))
         assertEquals(listOf("歩く", "づらい"), result.map { it.lookupForm })
         assertEquals("づらかった", result[1].surface)
-        assertEquals(listOf(InflectionTag.PAST), result[1].inflections)
+        assertEquals(listOf(InflectionTag.TA), result[1].inflections)
     }
 
     @Test
@@ -157,7 +157,7 @@ class ReglobTokensTest {
         assertEquals(1, result.size)
         assertEquals("読みづらい", result[0].lookupForm)
         assertEquals("読みづらかった", result[0].surface)
-        assertEquals(listOf(InflectionTag.PAST), result[0].inflections)
+        assertEquals(listOf(InflectionTag.TA), result[0].inflections)
     }
 
     // ── Kana nominal/verbal suffixes (ぶり, めく) ─────────────────────────
@@ -190,7 +190,7 @@ class ReglobTokensTest {
         val result = glob(tokens, knownForms = setOf("謎", "めく"))
         assertEquals(listOf("謎", "めく"), result.map { it.lookupForm })
         assertEquals("めいた", result[1].surface)
-        assertEquals(listOf(InflectionTag.PAST), result[1].inflections)
+        assertEquals(listOf(InflectionTag.TA), result[1].inflections)
     }
 
     @Test
@@ -206,7 +206,7 @@ class ReglobTokensTest {
         assertEquals(1, result.size)
         assertEquals("謎めく", result[0].lookupForm)
         assertEquals("謎めいた", result[0].surface)
-        assertEquals(listOf(InflectionTag.PAST), result[0].inflections)
+        assertEquals(listOf(InflectionTag.TA), result[0].inflections)
     }
 
     // ── Existing-behavior preservation ───────────────────────────────────
@@ -516,7 +516,7 @@ class ReglobTokensTest {
         val r = glob(tokens, knownForms = setOf("言う"))
         assertEquals("言わせて", r[0].surface)
         assertEquals("言う", r[0].lookupForm)
-        assertEquals(listOf(InflectionTag.CAUSATIVE, InflectionTag.TE_FORM), r[0].inflections)
+        assertEquals(listOf(InflectionTag.CAUSATIVE, InflectionTag.TE), r[0].inflections)
     }
 
     @Test
@@ -529,7 +529,7 @@ class ReglobTokensTest {
             )[0].inflections,
         )
         assertEquals(
-            listOf(InflectionTag.PAST),
+            listOf(InflectionTag.TA),
             glob(
                 listOf(jaToken("食べ", JaCategory.VERB, dict = "食べる"), jaToken("た", JaCategory.AUX)),
                 knownForms = setOf("食べる"),
@@ -538,9 +538,9 @@ class ReglobTokensTest {
     }
 
     @Test
-    fun `polite negative past collapses the doubled politeness`() {
+    fun `polite negative past keeps each auxiliary in morpheme order`() {
         // 食べませんでした = 食べ + ませ(ます) + ん(ぬ) + でし(です) + た:
-        // ます and でし→です both map to Polite; distinct() keeps one.
+        // ます and でし→です are distinct steps (-ます, -です), so both survive distinct().
         val tokens = listOf(
             jaToken("食べ", JaCategory.VERB, dict = "食べる"),
             jaToken("ませ", JaCategory.AUX, dict = "ます"),
@@ -549,7 +549,7 @@ class ReglobTokensTest {
             jaToken("た", JaCategory.AUX),
         )
         assertEquals(
-            listOf(InflectionTag.POLITE, InflectionTag.NEGATIVE, InflectionTag.PAST),
+            listOf(InflectionTag.MASU, InflectionTag.NU, InflectionTag.DESU, InflectionTag.TA),
             glob(tokens, knownForms = setOf("食べる"))[0].inflections,
         )
     }
@@ -564,7 +564,7 @@ class ReglobTokensTest {
             jaToken("た", JaCategory.AUX),
         )
         assertEquals(
-            listOf(InflectionTag.CAUSATIVE, InflectionTag.PASSIVE, InflectionTag.PAST),
+            listOf(InflectionTag.CAUSATIVE, InflectionTag.PASSIVE, InflectionTag.TA),
             glob(tokens, knownForms = setOf("食べる"))[0].inflections,
         )
     }
@@ -600,7 +600,7 @@ class ReglobTokensTest {
             jaToken("ば", JaCategory.PARTICLE),
         )
         assertEquals(
-            listOf(InflectionTag.CONDITIONAL),
+            listOf(InflectionTag.BA),
             glob(tokens, knownForms = setOf("言う"))[0].inflections,
         )
     }
@@ -617,7 +617,7 @@ class ReglobTokensTest {
         )
         val r = glob(tokens, knownForms = setOf("言う"))
         assertEquals("言わせては", r[0].surface)
-        assertEquals(listOf(InflectionTag.CAUSATIVE, InflectionTag.TE_FORM), r[0].inflections)
+        assertEquals(listOf(InflectionTag.CAUSATIVE, InflectionTag.TE), r[0].inflections)
     }
 
     @Test
@@ -635,7 +635,7 @@ class ReglobTokensTest {
         val r = glob(kiNiNatta, knownPhrases = setOf("気になる"))
         assertEquals("気になる", r[0].lookupForm)
         assertEquals("気になった", r[0].surface)
-        assertEquals(listOf(InflectionTag.PAST), r[0].inflections)
+        assertEquals(listOf(InflectionTag.TA), r[0].inflections)
     }
 
     @Test

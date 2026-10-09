@@ -319,7 +319,7 @@ class WordResultCell @JvmOverloads constructor(
             }
         }
         // Conjugation lines: one per distinct form this lemma appeared as,
-        // "surface · Tag, Tag", localized. Hidden when there's nothing to report.
+        // "surface · Tag « Tag". Hidden when there's nothing to report.
         if (inflectedForms.isEmpty()) {
             inflectionView.isGone = true
         } else {
@@ -329,7 +329,7 @@ class WordResultCell @JvmOverloads constructor(
             // expand the row off-screen; the rest collapse into a "+N more" line.
             val (shown, overflow) = capInflectionForms(inflectedForms)
             val lines = shown.map { form ->
-                form.surface + " · " + form.tags.joinToString(", ") { context.getString(it.labelRes) }
+                form.surface + " · " + form.tags.joinToString(" « ") { it.label(context) }
             }
             inflectionView.text = (
                 if (overflow > 0) lines + context.getString(R.string.inflection_more, overflow)
