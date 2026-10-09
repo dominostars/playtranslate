@@ -232,8 +232,11 @@ object SourceWordLookup {
      * theirs. With no containing phrase, the alternatives follow the
      * members, one per entry as [collectSecondaryKeys] keeps them, each
      * resolved under its own key on the tapped surface and captioned
-     * [R.string.lens_also_matches]. Every section resolves before this
-     * returns: [ResolvedAt.pending] is empty.
+     * [R.string.lens_also_matches]. The sections whose definitions need no
+     * machine translation ([SecondaryKeys.eager]) resolve before this
+     * returns; the rest ([SecondaryKeys.pending]) come back unresolved in
+     * [ResolvedAt.pending], in section order, for [resolvePending] when the
+     * user asks for them.
      */
     suspend fun resolveAt(
         appCtx: Context,
@@ -273,10 +276,11 @@ object SourceWordLookup {
         val keys = collectSecondaryKeys(
             engine, newResolver(appCtx, prefs), word.entries, word.word, phraseKey, memberSpans, alternativeSpans,
         )
-        // Every section resolves before the lens shows; nothing is held back.
+        // Only the sections that need no machine translation resolve before
+        // the lens shows; the rest wait in pending for resolvePending.
         return assemble(
-            word, keys.all, resolveKeys(appCtx, keys.all), appCtx.getString(R.string.lens_also_matches),
-            pending = emptyList(),
+            word, keys.eager, resolveKeys(appCtx, keys.eager), appCtx.getString(R.string.lens_also_matches),
+            pending = keys.pending,
         )
     }
 
@@ -301,6 +305,12 @@ object SourceWordLookup {
             pending = pending,
         )
     }
+
+    /** The lens's "Load more (n)" row for [at]: counts its
+     *  [ResolvedAt.pending] sections and is [loading] while they resolve;
+     *  null when nothing is pending, so the lens draws no row. */
+    internal fun loadMoreFor(at: ResolvedAt, loading: Boolean): LensLoadMore? =
+        at.pending.takeIf { it.isNotEmpty() }?.let { LensLoadMore(it.size, loading) }
 
     /** Resolves each of [keys] on the response it carries, under its own
      *  lookup form and reading, index-parallel to [keys]. An alternative
