@@ -114,12 +114,13 @@ class WorkspaceSentencePage(
      *  lens's snapshot as the fallback. */
     private fun liveSentenceContext(): SentenceContext = vm.sentenceContext(args.sentenceContext)
 
-    private fun pushWordPage(word: String, reading: String?) {
+    private fun pushWordPage(word: String, reading: String?, surface: String?) {
         val host = hostRef ?: return
         host.push(
             WorkspaceWordDetailPage(
                 word = word,
                 reading = reading,
+                surface = surface,
                 screenshotPath = args.screenshotPath,
                 audioAnchorMs = args.audioAnchorMs,
                 sentenceContext = { liveSentenceContext() },
@@ -157,7 +158,7 @@ class WorkspaceSentencePage(
             val phrase = resolved.phrase
             val secondaries = phrase?.let { listOf(it) } ?: resolved.members
             fun context(u: SourceWordLookup.Resolved) = LensActionContext(
-                u.word, u.reading, u.entry, args.sentence, args.screenshotPath,
+                u.word, u.reading, u.surface, u.entry, args.sentence, args.screenshotPath,
                 audioAnchorMs = args.audioAnchorMs,
                 entries = u.entries,
             )
@@ -169,6 +170,7 @@ class WorkspaceSentencePage(
                     WorkspaceWordDetailPage(
                         word = a.word,
                         reading = a.reading,
+                        surface = a.surface,
                         screenshotPath = a.screenshotPath,
                         audioAnchorMs = a.audioAnchorMs,
                         sentenceContext = { liveSentenceContext() },
@@ -180,7 +182,8 @@ class WorkspaceSentencePage(
             ) { context(unit) }
         }
 
-        override fun onWordTapped(word: String, reading: String?) = pushWordPage(word, reading)
+        override fun onWordTapped(word: String, reading: String?, surface: String?) =
+            pushWordPage(word, reading, surface)
 
         override fun onChangeLanguage(isSource: Boolean) {
             host.push(if (isSource) SourceListPage() else TargetListPage())

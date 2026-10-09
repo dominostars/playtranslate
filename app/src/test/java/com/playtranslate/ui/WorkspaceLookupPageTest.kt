@@ -114,7 +114,7 @@ class WorkspaceLookupPageTest {
     private lateinit var parent: FrameLayout
 
     private val args = LensDetailArgs(
-        word = "猫", reading = "ねこ", sentence = "猫が食べる。", screenshotPath = null,
+        word = "猫", reading = "ねこ", surface = null, sentence = "猫が食べる。", screenshotPath = null,
         audioAnchorMs = null,
         sentenceContext = SentenceContext("猫が食べる。", null, null),
     )

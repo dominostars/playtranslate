@@ -22,6 +22,7 @@ import com.playtranslate.Prefs
 import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
+import com.playtranslate.language.InflectedForm
 import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TargetGlossDatabaseProvider
@@ -84,6 +85,9 @@ class DragLookupController(
     /** Wires the lens Speak chip to the TTS engine. Created in [init]. */
     private var speakChip: LensSpeakChip? = null
     private var lastWord: String? = null
+    /** The text [lastWord] was dragged on (the matched token's surface),
+     *  handed to the detail page for its conjugation line. */
+    private var lastSurface: String? = null
     /** Current dictionary entry shown in the popup. */
     private var currentEntry: DictionaryEntry? = null
     /** Every entry the release lookup resolved (POS-split packs return
@@ -131,7 +135,7 @@ class DragLookupController(
         currentSecondary = { i ->
             currentSecondaryPopups.getOrNull(i)?.let { p ->
                 LensActionContext(
-                    p.word, p.reading, p.entry, currentSentence, screenshotPath,
+                    p.word, p.reading, p.surface, p.entry, currentSentence, screenshotPath,
                     audioAnchorMs = dragCapturedAtMs,
                     entries = p.entries,
                 )
@@ -139,7 +143,7 @@ class DragLookupController(
         },
     ) {
         LensActionContext(
-            lastWord, lastReading, currentEntry, currentSentence, screenshotPath,
+            lastWord, lastReading, lastSurface, currentEntry, currentSentence, screenshotPath,
             audioAnchorMs = dragCapturedAtMs,
             entries = currentEntries,
         )
@@ -246,6 +250,7 @@ class DragLookupController(
         // settle when its lens is eventually dismissed.
         magnifier.onDismiss = {
             lastWord = null
+            lastSurface = null
             currentEntry = null
             currentEntries = emptyList()
             lastReading = null
@@ -960,6 +965,7 @@ class DragLookupController(
                 val popupData = resolved.word
                 // Release-only side effects (only when lookup succeeded).
                 lastWord = popupData.word
+                lastSurface = popupData.surface
                 currentEntry = popupData.entry
                 currentEntries = popupData.entries
                 lastReading = popupData.reading
@@ -1275,6 +1281,13 @@ class DragLookupController(
         // outside the shared builder.
         val reading = readingHint
         val displaySurface = matchedSurface
+        // The dragged form's conjugation line: the lookup's own deinflection
+        // chain, then the matched token's (both dictionary form outward).
+        val inflectedForms = listOfNotNull(
+            InflectionChain.compose(
+                matchedSurface, response?.deinflection.orEmpty(), matchedToken?.inflections.orEmpty(),
+            ),
+        )
         val popupData: PopupData = if (entry != null && defResult != null) {
             val display = entry.headwordDisplay(
                 entry.selectHeadword(displaySurface, lookupForm, readingHint),
@@ -1283,6 +1296,8 @@ class DragLookupController(
             PopupData(
                 word = display.written,
                 reading = display.reading,
+                surface = matchedSurface,
+                inflectedForms = inflectedForms,
                 senses = buildSenseDisplays(defResult, entries, prefs.targetLang),
                 freqScore = entry.freqScore,
                 isCommon = entry.isCommon == true,
@@ -1310,6 +1325,8 @@ class DragLookupController(
             PopupData(
                 word = lookupForm,
                 reading = reading,
+                surface = matchedSurface,
+                inflectedForms = inflectedForms,
                 senses = emptyList(),
                 freqScore = 0,
                 isCommon = false,
@@ -1390,6 +1407,9 @@ class DragLookupController(
         return PopupData(
             word = display.written,
             reading = display.reading,
+            // A related unit is a lemma: no surface, no conjugation line.
+            surface = null,
+            inflectedForms = emptyList(),
             senses = buildSenseDisplays(result!!, entries, targetLang),
             freqScore = entry.freqScore,
             isCommon = entry.isCommon == true,
@@ -1456,6 +1476,7 @@ class DragLookupController(
             frequencies = frequencies,
             importedGroups = importedGroups,
             styled = styled,
+            inflectedForms = inflectedForms,
         )
 
     private fun PopupData.machineTranslatedLabel(): String? =
@@ -1466,6 +1487,12 @@ class DragLookupController(
     private data class PopupData(
         val word: String,
         val reading: String?,
+        /** The matched token's text under the finger; null for a related
+         *  unit (phrase or member), which is a lemma. */
+        val surface: String?,
+        /** The lens's conjugation line ([WordDefinitionData.inflectedForms]):
+         *  the dragged form's, empty for a related unit. */
+        val inflectedForms: List<InflectedForm>,
         val senses: List<SenseDisplay>,
         val freqScore: Int,
         val isCommon: Boolean,

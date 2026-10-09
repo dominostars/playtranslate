@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import com.playtranslate.language.InflectionTag
 import com.playtranslate.language.PhraseOccurrence
 import com.playtranslate.language.TokenSpan
 import org.junit.Assert.assertEquals
@@ -33,11 +34,12 @@ class PhraseMemberTapSpansTest {
             listOf(tok("great"), tok("deal"), tok("of"), tok("effort")),
             listOf(PhraseOccurrence(0..11, "a great deal", "a great deal")),
         )
-        val aSpan = s.firstOrNull { 0 in it.first }
+        val aSpan = s.firstOrNull { 0 in it.range }
         assertNotNull("tapping the leading 'a' must resolve a span", aSpan)
-        assertEquals("a", aSpan!!.second)
-        assertNotNull(s.firstOrNull { 2 in it.first && it.second == "great" })
-        assertNotNull(s.firstOrNull { 8 in it.first && it.second == "deal" })
+        assertEquals("a", aSpan!!.lookupForm)
+        assertEquals("the member span carries a bare token of its letter", tok("a"), aSpan.token)
+        assertNotNull(s.firstOrNull { 2 in it.range && it.lookupForm == "great" })
+        assertNotNull(s.firstOrNull { 8 in it.range && it.lookupForm == "deal" })
     }
 
     @Test fun `stray duplicate letter before the phrase cannot steal the member span`() {
@@ -50,11 +52,11 @@ class PhraseMemberTapSpansTest {
             listOf(tok("cat"), tok("great"), tok("deal")),
             listOf(PhraseOccurrence(6..17, "a great deal", "a great deal")),
         )
-        val memberSpan = s.firstOrNull { it.second == "a" }
+        val memberSpan = s.firstOrNull { it.lookupForm == "a" }
         assertNotNull(memberSpan)
-        assertEquals(6..6, memberSpan!!.first)
+        assertEquals(6..6, memberSpan!!.range)
         assertNull("the stray 'a' outside the phrase must stay span-less",
-            s.firstOrNull { 4 in it.first })
+            s.firstOrNull { 4 in it.range })
     }
 
     @Test fun `mid-phrase single-letter members are covered`() {
@@ -64,8 +66,8 @@ class PhraseMemberTapSpansTest {
             listOf(tok("il"), tok("trois"), tok("chats")),
             listOf(PhraseOccurrence(0..5, "il y a", "il y a")),
         )
-        assertNotNull(s.firstOrNull { 3 in it.first && it.second == "y" })
-        assertNotNull(s.firstOrNull { 5 in it.first && it.second == "a" })
+        assertNotNull(s.firstOrNull { 3 in it.range && it.lookupForm == "y" })
+        assertNotNull(s.firstOrNull { 5 in it.range && it.lookupForm == "a" })
     }
 
     @Test fun `display-only newline inside the phrase still yields member spans`() {
@@ -78,15 +80,21 @@ class PhraseMemberTapSpansTest {
             listOf(tok("great"), tok("deal"), tok("of"), tok("effort")),
             listOf(PhraseOccurrence(0..11, "a great deal", "a great deal")),
         )
-        val aSpan = s.firstOrNull { 0 in it.first }
+        val aSpan = s.firstOrNull { 0 in it.range }
         assertNotNull(aSpan)
-        assertEquals("a", aSpan!!.second)
+        assertEquals("a", aSpan!!.lookupForm)
+    }
+
+    @Test fun `a word span carries its own token, inflections included`() {
+        val ate = TokenSpan("食べた", "食べる", "たべる", listOf(InflectionTag.TA))
+        val s = spans("猫が食べた", listOf(tok("猫"), ate), emptyList())
+        assertEquals(SourceWordLookup.TapSpan(2..4, "食べる", "たべる", ate), s[1])
     }
 
     @Test fun `no phrases means plain computeSpans output`() {
         val text = "a cat sat"
         val s = spans(text, listOf(tok("cat"), tok("sat")), emptyList())
         assertEquals(2, s.size)
-        assertNull(s.firstOrNull { 0 in it.first })
+        assertNull(s.firstOrNull { 0 in it.range })
     }
 }

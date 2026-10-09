@@ -2404,8 +2404,11 @@ class MagnifierLens(
             // sheet reached on tap-through still shows misc (it re-resolves).
             // The flat renderer binds UNCONDITIONALLY: it is the instant
             // content of every lookup and the standing fallback the styled
-            // path degrades to (renderer death, empty render).
-            definitionsContent.bind(data, label, LENS_DEFINITIONS_SCALE, showMisc = false)
+            // path degrades to (renderer death, empty render). Both bodies
+            // lead with the conjugation line of the looked-up form.
+            definitionsContent.bind(
+                data, label, LENS_DEFINITIONS_SCALE, showMisc = false, showInflections = true,
+            )
             val styledData = data.styled
             val sv = if (styledData != null && styledData.structured.isNotEmpty()) {
                 ensureStyledView()
@@ -2463,6 +2466,7 @@ class MagnifierLens(
                         showMisc = false,
                         metaChips = styledMetaChips(context, data),
                         label = label,
+                        inflectionLines = data.inflectedForms.map { InflectionChain.format(context, it) },
                     ),
                     styledData.dictStyles,
                     styledData.sourceLanguage,
@@ -2611,7 +2615,12 @@ class MagnifierLens(
                 setPadding(bodyHPaddingPx - dp(6f), 0, bodyHPaddingPx - dp(6f), 0)
                 metaChipFill = panelBadgeBg
                 emptyPlaceholder = context.getString(R.string.word_detail_no_definitions)
-                bind(section.data, section.label, LENS_DEFINITIONS_SCALE, showMisc = false)
+                // The conjugation line rides inside the body, so a headerless
+                // section shows it too.
+                bind(
+                    section.data, section.label, LENS_DEFINITIONS_SCALE,
+                    showMisc = false, showInflections = true,
+                )
             }
             // Flat and (maybe) styled renderers share one holder, so the
             // styled swap-in is a visibility flip INSIDE the section —
@@ -2628,7 +2637,8 @@ class MagnifierLens(
                 // cost; the single-unit body ([singleChevronView]) uses
                 // the same placement. (A maximal-width first gloss line
                 // could reach under it; the usual first row is the
-                // left-packed meta chips.)
+                // conjugation line, whose end margin keeps it clear, or
+                // the left-packed meta chips.)
                 // Absolute RIGHT, matching the lens's canvas-aligned layout
                 // discipline. Added LAST so it stays painted over a styled
                 // swap-in.
@@ -2727,6 +2737,7 @@ class MagnifierLens(
                     showMisc = false,
                     metaChips = styledMetaChips(context, section.data),
                     label = section.label,
+                    inflectionLines = section.data.inflectedForms.map { InflectionChain.format(context, it) },
                 ),
                 styledData.dictStyles,
                 styledData.sourceLanguage,

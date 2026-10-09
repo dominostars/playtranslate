@@ -1,11 +1,17 @@
 package com.playtranslate.ui
 
+import android.util.TypedValue
 import android.view.ContextThemeWrapper
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.R
+import com.playtranslate.language.InflectedForm
+import com.playtranslate.language.InflectionTag
+import com.playtranslate.themeColor
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -20,7 +26,8 @@ import org.robolectric.RobolectricTestRunner
  * exact regression class this change fixed: the no-entry path used to return
  * null / empty and dismiss the surface entirely, and the shared renderer also
  * serves [WordResultCell] / DictionaryLookupActivity, which must NOT sprout a
- * placeholder when they bind empty senses.
+ * placeholder when they bind empty senses. Also pins the lens's opt-in
+ * conjugation lines (showInflections), which the cell must not get either.
  */
 @RunWith(RobolectricTestRunner::class)
 class WordDefinitionsViewTest {
@@ -75,5 +82,49 @@ class WordDefinitionsViewTest {
         val t = texts(v)
         assertTrue("the real definition renders", t.any { it.contains("to eat") })
         assertFalse("placeholder must not appear when senses exist", t.any { it == placeholder })
+    }
+
+    // ─── Conjugation lines (the lens's opt-in) ─────────────────────────
+
+    private val drank = InflectedForm("飲んだ", listOf(InflectionTag.TA))
+
+    private fun inflectedData() = emptyData().copy(
+        isCommon = true,
+        senses = listOf(SenseDisplay(pos = emptyList(), definition = "to drink", misc = emptyList())),
+        inflectedForms = listOf(drank),
+    )
+
+    @Test
+    fun inflections_optedIn_renderFirst_muted_withChevronMargin() {
+        val v = WordDefinitionsView(ctx)
+        v.bind(inflectedData(), label = null, scale = 0.8f, showInflections = true)
+        val line = v.getChildAt(0) as TextView
+        assertEquals(InflectionChain.format(ctx, drank), line.text.toString())
+        assertEquals(ctx.themeColor(R.attr.ptTextMuted), line.currentTextColor)
+        val dm = ctx.resources.displayMetrics
+        assertEquals(
+            TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, InflectionChain.TEXT_SP * 0.8f, dm),
+            line.textSize, 0.01f,
+        )
+        assertEquals((17f * dm.density).toInt(), (line.layoutParams as LinearLayout.LayoutParams).marginEnd)
+    }
+
+    @Test
+    fun inflections_oneLinePerForm_uncapped() {
+        val forms = (1..4).map { InflectedForm("飲んだ$it", listOf(InflectionTag.TA)) }
+        val v = WordDefinitionsView(ctx)
+        v.bind(inflectedData().copy(inflectedForms = forms), label = null, scale = 1f, showInflections = true)
+        assertEquals(
+            forms.map { InflectionChain.format(ctx, it) },
+            (0 until 4).map { (v.getChildAt(it) as TextView).text.toString() },
+        )
+    }
+
+    @Test
+    fun inflections_notOptedIn_renderNothing() {
+        // WordResultCell's case: it draws its own capped line above the body.
+        val v = WordDefinitionsView(ctx)
+        v.bind(inflectedData(), label = null, scale = 1f)
+        assertTrue(texts(v).none { it.contains("飲んだ") })
     }
 }

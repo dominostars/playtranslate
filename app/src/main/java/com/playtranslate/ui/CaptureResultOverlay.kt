@@ -2308,6 +2308,7 @@ class CaptureResultOverlay(
                     LensActionContext(
                         s.word,
                         s.reading,
+                        s.surface,
                         s.entry,
                         lastResult?.originalText,
                         lastResult?.screenshotPath,
@@ -2320,6 +2321,7 @@ class CaptureResultOverlay(
             LensActionContext(
                 resolved.word,
                 resolved.reading,
+                resolved.surface,
                 resolved.entry,
                 lastResult?.originalText,
                 lastResult?.screenshotPath,
@@ -2727,7 +2729,7 @@ class CaptureResultOverlay(
         override fun wordRect(index: Int, out: Rect): Boolean {
             val lens = sourceLens ?: return false
             val span = lens.wordSpans.getOrNull(index) ?: return false
-            return lens.wordRectOnScreen(span.first, out)
+            return lens.wordRectOnScreen(span.range, out)
         }
 
         override fun wordRunIsRtl(): Boolean {
@@ -2737,7 +2739,7 @@ class CaptureResultOverlay(
 
         override fun activateWord(index: Int) {
             val span = sourceLens?.wordSpans?.getOrNull(index) ?: return
-            onSourceTapped(span.first.first, fromController = true)
+            onSourceTapped(span.range.first, fromController = true)
         }
 
         private val scrollLoc = IntArray(2)

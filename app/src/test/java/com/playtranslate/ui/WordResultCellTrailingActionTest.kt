@@ -15,6 +15,8 @@ import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.R
+import com.playtranslate.language.InflectedForm
+import com.playtranslate.language.InflectionTag
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -50,7 +52,7 @@ class WordResultCellTrailingActionTest {
 
     private fun cell(trailing: WordResultCell.TrailingAction, onCellTap: () -> Unit = {}): WordResultCell =
         WordResultCell(ctx).also {
-            it.bind(data, WordResultCell.DEFAULT_SCALE, emptyList(), onCellTap, {}, trailing)
+            it.bind(data, WordResultCell.DEFAULT_SCALE, onCellTap, {}, trailing)
         }
 
     // ─── C1 ───────────────────────────────────────────────────────────
@@ -179,6 +181,34 @@ class WordResultCellTrailingActionTest {
         // Each tap hands over what the icon showed at that moment, through
         // the same callback across in-place flips; no store read involved.
         assertEquals(listOf(false, true, false), seen)
+    }
+
+    // ─── C7 ───────────────────────────────────────────────────────────
+
+    @Test
+    fun inflectionLine_readsTheData_cappedOnce_andSurvivesAStubRoundTrip() {
+        val forms = (1..4).map { InflectedForm("食べた$it", listOf(InflectionTag.TA)) }
+        val c = WordResultCell(ctx).also {
+            it.bind(
+                data.copy(inflectedForms = forms), WordResultCell.DEFAULT_SCALE, {}, {},
+                WordResultCell.TrailingAction.Hide(hidden = false) {},
+            )
+        }
+        val expected = (
+            forms.take(MAX_INFLECTION_LINES).map { InflectionChain.format(ctx, it) } +
+                ctx.getString(R.string.inflection_more, forms.size - MAX_INFLECTION_LINES)
+            ).joinToString("\n")
+        assertTrue(inflectionView(c).isVisible)
+        assertEquals(expected, inflectionView(c).text.toString())
+        assertTrue(
+            "the cell's own body never repeats the line",
+            texts(definitions(c)).none { it.contains("食べた") },
+        )
+        c.setHidden(true)
+        assertTrue(inflectionView(c).isGone)
+        c.setHidden(false)
+        assertTrue("the replay rebinds the forms from the bound data", inflectionView(c).isVisible)
+        assertEquals(expected, inflectionView(c).text.toString())
     }
 
     // ─── Structure (init order: headRow, readingsFlow, inflectionView,

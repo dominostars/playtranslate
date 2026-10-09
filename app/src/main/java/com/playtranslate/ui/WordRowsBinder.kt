@@ -283,11 +283,11 @@ class WordRowsBinder(
             // for a row whose imported dictionaries retained nothing
             // structured, so it mints no renderer.
             styled = styled?.forGroups(row.importedGroups),
+            inflectedForms = row.inflectedForms,
         )
         cell.bind(
             data = data,
             scale = WORD_CELL_SCALE,
-            inflectedForms = row.inflectedForms,
             onCellTap = {
                 host.onInteraction()
                 host.onWordTapped(row)

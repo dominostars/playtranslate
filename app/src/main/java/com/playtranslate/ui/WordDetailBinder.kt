@@ -32,11 +32,13 @@ import com.playtranslate.audio.PlayOutcome
 import com.playtranslate.audio.PronunciationPlayer
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
+import com.playtranslate.language.InflectedForm
 import com.playtranslate.language.LanguagePackCatalogLoader
 import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.TatoebaClient
 import com.playtranslate.language.TargetGlossDatabaseProvider
+import com.playtranslate.language.TokenSpan
 import com.playtranslate.language.WordTranslator
 import com.playtranslate.language.dedupeMtCsv
 import com.playtranslate.model.CharacterDetail
@@ -84,6 +86,10 @@ class WordDetailBinder(
     data class Args(
         val word: String,
         val reading: String?,
+        /** The text the opener found [word] as (飲んでいなかった for 飲む):
+         *  re-tokenized for the header's conjugation line. Null when the
+         *  opener has only the lemma. */
+        val surface: String?,
         val screenshotPath: String?,
         val sentenceOriginal: String? = null,
         val sentenceTranslation: String? = null,
@@ -132,8 +138,9 @@ class WordDetailBinder(
         fun sentenceContext(): SentenceContext?
 
         /** Cross-reference / member-word tap: open that word's own detail
-         *  (nested sheet on childFragmentManager, or a workspace push). */
-        fun openWordDetail(word: String, reading: String?)
+         *  (nested sheet on childFragmentManager, or a workspace push).
+         *  [surface] is [Args.surface] for the opened page. */
+        fun openWordDetail(word: String, reading: String?, surface: String?)
 
         /** Open the editable word review for [args]. The host owns the
          *  AnkiDroid-permission gate (rationale + request on an Activity;
@@ -359,6 +366,17 @@ class WordDetailBinder(
                 enToTargetWrapper, charConverter)
             val defResult = withContext(Dispatchers.IO) { resolver.lookup(word, readingHint) }
             val response = defResult?.response
+            // The header's conjugation line: the lookup's own deinflection
+            // chain, then the chain the tokenizer reads off the surface the
+            // opener found the word as. A surface equal to the word adds no
+            // chain of its own.
+            val surface = args.surface
+            val tokenTags = surface?.takeIf { it != word }?.let { s ->
+                detailSurfaceSpan(withContext(Dispatchers.IO) { engine.tokenize(s) }, word)?.inflections
+            }.orEmpty()
+            val inflectedForm = InflectionChain.compose(
+                surface ?: word, response?.deinflection.orEmpty(), tokenTags,
+            )
             // Wiktionary-derived source packs (en/de/fr/es/...) split each
             // POS section into its own entry, so a lookup of "surprise"
             // returns three entries: noun, verb, intj. Render them all back
@@ -386,7 +404,7 @@ class WordDetailBinder(
             val translationRegistry = mutableMapOf<Pair<Int, Int>, TextView>()
             buildContent(
                 content, entries, engine, sourceLangId, defResult, initialTranslations,
-                translationRegistry, targetLangCode, enToTargetWrapper, word,
+                translationRegistry, targetLangCode, enToTargetWrapper, word, inflectedForm,
             )
             scrollView?.scrollTo(0, 0)
 
@@ -720,6 +738,7 @@ class WordDetailBinder(
         targetLangCode: String,
         enToTargetTranslator: WordTranslator?,
         queriedWord: String,
+        inflectedForm: InflectedForm?,
     ) {
         // [primary] is the first entry. Header / Anki / character-breakdown
         // sections are word-level, so they pull from primary even when the
@@ -727,7 +746,7 @@ class WordDetailBinder(
         // Wiktionary-derived packs that POS-split into separate entries).
         val primary = entries.first()
         // ── Header block: headword + reading + badges ─────────────────────
-        addHeaderBlock(content, primary, sourceLangId, queriedWord)
+        addHeaderBlock(content, primary, sourceLangId, queriedWord, inflectedForm)
 
         // ── Definitions group ─────────────────────────────────────────────
         // Target-driven render path: for non-English targets with a Native
@@ -1066,11 +1085,11 @@ class WordDetailBinder(
                     readingRows = row.readingRows,
                     importedGroups = row.importedGroups,
                     styled = styledByRow[index],
+                    inflectedForms = row.inflectedForms,
                 ),
                 scale = WordResultCell.DEFAULT_SCALE,
-                inflectedForms = row.inflectedForms,
                 onCellTap = {
-                    ui.openWordDetail(row.displayWord, row.reading.ifEmpty { null })
+                    ui.openWordDetail(row.displayWord, row.reading.ifEmpty { null }, row.surface)
                 },
                 onSpeak = { speakHeadword(row.displayWord, sourceLangId) },
                 // Member words of an entry never stub or hide; the Anki
@@ -1116,13 +1135,15 @@ class WordDetailBinder(
      * in [bind] (typeface, pivot, scroll listener); here we just rewrite
      * its text to the canonical headword from the resolved entry and emit
      * the reading line (with its speak chip) plus the Common pill and
-     * stars badge row.
+     * stars badge row. [inflectedForm], when there is one, is drawn as the
+     * conjugation line between the headword and the readings.
      */
     private fun addHeaderBlock(
         parent: LinearLayout,
         entry: DictionaryEntry,
         sourceLangId: SourceLangId,
         queriedWord: String,
+        inflectedForm: InflectedForm?,
     ) {
         // headwordDisplay picks the variant matching the user's clicked
         // surface (entry 2863328 groups 無下 + 無気; tapping 無気 must show
@@ -1160,6 +1181,23 @@ class WordDetailBinder(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
+        }
+
+        // The conjugation line (飲んでいなかった · -て « -いる « negative « -た),
+        // muted, at the size the results cell draws the same line.
+        inflectedForm?.let { form ->
+            block.addView(TextView(ctx).apply {
+                text = InflectionChain.format(ctx, form)
+                setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+                setTextSize(
+                    TypedValue.COMPLEX_UNIT_SP,
+                    InflectionChain.TEXT_SP * WordResultCell.DEFAULT_SCALE,
+                )
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).also { it.bottomMargin = dp(4) }
+            })
         }
 
         // Every reading, ordered by common use, flowing inline and wrapping to a
@@ -2241,3 +2279,9 @@ class WordDetailBinder(
 
     private fun dpRes(resId: Int) = ctx.resources.getDimensionPixelSize(resId)
 }
+
+/** The span of a detail page's tokenized surface that stands for the page's
+ *  [word]: the one whose lookup form is [word], else the first. Null for an
+ *  empty tokenization. */
+internal fun detailSurfaceSpan(spans: List<TokenSpan>, word: String): TokenSpan? =
+    spans.firstOrNull { it.lookupForm == word } ?: spans.firstOrNull()

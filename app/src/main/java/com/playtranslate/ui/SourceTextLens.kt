@@ -77,10 +77,10 @@ class SourceTextLens(
      *  keep their own word handling). */
     var enabled: Boolean = true
 
-    /** Tap spans over the DISPLAYED source text: char range, lookup form,
-     *  reading — the host computes them from its own token source (the VM's
-     *  settled spans in-app, a tokenize over the game). */
-    var wordSpans: List<Triple<IntRange, String, String>> = emptyList()
+    /** Tap spans over the DISPLAYED source text (char range, lookup form,
+     *  reading, token), computed by the host from its own token source (the
+     *  VM's settled spans in-app, a tokenize over the game). */
+    var wordSpans: List<SourceWordLookup.TapSpan> = emptyList()
 
     /** Fired after every teardown path (tap-outside, the speak chip's
      *  no-engine action, [dismiss]). */
@@ -97,17 +97,18 @@ class SourceTextLens(
      *  pre-selects the pill so the next A opens). No span = no-op. */
     fun onTapAtOffset(offset: Int, fromController: Boolean = false) {
         if (!enabled) return
-        val span = wordSpans.firstOrNull { offset in it.first } ?: return
+        val span = wordSpans.firstOrNull { offset in it.range } ?: return
         val tappedText = binder.displayedSourceText()
         scope.launch {
             try {
                 val resolvedAt = SourceWordLookup.resolveAt(
-                    ctx.applicationContext, tappedText, span.first.first, span.second, span.third,
+                    ctx.applicationContext, tappedText, span.range.first,
+                    span.lookupForm, span.reading, span.token,
                 )
                 if (binder.displayedSourceText() != tappedText) return@launch
                 val rect = Rect()
-                if (!wordRectOnScreen(span.first, rect)) return@launch
-                present(span.first, rect, resolvedAt, fromController)
+                if (!wordRectOnScreen(span.range, rect)) return@launch
+                present(span.range, rect, resolvedAt, fromController)
             } catch (_: Exception) {
             }
         }

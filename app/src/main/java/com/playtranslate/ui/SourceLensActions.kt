@@ -24,6 +24,10 @@ data class LensActionContext(
     /** The occurrence reading the lens displayed (Sudachi pick, e.g. 明日 → あす);
      *  null when none. Drives the open-detail bold + the Anki card reading. */
     val reading: String?,
+    /** The text the word was found as (飲んでいなかった for 飲む), handed to
+     *  the detail page so its header draws the lens's conjugation line;
+     *  null for a phrase or member section, which is a lemma. */
+    val surface: String?,
     val entry: DictionaryEntry?,
     val sentence: String?,
     val screenshotPath: String?,
@@ -48,6 +52,8 @@ data class LensDetailArgs(
     /** The occurrence reading the lens displayed (when it adds information;
      *  null when none or equal to the word). */
     val reading: String?,
+    /** [LensActionContext.surface], for the detail page's conjugation line. */
+    val surface: String?,
     val sentence: String,
     val screenshotPath: String?,
     val audioAnchorMs: Long?,
@@ -64,6 +70,7 @@ fun WorkspaceWordDetailPage(args: LensDetailArgs): WorkspaceWordDetailPage =
     WorkspaceWordDetailPage(
         word = args.word,
         reading = args.reading,
+        surface = args.surface,
         screenshotPath = args.screenshotPath,
         audioAnchorMs = args.audioAnchorMs,
         sentenceContext = { args.sentenceContext },
@@ -191,6 +198,7 @@ class SourceLensActions(
             val args = LensDetailArgs(
                 word = word,
                 reading = reading,
+                surface = cur.surface,
                 sentence = sentence,
                 screenshotPath = cur.screenshotPath,
                 audioAnchorMs = cur.audioAnchorMs,
@@ -222,6 +230,7 @@ class SourceLensActions(
             if (!reading.isNullOrEmpty()) {
                 putExtra(TranslationResultActivity.EXTRA_DRAG_READING, reading)
             }
+            cur.surface?.let { putExtra(TranslationResultActivity.EXTRA_DRAG_SURFACE, it) }
             cachedTranslation?.let {
                 putExtra(TranslationResultActivity.EXTRA_DRAG_SENTENCE_TRANSLATION, it)
             }

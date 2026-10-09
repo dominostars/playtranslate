@@ -232,6 +232,7 @@ class TranslationResultActivity :
     override fun onWordTapped(
         word: String,
         reading: String?,
+        surface: String?,
         screenshotPath: String?,
         sentenceOriginal: String?,
         sentenceTranslation: String?,
@@ -240,6 +241,7 @@ class TranslationResultActivity :
         WordDetailBottomSheet.newInstance(
             word,
             reading = reading,
+            surface = surface,
             screenshotPath = screenshotPath,
             sentenceOriginal = sentenceOriginal,
             sentenceTranslation = sentenceTranslation,
@@ -442,6 +444,7 @@ class TranslationResultActivity :
     private fun setupDragWordTabs(savedInstanceState: Bundle?) {
         val word = intent.getStringExtra(EXTRA_DRAG_WORD) ?: return
         val reading = intent.getStringExtra(EXTRA_DRAG_READING)
+        val surface = intent.getStringExtra(EXTRA_DRAG_SURFACE)
         val screenshotPath = intent.getStringExtra(EXTRA_SCREENSHOT_PATH)
         // Capture launch-time fallbacks for [currentSentenceContext]. The
         // VM is initially Idle and populates only as the fragment's
@@ -509,6 +512,7 @@ class TranslationResultActivity :
                     WordDetailBottomSheet.newInstance(
                         word = word,
                         reading = reading,
+                        surface = surface,
                         screenshotPath = screenshotPath,
                         embedded = true,
                     ),
@@ -759,6 +763,9 @@ class TranslationResultActivity :
          *  region-capture mode (no pill, top Anki button stays). */
         const val EXTRA_DRAG_WORD = "extra_drag_word"
         const val EXTRA_DRAG_READING = "extra_drag_reading"
+        /** The text the lens's word was found as, for the embedded word
+         *  page's conjugation line; absent when the lens had only a lemma. */
+        const val EXTRA_DRAG_SURFACE = "extra_drag_surface"
         const val EXTRA_DRAG_SENTENCE_TRANSLATION = "extra_drag_sentence_translation"
         /** Display name of the backend that produced [EXTRA_DRAG_SENTENCE_TRANSLATION]
          *  in the lens. Surfaces as "Translated by …" below the cached translation

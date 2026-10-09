@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import com.playtranslate.language.InflectedForm
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.ImportedSenseGroup
 import com.playtranslate.model.ReadingRow
@@ -42,6 +43,12 @@ data class WordDefinitionData(
      *  [importedGroups]; null = render flat (toggle off / nothing
      *  structured retained). See [fetchYomitanStyledData]. */
     val styled: YomitanStyledData? = null,
+    /** The conjugation lines for this word, one per distinct inflected form
+     *  ([InflectionChain.format]): every form the lemma took in the passage
+     *  on the results page's cell, the tapped or dragged form in the lens.
+     *  Empty for an uninflected word, for the lens's phrase and member
+     *  sections (lemmas), and for engines without inflection analysis. */
+    val inflectedForms: List<InflectedForm> = emptyList(),
 )
 
 /** A single rendered sense: its part(s) of speech (whole English tokens) and
