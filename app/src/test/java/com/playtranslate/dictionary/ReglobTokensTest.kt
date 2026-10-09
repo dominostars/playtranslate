@@ -28,10 +28,14 @@ class ReglobTokensTest {
         infl: String? = null,
         conj: Boolean = false,
         punct: Boolean = false,
+        conjType: String? = null,
+        aux: Boolean = false,
+        auxStem: Boolean = false,
     ) = JaToken(
         surface = surface, begin = 0, end = surface.length, category = cat,
         dictionaryForm = dict, normalizedForm = norm, reading = reading, isOov = false,
         inflectionForm = infl, isConjunctiveParticle = conj, isPunctuation = punct,
+        conjugationType = conjType, isAuxiliaryCapable = aux, isAuxiliaryStem = auxStem,
     )
 
     private fun glob(
@@ -501,9 +505,9 @@ class ReglobTokensTest {
     // ── Inflection labeling (feature B) ──────────────────────────────────
     // Tags ride on TokenWithReading.inflections, derived by
     // JapaneseInflectionAnalyzer from the folded glue chain + the final
-    // morpheme's 活用形. These assert the analyzer's mapping/ordering/dedup
-    // LOGIC over morpheme shapes taken from UniDic convention and the corpus
-    // above; JapaneseInflectionSurveyTest confirms the shapes on-device.
+    // morpheme's 活用形. These assert that the re-glob hands the analyzer the
+    // right stem and glue; JapaneseInflectionAnalyzerTest pins the table itself
+    // against chains copied from the JVM survey dump.
 
     @Test
     fun `causative te-form yields ordered tags`() {
@@ -511,7 +515,7 @@ class ReglobTokensTest {
         val tokens = listOf(
             jaToken("言わ", JaCategory.VERB, dict = "言う"),
             jaToken("せ", JaCategory.AUX, dict = "せる"),
-            jaToken("て", JaCategory.PARTICLE),
+            jaToken("て", JaCategory.PARTICLE, conj = true),
         )
         val r = glob(tokens, knownForms = setOf("言う"))
         assertEquals("言わせて", r[0].surface)
@@ -539,32 +543,34 @@ class ReglobTokensTest {
 
     @Test
     fun `polite negative past keeps each auxiliary in morpheme order`() {
-        // 食べませんでした = 食べ + ませ(ます) + ん(ぬ) + でし(です) + た:
-        // ます and でし→です are distinct steps (-ます, -です), so both survive distinct().
+        // 食べませんでした = 食べ + ませ(ます) + ん(ぬ, normalized ず) + でし(です) + た:
+        // the ん after ます is the negative (-ます « negative), and ます and です are
+        // distinct steps (-ます, -です).
         val tokens = listOf(
             jaToken("食べ", JaCategory.VERB, dict = "食べる"),
             jaToken("ませ", JaCategory.AUX, dict = "ます"),
-            jaToken("ん", JaCategory.AUX, dict = "ぬ"),
+            jaToken("ん", JaCategory.AUX, dict = "ぬ", norm = "ず"),
             jaToken("でし", JaCategory.AUX, dict = "です"),
             jaToken("た", JaCategory.AUX),
         )
         assertEquals(
-            listOf(InflectionTag.MASU, InflectionTag.NU, InflectionTag.DESU, InflectionTag.TA),
+            listOf(InflectionTag.MASU, InflectionTag.NEGATIVE, InflectionTag.DESU, InflectionTag.TA),
             glob(tokens, knownForms = setOf("食べる"))[0].inflections,
         )
     }
 
     @Test
-    fun `causative passive past stack stays in morpheme order`() {
-        // 食べさせられた = 食べ + させ(させる) + られ(られる) + た
+    fun `causative potential-or-passive past stack stays in morpheme order`() {
+        // 食べさせられた = 食べ + させ(させる, 下一段-サ行) + られ(られる) + た: られる after
+        // the ichidan させ reads potential or passive.
         val tokens = listOf(
             jaToken("食べ", JaCategory.VERB, dict = "食べる"),
-            jaToken("させ", JaCategory.AUX, dict = "させる"),
+            jaToken("させ", JaCategory.AUX, dict = "させる", conjType = "下一段-サ行"),
             jaToken("られ", JaCategory.AUX, dict = "られる"),
             jaToken("た", JaCategory.AUX),
         )
         assertEquals(
-            listOf(InflectionTag.CAUSATIVE, InflectionTag.PASSIVE, InflectionTag.TA),
+            listOf(InflectionTag.CAUSATIVE, InflectionTag.POTENTIAL_OR_PASSIVE, InflectionTag.TA),
             glob(tokens, knownForms = setOf("食べる"))[0].inflections,
         )
     }
@@ -607,17 +613,17 @@ class ReglobTokensTest {
 
     @Test
     fun `non-conjugational particle in the span is not a tag`() {
-        // 言わせては: the trailing は folds into the surface span but the
-        // analyzer's allow-list ignores it — labels stay correct.
+        // 食べても = 食べ + て(接続助詞) + も: the trailing も folds into the surface
+        // span but reads nothing. (Sudachi keeps ては whole, so 言わせては never
+        // reaches the analyzer as て + は.)
         val tokens = listOf(
-            jaToken("言わ", JaCategory.VERB, dict = "言う"),
-            jaToken("せ", JaCategory.AUX, dict = "せる"),
-            jaToken("て", JaCategory.PARTICLE),
-            jaToken("は", JaCategory.PARTICLE),
+            jaToken("食べ", JaCategory.VERB, dict = "食べる"),
+            jaToken("て", JaCategory.PARTICLE, conj = true),
+            jaToken("も", JaCategory.PARTICLE),
         )
-        val r = glob(tokens, knownForms = setOf("言う"))
-        assertEquals("言わせては", r[0].surface)
-        assertEquals(listOf(InflectionTag.CAUSATIVE, InflectionTag.TE), r[0].inflections)
+        val r = glob(tokens, knownForms = setOf("食べる"))
+        assertEquals("食べても", r[0].surface)
+        assertEquals(listOf(InflectionTag.TE), r[0].inflections)
     }
 
     @Test
@@ -654,9 +660,16 @@ class ReglobTokensTest {
     }
 
     @Test
-    fun `volitional is deferred - bare yo-u lemma is not tagged`() {
-        // 〜う/よう is shared by volitional (食べよう), conjecture (だろう) and likeness
-        // (ようだ), so it stays unlabeled until the Phase 0 survey disambiguates it.
+    fun `volitional comes from 意志推量形, not from a よう morpheme`() {
+        // Sudachi keeps 食べよう whole, in 意志推量形; a separate よう morpheme
+        // after a stem reads nothing.
+        assertEquals(
+            listOf(InflectionTag.VOLITIONAL),
+            glob(
+                listOf(jaToken("食べよう", JaCategory.VERB, dict = "食べる", infl = "意志推量形")),
+                knownForms = setOf("食べる"),
+            )[0].inflections,
+        )
         val tokens = listOf(
             jaToken("食べ", JaCategory.VERB, dict = "食べる"),
             jaToken("よう", JaCategory.AUX),
