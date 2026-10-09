@@ -215,8 +215,8 @@ class WordDetailBinder(
 
     /** Cells of the Words and Other matches sections that own a styled
      *  renderer of their own ([WordResultCell.releaseStyled]): released
-     *  with the page, and at the start of every rebuild of those sections
-     *  (the Words section builds first). */
+     *  with the page, and by [loadSecondarySections] before it builds
+     *  those sections. */
     private val memberStyledCells = mutableListOf<WordResultCell>()
 
     /** Host teardown: cancel audio, destroy the WebView. Idempotent; the
@@ -392,10 +392,14 @@ class WordDetailBinder(
             // headwords are duplicated across entries anyway).
             val entries = response?.entries.orEmpty()
             val primary = entries.firstOrNull()
-            // Hold the whole completion bind — not just the styled block —
+            // Hold the whole completion bind, not just the styled block,
             // until the host's entrance settles: a partial (native-first)
             // render with a styled upgrade behind it is the flat-then-styled
-            // flash family the popup had to engineer away. One reveal.
+            // flash family the popup had to engineer away. One reveal for
+            // the primary content and the Anki button; the Words and Other
+            // matches sections follow it ([loadSecondarySections]) behind a
+            // loading line, each built in one pass with its styled payloads
+            // fetched first.
             ui.awaitEnterSettled()
             if (!ui.isAlive) return@launch
             content.removeView(loadingView)
@@ -407,12 +411,12 @@ class WordDetailBinder(
                 entries.flatMap { it.senses }.map { s -> s.examples.map { it.translation } }
             } else null
             val translationRegistry = mutableMapOf<Pair<Int, Int>, TextView>()
-            buildContent(
+            // The word as found, for its other matches: the same chain the
+            // header draws from it.
+            val wordSpan = TokenSpan(surface ?: word, word, readingHint, tokenTags)
+            val secondaryHost = buildContent(
                 content, entries, engine, sourceLangId, defResult, initialTranslations,
                 translationRegistry, targetLangCode, enToTargetWrapper, word, inflectedForm,
-                // The word as found, for its other matches: the same chain
-                // the header draws from it.
-                wordSpan = TokenSpan(surface ?: word, word, readingHint, tokenTags),
             )
             scrollView?.scrollTo(0, 0)
 
@@ -436,6 +440,15 @@ class WordDetailBinder(
                     oneTapWordFromDetail(pill, word, primary, entries, screenshotPath, defResult)
                 }
                 true
+            }
+
+            // The Words and Other matches rows can machine-translate, so they
+            // load after the Anki button is bound, into the host buildContent
+            // left in their place.
+            launch {
+                loadSecondarySections(
+                    secondaryHost, primary, entries, wordSpan, engine, sourceLangId, targetLangCode, word,
+                )
             }
 
             if (targetLangCode != "en") {
@@ -735,6 +748,9 @@ class WordDetailBinder(
         }
     }
 
+    /** Builds the page's primary content into [content] and returns the
+     *  host [loadSecondarySections] fills with the Words and Other matches
+     *  sections: appended last, holding a loading line until they land. */
     private suspend fun buildContent(
         content: LinearLayout,
         entries: List<DictionaryEntry>,
@@ -747,8 +763,7 @@ class WordDetailBinder(
         enToTargetTranslator: WordTranslator?,
         queriedWord: String,
         inflectedForm: InflectedForm?,
-        wordSpan: TokenSpan,
-    ) {
+    ): LinearLayout {
         // [primary] is the first entry. Header / Anki / character-breakdown
         // sections are word-level, so they pull from primary even when the
         // sense list below merges senses from sibling entries (typical for
@@ -1017,23 +1032,77 @@ class WordDetailBinder(
             }
         }
 
+        // ── Words and Other matches (loaded after the Anki button) ───────
+        // Their rows resolve through the full definition tier chain, which
+        // machine-translates on a non-English target without a native
+        // gloss, so [bind] loads them through [loadSecondarySections] into
+        // this host, which holds a loading line styled like the More
+        // examples placeholder's until they land.
+        val secondaryHost = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
+        }
+        secondaryHost.addView(TextView(ctx).apply {
+            text = ctx.getString(R.string.words_loading)
+            textSize = 13f
+            setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+            setTypeface(null, Typeface.ITALIC)
+            setPadding(
+                dpRes(R.dimen.pt_row_h_padding),
+                dpRes(R.dimen.pt_row_v_padding),
+                dpRes(R.dimen.pt_row_h_padding),
+                dpRes(R.dimen.pt_row_v_padding),
+            )
+        })
+        content.addView(secondaryHost)
+        return secondaryHost
+    }
+
+    /** Loads the Words and Other matches sections into [host], the one
+     *  [buildContent] returned, after [bind] has shown and wired the Anki
+     *  button: releases the previous cells' renderers
+     *  ([releaseMemberStyledCells]), appends Words then Other matches after
+     *  the host's loading line, then removes the line, and the host as well
+     *  when neither section rendered. */
+    private suspend fun loadSecondarySections(
+        host: LinearLayout,
+        primary: DictionaryEntry,
+        entries: List<DictionaryEntry>,
+        wordSpan: TokenSpan,
+        engine: com.playtranslate.language.SourceLanguageEngine,
+        sourceLangId: SourceLangId,
+        targetLangCode: String,
+        queriedWord: String,
+    ) {
+        // The host holds only buildContent's loading line until the
+        // sections append after it.
+        val loadingLine = host.getChildAt(0)
+        releaseMemberStyledCells()
+
         // ── Member words (multi-word expressions) ────────────────────────
         // For a multi-word expression ("a great deal", 気になる) the detail
         // page is where the member words resurface: one standard word-result
         // cell per member, tappable through to that word's own detail.
         // Members come from the engine's own split
-        // ([SourceLanguageEngine.memberWordsOf] — whitespace on the
-        // space-delimited languages, a raw fusing-free tokenizer pass on JA)
-        // — NOT engine.tokenize, whose phrase handling could re-fuse the
+        // ([SourceLanguageEngine.memberWordsOf]: whitespace on the
+        // space-delimited languages, a raw fusing-free tokenizer pass on JA),
+        // NOT engine.tokenize, whose phrase handling could re-fuse the
         // expression into one token.
-        addMemberWordsSection(content, primary, engine, sourceLangId, targetLangCode, queriedWord)
+        addMemberWordsSection(host, primary, engine, sourceLangId, targetLangCode, queriedWord)
 
         // ── Other matches ────────────────────────────────────────────────
         // The other dictionary entries the word could be, as it was found
         // ([SourceLanguageEngine.alternativesOf]): the lens offers them as
         // "Also matches" sections, and this page lists them as cells that
         // drill into their own pages, where the Anki button is.
-        addAlternativesSection(content, entries, wordSpan, engine, sourceLangId, targetLangCode)
+        addAlternativesSection(host, entries, wordSpan, engine, sourceLangId, targetLangCode)
+
+        if (!ui.isAlive) return
+        host.removeView(loadingLine)
+        if (host.childCount == 0) (host.parent as? ViewGroup)?.removeView(host)
     }
 
     /** Appends the "Words" section for a multi-word headword: each member
@@ -1043,7 +1112,8 @@ class WordDetailBinder(
      *  member resolves. The engine split runs on the DISPLAYED headword
      *  form — for JA `uk` entries the kana form (かもしれない), whose members
      *  correctly fail the engine's kanji gate where the kanji variant's
-     *  (かも知れない → 知れ) would pass. */
+     *  (かも知れない → 知れ) would pass. Built by [loadSecondarySections],
+     *  which releases the previous cells' renderers first. */
     private suspend fun addMemberWordsSection(
         content: LinearLayout,
         primary: DictionaryEntry,
@@ -1052,7 +1122,6 @@ class WordDetailBinder(
         targetLangCode: String,
         queriedWord: String,
     ) {
-        releaseMemberStyledCells()
         val display = primary.headwordDisplay(queriedWord)
         val displayed = display.written
         // Spaced headwords are expressions by form; no-whitespace ones
@@ -1086,7 +1155,8 @@ class WordDetailBinder(
      *  [resolveWordRows] call (the resolver de-duplicates tokens by lookup
      *  form, and two homographs share one) and rendered by
      *  [addWordCellsSection] with its own conjugation line. No-op when no
-     *  alternative resolves. */
+     *  alternative resolves. Built by [loadSecondarySections] after the
+     *  Words section, under the one release that precedes both. */
     private suspend fun addAlternativesSection(
         content: LinearLayout,
         entries: List<DictionaryEntry>,
