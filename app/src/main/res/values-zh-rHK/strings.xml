@@ -333,6 +333,7 @@
 
     <string name="lens_loading">正在查詢…</string>
     <string name="lens_also_matches">其他相符</string>
+    <string name="load_more_count">載入更多（<xliff:g id="count" example="2">%1$d</xliff:g>）</string>
     <string name="section_other_matches">其他相符</string>
 
     <!-- ═══════════════════════════════════════════════════════════════

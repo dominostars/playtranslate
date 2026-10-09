@@ -333,6 +333,7 @@
 
     <string name="lens_loading">جارٍ البحث…</string>
     <string name="lens_also_matches">تطابق آخر</string>
+    <string name="load_more_count">تحميل المزيد (<xliff:g id="count" example="2">%1$d</xliff:g>)</string>
     <string name="section_other_matches">تطابقات أخرى</string>
 
     <!-- ═══ REGION PICKER ═══ -->

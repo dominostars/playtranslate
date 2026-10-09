@@ -327,6 +327,7 @@
 
     <string name="lens_loading">Aranıyor…</string>
     <string name="lens_also_matches">Diğer eşleşme</string>
+    <string name="load_more_count">Daha fazla yükle (<xliff:g id="count" example="2">%1$d</xliff:g>)</string>
     <string name="section_other_matches">Diğer eşleşmeler</string>
 
     <!-- ═══════════════════════════════════════════════════════════════

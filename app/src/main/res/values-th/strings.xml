@@ -309,6 +309,7 @@
 
     <string name="lens_loading">กำลังค้นหา…</string>
     <string name="lens_also_matches">อีกคำที่ตรงกัน</string>
+    <string name="load_more_count">โหลดเพิ่มเติม (<xliff:g id="count" example="2">%1$d</xliff:g>)</string>
     <string name="section_other_matches">คำอื่นที่ตรงกัน</string>
 
     <!-- ═══ REGION PICKER ═══ -->
