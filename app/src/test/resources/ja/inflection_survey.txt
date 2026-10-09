@@ -1,0 +1,253 @@
+# Japanese inflection survey specimens for JaPackDumpTest (survey.json).
+# One specimen per line; lines starting with # are comments; blank lines are skipped.
+# Each specimen appears once: a form listed in an earlier group is not repeated in a later one,
+# because scripts/compare_segmentation.py keys a dump's lines by their text.
+
+# godan_iu (ワア行, the 言わせて motivating case); verbatim from JapaneseInflectionSurveyTest
+言う
+言わない
+言わなかった
+言います
+言いました
+言いません
+言いませんでした
+言った
+言って
+言える
+言われる
+言わせる
+言わせて
+言わせない
+言わせられる
+言わされる
+言おう
+言え
+言えば
+言いたい
+言いたかった
+
+# godan_onbin (te/ta euphonic variants); verbatim from JapaneseInflectionSurveyTest
+書く
+書いて
+書いた
+泳ぐ
+泳いで
+話す
+話して
+待つ
+待って
+死ぬ
+死んで
+飛ぶ
+飛んで
+読む
+読んで
+行く
+行って
+行った
+
+# ichidan_taberu; verbatim from JapaneseInflectionSurveyTest
+食べる
+食べない
+食べた
+食べて
+食べられる
+食べさせる
+食べさせられる
+食べさせられませんでした
+食べろ
+食べよう
+食べれば
+食べたい
+食べている
+食べてる
+食べてた
+食べません
+食べませんでした
+食べなくて
+
+# suru (incl. 勉強する causative split); verbatim from JapaneseInflectionSurveyTest
+する
+しない
+した
+して
+される
+させる
+しろ
+せよ
+しよう
+すれば
+したい
+勉強する
+勉強した
+勉強させる
+勉強される
+勉強しない
+読ませてください
+
+# kuru; verbatim from JapaneseInflectionSurveyTest
+来る
+来ない
+来た
+来て
+来られる
+来させる
+来い
+来よう
+来れば
+
+# i_adjective_takai; verbatim from JapaneseInflectionSurveyTest
+高い
+高くない
+高かった
+高くなかった
+高くて
+高ければ
+高く
+
+# na_adjective_copula; verbatim from JapaneseInflectionSurveyTest
+静かだ
+静かではない
+静かだった
+静かで
+綺麗です
+綺麗でした
+
+# ている family (食べている, 食べてる, 食べてた are listed under ichidan_taberu)
+食べていた
+食べていない
+食べてない
+食べていなかった
+飲んでいなかった
+飲んでる
+書いておる
+書いております
+置いてある
+置いてあった
+
+# completive
+食べてしまう
+食べてしまった
+食べちゃう
+食べちゃった
+飲んじゃった
+食べちまった
+飲んじまった
+
+# preparatory
+買っておく
+買っておいた
+買っとく
+買っといた
+読んどく
+
+# trial
+見てみる
+見てみた
+食べてみて
+
+# directional
+持っていく
+持っていった
+持ってく
+持ってった
+持ってくる
+持ってきた
+持っていってしまった
+連れて行く
+連れていく
+やって来た
+
+# benefactive (読ませてください is listed under suru)
+教えてあげる
+教えてくれる
+教えてくれた
+教えてもらう
+教えてもらった
+教えてやる
+教えてください
+教えてくださった
+教えていただく
+教えていただきました
+来て頂けます
+来ていただけますか
+
+# split cases
+食べてはいけない
+食べてもいい
+食べちゃだめ
+食べてばかりいる
+家にいる
+やってみせる
+知っているか
+いただいております
+見てすぐ
+
+# conditionals (食べれば is under ichidan_taberu, 高ければ under i_adjective_takai)
+食べたら
+食べなければ
+食べたり飲んだり
+静かなら
+
+# appearance and hearsay
+食べそうだ
+食べるそうだ
+高そう
+食べすぎる
+食べすぎた
+
+# potential and passive (食べられる under ichidan_taberu, 来られる under kuru, される under suru)
+書かれる
+書ける
+書けた
+食べられた
+見れる
+見れた
+食べれる
+来れる
+できる
+行かれる
+弾けた
+弾ける
+泳げた
+
+# volitional and conjecture (食べよう under ichidan_taberu, しよう under suru, 来よう under kuru)
+行こう
+行きましょう
+食べましょう
+食べるだろう
+食べるでしょう
+高いだろう
+食べるようだ
+食べるように
+
+# na-adjective and copula (静かだ, 静かだった, 静かではない, 綺麗です, 綺麗でした under na_adjective_copula; 静かなら under conditionals)
+静かです
+静かでした
+静かじゃない
+静かじゃなかった
+静かだろう
+静かでしょう
+静かに
+静かな
+元気を出す
+好きだった
+学生だった
+
+# negatives and polite (食べない, 食べません, 食べませんでした, 食べなくて, 食べたい under ichidan_taberu)
+食べなかった
+行かん
+行かぬ
+行かず
+行かないで
+食べなさい
+食べたがる
+食べたかった
+食べたくない
+
+# imperative (食べろ, 食べて under ichidan_taberu; 来い under kuru; しろ under suru)
+食べろよ
+くださいませ
+
+# adverbial and nominal (高く, 高くて, 高くない, 高くなかった under i_adjective_takai)
+高さ
