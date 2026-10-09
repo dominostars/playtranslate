@@ -122,7 +122,7 @@ class SourceTextLens(
     ) {
         val resolved = resolvedAt.word
         val phrase = resolvedAt.phrase
-        val secondaries = phrase?.let { listOf(it) } ?: resolvedAt.members
+        val secondaries = resolvedAt.secondaries()
         val canOpen = resolved.entry != null || opensWithoutEntry
         dismiss()
         val lens = MagnifierLens(
@@ -148,11 +148,14 @@ class SourceTextLens(
         val size = screenSize()
         lens.show(rect.centerX(), rect.top, size.x, size.y, anchorHeight = rect.height())
         if (secondaries.isNotEmpty()) {
-            // Split body: tapped unit (pill identity) + the related units —
-            // containing phrase above it (Latin) or member words below it
-            // (JA) — each with its own drill-in. The deck back-fill rebinds
-            // the SPLIT shape so it can't collapse the secondary sections.
-            val secondarySections = secondaries.map { LensSection(it.data, it.label, opens = true) }
+            // Split body: tapped unit (pill identity) + the related units
+            // (containing phrase above it on Latin scripts; member words and
+            // then alternative entries below it on JA), each with its own
+            // drill-in. The deck back-fill rebinds the SPLIT shape so it
+            // can't collapse the secondary sections.
+            val secondarySections = secondaries.map {
+                LensSection(it.data, it.label, opens = true, caption = it.caption)
+            }
             val secondariesOnTop = phrase != null
             lens.setSplitDefinitions(
                 LensSection(resolved.data, resolved.label, opens = canOpen),

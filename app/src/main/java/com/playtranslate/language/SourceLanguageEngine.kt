@@ -194,6 +194,20 @@ interface SourceLanguageEngine {
         headwordReading: String? = null,
     ): List<TokenSpan> = whitespaceMemberWords(headword)
 
+    /**
+     * The other dictionary entries a tapped [span] could be, besides
+     * [primaryIds] (the pack ids its own lookup returned): homographs its
+     * reading hint narrowed away and other dictionary forms its surface
+     * deinflects to. Each comes back as a span on [span]'s surface whose
+     * lookupForm and reading [lookup] resolves to that entry first, and
+     * whose inflections are the chain from the entry's dictionary form to
+     * the surface. Drives the lens's "also matches" sections, the detail
+     * page's other-matches cells, and the detail page's conjugation line
+     * when the page is one of them. Default: none; [JapaneseEngine]
+     * overrides.
+     */
+    suspend fun alternativesOf(span: TokenSpan, primaryIds: Set<Long>): List<TokenSpan> = emptyList()
+
     /** Character-level lookup. JA returns [com.playtranslate.model.KanjiDetail];
      *  ZH returns [com.playtranslate.model.HanziDetail]. Other engines return null.
      *

@@ -2,6 +2,7 @@ package com.playtranslate.ui
 
 import android.content.Context
 import com.playtranslate.Prefs
+import com.playtranslate.R
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.InflectionTag
@@ -49,6 +50,10 @@ object SourceWordLookup {
          *  rows flatten across them (POS-split packs), so an Anki card built
          *  from this resolution must span them too. */
         val entries: List<DictionaryEntry> = listOfNotNull(entry),
+        /** The line the lens draws above this unit's section header
+         *  ([LensSection.caption]): "Also matches" on an alternative, null
+         *  on every other resolution. */
+        val caption: String? = null,
     )
 
     /** One tappable unit of the displayed source text: its char [range], the
@@ -153,14 +158,45 @@ object SourceWordLookup {
      *  identity — plus its secondary resolutions for the lens's split
      *  body: [phrase] when the engine designates a multi-word expression
      *  CONTAINING the tapped word (space-delimited languages — renders
-     *  above the word), or [members] when the tapped unit is itself a
+     *  above the word), or else [members] when the tapped unit is itself a
      *  fused expression (JA — every qualifying member word, in expression
-     *  order, rendered below it). At most one of the two is populated. */
+     *  order, rendered below it) and [alternatives], the other dictionary
+     *  entries the tapped unit could be
+     *  ([com.playtranslate.language.SourceLanguageEngine.alternativesOf]),
+     *  rendered below the members. With a [phrase], the other two are
+     *  empty. [secondaries] is the one list the lens and its drill-ins
+     *  read. */
     data class ResolvedAt(
         val word: Resolved,
         val phrase: Resolved? = null,
         val members: List<Resolved> = emptyList(),
-    )
+        val alternatives: List<Resolved> = emptyList(),
+    ) {
+        /** The lens's secondary sections in their list order (the order the
+         *  drill-ins index into): the containing [phrase] alone, else the
+         *  [members] followed by the [alternatives]. */
+        fun secondaries(): List<Resolved> = phrase?.let { listOf(it) } ?: (members + alternatives)
+    }
+
+    /**
+     * The alternative sections a lens shows for [alternatives]: one per
+     * dictionary entry, never one of the tapped unit's own [primaryIds]. An
+     * entry is identified by its pack id ([packIdOf]), so two homographs
+     * (弾く read ひく and 弾く read はじく) are two sections although they
+     * share a headword; an entry without a pack id (an imported-dictionary
+     * synthesis) falls back to [fallbackKeyOf]. The first of each identity
+     * stays, in order. Shared by the tap path ([resolveAt]) and the drag
+     * lens.
+     */
+    internal fun <T> distinctAlternatives(
+        alternatives: List<T>,
+        primaryIds: Set<Long>,
+        packIdOf: (T) -> Long?,
+        fallbackKeyOf: (T) -> Any,
+    ): List<T> =
+        alternatives
+            .filter { alt -> packIdOf(alt)?.let { it !in primaryIds } ?: true }
+            .distinctBy { alt -> packIdOf(alt) ?: fallbackKeyOf(alt) }
 
     /**
      * Phrase-aware [resolve] for word taps: resolves the tapped unit itself,
@@ -186,7 +222,12 @@ object SourceWordLookup {
      * [spanStart] is the tapped span's start offset in [displayedText] —
      * the same text the spans were computed against. [token] is the tapped
      * span's own token: its surface and conjugation tags give the tapped
-     * unit (and only it) its conjugation line.
+     * unit its conjugation line, and the engine's alternatives
+     * ([com.playtranslate.language.SourceLanguageEngine.alternativesOf])
+     * theirs. With no containing phrase, the alternatives resolve after
+     * the members, each under its own key on the tapped surface, kept when
+     * it lands an entry, as [distinctAlternatives] filters them, captioned
+     * [R.string.lens_also_matches].
      */
     suspend fun resolveAt(
         appCtx: Context,
@@ -216,6 +257,13 @@ object SourceWordLookup {
         } else {
             emptyList()
         }
+        val primaryIds = word.entries.mapNotNullTo(mutableSetOf()) { it.packId }
+        val alternativeSpans = if (phraseKey == null) {
+            withContext(Dispatchers.IO) { engine.alternativesOf(token, primaryIds) }
+        } else {
+            emptyList()
+        }
+        val caption = appCtx.getString(R.string.lens_also_matches)
         return ResolvedAt(
             word = word,
             phrase = phraseKey?.let { resolve(appCtx, it, "") }?.takeIf { it.entry != null },
@@ -223,16 +271,25 @@ object SourceWordLookup {
                 .map { resolve(appCtx, it.lookupForm, it.reading.orEmpty()) }
                 .filter { it.entry != null && it.word != word.word }
                 .distinctBy { it.word },
+            alternatives = distinctAlternatives(
+                alternativeSpans
+                    .map { resolve(appCtx, it.lookupForm, it.reading.orEmpty(), it.surface, it.inflections) }
+                    .filter { it.entry != null },
+                primaryIds,
+                packIdOf = { it.entry?.packId },
+                fallbackKeyOf = { it.word to it.reading },
+            ).map { it.copy(caption = caption) },
         )
     }
 
     /** Resolve [lookupForm] (+ optional disambiguating [reading]) into lens data,
      *  using the same resolver + tier branching as the in-app results page.
-     *  [surface] is the tapped occurrence's text and [tokenTags] its
-     *  tokenizer chain; with a surface the data carries the conjugation line
-     *  [InflectionChain.compose] builds from the lookup's own deinflection
-     *  chain and [tokenTags]. Phrase and member resolutions pass no surface
-     *  and get no line. */
+     *  [surface] is the tapped occurrence's text and [tokenTags] its chain
+     *  from [lookupForm] (the tokenizer's for the tapped unit, the engine's
+     *  for an alternative); with a surface the data carries the conjugation
+     *  line [InflectionChain.compose] builds from the lookup's own
+     *  deinflection chain and [tokenTags]. Phrase and member resolutions
+     *  pass no surface and get no line. */
     suspend fun resolve(
         appCtx: Context,
         lookupForm: String,

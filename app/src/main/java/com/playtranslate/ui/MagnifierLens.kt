@@ -125,11 +125,13 @@ private const val STYLED_INPLACE_DEADLINE_MS = 250L
  *  [MagnifierLens.setSplitDefinitions]. [opens] renders the section's
  *  trailing chevron and makes the whole section a tap target for its
  *  open-detail callback; pass false on surfaces (or entries) with nothing
- *  to open into. */
+ *  to open into. [caption], when set, is a muted line drawn above the
+ *  section's header ("Also matches" over an alternative entry). */
 data class LensSection(
     val data: WordDefinitionData,
     val label: String?,
     val opens: Boolean,
+    val caption: String? = null,
 )
 
 /**
@@ -404,16 +406,17 @@ class MagnifierLens(
 
     /** Split definitions body: the [primary] section plus one or more
      *  [secondaries], dividers between, each headed by its own headword and
-     *  (when it opens) a trailing chevron. [primary] is the TAPPED unit —
+     *  (when it opens) a trailing chevron, an alternative entry's header
+     *  under its [LensSection.caption]. [primary] is the TAPPED unit:
      *  the pill keeps its identity and [onOpenTap] is its open action;
      *  each secondary routes to [onSecondaryOpenTap] with its list index.
      *  [secondariesOnTop] places the LONGER unit above: true on the
      *  space-delimited surfaces (tapped word + containing phrase above it),
-     *  false on JA (tapped fused expression on top + its member words
-     *  below, in expression order). Sections bind flat instantly; any
-     *  section whose data carries a structured Yomitan payload upgrades to
-     *  its own styled (WebView) renderer once painted, exactly like the
-     *  single-unit body. */
+     *  false on JA (tapped unit on top + its member words below, in
+     *  expression order, then its alternative entries). Sections bind flat
+     *  instantly; any section whose data carries a structured Yomitan
+     *  payload upgrades to its own styled (WebView) renderer once painted,
+     *  exactly like the single-unit body. */
     fun setSplitDefinitions(
         primary: LensSection,
         secondaries: List<LensSection>,
@@ -2536,13 +2539,16 @@ class MagnifierLens(
             invalidate()
         }
 
-        /** Builds one split section — headword header (name + reading side
-         *  by side, chevron alone at the trailing edge when it opens) over
-         *  the flat definitions body — into [splitContent]. [showHeader]
-         *  false skips the header entirely (the top-rendered primary: the
-         *  pill already names it). Returns the section root when it's a tap
-         *  target ([LensSection.opens]), null otherwise. [fire] is the
-         *  section's (already-debounced) open action. */
+        /** Builds one split section into [splitContent]: the
+         *  [LensSection.caption] line when there is one, then the headword
+         *  header (name + reading side by side, chevron alone at the
+         *  trailing edge when it opens) over the flat definitions body.
+         *  [showHeader] false skips the header entirely (the top-rendered
+         *  primary: the pill already names it). The caption and header sit
+         *  outside the body's holder, so a styled swap-in
+         *  ([attachSectionStyled]) keeps them. Returns the section root when
+         *  it's a tap target ([LensSection.opens]), null otherwise. [fire]
+         *  is the section's (already-debounced) open action. */
         private fun addSplitSection(
             section: LensSection,
             fire: () -> Unit,
@@ -2550,6 +2556,24 @@ class MagnifierLens(
         ): View? {
             val col = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
+            }
+            section.caption?.let { caption ->
+                // The header reading's size and muted color, on its own
+                // line above the name, with the header's insets.
+                col.addView(
+                    TextView(context).apply {
+                        text = caption
+                        setTextColor(panelSecondaryText)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                        maxLines = 1
+                        ellipsize = TextUtils.TruncateAt.END
+                        setPadding(bodyHPaddingPx - dp(6f), 0, bodyHPaddingPx - dp(6f), 0)
+                    },
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                    ),
+                )
             }
             if (showHeader) {
                 val header = LinearLayout(context).apply {

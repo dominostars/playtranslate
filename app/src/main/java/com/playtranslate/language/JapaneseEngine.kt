@@ -264,6 +264,14 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
             .distinctBy { it.lookupForm }
     }
 
+    /** [DictionaryManager.alternativeKeys] for the tapped [span]'s surface,
+     *  lookup form and conjugation tags, each key as a span on the tapped
+     *  surface whose inflections are the key's whole chain. */
+    override suspend fun alternativesOf(span: TokenSpan, primaryIds: Set<Long>): List<TokenSpan> =
+        dict.alternativeKeys(span.surface, span.lookupForm, span.inflections, primaryIds).map {
+            TokenSpan(surface = span.surface, lookupForm = it.lookupForm, reading = it.reading, inflections = it.tags)
+        }
+
     /** Reading hints for the member [units] (surface to lookupForm, in
      *  headword order) by aligning the headword's own reading against the
      *  units' dictionary readings — see [alignMemberReadings] for why the

@@ -735,8 +735,7 @@ class TranslationResultFragment : Fragment() {
     private fun wireLensActions(lens: MagnifierLens, resolvedAt: SourceWordLookup.ResolvedAt) {
         val activity = activity ?: return
         val resolved = resolvedAt.word
-        val phrase = resolvedAt.phrase
-        val secondaries = phrase?.let { listOf(it) } ?: resolvedAt.members
+        val secondaries = resolvedAt.secondaries()
         val word = resolved.word
         val popupReading = resolved.reading
         val displayEntry = resolved.entry
@@ -757,9 +756,10 @@ class TranslationResultFragment : Fragment() {
             lens.onOpenTap = { openDetail(resolved) }
         }
         if (secondaries.isNotEmpty()) {
-            // Secondary-section drill-in (containing phrase or member words):
-            // same detail route as the tapped unit — the sheet re-looks the
-            // string up, and a multi-word key round-trips it unchanged.
+            // Secondary-section drill-in (containing phrase, member words or
+            // alternative entries): same detail route as the tapped unit.
+            // The sheet re-looks the string up, and a multi-word key
+            // round-trips it unchanged.
             lens.onSecondaryOpenTap = { i ->
                 secondaries.getOrNull(i)?.let { sec -> openDetail(sec) }
             }

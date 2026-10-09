@@ -23,6 +23,7 @@ import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.InflectedForm
+import com.playtranslate.language.InflectionTag
 import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TargetGlossDatabaseProvider
@@ -111,11 +112,13 @@ class DragLookupController(
     private var lastSentSentence: String? = null
     private var wordLookupJob: Job? = null
 
-    /** The related units' popup data for the current lens — the containing
-     *  multi-word expression (Latin) or a fused expression's member words
-     *  (JA) the release lookup resolved — driving the split secondary
-     *  sections' open actions by index. Overwritten by every release lookup
-     *  (empty when the released word has no related units). */
+    /** The related units' popup data for the current lens, as the release
+     *  lookup resolved them ([LookupResolution.secondaries]: the containing
+     *  multi-word expression on Latin scripts, or a fused expression's
+     *  member words and the word's alternative entries on JA), driving the
+     *  split secondary sections' open actions by index. Overwritten by
+     *  every release lookup (empty when the released word has no related
+     *  units). */
     private var currentSecondaryPopups: List<PopupData> = emptyList()
 
     /** Open-detail + Anki chip actions, shared with the capture overlay. Reads
@@ -969,7 +972,7 @@ class DragLookupController(
                 currentEntry = popupData.entry
                 currentEntries = popupData.entries
                 lastReading = popupData.reading
-                currentSecondaryPopups = resolved.phrase?.let { listOf(it) } ?: resolved.members
+                currentSecondaryPopups = resolved.secondaries()
                 var sentenceToRecord: String? = null
                 currentSentence?.let { sent ->
                     if (sent != lastSentSentence) {
@@ -1380,15 +1383,46 @@ class DragLookupController(
             emptyList()
         }
 
+        // The other dictionary entries the dragged token could be (homographs
+        // its reading hint narrowed away, other dictionary forms it
+        // deinflects to), below the members: each resolves under its own key
+        // and keeps the dragged surface for its conjugation line and
+        // drill-in; one section per entry, never the word's own.
+        val primaryIds = entries.mapNotNullTo(mutableSetOf()) { it.packId }
+        val alternativePopups: List<PopupData> = if (phraseKey == null && matchedToken != null) {
+            val caption = context.getString(R.string.lens_also_matches)
+            SourceWordLookup.distinctAlternatives(
+                withContext(Dispatchers.IO) { engine.alternativesOf(matchedToken, primaryIds) }
+                    .mapNotNull { alt ->
+                        relatedPopupData(
+                            resolver, prefs.targetLang, alt.lookupForm, alt.lookupForm, alt.reading,
+                            excludeSlug = null, foundAs = alt.surface, foundTags = alt.inflections,
+                            caption = caption,
+                        )
+                    },
+                primaryIds,
+                packIdOf = { it.entry?.packId },
+                fallbackKeyOf = { it.word to it.reading },
+            )
+        } else {
+            emptyList()
+        }
+
         // The "already in Anki" deck badge is filled in AFTER the definitions
         // render (see onDragEnd), so the dictionary lookup is never delayed by
         // the Anki content-provider query.
-        return LookupResolution(word = popupData, phrase = phrasePopup, members = memberPopups)
+        return LookupResolution(
+            word = popupData, phrase = phrasePopup, members = memberPopups, alternatives = alternativePopups,
+        )
     }
 
-    /** Resolve one related-unit key (phrase or member) into the section
-     *  shape [resolveLookupData] returns — null when no real entry lands,
-     *  or when it lands back on [excludeSlug]'s own entry. */
+    /** Resolve one related-unit key (phrase, member or alternative) into the
+     *  section shape [resolveLookupData] returns: null when no real entry
+     *  lands, or when it lands back on [excludeSlug]'s own entry. [surface]
+     *  picks the displayed headword. An alternative passes [foundAs], the
+     *  dragged surface it is offered for, and [foundTags], its chain from
+     *  [lookupForm] to that surface: they become its surface and its
+     *  conjugation line. [caption] is the section's [LensSection.caption]. */
     private suspend fun relatedPopupData(
         resolver: com.playtranslate.language.DefinitionResolver,
         targetLang: String,
@@ -1396,6 +1430,9 @@ class DragLookupController(
         surface: String,
         readingHint: String?,
         excludeSlug: String?,
+        foundAs: String? = null,
+        foundTags: List<InflectionTag> = emptyList(),
+        caption: String? = null,
     ): PopupData? {
         val result = withContext(Dispatchers.IO) { resolver.lookup(lookupForm, readingHint) }
         val entries = result?.response?.entries.orEmpty()
@@ -1407,9 +1444,12 @@ class DragLookupController(
         return PopupData(
             word = display.written,
             reading = display.reading,
-            // A related unit is a lemma: no surface, no conjugation line.
-            surface = null,
-            inflectedForms = emptyList(),
+            // A phrase or member is a lemma (no [foundAs]): no surface, no
+            // conjugation line. An alternative keeps the dragged surface.
+            surface = foundAs,
+            inflectedForms = foundAs?.let {
+                listOfNotNull(InflectionChain.compose(it, result?.response?.deinflection.orEmpty(), foundTags))
+            }.orEmpty(),
             senses = buildSenseDisplays(result!!, entries, targetLang),
             freqScore = entry.freqScore,
             isCommon = entry.isCommon == true,
@@ -1424,34 +1464,44 @@ class DragLookupController(
             styled = fetchYomitanStyledData(
                 context, Prefs(context).sourceLangId.yomitanConsumingLang(), entry.importedSenses,
             ),
+            caption = caption,
         )
     }
 
     /** [resolveLookupData]'s result: the word under the finger, plus its
-     *  related units — the containing multi-word expression ([phrase],
-     *  Latin) or a fused expression's member words ([members], JA) — for
-     *  the lens's split secondary sections. At most one of the two is
-     *  populated. */
+     *  related units for the lens's split secondary sections: the
+     *  containing multi-word expression ([phrase], Latin), or else a fused
+     *  expression's member words ([members], JA) and the word's other
+     *  dictionary entries ([alternatives]). With a [phrase], the other two
+     *  are empty. */
     private data class LookupResolution(
         val word: PopupData,
         val phrase: PopupData?,
         val members: List<PopupData> = emptyList(),
-    )
+        val alternatives: List<PopupData> = emptyList(),
+    ) {
+        /** The secondary sections in list order, the shape of
+         *  [SourceWordLookup.ResolvedAt.secondaries]: [phrase] alone, else
+         *  [members] then [alternatives]. */
+        fun secondaries(): List<PopupData> = phrase?.let { listOf(it) } ?: (members + alternatives)
+    }
 
-    /** Bind [res] into the lens: split body when related units resolved —
-     *  phrase above the word (Latin), member words below the expression
-     *  (JA) — the single-unit body otherwise. [ankiDecks] rides the
-     *  PRIMARY section — the deck badge back-fill rebinds through here so
-     *  it can't collapse a split lens. */
+    /** Bind [res] into the lens: split body when related units resolved
+     *  (phrase above the word on Latin scripts; member words and then
+     *  alternative entries below the word on JA), the single-unit body
+     *  otherwise. [ankiDecks] rides the PRIMARY section: the deck badge
+     *  back-fill rebinds through here so it can't collapse a split lens. */
     private fun publishLensDefinitions(res: LookupResolution, ankiDecks: List<String> = emptyList()) {
         val wordData = res.word.toLensData()
             .let { if (ankiDecks.isEmpty()) it else it.copy(ankiDecks = ankiDecks) }
         val wordLabel = res.word.machineTranslatedLabel()
-        val secondaries = res.phrase?.let { listOf(it) } ?: res.members
+        val secondaries = res.secondaries()
         if (secondaries.isNotEmpty()) {
             magnifier.setSplitDefinitions(
                 LensSection(wordData, wordLabel, opens = true),
-                secondaries.map { LensSection(it.toLensData(), it.machineTranslatedLabel(), opens = true) },
+                secondaries.map {
+                    LensSection(it.toLensData(), it.machineTranslatedLabel(), opens = true, caption = it.caption)
+                },
                 secondariesOnTop = res.phrase != null,
             )
         } else {
@@ -1487,11 +1537,12 @@ class DragLookupController(
     private data class PopupData(
         val word: String,
         val reading: String?,
-        /** The matched token's text under the finger; null for a related
-         *  unit (phrase or member), which is a lemma. */
+        /** The matched token's text under the finger, for the word and its
+         *  alternatives; null for a phrase or member, which is a lemma. */
         val surface: String?,
         /** The lens's conjugation line ([WordDefinitionData.inflectedForms]):
-         *  the dragged form's, empty for a related unit. */
+         *  the dragged form's from the word's or an alternative's own
+         *  dictionary form, empty for a phrase or member. */
         val inflectedForms: List<InflectedForm>,
         val senses: List<SenseDisplay>,
         val freqScore: Int,
@@ -1509,6 +1560,9 @@ class DragLookupController(
          *  [WordDefinitionData.importedGroups]/[WordDefinitionData.styled]. */
         val importedGroups: List<com.playtranslate.model.ImportedSenseGroup> = emptyList(),
         val styled: YomitanStyledData? = null,
+        /** The section's [LensSection.caption]: "Also matches" on an
+         *  alternative, null otherwise. */
+        val caption: String? = null,
     )
 
     private fun findLineAt(x: Int, y: Int, lines: List<OcrManager.OcrLine>): OcrManager.OcrLine? {

@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.util.Log
+import com.playtranslate.dictionary.deinflect.Deinflection
 import com.playtranslate.dictionary.deinflect.JapaneseDeinflector
 import com.playtranslate.language.InflectionTag
 import com.playtranslate.language.LanguagePackCatalogLoader
@@ -765,6 +766,31 @@ class DictionaryManager private constructor(private val context: Context) {
      *  deinflection stage of both [lookup] and [lookupReadingsOnly]. */
     private fun deinflectedHit(db: SQLiteDatabase, word: String): DeinflectedHit? =
         firstAcceptedDeinflection(word, { queryEntryIds(db, it) }, { sensePosTokens(db, it) })
+
+    /**
+     * [alternativeCandidates] over the open pack, bound to the reads
+     * [lookup] makes ([queryEntryIds], memoized per text for the call;
+     * [queryEntryIdsWithReading]; [sensePosTokens]) and to
+     * [primaryFormsForEntry]. Empty when the database isn't ready.
+     */
+    internal suspend fun alternativeKeys(
+        surface: String,
+        lookupForm: String,
+        tokenTags: List<InflectionTag>,
+        primaryIds: Set<Long>,
+    ): List<AlternativeKey> = withContext(Dispatchers.IO) {
+        val database = ensureOpen() ?: return@withContext emptyList()
+        database.withRefcount {
+            val idsByText = HashMap<String, List<Long>>()
+            alternativeCandidates(
+                surface, lookupForm, tokenTags, primaryIds,
+                entryIdsFor = { text -> idsByText.getOrPut(text) { queryEntryIds(database, text) } },
+                entryIdsWithReadingFor = { text, reading -> queryEntryIdsWithReading(database, text, reading) },
+                posTokensFor = { ids -> sensePosTokens(database, ids) },
+                primaryFormsFor = { id -> primaryFormsForEntry(database, id) },
+            )
+        } ?: emptyList()
+    }
 
     /** Part-of-speech tokens of every sense of each entry in [entryIds] (all
      *  senses, where [buildEntry] keeps the first 8), split by
@@ -1704,6 +1730,114 @@ class DictionaryManager private constructor(private val context: Context) {
                 }
             }
             return null
+        }
+
+        /** One other dictionary entry a looked-up word could be
+         *  ([alternativeCandidates]): [lookupForm] and [reading] are the key
+         *  [lookup] resolves to [entryId] first, and [tags] the chain from
+         *  that entry's dictionary form to the tapped surface, dictionary
+         *  form outward. */
+        internal data class AlternativeKey(
+            val lookupForm: String,
+            val reading: String?,
+            val tags: List<InflectionTag>,
+            val entryId: Long,
+        )
+
+        /** At most this many alternatives per tapped word. */
+        internal const val MAX_ALTERNATIVES = 3
+
+        /**
+         * The other entries a tapped word could be, besides [primaryIds] (the
+         * entries its own lookup returned), at most [cap], from three passes:
+         *
+         * 1. Homographs of [lookupForm]. When [surface] is [lookupForm], every
+         *    entry [entryIdsFor] returns, with [tokenTags]. When it differs (a
+         *    conjugated form), only the entries accepting a
+         *    [JapaneseDeinflector.candidates] of [surface] whose text is
+         *    [lookupForm], with that candidate's chain: 来た reaches 来る read
+         *    くる (a Kuru verb), not 来る read きたる (a Godan verb).
+         * 2. Deinflections of [lookupForm] (弾ける to 弾く, potential): each
+         *    candidate's accepting entries, its chain followed by [tokenTags].
+         * 3. Deinflections of [surface] to any other text (いった to 言う):
+         *    each candidate's accepting entries, its chain, which already ends
+         *    at [surface].
+         *
+         * An entry accepts a candidate by [firstAcceptedDeinflection]'s gate:
+         * its part-of-speech tokens ([posTokensFor]) as
+         * [JapaneseDeinflector.posFlags] pass [JapaneseDeinflector.accepts].
+         * Candidates keep their chain-length order and entries [entryIdsFor]'s
+         * ranked order; an entry in [primaryIds] or already offered is skipped.
+         *
+         * Each entry is offered under the key [lookup]'s first two stages
+         * ([entryIdsWithReadingFor], else [entryIdsFor]) rank it first under:
+         * its primary reading ([primaryFormsFor]) with the candidate's text,
+         * else with its primary written form. An entry neither key ranks first
+         * is not offered (a kana text ranks by reading, and いる ranks 要る
+         * ahead of 居る). Takes the pack reads as functions so it runs without
+         * a database.
+         */
+        internal fun alternativeCandidates(
+            surface: String,
+            lookupForm: String,
+            tokenTags: List<InflectionTag>,
+            primaryIds: Set<Long>,
+            entryIdsFor: (String) -> List<Long>,
+            entryIdsWithReadingFor: (String, String) -> List<Long>,
+            posTokensFor: (List<Long>) -> Map<Long, List<String>>,
+            primaryFormsFor: (Long) -> Pair<String?, String?>,
+            cap: Int = MAX_ALTERNATIVES,
+        ): List<AlternativeKey> {
+            val out = mutableListOf<AlternativeKey>()
+            val taken = primaryIds.toMutableSet()
+
+            fun rankedFirst(form: String, reading: String?): Long? =
+                reading?.let { entryIdsWithReadingFor(form, it) }.orEmpty()
+                    .ifEmpty { entryIdsFor(form) }
+                    .firstOrNull()
+
+            fun offer(text: String, ids: List<Long>, tags: List<InflectionTag>) {
+                for (id in ids) {
+                    if (out.size >= cap) return
+                    if (id in taken) continue
+                    val (written, reading) = primaryFormsFor(id)
+                    val form = listOfNotNull(text, written).firstOrNull { rankedFirst(it, reading) == id } ?: continue
+                    taken += id
+                    out += AlternativeKey(form, reading, tags, id)
+                }
+            }
+
+            fun accepting(candidate: Deinflection): List<Long> {
+                val ids = entryIdsFor(candidate.text)
+                if (ids.isEmpty()) return ids
+                val posTokens = posTokensFor(ids)
+                return ids.filter { id ->
+                    JapaneseDeinflector.accepts(candidate, JapaneseDeinflector.posFlags(posTokens[id].orEmpty()))
+                }
+            }
+
+            fun chain(candidate: Deinflection): List<InflectionTag> =
+                candidate.transformKeys.mapNotNull(InflectionTag::fromKey)
+
+            val conjugated = surface != lookupForm
+            val surfaceCandidates = if (conjugated) JapaneseDeinflector.candidates(surface) else emptyList()
+            if (!conjugated) {
+                offer(lookupForm, entryIdsFor(lookupForm), tokenTags)
+            } else {
+                for (c in surfaceCandidates) {
+                    if (out.size >= cap) return out
+                    if (c.text == lookupForm) offer(c.text, accepting(c), chain(c))
+                }
+            }
+            for (c in JapaneseDeinflector.candidates(lookupForm)) {
+                if (out.size >= cap) return out
+                offer(c.text, accepting(c), chain(c) + tokenTags)
+            }
+            for (c in surfaceCandidates) {
+                if (out.size >= cap) return out
+                if (c.text != lookupForm) offer(c.text, accepting(c), chain(c))
+            }
+            return out
         }
 
         /**
