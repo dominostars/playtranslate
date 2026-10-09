@@ -87,8 +87,17 @@ class TranslationResultContent(
         fun wireLensActions(lens: MagnifierLens, resolved: SourceWordLookup.ResolvedAt)
 
         /** A word row's body tap: open that word's detail. [surface] is the
-         *  row's occurrence text, for the detail header's conjugation line. */
-        fun onWordTapped(word: String, reading: String?, surface: String?)
+         *  row's occurrence text, for the detail header's conjugation line;
+         *  [lookupForm] and [lookupReading] the key the row was resolved
+         *  under, which the detail page resolves with
+         *  ([WordDetailBinder.Args.lookupForm]). */
+        fun onWordTapped(
+            word: String,
+            reading: String?,
+            surface: String?,
+            lookupForm: String,
+            lookupReading: String?,
+        )
 
         /** Any user interaction (live-mode hosts pause on it). */
         fun onInteraction() {}
@@ -193,7 +202,10 @@ class TranslationResultContent(
                 override val ttsAlertTarget: TtsAlertTarget get() = host.ttsAlertTarget
                 override fun onInteraction() = host.onInteraction()
                 override fun onWordTapped(row: RowState) =
-                    host.onWordTapped(row.displayWord, row.reading.ifEmpty { null }, row.surface)
+                    host.onWordTapped(
+                        row.displayWord, row.reading.ifEmpty { null }, row.surface,
+                        row.lookupForm, row.lookupReading,
+                    )
             },
         )
         // The card asks for its rows whenever it is shown and may need them;

@@ -45,7 +45,14 @@ class WordDetailBottomSheet : DialogFragment() {
          *  (drag-flow Sentence/Word tab in TranslationResultActivity) and
          *  should hide its own toolbar — the host already provides one. */
         private const val ARG_EMBEDDED        = "embedded"
+        /** [WordDetailBinder.Args.lookupForm], always written. */
+        private const val ARG_LOOKUP_FORM     = "lookup_form"
+        /** [WordDetailBinder.Args.lookupReading], written when non-null. */
+        private const val ARG_LOOKUP_READING  = "lookup_reading"
 
+        /** [lookupForm] and [lookupReading] are the key the page resolves
+         *  its entry with ([WordDetailBinder.Args.lookupForm]); an opener
+         *  with no key of its own leaves them at [word] and [reading]. */
         fun newInstance(
             word: String,
             reading: String? = null,
@@ -56,10 +63,14 @@ class WordDetailBottomSheet : DialogFragment() {
             sentenceWordResults: Map<String, Triple<String, String, Int>>? = null,
             embedded: Boolean = false,
             sentencePending: com.playtranslate.model.PendingTranslation? = null,
+            lookupForm: String = word,
+            lookupReading: String? = reading,
         ) = WordDetailBottomSheet().apply {
                 arguments = Bundle().apply {
                     putString(ARG_WORD, word)
                     if (reading != null) putString(ARG_READING, reading)
+                    putString(ARG_LOOKUP_FORM, lookupForm)
+                    if (lookupReading != null) putString(ARG_LOOKUP_READING, lookupReading)
                     if (surface != null) putString(ARG_SURFACE, surface)
                     if (screenshotPath != null) putString(ARG_SCREENSHOT_PATH, screenshotPath)
                     if (sentenceOriginal != null) {
@@ -80,6 +91,43 @@ class WordDetailBottomSheet : DialogFragment() {
                     if (embedded) putBoolean(ARG_EMBEDDED, true)
                 }
             }
+
+        /** The page's [WordDetailBinder.Args] from a [newInstance]
+         *  [bundle]; null when it carries no word. */
+        internal fun argsFrom(bundle: Bundle): WordDetailBinder.Args? {
+            val word = bundle.getString(ARG_WORD) ?: return null
+            @Suppress("DEPRECATION")
+            val sentencePending = bundle.getSerializable(ARG_SENTENCE_PENDING)
+                as? com.playtranslate.model.PendingTranslation
+            val sentenceWordResults: Map<String, Triple<String, String, Int>>? =
+                bundle.getStringArray(ARG_SENTENCE_WORDS)?.let { words ->
+                    val readings = bundle.getStringArray(ARG_SENTENCE_READINGS) ?: emptyArray()
+                    val meanings = bundle.getStringArray(ARG_SENTENCE_MEANINGS) ?: emptyArray()
+                    val freqScores = bundle.getIntArray(ARG_SENTENCE_FREQ_SCORES) ?: IntArray(0)
+                    words.mapIndexed { i, w ->
+                        w to Triple(
+                            readings.getOrElse(i) { "" },
+                            meanings.getOrElse(i) { "" },
+                            freqScores.getOrElse(i) { 0 }
+                        )
+                    }.toMap()
+                }
+            return WordDetailBinder.Args(
+                word = word,
+                reading = bundle.getString(ARG_READING),
+                surface = bundle.getString(ARG_SURFACE),
+                screenshotPath = bundle.getString(ARG_SCREENSHOT_PATH),
+                sentenceOriginal = bundle.getString(ARG_SENTENCE_ORIGINAL),
+                sentenceTranslation = bundle.getString(ARG_SENTENCE_TRANSLATION),
+                sentenceWordResults = sentenceWordResults,
+                sentencePending = sentencePending,
+                embedded = bundle.getBoolean(ARG_EMBEDDED, false),
+                // newInstance writes the form with the word, so the fallback
+                // only satisfies the type.
+                lookupForm = bundle.getString(ARG_LOOKUP_FORM) ?: word,
+                lookupReading = bundle.getString(ARG_LOOKUP_READING),
+            )
+        }
     }
 
     private var binder: WordDetailBinder? = null
@@ -131,44 +179,14 @@ class WordDetailBottomSheet : DialogFragment() {
             view.findViewById<View>(R.id.btnBackDetail).setOnClickListener { dismiss() }
         }
 
-        val word = arguments?.getString(ARG_WORD) ?: run {
+        val args = arguments?.let { argsFrom(it) } ?: run {
             if (!embedded) dismiss()
             return
         }
-        val args = arguments
-        @Suppress("DEPRECATION")
-        val sentencePending = args?.getSerializable(ARG_SENTENCE_PENDING)
-            as? com.playtranslate.model.PendingTranslation
-        val sentenceWordResults: Map<String, Triple<String, String, Int>>? =
-            args?.getStringArray(ARG_SENTENCE_WORDS)?.let { words ->
-                val readings = args.getStringArray(ARG_SENTENCE_READINGS) ?: emptyArray()
-                val meanings = args.getStringArray(ARG_SENTENCE_MEANINGS) ?: emptyArray()
-                val freqScores = args.getIntArray(ARG_SENTENCE_FREQ_SCORES) ?: IntArray(0)
-                words.mapIndexed { i, w ->
-                    w to Triple(
-                        readings.getOrElse(i) { "" },
-                        meanings.getOrElse(i) { "" },
-                        freqScores.getOrElse(i) { 0 }
-                    )
-                }.toMap()
-            }
 
         val b = WordDetailBinder(requireContext(), viewLifecycleOwner.lifecycleScope, FragmentUi())
         binder = b
-        b.bind(
-            view,
-            WordDetailBinder.Args(
-                word = word,
-                reading = args?.getString(ARG_READING),
-                surface = args?.getString(ARG_SURFACE),
-                screenshotPath = args?.getString(ARG_SCREENSHOT_PATH),
-                sentenceOriginal = args?.getString(ARG_SENTENCE_ORIGINAL),
-                sentenceTranslation = args?.getString(ARG_SENTENCE_TRANSLATION),
-                sentenceWordResults = sentenceWordResults,
-                sentencePending = sentencePending,
-                embedded = embedded,
-            ),
-        )
+        b.bind(view, args)
     }
 
     /** The DialogFragment host's side of the binder seam. */
@@ -181,8 +199,17 @@ class WordDetailBottomSheet : DialogFragment() {
         override fun sentenceContext(): SentenceContext? =
             (activity as? SentenceContextProvider)?.currentSentenceContext()
 
-        override fun openWordDetail(word: String, reading: String?, surface: String?) {
-            newInstance(word = word, reading = reading, surface = surface).show(childFragmentManager, TAG)
+        override fun openWordDetail(
+            word: String,
+            reading: String?,
+            surface: String?,
+            lookupForm: String,
+            lookupReading: String?,
+        ) {
+            newInstance(
+                word = word, reading = reading, surface = surface,
+                lookupForm = lookupForm, lookupReading = lookupReading,
+            ).show(childFragmentManager, TAG)
         }
 
         override fun openAnkiReview(args: WordDetailBinder.WordAnkiArgs) {

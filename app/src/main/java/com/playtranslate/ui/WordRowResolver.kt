@@ -261,6 +261,9 @@ suspend fun resolveWordRows(
                                 // Same ordering the word detail page uses; bold the
                                 // occurrence (the selected headword's reading).
                                 readingRows = entry.orderedReadingRows(primary?.reading),
+                                // The key this row resolved under, for its detail page.
+                                lookupForm = word,
+                                lookupReading = readingByToken[word],
                             ),
                             surfaceMapping = if (surface != displayWord) {
                                 displayWord to surface

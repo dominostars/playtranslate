@@ -73,6 +73,15 @@ class WordRowResolverTest {
     }
 
     @Test
+    fun `a row built without a key opens its detail under its display word`() {
+        val row = RowState(
+            displayWord = "猫", reading = "ねこ", meaning = "cat", senses = emptyList(),
+            freqScore = 0, isCommon = false, surface = "猫",
+        )
+        assertEquals("猫" to null, row.lookupForm to row.lookupReading)
+    }
+
+    @Test
     fun `capInflectionForms reports no overflow at or under the cap`() {
         val forms = listOf(InflectedForm("食べた", listOf(InflectionTag.TA)))
         val (shown, overflow) = capInflectionForms(forms, max = 3)

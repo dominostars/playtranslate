@@ -42,6 +42,13 @@ object SourceWordLookup {
          *  conjugation line; null for phrase and member resolutions, which
          *  are lemmas. */
         val surface: String?,
+        /** The key [resolve] ran with: what a drill-in must open the detail
+         *  page with ([WordDetailBinder.Args.lookupForm]), since [word] is
+         *  the display headword and need not be the key (a kana key displays
+         *  as the kanji headword its lookup ranked first). */
+        val lookupForm: String,
+        /** The reading that narrowed [lookupForm]'s lookup, null when none. */
+        val lookupReading: String?,
         val label: String?,
         val data: WordDefinitionData,
         /** The dictionary entry, when matched — drives the in-app Anki/open path.
@@ -469,6 +476,8 @@ object SourceWordLookup {
             word = word,
             reading = popupReading,
             surface = surface,
+            lookupForm = lookupForm,
+            lookupReading = reading.ifEmpty { null },
             label = popupLabel,
             entries = entries,
             data = WordDefinitionData(

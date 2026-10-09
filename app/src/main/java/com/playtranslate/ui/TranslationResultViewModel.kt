@@ -777,6 +777,15 @@ data class RowState(
      *  when there's more than one or the inline reading won't fit. Empty for
      *  non-JA / no-reading rows. */
     val readingRows: List<ReadingRow> = emptyList(),
+    /** The dictionary form the row was resolved under, which the word-detail
+     *  page must resolve with ([WordDetailBinder.Args.lookupForm]). It can
+     *  differ from [displayWord]: a usually-kana entry resolved under its
+     *  kanji form and seen in kana displays as the kana. The default is for
+     *  rows built without one. */
+    val lookupForm: String = displayWord,
+    /** The reading that narrowed [lookupForm]'s lookup, null when none
+     *  ([WordDetailBinder.Args.lookupReading]). */
+    val lookupReading: String? = null,
 )
 
 /** Convert the row list into the legacy `Map<String, Triple<...>>`

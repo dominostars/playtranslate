@@ -60,7 +60,10 @@ class TranslationResultFragment : Fragment() {
          *  while a completion is already in flight. */
         fun completeDeferredTranslation()
         /** Open [word]'s detail. [surface] is the text it was tapped as, for
-         *  the detail header's conjugation line; null for a lemma. */
+         *  the detail header's conjugation line; null for a lemma.
+         *  [lookupForm] and [lookupReading] are the key the detail page
+         *  resolves with ([WordDetailBinder.Args.lookupForm]); a caller with
+         *  no key of its own leaves them at [word] and [reading]. */
         fun onWordTapped(
             word: String,
             reading: String?,
@@ -68,7 +71,9 @@ class TranslationResultFragment : Fragment() {
             screenshotPath: String?,
             sentenceOriginal: String?,
             sentenceTranslation: String?,
-            wordResults: Map<String, Triple<String, String, Int>>
+            wordResults: Map<String, Triple<String, String, Int>>,
+            lookupForm: String = word,
+            lookupReading: String? = reading,
         )
         fun onInteraction()
         fun getAnkiPermissionLauncher(): androidx.activity.result.ActivityResultLauncher<String>?
@@ -750,6 +755,7 @@ class TranslationResultFragment : Fragment() {
                 ready?.originalText,
                 ready?.translatedText,
                 currentSettledRows()?.toLegacyMap() ?: emptyMap(),
+                unit.lookupForm, unit.lookupReading,
             )
         }
         if (displayEntry != null) {
@@ -758,8 +764,8 @@ class TranslationResultFragment : Fragment() {
         if (secondaries.isNotEmpty()) {
             // Secondary-section drill-in (containing phrase, member words or
             // alternative entries): same detail route as the tapped unit.
-            // The sheet re-looks the string up, and a multi-word key
-            // round-trips it unchanged.
+            // The sheet looks the unit up again under the unit's own key,
+            // and a multi-word key round-trips unchanged.
             lens.onSecondaryOpenTap = { i ->
                 secondaries.getOrNull(i)?.let { sec -> openDetail(sec) }
             }
@@ -818,7 +824,13 @@ class TranslationResultFragment : Fragment() {
         override fun wireLensActions(lens: MagnifierLens, resolved: SourceWordLookup.ResolvedAt) =
             this@TranslationResultFragment.wireLensActions(lens, resolved)
 
-        override fun onWordTapped(word: String, reading: String?, surface: String?) {
+        override fun onWordTapped(
+            word: String,
+            reading: String?,
+            surface: String?,
+            lookupForm: String,
+            lookupReading: String?,
+        ) {
             val ready = currentReady()
             host?.onWordTapped(
                 word, reading, surface,
@@ -826,6 +838,7 @@ class TranslationResultFragment : Fragment() {
                 ready?.originalText,
                 ready?.translatedText,
                 currentSettledRows()?.toLegacyMap() ?: emptyMap(),
+                lookupForm, lookupReading,
             )
         }
 
