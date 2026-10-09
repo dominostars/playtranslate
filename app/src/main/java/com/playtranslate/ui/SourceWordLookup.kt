@@ -12,6 +12,7 @@ import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TokenSpan
 import com.playtranslate.model.DictionaryEntry
+import com.playtranslate.model.DictionaryResponse
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.selectHeadword
@@ -171,6 +172,9 @@ object SourceWordLookup {
         val phrase: Resolved? = null,
         val members: List<Resolved> = emptyList(),
         val alternatives: List<Resolved> = emptyList(),
+        /** The secondaries held back from this resolution, resolved by
+         *  [resolvePending]; empty when everything is resolved. */
+        val pending: List<SecondaryKey> = emptyList(),
     ) {
         /** The lens's secondary sections in their list order (the order the
          *  drill-ins index into): the containing [phrase] alone, else the
@@ -185,8 +189,8 @@ object SourceWordLookup {
      * (弾く read ひく and 弾く read はじく) are two sections although they
      * share a headword; an entry without a pack id (an imported-dictionary
      * synthesis) falls back to [fallbackKeyOf]. The first of each identity
-     * stays, in order. Shared by the tap path ([resolveAt]) and the drag
-     * lens.
+     * stays, in order. Applied by [collectSecondaryKeys], the step the tap
+     * path ([resolveAt]) and the drag lens share.
      */
     internal fun <T> distinctAlternatives(
         alternatives: List<T>,
@@ -216,18 +220,20 @@ object SourceWordLookup {
      * need every unit accounted for, a ≥2-char kanji word, an excused
      * katakana word or an excused particle — ペース配分 offers 配分,
      * 図書館 stays whole),
-     * and every secondary drops unless its lookup lands a real entry
-     * distinct from the tapped unit's headword. Both tap surfaces route
-     * through here so behavior can't drift between them.
+     * and [collectSecondaryKeys], the step the drag lens shares, decides
+     * the secondary sections: each lands a real entry, and a phrase or
+     * member one that is not the tapped unit's own. Both tap surfaces
+     * route through here so behavior can't drift between them.
      * [spanStart] is the tapped span's start offset in [displayedText] —
      * the same text the spans were computed against. [token] is the tapped
      * span's own token: its surface and conjugation tags give the tapped
      * unit its conjugation line, and the engine's alternatives
      * ([com.playtranslate.language.SourceLanguageEngine.alternativesOf])
-     * theirs. With no containing phrase, the alternatives resolve after
-     * the members, each under its own key on the tapped surface, kept when
-     * it lands an entry, as [distinctAlternatives] filters them, captioned
-     * [R.string.lens_also_matches].
+     * theirs. With no containing phrase, the alternatives follow the
+     * members, one per entry as [collectSecondaryKeys] keeps them, each
+     * resolved under its own key on the tapped surface and captioned
+     * [R.string.lens_also_matches]. Every section resolves before this
+     * returns: [ResolvedAt.pending] is empty.
      */
     suspend fun resolveAt(
         appCtx: Context,
@@ -237,7 +243,8 @@ object SourceWordLookup {
         reading: String,
         token: TokenSpan,
     ): ResolvedAt {
-        val engine = SourceLanguageEngines.get(appCtx, Prefs(appCtx).sourceLangId)
+        val prefs = Prefs(appCtx)
+        val engine = SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
         val phraseKey = withContext(Dispatchers.IO) { engine.longestPhraseAt(displayedText, spanStart) }
         val word = resolve(appCtx, lookupForm, reading, surface = token.surface, tokenTags = token.inflections)
         // Members for any entry-backed fused unit; the engine's policy
@@ -263,22 +270,67 @@ object SourceWordLookup {
         } else {
             emptyList()
         }
-        val caption = appCtx.getString(R.string.lens_also_matches)
+        val keys = collectSecondaryKeys(
+            engine, newResolver(appCtx, prefs), word.entries, word.word, phraseKey, memberSpans, alternativeSpans,
+        )
+        // Every section resolves before the lens shows; nothing is held back.
+        return assemble(
+            word, keys.all, resolveKeys(appCtx, keys.all), appCtx.getString(R.string.lens_also_matches),
+            pending = emptyList(),
+        )
+    }
+
+    /** [word]'s lens result from its secondary [keys] and their [resolved]
+     *  sections, index-parallel: a [SecondaryKind.PHRASE] key's section is
+     *  the [ResolvedAt.phrase], the members and the alternatives keep
+     *  [keys]' order, and each alternative carries [caption]. [pending]
+     *  rides along unresolved. */
+    internal fun assemble(
+        word: Resolved,
+        keys: List<SecondaryKey>,
+        resolved: List<Resolved>,
+        caption: String,
+        pending: List<SecondaryKey>,
+    ): ResolvedAt {
+        val byKind = keys.zip(resolved).groupBy({ it.first.kind }, { it.second })
         return ResolvedAt(
             word = word,
-            phrase = phraseKey?.let { resolve(appCtx, it, "") }?.takeIf { it.entry != null },
-            members = memberSpans
-                .map { resolve(appCtx, it.lookupForm, it.reading.orEmpty()) }
-                .filter { it.entry != null && it.word != word.word }
-                .distinctBy { it.word },
-            alternatives = distinctAlternatives(
-                alternativeSpans
-                    .map { resolve(appCtx, it.lookupForm, it.reading.orEmpty(), it.surface, it.inflections) }
-                    .filter { it.entry != null },
-                primaryIds,
-                packIdOf = { it.entry?.packId },
-                fallbackKeyOf = { it.word to it.reading },
-            ).map { it.copy(caption = caption) },
+            phrase = byKind[SecondaryKind.PHRASE]?.firstOrNull(),
+            members = byKind[SecondaryKind.MEMBER].orEmpty(),
+            alternatives = byKind[SecondaryKind.ALTERNATIVE].orEmpty().map { it.copy(caption = caption) },
+            pending = pending,
+        )
+    }
+
+    /** Resolves each of [keys] on the response it carries, under its own
+     *  lookup form and reading, index-parallel to [keys]. An alternative
+     *  keeps its span's surface and chain for its conjugation line; a
+     *  phrase or member is a lemma and gets neither. */
+    suspend fun resolveKeys(appCtx: Context, keys: List<SecondaryKey>): List<Resolved> =
+        keys.map { key ->
+            val alternative = key.kind == SecondaryKind.ALTERNATIVE
+            resolve(
+                appCtx, key.span.lookupForm, key.span.reading.orEmpty(),
+                surface = key.span.surface.takeIf { alternative },
+                tokenTags = key.span.inflections.takeIf { alternative }.orEmpty(),
+                response = key.response,
+            )
+        }
+
+    /** [at] with its [ResolvedAt.pending] secondaries resolved and placed
+     *  after the sections it already has: the phrase from either, the
+     *  members and the alternatives each existing first. Nothing is left
+     *  pending. */
+    suspend fun resolvePending(appCtx: Context, at: ResolvedAt): ResolvedAt {
+        val loaded = assemble(
+            at.word, at.pending, resolveKeys(appCtx, at.pending), appCtx.getString(R.string.lens_also_matches),
+            pending = emptyList(),
+        )
+        return ResolvedAt(
+            word = at.word,
+            phrase = at.phrase ?: loaded.phrase,
+            members = at.members + loaded.members,
+            alternatives = at.alternatives + loaded.alternatives,
         )
     }
 
@@ -289,25 +341,26 @@ object SourceWordLookup {
      *  for an alternative); with a surface the data carries the conjugation
      *  line [InflectionChain.compose] builds from the lookup's own
      *  deinflection chain and [tokenTags]. Phrase and member resolutions
-     *  pass no surface and get no line. */
+     *  pass no surface and get no line. [response], when given, is the
+     *  dictionary response a lookup of [lookupForm] and [reading] already
+     *  returned ([collectSecondaryKeys]): the tier chain runs on it instead
+     *  of looking the word up again. */
     suspend fun resolve(
         appCtx: Context,
         lookupForm: String,
         reading: String,
         surface: String? = null,
         tokenTags: List<InflectionTag> = emptyList(),
+        response: DictionaryResponse? = null,
     ): Resolved {
         val prefs = Prefs(appCtx)
-        val engine = SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
-        val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, prefs.targetLang)
-        val resolver = DefinitionResolver(
-            engine, targetGlossDb,
-            OfflineFallbackTranslators.forPair(engine.profile.translationCode, prefs.targetLang), prefs.targetLang,
-            OfflineFallbackTranslators.forTarget(prefs.targetLang),
-            ChineseScriptConverter.forTarget(prefs.targetLang, prefs.targetChineseVariant),
-        )
+        val resolver = newResolver(appCtx, prefs)
         val defResult = withContext(Dispatchers.IO) {
-            resolver.lookup(lookupForm, reading.ifEmpty { null })
+            if (response != null) {
+                resolver.resolve(response, lookupForm, reading.ifEmpty { null })
+            } else {
+                resolver.lookup(lookupForm, reading.ifEmpty { null })
+            }
         }
         val entries = defResult?.response?.entries.orEmpty()
         val entry = entries.firstOrNull()
@@ -407,6 +460,19 @@ object SourceWordLookup {
                 inflectedForms = inflectedForms,
             ),
             entry = entry,
+        )
+    }
+
+    /** The resolver every resolution here runs: the source engine, target
+     *  gloss pack, offline translators and Chinese script converter [prefs]
+     *  select. */
+    private fun newResolver(appCtx: Context, prefs: Prefs): DefinitionResolver {
+        val engine = SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
+        return DefinitionResolver(
+            engine, TargetGlossDatabaseProvider.get(appCtx, prefs.targetLang),
+            OfflineFallbackTranslators.forPair(engine.profile.translationCode, prefs.targetLang), prefs.targetLang,
+            OfflineFallbackTranslators.forTarget(prefs.targetLang),
+            ChineseScriptConverter.forTarget(prefs.targetLang, prefs.targetChineseVariant),
         )
     }
 

@@ -1,14 +1,18 @@
 package com.playtranslate.ui
 
+import com.playtranslate.language.TokenSpan
 import com.playtranslate.model.DictionaryEntry
+import com.playtranslate.model.DictionaryResponse
 import com.playtranslate.model.Headword
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
  * The lens's secondary sections: [SourceWordLookup.ResolvedAt.secondaries]'s
- * order, and [SourceWordLookup.distinctAlternatives]'s entry identity, which
- * the tap path and the drag lens share.
+ * order, [SourceWordLookup.distinctAlternatives]'s entry identity, which
+ * the tap path and the drag lens share, and [SourceWordLookup.assemble]'s
+ * placement of resolved keys.
  */
 class LensSecondariesTest {
 
@@ -27,6 +31,7 @@ class LensSecondariesTest {
     private val word = resolved("弾ける", "はじける", 1419380L)
     private val phrase = resolved("一番", "いちばん", 1L)
     private val member = resolved("気", "き", 2L)
+    private val ma = resolved("間", "ま", 3L)
     private val hiku = resolved("弾く", "ひく", 1419370L)
     private val hajiku = resolved("弾く", "はじく", 1419360L)
 
@@ -67,5 +72,47 @@ class LensSecondariesTest {
             listOf(importedA, importedB),
             distinct(listOf(importedA, importedB, importedA), primaryIds = emptySet()),
         )
+    }
+
+    private fun key(kind: SecondaryKind, form: String, needsMt: Boolean = false) =
+        SecondaryKey(kind, TokenSpan(form, form), DictionaryResponse(emptyList()), needsMt)
+
+    @Test
+    fun `assemble places each section by its key's kind and captions only the alternatives`() {
+        val keys = listOf(
+            key(SecondaryKind.MEMBER, "気"), key(SecondaryKind.ALTERNATIVE, "弾く"),
+            key(SecondaryKind.MEMBER, "間"), key(SecondaryKind.ALTERNATIVE, "弾く"),
+        )
+        val at = SourceWordLookup.assemble(
+            word, keys, listOf(member, hiku, ma, hajiku), caption = "Also matches", pending = emptyList(),
+        )
+        assertEquals(word, at.word)
+        assertNull(at.phrase)
+        assertEquals(listOf(member, ma), at.members)
+        assertEquals(
+            listOf(hiku.copy(caption = "Also matches"), hajiku.copy(caption = "Also matches")),
+            at.alternatives,
+        )
+    }
+
+    @Test
+    fun `assemble makes a phrase key's section the phrase, uncaptioned`() {
+        val at = SourceWordLookup.assemble(
+            word, listOf(key(SecondaryKind.PHRASE, "一番")), listOf(phrase),
+            caption = "Also matches", pending = emptyList(),
+        )
+        assertEquals(phrase, at.phrase)
+        assertEquals(listOf(phrase), at.secondaries())
+    }
+
+    @Test
+    fun `assemble carries the pending keys unresolved`() {
+        val pending = listOf(key(SecondaryKind.ALTERNATIVE, "弾く", needsMt = true))
+        val at = SourceWordLookup.assemble(
+            word, listOf(key(SecondaryKind.MEMBER, "気")), listOf(member),
+            caption = "Also matches", pending = pending,
+        )
+        assertEquals(pending, at.pending)
+        assertEquals(listOf(member), at.secondaries())
     }
 }
