@@ -80,6 +80,8 @@ class TranslationResultContentTest {
 
         val rendered = mutableListOf<ResultState>()
         val tappedWords = mutableListOf<Triple<String, String?, String?>>()
+        /** Each tap's detail key (lookupForm, lookupReading). */
+        val tappedKeys = mutableListOf<Pair<String, String?>>()
         var clears = 0
         var completions = 0
         var ankiTaps = 0
@@ -89,8 +91,15 @@ class TranslationResultContentTest {
         var edit = false
 
         override fun onRender(state: ResultState) { rendered += state }
-        override fun onWordTapped(word: String, reading: String?, surface: String?) {
+        override fun onWordTapped(
+            word: String,
+            reading: String?,
+            surface: String?,
+            lookupForm: String,
+            lookupReading: String?,
+        ) {
             tappedWords += Triple(word, reading, surface)
+            tappedKeys += lookupForm to lookupReading
         }
         override fun onClear() { clears++ }
         override fun completeDeferredTranslation() { completions++ }
@@ -228,6 +237,7 @@ class TranslationResultContentTest {
                     RowState(
                         displayWord = "食べる", reading = "たべる", meaning = "to eat", senses = emptyList(),
                         freqScore = 3, isCommon = true, surface = "食べた",
+                        lookupForm = "たべる", lookupReading = null,
                     ),
                 ),
                 tokenSpans = emptyList(), lookupToReading = emptyMap(),
@@ -242,6 +252,10 @@ class TranslationResultContentTest {
         assertEquals(
             "the row's occurrence text rides with the word, for the detail header",
             listOf(Triple("食べる", "たべる", "食べた")), host.tappedWords,
+        )
+        assertEquals(
+            "the row's own key rides with the display, for the detail page's lookup",
+            listOf("たべる" to null), host.tappedKeys,
         )
         content.renderWordLookups(WordLookupsState.Loading)
         assertTrue(content.wordRows.isEmpty)

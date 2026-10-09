@@ -172,6 +172,8 @@ class DictionaryLookupActivity : SettingsSubPageActivity() {
             sentenceOriginal = sentenceOriginal,
             sentenceTranslation = null,
             sentenceWordResults = state.rows.toLegacyMap(),
+            lookupForm = rowState.lookupForm,
+            lookupReading = rowState.lookupReading,
         ).show(supportFragmentManager, WordDetailBottomSheet.TAG)
     }
 

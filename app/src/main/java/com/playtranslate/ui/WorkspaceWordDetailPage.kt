@@ -43,6 +43,14 @@ class WorkspaceWordDetailPage(
      *  ([WordDetailBinder.Args.surface]); null when the opener has only the
      *  lemma. */
     private val surface: String? = null,
+    /** The key the page resolves its entry with
+     *  ([WordDetailBinder.Args.lookupForm]); [word] when the opener has no
+     *  key of its own. */
+    private val lookupForm: String = word,
+    /** The reading that narrowed [lookupForm]'s lookup
+     *  ([WordDetailBinder.Args.lookupReading]); [reading] when the opener
+     *  has no key of its own. */
+    private val lookupReading: String? = reading,
     private val screenshotPath: String? = null,
     /** Game-audio ring anchor for the Anki flow (the capture moment); null
      *  when the launching surface has no capture (drag flow). */
@@ -87,6 +95,8 @@ class WorkspaceWordDetailPage(
                 surface = surface,
                 screenshotPath = screenshotPath,
                 embedded = true,
+                lookupForm = lookupForm,
+                lookupReading = lookupReading,
             ),
         )
         // Collapse-into-the-header: the word appears in the workspace header
@@ -153,11 +163,17 @@ class WorkspaceWordDetailPage(
         override fun sentenceContext(): SentenceContext? =
             this@WorkspaceWordDetailPage.sentenceContext.invoke()
 
-        override fun openWordDetail(word: String, reading: String?, surface: String?) {
+        override fun openWordDetail(
+            word: String,
+            reading: String?,
+            surface: String?,
+            lookupForm: String,
+            lookupReading: String?,
+        ) {
             // Cross-reference drill-down as a real back stack — the nested
             // detail carries no sentence/screenshot, mirroring the
             // fragment host's bare nested sheet.
-            host.push(WorkspaceWordDetailPage(word, reading, surface))
+            host.push(WorkspaceWordDetailPage(word, reading, surface, lookupForm, lookupReading))
         }
 
         override fun openAnkiReview(args: WordDetailBinder.WordAnkiArgs) {

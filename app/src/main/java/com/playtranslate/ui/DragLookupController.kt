@@ -91,6 +91,11 @@ class DragLookupController(
     /** The text [lastWord] was dragged on (the matched token's surface),
      *  handed to the detail page for its conjugation line. */
     private var lastSurface: String? = null
+    /** The key [lastWord] was resolved under ([PopupData.lookupForm]), which
+     *  the detail page resolves with. */
+    private var lastLookupForm: String? = null
+    /** The reading that narrowed [lastLookupForm]'s lookup, null when none. */
+    private var lastLookupReading: String? = null
     /** Current dictionary entry shown in the popup. */
     private var currentEntry: DictionaryEntry? = null
     /** Every entry the release lookup resolved (POS-split packs return
@@ -157,6 +162,8 @@ class DragLookupController(
                     p.word, p.reading, p.surface, p.entry, currentSentence, screenshotPath,
                     audioAnchorMs = dragCapturedAtMs,
                     entries = p.entries,
+                    lookupForm = p.lookupForm,
+                    lookupReading = p.lookupReading,
                 )
             }
         },
@@ -165,6 +172,8 @@ class DragLookupController(
             lastWord, lastReading, lastSurface, currentEntry, currentSentence, screenshotPath,
             audioAnchorMs = dragCapturedAtMs,
             entries = currentEntries,
+            lookupForm = lastLookupForm,
+            lookupReading = lastLookupReading,
         )
     }
 
@@ -270,6 +279,8 @@ class DragLookupController(
         magnifier.onDismiss = {
             lastWord = null
             lastSurface = null
+            lastLookupForm = null
+            lastLookupReading = null
             currentEntry = null
             currentEntries = emptyList()
             lastReading = null
@@ -990,6 +1001,8 @@ class DragLookupController(
                 // Release-only side effects (only when lookup succeeded).
                 lastWord = popupData.word
                 lastSurface = popupData.surface
+                lastLookupForm = popupData.lookupForm
+                lastLookupReading = popupData.lookupReading
                 currentEntry = popupData.entry
                 currentEntries = popupData.entries
                 lastReading = popupData.reading
@@ -1330,6 +1343,8 @@ class DragLookupController(
                 word = display.written,
                 reading = display.reading,
                 surface = matchedSurface,
+                lookupForm = lookupForm,
+                lookupReading = readingHint,
                 inflectedForms = inflectedForms,
                 senses = buildSenseDisplays(defResult, entries, prefs.targetLang),
                 freqScore = entry.freqScore,
@@ -1359,6 +1374,8 @@ class DragLookupController(
                 word = lookupForm,
                 reading = reading,
                 surface = matchedSurface,
+                lookupForm = lookupForm,
+                lookupReading = readingHint,
                 inflectedForms = inflectedForms,
                 senses = emptyList(),
                 freqScore = 0,
@@ -1504,6 +1521,8 @@ class DragLookupController(
             // A phrase or member is a lemma (no [foundAs]): no surface, no
             // conjugation line. An alternative keeps the dragged surface.
             surface = foundAs,
+            lookupForm = lookupForm,
+            lookupReading = readingHint,
             inflectedForms = foundAs?.let {
                 listOfNotNull(InflectionChain.compose(it, result.response.deinflection, foundTags))
             }.orEmpty(),
@@ -1697,6 +1716,13 @@ class DragLookupController(
         /** The matched token's text under the finger, for the word and its
          *  alternatives; null for a phrase or member, which is a lemma. */
         val surface: String?,
+        /** The key this section was resolved under, which a drill-in opens
+         *  the detail page with ([WordDetailBinder.Args.lookupForm]); [word]
+         *  is the display and can differ (a usually-kana entry resolved
+         *  under its kanji form and seen in kana displays as the kana). */
+        val lookupForm: String,
+        /** The reading that narrowed [lookupForm]'s lookup, null when none. */
+        val lookupReading: String?,
         /** The lens's conjugation line ([WordDefinitionData.inflectedForms]):
          *  the dragged form's from the word's or an alternative's own
          *  dictionary form, empty for a phrase or member. */

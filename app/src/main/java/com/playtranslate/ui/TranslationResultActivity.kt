@@ -236,7 +236,9 @@ class TranslationResultActivity :
         screenshotPath: String?,
         sentenceOriginal: String?,
         sentenceTranslation: String?,
-        wordResults: Map<String, Triple<String, String, Int>>
+        wordResults: Map<String, Triple<String, String, Int>>,
+        lookupForm: String,
+        lookupReading: String?,
     ) {
         WordDetailBottomSheet.newInstance(
             word,
@@ -245,7 +247,9 @@ class TranslationResultActivity :
             screenshotPath = screenshotPath,
             sentenceOriginal = sentenceOriginal,
             sentenceTranslation = sentenceTranslation,
-            sentenceWordResults = wordResults
+            sentenceWordResults = wordResults,
+            lookupForm = lookupForm,
+            lookupReading = lookupReading,
         ).show(supportFragmentManager, WordDetailBottomSheet.TAG)
     }
 
@@ -445,6 +449,10 @@ class TranslationResultActivity :
         val word = intent.getStringExtra(EXTRA_DRAG_WORD) ?: return
         val reading = intent.getStringExtra(EXTRA_DRAG_READING)
         val surface = intent.getStringExtra(EXTRA_DRAG_SURFACE)
+        // The launcher writes the key with the word, so the fallback only
+        // satisfies the type.
+        val lookupForm = intent.getStringExtra(EXTRA_DRAG_LOOKUP_FORM) ?: word
+        val lookupReading = intent.getStringExtra(EXTRA_DRAG_LOOKUP_READING)
         val screenshotPath = intent.getStringExtra(EXTRA_SCREENSHOT_PATH)
         // Capture launch-time fallbacks for [currentSentenceContext]. The
         // VM is initially Idle and populates only as the fragment's
@@ -515,6 +523,8 @@ class TranslationResultActivity :
                         surface = surface,
                         screenshotPath = screenshotPath,
                         embedded = true,
+                        lookupForm = lookupForm,
+                        lookupReading = lookupReading,
                     ),
                     TAG_EMBEDDED_WORD_DETAIL,
                 )
@@ -766,6 +776,13 @@ class TranslationResultActivity :
         /** The text the lens's word was found as, for the embedded word
          *  page's conjugation line; absent when the lens had only a lemma. */
         const val EXTRA_DRAG_SURFACE = "extra_drag_surface"
+        /** The key the embedded word page resolves its entry with
+         *  ([WordDetailBinder.Args.lookupForm]); written with
+         *  [EXTRA_DRAG_WORD], which is its display. */
+        const val EXTRA_DRAG_LOOKUP_FORM = "extra_drag_lookup_form"
+        /** The reading that narrowed [EXTRA_DRAG_LOOKUP_FORM]'s lookup
+         *  ([WordDetailBinder.Args.lookupReading]); absent when none. */
+        const val EXTRA_DRAG_LOOKUP_READING = "extra_drag_lookup_reading"
         const val EXTRA_DRAG_SENTENCE_TRANSLATION = "extra_drag_sentence_translation"
         /** Display name of the backend that produced [EXTRA_DRAG_SENTENCE_TRANSLATION]
          *  in the lens. Surfaces as "Translated by …" below the cached translation

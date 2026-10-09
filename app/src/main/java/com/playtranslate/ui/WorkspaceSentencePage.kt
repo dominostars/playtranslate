@@ -114,13 +114,21 @@ class WorkspaceSentencePage(
      *  lens's snapshot as the fallback. */
     private fun liveSentenceContext(): SentenceContext = vm.sentenceContext(args.sentenceContext)
 
-    private fun pushWordPage(word: String, reading: String?, surface: String?) {
+    private fun pushWordPage(
+        word: String,
+        reading: String?,
+        surface: String?,
+        lookupForm: String,
+        lookupReading: String?,
+    ) {
         val host = hostRef ?: return
         host.push(
             WorkspaceWordDetailPage(
                 word = word,
                 reading = reading,
                 surface = surface,
+                lookupForm = lookupForm,
+                lookupReading = lookupReading,
                 screenshotPath = args.screenshotPath,
                 audioAnchorMs = args.audioAnchorMs,
                 sentenceContext = { liveSentenceContext() },
@@ -160,6 +168,8 @@ class WorkspaceSentencePage(
                 u.word, u.reading, u.surface, u.entry, args.sentence, args.screenshotPath,
                 audioAnchorMs = args.audioAnchorMs,
                 entries = u.entries,
+                lookupForm = u.lookupForm,
+                lookupReading = u.lookupReading,
             )
             SourceLensActions(
                 ctx.applicationContext, host.displayId, host.overlayHost, lens,
@@ -170,6 +180,8 @@ class WorkspaceSentencePage(
                         word = a.word,
                         reading = a.reading,
                         surface = a.surface,
+                        lookupForm = a.lookupForm,
+                        lookupReading = a.lookupReading,
                         screenshotPath = a.screenshotPath,
                         audioAnchorMs = a.audioAnchorMs,
                         sentenceContext = { liveSentenceContext() },
@@ -181,8 +193,13 @@ class WorkspaceSentencePage(
             ) { context(unit) }
         }
 
-        override fun onWordTapped(word: String, reading: String?, surface: String?) =
-            pushWordPage(word, reading, surface)
+        override fun onWordTapped(
+            word: String,
+            reading: String?,
+            surface: String?,
+            lookupForm: String,
+            lookupReading: String?,
+        ) = pushWordPage(word, reading, surface, lookupForm, lookupReading)
 
         override fun onChangeLanguage(isSource: Boolean) {
             host.push(if (isSource) SourceListPage() else TargetListPage())

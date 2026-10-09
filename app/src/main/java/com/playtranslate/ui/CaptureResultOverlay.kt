@@ -2313,6 +2313,8 @@ class CaptureResultOverlay(
                         lastResult?.screenshotPath,
                         audioAnchorMs = lastResult?.createdAtMs?.takeIf { it > 0 },
                         entries = s.entries,
+                        lookupForm = s.lookupForm,
+                        lookupReading = s.lookupReading,
                     )
                 }
             },
@@ -2326,6 +2328,8 @@ class CaptureResultOverlay(
                 lastResult?.screenshotPath,
                 audioAnchorMs = lastResult?.createdAtMs?.takeIf { it > 0 },
                 entries = resolved.entries,
+                lookupForm = resolved.lookupForm,
+                lookupReading = resolved.lookupReading,
             )
         }
     }

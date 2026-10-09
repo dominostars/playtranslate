@@ -21,6 +21,8 @@ class LensSecondariesTest {
         word = word,
         reading = reading,
         surface = null,
+        lookupForm = word,
+        lookupReading = reading,
         label = null,
         data = WordDefinitionData(word, reading, emptyList(), freqScore = 0, isCommon = false),
         entry = DictionaryEntry(
