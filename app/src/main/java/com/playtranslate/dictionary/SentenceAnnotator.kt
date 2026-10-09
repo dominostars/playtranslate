@@ -23,9 +23,10 @@ import com.playtranslate.language.SourceLangId
  *
  *  1. phrase spans claim their token ranges first (emission order makes
  *     phrase–phrase overlap impossible, and a phrase can only ever overlap a
- *     fallback's GLUE, never its stem);
- *  2. fallback spans claim their stem plus glue up to the first claimed
- *     token (言われるかも trims to 言われる — the phrase keeps かも);
+ *     fallback's folded tail, never its stem);
+ *  2. fallback spans claim their stem plus folded tail up to the first
+ *     claimed token (言われるかも trims to 言われる: the phrase keeps かも),
+ *     and a trimmed span's tags are recomputed from the tokens it kept;
  *  3. every unclaimed token becomes its own span (per-token furigana, the
  *     legacy display behavior);
  *  4. text the tokens don't cover (whitespace, normalization drops) becomes
@@ -93,7 +94,13 @@ internal object SentenceAnnotator {
             }
             for ((idx, s) in reglob.withIndex()) {
                 if (s.isPhrase) continue
-                if (owner[s.tokenStart] != -1) continue // stem claimed: impossible today, fail safe
+                // A stem is never claimed here: spans come out in start order
+                // and the matcher moves past a phrase before emitting anything
+                // else, so no phrase covers a fallback's stem, and reglobSpans
+                // emits no fallback at a token an earlier fallback folded (its
+                // folded-auxiliary guard). Kept so a broken invariant drops the
+                // span instead of double-tiling.
+                if (owner[s.tokenStart] != -1) continue
                 owner[s.tokenStart] = idx
                 var claimed = 1
                 for (t in s.tokenStart + 1 until s.tokenStart + s.tokenCount) {
@@ -183,7 +190,15 @@ internal object SentenceAnnotator {
             reading = reading,
             furigana = parts,
             tokenReading = tokenReading,
-            inflections = src?.inflections.orEmpty(),
+            inflections = when {
+                src == null -> emptyList()
+                // A phrase took this fallback's tail: the tags describe only
+                // the tokens the span still shows (言うじゃないの trimmed to 言う
+                // by じゃない reads nothing, not negative).
+                members.size < src.tokenCount ->
+                    JapaneseInflectionAnalyzer.analyze(members.first(), members.drop(1), src.lookupForm)
+                else -> src.inflections
+            },
         )
     }
 
