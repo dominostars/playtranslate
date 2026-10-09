@@ -330,6 +330,8 @@
     <string name="words_loading">Đang tra từ…</string>
 
     <string name="lens_loading">Đang tra…</string>
+    <string name="lens_also_matches">Cũng khớp với</string>
+    <string name="section_other_matches">Kết quả khác</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          REGION PICKER
@@ -2176,6 +2178,7 @@
     <string name="inflection_passive">Bị động</string>
     <string name="inflection_potential">Khả năng</string>
     <string name="inflection_potential_or_passive">Khả năng/Bị động</string>
+    <string name="inflection_continuative">Thể liên dụng</string>
     <string name="inflection_negative">Phủ định</string>
     <string name="inflection_volitional">Ý chí</string>
     <string name="inflection_imperative">Mệnh lệnh</string>
