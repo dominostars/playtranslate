@@ -194,6 +194,7 @@ Install [AnkiDroid](https://play.google.com/store/apps/details?id=com.ichi2.anki
 
 - [ML Kit](https://developers.google.com/ml-kit): on-device OCR and translation
 - [Sudachi](https://github.com/WorksApplications/Sudachi): Japanese morphological analysis (Apache 2.0)
+- [Yomitan](https://github.com/yomidevs/yomitan): Japanese deinflection rules and their test suite, ported from the browser extension (GPL-3.0)
 - [HanLP](https://github.com/hankcs/HanLP): Chinese word segmentation
 - [KOMORAN](https://github.com/shineware/KOMORAN): Korean morphological analysis
 - [Snowball stemmers](https://snowballstem.org/) via [Apache Lucene](https://lucene.apache.org/): Latin/European stemming
