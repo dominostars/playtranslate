@@ -2085,13 +2085,10 @@
     <string name="misc_dialectal">ภาษาถิ่น</string>
 
     <string name="inflection_causative">รูปให้กระทำ</string>
-    <string name="inflection_passive">ถูกกระทำ/ทำได้</string>
+    <string name="inflection_passive">ถูกกระทำ</string>
+    <string name="inflection_potential">ทำได้</string>
+    <string name="inflection_potential_or_passive">ทำได้/ถูกกระทำ</string>
     <string name="inflection_negative">ปฏิเสธ</string>
-    <string name="inflection_past">อดีต</string>
-    <string name="inflection_polite">สุภาพ</string>
-    <string name="inflection_te_form">รูป て</string>
-    <string name="inflection_desiderative">อยากทำ</string>
-    <string name="inflection_conditional">เงื่อนไข</string>
     <string name="inflection_volitional">ความตั้งใจ</string>
     <string name="inflection_imperative">คำสั่ง</string>
     <string name="inflection_more">อีก <xliff:g id="count" example="2">%1$d</xliff:g></string>

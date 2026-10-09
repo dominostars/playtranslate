@@ -21,13 +21,13 @@ class WordRowResolverTest {
     fun `same lemma in two forms keeps both, in order`() {
         val forms = inflectedFormsByLemma(
             listOf(
-                span("食べたい", "食べる", InflectionTag.DESIDERATIVE),
+                span("食べたい", "食べる", InflectionTag.TAI),
                 span("食べられない", "食べる", InflectionTag.PASSIVE, InflectionTag.NEGATIVE),
             ),
         )
         assertEquals(
             listOf(
-                InflectedForm("食べたい", listOf(InflectionTag.DESIDERATIVE)),
+                InflectedForm("食べたい", listOf(InflectionTag.TAI)),
                 InflectedForm("食べられない", listOf(InflectionTag.PASSIVE, InflectionTag.NEGATIVE)),
             ),
             forms["食べる"],
@@ -41,21 +41,21 @@ class WordRowResolverTest {
         val forms = inflectedFormsByLemma(
             listOf(
                 span("食べる", "食べる"),
-                span("食べた", "食べる", InflectionTag.PAST),
+                span("食べた", "食べる", InflectionTag.TA),
             ),
         )
-        assertEquals(listOf(InflectedForm("食べた", listOf(InflectionTag.PAST))), forms["食べる"])
+        assertEquals(listOf(InflectedForm("食べた", listOf(InflectionTag.TA))), forms["食べる"])
     }
 
     @Test
     fun `identical repeated forms collapse to one`() {
         val forms = inflectedFormsByLemma(
             listOf(
-                span("食べた", "食べる", InflectionTag.PAST),
-                span("食べた", "食べる", InflectionTag.PAST),
+                span("食べた", "食べる", InflectionTag.TA),
+                span("食べた", "食べる", InflectionTag.TA),
             ),
         )
-        assertEquals(listOf(InflectedForm("食べた", listOf(InflectionTag.PAST))), forms["食べる"])
+        assertEquals(listOf(InflectedForm("食べた", listOf(InflectionTag.TA))), forms["食べる"])
     }
 
     @Test
@@ -66,7 +66,7 @@ class WordRowResolverTest {
 
     @Test
     fun `capInflectionForms limits lines and reports the overflow count`() {
-        val forms = (1..5).map { InflectedForm("形$it", listOf(InflectionTag.PAST)) }
+        val forms = (1..5).map { InflectedForm("形$it", listOf(InflectionTag.TA)) }
         val (shown, overflow) = capInflectionForms(forms, max = 3)
         assertEquals(listOf("形1", "形2", "形3"), shown.map { it.surface })
         assertEquals(2, overflow)
@@ -74,7 +74,7 @@ class WordRowResolverTest {
 
     @Test
     fun `capInflectionForms reports no overflow at or under the cap`() {
-        val forms = listOf(InflectedForm("食べた", listOf(InflectionTag.PAST)))
+        val forms = listOf(InflectedForm("食べた", listOf(InflectionTag.TA)))
         val (shown, overflow) = capInflectionForms(forms, max = 3)
         assertEquals(1, shown.size)
         assertEquals(0, overflow)

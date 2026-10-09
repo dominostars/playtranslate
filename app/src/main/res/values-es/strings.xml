@@ -2186,13 +2186,10 @@
     <string name="misc_dialectal">Dialectal</string>
 
     <string name="inflection_causative">Causativo</string>
-    <string name="inflection_passive">Pasivo/Potencial</string>
+    <string name="inflection_passive">Pasivo</string>
+    <string name="inflection_potential">Potencial</string>
+    <string name="inflection_potential_or_passive">Potencial/Pasivo</string>
     <string name="inflection_negative">Negativo</string>
-    <string name="inflection_past">Pasado</string>
-    <string name="inflection_polite">Cortés</string>
-    <string name="inflection_te_form">Forma -te</string>
-    <string name="inflection_desiderative">Desiderativo</string>
-    <string name="inflection_conditional">Condicional</string>
     <string name="inflection_volitional">Volitivo</string>
     <string name="inflection_imperative">Imperativo</string>
     <string name="inflection_more">+<xliff:g id="count" example="2">%1$d</xliff:g> más</string>
