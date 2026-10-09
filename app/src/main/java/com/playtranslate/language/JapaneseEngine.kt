@@ -140,6 +140,23 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
      *  Yomitan imports. */
     private val annotationCache = AnnotationCache()
 
+    /** Per-word resolution memo for FULL-depth annotations. Resolving is the
+     *  one costly part of annotating (2–3 indexed queries per unique word,
+     *  ~10 ms of a ~20 ms cold line on the Thor; tokenizing a whole dialogue
+     *  box is well under a millisecond), and the live overlay annotates a
+     *  group's full text on every typewriter step, so without this each step
+     *  would re-query every completed line's words. With it only the
+     *  frontier's new words query, whatever the group's height. A pure
+     *  function of the key given the two stores: generation-gated like the
+     *  annotation cache, cleared with it on [close]. Only resolutions that
+     *  found an entry are memoized: a lookup that fails to open the pack's
+     *  database returns the same null as a genuine miss, and a memoized
+     *  null would keep a frequent word unresolved until the engine closes
+     *  (Codex, 2026-10-08). A miss re-queries each time, a few indexed
+     *  queries per out-of-vocabulary word. */
+    private val resolutionCache =
+        GenerationLru<SentenceAnnotator.ResolutionKey, SentenceAnnotator.WordResolution>(1024)
+
     override suspend fun annotate(text: String, depth: AnnotationDepth): SentenceAnnotation {
         if (depth == AnnotationDepth.FULL) {
             annotationCache.get(text)?.let { return it }
@@ -162,7 +179,12 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
                 } else null
             val resolutions =
                 if (reglob == null || depth != AnnotationDepth.FULL) emptyMap()
-                else SentenceAnnotator.resolutionKeys(reglob).associateWith { resolveWord(it) }
+                else SentenceAnnotator.resolutionKeys(reglob).associateWith { key ->
+                    resolutionCache.get(key)
+                        ?: resolveWord(key).also {
+                            if (it.entryRef != null) resolutionCache.put(key, it, generation)
+                        }
+                }
             val annotation = SentenceAnnotator.annotate(
                 text, profile.id, tokens, reglob, resolutions,
                 importGeneration = generation,
@@ -328,6 +350,7 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
 
     override fun close() {
         annotationCache.clear()
+        resolutionCache.clear()
         // Release JA's process-scoped native handles so pack uninstall doesn't
         // leak them. The engine cache only evicts (SourceLanguageEngines.
         // releaseForPack, via LanguagePackStore.uninstall) when the pack is

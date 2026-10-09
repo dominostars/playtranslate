@@ -304,11 +304,9 @@ class CameraSession(
         pendingRefocusKick = true
     }
 
+    /** Measures furigana the way the overlay draws it ([com.playtranslate.ui.FuriganaMetrics]). */
     private val furiganaPaint by lazy {
-        TextPaint().apply {
-            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
-            textSize = 100f // arbitrary — only relative proportions matter
-        }
+        com.playtranslate.ui.FuriganaMetrics.measuringPaint(context.resources.displayMetrics.density)
     }
 
     /** OCR pre-warm: Meiki's engine is constructed lazily on first use (three

@@ -193,6 +193,9 @@ class OcrManager private constructor() {
          *  Carried alongside — not re-derivable from bounds+angle (45° singular). */
         val orientedWidth: Float = 0f,
         val orientedHeight: Float = 0f,
+        /** Offset of [text] in the group's text ([OcrGroup.text]); see
+         *  [com.playtranslate.ocr.core.RecognizedLine.textStart]. */
+        val textStart: Int = 0,
     )
 
     /**
@@ -381,6 +384,7 @@ class OcrManager private constructor() {
                         symbols = line.chars.map { SymbolBox(it.text, scaleRect(it.box.bounds, scaleFactor), it.charOffset) },
                         orientation = line.orientation,
                         confidence = line.confidence,
+                        textStart = line.textStart,
                         angleDeg = line.box.angleDeg,
                         orientedWidth = if (slanted) scaleDim(line.box.orientedWidth, scaleFactor) else 0f,
                         orientedHeight = if (slanted) scaleDim(line.box.orientedHeight, scaleFactor) else 0f,
