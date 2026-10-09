@@ -33,6 +33,7 @@ import com.playtranslate.audio.PronunciationPlayer
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.InflectedForm
+import com.playtranslate.language.InflectionTag
 import com.playtranslate.language.LanguagePackCatalogLoader
 import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.SourceLangId
@@ -57,6 +58,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -211,9 +213,10 @@ class WordDetailBinder(
      *  predecessor the same way). */
     private var styledImportedView: YomitanDefinitionsView? = null
 
-    /** Member cells of the Words section that own a styled renderer of their
-     *  own ([WordResultCell.releaseStyled]) — released with the page, and at
-     *  the start of every rebuild of that section. */
+    /** Cells of the Words and Other matches sections that own a styled
+     *  renderer of their own ([WordResultCell.releaseStyled]): released
+     *  with the page, and at the start of every rebuild of those sections
+     *  (the Words section builds first). */
     private val memberStyledCells = mutableListOf<WordResultCell>()
 
     /** Host teardown: cancel audio, destroy the WebView. Idempotent; the
@@ -232,7 +235,7 @@ class WordDetailBinder(
         releaseMemberStyledCells()
     }
 
-    /** Drop the Words section's per-cell styled renderers. */
+    /** Drop the word-cell sections' per-cell styled renderers. */
     private fun releaseMemberStyledCells() {
         memberStyledCells.forEach { it.releaseStyled() }
         memberStyledCells.clear()
@@ -367,12 +370,14 @@ class WordDetailBinder(
             val defResult = withContext(Dispatchers.IO) { resolver.lookup(word, readingHint) }
             val response = defResult?.response
             // The header's conjugation line: the lookup's own deinflection
-            // chain, then the chain the tokenizer reads off the surface the
-            // opener found the word as. A surface equal to the word adds no
-            // chain of its own.
+            // chain, then the chain from the word to the surface the opener
+            // found it as ([detailSurfaceTags]). A surface equal to the word
+            // adds no chain of its own.
             val surface = args.surface
             val tokenTags = surface?.takeIf { it != word }?.let { s ->
-                detailSurfaceSpan(withContext(Dispatchers.IO) { engine.tokenize(s) }, word)?.inflections
+                detailSurfaceTags(withContext(Dispatchers.IO) { engine.tokenize(s) }, s, word) { span ->
+                    engine.alternativesOf(span, primaryIds = emptySet())
+                }
             }.orEmpty()
             val inflectedForm = InflectionChain.compose(
                 surface ?: word, response?.deinflection.orEmpty(), tokenTags,
@@ -405,6 +410,9 @@ class WordDetailBinder(
             buildContent(
                 content, entries, engine, sourceLangId, defResult, initialTranslations,
                 translationRegistry, targetLangCode, enToTargetWrapper, word, inflectedForm,
+                // The word as found, for its other matches: the same chain
+                // the header draws from it.
+                wordSpan = TokenSpan(surface ?: word, word, readingHint, tokenTags),
             )
             scrollView?.scrollTo(0, 0)
 
@@ -739,6 +747,7 @@ class WordDetailBinder(
         enToTargetTranslator: WordTranslator?,
         queriedWord: String,
         inflectedForm: InflectedForm?,
+        wordSpan: TokenSpan,
     ) {
         // [primary] is the first entry. Header / Anki / character-breakdown
         // sections are word-level, so they pull from primary even when the
@@ -1018,6 +1027,13 @@ class WordDetailBinder(
         // — NOT engine.tokenize, whose phrase handling could re-fuse the
         // expression into one token.
         addMemberWordsSection(content, primary, engine, sourceLangId, targetLangCode, queriedWord)
+
+        // ── Other matches ────────────────────────────────────────────────
+        // The other dictionary entries the word could be, as it was found
+        // ([SourceLanguageEngine.alternativesOf]): the lens offers them as
+        // "Also matches" sections, and this page lists them as cells that
+        // drill into their own pages, where the Anki button is.
+        addAlternativesSection(content, entries, wordSpan, engine, sourceLangId, targetLangCode)
     }
 
     /** Appends the "Words" section for a multi-word headword: each member
@@ -1060,7 +1076,49 @@ class WordDetailBinder(
             members,
         ).rows
         if (!ui.isAlive || rows.isEmpty()) return
-        // Styled payloads for the members' imported groups, prefetched here
+        addWordCellsSection(content, ctx.getString(R.string.section_words), rows, sourceLangId)
+    }
+
+    /** Appends the "Other matches" section: the other dictionary entries the
+     *  page's word could be as found in [wordSpan]
+     *  ([com.playtranslate.language.SourceLanguageEngine.alternativesOf],
+     *  besides the page's own [entries]), each resolved through its own
+     *  [resolveWordRows] call (the resolver de-duplicates tokens by lookup
+     *  form, and two homographs share one) and rendered by
+     *  [addWordCellsSection] with its own conjugation line. No-op when no
+     *  alternative resolves. */
+    private suspend fun addAlternativesSection(
+        content: LinearLayout,
+        entries: List<DictionaryEntry>,
+        wordSpan: TokenSpan,
+        engine: com.playtranslate.language.SourceLanguageEngine,
+        sourceLangId: SourceLangId,
+        targetLangCode: String,
+    ) {
+        val primaryIds = entries.mapNotNullTo(mutableSetOf()) { it.packId }
+        val alternatives = engine.alternativesOf(wordSpan, primaryIds)
+        if (alternatives.isEmpty()) return
+        val appCtx = ctx.applicationContext
+        val lookupContext = WordLookupContext(engine, targetLangCode, Prefs(appCtx).targetChineseVariant)
+        val rows = coroutineScope {
+            alternatives.map { async { resolveWordRows(appCtx, lookupContext, listOf(it)).rows } }.awaitAll()
+        }.flatten()
+        if (!ui.isAlive || rows.isEmpty()) return
+        addWordCellsSection(content, ctx.getString(R.string.section_other_matches), rows, sourceLangId)
+    }
+
+    /** One group of word cells under [title] (the Words and Other matches
+     *  sections): a [WordResultCell] per row with its speak action and Anki
+     *  button, whose tap opens a nested detail via [Ui.openWordDetail] with
+     *  the row's surface. */
+    private suspend fun addWordCellsSection(
+        content: LinearLayout,
+        title: String,
+        rows: List<RowState>,
+        sourceLangId: SourceLangId,
+    ) {
+        val appCtx = ctx.applicationContext
+        // Styled payloads for the rows' imported groups, prefetched here
         // like the page's own imported block — the cells own no coroutines.
         // Null per row degrades that row to the flat tier, nothing else.
         val styledByRow = rows.map {
@@ -1068,7 +1126,7 @@ class WordDetailBinder(
         }
         if (!ui.isAlive) return
 
-        addGroupHeader(content, ctx.getString(R.string.section_words))
+        addGroupHeader(content, title)
         val card = addGroupCard(content)
         rows.forEachIndexed { index, row ->
             if (index > 0) addInsetDivider(card, indentPx = dpRes(R.dimen.pt_row_h_padding))
@@ -1092,8 +1150,8 @@ class WordDetailBinder(
                     ui.openWordDetail(row.displayWord, row.reading.ifEmpty { null }, row.surface)
                 },
                 onSpeak = { speakHeadword(row.displayWord, sourceLangId) },
-                // Member words of an entry never stub or hide; the Anki
-                // button stays, as on the dictionary results.
+                // These cells never stub or hide; the Anki button stays, as
+                // on the dictionary results.
                 trailing = WordResultCell.TrailingAction.Anki {
                     if (!AnkiManager(ctx).isAnkiDroidInstalled()) {
                         ui.showAnkiNotInstalled()
@@ -1118,7 +1176,7 @@ class WordDetailBinder(
                 },
                 // This section is a static handful of cells under a block
                 // that renders styled; the flat tier's unspaced tag runs read
-                // as a bug next to it. One renderer per cell, the members
+                // as a bug next to it. One renderer per cell, the cells
                 // being two or three; the recycling search list stays flat.
                 styledRenderers = WordResultCell.StyledRendererSource.Own,
             )
@@ -2285,3 +2343,22 @@ class WordDetailBinder(
  *  empty tokenization. */
 internal fun detailSurfaceSpan(spans: List<TokenSpan>, word: String): TokenSpan? =
     spans.firstOrNull { it.lookupForm == word } ?: spans.firstOrNull()
+
+/** The chain from a detail page's [word] to the [surface] it was found as,
+ *  given the surface's tokenization [spans]. The [detailSurfaceSpan]'s
+ *  inflections when that span's lookup form is [word]; otherwise (the page
+ *  is another entry the surface could be, 弾く for 弾けた, whose span reads
+ *  弾ける) the inflections of the first of [alternativesOf] a span on
+ *  [surface] keyed by [word] whose lookup form is [word], and the span's own
+ *  inflections when there is none. Empty for an empty tokenization. */
+internal suspend fun detailSurfaceTags(
+    spans: List<TokenSpan>,
+    surface: String,
+    word: String,
+    alternativesOf: suspend (TokenSpan) -> List<TokenSpan>,
+): List<InflectionTag> {
+    val span = detailSurfaceSpan(spans, word) ?: return emptyList()
+    if (span.lookupForm == word) return span.inflections
+    return alternativesOf(TokenSpan(surface, word)).firstOrNull { it.lookupForm == word }?.inflections
+        ?: span.inflections
+}

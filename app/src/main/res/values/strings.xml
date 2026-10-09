@@ -856,6 +856,22 @@
          lookup is in flight. -->
     <string name="lens_loading">Looking up…</string>
 
+    <!-- Small muted caption in the magnifying lens, drawn above the
+         headword of an extra section below the tapped word. The section is
+         another dictionary entry the same tapped text could also be (a
+         different word with the same spelling, or another verb that
+         conjugates to the same form), shown so the user can pick the right
+         one. Keep it short: it sits alone on one line above the
+         headword. -->
+    <string name="lens_also_matches">Also matches</string>
+
+    <!-- Group header on the word-detail page above a list of other
+         dictionary entries the looked-up word could also be (a different
+         word with the same spelling, or another verb that conjugates to the
+         same form). Each entry below it is a tappable row that opens its
+         own page. Same style as the "Words" header. -->
+    <string name="section_other_matches">Other matches</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          REGION PICKER — buttons and labels on the OCR-region UI.
          ═══════════════════════════════════════════════════════════════ -->

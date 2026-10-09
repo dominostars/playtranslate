@@ -155,8 +155,7 @@ class WorkspaceSentencePage(
          *  word page, the Anki chip pushes the word editor. */
         override fun wireLensActions(lens: MagnifierLens, resolved: SourceWordLookup.ResolvedAt) {
             val unit = resolved.word
-            val phrase = resolved.phrase
-            val secondaries = phrase?.let { listOf(it) } ?: resolved.members
+            val secondaries = resolved.secondaries()
             fun context(u: SourceWordLookup.Resolved) = LensActionContext(
                 u.word, u.reading, u.surface, u.entry, args.sentence, args.screenshotPath,
                 audioAnchorMs = args.audioAnchorMs,

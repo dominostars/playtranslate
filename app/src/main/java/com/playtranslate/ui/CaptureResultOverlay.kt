@@ -2273,8 +2273,7 @@ class CaptureResultOverlay(
      *  bind guard in [bindResult] keeps that read same-source). */
     private fun wireLensActions(lens: MagnifierLens, resolvedAt: SourceWordLookup.ResolvedAt) {
         val resolved = resolvedAt.word
-        val phrase = resolvedAt.phrase
-        val secondaries = phrase?.let { listOf(it) } ?: resolvedAt.members
+        val secondaries = resolvedAt.secondaries()
         SourceLensActions(
             ctx.applicationContext, displayId, overlayHost, lens,
             // Anki review pushes a full screen → tear the sheet down. Open-detail
@@ -2300,9 +2299,9 @@ class CaptureResultOverlay(
             tagDetailReturn = !wordLensInActivity,
             showAnkiNotInstalled = if (wordLensInActivity) showAnkiNotInstalled else null,
             route = if (wordLensInActivity) WorkspaceRoute.None else WorkspaceRoute.OpenNew(displayId),
-            // Secondary-section drill-in (containing phrase or member
-            // words): same open-sentence route, with the secondary
-            // unit as the word context.
+            // Secondary-section drill-in (containing phrase, member words
+            // or alternative entries): same open-sentence route, with the
+            // secondary unit as the word context.
             currentSecondary = if (secondaries.isEmpty()) null else { i ->
                 secondaries.getOrNull(i)?.let { s ->
                     LensActionContext(
