@@ -55,12 +55,15 @@ sealed interface DefinitionResult {
 /**
  * Centralizes the word-tap definition fallback chain:
  *
- * 1. **Native** — target-language pack definition (JMdict/Wiktionary/CFDICT)
- * 2. **MachineTranslated** — offline-fallback headword translation + translated definitions
- * 3. **EnglishFallback** — English definitions (translated to target when possible)
+ * 1. **Native**: target-language pack definition (JMdict/Wiktionary/CFDICT)
+ * 2. **MachineTranslated**: offline-fallback headword translation + translated definitions
+ * 3. **EnglishFallback**: English definitions (translated to target when possible)
  *
- * All word-tap UI paths use this resolver instead of calling
- * [SourceLanguageEngine.lookup] directly.
+ * All word-tap UI paths resolve definitions through this class: [lookup] runs
+ * [SourceLanguageEngine.lookup] and then the chain, and [resolve] runs the
+ * chain on a [DictionaryResponse] the caller already looked up.
+ * [needsMachineTranslation] tells, before anything is translated, whether
+ * [resolve] would leave a word to the machine-translation tiers.
  */
 class DefinitionResolver(
     private val engine: SourceLanguageEngine,
@@ -80,41 +83,23 @@ class DefinitionResolver(
             Log.d(TAG, "lookup($word, $reading): engine returned null")
             return null
         }
+        return resolve(response, word, reading)
+    }
+
+    /**
+     * Runs the tier chain on a [response] the caller already has from
+     * [SourceLanguageEngine.lookup] of [word] and [reading], so the engine
+     * lookup is not repeated; [lookup] is that engine call followed by this.
+     * [word] joins Tier 1's headword set and is Tier 2's headword when the
+     * response has no entry, and [reading] narrows Tier 1's gloss query.
+     */
+    suspend fun resolve(response: DictionaryResponse, word: String, reading: String?): DefinitionResult {
         Log.d(TAG, "lookup($word, $reading): engine returned ${response.entries.size} entries, targetLang=$targetLang, targetGlossDb=${targetGlossDb != null}, srcToTgt=${sourceToTargetTranslator != null}")
 
         val entry = response.entries.firstOrNull()
 
         // Tier 1: target-pack native definition
-        if (targetGlossDb != null && targetLang != "en") {
-            val sourceLang = engine.profile.id.packId.code
-            val headwords = buildSet {
-                entry?.let { e ->
-                    e.headwords.forEach { hw ->
-                        hw.written?.let { add(it) }
-                    }
-                    add(e.slug)
-                }
-                add(word)
-            }
-            Log.d(TAG, "  Tier 1: sourceLang=$sourceLang, headwords=$headwords, reading=$reading")
-            for (hw in headwords) {
-                val senses = targetGlossDb.lookup(sourceLang, hw, reading)
-                Log.d(TAG, "  Tier 1: lookup($sourceLang, $hw, $reading) -> ${senses?.size ?: "null"}")
-                if (senses != null) {
-                    // Native pack hit → renderer iterates target senses
-                    // directly (target-driven mode). No per-sense MT
-                    // fallback computed; we save N offline-fallback calls per word
-                    // tap and don't pretend non-English senses align with
-                    // English ordinals (they don't — see the long
-                    // discussion when this path was added).
-                    Log.d(TAG, "  -> Native target-driven (${senses.first().source}, ${senses.size} target senses, sourceLang=$sourceLang, targetLang=$targetLang)")
-                    return localize(DefinitionResult.Native(response, senses, senses.first().source))
-                }
-            }
-            Log.d(TAG, "  Tier 1: no match in target DB")
-        } else {
-            Log.d(TAG, "  Tier 1: skipped (targetGlossDb=${targetGlossDb != null}, targetLang=$targetLang)")
-        }
+        nativeGloss(response, word, reading)?.let { return localize(it) }
 
         // Tier 2: offline-fallback single-word headword translation
         if (sourceToTargetTranslator != null && targetLang != "en") {
@@ -144,6 +129,64 @@ class DefinitionResolver(
         val translatedDefs = translateDefinitions(response)
         Log.d(TAG, "  -> EnglishFallback (translatedDefs=${translatedDefs?.size})")
         return localize(DefinitionResult.EnglishFallback(response, translatedDefs))
+    }
+
+    /**
+     * True exactly when [resolve] on [response] would leave the word to the
+     * machine-translation tiers (Tier 2 and Tier 3): the target is not
+     * English and no native gloss serves this word (Tier 1 misses, or there
+     * is no target gloss database). Those tiers translate with the
+     * translators this resolver was built with and skip a null one: a
+     * source-to-target translator is always called on the headword, an
+     * English-to-target one on each non-blank sense, and with neither
+     * configured [resolve] returns the English text. Runs only the Tier 1
+     * probe, querying the same headwords [resolve] does, and never
+     * translates. Not suspend because that probe is a synchronous read of
+     * the target gloss database.
+     */
+    fun needsMachineTranslation(response: DictionaryResponse, word: String, reading: String?): Boolean =
+        targetLang != "en" && nativeGloss(response, word, reading) == null
+
+    /**
+     * Tier 1: the target pack's senses for the first hit among every written
+     * form of the response's first entry, its slug and the tapped [word], in
+     * that order; null when no headword hits, there is no target gloss
+     * database or the target is English. Not localized: [resolve] localizes.
+     * The one probe [resolve] and [needsMachineTranslation] share.
+     */
+    private fun nativeGloss(response: DictionaryResponse, word: String, reading: String?): DefinitionResult.Native? {
+        if (targetGlossDb == null || targetLang == "en") {
+            Log.d(TAG, "  Tier 1: skipped (targetGlossDb=${targetGlossDb != null}, targetLang=$targetLang)")
+            return null
+        }
+        val entry = response.entries.firstOrNull()
+        val sourceLang = engine.profile.id.packId.code
+        val headwords = buildSet {
+            entry?.let { e ->
+                e.headwords.forEach { hw ->
+                    hw.written?.let { add(it) }
+                }
+                add(e.slug)
+            }
+            add(word)
+        }
+        Log.d(TAG, "  Tier 1: sourceLang=$sourceLang, headwords=$headwords, reading=$reading")
+        for (hw in headwords) {
+            val senses = targetGlossDb.lookup(sourceLang, hw, reading)
+            Log.d(TAG, "  Tier 1: lookup($sourceLang, $hw, $reading) -> ${senses?.size ?: "null"}")
+            if (senses != null) {
+                // Native pack hit: the renderer iterates target senses
+                // directly (target-driven mode). No per-sense MT
+                // fallback computed; we save N offline-fallback calls per word
+                // tap and don't pretend non-English senses align with
+                // English ordinals (they don't; see the long
+                // discussion when this path was added).
+                Log.d(TAG, "  -> Native target-driven (${senses.first().source}, ${senses.size} target senses, sourceLang=$sourceLang, targetLang=$targetLang)")
+                return DefinitionResult.Native(response, senses, senses.first().source)
+            }
+        }
+        Log.d(TAG, "  Tier 1: no match in target DB")
+        return null
     }
 
     /**

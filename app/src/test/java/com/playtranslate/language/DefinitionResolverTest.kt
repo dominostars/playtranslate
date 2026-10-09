@@ -394,4 +394,131 @@ class DefinitionResolverTest {
         assertSame(resp, result.response)
         assertEquals(3, result.response.entries[0].freqScore)
     }
+
+    // ── resolve: the tier chain on a response the caller already has ────
+
+    @Test fun `resolve - equals lookup on the same response, Native tier`() = runBlocking {
+        val resp = response(entry("食べる", reading = "たべる"))
+        val glossDb = FakeTargetGlossDb(mapOf(
+            "ja:食べる" to listOf(targetSense(0, "essen"))
+        ))
+        val resolver = DefinitionResolver(
+            FakeEngine(mapOf("食べる" to resp)), glossDb, FakeTranslator("HW:"), "de", FakeTranslator("DEF:")
+        )
+
+        val resolved = resolver.resolve(resp, "食べる", "たべる")
+
+        assertTrue(resolved is DefinitionResult.Native)
+        assertEquals(resolver.lookup("食べる", "たべる"), resolved)
+    }
+
+    @Test fun `resolve - equals lookup on the same response, MachineTranslated tier`() = runBlocking {
+        val resp = response(entry("食べる", senses = listOf(sense("to eat"), sense("to consume"))))
+        val resolver = DefinitionResolver(
+            FakeEngine(mapOf("食べる" to resp)), FakeTargetGlossDb(), FakeTranslator("HW:"), "de", FakeTranslator("DEF:")
+        )
+
+        val resolved = resolver.resolve(resp, "食べる", null)
+
+        assertTrue(resolved is DefinitionResult.MachineTranslated)
+        assertEquals(resolver.lookup("食べる", null), resolved)
+    }
+
+    @Test fun `resolve - equals lookup on the same response, EnglishFallback tier`() = runBlocking {
+        val resp = response(entry("食べる", senses = listOf(sense("to eat"))))
+        val resolver = DefinitionResolver(
+            FakeEngine(mapOf("食べる" to resp)), FakeTargetGlossDb(), IdentityTranslator(), "de", FakeTranslator("DEF:")
+        )
+
+        val resolved = resolver.resolve(resp, "食べる", null)
+
+        assertTrue(resolved is DefinitionResult.EnglishFallback)
+        assertEquals(listOf("DEF:to eat"), (resolved as DefinitionResult.EnglishFallback).translatedDefinitions)
+        assertEquals(resolver.lookup("食べる", null), resolved)
+    }
+
+    // ── needsMachineTranslation: the Tier 1 probe ───────────────────────
+
+    @Test fun `needsMachineTranslation - false when target is English`() {
+        val resp = response(entry("食べる"))
+        val resolver = DefinitionResolver(
+            FakeEngine(mapOf("食べる" to resp)), null, FakeTranslator(), "en", FakeTranslator()
+        )
+
+        assertFalse(resolver.needsMachineTranslation(resp, "食べる", null))
+    }
+
+    @Test fun `needsMachineTranslation - false on a native gloss hit`() {
+        val resp = response(entry("食べる"))
+        val glossDb = FakeTargetGlossDb(mapOf(
+            "ja:食べる" to listOf(targetSense(0, "essen"))
+        ))
+        val resolver = DefinitionResolver(
+            FakeEngine(mapOf("食べる" to resp)), glossDb, FakeTranslator(), "de", FakeTranslator()
+        )
+
+        assertFalse(resolver.needsMachineTranslation(resp, "食べる", null))
+    }
+
+    @Test fun `needsMachineTranslation - true on a native gloss miss`() {
+        val resp = response(entry("食べる"))
+        val glossDb = FakeTargetGlossDb(mapOf(
+            "ja:飲む" to listOf(targetSense(0, "trinken"))
+        ))
+        val resolver = DefinitionResolver(
+            FakeEngine(mapOf("食べる" to resp)), glossDb, FakeTranslator(), "de", FakeTranslator()
+        )
+
+        assertTrue(resolver.needsMachineTranslation(resp, "食べる", null))
+    }
+
+    @Test fun `needsMachineTranslation - true when there is no target gloss database`() {
+        val resp = response(entry("食べる"))
+        val resolver = DefinitionResolver(
+            FakeEngine(mapOf("食べる" to resp)), null, FakeTranslator(), "de", FakeTranslator()
+        )
+
+        assertTrue(resolver.needsMachineTranslation(resp, "食べる", null))
+    }
+
+    @Test fun `needsMachineTranslation - never calls a translator`() = runBlocking {
+        val resp = response(entry("食べる", senses = listOf(sense("to eat"))))
+        val headwordTranslator = FakeTranslator("HW:")
+        val defTranslator = FakeTranslator("DEF:")
+        val resolver = DefinitionResolver(
+            FakeEngine(mapOf("食べる" to resp)), FakeTargetGlossDb(), headwordTranslator, "de", defTranslator
+        )
+
+        assertTrue(resolver.needsMachineTranslation(resp, "食べる", null))
+        assertTrue("The probe must not translate", headwordTranslator.calls.isEmpty())
+        assertTrue("The probe must not translate", defTranslator.calls.isEmpty())
+
+        // The verdict matches the resolution: resolve does translate.
+        val resolved = resolver.resolve(resp, "食べる", null)
+        assertTrue(resolved is DefinitionResult.MachineTranslated)
+        assertEquals(listOf("食べる"), headwordTranslator.calls)
+        assertEquals(listOf("to eat"), defTranslator.calls)
+    }
+
+    @Test fun `needsMachineTranslation - probes the same headword set as resolve`() = runBlocking {
+        // Tapped surface 食べた, written form 食べる, slug たべる: the gloss db
+        // holds the slug only, so the probe walks written, then slug, and hits.
+        val resp = response(entry("たべる", written = "食べる", reading = "たべる"))
+        val glossDb = FakeTargetGlossDb(mapOf(
+            "ja:たべる" to listOf(targetSense(0, "essen"))
+        ))
+        val resolver = DefinitionResolver(
+            FakeEngine(mapOf("食べた" to resp)), glossDb, FakeTranslator(), "de", FakeTranslator()
+        )
+
+        assertFalse(resolver.needsMachineTranslation(resp, "食べた", null))
+        val probed = glossDb.queriedHeadwords.toList()
+        assertEquals(listOf("食べる", "たべる"), probed)
+
+        glossDb.queriedHeadwords.clear()
+        val resolved = resolver.resolve(resp, "食べた", null)
+
+        assertTrue(resolved is DefinitionResult.Native)
+        assertEquals(probed, glossDb.queriedHeadwords)
+    }
 }
