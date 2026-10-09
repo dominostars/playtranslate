@@ -52,13 +52,14 @@ class SentenceAnnotatorTest {
         resolutions: Map<ResolutionKey, WordResolution> = emptyMap(),
         full: Boolean = true,
         /** When given, candidates pass the production admissibility gate with
-         *  these headwords (and no kana-native readings) before matching. */
+         *  these headwords and [kanaNative] readings before matching. */
         headwords: Set<String>? = null,
+        kanaNative: Set<String> = emptySet(),
     ) = SentenceAnnotator.annotate(
         text, SourceLangId.JA, tokens,
         reglob = if (full) {
             val candidates = phraseCandidatesFor(tokens).let { all ->
-                if (headwords == null) all else admissiblePhraseCandidates(all, headwords, emptySet())
+                if (headwords == null) all else admissiblePhraseCandidates(all, headwords, kanaNative)
             }
             reglobSpans(tokens, candidates, knownPhrases, knownForms)
         } else {
@@ -315,5 +316,29 @@ class SentenceAnnotatorTest {
         assertEquals(listOf("入れそうにないわ"), ann.spans.map { it.surface })
         assertEquals("入れる", ann.spans[0].lookupForm)
         assertEquals(listOf(InflectionTag.SOU, InflectionTag.NEGATIVE), ann.spans[0].inflections)
+    }
+
+    @Test fun `a 形状詞 shows as one span with its copula`() {
+        // 静かだった (survey; CLI readings). だった, a kana-native reading the
+        // function-run tier would admit, cannot start at the 形状詞's own だっ,
+        // so the display keeps one span reading -た.
+        pos = 0
+        val tokens = listOf(
+            tok("静か", JaCategory.ADJ_NA, "シズカ"),
+            tok("だっ", JaCategory.AUX, "ダッ", dict = "だ", infl = "連用形-促音便"),
+            tok("た", JaCategory.AUX, "タ", infl = "終止形-一般"),
+        )
+        val ann = annotate(
+            "静かだった", tokens,
+            knownPhrases = setOf("だった"), knownForms = setOf("静か"),
+            headwords = emptySet(), kanaNative = setOf("だった"),
+        )
+        val span = ann.spans.single()
+        assertEquals("静か", span.lookupForm)
+        assertEquals(listOf(InflectionTag.TA), span.inflections)
+        assertEquals(
+            listOf("静" to "しず", "か" to null, "だっ" to null, "た" to null),
+            span.furigana.map { it.text to it.reading },
+        )
     }
 }

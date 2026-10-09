@@ -41,6 +41,19 @@ class JaCategoryTest {
         assertEquals(JaCategory.ADJ_I, JaCategory.fromUniDic("形容詞", "非自立可能", "ない"))
     }
 
+    /**
+     * A 形状詞 starts a conjugation (静か|だっ|た folds into one span); a noun
+     * does not, even the 形状詞可能 kind (元気 is 名詞,普通名詞,形状詞可能 in the
+     * survey dump), so 学生|だった and 元気|を stay apart.
+     */
+    @Test
+    fun `形状詞 starts a conjugation and a noun does not`() {
+        assertEquals(true, JaCategory.fromUniDic("形状詞").startsConjugation)
+        assertEquals(true, cat("形状詞的", "的").startsConjugation)
+        assertEquals(false, JaCategory.fromUniDic("名詞").startsConjugation)
+        assertEquals(false, JaCategory.ADJ_NA.isConjugationGlue)
+    }
+
     @Test
     fun `adjectival suffixes are i-adjectives`() {
         for (n in listOf("辛い", "難い", "易い", "ぽい", "臭い", "らしい")) {
