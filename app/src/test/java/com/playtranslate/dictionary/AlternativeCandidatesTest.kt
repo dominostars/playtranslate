@@ -227,14 +227,16 @@ class AlternativeCandidatesTest {
         // いった looked up as いく (-た). Pass 2's いい (-く) entry, the
         // kana-only I-adjective, is not offered: the lookup of いい ranks 謂
         // first. Pass 3's いう keeps its text for 言う, which the kana lookup
-        // ranks first, and falls back to the written form for 結う (read ゆう
-        // first); いる's Godan 要る is first under the kana. 居る (Ichidan) and
-        // いつ's entries (a pronoun, nouns, numerals, a Nidan verb) reject -た.
-        // Each chain is the surface's own, the token's -た not added twice.
+        // ranks first, and keys 結う by its written form read いう, the
+        // reading the surface reached it through (its first reading ゆう
+        // conjugates to ゆった); いる's Godan 要る is first under the kana.
+        // 居る (Ichidan) and いつ's entries (a pronoun, nouns, numerals, a
+        // Nidan verb) reject -た. Each chain is the surface's own, the
+        // token's -た not added twice.
         assertEquals(
             listOf(
                 AlternativeKey("いう", "いう", listOf(TA), 1587040L),
-                AlternativeKey("結う", "ゆう", listOf(TA), 1254600L),
+                AlternativeKey("結う", "いう", listOf(TA), 1254600L),
                 AlternativeKey("いる", "いる", listOf(TA), 1546640L),
             ),
             ittaPack.alternatives("いった", "いく", listOf(TA), primaryIds = ikuIds),
@@ -243,6 +245,50 @@ class AlternativeCandidatesTest {
         assertEquals(
             AlternativeKey("炒る", "いる", listOf(TA), 1391500L),
             ittaPack.alternatives("いった", "いく", listOf(TA), primaryIds = ikuIds, cap = 4).last(),
+        )
+    }
+
+    /** The kana ゆう's lookup (the first eight of the pack's thirteen
+     *  entries read ゆう, in ranked order, 言う and 結う among them) and the
+     *  kanji lookups of 結う and 言う. 結う reads ゆう then いう, 言う reads
+     *  いう then ゆう. Unlike the other stand-ins it holds none of ゆう's
+     *  deinflection candidates: the test's cap is filled in pass 1, before
+     *  pass 2 looks one up. */
+    private val yuuPack = Pack(
+        mapOf(
+            "ゆう" to listOf(2834885L, 1540940L, 1254600L, 1587040L, 2844332L, 2844201L, 2836662L, 2813860L),
+            "結う" to listOf(1254600L),
+            "言う" to listOf(1587040L),
+        ),
+        mapOf(
+            2834885L to Entry(listOf("夕"), listOf("ゆう"), listOf("Noun", "Adverb")),
+            1540940L to Entry(listOf("有"), listOf("ゆう"), listOf("Noun", "Noun prefix")),
+            1254600L to Entry(listOf("結う"), listOf("ゆう", "いう"), listOf("Godan verb with 'u' ending", "transitive verb")),
+            1587040L to Entry(
+                listOf("言う", "云う", "謂う"), listOf("いう", "ゆう"),
+                listOf("Godan verb with 'u' ending", "transitive verb", "intransitive verb"),
+            ),
+            2844332L to Entry(listOf("友"), listOf("ゆう"), listOf("Noun", "Na-adjective")),
+            2844201L to Entry(listOf("悠"), listOf("ゆう"), listOf("archaic/formal form of na-adjective")),
+            2836662L to Entry(listOf("雄"), listOf("ゆう"), listOf("Noun")),
+            2813860L to Entry(listOf("尤"), listOf("ゆう"), listOf("archaic/formal form of na-adjective")),
+        ),
+    )
+
+    @Test
+    fun `a kana tap offers each entry under the reading it was tapped as`() {
+        // ゆう tapped as itself. Its own lookup returns all eight entries, so
+        // the primary set here is the two that share its top score, 夕 and
+        // 有, which leaves 言う to be offered. Both verbs are reached through
+        // ゆう and carry it: 結う its first reading, 言う its second, not its
+        // first いう. A cap of two stops the walk before 友, whose own kanji
+        // lookup ranks an entry the stand-in leaves out (友 read とも) first.
+        assertEquals(
+            listOf(
+                AlternativeKey("結う", "ゆう", emptyList(), 1254600L),
+                AlternativeKey("言う", "ゆう", emptyList(), 1587040L),
+            ),
+            yuuPack.alternatives("ゆう", "ゆう", emptyList(), primaryIds = setOf(2834885L, 1540940L), cap = 2),
         )
     }
 }

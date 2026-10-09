@@ -1769,13 +1769,19 @@ class DictionaryManager private constructor(private val context: Context) {
          * Candidates keep their chain-length order and entries [entryIdsFor]'s
          * ranked order; an entry in [primaryIds] or already offered is skipped.
          *
-         * Each entry is offered under the key [lookup]'s first two stages
-         * ([entryIdsWithReadingFor], else [entryIdsFor]) rank it first under:
-         * its primary reading ([primaryFormsFor]) with the candidate's text,
-         * else with its primary written form. An entry neither key ranks first
-         * is not offered (a kana text ranks by reading, and いる ranks 要る
-         * ahead of 居る). Takes the pack reads as functions so it runs without
-         * a database.
+         * Each entry is offered under the first key [lookup]'s first two
+         * stages ([entryIdsWithReadingFor], else [entryIdsFor]) rank it first
+         * under, tried in order: for a kana candidate, which reaches an entry
+         * through one of its readings, that text as the reading (the tapped
+         * occurrence's: いった reaches 結う through いう, not its primary
+         * reading ゆう), with the candidate's text and then the entry's
+         * primary written form ([primaryFormsFor]); then the entry's primary
+         * reading with the same two forms, which is all a kanji candidate
+         * tries, as a written form says nothing about the reading (弾ける's
+         * 弾く is offered read ひく and read はじく). An entry no key ranks
+         * first is not offered (a kana text ranks by reading, and いる ranks
+         * 要る ahead of 居る). Takes the pack reads as functions so it runs
+         * without a database.
          */
         internal fun alternativeCandidates(
             surface: String,
@@ -1797,13 +1803,25 @@ class DictionaryManager private constructor(private val context: Context) {
                     .firstOrNull()
 
             fun offer(text: String, ids: List<Long>, tags: List<InflectionTag>) {
+                // A kana candidate reaches an entry through one of its readings, so
+                // that reading is the tapped occurrence's (いった reaches 結う through
+                // いう, not its first reading ゆう); a kanji candidate reaches it
+                // through a written form and says nothing about the reading.
+                val matched = text.takeIf { it.all(Deinflector::isKana) }
                 for (id in ids) {
                     if (out.size >= cap) return
                     if (id in taken) continue
-                    val (written, reading) = primaryFormsFor(id)
-                    val form = listOfNotNull(text, written).firstOrNull { rankedFirst(it, reading) == id } ?: continue
+                    val (written, primary) = primaryFormsFor(id)
+                    val key = buildList {
+                        if (matched != null) {
+                            add(text to matched)
+                            written?.let { add(it to matched) }
+                        }
+                        add(text to primary)
+                        written?.let { add(it to primary) }
+                    }.distinct().firstOrNull { (form, reading) -> rankedFirst(form, reading) == id } ?: continue
                     taken += id
-                    out += AlternativeKey(form, reading, tags, id)
+                    out += AlternativeKey(key.first, key.second, tags, id)
                 }
             }
 
