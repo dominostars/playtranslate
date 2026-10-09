@@ -13,6 +13,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.AnnotatedSpan
+import com.playtranslate.language.InflectionTag
 import com.playtranslate.language.SentenceAnnotation
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.TokenSpan
@@ -78,7 +79,7 @@ class TranslationResultContentTest {
         override fun wireLensActions(lens: MagnifierLens, resolved: SourceWordLookup.ResolvedAt) = Unit
 
         val rendered = mutableListOf<ResultState>()
-        val tappedWords = mutableListOf<Pair<String, String?>>()
+        val tappedWords = mutableListOf<Triple<String, String?, String?>>()
         var clears = 0
         var completions = 0
         var ankiTaps = 0
@@ -88,7 +89,9 @@ class TranslationResultContentTest {
         var edit = false
 
         override fun onRender(state: ResultState) { rendered += state }
-        override fun onWordTapped(word: String, reading: String?) { tappedWords += word to reading }
+        override fun onWordTapped(word: String, reading: String?, surface: String?) {
+            tappedWords += Triple(word, reading, surface)
+        }
         override fun onClear() { clears++ }
         override fun completeDeferredTranslation() { completions++ }
         override fun onAddToAnki() { ankiTaps++ }
@@ -223,8 +226,8 @@ class TranslationResultContentTest {
             WordLookupsState.Settled(
                 rows = listOf(
                     RowState(
-                        displayWord = "猫", reading = "ねこ", meaning = "cat", senses = emptyList(),
-                        freqScore = 3, isCommon = true, surface = "猫",
+                        displayWord = "食べる", reading = "たべる", meaning = "to eat", senses = emptyList(),
+                        freqScore = 3, isCommon = true, surface = "食べた",
                     ),
                 ),
                 tokenSpans = emptyList(), lookupToReading = emptyMap(),
@@ -236,7 +239,10 @@ class TranslationResultContentTest {
             .map { content.wordRows.container.getChildAt(it) }
             .filterIsInstance<WordResultCell>().single()
         cell.performClick()
-        assertEquals(listOf("猫" to "ねこ"), host.tappedWords)
+        assertEquals(
+            "the row's occurrence text rides with the word, for the detail header",
+            listOf(Triple("食べる", "たべる", "食べた")), host.tappedWords,
+        )
         content.renderWordLookups(WordLookupsState.Loading)
         assertTrue(content.wordRows.isEmpty)
     }
@@ -245,24 +251,33 @@ class TranslationResultContentTest {
     fun `an analyzed lookup sets the tap spans and asks for rows only while the card is shown`() {
         var wanted = 0
         content.wordRows.onRowsWanted = { wanted++ }
-        val text = "猫が食べる。"
-        content.render(ResultState.Ready(result(text, "The cat eats.")))
+        val text = "猫が食べた。"
+        content.render(ResultState.Ready(result(text, "The cat ate.")))
         idle()
         assertEquals("the Ready render's visibility pass asks for the shown card", 1, wanted)
+        val cat = TokenSpan("猫", "猫", "ねこ")
+        val ate = TokenSpan("食べた", "食べる", "たべる", listOf(InflectionTag.TA))
         val analyzed = WordLookupsState.Analyzed(
-            tokenSpans = listOf(TokenSpan("猫", "猫", "ねこ"), TokenSpan("食べる", "食べる", "たべる")),
+            tokenSpans = listOf(cat, ate),
             annotation = SentenceAnnotation(
                 text, SourceLangId.JA, 0,
                 listOf(
                     AnnotatedSpan(0, 1, "猫", lookupForm = "猫", lookupHint = "ねこ"),
-                    AnnotatedSpan(2, 5, "食べる", lookupForm = "食べる", lookupHint = "たべる"),
+                    AnnotatedSpan(2, 5, "食べた", lookupForm = "食べる", lookupHint = "たべる"),
                 ),
             ),
             phrases = emptyList(),
         )
-        val expected = listOf(Triple(0..0, "猫", "ねこ"), Triple(2..4, "食べる", "たべる"))
+        val expected = listOf(
+            SourceWordLookup.TapSpan(0..0, "猫", "ねこ", cat),
+            SourceWordLookup.TapSpan(2..4, "食べる", "たべる", ate),
+        )
         content.renderWordLookups(analyzed)
         assertEquals("readings fall back to the analysis's own", expected, content.sourceLens.wordSpans)
+        assertEquals(
+            "the tapped token's conjugation tags ride with its span",
+            listOf(InflectionTag.TA), content.sourceLens.wordSpans[1].token.inflections,
+        )
         assertEquals(2, wanted)
         assertTrue("no rows until they settle", content.wordRows.isEmpty)
 

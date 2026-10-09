@@ -59,9 +59,12 @@ class TranslationResultFragment : Fragment() {
          *  stays set and the next trigger retries. Must tolerate repeat calls
          *  while a completion is already in flight. */
         fun completeDeferredTranslation()
+        /** Open [word]'s detail. [surface] is the text it was tapped as, for
+         *  the detail header's conjugation line; null for a lemma. */
         fun onWordTapped(
             word: String,
             reading: String?,
+            surface: String?,
             screenshotPath: String?,
             sentenceOriginal: String?,
             sentenceTranslation: String?,
@@ -738,12 +741,12 @@ class TranslationResultFragment : Fragment() {
         val popupReading = resolved.reading
         val displayEntry = resolved.entry
         val displayEntries = resolved.entries
-        fun openDetail(w: String, reading: String?) {
+        fun openDetail(unit: SourceWordLookup.Resolved) {
             dismissWordPopup()
             host?.onInteraction()
             val ready = currentReady()
             host?.onWordTapped(
-                w, reading,
+                unit.word, unit.reading, unit.surface,
                 ready?.screenshotPath,
                 ready?.originalText,
                 ready?.translatedText,
@@ -751,14 +754,14 @@ class TranslationResultFragment : Fragment() {
             )
         }
         if (displayEntry != null) {
-            lens.onOpenTap = { openDetail(word, popupReading) }
+            lens.onOpenTap = { openDetail(resolved) }
         }
         if (secondaries.isNotEmpty()) {
             // Secondary-section drill-in (containing phrase or member words):
             // same detail route as the tapped unit — the sheet re-looks the
             // string up, and a multi-word key round-trips it unchanged.
             lens.onSecondaryOpenTap = { i ->
-                secondaries.getOrNull(i)?.let { sec -> openDetail(sec.word, sec.reading) }
+                secondaries.getOrNull(i)?.let { sec -> openDetail(sec) }
             }
         }
         lens.onAnkiTap = {
@@ -815,10 +818,10 @@ class TranslationResultFragment : Fragment() {
         override fun wireLensActions(lens: MagnifierLens, resolved: SourceWordLookup.ResolvedAt) =
             this@TranslationResultFragment.wireLensActions(lens, resolved)
 
-        override fun onWordTapped(word: String, reading: String?) {
+        override fun onWordTapped(word: String, reading: String?, surface: String?) {
             val ready = currentReady()
             host?.onWordTapped(
-                word, reading,
+                word, reading, surface,
                 ready?.screenshotPath,
                 ready?.originalText,
                 ready?.translatedText,

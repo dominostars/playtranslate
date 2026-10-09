@@ -486,6 +486,7 @@ class MainActivity :
     override fun onWordTapped(
         word: String,
         reading: String?,
+        surface: String?,
         screenshotPath: String?,
         sentenceOriginal: String?,
         sentenceTranslation: String?,
@@ -495,6 +496,7 @@ class MainActivity :
         WordDetailBottomSheet.newInstance(
             word,
             reading = reading,
+            surface = surface,
             screenshotPath = screenshotPath,
             sentenceOriginal = sentenceOriginal,
             sentenceTranslation = sentenceTranslation,
@@ -1714,6 +1716,8 @@ class MainActivity :
         onWordTapped(
             word = word,
             reading = reading,
+            // No producer of this intent sends the dragged surface.
+            surface = null,
             screenshotPath = screenshotPath,
             sentenceOriginal = sentenceOriginal,
             sentenceTranslation = sentenceTranslation,

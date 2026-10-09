@@ -145,11 +145,11 @@ class DictionaryLookupActivity : SettingsSubPageActivity() {
             pitch = rowState.pitch,
             frequencies = rowState.frequencies,
             readingRows = rowState.readingRows,
+            inflectedForms = rowState.inflectedForms,
         )
         cell.bind(
             data = data,
             scale = WordResultCell.DEFAULT_SCALE,
-            inflectedForms = rowState.inflectedForms,
             onCellTap = { openWordDetail(rowState) },
             onSpeak = { speakFromCell(cell, rowState) },
             // Dictionary results never stub or hide: the user searched for
@@ -167,6 +167,7 @@ class DictionaryLookupActivity : SettingsSubPageActivity() {
         WordDetailBottomSheet.newInstance(
             word = rowState.displayWord,
             reading = rowState.reading.ifEmpty { null },
+            surface = rowState.surface,
             screenshotPath = null,
             sentenceOriginal = sentenceOriginal,
             sentenceTranslation = null,

@@ -39,6 +39,10 @@ import kotlinx.coroutines.launch
 class WorkspaceWordDetailPage(
     private val word: String,
     private val reading: String? = null,
+    /** The text [word] was found as, for the header's conjugation line
+     *  ([WordDetailBinder.Args.surface]); null when the opener has only the
+     *  lemma. */
+    private val surface: String? = null,
     private val screenshotPath: String? = null,
     /** Game-audio ring anchor for the Anki flow (the capture moment); null
      *  when the launching surface has no capture (drag flow). */
@@ -80,6 +84,7 @@ class WorkspaceWordDetailPage(
             WordDetailBinder.Args(
                 word = word,
                 reading = reading,
+                surface = surface,
                 screenshotPath = screenshotPath,
                 embedded = true,
             ),
@@ -148,11 +153,11 @@ class WorkspaceWordDetailPage(
         override fun sentenceContext(): SentenceContext? =
             this@WorkspaceWordDetailPage.sentenceContext.invoke()
 
-        override fun openWordDetail(word: String, reading: String?) {
+        override fun openWordDetail(word: String, reading: String?, surface: String?) {
             // Cross-reference drill-down as a real back stack — the nested
             // detail carries no sentence/screenshot, mirroring the
             // fragment host's bare nested sheet.
-            host.push(WorkspaceWordDetailPage(word, reading))
+            host.push(WorkspaceWordDetailPage(word, reading, surface))
         }
 
         override fun openAnkiReview(args: WordDetailBinder.WordAnkiArgs) {

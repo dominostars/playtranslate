@@ -4,6 +4,7 @@ import android.content.Context
 import com.playtranslate.Prefs
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
+import com.playtranslate.language.InflectionTag
 import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.PhraseOccurrence
 import com.playtranslate.language.SourceLanguageEngines
@@ -34,6 +35,11 @@ object SourceWordLookup {
         /** Reading as resolved by headwordDisplay (raw; for the speak chip / Anki).
          *  The lens data already drops it when equal to [word]. */
         val reading: String?,
+        /** The tapped token's own text (飲んでいなかった for the lemma 飲む),
+         *  carried to the word-detail page so its header can draw the same
+         *  conjugation line; null for phrase and member resolutions, which
+         *  are lemmas. */
+        val surface: String?,
         val label: String?,
         val data: WordDefinitionData,
         /** The dictionary entry, when matched — drives the in-app Anki/open path.
@@ -43,6 +49,18 @@ object SourceWordLookup {
          *  rows flatten across them (POS-split packs), so an Anki card built
          *  from this resolution must span them too. */
         val entries: List<DictionaryEntry> = listOfNotNull(entry),
+    )
+
+    /** One tappable unit of the displayed source text: its char [range], the
+     *  [lookupForm] and [reading] the lens resolves, and the [token] it came
+     *  from, whose surface and conjugation tags ride into the lens's
+     *  conjugation line and the word-detail page. A single-letter phrase
+     *  member ([computeTapSpans]) carries a bare token of its own letter. */
+    data class TapSpan(
+        val range: IntRange,
+        val lookupForm: String,
+        val reading: String,
+        val token: TokenSpan,
     )
 
     /**
@@ -56,8 +74,8 @@ object SourceWordLookup {
         displayedText: String,
         tokenSpans: List<TokenSpan>,
         lookupToReading: Map<String, String>,
-    ): List<Triple<IntRange, String, String>> {
-        val spans = mutableListOf<Triple<IntRange, String, String>>()
+    ): List<TapSpan> {
+        val spans = mutableListOf<TapSpan>()
         var searchFrom = 0
         for (tok in tokenSpans) {
             val idx = displayedText.indexOf(tok.surface, searchFrom)
@@ -67,7 +85,7 @@ object SourceWordLookup {
                 ?: lookupToReading[tok.surface]
                 ?: tok.reading
                 ?: ""
-            spans.add(Triple(range, tok.lookupForm, reading))
+            spans.add(TapSpan(range, tok.lookupForm, reading, tok))
             searchFrom = idx + tok.surface.length
         }
         return spans
@@ -98,10 +116,10 @@ object SourceWordLookup {
         tokenSpans: List<TokenSpan>,
         lookupToReading: Map<String, String>,
         phrases: List<PhraseOccurrence>,
-    ): List<Triple<IntRange, String, String>> {
+    ): List<TapSpan> {
         val spans = computeSpans(displayedText, tokenSpans, lookupToReading)
         if (phrases.isEmpty()) return spans
-        val extra = mutableListOf<Triple<IntRange, String, String>>()
+        val extra = mutableListOf<TapSpan>()
         var searchFrom = 0
         for (occ in phrases) {
             val range = whitespaceTolerantRange(displayedText, occ.surface, searchFrom) ?: continue
@@ -109,11 +127,11 @@ object SourceWordLookup {
             val slice = displayedText.substring(range.first, range.last + 1)
             for (m in SINGLE_LETTER_WORD.findAll(slice)) {
                 val at = range.first + m.range.first
-                extra += Triple(at..at, m.value, "")
+                extra += TapSpan(at..at, m.value, "", TokenSpan(m.value, m.value))
             }
         }
         if (extra.isEmpty()) return spans
-        return (spans + extra).sortedBy { it.first.first }
+        return (spans + extra).sortedBy { it.range.first }
     }
 
     /** The [displayedText] range matching [surface] with every whitespace
@@ -166,7 +184,9 @@ object SourceWordLookup {
      * distinct from the tapped unit's headword. Both tap surfaces route
      * through here so behavior can't drift between them.
      * [spanStart] is the tapped span's start offset in [displayedText] —
-     * the same text the spans were computed against.
+     * the same text the spans were computed against. [token] is the tapped
+     * span's own token: its surface and conjugation tags give the tapped
+     * unit (and only it) its conjugation line.
      */
     suspend fun resolveAt(
         appCtx: Context,
@@ -174,10 +194,11 @@ object SourceWordLookup {
         spanStart: Int,
         lookupForm: String,
         reading: String,
+        token: TokenSpan,
     ): ResolvedAt {
         val engine = SourceLanguageEngines.get(appCtx, Prefs(appCtx).sourceLangId)
         val phraseKey = withContext(Dispatchers.IO) { engine.longestPhraseAt(displayedText, spanStart) }
-        val word = resolve(appCtx, lookupForm, reading)
+        val word = resolve(appCtx, lookupForm, reading, surface = token.surface, tokenTags = token.inflections)
         // Members for any entry-backed fused unit; the engine's policy
         // decides how strictly (phrases — exp-tagged or glue-bearing —
         // loose: 気になる → 気, 瞬く間に → 瞬く and 間; transparent
@@ -206,8 +227,19 @@ object SourceWordLookup {
     }
 
     /** Resolve [lookupForm] (+ optional disambiguating [reading]) into lens data,
-     *  using the same resolver + tier branching as the in-app results page. */
-    suspend fun resolve(appCtx: Context, lookupForm: String, reading: String): Resolved {
+     *  using the same resolver + tier branching as the in-app results page.
+     *  [surface] is the tapped occurrence's text and [tokenTags] its
+     *  tokenizer chain; with a surface the data carries the conjugation line
+     *  [InflectionChain.compose] builds from the lookup's own deinflection
+     *  chain and [tokenTags]. Phrase and member resolutions pass no surface
+     *  and get no line. */
+    suspend fun resolve(
+        appCtx: Context,
+        lookupForm: String,
+        reading: String,
+        surface: String? = null,
+        tokenTags: List<InflectionTag> = emptyList(),
+    ): Resolved {
         val prefs = Prefs(appCtx)
         val engine = SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
         val targetGlossDb = TargetGlossDatabaseProvider.get(appCtx, prefs.targetLang)
@@ -293,10 +325,16 @@ object SourceWordLookup {
         val styled = fetchYomitanStyledData(
             appCtx, prefs.sourceLangId.yomitanConsumingLang(), importedGroups,
         )
+        val inflectedForms = surface?.let {
+            listOfNotNull(
+                InflectionChain.compose(it, defResult?.response?.deinflection.orEmpty(), tokenTags),
+            )
+        }.orEmpty()
 
         return Resolved(
             word = word,
             reading = popupReading,
+            surface = surface,
             label = popupLabel,
             entries = entries,
             data = WordDefinitionData(
@@ -309,6 +347,7 @@ object SourceWordLookup {
                 frequencies = popupFrequencies,
                 importedGroups = importedGroups,
                 styled = styled,
+                inflectedForms = inflectedForms,
             ),
             entry = entry,
         )

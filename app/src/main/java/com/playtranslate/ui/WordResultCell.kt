@@ -26,7 +26,6 @@ import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
 import com.playtranslate.R
 import com.playtranslate.dictionary.Deinflector
-import com.playtranslate.language.InflectedForm
 import com.playtranslate.model.ReadingRow
 import com.playtranslate.themeColor
 import kotlinx.coroutines.Job
@@ -91,7 +90,6 @@ class WordResultCell @JvmOverloads constructor(
 
     // The bind arguments, kept so [setHidden] can rebuild the full cell from
     // the same inputs instead of patching a stub back.
-    private var boundInflectedForms: List<InflectedForm> = emptyList()
     private var boundOnCellTap: () -> Unit = {}
     private var boundOnSpeak: () -> Unit = {}
     private var boundTrailing: TrailingAction = TrailingAction.Anki {}
@@ -210,7 +208,7 @@ class WordResultCell @JvmOverloads constructor(
         )
 
         // Conjugation line: the as-found surface + the grammar it expresses
-        // (e.g. 言わせて · Causative, Te-form), under the dictionary headword.
+        // (e.g. 言わせて · Causative « -て), under the dictionary headword.
         // GONE for uninflected words / non-JA sources; populated in bind().
         inflectionView = TextView(context).apply {
             setTextColor(mutedColor)
@@ -253,7 +251,6 @@ class WordResultCell @JvmOverloads constructor(
     internal fun bind(
         data: WordDefinitionData,
         scale: Float,
-        inflectedForms: List<InflectedForm>,
         onCellTap: () -> Unit,
         onSpeak: () -> Unit,
         trailing: TrailingAction,
@@ -319,18 +316,18 @@ class WordResultCell @JvmOverloads constructor(
             }
         }
         // Conjugation lines: one per distinct form this lemma appeared as,
-        // "surface · Tag « Tag". Hidden when there's nothing to report.
-        if (inflectedForms.isEmpty()) {
+        // "surface · Tag « Tag". Hidden when there's nothing to report. The
+        // cell draws its own line above both bodies, so its definitions
+        // renderer keeps showInflections off.
+        if (data.inflectedForms.isEmpty()) {
             inflectionView.isGone = true
         } else {
             inflectionView.isGone = false
-            inflectionView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f * scale)
+            inflectionView.setTextSize(TypedValue.COMPLEX_UNIT_SP, InflectionChain.TEXT_SP * scale)
             // Cap the lines so a lemma seen in many forms (long OCR input) can't
             // expand the row off-screen; the rest collapse into a "+N more" line.
-            val (shown, overflow) = capInflectionForms(inflectedForms)
-            val lines = shown.map { form ->
-                form.surface + " · " + form.tags.joinToString(" « ") { it.label(context) }
-            }
+            val (shown, overflow) = capInflectionForms(data.inflectedForms)
+            val lines = shown.map { InflectionChain.format(context, it) }
             inflectionView.text = (
                 if (overflow > 0) lines + context.getString(R.string.inflection_more, overflow)
                 else lines
@@ -342,7 +339,6 @@ class WordResultCell @JvmOverloads constructor(
         styledActive = styledRenderers != null && bindStyledImported(data, scale, styledRenderers)
         bindFlatBody(if (styledActive) data.flatRemainder() else data, scale)
 
-        boundInflectedForms = inflectedForms
         boundOnCellTap = onCellTap
         boundOnSpeak = onSpeak
         boundTrailing = trailing
@@ -435,7 +431,7 @@ class WordResultCell @JvmOverloads constructor(
         if (trailing.hidden == hidden) return
         val data = boundData ?: return
         bind(
-            data, boundScale, boundInflectedForms, boundOnCellTap, boundOnSpeak,
+            data, boundScale, boundOnCellTap, boundOnSpeak,
             TrailingAction.Hide(hidden, trailing.onToggle), boundStyledSource,
         )
     }

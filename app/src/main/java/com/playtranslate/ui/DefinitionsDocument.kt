@@ -130,6 +130,10 @@ body {
 }
 .pos-h:first-child { margin-top: .1em; }
 .label-warn { font-size: .8em; color: var(--pt-secondary); margin: .1em 0 .3em; }
+/* The conjugation line, sized like the label. The right margin is the native
+   line's 17dp, clearing the open chevron the lens floats over the page's
+   top-right corner (page px track dp: the root size is the flat body's sp). */
+.inflection { font-size: .8em; color: var(--pt-secondary); margin: 0 17px .3em 0; }
 .meta-row {
   display: flex; flex-wrap: wrap; gap: .3em; align-items: center;
   margin: .1em 0 .45em;
@@ -405,8 +409,15 @@ ruby > rt { font-size: .5em; }
         renderMisc: (List<String>) -> String? = { null },
         metaChips: List<MetaChip> = emptyList(),
         label: String? = null,
+        /** The conjugation lines ([InflectionChain.format]), rendered first,
+         *  one block each; the lens passes its word's, every other surface
+         *  none. */
+        inflectionLines: List<String> = emptyList(),
     ): String {
         val sb = StringBuilder()
+        for (line in inflectionLines) {
+            sb.append("<div class=\"inflection\">").append(htmlEscape(line)).append("</div>")
+        }
         label?.takeIf { it.isNotBlank() }?.let {
             sb.append("<div class=\"label-warn\">").append(htmlEscape(it)).append("</div>")
         }

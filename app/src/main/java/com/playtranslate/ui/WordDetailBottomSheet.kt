@@ -32,6 +32,7 @@ class WordDetailBottomSheet : DialogFragment() {
         const val TAG = "WordDetailBottomSheet"
         private const val ARG_WORD            = "word"
         private const val ARG_READING         = "reading"
+        private const val ARG_SURFACE         = "surface"
         private const val ARG_SCREENSHOT_PATH = "screenshot_path"
         private const val ARG_SENTENCE_ORIGINAL     = "sentence_original"
         private const val ARG_SENTENCE_TRANSLATION  = "sentence_translation"
@@ -48,6 +49,7 @@ class WordDetailBottomSheet : DialogFragment() {
         fun newInstance(
             word: String,
             reading: String? = null,
+            surface: String? = null,
             screenshotPath: String? = null,
             sentenceOriginal: String? = null,
             sentenceTranslation: String? = null,
@@ -58,6 +60,7 @@ class WordDetailBottomSheet : DialogFragment() {
                 arguments = Bundle().apply {
                     putString(ARG_WORD, word)
                     if (reading != null) putString(ARG_READING, reading)
+                    if (surface != null) putString(ARG_SURFACE, surface)
                     if (screenshotPath != null) putString(ARG_SCREENSHOT_PATH, screenshotPath)
                     if (sentenceOriginal != null) {
                         putString(ARG_SENTENCE_ORIGINAL, sentenceOriginal)
@@ -157,6 +160,7 @@ class WordDetailBottomSheet : DialogFragment() {
             WordDetailBinder.Args(
                 word = word,
                 reading = args?.getString(ARG_READING),
+                surface = args?.getString(ARG_SURFACE),
                 screenshotPath = args?.getString(ARG_SCREENSHOT_PATH),
                 sentenceOriginal = args?.getString(ARG_SENTENCE_ORIGINAL),
                 sentenceTranslation = args?.getString(ARG_SENTENCE_TRANSLATION),
@@ -177,8 +181,8 @@ class WordDetailBottomSheet : DialogFragment() {
         override fun sentenceContext(): SentenceContext? =
             (activity as? SentenceContextProvider)?.currentSentenceContext()
 
-        override fun openWordDetail(word: String, reading: String?) {
-            newInstance(word = word, reading = reading).show(childFragmentManager, TAG)
+        override fun openWordDetail(word: String, reading: String?, surface: String?) {
+            newInstance(word = word, reading = reading, surface = surface).show(childFragmentManager, TAG)
         }
 
         override fun openAnkiReview(args: WordDetailBinder.WordAnkiArgs) {

@@ -55,6 +55,7 @@ class WorkspaceLookupPage internal constructor(
             WorkspaceWordDetailPage(
                 word = args.word,
                 reading = args.reading,
+                surface = args.surface,
                 screenshotPath = args.screenshotPath,
                 audioAnchorMs = args.audioAnchorMs,
                 sentenceContext = { vm.sentenceContext(args.sentenceContext) },

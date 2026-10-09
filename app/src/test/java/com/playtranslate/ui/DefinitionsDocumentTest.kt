@@ -331,6 +331,42 @@ class DefinitionsDocumentTest {
     }
 
     @Test
+    fun `inflection lines render first, escaped, guillemets kept as text`() {
+        val html = DefinitionsDocument.contentHtml(
+            data(senses = listOf(SenseDisplay(listOf("verb"), "to drink", emptyList()))),
+            emptyMap(),
+            localizePos = { it.joinToString("/") },
+            metaChips = listOf(DefinitionsDocument.MetaChip("Common", DefinitionsDocument.MetaChip.Kind.COMMON)),
+            label = "warn",
+            inflectionLines = listOf("飲んでいなかった · -て « -いる « negative « -た", "a<b"),
+        )
+        assertTrue(
+            "the first block is the first conjugation line",
+            html.startsWith("<div class=\"inflection\">飲んでいなかった · -て « -いる « negative « -た</div>"),
+        )
+        assertTrue("every line is its own block, escaped", html.contains("<div class=\"inflection\">a&lt;b</div>"))
+        assertTrue(
+            "the lines precede the label and the meta row",
+            html.indexOf("class=\"inflection\"") < html.indexOf("class=\"label-warn\"") &&
+                html.indexOf("class=\"inflection\"") < html.indexOf("class=\"meta-row\""),
+        )
+    }
+
+    @Test
+    fun `no inflection lines, no inflection block`() {
+        val html = content(data(senses = listOf(SenseDisplay(listOf("verb"), "to drink", emptyList()))))
+        assertFalse(html.contains("class=\"inflection\""))
+    }
+
+    @Test
+    fun `the shell styles the inflection line muted with the chevron margin`() {
+        val css = shell().substringAfter(".inflection {").substringBefore("}")
+        assertTrue(css.contains("color: var(--pt-secondary)"))
+        assertTrue(css.contains("font-size: .8em"))
+        assertTrue(css.contains("margin: 0 17px .3em 0"))
+    }
+
+    @Test
     fun `cssAlpha is the color-mix-with-transparent equivalent`() {
         assertEquals("rgba(236,239,241,0.102)", DefinitionsDocument.cssAlpha(0xFFECEFF1.toInt(), 0.10f))
         assertEquals("rgba(0,188,212,0.161)", DefinitionsDocument.cssAlpha(0xFF00BCD4.toInt(), 0.16f))

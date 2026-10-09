@@ -20,7 +20,8 @@ import com.playtranslate.themeColor
  * Renders the dictionary body shared by the magnifying lens
  * ([MagnifierLens]) and the translation-result word cell ([WordResultCell]):
  * a meta row (Common pill · frequency stars · Anki deck pill), an optional
- * warning label, and the numbered senses with per-sense POS headers.
+ * warning label, and the numbered senses with per-sense POS headers; the lens
+ * also opts into the conjugation lines above them ([bind]'s showInflections).
  *
  * The whole body multiplies by a [bind] `scale` factor (text sizes and the
  * structural gaps), so the same renderer serves the small floating lens and
@@ -83,14 +84,38 @@ class WordDefinitionsView @JvmOverloads constructor(
      * the senses; pass null for none. [scale] multiplies every size — the
      * lens passes a small factor, the result cell the handoff's "large"
      * default.
+     *
+     * [showInflections] opts into the conjugation lines: one muted line per
+     * [WordDefinitionData.inflectedForms] entry ([InflectionChain.format]),
+     * uncapped, above everything else. The lens opts in; [WordResultCell]
+     * leaves it off because it draws its own capped line above this body.
      */
-    fun bind(data: WordDefinitionData, label: String?, scale: Float, showMisc: Boolean = true) {
+    fun bind(
+        data: WordDefinitionData,
+        label: String?,
+        scale: Float,
+        showMisc: Boolean = true,
+        showInflections: Boolean = false,
+    ) {
         removeAllViews()
+
+        if (showInflections) {
+            for (form in data.inflectedForms) {
+                val line = TextView(context).apply {
+                    text = InflectionChain.format(context, form)
+                    setTextColor(secondaryText)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, InflectionChain.TEXT_SP * scale)
+                }
+                addView(line, fullWidth().also { it.marginEnd = dp(INFLECTION_END_MARGIN_DP) })
+            }
+        }
 
         val hasMetaContent = data.isCommon || data.freqScore > 0 ||
             data.frequencies.isNotEmpty() || data.ankiDecks.isNotEmpty()
 
-        if (hasMetaContent) addView(buildMetaRow(data, scale), fullWidth())
+        if (hasMetaContent) {
+            addView(buildMetaRow(data, scale), fullWidth(topMargin = if (isNotEmpty()) dp(6f * scale) else 0))
+        }
 
         label?.takeIf { it.isNotBlank() }?.let { warning ->
             val view = TextView(context).apply {
@@ -271,4 +296,12 @@ class WordDefinitionsView @JvmOverloads constructor(
             this.topMargin = topMargin
             this.bottomMargin = bottomMargin
         }
+
+    private companion object {
+        /** End margin of a conjugation line, unscaled: the lens floats its
+         *  13dp open chevron over the body's top-right corner at the
+         *  content edge (the single body, and a headerless split section),
+         *  so the first line keeps that width plus a 4dp gap clear. */
+        const val INFLECTION_END_MARGIN_DP = 17f
+    }
 }
