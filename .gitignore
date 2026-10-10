@@ -5,6 +5,7 @@ local.properties
 build/
 app/build/
 .gradle/
+.kotlin/
 
 # Android SDK / JDK (bundled toolchain, not part of source)
 .sdk/
