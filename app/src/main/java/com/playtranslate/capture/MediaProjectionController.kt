@@ -1310,11 +1310,27 @@ class MediaProjectionController(private val service: CaptureService) {
                 // MediaProjection to create only ONE VirtualDisplay per token —
                 // a second proj.createVirtualDisplay throws SecurityException
                 // ("Cannot create more than one VirtualDisplay"). So reuse the
-                // existing VirtualDisplay: resize it and swap its output Surface
-                // to the new reader. setSurface first, then close the old reader
-                // so the VD never targets a closed surface.
-                vd.resize(w, h, dpi)
+                // existing VirtualDisplay: swap its output Surface to the new
+                // reader, THEN resize it. The order is load-bearing on API 34+,
+                // where WindowManager's ContentRecorder mirrors the screen into
+                // our surface: resize() raises a display-changed event whose
+                // handler recomputes the mirror scale and offset against the
+                // size of whatever Surface the VirtualDisplay holds at that
+                // instant, while a reader-to-reader setSurface() raises no
+                // event at all. With resize() first, the recompute read the OLD
+                // reader's size whenever it beat our next binder call (3 to
+                // 16 ms race, lost most of the time), and the new surface kept
+                // a letterbox transform (0.45x scale, 640 px shift on a
+                // 720x1604 phone) that nothing later corrected: black frames
+                // with a thin strip of screen after every rotation, for drags
+                // and live mode alike (Moto G 2025, Android 16, 2026-10-09).
+                // The Surface is assigned synchronously inside setSurface(), so
+                // the recompute now always sees the new reader. The old reader
+                // is closed only after both calls, so the VD never targets a
+                // closed surface.
                 vd.setSurface(newReader.surface)
+                vd.resize(w, h, dpi)
+                DetectionLog.log("MP: reader swapped ${readerW}x$readerH -> ${w}x$h (surface set before resize)")
             }
         } catch (e: Exception) {
             Log.e(TAG, "VirtualDisplay creation/update failed: ${e.message}")
