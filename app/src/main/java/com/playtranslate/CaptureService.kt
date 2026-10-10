@@ -840,6 +840,33 @@ class CaptureService : Service() {
         )
     }
 
+    /** The saved configuration for a hold that arrives before any configurer
+     *  has run. [configureSaved] is otherwise MainActivity's, the live
+     *  toggle's and the one-shot tap's; a service the Quick Settings tile
+     *  cold-started has had none of them, and the hold cycle refuses an
+     *  unconfigured service ([OneShotManager] runCycleStages), which the
+     *  Moto painted as "Screenshot failed" four times on 2026-10-09 with
+     *  no screenshot attempted. Each hold trigger calls this on entry,
+     *  ahead of the fan-out's target selection (which reads
+     *  [gameDisplayIds]), so the first hold captures the saved displays
+     *  and regions exactly as every later one does. A no-op once
+     *  configured: a reconfigure would clear the per-display overrides
+     *  and cancel the one-shots in flight.
+     *
+     *  An override already applied to the cold service (the floating
+     *  menu's region pick, the region editor's drawn region) is the user's
+     *  latest word on the region and is carried across: [configureSaved]
+     *  resets overrides to the persisted selection, right for a fresh
+     *  configure from Settings, wrong here, where the hold would OCR the
+     *  saved region instead of the one just chosen (Codex review). */
+    private fun configureSavedIfNeeded(primaryDisplayId: Int? = null) {
+        if (isConfigured) return
+        val pending = overrideRegions.toMap()
+        if (primaryDisplayId != null) configureSaved(primaryDisplayId)
+        else configureSaved(displayIds = Prefs(this).captureDisplayIds)
+        for ((id, region) in pending) configureOverride(id, region)
+    }
+
     /** Immutable snapshot of the translation pair + DeepL key at the moment
      *  a translation request enters the service. Threaded through every
      *  downstream call so that a concurrent [Prefs] change mid-batch can't
@@ -2725,6 +2752,7 @@ class CaptureService : Service() {
      */
     fun holdStart(displayId: Int) {
         lastInteractedDisplayId = displayId
+        configureSavedIfNeeded(displayId)
         // If the floating menu is up, tear it down outright instead of
         // letting the capture path alpha-cycle it. Avoids a class of
         // post-capture layout glitches on the MediaProjection backend where
@@ -2762,6 +2790,7 @@ class CaptureService : Service() {
      * panel.
      */
     fun holdStartFanout() {
+        configureSavedIfNeeded()
         // Same rationale as holdStart: if the floating menu is up, tear it
         // down outright so prepareForCleanCapture has nothing to restore.
         CaptureBackendResolver.activeOverlayUi
@@ -2819,6 +2848,7 @@ class CaptureService : Service() {
         Log.d("HotkeyDbg", "hotkeyHoldStart: mode=$mode isConfigured=$isConfigured isLive=$isLive")
         if (hotkeyActive) return
         hotkeyActive = true
+        configureSavedIfNeeded()
         val targets = oneShotFanoutDisplayIds()
         // No fan-out target (multi-display + every selected display is
         // skip-eligible). hotkeyActive is still set so the matching
