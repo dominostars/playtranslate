@@ -29,8 +29,12 @@ import androidx.core.graphics.withTranslation
  * Position is persisted as edge (LEFT=0, RIGHT=1) + fraction (0..1) along
  * that edge vertically.
  *
- * During a drag, switches to a "magnifying glass ring" appearance so the
- * text underneath is visible for screenshot capture.
+ * During a drag the icon is a bare touch handle until the drag's clean
+ * screenshot is in hand: it paints nothing and its window stays where it
+ * was, so no visible commit of ours can land in the captured frame. Once the
+ * lens reveals ([revealDragVisuals]) the window moves to the finger and
+ * paints the "magnifying glass ring" that follows it for the rest of the
+ * drag.
  */
 class FloatingOverlayIcon(context: Context) : View(context) {
 
@@ -233,7 +237,9 @@ class FloatingOverlayIcon(context: Context) : View(context) {
 
     var onTap: (() -> Unit)? = null
     var onPositionChanged: ((edge: Int, fraction: Float) -> Unit)? = null
-    /** Called once when drag mode activates (past tap threshold). Icon is now transparent. */
+    /** Called once when drag mode activates (past the tap threshold, or a
+     *  hold with [holdStartsDrag]). The icon paints nothing and commits no
+     *  layout from here until [revealDragVisuals]. */
     var onDragStart: (() -> Unit)? = null
     /** Called on every ACTION_MOVE during a drag (rawX, rawY screen coords). */
     var onDragMove: ((Float, Float) -> Unit)? = null
@@ -311,10 +317,22 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     /** True while a drag gesture is active. Set as soon as the user crosses
      *  the tap threshold so other code (popup dismissal, region-indicator
      *  restore) can tell "the user is dragging" before the screenshot lands.
-     *  Also gates the ring + mag-glass appearance — the screenshot pipeline
-     *  blanks the icon's window during capture, so we can flip the visuals
-     *  immediately without contaminating the captured pixels. */
+     *  Until [dragVisualsRevealed] the icon draws nothing. */
     var inDragMode = false
+        private set
+    /** True once [revealDragVisuals] has moved the window to the finger and
+     *  the ring + mag-glass appearance is up; false again when the drag
+     *  ends. Between the drag's start and the reveal the window neither
+     *  repaints visibly nor relayouts. The drag's clean capture is in flight
+     *  then, and a visible commit of ours submitted around its freshness
+     *  anchor is served as the "post-blank" frame: the MediaProjection gate
+     *  takes the newest delivery above the anchor, and the old move-and-
+     *  paint-the-ring at drag start was exactly such a commit, so the ring
+     *  at the finger landed in every drag screenshot on a slow phone (Moto
+     *  G, 2026-10-09). The capture path's own window-alpha blank stays the
+     *  only blank; the icon never blanks itself by alpha, which would read
+     *  to the host as nothing to blank and skip the gate. */
+    var dragVisualsRevealed = false
         private set
     /** True while the user's finger is on the icon — ACTION_DOWN until
      *  ACTION_UP/ACTION_CANCEL. The z-order re-raise (remove + re-add of this
@@ -386,12 +404,14 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         }
 
         if (inDragMode) {
-            // Ring only (transparent inside so text is visible for screenshot).
-            // The screenshot path blanks the icon's window via window-level
-            // alpha during the actual capture, so the ring won't appear in
-            // the captured pixels even though we paint it immediately.
+            // Nothing until the lens reveals: the window's buffer goes
+            // transparent in place (see dragVisualsRevealed), which is also
+            // what keeps the capture path's alpha restore from flashing the
+            // chevron back at the dock before the reveal moves the window.
+            if (!dragVisualsRevealed) return
+            // Ring only (transparent inside so the text under the finger
+            // stays readable), with a small magnifying glass in the centre.
             canvas.drawCircle(center, center, r - ringPaint.strokeWidth / 2, ringPaint)
-            // Small magnifying glass icon in center
             drawMagnifyingGlass(canvas, center, center, r * 0.4f)
             return
         }
@@ -461,28 +481,20 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     private fun exitDragMode() {
         if (!inDragMode) return
         inDragMode = false
+        dragVisualsRevealed = false
         dragStartFired = false
         invalidate()
     }
 
-    /** Enters drag mode for a gesture anchored at (rawX, rawY): re-centres
-     *  the icon window on that point, flips to the ring + magnifying-glass
-     *  appearance, and fires [onDragStart] followed by an initial
-     *  [onDragMove]. Shared by the move-threshold path ([onTouchEvent]'s
-     *  ACTION_MOVE) and the hold-to-drag path ([holdRunnable]). */
+    /** Enters drag mode for a gesture at (rawX, rawY): the icon's buffer
+     *  goes transparent where the window stands, and [onDragStart] fires
+     *  followed by an initial [onDragMove]. The window does not move and the
+     *  ring is not painted until [revealDragVisuals] (see
+     *  [dragVisualsRevealed] for why). Shared by the move-threshold path
+     *  ([onTouchEvent]'s ACTION_MOVE) and the hold-to-drag path
+     *  ([holdRunnable]). */
     private fun beginDrag(rawX: Float, rawY: Float) {
-        val p = params ?: return
-        // Centre the icon on the finger — the user may have grabbed it
-        // off-centre, or (for a forwarded intro gesture) pressed the
-        // carrier while it was animating inboard of the dock edge.
-        p.x = (rawX - viewHalf).toInt()
-        p.y = (rawY - viewHalf).toInt()
-        // Rebase so future moves are relative to this centred position.
-        downRawX = rawX
-        downRawY = rawY
-        downParamX = p.x
-        downParamY = p.y
-        try { wm?.updateViewLayout(this, p) } catch (_: Exception) {}
+        if (params == null) return
         enterDragMode()
         dragStartFired = true
         // Synchronous, and it must stay synchronous: ACTION_CANCEL/ACTION_UP
@@ -491,12 +503,32 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         // recognized just as the drag threshold tripped) is dispatched before
         // any posted message. A deferred start then runs AFTER the teardown,
         // re-arming the drag with no gesture left to end it — the capture
-        // reveals a magnifier lens that nothing will ever dismiss. The old
-        // post's reason ("let WM redraw the ring before the screenshot") is
-        // obsolete: the clean-capture path blanks the icon's whole window by
-        // alpha, so captured pixels never see the icon's drawn state.
+        // reveals a magnifier lens that nothing will ever dismiss.
         onDragStart?.invoke()
         onDragMove?.invoke(rawX, rawY)
+    }
+
+    /** Brings the drag's visuals up at the finger, (rawX, rawY): the window
+     *  is centred there, later moves are relative to it, and the ring +
+     *  magnifying glass paint from the next frame. The drag controller calls
+     *  this in the same step it shows the lens, once the clean screenshot is
+     *  in hand (or has failed). Idempotent; a no-op once the drag ended. */
+    fun revealDragVisuals(rawX: Float, rawY: Float) {
+        if (!inDragMode || dragVisualsRevealed) return
+        dragVisualsRevealed = true
+        val p = params ?: return
+        // Centre the window on the finger: the user may have grabbed the
+        // icon off-centre, or (for a forwarded intro gesture) pressed the
+        // carrier while it was animating inboard of the dock edge.
+        p.x = (rawX - viewHalf).toInt()
+        p.y = (rawY - viewHalf).toInt()
+        // Rebase so later moves are relative to this centred position.
+        downRawX = rawX
+        downRawY = rawY
+        downParamX = p.x
+        downParamY = p.y
+        try { wm?.updateViewLayout(this, p) } catch (_: Exception) {}
+        invalidate()
     }
 
     /** TalkBack double-tap path. Maps to the same callback a short tap
@@ -546,9 +578,17 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                 val dy = event.rawY - downRawY
                 totalMovement = abs(dx) + abs(dy)
                 val p = params ?: return true
-                p.x = (downParamX + dx).toInt()
-                p.y = (downParamY + dy).toInt()
-                try { wm?.updateViewLayout(this, p) } catch (_: Exception) {}
+                // The window follows the finger only while the drag's visuals
+                // are up. Inside the tap slop it stays put, as any view does
+                // within slop; from the drag's start to its reveal it must:
+                // a move is a visible commit of this window, submitted right
+                // where the drag's clean capture anchors its freshness gate
+                // (see dragVisualsRevealed).
+                if (dragVisualsRevealed) {
+                    p.x = (downParamX + dx).toInt()
+                    p.y = (downParamY + dy).toInt()
+                    try { wm?.updateViewLayout(this, p) } catch (_: Exception) {}
+                }
 
                 // Once a drag is under way every move feeds onDragMove —
                 // tapThresholdPx is only the *entry* gate, and totalMovement

@@ -74,6 +74,14 @@ class DragLookupController(
      *  later when the user closes the popup. */
     var onSettled: (() -> Unit)? = null
 
+    /** Fires when the lens comes up at the finger after the drag's clean
+     *  screenshot ([revealLensAfterCapture]), with the finger's screen
+     *  position. The floating icon brings its own drag visuals up on this
+     *  (window to the finger, ring), never earlier: see
+     *  [FloatingOverlayIcon.dragVisualsRevealed]. Null for hosts without an
+     *  icon (the camera's frozen-frame lookup). */
+    var onLensRevealed: ((rawX: Float, rawY: Float) -> Unit)? = null
+
     private val handler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(
         Dispatchers.Main + SupervisorJob() +
@@ -555,7 +563,11 @@ class DragLookupController(
         // that blank, so the lens — even its blank placeholder — landed in
         // the screenshot and masked the very text under the finger. hide()
         // also takes down any sticky lens left from the previous drag so it
-        // isn't in the frame either.
+        // isn't in the frame either. The floating icon follows the same rule
+        // (FloatingOverlayIcon.dragVisualsRevealed): it paints nothing and
+        // commits no layout until onLensRevealed, so no window of ours
+        // produces a visible commit between the capture's freshness anchor
+        // and its grab.
         lensRevealed = false
         magnifier.hide()
         ocrLines = null
@@ -639,12 +651,14 @@ class DragLookupController(
     }
 
     /** Capture-before-reveal: bring the lens on screen at the finger's
-     *  current position once the clean screenshot is in hand. Until this
-     *  runs, [onDragStart]/[onDragMove] keep the lens hidden so it can't
-     *  appear in the captured frame. Idempotent, and a no-op if the drag
-     *  already ended (user lifted before the capture finished) — [onDragEnd]'s
-     *  dismiss path owns that case. Runs on the main thread (the OCR
-     *  coroutine is Main-dispatched). */
+     *  current position once the clean screenshot is in hand, and tell the
+     *  host ([onLensRevealed]) so the floating icon's drag visuals come up in
+     *  the same step. Until this runs, [onDragStart]/[onDragMove] keep the
+     *  lens hidden and the icon paints nothing, so neither can appear in the
+     *  captured frame. Idempotent, and a no-op if the drag already ended
+     *  (user lifted before the capture finished) — [onDragEnd]'s dismiss
+     *  path owns that case. Runs on the main thread (the OCR coroutine is
+     *  Main-dispatched). */
     private fun revealLensAfterCapture() {
         if (lensRevealed || !dragInProgress) return
         lensRevealed = true
@@ -654,6 +668,7 @@ class DragLookupController(
         // of the pill is the loading look, not the magnifying-glass icon.
         magnifier.setPillLoading(true)
         magnifier.setLabel(null, null)
+        onLensRevealed?.invoke(lastX, lastY)
     }
 
     private suspend fun ocrFromFile(path: String) {
