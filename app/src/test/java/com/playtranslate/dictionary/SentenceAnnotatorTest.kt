@@ -61,7 +61,7 @@ class SentenceAnnotatorTest {
             val candidates = phraseCandidatesFor(tokens).let { all ->
                 if (headwords == null) all else admissiblePhraseCandidates(all, headwords, kanaNative)
             }
-            reglobSpans(tokens, candidates, knownPhrases, knownForms)
+            reglobSpans(tokens, candidates, knownPhrases, knownForms, headwords.orEmpty())
         } else {
             null
         },
@@ -244,7 +244,7 @@ class SentenceAnnotatorTest {
 
     @Test fun `a folded auxiliary asks for no resolution of its own`() {
         val tokens = nondeInakatta()
-        val keys = SentenceAnnotator.resolutionKeys(reglobSpans(tokens, phraseCandidatesFor(tokens), emptySet(), setOf("飲む", "いる")))
+        val keys = SentenceAnnotator.resolutionKeys(reglobSpans(tokens, phraseCandidatesFor(tokens), emptySet(), setOf("飲む", "いる"), emptySet()))
         assertEquals(setOf(ResolutionKey("飲む", "のん")), keys)
     }
 
@@ -290,7 +290,7 @@ class SentenceAnnotatorTest {
             tok("ない", JaCategory.ADJ_I, "ナイ", norm = "無い", infl = "連体形-一般", aux = true),
             tok("の", JaCategory.PARTICLE, "ノ"),
         )
-        val raw = reglobSpans(tokens, phraseCandidatesFor(tokens), setOf("じゃない"), setOf("言う"))
+        val raw = reglobSpans(tokens, phraseCandidatesFor(tokens), setOf("じゃない"), setOf("言う"), emptySet())
         assertEquals(4, raw[0].tokenCount)
         assertEquals(listOf(InflectionTag.NEGATIVE), raw[0].inflections)
         val ann = annotate("言うじゃないの", tokens, knownPhrases = setOf("じゃない"), knownForms = setOf("言う"))

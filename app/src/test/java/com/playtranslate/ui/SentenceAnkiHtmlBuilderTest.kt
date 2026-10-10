@@ -48,7 +48,7 @@ class SentenceAnkiHtmlBuilderTest {
         resolutions: Map<SentenceAnnotator.ResolutionKey, SentenceAnnotator.WordResolution> = emptyMap(),
     ): SentenceAnnotation = SentenceAnnotator.annotate(
         text, SourceLangId.JA, tokens,
-        reglobSpans(tokens, phraseCandidatesFor(tokens), knownPhrases, knownForms),
+        reglobSpans(tokens, phraseCandidatesFor(tokens), knownPhrases, knownForms, headwords = emptySet()),
         resolutions, importGeneration = 0,
     )
 

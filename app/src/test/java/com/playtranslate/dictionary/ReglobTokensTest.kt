@@ -9,7 +9,6 @@ import com.playtranslate.dictionary.DictionaryManager.Companion.reglobTokens
 import com.playtranslate.language.InflectionTag
 import com.playtranslate.language.memberUnits
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -45,7 +44,8 @@ class ReglobTokensTest {
         tokens: List<JaToken>,
         knownPhrases: Set<String> = emptySet(),
         knownForms: Set<String> = emptySet(),
-    ) = reglobTokens(tokens, phraseCandidatesFor(tokens), knownPhrases, knownForms)
+        headwords: Set<String> = emptySet(),
+    ) = reglobTokens(tokens, phraseCandidatesFor(tokens), knownPhrases, knownForms, headwords)
 
     // ── Phrase reading (homograph narrowing hint) ────────────────────────
     // Exact-join phrases carry the hiragana concat of their members'
@@ -690,6 +690,9 @@ class ReglobTokensTest {
     private fun exactSuspicion(tokens: List<JaToken>, lookup: String): Suspicion? =
         phraseCandidatesFor(tokens).first { it.lookupForm == lookup && !it.isVariant }.suspicion
 
+    private fun cutsPrev(tokens: List<JaToken>, lookup: String): Boolean =
+        phraseCandidatesFor(tokens).first { it.lookupForm == lookup && !it.isVariant }.cutsPreviousWord
+
     @Test
     fun `glue after an incomplete stem is a conjugation cut - the teori specimen`() {
         // いただい|て|おり|ます — ており is 手織り's reading, but て is bound to
@@ -712,7 +715,7 @@ class ReglobTokensTest {
             phraseCandidatesFor(tokens), headwords = emptySet(), kanaNativeReadings = emptySet(),
         )
         assertTrue(admissible.none { it.lookupForm == "ており" })
-        val r = reglobTokens(tokens, admissible, setOf("ており"), setOf("いただく", "おる"))
+        val r = reglobTokens(tokens, admissible, setOf("ており"), setOf("いただく", "おる"), emptySet())
         assertEquals(listOf("いただく"), r.map { it.lookupForm })
         assertEquals("いただいております", r[0].surface)
         assertEquals(listOf(InflectionTag.TE, InflectionTag.IRU, InflectionTag.MASU), r[0].inflections)
@@ -816,7 +819,7 @@ class ReglobTokensTest {
         val admissible = admissiblePhraseCandidates(
             phraseCandidatesFor(tokens), headwords = emptySet(), kanaNativeReadings = emptySet(),
         )
-        val r = reglobTokens(tokens, admissible, setOf("かもしれない"), setOf("言う"))
+        val r = reglobTokens(tokens, admissible, setOf("かもしれない"), setOf("言う"), emptySet())
         assertTrue(r.any { it.lookupForm == "かもしれない" })
     }
 
@@ -917,7 +920,7 @@ class ReglobTokensTest {
         )
         assertTrue("without a priority tag, 押して stays inadmissible",
             admissible.none { it.lookupForm == "押して" })
-        val r = reglobTokens(tokens, admissible, setOf("押して"), setOf("押す"))
+        val r = reglobTokens(tokens, admissible, setOf("押して"), setOf("押す"), emptySet())
         assertEquals(listOf("押す"), r.map { it.lookupForm })
         assertEquals("押して", r[0].surface)
     }
@@ -949,7 +952,8 @@ class ReglobTokensTest {
         knownPhrases: Set<String> = emptySet(),
         knownForms: Set<String> = emptySet(),
         fold: Boolean = true,
-    ) = reglobSpans(tokens, phraseCandidatesFor(tokens, fold), knownPhrases, knownForms, fold)
+        headwords: Set<String> = emptySet(),
+    ) = reglobSpans(tokens, phraseCandidatesFor(tokens, fold), knownPhrases, knownForms, headwords, fold)
 
     /** 飲んでいなかった. */
     private val nondeInakatta = listOf(
@@ -1117,7 +1121,7 @@ class ReglobTokensTest {
             iruAux,
             jaToken("か", JaCategory.PARTICLE),
         )
-        assertEquals(Suspicion.PREVIOUS_WORD_CUT, exactSuspicion(tokens, "いるか"))
+        assertTrue(cutsPrev(tokens, "いるか"))
         val r = spans(tokens, knownPhrases = setOf("いるか"), knownForms = setOf("知る", "いる"))
         assertEquals(listOf("知っているか"), r.map { it.surface })
         assertEquals("知る", r[0].lookupForm)
@@ -1209,7 +1213,7 @@ class ReglobTokensTest {
             priorityHeadwords = setOf("従って"),
         )
         assertTrue(admissible.none { it.lookupForm == "従って" })
-        val s = reglobSpans(tokens, admissible, setOf("従って"), setOf("従う", "いる")).single()
+        val s = reglobSpans(tokens, admissible, setOf("従って"), setOf("従う", "いる"), emptySet()).single()
         assertEquals("従う", s.lookupForm)
         assertEquals(3, s.tokenCount)
         assertEquals(listOf(InflectionTag.TE, InflectionTag.IRU), s.inflections)
@@ -1357,11 +1361,11 @@ class ReglobTokensTest {
             jaToken("は", JaCategory.PARTICLE),
             naiAdj(),
         )
-        assertEquals(Suspicion.PREVIOUS_WORD_CUT, exactSuspicion(tokens, "ではない"))
+        assertTrue(cutsPrev(tokens, "ではない"))
         val admissible = admissiblePhraseCandidates(
             phraseCandidatesFor(tokens), headwords = emptySet(), kanaNativeReadings = setOf("ではない"),
         )
-        val s = reglobSpans(tokens, admissible, setOf("ではない"), setOf("静か", "ない")).single()
+        val s = reglobSpans(tokens, admissible, setOf("ではない"), setOf("静か", "ない"), emptySet()).single()
         assertEquals("静かではない", s.surface)
         assertEquals("静か", s.lookupForm)
         assertEquals(listOf(InflectionTag.NEGATIVE), s.inflections)
@@ -1428,11 +1432,11 @@ class ReglobTokensTest {
             naiAdj(),
             jaToken("わ", JaCategory.PARTICLE),
         )
-        assertEquals(Suspicion.PREVIOUS_WORD_CUT, exactSuspicion(tokens, "にない"))
+        assertTrue(cutsPrev(tokens, "にない"))
         val admissible = admissiblePhraseCandidates(
             phraseCandidatesFor(tokens), headwords = emptySet(), kanaNativeReadings = emptySet(),
         )
-        val s = reglobSpans(tokens, admissible, setOf("にない"), setOf("入れる")).single()
+        val s = reglobSpans(tokens, admissible, setOf("にない"), setOf("入れる"), emptySet()).single()
         assertEquals("入れそうにないわ", s.surface)
         assertEquals("入れる", s.lookupForm)
         assertEquals(5, s.tokenCount)
@@ -1443,15 +1447,15 @@ class ReglobTokensTest {
     fun `a window starting at a folded 無い or そう is a previous-word cut`() {
         // 高くないか: ないか is a reading in the pack.
         val takakuNaika = listOf(takaku, naiAdj(), jaToken("か", JaCategory.PARTICLE))
-        assertEquals(Suspicion.PREVIOUS_WORD_CUT, exactSuspicion(takakuNaika, "ないか"))
+        assertTrue(cutsPrev(takakuNaika, "ないか"))
         val admissible = admissiblePhraseCandidates(
             phraseCandidatesFor(takakuNaika), headwords = emptySet(), kanaNativeReadings = emptySet(),
         )
-        val s = reglobSpans(takakuNaika, admissible, setOf("ないか"), setOf("高い", "ない")).single()
+        val s = reglobSpans(takakuNaika, admissible, setOf("ないか"), setOf("高い", "ない"), emptySet()).single()
         assertEquals("高くないか", s.surface)
         assertEquals(listOf(InflectionTag.NEGATIVE), s.inflections)
         // 食べそうだ: the window [そう, だ] starts at the folded そう.
-        assertEquals(Suspicion.PREVIOUS_WORD_CUT, exactSuspicion(listOf(tabe, auxStem("そう"), daFinal), "そうだ"))
+        assertTrue(cutsPrev(listOf(tabe, auxStem("そう"), daFinal), "そうだ"))
     }
 
     // ── 形状詞 (na-adjectives) ───────────────────────────────────────────
@@ -1501,13 +1505,27 @@ class ReglobTokensTest {
         // tier would admit; at the 形状詞's だっ it is a previous-word cut, and
         // 静か is a single-token span, not a closed phrase.
         val dattaTokens = listOf(shizuka, da("だっ", "連用形-促音便"), taFinal)
-        assertEquals(Suspicion.PREVIOUS_WORD_CUT, exactSuspicion(dattaTokens, "だった"))
+        assertTrue(cutsPrev(dattaTokens, "だった"))
         val admissible = admissiblePhraseCandidates(
             phraseCandidatesFor(dattaTokens), headwords = emptySet(), kanaNativeReadings = setOf("だった"),
         )
-        val s = reglobSpans(dattaTokens, admissible, setOf("だった"), setOf("静か")).single()
+        val s = reglobSpans(dattaTokens, admissible, setOf("だった"), setOf("静か"), emptySet()).single()
         assertEquals("静かだった", s.surface)
         assertEquals(listOf(InflectionTag.TA), s.inflections)
+    }
+
+    @Test
+    fun `a headword clears a window that cuts the word before it`() {
+        // The same 静か|だっ|た with だった as a written headword (hypothetical):
+        // a headword fuses after an open word, as a conjugation cut's does.
+        val dattaTokens = listOf(shizuka, da("だっ", "連用形-促音便"), taFinal)
+        assertTrue(cutsPrev(dattaTokens, "だった"))
+        val r = spans(dattaTokens, knownPhrases = setOf("だった"), knownForms = setOf("静か"), headwords = setOf("だった"))
+        assertEquals(listOf("静か", "だった"), r.map { it.lookupForm })
+        assertEquals(
+            listOf("静かだった"),
+            spans(dattaTokens, knownPhrases = setOf("だった"), knownForms = setOf("静か")).map { it.surface },
+        )
     }
 
     @Test
@@ -1594,21 +1612,15 @@ class ReglobTokensTest {
             naiAdj(),
             jaToken("か", JaCategory.PARTICLE),
         )
-        assertEquals(Suspicion.PREVIOUS_WORD_CUT, exactSuspicion(tokens, "ないか"))
+        assertTrue(cutsPrev(tokens, "ないか"))
         val candidates = phraseCandidatesFor(tokens)
-        // Without the word before it, ないか is a clean join.
-        assertNull(candidates.single { it.lookupForm == "ないか" }.residualSuspicion)
+        // The window itself is a clean join; the hold is the walk's alone.
+        assertNull(exactSuspicion(tokens, "ないか"))
         val admissible = admissiblePhraseCandidates(
             candidates, headwords = setOf("なんじゃ"), kanaNativeReadings = setOf("ないか"),
         )
-        // Not a headword: kept for the walk, marked, rather than dropped.
-        assertTrue(admissible.single { it.lookupForm == "ないか" }.afterClosedPhraseOnly)
-        // A headword admits unmarked, as a conjugation cut's does.
-        assertFalse(
-            admissiblePhraseCandidates(candidates, headwords = setOf("ないか"), kanaNativeReadings = emptySet())
-                .single { it.lookupForm == "ないか" }.afterClosedPhraseOnly,
-        )
-        val r = reglobSpans(tokens, admissible, setOf("なんじゃ", "ないか"), setOf("何", "ない"))
+        assertTrue(admissible.any { it.lookupForm == "ないか" })
+        val r = reglobSpans(tokens, admissible, setOf("なんじゃ", "ないか"), setOf("何", "ない"), emptySet())
         assertEquals(listOf("なんじゃ", "ないか"), r.map { it.lookupForm })
         assertTrue(r.all { it.isPhrase })
         assertEquals(listOf(0 to 2, 2 to 2), r.map { it.tokenStart to it.tokenCount })
@@ -1624,16 +1636,16 @@ class ReglobTokensTest {
             da("だ", "終止形-一般"),
             jaToken("が", JaCategory.PARTICLE, conj = true),
         )
-        assertEquals(Suspicion.PREVIOUS_WORD_CUT, exactSuspicion(tokens, "だが"))
+        assertTrue(cutsPrev(tokens, "だが"))
         val candidates = phraseCandidatesFor(tokens)
-        // Without the word before it, だが is all function morphemes: the
-        // kana-native tier judges it, and だが is a kana word.
-        assertEquals(Suspicion.FUNCTION_RUN, candidates.single { it.lookupForm == "だが" }.residualSuspicion)
+        // The window itself is all function morphemes: the kana-native tier
+        // judges it, and だが is a kana word.
+        assertEquals(Suspicion.FUNCTION_RUN, exactSuspicion(tokens, "だが"))
         val admissible = admissiblePhraseCandidates(
             candidates, headwords = setOf("特徴的"), kanaNativeReadings = setOf("だが"),
         )
-        assertTrue(admissible.single { it.lookupForm == "だが" }.afterClosedPhraseOnly)
-        val r = reglobSpans(tokens, admissible, setOf("特徴的", "だが"), setOf("特徴", "的"))
+        assertTrue(admissible.any { it.lookupForm == "だが" })
+        val r = reglobSpans(tokens, admissible, setOf("特徴的", "だが"), setOf("特徴", "的"), emptySet())
         assertEquals(listOf("特徴的", "だが"), r.map { it.lookupForm })
         assertTrue(r.all { it.isPhrase })
         assertEquals(listOf(0 to 2, 2 to 2), r.map { it.tokenStart to it.tokenCount })
@@ -1655,7 +1667,7 @@ class ReglobTokensTest {
             phraseCandidatesFor(tokens), headwords = setOf("特徴的"), kanaNativeReadings = emptySet(),
         )
         assertTrue(admissible.none { it.lookupForm == "だが" })
-        val r = reglobSpans(tokens, admissible, setOf("特徴的", "だが"), setOf("特徴", "的"))
+        val r = reglobSpans(tokens, admissible, setOf("特徴的", "だが"), setOf("特徴", "的"), emptySet())
         assertEquals(listOf("特徴的"), r.map { it.lookupForm })
     }
 
@@ -1673,11 +1685,11 @@ class ReglobTokensTest {
             naiAdj(),
             jaToken("か", JaCategory.PARTICLE),
         )
-        assertEquals(Suspicion.PREVIOUS_WORD_CUT, exactSuspicion(tokens, "ないか"))
+        assertTrue(cutsPrev(tokens, "ないか"))
         val admissible = admissiblePhraseCandidates(
             phraseCandidatesFor(tokens), headwords = setOf("特徴的"), kanaNativeReadings = setOf("ないか"),
         )
-        val r = reglobSpans(tokens, admissible, setOf("特徴的", "ないか"), setOf("特徴", "ない"))
+        val r = reglobSpans(tokens, admissible, setOf("特徴的", "ないか"), setOf("特徴", "ない"), emptySet())
         assertEquals(listOf("特徴的", "ない"), r.map { it.lookupForm })
         assertEquals(listOf(0 to 2, 4 to 2), r.map { it.tokenStart to it.tokenCount })
 
@@ -1690,7 +1702,7 @@ class ReglobTokensTest {
         )
         assertEquals(
             listOf("いる"),
-            reglobSpans(noSpan, noSpanAdmissible, setOf("いるか"), setOf("いる")).map { it.lookupForm },
+            reglobSpans(noSpan, noSpanAdmissible, setOf("いるか"), setOf("いる"), emptySet()).map { it.lookupForm },
         )
     }
 }
