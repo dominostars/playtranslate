@@ -9,6 +9,7 @@ import com.playtranslate.dictionary.DictionaryManager.Companion.reglobTokens
 import com.playtranslate.language.InflectionTag
 import com.playtranslate.language.memberUnits
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -1116,7 +1117,7 @@ class ReglobTokensTest {
             iruAux,
             jaToken("か", JaCategory.PARTICLE),
         )
-        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(tokens, "いるか"))
+        assertEquals(Suspicion.PREVIOUS_WORD_CUT, exactSuspicion(tokens, "いるか"))
         val r = spans(tokens, knownPhrases = setOf("いるか"), knownForms = setOf("知る", "いる"))
         assertEquals(listOf("知っているか"), r.map { it.surface })
         assertEquals("知る", r[0].lookupForm)
@@ -1348,14 +1349,15 @@ class ReglobTokensTest {
     fun `無い after a 形状詞's で and は folds, ahead of the ではない reading`() {
         // 静かではない: the 形状詞 folds its だ (here で) and は, and 無い after
         // them. ではない is a reading in the pack; starting at the 形状詞's own
-        // 助動詞 it is a conjugation cut, which a reading cannot clear.
+        // 助動詞 it is a previous-word cut, which a reading clears only right
+        // after a closed phrase, and 静か is a single-token span.
         val tokens = listOf(
             jaToken("静か", JaCategory.ADJ_NA),
             jaToken("で", JaCategory.AUX, dict = "だ", infl = "連用形-一般", conjType = "助動詞-ダ"),
             jaToken("は", JaCategory.PARTICLE),
             naiAdj(),
         )
-        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(tokens, "ではない"))
+        assertEquals(Suspicion.PREVIOUS_WORD_CUT, exactSuspicion(tokens, "ではない"))
         val admissible = admissiblePhraseCandidates(
             phraseCandidatesFor(tokens), headwords = emptySet(), kanaNativeReadings = setOf("ではない"),
         )
@@ -1416,7 +1418,7 @@ class ReglobTokensTest {
     // fold and must not take its tail on a reading.
 
     @Test
-    fun `glue after a folded そう is a conjugation cut - the にない specimen`() {
+    fun `glue after a folded そう is a previous-word cut - the にない specimen`() {
         // corpus: 穏便に中へ入れそうにないわ。 にない is 担い's reading; before the
         // fold the longer そうにない took the window at そう.
         val tokens = listOf(
@@ -1426,7 +1428,7 @@ class ReglobTokensTest {
             naiAdj(),
             jaToken("わ", JaCategory.PARTICLE),
         )
-        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(tokens, "にない"))
+        assertEquals(Suspicion.PREVIOUS_WORD_CUT, exactSuspicion(tokens, "にない"))
         val admissible = admissiblePhraseCandidates(
             phraseCandidatesFor(tokens), headwords = emptySet(), kanaNativeReadings = emptySet(),
         )
@@ -1438,10 +1440,10 @@ class ReglobTokensTest {
     }
 
     @Test
-    fun `a window starting at a folded 無い or そう is a conjugation cut`() {
+    fun `a window starting at a folded 無い or そう is a previous-word cut`() {
         // 高くないか: ないか is a reading in the pack.
         val takakuNaika = listOf(takaku, naiAdj(), jaToken("か", JaCategory.PARTICLE))
-        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(takakuNaika, "ないか"))
+        assertEquals(Suspicion.PREVIOUS_WORD_CUT, exactSuspicion(takakuNaika, "ないか"))
         val admissible = admissiblePhraseCandidates(
             phraseCandidatesFor(takakuNaika), headwords = emptySet(), kanaNativeReadings = emptySet(),
         )
@@ -1449,7 +1451,7 @@ class ReglobTokensTest {
         assertEquals("高くないか", s.surface)
         assertEquals(listOf(InflectionTag.NEGATIVE), s.inflections)
         // 食べそうだ: the window [そう, だ] starts at the folded そう.
-        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(listOf(tabe, auxStem("そう"), daFinal), "そうだ"))
+        assertEquals(Suspicion.PREVIOUS_WORD_CUT, exactSuspicion(listOf(tabe, auxStem("そう"), daFinal), "そうだ"))
     }
 
     // ── 形状詞 (na-adjectives) ───────────────────────────────────────────
@@ -1496,9 +1498,10 @@ class ReglobTokensTest {
     @Test
     fun `a reading phrase cannot take a 形状詞's own 助動詞`() {
         // 静かだった: だった is a reading (rank 1,000,000) that the function-run
-        // tier would admit; at the 形状詞's だっ it is a conjugation cut.
+        // tier would admit; at the 形状詞's だっ it is a previous-word cut, and
+        // 静か is a single-token span, not a closed phrase.
         val dattaTokens = listOf(shizuka, da("だっ", "連用形-促音便"), taFinal)
-        assertEquals(Suspicion.CONJUGATION_CUT, exactSuspicion(dattaTokens, "だった"))
+        assertEquals(Suspicion.PREVIOUS_WORD_CUT, exactSuspicion(dattaTokens, "だった"))
         val admissible = admissiblePhraseCandidates(
             phraseCandidatesFor(dattaTokens), headwords = emptySet(), kanaNativeReadings = setOf("だった"),
         )
@@ -1572,5 +1575,122 @@ class ReglobTokensTest {
         assertNull(exactSuspicion(tokens, "悪質な"))       // shape 2 would start here
         assertNull(exactSuspicion(tokens, "コイツが悪質"))  // the mirror shape would end here
         assertNull(exactSuspicion(tokens, "が悪質"))
+    }
+
+    // ── After a closed phrase ───────────────────────────────────────────
+    // A previous-word cut protects the conjugation of the word before the
+    // window. When the walk has just closed a phrase span there, nothing is
+    // left to protect: an exact phrase folds nothing after its window.
+
+    @Test
+    fun `a previous-word cut fuses right after a closed phrase - the なんじゃないか specimen`() {
+        // corpus: なんじゃないか. なんじゃ closes as a phrase; ない after じゃ is
+        // a fold target, so ないか (JMdict 2210280, "isn't it") is a
+        // previous-word cut. Before the walk decided, it was dropped and the
+        // line read なんじゃ + ない.
+        val tokens = listOf(
+            jaToken("なん", JaCategory.PRONOUN, norm = "何"),
+            da("じゃ", "連用形-融合"),
+            naiAdj(),
+            jaToken("か", JaCategory.PARTICLE),
+        )
+        assertEquals(Suspicion.PREVIOUS_WORD_CUT, exactSuspicion(tokens, "ないか"))
+        val candidates = phraseCandidatesFor(tokens)
+        // Without the word before it, ないか is a clean join.
+        assertNull(candidates.single { it.lookupForm == "ないか" }.residualSuspicion)
+        val admissible = admissiblePhraseCandidates(
+            candidates, headwords = setOf("なんじゃ"), kanaNativeReadings = setOf("ないか"),
+        )
+        // Not a headword: kept for the walk, marked, rather than dropped.
+        assertTrue(admissible.single { it.lookupForm == "ないか" }.afterClosedPhraseOnly)
+        // A headword admits unmarked, as a conjugation cut's does.
+        assertFalse(
+            admissiblePhraseCandidates(candidates, headwords = setOf("ないか"), kanaNativeReadings = emptySet())
+                .single { it.lookupForm == "ないか" }.afterClosedPhraseOnly,
+        )
+        val r = reglobSpans(tokens, admissible, setOf("なんじゃ", "ないか"), setOf("何", "ない"))
+        assertEquals(listOf("なんじゃ", "ないか"), r.map { it.lookupForm })
+        assertTrue(r.all { it.isPhrase })
+        assertEquals(listOf(0 to 2, 2 to 2), r.map { it.tokenStart to it.tokenCount })
+    }
+
+    @Test
+    fun `a 形状詞's 助動詞 fuses right after a closed phrase - the 特徴的だが specimen`() {
+        // corpus: 特徴的だが. 的 is a 形状詞 suffix, so だ after it is a
+        // previous-word cut; 特徴的 closes as a phrase, so だが ("but") fuses.
+        val tokens = listOf(
+            jaToken("特徴", JaCategory.NOUN),
+            jaToken("的", JaCategory.ADJ_NA),
+            da("だ", "終止形-一般"),
+            jaToken("が", JaCategory.PARTICLE, conj = true),
+        )
+        assertEquals(Suspicion.PREVIOUS_WORD_CUT, exactSuspicion(tokens, "だが"))
+        val candidates = phraseCandidatesFor(tokens)
+        // Without the word before it, だが is all function morphemes: the
+        // kana-native tier judges it, and だが is a kana word.
+        assertEquals(Suspicion.FUNCTION_RUN, candidates.single { it.lookupForm == "だが" }.residualSuspicion)
+        val admissible = admissiblePhraseCandidates(
+            candidates, headwords = setOf("特徴的"), kanaNativeReadings = setOf("だが"),
+        )
+        assertTrue(admissible.single { it.lookupForm == "だが" }.afterClosedPhraseOnly)
+        val r = reglobSpans(tokens, admissible, setOf("特徴的", "だが"), setOf("特徴", "的"))
+        assertEquals(listOf("特徴的", "だが"), r.map { it.lookupForm })
+        assertTrue(r.all { it.isPhrase })
+        assertEquals(listOf(0 to 2, 2 to 2), r.map { it.tokenStart to it.tokenCount })
+    }
+
+    @Test
+    fun `after a closed phrase a held window is judged by its own shape`() {
+        // The 特徴的だが tokens with だが a reading but not a kana-native one
+        // (the との=殿 shape): as a function run it would not fuse in a clean
+        // context, so it does not fuse after a closed phrase either. Dropped
+        // at admissibility, not held for the walk.
+        val tokens = listOf(
+            jaToken("特徴", JaCategory.NOUN),
+            jaToken("的", JaCategory.ADJ_NA),
+            da("だ", "終止形-一般"),
+            jaToken("が", JaCategory.PARTICLE, conj = true),
+        )
+        val admissible = admissiblePhraseCandidates(
+            phraseCandidatesFor(tokens), headwords = setOf("特徴的"), kanaNativeReadings = emptySet(),
+        )
+        assertTrue(admissible.none { it.lookupForm == "だが" })
+        val r = reglobSpans(tokens, admissible, setOf("特徴的", "だが"), setOf("特徴", "的"))
+        assertEquals(listOf("特徴的"), r.map { it.lookupForm })
+    }
+
+    @Test
+    fun `a previous-word cut needs a closed phrase ending right before it`() {
+        // The fold case (高くないか) is pinned above: the fold claims ない, so
+        // no window starts there. Here 特徴的 closes two tokens before ない,
+        // and で|は between belong to no span. ではない is left out of the
+        // membership so that ないか is the only window at stake.
+        val tokens = listOf(
+            jaToken("特徴", JaCategory.NOUN),
+            jaToken("的", JaCategory.ADJ_NA),
+            da("で", "連用形-一般"),
+            jaToken("は", JaCategory.PARTICLE),
+            naiAdj(),
+            jaToken("か", JaCategory.PARTICLE),
+        )
+        assertEquals(Suspicion.PREVIOUS_WORD_CUT, exactSuspicion(tokens, "ないか"))
+        val admissible = admissiblePhraseCandidates(
+            phraseCandidatesFor(tokens), headwords = setOf("特徴的"), kanaNativeReadings = setOf("ないか"),
+        )
+        val r = reglobSpans(tokens, admissible, setOf("特徴的", "ないか"), setOf("特徴", "ない"))
+        assertEquals(listOf("特徴的", "ない"), r.map { it.lookupForm })
+        assertEquals(listOf(0 to 2, 4 to 2), r.map { it.tokenStart to it.tokenCount })
+
+        // No span at all before the window: the stem is not lookup-worthy
+        // (constructed, as in the emitted-span test), so いるか stays out.
+        val noSpan = listOf(jaToken("ggっ", JaCategory.VERB, dict = "gg", infl = "連用形-促音便"), te, iruAux,
+            jaToken("か", JaCategory.PARTICLE))
+        val noSpanAdmissible = admissiblePhraseCandidates(
+            phraseCandidatesFor(noSpan), headwords = emptySet(), kanaNativeReadings = setOf("いるか"),
+        )
+        assertEquals(
+            listOf("いる"),
+            reglobSpans(noSpan, noSpanAdmissible, setOf("いるか"), setOf("いる")).map { it.lookupForm },
+        )
     }
 }
