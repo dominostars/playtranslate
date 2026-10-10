@@ -112,8 +112,12 @@ class WordDetailBinder(
          *  rank another entry (預かる) first. Defaults to [word] for an
          *  opener with no key of its own. */
         val lookupForm: String = word,
-        /** The reading that narrowed [lookupForm]'s lookup, null when none.
-         *  Defaults to [reading] for an opener with no key of its own. */
+        /** The reading that narrowed [lookupForm]'s lookup, null when none;
+         *  for the lookup only. For a conjugated occurrence it is the
+         *  surface's reading (こだわっ for 拘って), which names no reading row
+         *  of the entry: the header's bold row and the Anki and one-tap
+         *  headwords follow [reading], what the opener showed. Defaults to
+         *  [reading] for an opener with no key of its own. */
         val lookupReading: String? = reading,
     )
 
@@ -219,10 +223,12 @@ class WordDetailBinder(
     private var headerBadgeFlow: FlowLayout? = null
     private var headerWord: String? = null
 
-    /** The occurrence reading the caller passed (e.g. 明日 → あす): the key's
-     *  ([Args.lookupReading]), else the display's ([Args.reading]). Bolds
-     *  the matching reading row and drives the occurrence-aware Anki fields;
-     *  null on a cold lookup. */
+    /** The reading the opener showed ([Args.reading], e.g. 明日 → あす):
+     *  bolds the matching reading row and picks the Anki and one-tap
+     *  headwords inside the entry the key resolved. Never the key's reading
+     *  ([Args.lookupReading]), which for a conjugated occurrence is the
+     *  surface's and matches no row; null on a cold lookup or a kana-only
+     *  display. */
     private var readingHint: String? = null
     private val deckPillTag = "anki_deck_pill"
 
@@ -272,7 +278,7 @@ class WordDetailBinder(
         // card's word); [lookupForm] is what it resolves and selects with.
         val word = args.word
         val lookupForm = args.lookupForm
-        readingHint = args.lookupReading ?: args.reading
+        readingHint = args.reading
         val screenshotPath = args.screenshotPath
         val embedded = args.embedded
 
@@ -438,7 +444,7 @@ class WordDetailBinder(
             val translationRegistry = mutableMapOf<Pair<Int, Int>, TextView>()
             // The word as found, under its key, for its other matches: the
             // same chain the header draws from it.
-            val wordSpan = TokenSpan(surface ?: lookupForm, lookupForm, readingHint, tokenTags)
+            val wordSpan = TokenSpan(surface ?: lookupForm, lookupForm, args.lookupReading, tokenTags)
             val display = pageHeadwordDisplay(primary, word, lookupForm)
             val secondaryHost = buildContent(
                 content, entries, engine, sourceLangId, defResult, initialTranslations,
