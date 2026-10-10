@@ -51,8 +51,10 @@ class WordDetailBottomSheet : DialogFragment() {
         private const val ARG_LOOKUP_READING  = "lookup_reading"
 
         /** [lookupForm] and [lookupReading] are the key the page resolves
-         *  its entry with ([WordDetailBinder.Args.lookupForm]); an opener
-         *  with no key of its own leaves them at [word] and [reading]. */
+         *  its entry with ([WordDetailBinder.Args.lookupForm]); null for an
+         *  opener with no key of its own, whose bundle then carries none and
+         *  reads back as [WordDetailBinder.Args] defaults it, under [word]
+         *  and [reading], exactly like a bundle from before the key existed. */
         fun newInstance(
             word: String,
             reading: String? = null,
@@ -63,14 +65,16 @@ class WordDetailBottomSheet : DialogFragment() {
             sentenceWordResults: Map<String, Triple<String, String, Int>>? = null,
             embedded: Boolean = false,
             sentencePending: com.playtranslate.model.PendingTranslation? = null,
-            lookupForm: String = word,
-            lookupReading: String? = reading,
+            lookupForm: String? = null,
+            lookupReading: String? = null,
         ) = WordDetailBottomSheet().apply {
                 arguments = Bundle().apply {
                     putString(ARG_WORD, word)
                     if (reading != null) putString(ARG_READING, reading)
-                    putString(ARG_LOOKUP_FORM, lookupForm)
-                    if (lookupReading != null) putString(ARG_LOOKUP_READING, lookupReading)
+                    if (lookupForm != null) {
+                        putString(ARG_LOOKUP_FORM, lookupForm)
+                        if (lookupReading != null) putString(ARG_LOOKUP_READING, lookupReading)
+                    }
                     if (surface != null) putString(ARG_SURFACE, surface)
                     if (screenshotPath != null) putString(ARG_SCREENSHOT_PATH, screenshotPath)
                     if (sentenceOriginal != null) {
@@ -112,7 +116,7 @@ class WordDetailBottomSheet : DialogFragment() {
                         )
                     }.toMap()
                 }
-            return WordDetailBinder.Args(
+            val args = WordDetailBinder.Args(
                 word = word,
                 reading = bundle.getString(ARG_READING),
                 surface = bundle.getString(ARG_SURFACE),
@@ -122,11 +126,11 @@ class WordDetailBottomSheet : DialogFragment() {
                 sentenceWordResults = sentenceWordResults,
                 sentencePending = sentencePending,
                 embedded = bundle.getBoolean(ARG_EMBEDDED, false),
-                // newInstance writes the form with the word, so the fallback
-                // only satisfies the type.
-                lookupForm = bundle.getString(ARG_LOOKUP_FORM) ?: word,
-                lookupReading = bundle.getString(ARG_LOOKUP_READING),
             )
+            // No key stored (an opener with none, or a bundle from before the
+            // key existed): the display is the key, as Args defaults it.
+            val lookupForm = bundle.getString(ARG_LOOKUP_FORM) ?: return args
+            return args.copy(lookupForm = lookupForm, lookupReading = bundle.getString(ARG_LOOKUP_READING))
         }
     }
 

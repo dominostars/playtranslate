@@ -41,7 +41,11 @@ class WordDetailBottomSheetArgsTest {
     }
 
     @Test
-    fun `an opener with no key resolves under the display`() {
+    fun `a bundle without a key resolves under the display, reading included`() {
+        // newInstance stores no key for an opener with none, so this bundle
+        // is also the shape a bundle saved before the key existed has: the
+        // reading must come back as the lookup's, or 弾く read はじく would
+        // resolve rank-first as ひく.
         val args = roundTrip(WordDetailBottomSheet.newInstance(word = "明日", reading = "あす"))
         assertEquals("明日" to "あす", args.lookupForm to args.lookupReading)
     }
