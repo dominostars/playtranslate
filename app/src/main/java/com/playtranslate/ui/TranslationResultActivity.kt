@@ -449,9 +449,9 @@ class TranslationResultActivity :
         val word = intent.getStringExtra(EXTRA_DRAG_WORD) ?: return
         val reading = intent.getStringExtra(EXTRA_DRAG_READING)
         val surface = intent.getStringExtra(EXTRA_DRAG_SURFACE)
-        // The launcher writes the key with the word, so the fallback only
-        // satisfies the type.
-        val lookupForm = intent.getStringExtra(EXTRA_DRAG_LOOKUP_FORM) ?: word
+        // Absent on a launch from before the key existed; the sheet then
+        // resolves under the display, as it does for any opener with no key.
+        val lookupForm = intent.getStringExtra(EXTRA_DRAG_LOOKUP_FORM)
         val lookupReading = intent.getStringExtra(EXTRA_DRAG_LOOKUP_READING)
         val screenshotPath = intent.getStringExtra(EXTRA_SCREENSHOT_PATH)
         // Capture launch-time fallbacks for [currentSentenceContext]. The
