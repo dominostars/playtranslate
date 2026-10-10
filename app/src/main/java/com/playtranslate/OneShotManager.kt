@@ -159,6 +159,9 @@ class OneShotManager(private val service: CaptureService) {
     }
 
     private suspend fun runCycleStages(displayId: Int, cycle: Cycle): HoldOutcome {
+        // An invariant check: every hold trigger configures the service on
+        // entry (CaptureService.configureSavedIfNeeded), so no gesture
+        // reaches this outcome and its pill.
         if (!service.isConfigured) return HoldOutcome.Failed("service not configured")
         if (cycle.generation != currentGeneration) return HoldOutcome.Superseded
 
