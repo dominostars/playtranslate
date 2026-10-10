@@ -358,6 +358,17 @@
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
 
+        <!-- Translucent hop for the Quick Settings tile's turn-on tap: the tile
+             launches it through startActivityAndCollapse so the shade closes,
+             and it performs the activation and finishes at once. -->
+        <activity
+            android:name=".TileActivateActivity"
+            android:exported="false"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
+
         <!-- Foreground service that owns the OCR + translation pipeline. -->
         <service
             android:name=".CaptureService"

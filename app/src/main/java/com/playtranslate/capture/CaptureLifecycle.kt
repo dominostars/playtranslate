@@ -176,9 +176,9 @@ object CaptureLifecycle {
         // service: onStartCommand handles the foreground promotion /
         // demotion, onCreate re-wires the hotkey callbacks on a cold start,
         // and the menu actions lazy-configure via configureSaved.
-        // Background-start is covered by the tile-click tempAllowList grant
-        // (the mechanism the MP branch documents), with SYSTEM_ALERT_WINDOW
-        // as the backstop for non-tile callers.
+        // Background-start is covered by the caller's foreground activity
+        // (the tile's TileActivateActivity hop, the in-app Settings), with
+        // SYSTEM_ALERT_WINDOW as the backstop for the overlay workspace.
         startCaptureService(ctx)
         Prefs(ctx).showOverlayIcon = true
         // Turn On is an explicit summon — lift the boot / Hide-for-Now
