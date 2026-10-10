@@ -5,6 +5,7 @@ import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.InflectedForm
+import com.playtranslate.language.InflectionTag
 import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.SourceLanguageEngine
 import com.playtranslate.language.TargetGlossDatabaseProvider
@@ -155,9 +156,9 @@ suspend fun resolveWordRows(
 
     val surfaceByToken = uniqueTokens.associate { it.lookupForm to it.surface }
     val readingByToken = uniqueTokens.associate { it.lookupForm to it.reading }
-    // All distinct inflected forms per lemma — keyed off ALL occurrences, not
-    // the deduped first one, so a lemma seen in several forms keeps them all.
-    val inflectionForms = inflectedFormsByLemma(allTokens)
+    // Every occurrence per lemma, grouped over ALL tokens, not the deduped
+    // first one, so a lemma seen in several forms keeps them all.
+    val occurrencesByLemma = allTokens.groupBy { it.lookupForm }
 
     // Fan out per-token lookups in parallel on IO. Per-row failures produce
     // nulls that we filter out below.
@@ -257,7 +258,9 @@ suspend fun resolveWordRows(
                                 ankiPos = ankiPos,
                                 pitch = display.pitch,
                                 frequencies = display.frequencies,
-                                inflectedForms = inflectionForms[word].orEmpty(),
+                                inflectedForms = rowInflectedForms(
+                                    occurrencesByLemma[word].orEmpty(), response.deinflection,
+                                ),
                                 // Same ordering the word detail page uses; bold the
                                 // occurrence (the selected headword's reading).
                                 readingRows = entry.orderedReadingRows(primary?.reading),
@@ -304,19 +307,22 @@ suspend fun resolveWordRows(
 }
 
 /**
- * Group every source occurrence by lemma and collect the DISTINCT inflected
- * forms each appeared as (surface + tags), in first-seen order, dropping
- * uninflected occurrences. Keyed off ALL tokens — not the lemma-deduped row set
- * — so a verb that shows up as 食べたい and 食べられない keeps both forms instead of
- * collapsing to whichever came first. Pure; unit-tested in WordRowResolverTest.
+ * A row's conjugation lines: one per DISTINCT form among [occurrences] (every
+ * source token that shares the row's lemma), in first-seen order. Each form is
+ * [InflectionChain.compose] of the occurrence's surface, the lookup's own
+ * [deinflection] chain and the occurrence's token tags, the chain first, so a
+ * row draws the line the lens draws: a tagless token whose lookup deinflected
+ * (かけろ resolved to かける) still gets one. An occurrence with no tags under an
+ * empty chain yields nothing. Taking every occurrence, not the lemma-deduped
+ * first one, keeps a verb seen as 食べたい and 食べられない showing both forms.
+ * Pure; unit-tested in WordRowResolverTest.
  */
-internal fun inflectedFormsByLemma(tokens: List<TokenSpan>): Map<String, List<InflectedForm>> =
-    tokens.groupBy { it.lookupForm }
-        .mapValues { (_, occ) ->
-            occ.filter { it.inflections.isNotEmpty() }
-                .map { InflectedForm(it.surface, it.inflections) }
-                .distinct()
-        }
+internal fun rowInflectedForms(
+    occurrences: List<TokenSpan>,
+    deinflection: List<InflectionTag>,
+): List<InflectedForm> =
+    occurrences.mapNotNull { InflectionChain.compose(it.surface, deinflection, it.inflections) }
+        .distinct()
 
 /** Max distinct inflected-form lines a single word row shows before overflow. */
 const val MAX_INFLECTION_LINES = 3
