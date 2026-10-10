@@ -24,11 +24,23 @@ import com.playtranslate.capture.CaptureLifecycle
  * [PlayTranslateAccessibilityService.disable], which also stops live mode if
  * running (icon off ⇒ PlayTranslate considered disabled).
  *
- * Declared with `ACTIVE_TILE` meta-data in the manifest so external pref-write
- * sites can push the tile state via [TileSync.refresh] even when the QS shade
- * isn't visible.
+ * Declared with `ACTIVE_TILE` meta-data in the manifest: SystemUI then binds
+ * the tile on a click, on its first appearance and on request, never on a
+ * shade open, so every lifecycle flip pushes its state through
+ * [TileSync.refresh] (a direct render while listening, a listening request
+ * otherwise, see there).
  */
 class PlayTranslateTileService : TileService() {
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
+
+    override fun onDestroy() {
+        if (instance === this) instance = null
+        super.onDestroy()
+    }
 
     // The two lifecycle callbacks are the platform's own word on whether the
     // tile is in Quick Settings, and fire for the in-app add request and for
@@ -38,7 +50,7 @@ class PlayTranslateTileService : TileService() {
     override fun onTileAdded() {
         super.onTileAdded()
         Prefs(this).quickTileAdded = true
-        renderState()
+        renderState("added")
     }
 
     override fun onTileRemoved() {
@@ -48,6 +60,7 @@ class PlayTranslateTileService : TileService() {
 
     override fun onStartListening() {
         super.onStartListening()
+        listening = true
         // Pick up permission grants the user made outside the app since the
         // tile last bound — most commonly "Display over other apps" granted
         // from this tile's own activation flow. Without this the cached
@@ -55,8 +68,18 @@ class PlayTranslateTileService : TileService() {
         // until MainActivity resumes, and the tile keeps acting on the wrong
         // backend.
         CaptureBackendResolver.reresolve(this)
-        renderState()
+        renderState("start_listening")
     }
+
+    override fun onStopListening() {
+        listening = false
+        super.onStopListening()
+    }
+
+    /** Mirrors the platform's own listening flag through the two callbacks
+     *  that flip it (a tile removal and onDestroy route through
+     *  onStopListening as well). Main thread only, like the callbacks. */
+    private var listening = false
 
     override fun onClick() {
         super.onClick()
@@ -79,33 +102,25 @@ class PlayTranslateTileService : TileService() {
             // capture lifecycle.
             if (CaptureLifecycle.isActive(this)) {
                 CaptureLifecycle.deactivate(this)
-                renderState()
+                renderState("click:off")
             } else if (!Settings.canDrawOverlays(this)) {
                 // The floating controls need "Display over other apps".
                 openOverlayPermissionSettings()
             } else {
-                // Activate routes through the service (ACTION_MP_ACTIVATE) so
-                // it works even from a cold start.
-                //
-                // Android 15+ FGS-BG-start: this call is the foreground-credited
-                // path. A tile click is recorded by the platform as a foreground
-                // UI event and the system extends a 15-second `tempAllowList`
-                // window to subsequent FGS starts from the same UID — verified
-                // on the API 36 emulator at targetSdk=36:
-                //   ActivityManager: Background started FGS: Allowed
-                //     callingPackage: com.playtranslate
-                //     intent: com.playtranslate.action.MP_ACTIVATE
-                //     tempAllowListReason:<tile onclick, duration:15000>
-                //     targetSdkVersion:36
-                // No SYSTEM_ALERT_WINDOW exemption is involved at this step —
-                // SAW only kicks in when [MediaProjectionConsentActivity]
-                // launches itself from the now-foreground service (the BAL
-                // exemption documented in that activity).
-                startForegroundService(
-                    Intent(this, CaptureService::class.java)
-                        .setAction(CaptureService.ACTION_MP_ACTIVATE)
+                // Activate hops through [TileActivateActivity] so SystemUI
+                // collapses the shade first; the activity sends
+                // ACTION_MP_ACTIVATE to the service (cold start included)
+                // from the foreground, so no FGS background-start allowance
+                // is needed. Until 2026-10-09 the tile started the service
+                // itself under the click's 15-second tempAllowList, and the
+                // consent dialog then stood over the open shade. SAW only
+                // kicks in when [MediaProjectionConsentActivity] launches
+                // itself from the service (the BAL exemption documented in
+                // that activity); that step is unchanged.
+                startActivityAndCollapseCompat(
+                    TileActivateActivity.intent(this, TileActivateActivity.ACTION_MEDIA_PROJECTION)
                 )
-                renderState()
+                renderState("click:on")
             }
             return
         }
@@ -115,14 +130,19 @@ class PlayTranslateTileService : TileService() {
                 if (a11yControlsOn()) {
                     PlayTranslateAccessibilityService.disable(this, "tile_turn_off")
                 } else {
-                    // Canonical activate — shared with the Settings power
-                    // button, so the tile also opens the game-audio gate
-                    // instead of a hand-rolled pref write that skipped it.
-                    // Also the post-boot summon path: suppressed icon +
-                    // persisted pref lands here, not in disable.
-                    CaptureLifecycle.activateAccessibility(this)
+                    // Canonical activate — the hop runs
+                    // [CaptureLifecycle.activateAccessibility], shared with
+                    // the Settings power button, so the tile also opens the
+                    // game-audio gate instead of a hand-rolled pref write
+                    // that skipped it. Also the post-boot summon path:
+                    // suppressed icon + persisted pref lands here, not in
+                    // disable. Through [TileActivateActivity] so the shade
+                    // collapses, as on the MediaProjection branch.
+                    startActivityAndCollapseCompat(
+                        TileActivateActivity.intent(this, TileActivateActivity.ACTION_ACCESSIBILITY)
+                    )
                 }
-                renderState()
+                renderState("click:a11y")
             }
             // Not bound while enabled: the resolver picks this backend only
             // with the service enabled, and the nothing-granted case went to
@@ -136,7 +156,7 @@ class PlayTranslateTileService : TileService() {
             // enabled flag is logged so a field log can refute this.
             else -> {
                 Log.i(
-                    "PlayTranslateTile",
+                    TAG,
                     "a11y tile tap while unbound: " +
                         "enabled=${PlayTranslateAccessibilityService.isEnabled(this)}"
                 )
@@ -195,29 +215,77 @@ class PlayTranslateTileService : TileService() {
     private fun a11yControlsOn(): Boolean =
         Prefs(this).showOverlayIcon && CaptureLifecycle.isActive(this)
 
-    private fun renderState() {
-        val tile = qsTile ?: return
+    /** Renders the lifecycle truth into [qsTile]. False when the service has
+     *  no tile yet (created but not bound), so [TileSync.refresh] can fall
+     *  back to a listening request. Logged with the caller's reason: the
+     *  field log of 2026-10-09 could not say which renders ran. */
+    private fun renderState(reason: String): Boolean {
+        val tile = qsTile ?: return false
+        val active: Boolean
+        val subtitle: String?
         if (!CaptureBackendResolver.active().requiresAccessibilityService) {
             // MediaProjection — the tile reflects whether capture is active.
-            tile.state = if (CaptureLifecycle.isActive(this)) Tile.STATE_ACTIVE
-                         else Tile.STATE_INACTIVE
-            tile.subtitle = null
-            tile.updateTile()
-            return
+            active = CaptureLifecycle.isActive(this)
+            subtitle = null
+        } else {
+            val a11yEnabled = PlayTranslateAccessibilityService.isEnabled(this)
+            active = a11yEnabled && a11yControlsOn()
+            subtitle = if (!a11yEnabled) getString(R.string.tile_subtitle_a11y_required) else null
         }
-        val a11yEnabled = PlayTranslateAccessibilityService.isEnabled(this)
-        val showing = a11yControlsOn()
-        tile.state = if (a11yEnabled && showing) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
-        tile.subtitle = if (!a11yEnabled) getString(R.string.tile_subtitle_a11y_required) else null
+        tile.state = if (active) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
+        tile.subtitle = subtitle
         tile.updateTile()
+        Log.i(TAG, "render($reason): ${if (active) "ACTIVE" else "INACTIVE"}")
+        return true
     }
 
+    /** Pushes the lifecycle truth to the tile by the platform's two-mode
+     *  protocol: while this service is listening the Tile handle is valid
+     *  and the state is rendered directly; otherwise SystemUI is asked for a
+     *  listening pass, which arrives as [onStartListening] and renders there.
+     *
+     *  One mode alone is not enough. The request used to be the whole push,
+     *  and Android 16 broke that: SystemUI's
+     *  `qs_custom_tile_click_guaranteed_bug_fix` (enabled in 16.0.0_r1) no
+     *  longer ends the listening state an active tile's click began, so after
+     *  a tap this service stays listening until the shade closes, and the
+     *  platform TileService drops a request's onStartListening while already
+     *  listening (MSG_START_LISTENING is guarded by !mListening), so
+     *  [renderState] never ran. The MediaProjection consent dialog is a
+     *  SystemUI dialog over the open shade, so the grant and its push both
+     *  landed in that window and the tile kept the INACTIVE the click had
+     *  rendered while the capture ran (Moto G 2025, 2026-10-09; a tap on the
+     *  stale tile then turned PlayTranslate off). Before 16 every updateTile
+     *  on an active tile ended the listening state, which is why the request
+     *  alone worked on the Thor. The direct render stays inside the
+     *  listening state although SystemUI would apply it for the 30 s the
+     *  service stays bound after onStopListening (TileServices.updateQsTile,
+     *  16.0.0_r1, checks no listening state): the Tile is documented valid
+     *  only between onStartListening and onStopListening, and a request from
+     *  outside that state is never dropped (Codex review, 2026-10-09).
+     *
+     *  Every caller is on the main thread (service callbacks, overlay work,
+     *  the controller's main handler), as the tile's own callbacks are, so
+     *  [listening] needs no synchronisation. */
     object TileSync {
         fun refresh(ctx: Context) {
+            val bound = instance
+            if (bound != null && bound.listening && bound.renderState("push")) return
+            Log.i(TAG, "refresh: listening pass requested (bound=${bound != null})")
             TileService.requestListeningState(
                 ctx,
                 ComponentName(ctx, PlayTranslateTileService::class.java)
             )
         }
+    }
+
+    companion object {
+        /** One tag for the tile flow: the service and [TileActivateActivity]. */
+        const val TAG = "PlayTranslateTile"
+
+        /** The live service between onCreate and onDestroy; [TileSync] renders
+         *  through it while it is listening. */
+        @Volatile
+        private var instance: PlayTranslateTileService? = null
     }
 }
