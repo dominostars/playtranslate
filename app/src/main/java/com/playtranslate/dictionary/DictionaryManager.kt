@@ -318,10 +318,9 @@ class DictionaryManager private constructor(private val context: Context) {
         // Structural admissibility: joins that contradict Sudachi's parse are
         // vetoed (conjugation cuts) or held to the kana-native tier (function
         // runs) BEFORE the oracle sees them — a conjugation cut is wrong no
-        // matter which dictionary lists the string. Previous-word cuts that
-        // no headword clears, but whose own shape admits, stay in the list
-        // for the oracle and the walk, which admits them only right after a
-        // closed phrase. See [Suspicion].
+        // matter which dictionary lists the string. See [Suspicion]. Whether
+        // a window cuts the word before it is the walk's call (reglobSpans),
+        // so such windows reach the oracle like any other.
         val admissible = admissiblePhraseCandidates(
             candidates, membership.headwords, membership.kanaNativeReadings,
             membership.priorityHeadwords,
@@ -338,7 +337,7 @@ class DictionaryManager private constructor(private val context: Context) {
             if (forOracle.isNotEmpty()) knownPhrases = knownPhrases + phraseOracle(forOracle)
         }
 
-        reglobSpans(tokens, admissible, knownPhrases, knownForms, foldAuxiliaries)
+        reglobSpans(tokens, admissible, knownPhrases, knownForms, membership.headwords, foldAuxiliaries)
     }
 
     /** Fallback when the JMdict DB isn't ready: content words on their own
@@ -1084,18 +1083,13 @@ class DictionaryManager private constructor(private val context: Context) {
             /** How this window collides with the morphological parse, or null
              *  for a clean join. Decides admissibility — see [Suspicion]. */
             val suspicion: Suspicion? = null,
-            /** For a [Suspicion.PREVIOUS_WORD_CUT] window, the verdict it gets
-             *  without the previous-word rules ([suspicionFor] with
-             *  ignorePreviousWord): what the window is after a closed phrase,
-             *  null for a clean join. Set by [phraseCandidatesFor] only on such
-             *  a window; null on every other candidate. */
-            val residualSuspicion: Suspicion? = null,
-            /** Admissible only when the walk finds the previous token to be
-             *  the end of a closed phrase span: set by [admissiblePhraseCandidates]
-             *  on a [Suspicion.PREVIOUS_WORD_CUT] candidate that is not a
-             *  headword but whose [residualSuspicion] tier admits it, and
-             *  checked in [reglobSpans]. */
-            val afterClosedPhraseOnly: Boolean = false,
+            /** The window starts where the word before it may still be
+             *  conjugating ([cutsPreviousWord]); recorded on exact windows,
+             *  never on a lemma variant, which starts at a content token of
+             *  its own. Orthogonal to [suspicion], the window's own shape, and
+             *  applied by [reglobSpans], the only place that knows whether
+             *  that word is open. */
+            val cutsPreviousWord: Boolean = false,
         )
 
         /**
@@ -1117,23 +1111,9 @@ class DictionaryManager private constructor(private val context: Context) {
          * (ないわけにはいかない) or reading coincidences — neither is a WORD the
          * app is trying to surface.
          *
-         * [PREVIOUS_WORD_CUT]: the window would cut the conjugation of the
-         * word before it, judged from the tokens without the spans the walk
-         * builds over them. It starts on glue bound to an auxiliary stem with
-         * folding on (入れそう|にない), on a 助動詞 bound to a 形状詞
-         * (静か|だった), or, with folding on, at a token the fold attaches to
-         * the word before it, even in a complete form (知って|いる|か: いるか
-         * is 海豚's reading). The premise is that the word before the window
-         * is still open, its span folding the window's first token into its
-         * conjugation. It is false when the token before the window ends a
-         * phrase span the walk has already closed: an exact phrase folds
-         * nothing after its window, so the window cuts no span's conjugation
-         * (なんじゃ|ないか, 特徴的|だが). Admissibility runs before the walk and
-         * cannot know which, so a headword admits as for [CONJUGATION_CUT];
-         * any other candidate is judged by its own shape, the verdict without
-         * the word before it ([PhraseCandidate.residualSuspicion]), and held
-         * back for the walk to decide ([PhraseCandidate.afterClosedPhraseOnly])
-         * only when that verdict's tier admits it.
+         * A [Suspicion] reads the window itself. Whether the window would cut
+         * the conjugation of the word BEFORE it is a separate question,
+         * [cutsPreviousWord], answered in the walk.
          *
          * [CONVERB_CUT] — an incomplete content stem followed by PARTICLE
          * glue only (押し|て, 従っ|て) — a fossilized-converb shape. Unlike
@@ -1173,7 +1153,7 @@ class DictionaryManager private constructor(private val context: Context) {
          * garbage-removal; だから/でも/かな/かもしれない/ストレスかいしょう keep
          * fusing.
          */
-        internal enum class Suspicion { CONJUGATION_CUT, PREVIOUS_WORD_CUT, CONVERB_CUT, AUXILIARY_CUT, FUNCTION_RUN }
+        internal enum class Suspicion { CONJUGATION_CUT, CONVERB_CUT, AUXILIARY_CUT, FUNCTION_RUN }
 
         /** Tiered phrase membership from [batchCheckPhrases] — see its doc. */
         internal data class PhraseMembership(
@@ -1202,46 +1182,25 @@ class DictionaryManager private constructor(private val context: Context) {
          * license: converb cuts (押して) need a PRIORITY headword; conjugation
          * cuts (した/知らせる) and function runs admit via any headword, plus a
          * kana-native reading for function runs; auxiliary cuts (従って before
-         * いる) never admit. A previous-word cut admits via any headword;
-         * otherwise only the walk knows whether the token before it closed a
-         * phrase, and after a closed phrase the window is judged as the window
-         * it is without the word before it: kept, marked
-         * [PhraseCandidate.afterClosedPhraseOnly], when the tier of its
-         * [PhraseCandidate.residualSuspicion] admits it, else dropped. Clean
-         * candidates pass through. Pure; the matcher's only admissibility
-         * knowledge is that mark.
+         * いる) never admit. Clean candidates pass through. Pure; the matcher
+         * then needs no tier knowledge. Whether a window cuts the word before
+         * it ([PhraseCandidate.cutsPreviousWord]) is not a matter of tier and
+         * is the walk's call, in [reglobSpans].
          */
         internal fun admissiblePhraseCandidates(
             candidates: List<PhraseCandidate>,
             headwords: Set<String>,
             kanaNativeReadings: Set<String>,
             priorityHeadwords: Set<String> = emptySet(),
-        ): List<PhraseCandidate> = candidates.mapNotNull { c ->
-            fun admits(suspicion: Suspicion?) =
-                tierAdmits(suspicion, c.lookupForm, headwords, kanaNativeReadings, priorityHeadwords)
-            when {
-                admits(c.suspicion) -> c
-                c.suspicion == Suspicion.PREVIOUS_WORD_CUT && admits(c.residualSuspicion) ->
-                    c.copy(afterClosedPhraseOnly = true)
-                else -> null
+        ): List<PhraseCandidate> = candidates.filter { c ->
+            when (c.suspicion) {
+                null -> true
+                Suspicion.CONJUGATION_CUT -> c.lookupForm in headwords
+                Suspicion.CONVERB_CUT -> c.lookupForm in priorityHeadwords
+                Suspicion.AUXILIARY_CUT -> false
+                Suspicion.FUNCTION_RUN ->
+                    c.lookupForm in headwords || c.lookupForm in kanaNativeReadings
             }
-        }
-
-        /** Whether [form]'s membership tier licenses [suspicion]; see
-         *  [admissiblePhraseCandidates]. A previous-word cut's tier here is the
-         *  headword one, as a conjugation cut's. */
-        private fun tierAdmits(
-            suspicion: Suspicion?,
-            form: String,
-            headwords: Set<String>,
-            kanaNativeReadings: Set<String>,
-            priorityHeadwords: Set<String>,
-        ): Boolean = when (suspicion) {
-            null -> true
-            Suspicion.CONJUGATION_CUT, Suspicion.PREVIOUS_WORD_CUT -> form in headwords
-            Suspicion.CONVERB_CUT -> form in priorityHeadwords
-            Suspicion.AUXILIARY_CUT -> false
-            Suspicion.FUNCTION_RUN -> form in headwords || form in kanaNativeReadings
         }
 
         /** Inflection-form prefixes that grammatically require a continuation.
@@ -1341,17 +1300,44 @@ class DictionaryManager private constructor(private val context: Context) {
             tokens[j].category.isConjugationGlue || (foldAuxiliaries && isFoldTarget(tokens, j))
 
         /**
+         * Whether a window starting at [start] would cut the conjugation of
+         * the word before it, read from the tokens alone: with folding on, it
+         * starts at a token the fold attaches to that word, even in a complete
+         * form (知っ|て|いる|か, いるか being 海豚's reading; 高く|ない|か;
+         * 食べ|そう|だ), or on glue bound to a 助動詞語幹, which has no 活用形 to
+         * read but is incomplete by definition, そう needing its だ, な or に
+         * (入れ|そう|に|ない, where にない is 担い's reading); folding or not, it
+         * starts on the 助動詞 right after a 形状詞, that word's own conjugation
+         * (静か|だっ|た, 静か|で|は|ない, where だった and ではない are readings; a
+         * particle may end a 形状詞, 静か|ね, so only the 助動詞 counts).
+         *
+         * This is the one judgement about the word to the LEFT of a window,
+         * and the tokens cannot settle it: the word before the window may
+         * instead be a phrase span the walk has already closed, which folds
+         * nothing and leaves no conjugation to cut (なんじゃ|ないか, 特徴的|だが).
+         * So [reglobSpans] applies it, where the spans are known: such a
+         * window fuses as a headword, or right after a closed phrase, and
+         * stays out after an open word whatever lists it. [suspicionFor]
+         * reads the window itself and never this.
+         */
+        internal fun cutsPreviousWord(tokens: List<JaToken>, start: Int, foldAuxiliaries: Boolean): Boolean {
+            if (start == 0) return false
+            if (foldAuxiliaries && isFoldTarget(tokens, start)) return true
+            val prev = tokens[start - 1]
+            val first = tokens[start]
+            if (!first.category.isConjugationGlue) return false
+            return (foldAuxiliaries && prev.isAuxiliaryStem) ||
+                (prev.category == JaCategory.ADJ_NA && first.category == JaCategory.AUX)
+        }
+
+        /**
          * Classify a candidate window's [Suspicion]. Lemma variants are never
          * suspect: candidate generation already restricts them to content
          * starts, and their whole mechanism is deliberate lemma-swap + glue
-         * folding of the final stem. [foldAuxiliaries] adds the fold's three
-         * rules ([Suspicion.AUXILIARY_CUT], and [Suspicion.PREVIOUS_WORD_CUT]
-         * for a window starting at an [isFoldTarget] or at glue after an
-         * auxiliary stem); without folding they would protect a fold that
-         * never happens. [ignorePreviousWord] skips the three
-         * [Suspicion.PREVIOUS_WORD_CUT] rules, giving the window's verdict
-         * after a closed phrase ([PhraseCandidate.residualSuspicion]); every
-         * other shape runs unchanged.
+         * folding of the final stem. [foldAuxiliaries] adds
+         * [Suspicion.AUXILIARY_CUT]; without folding it would protect a fold
+         * that never happens. The window's relation to the word before it is
+         * not read here: see [cutsPreviousWord].
          */
         internal fun suspicionFor(
             tokens: List<JaToken>,
@@ -1359,7 +1345,6 @@ class DictionaryManager private constructor(private val context: Context) {
             windowLen: Int,
             isVariant: Boolean,
             foldAuxiliaries: Boolean,
-            ignorePreviousWord: Boolean = false,
         ): Suspicion? {
             if (isVariant) return null
             val first = tokens[start]
@@ -1380,22 +1365,6 @@ class DictionaryManager private constructor(private val context: Context) {
                     if ((prev.category == JaCategory.AUX || prev.category.isContent) &&
                         prev.hasIncompleteInflection
                     ) return Suspicion.CONJUGATION_CUT
-                    // A 助動詞語幹 has no 活用形 to read, but it is incomplete
-                    // by definition: そう needs the だ, な or に after it, and
-                    // with folding on that glue is the fold's (入れ|そう|に|ない,
-                    // where にない is 担い's reading).
-                    if (!ignorePreviousWord && foldAuxiliaries && prev.isAuxiliaryStem) {
-                        return Suspicion.PREVIOUS_WORD_CUT
-                    }
-                    // Nor does a 形状詞: the 助動詞 right after it is its own
-                    // conjugation, already in its span (静か|だっ|た, 静か|で|は|ない,
-                    // where だった and ではない are readings). A particle after
-                    // one may end it (静か|ね), so only the 助動詞 counts.
-                    if (!ignorePreviousWord && prev.category == JaCategory.ADJ_NA &&
-                        first.category == JaCategory.AUX
-                    ) {
-                        return Suspicion.PREVIOUS_WORD_CUT
-                    }
                 }
                 // Clean-context glue start: fall through to the mirror /
                 // function-run shapes below.
@@ -1418,16 +1387,6 @@ class DictionaryManager private constructor(private val context: Context) {
                 } else {
                     Suspicion.CONJUGATION_CUT
                 }
-            }
-            // A window starting at a token the fold attaches to the word
-            // before it cuts that conjugation even when the token is in a
-            // complete form (知っ|て|いる|か, いるか being 海豚's reading;
-            // 高く|ない|か; 食べ|そう|だ). After shape 2 on purpose: a window
-            // starting at an auxiliary's 連用形 with particle glue (置い|て in
-            // 書い|て|置い|て) keeps CONVERB_CUT, which asks for a priority
-            // headword where PREVIOUS_WORD_CUT accepts any.
-            if (!ignorePreviousWord && foldAuxiliaries && start > 0 && isFoldTarget(tokens, start)) {
-                return Suspicion.PREVIOUS_WORD_CUT
             }
             val last = tokens[start + windowLen - 1]
             if (last.category.isContent && last.category.startsConjugation &&
@@ -1469,18 +1428,11 @@ class DictionaryManager private constructor(private val context: Context) {
                 for (n in maxN downTo 2) {
                     val phrase = surfaces.subList(i, i + n).joinToString("")
                     if (isLookupWorthy(phrase)) {
-                        val suspicion = suspicionFor(tokens, i, n, isVariant = false, foldAuxiliaries)
                         out.add(PhraseCandidate(
                             startIndex = i, windowLen = n, lookupForm = phrase,
                             surface = phrase, tokensConsumed = n, isVariant = false,
-                            suspicion = suspicion,
-                            residualSuspicion = if (suspicion == Suspicion.PREVIOUS_WORD_CUT) {
-                                suspicionFor(
-                                    tokens, i, n, isVariant = false, foldAuxiliaries, ignorePreviousWord = true,
-                                )
-                            } else {
-                                null
-                            },
+                            suspicion = suspicionFor(tokens, i, n, isVariant = false, foldAuxiliaries),
+                            cutsPreviousWord = cutsPreviousWord(tokens, i, foldAuxiliaries),
                         ))
                     }
                     // Lemma variant: window ends at an inflected verb/i-adjective.
@@ -1552,15 +1504,18 @@ class DictionaryManager private constructor(private val context: Context) {
             candidates: List<PhraseCandidate>,
             knownPhrases: Set<String>,
             knownForms: Set<String>,
+            headwords: Set<String>,
         ): List<TokenWithReading> =
-            reglobSpans(tokens, candidates, knownPhrases, knownForms)
+            reglobSpans(tokens, candidates, knownPhrases, knownForms, headwords)
                 .map { TokenWithReading(it.surface, it.lookupForm, it.reading, it.inflections) }
 
         /**
          * Greedy left-to-right re-glob matcher plus single-token fallback.
          * Pure: all dictionary knowledge arrives pre-resolved in [knownPhrases]
-         * (phrase candidates that passed their membership gate) and
-         * [knownForms] (single content-token dictionaryForm/normalizedForm).
+         * (phrase candidates that passed their membership gate), [knownForms]
+         * (single content-token dictionaryForm/normalizedForm) and
+         * [headwords] (the pack's written forms, which clear a window that
+         * [cutsPreviousWord] after an open word).
          *
          * At each position the longest matching window wins (exact surface
          * join before lemma variant at equal length); otherwise the token's
@@ -1575,6 +1530,7 @@ class DictionaryManager private constructor(private val context: Context) {
             candidates: List<PhraseCandidate>,
             knownPhrases: Set<String>,
             knownForms: Set<String>,
+            headwords: Set<String>,
             foldAuxiliaries: Boolean = true,
         ): List<ReglobSpan> {
             val byStart = candidates.groupBy { it.startIndex }.mapValues { (_, group) ->
@@ -1595,11 +1551,15 @@ class DictionaryManager private constructor(private val context: Context) {
                     i++
                     continue
                 }
-                // A previous-word cut held back by admissibility matches only
-                // right after a closed phrase: an exact phrase folds nothing,
-                // so the window has no open word's conjugation to cut.
+                // A window that would cut the word before it
+                // ([cutsPreviousWord]) fuses as a headword, or right after a
+                // phrase span this walk has closed, which folds nothing and so
+                // leaves no conjugation to cut; after an open word it stays
+                // out, whatever lists it.
+                val previousWordClosed = closedPhraseEndsAt(result, i)
                 val match = byStart[i]?.firstOrNull {
-                    it.lookupForm in knownPhrases && (!it.afterClosedPhraseOnly || closedPhraseEndsAt(result, i))
+                    it.lookupForm in knownPhrases &&
+                        (!it.cutsPreviousWord || previousWordClosed || it.lookupForm in headwords)
                 }
                 if (match != null) {
                     // Lemma-variant phrases (気になった → 気になる) carry a productive
@@ -1686,7 +1646,9 @@ class DictionaryManager private constructor(private val context: Context) {
         }
 
         /** Whether the last span [reglobSpans] emitted is a phrase ending
-         *  exactly at token [i], so the token before [i] closed it. */
+         *  exactly at token [i], so the token before [i] closed it; a
+         *  single-token span may still be folding, and a phrase that ended
+         *  earlier left glue between that belongs to no span. */
         private fun closedPhraseEndsAt(result: List<ReglobSpan>, i: Int): Boolean {
             val last = result.lastOrNull() ?: return false
             return last.isPhrase && last.tokenStart + last.tokenCount == i
