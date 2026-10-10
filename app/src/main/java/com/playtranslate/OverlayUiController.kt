@@ -1472,6 +1472,11 @@ class OverlayUiController(
             icon.onDragMove = { rawX, rawY -> controller.onDragMove(rawX, rawY) }
             icon.onDragEnd = { controller.onDragEnd() }
             icon.onDragCancel = { controller.cancelDrag() }
+            // The icon's drag visuals (window at the finger, ring) come up in
+            // the same step as the lens, never before the drag's clean
+            // capture is in hand: see FloatingOverlayIcon.dragVisualsRevealed.
+            // Rewired per icon generation so the newest icon is the target.
+            controller.onLensRevealed = { rawX, rawY -> icon.revealDragVisuals(rawX, rawY) }
             // A hold's action is latched at its start so the end and cancel
             // legs unwind the action that actually began, whatever the pref
             // says by then (dual-screen: the picker page can be open on the
