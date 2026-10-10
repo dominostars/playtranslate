@@ -171,7 +171,7 @@ class MagnifierLensLoadMoreTest {
         assertNotNull(row.foreground)
     }
 
-    @Test fun `a controller cursor on the row lands on the first section when a rebind drops it`() {
+    @Test fun `a controller cursor on the row lands on the target in its slot when a rebind drops it`() {
         lens.setSplitDefinitions(primary, emptyList(), false, LensLoadMore(2))
         val row = row()
         val window = row.rootView
@@ -180,10 +180,11 @@ class MagnifierLensLoadMoreTest {
         press(window, KeyEvent.KEYCODE_DPAD_DOWN)   // primary to the row
         assertNotNull("the cursor tints the row", row.background)
 
+        // No reveal: the section that took the row's slot, the first loaded.
         lens.setSplitDefinitions(primary, listOf(sec1, sec2), false)
         val nav = lens.navSectionsForTest()
-        assertNotNull("the cursor tints the first section", nav[0].background)
-        assertNull(nav[1].background)
+        assertNull(nav[0].background)
+        assertNotNull("the cursor tints the section in the row's slot", nav[1].background)
         assertNull(nav[2].background)
     }
 
@@ -247,6 +248,41 @@ class MagnifierLensLoadMoreTest {
         press(window, KeyEvent.KEYCODE_DPAD_DOWN)   // primary to the row
         assertNotNull("the cursor tints the row", row.background)
 
+        lens.setSplitDefinitions(primary, listOf(sec1, sec2), false, scroll = LensScroll.Reveal(1))
+        val nav = lens.navSectionsForTest()
+        assertNull(nav[0].background)
+        assertNull(nav[1].background)
+        assertNotNull("the cursor tints the revealed section", nav[2].background)
+    }
+
+    @Test fun `a controller cursor on a section keeps its place through a rebind`() {
+        // The deck back-fill rebuilds the same targets as new views.
+        lens.setSplitDefinitions(primary, listOf(sec1, sec2), false)
+        val before = lens.navSectionsForTest()
+        val window = before[0].rootView
+        lens.focusPillForController()
+        press(window, KeyEvent.KEYCODE_DPAD_DOWN)   // pill to the primary
+        press(window, KeyEvent.KEYCODE_DPAD_DOWN)   // primary to the first section
+        assertNotNull("the cursor tints the section", before[1].background)
+
+        lens.setSplitDefinitions(primary, listOf(sec1, sec2), false, scroll = LensScroll.Keep)
+        val nav = lens.navSectionsForTest()
+        assertFalse("rebuilt, not reused", before[1] === nav[1])
+        assertNull(nav[0].background)
+        assertNotNull("the cursor tints the same slot", nav[1].background)
+        assertNull(nav[2].background)
+    }
+
+    @Test fun `a controller cursor on a section lands on the revealed section when the row is tapped by touch`() {
+        lens.setSplitDefinitions(primary, listOf(sec1), false, LensLoadMore(1))
+        val window = lens.navSectionsForTest()[0].rootView
+        lens.focusPillForController()
+        press(window, KeyEvent.KEYCODE_DPAD_DOWN)   // pill to the primary
+        press(window, KeyEvent.KEYCODE_DPAD_DOWN)   // primary to the section
+        assertNotNull(lens.navSectionsForTest()[1].background)
+
+        // The row activated by touch, not by the cursor: the host rebinds
+        // with the loaded section revealed.
         lens.setSplitDefinitions(primary, listOf(sec1, sec2), false, scroll = LensScroll.Reveal(1))
         val nav = lens.navSectionsForTest()
         assertNull(nav[0].background)

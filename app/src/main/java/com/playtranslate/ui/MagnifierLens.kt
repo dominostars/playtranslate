@@ -2599,8 +2599,9 @@ class MagnifierLens(
         ) {
             mode = Mode.DEFINITIONS
             setLabel(primary.data.word, primary.data.reading, primary.data.pitch)
-            // Read before the teardown below drops the row.
-            val cursorOnRow = loadMoreRow != null && navCursor === loadMoreRow
+            // Read before the teardown below detaches the targets: the
+            // controller cursor's place among them, -1 when it is elsewhere.
+            val cursorIndex = splitSectionViews.indexOf(navCursor)
             // Read before the teardown: the offset [LensScroll.Keep] restores.
             val savedY = definitionsScroll.scrollY
             // Styled steps aside; any prior split is torn down for rebuild.
@@ -2663,16 +2664,16 @@ class MagnifierLens(
                     if (bindSeq == splitBindSeq) definitionsScroll.scrollTo(0, revealed?.top ?: savedY)
                 }
             }
-            // The controller cursor was on the row this rebind tore down:
-            // it lands on the revealed section when that is a nav target
-            // (the host rebinding with the sections it loaded), else on the
-            // rebuilt row when the rebind still has one (a deck back-fill
-            // landing while the row reads "Looking up..."), else on the
-            // first nav target, which a [LensScroll.Top] scroll brings into
-            // view and a [LensScroll.Keep] one may leave outside it. Never
-            // on a detached view.
-            if (cursorOnRow) {
-                navCursor = revealed?.takeIf { it in views } ?: loadMoreRow ?: views.firstOrNull()
+            // A controller cursor on a target this rebind tore down keeps
+            // its place: on the revealed section when the rebind reveals one
+            // that is a target (the host binding the sections it loaded,
+            // whether the row was activated by the cursor or by touch), else
+            // on the target at its index, clamped, which is the same section
+            // after a deck back-fill and the rebuilt row after one that lands
+            // while the row reads "Looking up...". Never on a detached view.
+            if (cursorIndex >= 0) {
+                navCursor = revealed?.takeIf { it in views }
+                    ?: views.getOrNull(cursorIndex.coerceAtMost(views.lastIndex))
                 syncNavRing()
             }
             invalidate()
