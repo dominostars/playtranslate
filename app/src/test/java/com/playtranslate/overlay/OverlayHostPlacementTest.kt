@@ -274,6 +274,55 @@ class OverlayHostPlacementTest {
         assertEquals(1f, a.p.alpha)
     }
 
+    // ── A failed read ─────────────────────────────────────────────────────
+
+    /** What a read returns from R on when the window-metrics query fails:
+     *  no insets, and the coarser read's size, which need not be the
+     *  display's (the Thor's read 1240x1080 for 1920x1080). */
+    private fun failedRead(w: Int = 900, h: Int = 1900, rotation: Int = 0) =
+        testEnvironment(w, h, rotation = rotation, insetsKnown = false, provisional = true)
+
+    @Test fun `a failed read moves and resizes nothing while the rotation is the same`() {
+        env[display] = testEnvironment(1000, 2000, shownBars = Sides(0, 0, 84, 0))
+        val a = Docked(); a.add()
+        val full = View(ctx)
+        val fp = params(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
+        host.addOverlayWindow(full, wm, fp, display, OverlayPlacement.CaptureSpace)
+        env[display] = failedRead()
+
+        host.refresh(display, "bars", force = false)
+        host.invalidateLayout(display)
+        host.onDisplayChanged(display)
+
+        assertEquals("still clear of the bar", 1000 - 84 - 100, a.p.x)
+        assertEquals(1000, fp.width)
+        assertEquals(0, wm.updatesOf(a.view))
+        assertEquals(0, wm.updatesOf(full))
+        assertEquals("a one-off decision reads the last real one too", 84, host.environment(display)!!.covered.right)
+    }
+
+    @Test fun `a window added during a failed read is placed clear of the bars the last real read saw`() {
+        env[display] = testEnvironment(1000, 2000, shownBars = Sides(0, 0, 84, 0))
+        Docked().add()
+        env[display] = failedRead()
+        val b = Docked(); b.add()
+        assertEquals(1000 - 84 - 100, b.p.x)
+    }
+
+    @Test fun `across a rotation a failed read places against the stand-in, and the next real read places again`() {
+        val a = Docked(); a.add()
+        env[display] = failedRead(w = 2000 - 84, h = 1000, rotation = 1)
+        host.onDisplayChanged(display)
+        assertEquals("on the rotated display, as best it can", 2000 - 84 - 100, a.p.x)
+
+        // The next real read, unforced (a bar heard), finds the window laid
+        // out against something else.
+        env[display] = testEnvironment(2000, 1000, rotation = 1)
+        host.refresh(display, "bars", force = false)
+        assertEquals(2000 - 100, a.p.x)
+        assertEquals(1000 - 100, a.p.y)
+    }
+
     // ── Hearing the bars ──────────────────────────────────────────────────
 
     /** Insets as a window below the bars hears them, with the navigation

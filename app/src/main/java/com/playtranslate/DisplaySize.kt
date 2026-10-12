@@ -36,9 +36,12 @@ import android.view.WindowMetrics
  */
 
 /** [WindowMetrics] for this context's display, queried via a fresh window
- *  context, or `null` if the query throws. The catch is a safety net for OEM /
- *  future-OS variance — callers fall back to coarser metrics rather than
- *  crash. */
+ *  context, or `null` if the query throws: callers fall back to coarser
+ *  metrics rather than crash. It does throw on Android 11: an app may hold
+ *  five window tokens with no window, each fresh context holds one until a
+ *  garbage collection finalizes it, and the next refuses with "Too many
+ *  unused window contexts" (android-11 WindowManagerService
+ *  tokenCountExceed; Android 12 dropped the limit). */
 fun Context.displayWindowMetrics(): WindowMetrics? {
     // createWindowContext + currentWindowMetrics are API 30. Below R there is
     // no window context at all; callers fall back to coarser metrics (see

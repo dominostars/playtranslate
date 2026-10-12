@@ -269,11 +269,43 @@ class OverlayHost(
         }
     }
 
-    /** [displayId]'s environment as it is now, read fresh, or null for a
-     *  display that went away. For a decision taken once at one event; a
-     *  placement that must follow the display registers as
-     *  [OverlayPlacement.Placed] instead. */
-    fun environment(displayId: Int): OverlayEnvironment? = environmentReader(displayId)
+    /** Per display, the last environment read for real (not
+     *  [OverlayEnvironment.provisional]). The display's, not its windows':
+     *  kept across [removeAll]. */
+    private val lastRead = mutableMapOf<Int, OverlayEnvironment>()
+
+    /**
+     * [displayId]'s environment as it is now, read fresh, or null for a
+     * display that went away. For a decision taken once at one event; a
+     * placement that must follow the display registers as
+     * [OverlayPlacement.Placed] instead.
+     *
+     * A failed read ([OverlayEnvironment.provisional]) tells nothing new:
+     * the display's last real read stands in for it while the rotation (read
+     * from the display itself, never failing) is the same, so a bar heard,
+     * an icon released or a window added during a failure moves and resizes
+     * nothing and places the new window clear of the bars. Across a rotation
+     * the stand-in is all there is, and a window must still go somewhere: it
+     * is laid out against that, and the next real read lays it out again.
+     */
+    fun environment(displayId: Int): OverlayEnvironment? {
+        val env = environmentReader(displayId)
+        if (env == null) {
+            lastRead.remove(displayId)
+            return null
+        }
+        if (!env.provisional) {
+            lastRead[displayId] = env
+            return env
+        }
+        val last = lastRead[displayId]?.takeIf { it.geometry.rotation == env.geometry.rotation }
+        Log.w(
+            TAG,
+            "env[$displayId] read failed: " +
+                if (last != null) "the last real read stands in" else "no real read of rot=${env.geometry.rotation}, placing without insets",
+        )
+        return last ?: env
+    }
 
     /** A pass is under way ([refresh]); a refresh asked for meanwhile runs
      *  after it. */
@@ -369,7 +401,7 @@ class OverlayHost(
                 TAG,
                 "env[$displayId] reason=$reason pass=$pass rot=${env.geometry.rotation} " +
                     "size=${env.geometry.width}x${env.geometry.height} covered=${env.covered} " +
-                    "barRoom=${env.barRoom} commits=$commits",
+                    "barRoom=${env.barRoom} commits=$commits" + if (env.provisional) " provisional" else "",
             )
             passForce = true
         }

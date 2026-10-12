@@ -61,6 +61,7 @@ fun testEnvironment(
     reservedBars: Sides = shownBars,
     insetsKnown: Boolean = true,
     hearsBars: Boolean = belowBars,
+    provisional: Boolean = false,
 ): OverlayEnvironment = OverlayEnvironment.of(
     DisplayGeometry(width, height, rotation),
     belowBars,
@@ -69,4 +70,5 @@ fun testEnvironment(
     reservedBars = reservedBars,
     insetsKnown = insetsKnown,
     hearsBars = hearsBars,
+    provisional = provisional,
 )
