@@ -9,6 +9,7 @@ import android.util.Log
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.WindowMetrics
+import androidx.annotation.RequiresApi
 
 /**
  * Display-size and window-inset queries.
@@ -20,10 +21,21 @@ import android.view.WindowMetrics
  * service context they return garbage: on an AYN Thor a 1920x1080 panel
  * reported 1240x1080.
  *
- * Each call builds a *fresh* window context — never cached: a cached one was
- * observed to occasionally report the pre-rotation orientation's bounds. The
- * binder cost is small; the most frequent caller is the MediaProjection
- * capture loop, a few times a second — well short of a per-frame hot path.
+ * Every read of a display goes through ONE window context of that display
+ * ([DisplayWindowContexts]), kept while the display's rotation and panel size
+ * are the ones it was made against and made again when they change. A window
+ * context's bounds come from its configuration, which the platform updates
+ * after a rotation asynchronously, so a context kept across a rotation can
+ * report the pre-rotation bounds for a moment (seen when one was cached
+ * without that check); its insets are asked of the window manager on every
+ * read (android-11 WindowManagerImpl, android-16 WindowMetricsController), so
+ * a kept context reports the bars as they are. A context per read is not an
+ * option: Android 11 refuses an app a sixth window context that holds no
+ * window until a garbage collection finalizes one (android-11
+ * WindowManagerService tokenCountExceed), and the MediaProjection capture
+ * loop reads twice per capture; in live mode that ran out about once a minute
+ * and the capture was rebuilt at the size of the app area (API 30 emulator,
+ * 2026-10-12).
  *
  * The window context is typed `TYPE_APPLICATION_OVERLAY`, not
  * `TYPE_ACCESSIBILITY_OVERLAY`: the latter makes `createWindowContext` throw
@@ -35,26 +47,72 @@ import android.view.WindowMetrics
  * `createDisplayContext(display)` as the receiver.
  */
 
-/** [WindowMetrics] for this context's display, queried via a fresh window
- *  context, or `null` if the query throws: callers fall back to coarser
- *  metrics rather than crash. It does throw on Android 11: an app may hold
- *  five window tokens with no window, each fresh context holds one until a
- *  garbage collection finalizes it, and the next refuses with "Too many
- *  unused window contexts" (android-11 WindowManagerService
- *  tokenCountExceed; Android 12 dropped the limit). */
+/** [WindowMetrics] for this context's display, read through the display's
+ *  window context ([DisplayWindowContexts]), or `null` if the query fails:
+ *  callers fall back to coarser metrics rather than crash. */
 fun Context.displayWindowMetrics(): WindowMetrics? {
     // createWindowContext + currentWindowMetrics are API 30. Below R there is
     // no window context at all; callers fall back to coarser metrics (see
     // [displaySizePx] / [statusBarHeightPx]).
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
     return try {
-        OwnWindows.manager(
-            createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
-        )?.currentWindowMetrics
+        // This context names the display; a context with none throws here,
+        // as createWindowContext on it would.
+        val displayId = display?.displayId ?: return null
+        val windowContext = DisplayWindowContexts.of(applicationContext, displayId) ?: return null
+        OwnWindows.manager(windowContext)?.currentWindowMetrics
     } catch (e: RuntimeException) {
         Log.w("DisplaySize", "windowMetrics query failed; using fallback metrics", e)
         null
     }
+}
+
+/**
+ * The window context every read of a display goes through
+ * ([displayWindowMetrics]): one per display, kept while the display's
+ * [Geometry] is the one it was made against and made again when it differs.
+ * Process-wide, so every reader of a display shares it; [reset] runs at
+ * Application.onCreate, since a JVM that runs many tests keeps statics
+ * across their Applications.
+ */
+internal object DisplayWindowContexts {
+
+    /** What a display's bounds depend on, read from the display itself: its
+     *  rotation and its panel mode's size (a resolution switch or a fold
+     *  changes the mode's size; a refresh-rate switch changes the mode but
+     *  not its size, and keeps the context). */
+    private data class Geometry(val rotation: Int, val modeWidth: Int, val modeHeight: Int)
+
+    private class Entry(val windowContext: Context, val geometry: Geometry)
+
+    private val entries = HashMap<Int, Entry>()
+
+    /** The window context of [displayId], made from [app] (never from a
+     *  caller's activity, which a kept context would outlive), or null for
+     *  a display that went away. Throws what createWindowContext throws. */
+    @RequiresApi(Build.VERSION_CODES.R)
+    fun of(app: Context, displayId: Int): Context? {
+        val dm = app.getSystemService(DisplayManager::class.java) ?: return null
+        synchronized(this) {
+            val display = dm.getDisplay(displayId)
+            if (display == null) {
+                entries.remove(displayId)
+                return null
+            }
+            val mode = display.mode
+            val geometry = Geometry(display.rotation, mode.physicalWidth, mode.physicalHeight)
+            entries[displayId]?.takeIf { it.geometry == geometry }?.let { return it.windowContext }
+            val made = app.createDisplayContext(display)
+                .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
+            entries[displayId] = Entry(made, geometry)
+            // A display removed since keeps nothing: on Android 11 its
+            // context would hold one of the app's five windowless tokens.
+            entries.keys.retainAll { dm.getDisplay(it) != null }
+            return made
+        }
+    }
+
+    fun reset() = synchronized(this) { entries.clear() }
 }
 
 /** Full pixel size of this context's display in its current rotation. Falls

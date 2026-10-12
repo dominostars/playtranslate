@@ -50,9 +50,8 @@ data class Sides(val left: Int, val top: Int, val right: Int, val bottom: Int) {
  * Below R there is no window-metrics query: every policy is [Sides.NONE]
  * and [insetsKnown] is false, which is what v3.3.1 placed against there
  * (below R the platform still fits our fixed-size windows). From R the query
- * can fail ([displayWindowMetrics]; on Android 11 it does while the app holds
- * five window contexts no garbage collection has freed yet), and then the
- * read is [provisional]: no insets and the coarser read's size. From R the
+ * can fail ([displayWindowMetrics]), and then the read is [provisional]: no
+ * insets and the coarser read's size. From R the
  * platform no longer fits our windows, so that is not something to lay them
  * out against; [OverlayHost.environment] keeps the display's last real read
  * in its place.

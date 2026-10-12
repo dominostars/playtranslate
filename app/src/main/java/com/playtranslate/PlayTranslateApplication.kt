@@ -41,6 +41,11 @@ class PlayTranslateApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // The kept window contexts belong to the Application that made them.
+        // A no-op in production (nothing reads a display before this); under
+        // Robolectric a fork's later tests would read through an earlier
+        // test's torn-down environment.
+        DisplayWindowContexts.reset()
         CrashHandler.install(this)
         // Translation-waterfall forensics (failure ring + connectivity
         // summary for the log-export header). Before the registry init so
