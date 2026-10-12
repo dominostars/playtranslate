@@ -21,12 +21,24 @@ class OverlayEnvironmentTest {
 
     @Test fun `below the bars, covered is the cutout and the bars shown`() {
         assertEquals(Sides(0, 90, 0, 0), env(belowBars = true).covered)
-        assertEquals(Sides(0, 60, 0, 84).max(cutout), env(belowBars = true).coveredReserved)
+        assertEquals(Sides(0, 60, 0, 84).max(cutout), env(belowBars = true).fittedReserved)
     }
 
     @Test fun `above the bars, covered is the cutout alone, shown or reserved`() {
         assertEquals(cutout, env(belowBars = false).covered)
-        assertEquals(cutout, env(belowBars = false).coveredReserved)
+        assertEquals(cutout, env(belowBars = false).fittedReserved)
+    }
+
+    @Test fun `on Android 11 the reserve above the bars counts the bars the window is padded by`() {
+        // Android 11 sends every bar to every window: the accessibility
+        // backend's sheet hears a side bar it lies above and pads its body
+        // by it (ContentInsets), so its columns must be decided without it.
+        val android11Above = testEnvironment(
+            1080, 2400, belowBars = false, hearsBars = true,
+            cutout = cutout, shownBars = shown, reservedBars = Sides(0, 60, 84, 0),
+        )
+        assertEquals(Sides(0, 90, 84, 0), android11Above.fittedReserved)
+        assertEquals("nothing lies over it", cutout, android11Above.covered)
     }
 
     @Test fun `the bar room counts every bar shown or not on both backends`() {
@@ -45,7 +57,7 @@ class OverlayEnvironmentTest {
     @Test fun `with no insets known every policy is empty`() {
         val e = testEnvironment(1080, 2400, insetsKnown = false)
         assertEquals(Sides.NONE, e.covered)
-        assertEquals(Sides.NONE, e.coveredReserved)
+        assertEquals(Sides.NONE, e.fittedReserved)
         assertEquals(Sides.NONE, e.barRoom)
     }
 

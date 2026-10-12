@@ -9,11 +9,16 @@ import com.playtranslate.overlay.Sides
  * sheet's body, the workspace's card), from the insets its OWN window is
  * dispatched: such a window spans the display edge to edge
  * ([com.playtranslate.overlay.OverlayPlacement.Content]), so its content
- * steps aside from what covers it itself. The platform re-sends these on
- * every change, on both backends and below R, and only the sources of the
- * windows above ours reach it: below the bars (MediaProjection) a shown bar
- * counts, above them (accessibility) only the cutout does. One derivation for
- * both windows, so the sheet and the workspace cannot drift apart again.
+ * steps aside from what its own window is dispatched. The platform re-sends
+ * these on every change, on both backends and below R. From Android 12 only
+ * the sources of the windows above ours reach it: below the bars
+ * (MediaProjection) a shown bar counts, above them (accessibility) only the
+ * cutout does. Android 11 sends every source to every window, so there the
+ * accessibility backend's window pads by the bars too (as the bottom did in
+ * v3.3.1); a decision that must agree with this padding reads
+ * [com.playtranslate.overlay.OverlayEnvironment.fittedReserved]. One
+ * derivation for both windows, so the sheet and the workspace cannot drift
+ * apart again.
  *
  * [top], [left], [right] and [bottom] are the bars that are showing and the
  * display cutout; [imeLift] the keyboard's height while it is up (the window

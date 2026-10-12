@@ -277,12 +277,14 @@ class OverlayHostPlacementTest {
     // ── A failed read ─────────────────────────────────────────────────────
 
     /** What a read returns from R on when the window-metrics query fails:
-     *  no insets, and the coarser read's size, which need not be the
-     *  display's (the Thor's read 1240x1080 for 1920x1080). */
-    private fun failedRead(w: Int = 900, h: Int = 1900, rotation: Int = 0) =
+     *  no insets, and the size the display read before at the same rotation
+     *  and panel size (DisplayWindowContexts.knownSize), here the real
+     *  read's; for a geometry never read, the coarse read's, which need not
+     *  be the display's (the Thor's read 1240x1080 for 1920x1080). */
+    private fun failedRead(w: Int = 1000, h: Int = 2000, rotation: Int = 0) =
         testEnvironment(w, h, rotation = rotation, insetsKnown = false, provisional = true)
 
-    @Test fun `a failed read moves and resizes nothing while the rotation is the same`() {
+    @Test fun `a failed read moves and resizes nothing while the geometry is the same`() {
         env[display] = testEnvironment(1000, 2000, shownBars = Sides(0, 0, 84, 0))
         val a = Docked(); a.add()
         val full = View(ctx)
@@ -307,6 +309,22 @@ class OverlayHostPlacementTest {
         env[display] = failedRead()
         val b = Docked(); b.add()
         assertEquals(1000 - 84 - 100, b.p.x)
+    }
+
+    @Test fun `a failed read after a resize at the same rotation does not keep the old read`() {
+        env[display] = testEnvironment(1000, 2000, shownBars = Sides(0, 0, 84, 0))
+        val a = Docked(); a.add()
+        val full = View(ctx)
+        val fp = params(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
+        host.addOverlayWindow(full, wm, fp, display, OverlayPlacement.CaptureSpace)
+        // A resolution switch or a fold, no rotation: the read fails, and
+        // its size is the new panel's, not the last read's.
+        env[display] = failedRead(w = 1200, h = 2000)
+
+        host.onDisplayChanged(display)
+
+        assertEquals("re-pinned to the new size", 1200, fp.width)
+        assertEquals("docked on the new edge, as best it can", 1200 - 100, a.p.x)
     }
 
     @Test fun `across a rotation a failed read places against the stand-in, and the next real read places again`() {

@@ -30,8 +30,9 @@ data class Sides(val left: Int, val top: Int, val right: Int, val bottom: Int) {
  * ([OverlayHost.applyOverlayLayoutDefaults]: no inset fitting, the cutout
  * entered), read from the display's own state in one query and never from
  * one of our windows. An accessibility overlay lies above the system bars
- * and is never dispatched their sources, so only the display's state can
- * answer for both backends.
+ * and from Android 12 is never dispatched their sources (Android 11 sends
+ * every source to every window), so only the display's state answers the
+ * same way on both backends and every version.
  *
  * A surface reads it through a policy, never through the raw bars, because
  * the raw bars mean different things per backend: a window BELOW the bars
@@ -84,14 +85,8 @@ data class OverlayEnvironment(
     /** What lies over a window of this backend now: the display cutout and,
      *  below the bars, the bars the app beneath shows. On the accessibility
      *  backend the bars lie under our windows and are not counted. For a
-     *  placement that follows changes (the icon's dock, the menu card, the
-     *  region editor's chrome). */
+     *  placement that follows changes (the icon's dock, the menu card). */
     val covered: Sides get() = if (belowBars) cutout.max(shownBars) else cutout
-
-    /** [covered] with the bars counted whether shown or not, for a decision
-     *  made once that a bar shown later must not invalidate (the capture
-     *  sheet's one or two columns). */
-    val coveredReserved: Sides get() = if (belowBars) cutout.max(reservedBars) else cutout
 
     /** What the platform's own inset fit kept a fixed-size window of ours
      *  clear of before our windows were laid out in display pixels (v3.3.1):
@@ -102,6 +97,16 @@ data class OverlayEnvironment(
      *  the released behaviour on each version (the region editor's chrome,
      *  which on Android 11 stayed off the navigation buttons). */
     val fitted: Sides get() = if (hearsBars) cutout.max(shownBars) else cutout
+
+    /** [fitted] with the bars counted whether shown or not: the most a
+     *  window's own insets can take from it, for a decision made once that a
+     *  bar shown later must not invalidate (the capture sheet's one or two
+     *  columns, whose body pads itself by its own window's insets,
+     *  [com.playtranslate.ui.ContentInsets]). Keyed, as that padding is, on
+     *  whether the window is dispatched the bars, not on whether they lie
+     *  over it: on Android 11 the accessibility backend's sheet is dispatched
+     *  a side bar it lies above, and pads by it. */
+    val fittedReserved: Sides get() = if (hearsBars) cutout.max(reservedBars) else cutout
 
     /** The room every system bar takes, shown or not, and the cutout, on
      *  BOTH backends: the translation-error pills and the no-text pill keep

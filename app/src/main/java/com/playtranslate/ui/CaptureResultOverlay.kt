@@ -114,16 +114,16 @@ class CaptureResultOverlay(
 ) {
     private val ctx = overlayThemedContext(rawCtx)
 
-    /** The sides the one-or-two-columns decision reserves: what covers this
-     *  sheet's window with the bars counted shown or not
-     *  ([OverlayEnvironment.coveredReserved]), on the display the sheet's own
+    /** The sides the one-or-two-columns decision reserves: what this
+     *  sheet's window insets can take, the bars counted shown or not
+     *  ([OverlayEnvironment.fittedReserved]), on the display the sheet's own
      *  context belongs to (an activity-hosted sheet may be on another screen
      *  than the display id it was given). Tests substitute a bar. */
     internal var sideReserveReader: (Context) -> Sides = { context ->
         OverlayEnvironment.read(
             context,
             belowBars = overlayHost.windowType == WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-        )?.coveredReserved ?: Sides.NONE
+        )?.fittedReserved ?: Sides.NONE
     }
     private val density = ctx.resources.displayMetrics.density
     private val cornerRadiusPx = ctx.resources.getDimension(R.dimen.pt_radius) * CORNER_RADIUS_MULT
@@ -815,12 +815,13 @@ class CaptureResultOverlay(
 
         // The width the sections share is the screen less the sides the
         // body buffers (the inset listener below): a side navigation bar
-        // where this window lies below the bars (the MediaProjection
-        // backend; an accessibility overlay is above them and never hears
-        // one) and the display cutout. The decision is made once, here, and
-        // the bar can come and go under a non-focusable sheet, so it
-        // reserves the bar's inset whether or not the bar is showing
-        // ([OverlayEnvironment.coveredReserved], as the error pills do): a display whose
+        // this window is dispatched (below the bars on the MediaProjection
+        // backend; on Android 11 the accessibility overlay too, which lies
+        // above them, since that version sends every bar to every window)
+        // and the display cutout. The decision is made once, here, and the
+        // bar can come and go under a non-focusable sheet, so it reserves
+        // the bar's inset whether or not the bar is showing
+        // ([OverlayEnvironment.fittedReserved], as the error pills do): a display whose
         // landscape width lies within a bar's width above the breakpoint
         // keeps one column rather than two that a later bar would squeeze
         // (Codex reviews, 2026-10-11: a 640 dp display with a 48 dp side

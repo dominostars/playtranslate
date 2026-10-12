@@ -1039,11 +1039,12 @@ class MagnifierLens(
          *  intent. */
         var onDismissKey: (() -> Unit)? = null
         /** The insets last dispatched to this window, the one source for
-         *  what the card keeps clear of: the system bars this window lies
-         *  below (on the MediaProjection backend; an accessibility overlay
-         *  is above the bars and never hears them) and the display cutout,
-         *  which the host lays the window into. Null before the first
-         *  dispatch, when the card clamps to the screen. */
+         *  what the card keeps clear of: the system bars this window is
+         *  dispatched (below them on the MediaProjection backend; an
+         *  accessibility overlay lies above them and hears them only on
+         *  Android 11, which sends every bar to every window) and the
+         *  display cutout, which the host lays the window into. Null
+         *  before the first dispatch, when the card clamps to the screen. */
         var windowInsets: WindowInsetsCompat? = null
             private set
         /** Fired when the bars or cutout this window hears changed, the
