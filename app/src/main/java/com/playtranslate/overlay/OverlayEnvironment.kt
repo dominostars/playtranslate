@@ -47,10 +47,15 @@ data class Sides(val left: Int, val top: Int, val right: Int, val bottom: Int) {
  * sheet's columns at its build); anything read that way and kept is stale
  * at the next bar toggle or rotation.
  *
- * Below R there is no window-metrics query (and from R the query can fail):
- * then every policy is [Sides.NONE] and [insetsKnown] is false, which is what
- * v3.3.1 placed against there (below R the platform still fits our
- * fixed-size windows).
+ * Below R there is no window-metrics query: every policy is [Sides.NONE]
+ * and [insetsKnown] is false, which is what v3.3.1 placed against there
+ * (below R the platform still fits our fixed-size windows). From R the query
+ * can fail ([displayWindowMetrics]; on Android 11 it does while the app holds
+ * five window contexts no garbage collection has freed yet), and then the
+ * read is [provisional]: no insets and the coarser read's size. From R the
+ * platform no longer fits our windows, so that is not something to lay them
+ * out against; [OverlayHost.environment] keeps the display's last real read
+ * in its place.
  */
 data class OverlayEnvironment(
     val geometry: DisplayGeometry,
@@ -63,6 +68,11 @@ data class OverlayEnvironment(
     val hearsBars: Boolean,
     /** False when no insets could be read (below R, or a failed query). */
     val insetsKnown: Boolean,
+    /** A stand-in for a query that failed from R on: no insets, and the size
+     *  of the coarser read ([displaySizePx]'s fallback), which can be wrong
+     *  (DisplaySize.kt). Never equal to a real read, so a window laid out
+     *  against it is laid out again by the next real one. */
+    val provisional: Boolean,
     private val cutout: Sides,
     /** Status and navigation bars the app beneath shows persistently now. A
      *  swipe-revealed (transient) bar reads as hidden in the display's state
@@ -126,6 +136,7 @@ data class OverlayEnvironment(
                         belowBars,
                         hears,
                         insetsKnown = true,
+                        provisional = false,
                         cutout = insets.getInsets(WindowInsets.Type.displayCutout()).toSides(),
                         // Where no window hears the bars, no policy reads which
                         // are shown, and nothing would follow them: kept, they
@@ -136,10 +147,10 @@ data class OverlayEnvironment(
                     )
                 }
             }
-            // Below R there is no window-metrics query, and from R it can
-            // still fail (an OEM's window context, [displayWindowMetrics]):
-            // the size comes from the coarser read and nothing is inset,
-            // which is what v3.3.1 placed against there.
+            // Below R there is no window-metrics query: the size comes from
+            // the coarser read and nothing is inset, which is what v3.3.1
+            // placed against there. From R the query failed: the same, as a
+            // stand-in ([provisional]).
             val size = displayContext.displaySizePx()
             if (size.x <= 0 || size.y <= 0) return null
             return OverlayEnvironment(
@@ -147,6 +158,7 @@ data class OverlayEnvironment(
                 belowBars,
                 hearsBars(belowBars),
                 insetsKnown = false,
+                provisional = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R,
                 cutout = Sides.NONE,
                 shownBars = Sides.NONE,
                 reservedBars = Sides.NONE,
@@ -180,8 +192,9 @@ data class OverlayEnvironment(
             reservedBars: Sides = shownBars,
             insetsKnown: Boolean = true,
             hearsBars: Boolean = belowBars,
+            provisional: Boolean = false,
         ): OverlayEnvironment =
-            OverlayEnvironment(geometry, belowBars, hearsBars, insetsKnown, cutout, shownBars, reservedBars)
+            OverlayEnvironment(geometry, belowBars, hearsBars, insetsKnown, provisional, cutout, shownBars, reservedBars)
 
         private fun android.graphics.Insets.toSides() = Sides(left, top, right, bottom)
     }
