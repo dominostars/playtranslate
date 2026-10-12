@@ -277,8 +277,8 @@ object WindowChurnGate {
      * Synchronously destroy [view]'s pending ghost, restoring its params, so
      * the view can be re-added immediately. Returns false if [view] has no
      * pending destroy. MUST be called before any `addView` of a view that may
-     * have passed through [removeWindow] — [OverlayHost.addOverlayWindow] and
-     * [com.playtranslate.PlayTranslateAccessibilityService.addOverlay] do.
+     * have passed through [removeWindow] — [OverlayHost.addOverlayWindow]
+     * does.
      */
     fun flushPendingFor(view: View): Boolean {
         val p = pending.firstOrNull { it.view === view } ?: return false

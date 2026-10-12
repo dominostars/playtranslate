@@ -224,6 +224,19 @@ class PlayTranslateApplication : Application() {
         // at lifecycle boundaries — Android can move an activity between
         // displays without firing onPause/onResume when configChanges
         // swallows the screenLayout swap, leaving any cached id stale.
+        // The registry starts empty: no activity of this process resumed
+        // before its Application was created. Said explicitly because the
+        // registry is static and outlives this instance: under Robolectric
+        // every test creates a new Application in a JVM whose statics
+        // persist, and an activity a previous test resumed and never paused
+        // stayed registered, held by that test's controller until the
+        // collector ran, so a later test's foregroundDisplayId reached into
+        // a torn-down environment and threw (ErrorPillSettingsGearTest, 11
+        // of 17, 2026-10-11; whether it showed depended on which fork ran
+        // the suite and what had run there before). The ops queued for the
+        // next resume are static for the same reason and start empty too.
+        resumedActivity = null
+        pendingForegroundOps.clear()
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {
                 resumedActivity = WeakReference(activity)

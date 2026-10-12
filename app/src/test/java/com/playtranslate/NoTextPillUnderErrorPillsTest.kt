@@ -13,6 +13,7 @@ import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.translation.TranslationError
 import com.playtranslate.ui.TranslationErrorPills
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -98,6 +99,27 @@ class NoTextPillUnderErrorPillsTest {
             TranslationError.Service("claude", "Claude", BackendFailure(BackendFailureKind.BILLING)),
         )
         settle()
+        assertTrue(windowY(pill) >= stackBottom())
+    }
+
+    @Test fun `a re-raise of the error pills leaves the no-text pill below them, never on their line`() {
+        errorPills.show(ctx, display.displayId, TranslationError.Connection)
+        controller.showNoTextPill(display, "No text found")
+        settle()
+        val pill = noTextPill()!!
+        val below = windowY(pill)
+        assertTrue(below >= stackBottom())
+
+        // The icon's re-raise raises the stack: a fresh window, its size
+        // unknown until its first layout. A display-wide layout pass meanwhile
+        // (the icon's own add, a bar toggle) must not put the pill on the
+        // stack's line.
+        errorPills.raise(display.displayId)
+        val host = privateField("overlayHost") as OverlayHost
+        host.invalidateLayout(display.displayId)
+        assertEquals("held while the stack is unsized", below, windowY(pill))
+        settle()
+        assertEquals(below, windowY(pill))
         assertTrue(windowY(pill) >= stackBottom())
     }
 }

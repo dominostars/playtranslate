@@ -18,6 +18,10 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import java.time.Duration
+import com.playtranslate.displaySizePx
+import com.playtranslate.overlay.OverlayHost
+import com.playtranslate.overlay.OverlayPlacement
+import com.playtranslate.testutil.testEnvironment
 
 /**
  * Pins the floating icon's drag protocol against the drag lens's clean
@@ -46,18 +50,20 @@ class FloatingOverlayIconDragRevealTest {
     }
 
     private class Harness(ctx: Context) {
+        val host = OverlayHost(ctx, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
         val wm = RecordingWindowManager(ctx.getSystemService(WindowManager::class.java))
         val icon = FloatingOverlayIcon(ctx)
         val viewHalf = icon.viewSizePx / 2
-        /** A left-edge dock: the circle's centre on the screen's left edge. */
-        val dockX = -viewHalf
-        val dockY = 200
         val params = WindowManager.LayoutParams(
             icon.viewSizePx, icon.viewSizePx,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT,
-        ).apply { x = dockX; y = dockY }
+        )
+        /** The dock the icon settles on: a left-edge slot, the circle's
+         *  centre on the screen's left edge, half way down. */
+        val dockX: Int
+        val dockY: Int
         var dragStarts = 0
         val dragMoves = mutableListOf<Pair<Float, Float>>()
         var dragEndResult = true
@@ -65,6 +71,20 @@ class FloatingOverlayIconDragRevealTest {
         init {
             icon.wm = wm
             icon.params = params
+            // The icon added through a host whose display has no bars or
+            // cutout, as the controller adds it: the host lays it out on its
+            // slot at the add and whenever it comes to rest.
+            val screen = ctx.displaySizePx()
+            val env = testEnvironment(screen.x, screen.y)
+            icon.overlayHost = host.also { it.environmentReader = { env } }
+            icon.setSlot(FloatingOverlayIcon.Edge.LEFT.ordinal, 0.5f)
+            host.addOverlayWindow(
+                icon, wm, params, android.view.Display.DEFAULT_DISPLAY,
+                OverlayPlacement.Placed(icon::layoutAtRest),
+            )
+            dockX = params.x
+            dockY = params.y
+            assertEquals("the centre on the left edge", -viewHalf, dockX)
             icon.onDragStart = { dragStarts++ }
             icon.onDragMove = { x, y -> dragMoves += x to y }
             icon.onDragEnd = { dragEndResult }
@@ -104,7 +124,13 @@ class FloatingOverlayIconDragRevealTest {
         }
     }
 
-    private fun harness() = Harness(ctx)
+    private var last: Harness? = null
+    private fun harness() = Harness(ctx).also { last = it }
+
+    @org.junit.After fun tearDown() {
+        last?.host?.removeAll()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(5))
+    }
 
     @Test
     fun `a docked icon paints its chevron`() {
@@ -175,7 +201,7 @@ class FloatingOverlayIconDragRevealTest {
     fun `a reveal after the drag ended is a no-op`() {
         val h = harness()
         h.dragPastSlop()
-        h.up(DRAG_DX, DRAG_DY, 80) // onDragEnd true: back to the saved dock
+        h.up(DRAG_DX, DRAG_DY, 80) // onDragEnd true: the icon settles on its dock
         assertFalse(h.icon.inDragMode)
         val commitsAfterEnd = h.wm.layoutCommits
 

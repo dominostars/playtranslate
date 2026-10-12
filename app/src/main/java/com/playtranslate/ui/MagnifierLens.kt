@@ -27,6 +27,7 @@ import android.view.MotionEvent
 import android.view.ViewTreeObserver
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -39,6 +40,7 @@ import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.graphics.drawable.DrawableCompat
 import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.overlay.OverlayHost
+import com.playtranslate.overlay.OverlayPlacement
 import com.playtranslate.overlay.WindowChurnGate
 import com.playtranslate.Prefs
 import com.playtranslate.R
@@ -513,10 +515,14 @@ class MagnifierLens(
         lensView?.setSpeakChipLoading(loading)
     }
 
-    fun makeInteractive() {
-        val view = lensView ?: return
-        val root = lensRoot ?: return
-        val p = params ?: return
+    /** Promote the shown lens to sticky. Returns false when there is no lens
+     *  to promote (its window never attached, or a rebuild lost it): the
+     *  owner's session has no lens to end from later and ends itself
+     *  ([DragLookupController.endSession]). */
+    fun makeInteractive(): Boolean {
+        val view = lensView ?: return false
+        val root = lensRoot ?: return false
+        val p = params ?: return false
         // The interactive card needs window focus only for key/stick
         // navigation (dpad + A over the pill/chips, stick scroll, B/Escape
         // dismiss). With no gamepad or hardware keyboard attached there is
@@ -555,16 +561,11 @@ class MagnifierLens(
         root.onOffCardTap = { dismiss() }
         root.onDismissKey = { dismiss() }
         view.attachInteractiveListeners(onDismissRequest = { dismiss() })
-        // Arrow x stays inside the card region (in lens-local coords) — clamped
-        // so the triangle's tip lands over the card, not the chip-halo padding.
-        val arrowRelX = (lastFingerX - lastLensX).coerceIn(
-            chipHaloXPx + arrowSizePx,
-            chipHaloXPx + lastCardW - arrowSizePx,
-        )
-        view.setArrowVisible(true, arrowRelX)
+        view.setArrowVisible(true, arrowRelX())
         // Release commit: grow the card to fit the dictionary, animated inside
         // the fixed window (definitions were bound just above).
         fitHeightToContent()
+        return true
     }
 
     /** Controller-opened lens: ring the pill from the start, so the next A
@@ -588,7 +589,7 @@ class MagnifierLens(
 
     /** Clamped card height for the currently bound definitions. */
     private fun grownCardHeight(view: LensView): Int {
-        val (safeTop, safeBottom) = safeVerticalBounds(view)
+        val (safeTop, safeBottom) = safeVerticalBounds()
         return computeGrownCardHeight(
             flipped = lastFlipped,
             anchoredEdgeY = anchoredEdgeScreenY,
@@ -601,16 +602,71 @@ class MagnifierLens(
     }
 
     /** Visible vertical bounds for the grow clamp: system-bar + display-cutout
-     *  insets shrink the raw screen, plus [growBufferPx]. Uses the public
-     *  AndroidX inset API (API 29+); falls back to the raw screen edges when
-     *  insets aren't available yet. */
-    private fun safeVerticalBounds(view: View): Pair<Int, Int> {
-        val insets = ViewCompat.getRootWindowInsets(view)?.getInsets(
+     *  insets shrink the raw screen, plus [growBufferPx]. From the window's
+     *  own dispatch ([LensRoot.windowInsets]); the raw screen edges before
+     *  the first one. */
+    private fun safeVerticalBounds(): Pair<Int, Int> {
+        val insets = lensRoot?.windowInsets?.getInsets(
             WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
         )
         val top = (insets?.top ?: 0) + growBufferPx
         val bottom = lastScreenH - (insets?.bottom ?: 0) - growBufferPx
         return top to bottom
+    }
+
+    /** The lens column's horizontal range inside the root for a column
+     *  [viewW] wide on a screen [screenW] wide: inboard of a visible side
+     *  navigation bar this window lies below and of a side display cutout
+     *  ([LensRoot.windowInsets]); the screen edges before the first
+     *  dispatch. A column wider than the span pins to its left. */
+    private fun columnRange(root: LensRoot, screenW: Int, viewW: Int): IntRange {
+        val side = root.windowInsets?.getInsets(
+            WindowInsetsCompat.Type.navigationBars() or WindowInsetsCompat.Type.displayCutout()
+        )
+        val lo = side?.left ?: 0
+        val hi = maxOf(lo, screenW - (side?.right ?: 0) - viewW)
+        return lo..hi
+    }
+
+    /** Where the sticky arrow's tip sits inside the lens column: over the
+     *  finger, kept inside the card region (lens-local coords), not the
+     *  chip-halo padding. */
+    private fun arrowRelX(): Int =
+        (lastFingerX - lastLensX).coerceIn(chipHaloXPx + arrowSizePx, chipHaloXPx + lastCardW - arrowSizePx)
+
+    /** Slide the lens column to the finger's x, inboard of what the window
+     *  hears ([columnRange]); a sticky card takes its arrow along. The one
+     *  placement of the column: [show] runs it for a finger move, and the
+     *  root runs it when its insets change ([LensRoot.onInsetsChanged]),
+     *  which covers the first dispatch, which lands after the reveal has
+     *  placed the card, and a side bar the game shows or hides under a
+     *  sticky card (Codex reviews, 2026-10-11: the first cut clamped only in
+     *  show, and the test covering it needed a second show to see the
+     *  effect, the trigger a real bar change never supplies). The window is
+     *  fixed full-screen, so this is a pure view translation: no
+     *  updateViewLayout, no flash. */
+    private fun placeColumn() {
+        val root = lensRoot ?: return
+        val view = lensView ?: return
+        val p = params ?: return
+        val viewW = lastCardW + 2 * chipHaloXPx
+        lastLensX = (lastFingerX - viewW / 2).coerceIn(columnRange(root, p.width, viewW))
+        root.setLensX(lastLensX)
+        if (view.isInteractive) view.setArrowVisible(true, arrowRelX())
+    }
+
+    /** The bounds moved under a sticky card (a bar the window hears came
+     *  or went): re-fit the card to them, growing into room that appeared
+     *  or shrinking out from under a bar that now covers its far edge. The
+     *  content-driven [fitHeightToContent] only grows, since content
+     *  shrinking under a reader is jitter; a bound shrinking is a cover.
+     *  The anchored edge stays on the word, as it does for every grow. */
+    private fun refitToBounds() {
+        val view = lensView ?: return
+        if (!view.isInteractive) return
+        val target = grownCardHeight(view)
+        if (target == lensCardHeight) return
+        animateCardGrowInside(view, target)
     }
 
     /** Animate the card body from [lensCardHeight] to [target] INSIDE the fixed
@@ -727,23 +783,48 @@ class MagnifierLens(
         screenW: Int,
         screenH: Int,
         anchorHeight: Int = 0,
-    ) {
+    ): Boolean {
         // If the user changed the theme (mode or accent) between drags,
         // the cached LensView still carries the old colors. Tear it down
         // silently so ensureWindow rebuilds with the new attrs. Silent =
         // does NOT fire onDismiss (the user didn't dismiss; we're just
         // reconfiguring under the hood).
         val themeKey = currentThemeKey()
-        if (lensView != null && cachedThemeKey != themeKey) {
-            removeOverlayInternal()
-        }
+        // The window is sized to the screen it was built for ([ensureWindow]).
+        // A show for another screen gets a window of that size: one of the
+        // old size would catch off-card taps on only part of the new screen
+        // and place the card past its edge. The owner ends a session whose
+        // display changed ([DragLookupController.onDisplayChanged], and its
+        // capture checks the display when the frame returns), so this is
+        // reached by a show that lands between the change and that event.
+        // Same silent rebuild as the theme change: no onDismiss, the user
+        // dismissed nothing.
+        val builtSize = params?.let { it.width to it.height }
+        val rebuilt = lensView != null && (cachedThemeKey != themeKey || builtSize != (screenW to screenH))
+        if (rebuilt) removeOverlayInternal()
         cachedThemeKey = themeKey
 
         val cardW = cardWidth(screenW)
         val viewW = cardW + 2 * chipHaloXPx
         ensureWindow(cardW, viewW, screenW, screenH)
-        val view = lensView ?: return
-        val root = lensRoot ?: return
+        val view = lensView
+        val root = lensRoot
+        if (view == null || root == null) {
+            // No window: the add was refused (a revoked overlay permission, a
+            // display that went away). A rebuild that lost a working window
+            // reports it as a dismissal the user did not make, so the
+            // owner's lens state clears (its drag, if one is under way,
+            // carries on: [DragLookupController.lensDismissed]); a first
+            // show that fails has nothing to report. Either way the caller
+            // reads the return, and a session that reaches its release with
+            // no lens settles itself ([DragLookupController.endSession]).
+            android.util.Log.w(
+                "MagnifierLens",
+                "lens window did not attach at ${screenW}x$screenH (rebuilt=$rebuilt)",
+            )
+            if (rebuilt) onDismiss?.invoke()
+            return false
+        }
 
         val aboveY = fingerY - verticalMarginPx - lensH
         // Activity-window callers (tap-on-word in the result screen) need the
@@ -783,21 +864,24 @@ class MagnifierLens(
         // Slide the lens column to follow the finger horizontally; the window
         // itself is fixed full-screen (never moves or resizes), so this is a
         // pure view translation inside the root — no updateViewLayout, no flash.
-        val lensX = (fingerX - viewW / 2).coerceIn(0, (screenW - viewW).coerceAtLeast(0))
-        lastLensX = lensX
         lastCardW = cardW
-        root.setLensX(lensX)
+        placeColumn()
         view.invalidate()
+        return true
     }
 
     fun hide() {
         lensRoot?.visibility = View.INVISIBLE
     }
 
-    fun dismiss() {
-        if (lensView == null) return
+    /** Dismiss the lens and fire [onDismiss]. Returns false when there was
+     *  no window to dismiss and nothing fired: an owner ending its session
+     *  settles itself then ([DragLookupController.endSession]). */
+    fun dismiss(): Boolean {
+        if (lensView == null) return false
         removeOverlayInternal()
         onDismiss?.invoke()
+        return true
     }
 
     /** Remove the overlay + reset state WITHOUT firing onDismiss. Used by
@@ -886,6 +970,10 @@ class MagnifierLens(
             onStyledHeightChanged = { fitHeightToContent() },
         )
         val root = LensRoot(themedCtx, view, viewW)
+        root.onInsetsChanged = {
+            placeColumn()
+            refitToBounds()
+        }
         val windowType = if (useActivityWindow)
             WindowManager.LayoutParams.TYPE_APPLICATION_PANEL
         else
@@ -906,7 +994,7 @@ class MagnifierLens(
             y = 0
         }
         val attached = if (overlayHost != null) {
-            overlayHost.addOverlayWindow(root, wm, lp, displayId)
+            overlayHost.addOverlayWindow(root, wm, lp, displayId, OverlayPlacement.Content)
         } else {
             try {
                 wm.addView(root, lp)
@@ -940,15 +1028,42 @@ class MagnifierLens(
     ) : FrameLayout(ctx) {
         /** True once the lens is sticky; off-card taps dismiss only then. */
         var interactive = false
-        /** Invoked when a sticky-mode DOWN lands left/right of the lens column.
-         *  (Taps inside the column but off the chrome band are dismissed by
-         *  [lens] itself; both are consumed by this full-screen window.) */
+        /** Invoked when a sticky-mode DOWN lands left/right of the lens column,
+         *  or a touch lands outside the window altogether. (Taps inside the
+         *  column but off the chrome band are dismissed by [lens] itself; all
+         *  are consumed by this full-screen window.) */
         var onOffCardTap: (() -> Unit)? = null
         /** Controller B / back while the sticky lens holds window focus (it
          *  goes focusable when a controller is attached — [makeInteractive]).
          *  A separate hook from [onOffCardTap]: same dismissal, different
          *  intent. */
         var onDismissKey: (() -> Unit)? = null
+        /** The insets last dispatched to this window, the one source for
+         *  what the card keeps clear of: the system bars this window lies
+         *  below (on the MediaProjection backend; an accessibility overlay
+         *  is above the bars and never hears them) and the display cutout,
+         *  which the host lays the window into. Null before the first
+         *  dispatch, when the card clamps to the screen. */
+        var windowInsets: WindowInsetsCompat? = null
+            private set
+        /** Fired when the bars or cutout this window hears changed, the
+         *  first dispatch included (it lands after the reveal placed the
+         *  card): the owner re-places the column and re-fits a sticky
+         *  card. Not for every dispatch: a relayout of our own repeats the
+         *  same insets. */
+        var onInsetsChanged: (() -> Unit)? = null
+
+        override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
+            val next = WindowInsetsCompat.toWindowInsetsCompat(insets, this)
+            val before = windowInsets?.getInsets(WATCHED_INSETS)
+            windowInsets = next
+            if (before != next.getInsets(WATCHED_INSETS)) onInsetsChanged?.invoke()
+            return super.onApplyWindowInsets(insets)
+        }
+
+        private companion object {
+            val WATCHED_INSETS = WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+        }
 
         /** True between a consumed B DOWN and its UP, so dismissal fires only
          *  for a press that began on this window. */
@@ -1006,11 +1121,25 @@ class MagnifierLens(
         }
 
         override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-            if (interactive && ev.actionMasked == MotionEvent.ACTION_DOWN) {
-                val left = lens.translationX
-                if (ev.x < left || ev.x >= left + lensW) {
-                    onOffCardTap?.invoke()
-                    return true   // consume: the tap dismisses; it does not pass through
+            if (interactive) {
+                when (ev.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        val left = lens.translationX
+                        if (ev.x < left || ev.x >= left + lensW) {
+                            onOffCardTap?.invoke()
+                            return true   // consume: the tap dismisses; it does not pass through
+                        }
+                    }
+                    // A touch outside this window (FLAG_WATCH_OUTSIDE_TOUCH):
+                    // on a navigation bar, which sits above an application
+                    // overlay, or past the window's frame. The notification
+                    // reaches the window's root, and a ViewGroup hands a
+                    // non-DOWN event to no child while it has no touch target,
+                    // so a listener on [lens] never saw one.
+                    MotionEvent.ACTION_OUTSIDE -> {
+                        onOffCardTap?.invoke()
+                        return true
+                    }
                 }
             }
             return super.dispatchTouchEvent(ev)
@@ -3024,18 +3153,9 @@ class MagnifierLens(
 
         fun attachInteractiveListeners(onDismissRequest: () -> Unit) {
             dismissRequest = onDismissRequest
-            // ACTION_OUTSIDE delivers the system's "user touched outside the
-            // window" notification; this listener doesn't observe clicks on
-            // the lens itself, so there's no click semantic for
-            // View.performClick to mirror. TalkBack users dismiss the lens
-            // via the back gesture.
-            @android.annotation.SuppressLint("ClickableViewAccessibility")
-            setOnTouchListener { _, event ->
-                if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) {
-                    onDismissRequest()
-                    false
-                } else false
-            }
+            // A touch outside the window is the root's to hear
+            // ([LensRoot.dispatchTouchEvent]). TalkBack users dismiss the
+            // lens via the back gesture.
             // Right stick scrolls the definitions — the sheet's scroll hand
             // (the left stick was the original driver, and before that a
             // nudge-to-dismiss; B carries dismissal now, and a dictionary
@@ -3057,7 +3177,6 @@ class MagnifierLens(
         }
 
         fun detachInteractiveListeners() {
-            setOnTouchListener(null)
             setOnGenericMotionListener(null)
             navPreDraw?.let { viewTreeObserver.removeOnPreDrawListener(it) }
             navPreDraw = null

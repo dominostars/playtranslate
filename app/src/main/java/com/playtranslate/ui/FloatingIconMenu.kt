@@ -32,6 +32,7 @@ import android.widget.TextView
 import com.playtranslate.R
 import com.playtranslate.RegionEntry
 import com.playtranslate.themeColor
+import com.playtranslate.overlay.Sides
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.core.graphics.toColorInt
@@ -91,8 +92,9 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
      *  inherits the locale, so the card's labels and rows stay RTL in Arabic. */
     private val absoluteTopLeft = Gravity.TOP or Gravity.LEFT
 
-    // Screen margin the menu card is anchored by, and the clearance the
-    // drag-hint pill keeps from the card / screen edges. See positionInstructionPill.
+    // Margin the menu card keeps from the icon's dock line and the screen
+    // edges, and the clearance the drag-hint pill keeps from the card / screen
+    // edges. See collapsedCardLeft and positionInstructionPill.
     private val screenMargin = (16 * dp).toInt()
     private val pillBuffer = (16 * dp).toInt()
 
@@ -1259,32 +1261,126 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
     }
 
-    /** Anchor the menu card beside the icon against [screenW]×[screenH].
-     *
-     *  [animateEntrance] plays the fade/scale-in used when the menu first
-     *  opens; pass false to re-anchor an already-open menu in place (on
-     *  rotation), matching the icon's silent snap to its new edge slot. */
-    fun positionNearIcon(
+    /** The collapsed card's left edge beside an icon whose dock line (its
+     *  centre x) is [iconCx] on [iconEdge]: a margin inboard of that line,
+     *  clamped to the screen. The line and the display edge coincide while
+     *  the icon docks on the edge, and part when it docks inboard of a side
+     *  navigation bar on the MediaProjection backend ([FloatingOverlayIcon]),
+     *  where a card placed from the edge sat under the bar (Codex review,
+     *  2026-10-11). The one derivation of where the collapsed card is: the
+     *  card's own placement, the "Record audio" bar and the drag-hint pill's
+     *  obstacle all read it from [positionNearIcon]. Until 2026-10-11 each
+     *  of the three derived it from the display edge, and only the card's
+     *  moved to the dock line (Codex review, 2026-10-11: the bar and the
+     *  pill's obstacle stayed a bar's width outboard of the card). */
+    private fun collapsedCardLeft(iconCx: Int, iconEdge: FloatingOverlayIcon.Edge, clear: ClearArea): Int {
+        val left = if (iconEdge == FloatingOverlayIcon.Edge.LEFT) iconCx + screenMargin
+        else iconCx - collapsedCardWidthPx - screenMargin
+        return left.coerceIn(clear.left, (clear.right - collapsedCardWidthPx).coerceAtLeast(clear.left))
+    }
+
+    /** The collapsed card's top edge: centred on the icon's [iconCy], kept a
+     *  margin inside the clear area. */
+    private fun collapsedCardTop(iconCy: Int, clear: ClearArea): Int =
+        (iconCy - collapsedCardHeightPx / 2).coerceInMargin(clear, collapsedCardHeightPx, screenMargin)
+
+    /** The part of the screen nothing covers: the screen less the bars and
+     *  cutout that lie over this window ([OverlayEnvironment.covered]). The
+     *  card and everything placed around it stay inside; the region chrome,
+     *  drawn over the capture, does not. */
+    private data class ClearArea(val left: Int, val top: Int, val right: Int, val bottom: Int) {
+        val centerX get() = (left + right) / 2
+        val centerY get() = (top + bottom) / 2
+    }
+
+    private fun clearArea(screenW: Int, screenH: Int, covered: Sides) =
+        ClearArea(covered.left, covered.top, screenW - covered.right, screenH - covered.bottom)
+
+    /** This top edge for something [size] tall, kept [margin] inside [clear]
+     *  vertically (pinned to the top margin when it cannot fit). */
+    private fun Int.coerceInMargin(clear: ClearArea, size: Int, margin: Int): Int {
+        val lo = clear.top + margin
+        return coerceIn(lo, (clear.bottom - size - margin).coerceAtLeast(lo))
+    }
+
+    /** One placement of the card: the icon's window centre and edge, and the
+     *  screen with what covers it. */
+    private data class Anchor(
+        val iconCx: Int,
+        val iconCy: Int,
+        val edge: FloatingOverlayIcon.Edge,
+        val screenW: Int,
+        val screenH: Int,
+        val covered: Sides,
+    )
+    /** The newest anchor asked for ([placeNear]). */
+    private var requestedAnchor: Anchor? = null
+    /** The anchor the card is laid out on. */
+    private var appliedAnchor: Anchor? = null
+    private var placementPosted = false
+
+    /**
+     * Place the card beside the icon whose window centre is ([iconCx],
+     * [iconCy]) on [iconEdge], on a [screenW]x[screenH] screen of which
+     * [covered] is under bars or cutout. The menu's layout: the host runs it
+     * whenever it lays the display out ([com.playtranslate.overlay.OverlayPlacement.Placed]),
+     * most often for something that does not move the card, so an anchor
+     * equal to the one applied does nothing (a re-anchor ends an
+     * expand/collapse animation in flight, see [positionNearIcon]). Posted,
+     * because the card is measured first; the posted block applies the
+     * newest anchor asked for, so an older request can never land after a
+     * newer one. The first placement plays the entrance; later ones
+     * re-anchor in place.
+     */
+    fun placeNear(
         iconCx: Int,
         iconCy: Int,
         iconEdge: FloatingOverlayIcon.Edge,
         screenW: Int,
         screenH: Int,
+        covered: Sides,
+    ) {
+        requestedAnchor = Anchor(iconCx, iconCy, iconEdge, screenW, screenH, covered)
+        if (placementPosted || requestedAnchor == appliedAnchor) return
+        placementPosted = true
+        post {
+            placementPosted = false
+            val a = requestedAnchor ?: return@post
+            if (a == appliedAnchor) return@post
+            val entrance = appliedAnchor == null
+            appliedAnchor = a
+            positionNearIcon(a.iconCx, a.iconCy, a.edge, a.screenW, a.screenH, a.covered, animateEntrance = entrance)
+        }
+    }
+
+    /** Anchor the menu card beside the icon on a [screenW]x[screenH] screen,
+     *  inside what [covered] leaves clear, now ([placeNear] posts it).
+     *
+     *  [animateEntrance] plays the fade/scale-in used when the menu first
+     *  opens; pass false to re-anchor an already-open menu in place, matching
+     *  the icon's silent move to its new place. */
+    internal fun positionNearIcon(
+        iconCx: Int,
+        iconCy: Int,
+        iconEdge: FloatingOverlayIcon.Edge,
+        screenW: Int,
+        screenH: Int,
+        covered: Sides,
         animateEntrance: Boolean = true,
     ) {
-        post {
             // A re-anchor that lands mid-[toggleExpanded] would measure the card
             // at the animator's transient rightStack width and poison
             // collapsedLeftMargin (the running animator keeps applying it,
             // detaching the card from the icon's edge). Settle any in-flight
             // expand/collapse to its target first so the measure below reads the
             // logical collapsed/expanded geometry. Only the in-place re-anchor
-            // (rotation) can collide; the entrance path has no animator running.
+            // can collide; the entrance path has no animator running.
             if (!animateEntrance) widthAnimator?.end()
             applyLaneOrder(iconEdge)
+            val clear = clearArea(screenW, screenH, covered)
             menuCard.measure(
-                MeasureSpec.makeMeasureSpec(screenW, MeasureSpec.AT_MOST),
-                MeasureSpec.makeMeasureSpec(screenH, MeasureSpec.AT_MOST)
+                MeasureSpec.makeMeasureSpec(clear.right - clear.left, MeasureSpec.AT_MOST),
+                MeasureSpec.makeMeasureSpec(clear.bottom - clear.top, MeasureSpec.AT_MOST)
             )
             val mw = menuCard.measuredWidth
             val mh = menuCard.measuredHeight
@@ -1292,30 +1388,33 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
 
             val lp = menuCard.layoutParams as LayoutParams
 
-            val menuX = if (iconEdge == FloatingOverlayIcon.Edge.LEFT) {
-                margin
+            // The collapsed card's footprint, derived once ([collapsedCardLeft],
+            // [collapsedCardTop]) and read by the card's own placement, the
+            // "Record audio" bar and the drag-hint pill's obstacle below.
+            val cardLeft = collapsedCardLeft(iconCx, iconEdge, clear)
+            val cardTop = collapsedCardTop(iconCy, clear)
+            // The card as laid out now. Expanded on a re-anchor, a
+            // left-anchored card grows rightward from the same left, and a
+            // right-anchored one keeps its right edge, so its left sits the
+            // expansion further out. Clamped to the clear area like [menuY].
+            val menuX = if (expanded && iconEdge == FloatingOverlayIcon.Edge.RIGHT) {
+                cardLeft - (mw - collapsedCardWidthPx)
             } else {
-                screenW - mw - margin
-            }
+                cardLeft
+            }.coerceIn(clear.left, (clear.right - mw).coerceAtLeast(clear.left))
 
-            val menuY = (iconCy - mh / 2).coerceIn(margin, screenH - mh - margin)
+            val menuY = (iconCy - mh / 2).coerceInMargin(clear, mh, margin)
 
             lp.gravity = absoluteTopLeft
             lp.leftMargin = menuX
             lp.topMargin = menuY
             menuCard.layoutParams = lp
             menuCard.isVisible = true
-            // Remember the collapsed anchor so the expand/collapse width
-            // animation grows the card toward screen center. When re-anchoring
-            // an already-expanded, right-anchored card (rotation), the measured
-            // width carries the expansion delta, so back it out to recover the
-            // collapsed margin — otherwise a later collapse would slide the card
-            // off the icon's edge.
+            // The collapsed anchor the expand/collapse width animation grows
+            // the card from, toward screen center rather than off the icon's
+            // edge.
             menuAnchorRight = iconEdge == FloatingOverlayIcon.Edge.RIGHT
-            collapsedLeftMargin = if (expanded && menuAnchorRight)
-                menuX + (expandedRightWidthPx - collapsedRightWidthPx)
-            else
-                menuX
+            collapsedLeftMargin = cardLeft
 
             if (animateEntrance) {
                 menuCard.alpha = 0f
@@ -1332,18 +1431,30 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
 
             // The detached "Record audio" bar rides the card's collapsed
             // footprint; entrance fades it alongside the card.
-            positionRecordAudioButton(iconCy, iconEdge, screenW, screenH)
+            positionRecordAudioButton(cardLeft, cardTop, clear)
             if (animateEntrance && recordAudioBtn.isVisible) {
                 recordAudioBtn.alpha = 0f
                 recordAudioBtn.animate().alpha(1f).setDuration(150).start()
+            }
+
+            // The degraded-mode warning sits its margin above the clear
+            // bottom, centred in the clear width.
+            degradedWarningView?.let { warning ->
+                val wlp = warning.layoutParams as LayoutParams
+                val bottom = (32 * dp).toInt() + covered.bottom
+                if (wlp.bottomMargin != bottom || wlp.leftMargin != covered.left || wlp.rightMargin != covered.right) {
+                    wlp.bottomMargin = bottom
+                    wlp.leftMargin = covered.left
+                    wlp.rightMargin = covered.right
+                    warning.layoutParams = wlp
+                }
             }
 
             // Name pill + clear button over the active region (custom only).
             showRegionChrome(iconEdge, screenW, screenH)
 
             // Keep the drag-hint pill clear of the menu card.
-            positionInstructionPill(iconCy, iconEdge, screenW, screenH)
-        }
+            positionInstructionPill(cardLeft, cardTop, iconEdge, clear)
     }
 
     /** Vertical band (top..bottom) the "Record audio" bar occupies for a
@@ -1351,34 +1462,26 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
      *  isn't showing. One placement rule shared by
      *  [positionRecordAudioButton] and the drag-hint pill's obstacle math:
      *  11dp below the card, flipped above when the bottom edge has no room. */
-    private fun recordAudioBand(cardTop: Int, cardBottom: Int, screenH: Int): IntRange? {
+    private fun recordAudioBand(cardTop: Int, cardBottom: Int, clear: ClearArea): IntRange? {
         if (!showRecordAudio) return null
         val gap = (11 * dp).toInt()
         val h = (48 * dp).toInt()
         val below = cardBottom + gap
-        return if (below + h <= screenH - screenMargin) below..(below + h)
+        return if (below + h <= clear.bottom - screenMargin) below..(below + h)
         else (cardTop - gap - h)..(cardTop - gap)
     }
 
     /** Size + place the "Record audio" bar against the menu card's COLLAPSED
-     *  footprint (same convention as [positionInstructionPill] — the bar only
-     *  shows while the card is collapsed; [toggleExpanded] hides it): the
-     *  card's full width, secondary-button (48dp) height. */
-    private fun positionRecordAudioButton(
-        iconCy: Int,
-        iconEdge: FloatingOverlayIcon.Edge,
-        screenW: Int,
-        screenH: Int,
-    ) {
+     *  footprint, whose top-left corner is [cardLeft], [cardTop] (same
+     *  convention as [positionInstructionPill] — the bar only shows while the
+     *  card is collapsed; [toggleExpanded] hides it): the card's full width,
+     *  secondary-button (48dp) height. */
+    private fun positionRecordAudioButton(cardLeft: Int, cardTop: Int, clear: ClearArea) {
         if (!showRecordAudio) {
             recordAudioBtn.visibility = View.GONE
             return
         }
-        val cardLeft = if (iconEdge == FloatingOverlayIcon.Edge.LEFT) screenMargin
-        else screenW - collapsedCardWidthPx - screenMargin
-        val cardTop = (iconCy - collapsedCardHeightPx / 2)
-            .coerceIn(screenMargin, screenH - collapsedCardHeightPx - screenMargin)
-        val band = recordAudioBand(cardTop, cardTop + collapsedCardHeightPx, screenH) ?: return
+        val band = recordAudioBand(cardTop, cardTop + collapsedCardHeightPx, clear) ?: return
         val lp = recordAudioBtn.layoutParams as LayoutParams
         lp.gravity = absoluteTopLeft
         lp.width = collapsedCardWidthPx
@@ -1400,7 +1503,8 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     }
 
     /** Place the drag-hint pill so it never collides with the collapsed menu
-     *  card. Preference order:
+     *  card, whose top-left corner is [collapsedLeft], [collapsedTop].
+     *  Preference order:
      *   1. Centered on screen, when there's a [pillBuffer] gap to the card.
      *   2. Centered horizontally, vertically halved into the larger of the bands
      *      above / below the card — the bottom band stops at the degraded-warning
@@ -1410,25 +1514,24 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
      *  In cases 2 and 3 the pill wraps onto extra lines when its single-line
      *  width won't fit the available width (minus buffers). */
     private fun positionInstructionPill(
-        iconCy: Int,
+        collapsedLeft: Int,
+        collapsedTop: Int,
         iconEdge: FloatingOverlayIcon.Edge,
-        screenW: Int,
-        screenH: Int,
+        clear: ClearArea,
     ) {
         val cardOnLeft = iconEdge == FloatingOverlayIcon.Edge.LEFT
-        val cardLeft = if (cardOnLeft) screenMargin else screenW - collapsedCardWidthPx - screenMargin
+        val cardLeft = collapsedLeft
         val cardRight = cardLeft + collapsedCardWidthPx
-        var cardTop = (iconCy - collapsedCardHeightPx / 2)
-            .coerceIn(screenMargin, screenH - collapsedCardHeightPx - screenMargin)
+        var cardTop = collapsedTop
         var cardBottom = cardTop + collapsedCardHeightPx
         // The "Record audio" bar extends the card's obstacle band (same width,
         // detached above/below) so the pill's placement clears both.
-        recordAudioBand(cardTop, cardBottom, screenH)?.let { band ->
+        recordAudioBand(cardTop, cardBottom, clear)?.let { band ->
             cardTop = minOf(cardTop, band.first)
             cardBottom = maxOf(cardBottom, band.last)
         }
-        val centerX = screenW / 2
-        val centerY = screenH / 2
+        val centerX = clear.centerX
+        val centerY = clear.centerY
 
         // Natural single-line size, plus the fixed chrome (icon + padding) so a
         // wrap target can be expressed as a label maxWidth.
@@ -1445,8 +1548,8 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         val warning = degradedWarningView
         val effBottom = if (warning != null && warning.isVisible) {
             warning.measure(unspec, unspec)
-            screenH - (32 * dp).toInt() - warning.measuredHeight
-        } else screenH
+            clear.bottom - (32 * dp).toInt() - warning.measuredHeight
+        } else clear.bottom
 
         // Commit a placement: wrap to [availW] when the single line overflows,
         // then center the (possibly taller) pill at (cx, cy), clamped on-screen.
@@ -1464,8 +1567,8 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             }
             val lp = instructionPill.layoutParams as LayoutParams
             lp.gravity = absoluteTopLeft
-            lp.leftMargin = (cx - pw / 2).coerceIn(0, (screenW - pw).coerceAtLeast(0))
-            lp.topMargin = (cy - ph / 2).coerceIn(0, (screenH - ph).coerceAtLeast(0))
+            lp.leftMargin = (cx - pw / 2).coerceIn(clear.left, (clear.right - pw).coerceAtLeast(clear.left))
+            lp.topMargin = (cy - ph / 2).coerceIn(clear.top, (clear.bottom - ph).coerceAtLeast(clear.top))
             instructionPill.layoutParams = lp
             instructionPillPlaced = true
             applyInstructionPillVisibility()
@@ -1479,26 +1582,27 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             centerX - naturalW / 2 >= cardRight + pillBuffer
         else
             centerX + naturalW / 2 <= cardLeft - pillBuffer
+        val clearW = clear.right - clear.left
         if (!verticallyOverlapsCard || clearsCard) {
-            place(centerX, centerY, screenW)
+            place(centerX, centerY, clearW)
             return
         }
 
         // Case 2: the larger of the bands above / below the card, if it fits.
-        val spaceAbove = cardTop
+        val spaceAbove = cardTop - clear.top
         val spaceBelow = effBottom - cardBottom
         val useTop = spaceAbove >= spaceBelow
         val band = if (useTop) spaceAbove else spaceBelow
         if (band >= naturalH + 2 * pillBuffer) {
-            val cy = if (useTop) cardTop / 2 else (cardBottom + effBottom) / 2
-            place(centerX, cy, screenW - 2 * pillBuffer)
+            val cy = if (useTop) (clear.top + cardTop) / 2 else (cardBottom + effBottom) / 2
+            place(centerX, cy, clearW - 2 * pillBuffer)
             return
         }
 
         // Case 3: the gap beside the card, between its inner edge and the
-        // opposite screen edge.
-        val gapStart = if (cardOnLeft) cardRight else 0
-        val gapEnd = if (cardOnLeft) screenW else cardLeft
+        // opposite edge of the clear area.
+        val gapStart = if (cardOnLeft) cardRight else clear.left
+        val gapEnd = if (cardOnLeft) clear.right else cardLeft
         place((gapStart + gapEnd) / 2, centerY, (gapEnd - gapStart) - 2 * pillBuffer)
     }
 

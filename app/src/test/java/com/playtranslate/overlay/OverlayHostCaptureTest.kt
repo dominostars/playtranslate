@@ -34,7 +34,7 @@ class OverlayHostCaptureTest {
             100, 100, 0,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, android.graphics.PixelFormat.TRANSLUCENT,
         ).apply { this.alpha = alpha }
-        host.addOverlayWindow(View(ctx), wm, params, displayId)
+        host.addOverlayWindow(View(ctx), wm, params, displayId, OverlayPlacement.Fixed)
         return params
     }
 

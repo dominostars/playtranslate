@@ -251,12 +251,10 @@ class TranslationErrorPillsTest {
     @Test fun `the no-text pill is placed under the stack, not on it`() {
         pills.show(ctx, display, TranslationError.Connection)
         settle()
-        val params = WindowManager.LayoutParams().apply { y = 40 }
 
-        assertTrue(pills.placeBelow(display, params))
         val root = pills.stackRoot!!
-        assertTrue(params.y >= root.height)
-        assertFalse(pills.placeBelow(display + 1, WindowManager.LayoutParams()))
+        assertTrue(pills.belowStackY(display)!! >= root.height)
+        assertNull("no stack on another display", pills.belowStackY(display + 1))
     }
 
     @Test fun `removeAll clears the stack`() {
@@ -386,24 +384,34 @@ class TranslationErrorPillsTest {
         assertEquals(listOf("Gemini: Daily limit reached"), rows().map { it.message() })
     }
 
-    @Test fun `the stack reports its first layout and each change of its height`() {
-        val moved = mutableListOf<Int>()
-        pills.onStackMoved = { moved += it }
-        pills.show(ctx, display, TranslationError.Connection)
-        assertFalse(
-            "before its first layout there is no size to place below",
-            pills.placeBelow(display, WindowManager.LayoutParams()),
+    @Test fun `the stack lays its display out again at its first layout and each change of its height`() {
+        // A window placed by the host that counts how often it is laid out:
+        // a stand-in for the no-text pill, which reads the stack's height.
+        var layouts = 0
+        val probe = View(ctx)
+        host.addOverlayWindow(
+            probe, com.playtranslate.overlay.OwnWindows.manager(ctx)!!,
+            WindowManager.LayoutParams(
+                1, 1, 0,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                android.graphics.PixelFormat.TRANSLUCENT,
+            ),
+            display, com.playtranslate.overlay.OverlayPlacement.Placed { _, _ -> layouts++ },
         )
+        layouts = 0
+        pills.show(ctx, display, TranslationError.Connection)
+        assertNull("before its first layout there is no size to place below", pills.belowStackY(display))
         settle()
-        assertEquals("its first layout", listOf(display), moved)
-        assertTrue(pills.placeBelow(display, WindowManager.LayoutParams()))
+        assertEquals("its first layout", 1, layouts)
+        assertNotNull(pills.belowStackY(display))
 
         pills.show(ctx, display, service("claude", "Claude", BackendFailureKind.BILLING))
         settle()
-        assertEquals("a pill added", 2, moved.size)
+        assertEquals("a pill added", 2, layouts)
 
         pills.hide(listOf("claude"))
         settle()
-        assertEquals("a pill removed", 3, moved.size)
+        assertEquals("a pill removed", 3, layouts)
+        host.removeOverlayWindow(probe)
     }
 }

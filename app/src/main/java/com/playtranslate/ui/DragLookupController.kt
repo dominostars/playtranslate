@@ -15,6 +15,8 @@ import com.playtranslate.CaptureService
 import com.playtranslate.R
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.displaySizePx
+import com.playtranslate.DisplayGeometry
+import com.playtranslate.displayGeometryOf
 import com.playtranslate.MainActivity
 import com.playtranslate.OcrManager
 import com.playtranslate.overlay.OverlayHost
@@ -195,6 +197,16 @@ class DragLookupController(
      *  by a new drag starting (skip onSettled — drag2 wants the paused state)
      *  from a normal post-drag dismissal (fire onSettled). */
     private var dragInProgress = false
+    /** The display geometry the session was started against: its
+     *  screenshot, its OCR lines and the finger coordinates they are
+     *  hit-tested with all belong to that layout, and the lens window is
+     *  built for that size. Recorded at the drag's start, compared on a
+     *  display change ([onDisplayChanged]) and by the capture against the
+     *  display as it is when the frame returns, cleared when the session
+     *  ends ([lensDismissed] with no drag under way; a lens lost mid-drag
+     *  is not the session's end). The capture panel keeps the same record
+     *  ([OverlayUiController.dismissCaptureResultPanelIfReconfigured]). */
+    private var sessionGeometry: DisplayGeometry? = null
     /** Most recent finger position seen by [onDragMove]. The release point
      *  is read from these in [onDragEnd] for the lift-time lookup. */
     private var lastX = 0f
@@ -284,20 +296,7 @@ class DragLookupController(
         // tears down a sticky lens, dragInProgress is true at that moment
         // and onSettled is suppressed — the new drag will fire its own
         // settle when its lens is eventually dismissed.
-        magnifier.onDismiss = {
-            lastWord = null
-            lastSurface = null
-            lastLookupForm = null
-            lastLookupReading = null
-            currentEntry = null
-            currentEntries = emptyList()
-            lastReading = null
-            clearSecondaryLoad()
-            // Cancel a pending speak and stop any in-progress speech when
-            // the lens goes away.
-            speakChip?.release()
-            if (!dragInProgress) onSettled?.invoke()
-        }
+        magnifier.onDismiss = { lensDismissed() }
         // The "Load more (n)" row under the sticky lens's sections.
         magnifier.onLoadMoreTap = { loadSecondaries() }
     }
@@ -544,6 +543,7 @@ class DragLookupController(
         // onDismiss — the suppression check in the onDismiss handler
         // depends on it.
         dragInProgress = true
+        sessionGeometry = context.displayGeometryOf(displayId)
         // A sticky lens from the previous drag carries focusable+touchable
         // flags + populated definitions panel + outside-touch listener —
         // none of which are correct for a fresh ZOOM-mode drag. Reset the
@@ -629,6 +629,7 @@ class DragLookupController(
         dwellResult = null
         dwellAnchorToken = null
         dragInProgress = true
+        sessionGeometry = context.displayGeometryOf(displayId)
         magnifier.resetToZoom()
         lensRevealed = false
         magnifier.hide()
@@ -684,6 +685,16 @@ class DragLookupController(
         // file was captured clean upstream, so nothing leaked into it. Job-
         // identity guard: a stale drag's late job must not reveal into a newer
         // drag's capture window.
+        // Same self-check as captureAndOcr: the file predates the gesture,
+        // and the display may have turned since.
+        if (ocrJob === coroutineContext[Job] &&
+            context.displayGeometryOf(displayId) != sessionGeometry
+        ) {
+            Log.w(TAG, "Display changed under the drag capture; ending the session")
+            bitmap.recycle()
+            dismiss()
+            return
+        }
         if (ocrJob === coroutineContext[Job]) revealLensAfterCapture()
         onScreenshotCaptured(bitmap, path)
         val lines = withContext(Dispatchers.Default) {
@@ -952,7 +963,7 @@ class DragLookupController(
         dwellLookupJob?.cancel()
         dwellLookupJob = null
         dwellScheduled = false
-        // NOTE: do NOT call magnifier.dismiss() unconditionally — the lens
+        // NOTE: do NOT end the session unconditionally here: the lens
         // may transition to STICKY mode below if the release is over a
         // word with a successful lookup.
         ocrJob?.cancel()
@@ -967,13 +978,13 @@ class DragLookupController(
         val lines = ocrLines ?: run {
             // OCR didn't finish in time. Drag yielded nothing — lens
             // dismissal fires onSettled via onDismiss.
-            magnifier.dismiss()
+            endSession()
             handOffDragBitmap()
             return false
         }
         val hitLine = findLineAt(lastX.toInt(), lastY.toInt(), lines) ?: run {
             // Released somewhere with no text under the finger.
-            magnifier.dismiss()
+            endSession()
             handOffDragBitmap()
             return false
         }
@@ -1007,7 +1018,7 @@ class DragLookupController(
                     ?: resolveLookupData(lastX.toInt(), lastY.toInt(), lines, isDwell = false)
                 if (resolved == null) {
                     withContext(Dispatchers.Main) {
-                        magnifier.dismiss()
+                        endSession()
                         handOffDragBitmap()
                     }
                     return@launch
@@ -1038,7 +1049,11 @@ class DragLookupController(
                 withContext(Dispatchers.Main) {
                     sentenceToRecord?.let { recordLookupSentence(it) }
                     publishCurrent(LensScroll.Top)
-                    magnifier.makeInteractive()
+                    if (!magnifier.makeInteractive()) {
+                        // No lens to show them in (its window was refused):
+                        // the session ends here, settled.
+                        endSession()
+                    }
                     // Lens is now in DEFINITIONS mode — the zoom no longer
                     // renders, so the bitmap can be released.
                     handOffDragBitmap()
@@ -1074,7 +1089,7 @@ class DragLookupController(
             } catch (e: Exception) {
                 Log.e(TAG, "Lift-time lookup failed", e)
                 withContext(Dispatchers.Main) {
-                    magnifier.dismiss()
+                    endSession()
                     handOffDragBitmap()
                 }
             }
@@ -1086,10 +1101,10 @@ class DragLookupController(
      * Tear everything down: OCR / lookup jobs, dwell timer, magnifier
      * (the drag-flow surface). Used both by [cancelDrag] (system gesture
      * cancellation) and by external callers (e.g. game button press
-     * dismissing an open lens). magnifier.dismiss() fires the controller's
-     * onDismiss handler, which fires [onSettled] — so this method does
-     * NOT call onSettled directly. Clears dragInProgress *before* the
-     * dismiss so the dismiss handler takes the post-drag branch.
+     * dismissing an open lens). [endSession] fires [onSettled], through the
+     * lens's dismiss callback or directly when no lens is up, so this
+     * method does NOT call onSettled itself. Clears dragInProgress *before*
+     * the end so the settle takes the post-drag branch.
      */
     fun dismiss() {
         dragInProgress = false
@@ -1100,7 +1115,7 @@ class DragLookupController(
         handler.removeCallbacks(dwellRunnable)
         dwellLookupJob?.cancel()
         dwellScheduled = false
-        magnifier.dismiss()
+        endSession()
         handOffDragBitmap()
         // Popup is not the drag-flow surface anymore, but other callers
         // (TranslationResultFragment) might have it up — leave them alone
@@ -1112,10 +1127,86 @@ class DragLookupController(
      *  [dismiss]; the name signals intent for the icon's wiring. */
     fun cancelDrag() = dismiss()
 
+    /** The lens is gone, by the user's dismissal or because its window was
+     *  lost ([MagnifierLens.onDismiss]), or the session is ending with no
+     *  lens to dismiss ([endSession]): drop the sticky lens's state and,
+     *  unless a drag is under way, end the session: its geometry clears and
+     *  [onSettled] fires. A drag under way keeps its session. Its lens's
+     *  loss is the one way here with a drag in flight: a rebuild for a
+     *  changed screen size whose window the platform refused
+     *  ([MagnifierLens.show]). The drag carries on, its next move rebuilds
+     *  the window, and the display event behind the size change ends the
+     *  session ([onDisplayChanged]) by comparing its geometry, which it
+     *  could not while the loss cleared that geometry with the lens's own
+     *  state (Codex review, 2026-10-11). The host's settle is idempotent
+     *  (its pause flags clear on the first), so a settle with nothing
+     *  paused is a no-op. */
+    private fun lensDismissed() {
+        lastWord = null
+        lastSurface = null
+        lastLookupForm = null
+        lastLookupReading = null
+        currentEntry = null
+        currentEntries = emptyList()
+        lastReading = null
+        clearSecondaryLoad()
+        // Cancel a pending speak and stop any in-progress speech when
+        // the lens goes away.
+        speakChip?.release()
+        if (!dragInProgress) {
+            sessionGeometry = null
+            onSettled?.invoke()
+        }
+    }
+
+    /** End the drag session: dismiss the lens if one is up, which reaches
+     *  [lensDismissed] through its callback, or run [lensDismissed] directly
+     *  when none is, so the session settles either way. A session reaches
+     *  its end with no lens more often than it looks: a release or a cancel
+     *  before the clean capture returned (the window is created at the
+     *  reveal and removed by every dismissal, so a quick flick of the icon
+     *  is this case), a window the platform refused, a rebuild that lost
+     *  one. Those releases used to call a dismiss that did nothing, and
+     *  live mode and the region indicator stayed paused until a later
+     *  drag's lens closed (Codex adversarial review, 2026-10-10). */
+    private fun endSession() {
+        if (!magnifier.dismiss()) lensDismissed()
+    }
+
+    /** The display this controller serves changed. A session's screenshot,
+     *  OCR lines and finger coordinates belong to the layout it started on,
+     *  and its lens window is built for that size ([sessionGeometry]), so a
+     *  change of size or rotation ends the session, as the capture panel and
+     *  the workspace end theirs
+     *  ([OverlayUiController.dismissCaptureResultPanelIfReconfigured]): a
+     *  sticky lens closes and settles; a drag in flight is torn down as a
+     *  cancel would be, its capture cancelled with it, and its release then
+     *  finds no lines, settles again (the host's settle is idempotent) and
+     *  snaps the icon to its edge. Size AND rotation, so a 180 degree flip
+     *  counts, and from the drag's start, before any lens exists (Codex
+     *  adversarial review, 2026-10-11: the first cut compared the lens
+     *  window's size, which exists only from the reveal and cannot see a
+     *  flip). A display event with no geometry change behind it (a
+     *  refresh-rate switch, common under games) is nothing, and so is one
+     *  with no session. */
+    fun onDisplayChanged() {
+        val built = sessionGeometry ?: return
+        val now = context.displayGeometryOf(displayId) ?: return
+        if (now != built) dismiss()
+    }
+
+    /** Teardown, the controller's end. It clears its session and reports
+     *  nothing: no [onSettled], because the host tearing it down owns the
+     *  fate of what the session paused (live mode, the region indicator),
+     *  and that depends on why the host is tearing it down, which the
+     *  controller cannot know: a recreate restores them, an end of capture
+     *  drops them ([OverlayUiController.hideFloatingIconForDisplay]). Until
+     *  2026-10-11 this settled like a release, and on a backend swap, which
+     *  destroys the projection controller, then the icons, then flips the
+     *  backend, a live start resumed from here landed on the backend being
+     *  torn down (Codex adversarial review). */
     fun destroy() {
-        // Clear dragInProgress BEFORE magnifier.dismiss so the lens-dismiss
-        // handler fires onSettled (the post-drag branch). Otherwise a
-        // destroy mid-drag with a sticky lens up would suppress settle.
+        onSettled = null
         dragInProgress = false
         lensRevealed = false
         ocrJob?.cancel()
@@ -1123,7 +1214,7 @@ class DragLookupController(
         handler.removeCallbacks(dwellRunnable)
         dwellLookupJob?.cancel()
         dwellScheduled = false
-        magnifier.dismiss()
+        endSession()
         handOffDragBitmap()
         // Best-effort dismiss for any non-drag popup still attached
         // (TranslationResultFragment owns those). Benign no-op otherwise.
@@ -1198,6 +1289,20 @@ class DragLookupController(
         // as the spinner clears below): a previous drag's late-returning
         // capture must not reveal the lens into THIS drag's in-flight clean
         // capture.
+        // The frame validates itself against the display as it is NOW, as the
+        // capture panel's does: a rotation or resize while the capture was
+        // out leaves a frame, OCR lines and a lens size of the old layout,
+        // and the display event that ends the session ([onDisplayChanged])
+        // can land before or after this resume. Self-contained, so a stale
+        // frame is neither revealed nor recognised whatever the ordering.
+        if (ocrJob === coroutineContext[Job] &&
+            context.displayGeometryOf(displayId) != sessionGeometry
+        ) {
+            Log.w(TAG, "Display changed under the drag capture; ending the session")
+            bitmap?.recycle()
+            dismiss()
+            return
+        }
         if (ocrJob === coroutineContext[Job]) revealLensAfterCapture()
         if (bitmap == null) {
             Log.w(TAG, "Screenshot failed or timed out")

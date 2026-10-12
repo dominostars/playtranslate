@@ -9,7 +9,9 @@ import android.view.Display
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import com.playtranslate.overlay.OverlayEnvironment
 import com.playtranslate.overlay.OverlayHost
+import com.playtranslate.overlay.OverlayPlacement
 import com.playtranslate.ui.RegionDragView
 import com.playtranslate.ui.RegionEditorChrome
 import com.playtranslate.overlay.OwnWindows
@@ -237,7 +239,7 @@ class RegionOverlayController(
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
-        overlayHost.addOverlayWindow(view, wm, params, display.displayId)
+        overlayHost.addOverlayWindow(view, wm, params, display.displayId, OverlayPlacement.CaptureSpace)
         regionIndicatorView = view
         regionIndicatorPersistent = persistent
         regionIndicatorDisplayId = display.displayId
@@ -305,7 +307,7 @@ class RegionOverlayController(
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
-        overlayHost.addOverlayWindow(view, wm, params, display.displayId)
+        overlayHost.addOverlayWindow(view, wm, params, display.displayId, OverlayPlacement.CaptureSpace)
         dragView = view
     }
 
@@ -454,24 +456,7 @@ class RegionOverlayController(
                 cornerRadius = 100 * dp
             }
         }
-        val screenSize = ctx.displaySizePx()
-        val maxLabelW = screenSize.x - (32 * dp).toInt()
         label.setSingleLine(true)
-        label.measure(
-            View.MeasureSpec.makeMeasureSpec(maxLabelW, View.MeasureSpec.AT_MOST),
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-        )
-        bar.measure(
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-        )
-        val stackDepth = RegionEditorChrome.stackDepthPx(
-            label.measuredHeight, bar.measuredHeight, dp
-        ).toFloat() / screenSize.y
-        fun chromeGravity(region: ClosedFloatingPointRange<Float>?) =
-            RegionEditorChrome.edgeFor(region, topChromeEnd = stackDepth, bottomChromeStart = 1f - stackDepth)
-                .gravity or Gravity.CENTER_HORIZONTAL
-        val gravity = chromeGravity(existingRegion?.let { it.top..it.bottom })
 
         val barParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -480,40 +465,75 @@ class RegionOverlayController(
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
-        ).apply {
-            this.gravity = gravity
-            y = RegionEditorChrome.barOffsetPx(label.measuredHeight, dp)
-        }
-        overlayHost.addOverlayWindow(bar, wm, barParams, display.displayId)
-        regionEditorBar = bar
-
+        )
         val labelParams = WindowManager.LayoutParams(
-            label.measuredWidth,
-            label.measuredHeight,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
             overlayHost.windowType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
-        ).apply {
-            this.gravity = gravity
-            y = RegionEditorChrome.pillOffsetPx(dp)
+        )
+        // The region the chrome keeps clear of: the one the editor opened on
+        // (none: the chrome opens on top), then the box as each drag leaves it.
+        var decisionRegion: ClosedFloatingPointRange<Float>? = existingRegion?.let { it.top..it.bottom }
+
+        // The chrome's placement as a function of the display as it is and
+        // the region it keeps clear of: the label measured to the width the
+        // clear sides leave, the stack's reach deciding the edge, both windows
+        // inside what that edge is kept clear of ([OverlayEnvironment.fitted]:
+        // the cutout and, where the window is dispatched them, the bars the
+        // game shows: on the MediaProjection backend, and on Android 11 on
+        // both, as the platform's own fit did there in v3.3.1) and centred in
+        // the clear width ([RegionEditorChrome.place]).
+        // Both windows are laid out by the host from it, at their add and
+        // whenever it lays the display out: a rotation (the label's width and
+        // the edge are decided again), a bar the game shows or hides, a
+        // drag's end (the box moved). The platform's own inset fit used to
+        // keep these windows clear of a bar on the MediaProjection backend;
+        // they are laid out in display pixels now (OverlayHost), so the
+        // placement does it. The same params objects OverlayHost holds, so
+        // its capture blanking keeps seeing what is on screen.
+        fun chromePlacement(env: OverlayEnvironment): RegionEditorChrome.Placement {
+            val covered = env.fitted
+            val clearWidth = env.geometry.width - covered.left - covered.right
+            label.measure(
+                View.MeasureSpec.makeMeasureSpec((clearWidth - (32 * dp).toInt()).coerceAtLeast(0), View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+            )
+            bar.measure(
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+            )
+            return RegionEditorChrome.place(
+                env.geometry.width, env.geometry.height, covered,
+                label.measuredHeight, bar.measuredHeight, dp, decisionRegion,
+            )
         }
-        overlayHost.addOverlayWindow(label, wm, labelParams, display.displayId)
+        val barPlacement = OverlayPlacement.Placed { env, p ->
+            val c = chromePlacement(env)
+            p.gravity = c.gravity
+            p.x = c.x
+            p.y = c.barY
+        }
+        val labelPlacement = OverlayPlacement.Placed { env, p ->
+            val c = chromePlacement(env)
+            p.gravity = c.gravity
+            p.x = c.x
+            p.y = c.pillY
+            p.width = label.measuredWidth
+            p.height = label.measuredHeight
+        }
+        overlayHost.addOverlayWindow(bar, wm, barParams, display.displayId, barPlacement)
+        regionEditorBar = bar
+        overlayHost.addOverlayWindow(label, wm, labelParams, display.displayId, labelPlacement)
         regionEditorLabel = label
 
-        // The chrome comes back at each drag's end on the edge the box, as it
-        // now stands, calls for. The same params objects OverlayHost holds,
-        // so its capture blanking keeps seeing what is on screen.
         dragView?.let { drag ->
             drag.onDragEnd = {
-                val next = chromeGravity(drag.topFraction..drag.bottomFraction)
-                if (next != barParams.gravity) {
-                    barParams.gravity = next
-                    labelParams.gravity = next
-                    try { wm.updateViewLayout(bar, barParams) } catch (_: Exception) {}
-                    try { wm.updateViewLayout(label, labelParams) } catch (_: Exception) {}
-                }
+                decisionRegion = drag.topFraction..drag.bottomFraction
+                overlayHost.invalidateLayout(display.displayId)
                 bar.visibility = View.VISIBLE
                 label.visibility = View.VISIBLE
             }
