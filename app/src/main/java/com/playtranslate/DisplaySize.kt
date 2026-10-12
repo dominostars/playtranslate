@@ -3,6 +3,7 @@ package com.playtranslate
 import android.content.Context
 import com.playtranslate.overlay.OwnWindows
 import android.graphics.Point
+import android.hardware.display.DisplayManager
 import android.os.Build
 import android.util.Log
 import android.view.WindowInsets
@@ -92,4 +93,24 @@ fun Context.statusBarHeightPx(): Int {
     // unaffected. (API 30+ above reads the live inset, so it crops the bar only
     // when it's actually showing.)
     return 0
+}
+
+/**
+ * The geometry a surface is laid out against: a display's pixel size AND
+ * rotation. A 180 degree flip keeps the size but changes the rotation, so
+ * comparing this, not the size alone, still tells a stale surface from a
+ * live one; a refresh-rate or HDR event keeps both, so it churns nothing.
+ * The capture panel, the workspace and a drag session each record the
+ * value they were built against and end when the display's differs.
+ */
+data class DisplayGeometry(val width: Int, val height: Int, val rotation: Int)
+
+/** Size + rotation of [displayId], or null if it can't be resolved (a
+ *  display that went away). The size is the display's own, through a
+ *  display context ([displaySizePx]). */
+fun Context.displayGeometryOf(displayId: Int): DisplayGeometry? {
+    val display = (getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
+        ?.getDisplay(displayId) ?: return null
+    val size = createDisplayContext(display).displaySizePx()
+    return DisplayGeometry(size.x, size.y, display.rotation)
 }

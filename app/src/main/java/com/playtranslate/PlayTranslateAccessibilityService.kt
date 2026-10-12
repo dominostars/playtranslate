@@ -28,7 +28,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.overlay.OverlayHost
-import com.playtranslate.overlay.WindowChurnGate
+import com.playtranslate.overlay.OverlayPlacement
 import com.playtranslate.ui.DimController
 import com.playtranslate.ui.OverlayAlert
 import com.playtranslate.ui.DragLookupController
@@ -92,9 +92,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         override fun onDisplayRemoved(displayId: Int) {
             overlayUiController.reconcileFloatingIcons()
         }
-        override fun onDisplayChanged(displayId: Int) {
-            overlayUiController.repositionIconForDisplay(displayId)
-        }
+        // A display change is the overlay controller's own listener's: its
+        // host lays out every window on the display again.
+        override fun onDisplayChanged(displayId: Int) {}
     }
 
     /** Stops live mode when the screen turns off; runs a restore the
@@ -373,7 +373,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
         wm: WindowManager,
         params: WindowManager.LayoutParams,
         displayId: Int,
-    ): Boolean = overlayHost.addOverlayWindow(view, wm, params, displayId)
+        placement: OverlayPlacement,
+    ): Boolean = overlayHost.addOverlayWindow(view, wm, params, displayId, placement)
 
     /** Unregister + remove an overlay window. See [OverlayHost.removeOverlayWindow]. */
     fun removeOverlayWindow(view: View): Boolean = overlayHost.removeOverlayWindow(view)
@@ -500,7 +501,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
-        addOverlayWindow(view, wm, params, display.displayId)
+        addOverlayWindow(view, wm, params, display.displayId, OverlayPlacement.CaptureSpace)
         debugOverlayView = view
     }
 
@@ -965,60 +966,6 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
             // pending.
             com.playtranslate.capture.SessionMarker.consumeCutShort()
             com.playtranslate.capture.SessionMarker.markOff(ctx)
-        }
-
-        /**
-         * Static convenience for overlay owners that don't have a service
-         * reference handy (MagnifierLens, WordLookupPopup, etc.). When the
-         * service isn't connected the window is added without registration —
-         * it just won't participate in clean-capture blanking.
-         *
-         * [displayId] must be the display the window will appear on so
-         * [prepareForCleanCapture] can scope its blanking. There is no
-         * default — silently falling back to [Display.DEFAULT_DISPLAY] for
-         * a window actually shown on a secondary display would leak the
-         * window into clean screenshots of that display.
-         */
-        fun addOverlay(
-            view: View,
-            wm: WindowManager,
-            params: WindowManager.LayoutParams,
-            displayId: Int,
-        ): Boolean {
-            instance?.let { return it.overlayHost.addOverlayWindow(view, wm, params, displayId) }
-            WindowChurnGate.flushPendingFor(view)
-            OverlayHost.applyFullScreenOverlayDefaults(params)
-            // No host to stamp it: same hardware-acceleration rule as
-            // OverlayHost.addOverlayWindow.
-            params.flags = params.flags or WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
-            return try {
-                wm.addView(view, params)
-                true
-            } catch (_: Exception) { false }
-        }
-
-        fun removeOverlay(view: View, wm: WindowManager) {
-            // If the service is connected and the view is in the registry,
-            // removeOverlayWindow handles both unregister + removeView (gated
-            // through WindowChurnGate). If the view was added via the
-            // no-service fallback path of [addOverlay] (service connected
-            // later), it's not in the registry — fall through to a direct
-            // removal so the window doesn't leak, gated when the live params
-            // are recoverable. WindowManagerGlobal.addView stores the params
-            // as the root view's layoutParams, so this cast holds for any
-            // window actually attached; a null/foreign value means there is
-            // nothing attached to defer, and the plain removeView (whose
-            // failure is caught) matches today's behavior.
-            if (instance?.overlayHost?.removeOverlayWindow(view) == true) return
-            val lp = view.layoutParams as? WindowManager.LayoutParams
-            if (lp != null) {
-                // No registry handle to read the display from — UNKNOWN makes
-                // the ghost conservatively arm OverlayState.uncompositedGhost
-                // on every display.
-                WindowChurnGate.removeWindow(view, wm, lp, WindowChurnGate.DISPLAY_UNKNOWN)
-            } else {
-                try { wm.removeView(view) } catch (_: Exception) {}
-            }
         }
     }
 }

@@ -6,12 +6,10 @@ import android.content.res.ColorStateList
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
-import android.os.Build
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
-import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -21,9 +19,9 @@ import androidx.annotation.StringRes
 import androidx.annotation.VisibleForTesting
 import com.playtranslate.R
 import com.playtranslate.capture.CaptureBackendResolver
-import com.playtranslate.displaySizePx
-import com.playtranslate.displayWindowMetrics
+import com.playtranslate.overlay.OverlayEnvironment
 import com.playtranslate.overlay.OverlayHost
+import com.playtranslate.overlay.OverlayPlacement
 import com.playtranslate.overlay.OwnWindows
 import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
@@ -78,19 +76,20 @@ internal class TranslationErrorPills(private val overlayHost: OverlayHost) {
     ) {
         /** One pill per owner, in arrival order. */
         val rows = LinkedHashMap<String, Row>()
+        /** Every pill's width, from the stack's last layout ([layoutStack]):
+         *  the one derivation a new row, a raised row and a resized row all
+         *  take. */
+        var pillWidth = 0
     }
 
     private var stack: Stack? = null
 
+    /** The display whose stack [raise] is replacing, while the fresh window
+     *  is being added: a stack is there, its size not yet known. */
+    private var raisingOn: Int? = null
+
     /** The display the stack is on, or null when no pill is up. */
     val displayId: Int? get() = stack?.displayId
-
-    /** Called with the stack's display each time the stack is laid out at
-     *  a new height or moved: its first layout, a pill added, removed or
-     *  rewrapped, a rotation. A window placed with [placeBelow] re-places
-     *  itself here, so it never depends on the stack's geometry at one
-     *  moment. */
-    var onStackMoved: ((displayId: Int) -> Unit)? = null
 
     /** Called with the owners whose pills came down without the user
      *  closing them or their owners recovering: the stack's display left the
@@ -172,7 +171,12 @@ internal class TranslationErrorPills(private val overlayHost: OverlayHost) {
     fun raise(displayId: Int) {
         val old = stack?.takeIf { it.displayId == displayId } ?: return
         stack = null
-        val fresh = createStack(old.displayContext, displayId, fadeIn = false)
+        raisingOn = displayId
+        val fresh = try {
+            createStack(old.displayContext, displayId, fadeIn = false)
+        } finally {
+            raisingOn = null
+        }
         if (fresh == null) {
             stack = old
             return
@@ -182,6 +186,8 @@ internal class TranslationErrorPills(private val overlayHost: OverlayHost) {
             fresh.root.addView(row.view)
             fresh.rows[owner] = row
         }
+        // The fresh window was laid out before it held the rows.
+        applyPillWidth(fresh)
         overlayHost.removeOverlayWindow(old.root)
     }
 
@@ -211,41 +217,57 @@ internal class TranslationErrorPills(private val overlayHost: OverlayHost) {
         return listOf(Rect(loc[0], loc[1], loc[0] + root.width, loc[1] + root.height))
     }
 
-    /**
-     * Move [params], a window at the top centre of [displayId] (the
-     * transient no-text pill), to just below the stack when the stack is up
-     * there, instead of on top of it. Returns false, leaving [params]
-     * untouched, when there is no stack there, or none laid out yet: the
-     * stack's size isn't known until then, so the window's owner places it
-     * again from [onStackMoved], which the stack's first layout calls.
-     * Reads the height, not [View.isLaidOut]: inside that first layout's
-     * callback the frame is set but isLaidOut isn't yet.
-     */
-    fun placeBelow(displayId: Int, params: WindowManager.LayoutParams): Boolean {
-        val s = stack?.takeIf { it.displayId == displayId } ?: return false
-        if (s.root.height <= 0) return false
-        applyTopFrame(params)
-        params.y = s.params.y + s.root.height + gapPx(s.displayContext)
-        return true
+    /** Where a window placed just below the stack on [displayId] goes (the
+     *  no-text pill): the stack window's y plus its height and a gap, or null
+     *  when there is no stack there, or none laid out yet (its height isn't
+     *  known until then; its first layout invalidates the display's layout,
+     *  so whoever asked is asked again). Reads the height, not
+     *  [View.isLaidOut]: inside that first layout's callback the frame is
+     *  set but isLaidOut isn't yet. */
+    fun belowStackY(displayId: Int): Int? {
+        val s = stack?.takeIf { it.displayId == displayId } ?: return null
+        if (s.root.height <= 0) return null
+        return s.params.y + s.root.height + gapPx(s.displayContext)
     }
 
-    /** [displayId] was reconfigured (rotation, resize): re-measure the
-     *  stack's top offset and the pills' width against the new geometry. */
-    fun onDisplayChanged(displayId: Int) {
-        val s = stack?.takeIf { it.displayId == displayId } ?: return
-        s.params.y = windowYPx(s.displayContext)
-        s.params.width = windowWidthPx(s.displayContext)
-        val pillWidth = pillWidthPx(s.displayContext)
-        s.rows.values.forEach { row ->
-            row.view.layoutParams = row.view.layoutParams.apply { width = pillWidth }
+    /** A stack is on [displayId] whose size is not known yet: just shown and
+     *  not laid out, or being replaced by [raise]. A window placed below it
+     *  stays where it is meanwhile, rather than jump onto the stack's line
+     *  for the frame until the stack's first layout (which lays the display
+     *  out again). */
+    fun stackPendingOn(displayId: Int): Boolean =
+        raisingOn == displayId || stack?.let { it.displayId == displayId && it.root.height <= 0 } == true
+
+    /**
+     * The stack window's layout ([OverlayPlacement.Placed]), run by the host
+     * when it is added and whenever the display changes: the first pill's
+     * top edge on the pills' line ([topLinePx]), the window [SHADOW_ROOM_DP]
+     * above it (never above the display's edge), and every pill as wide as
+     * the clear span ([clearSpan]) less [SCREEN_MARGIN_DP] a side, centred in
+     * it. The rows' widths are view-level, so they are written only when
+     * they differ.
+     */
+    private fun layoutStack(s: Stack, env: OverlayEnvironment, p: WindowManager.LayoutParams) {
+        val dp = s.displayContext.resources.displayMetrics.density
+        val room = (SHADOW_ROOM_DP * dp).toInt()
+        val span = clearSpan(env)
+        s.pillWidth = ((span.last - span.first) - 2 * SCREEN_MARGIN_DP * dp).toInt()
+            .coerceAtLeast((MIN_PILL_WIDTH_DP * dp).toInt())
+        p.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        p.width = s.pillWidth + 2 * room
+        p.x = centreOffsetPx(env)
+        p.y = (topLinePx(env, dp) - room).coerceAtLeast(0)
+        applyPillWidth(s)
+    }
+
+    /** Give every row the stack's [Stack.pillWidth], where it differs. */
+    private fun applyPillWidth(s: Stack) {
+        for (row in s.rows.values) {
+            val lp = row.view.layoutParams ?: continue
+            if (lp.width == s.pillWidth) continue
+            lp.width = s.pillWidth
+            row.view.layoutParams = lp
         }
-        try {
-            s.wm.updateViewLayout(s.root, s.params)
-        } catch (_: IllegalArgumentException) {
-            // Not attached any more; the detach listener clears the stack.
-            return
-        }
-        onStackMoved?.invoke(displayId)
     }
 
     private fun createStack(displayContext: Context, displayId: Int, fadeIn: Boolean = true): Stack? {
@@ -267,15 +289,16 @@ internal class TranslationErrorPills(private val overlayHost: OverlayHost) {
             clipChildren = false
         }
         val params = WindowManager.LayoutParams(
-            // Pinned, not WRAP_CONTENT: the platform's own width for a wrap
-            // window can't be trusted on a multi-display device. On the Thor
-            // (2026-09-26, dumpsys) this window, WRAP_CONTENT on the 1920px
-            // screen, came out 1240px wide, the second screen's width, and
-            // cut the pills off on both sides; the same delegation that
-            // OverlayHost.addOverlayWindow pins full-screen windows against.
-            // The height stays WRAP_CONTENT: a stack of pills is far shorter
-            // than any screen, so no wrong display's height can clip it.
-            windowWidthPx(displayContext),
+            // Pinned by [layoutStack], not WRAP_CONTENT: the platform's own
+            // width for a wrap window can't be trusted on a multi-display
+            // device. On the Thor (2026-09-26, dumpsys) this window,
+            // WRAP_CONTENT on the 1920px screen, came out 1240px wide, the
+            // second screen's width, and cut the pills off on both sides; the
+            // same delegation that OverlayHost.addOverlayWindow pins
+            // full-screen windows against. The height stays WRAP_CONTENT: a
+            // stack of pills is far shorter than any screen, so no wrong
+            // display's height can clip it.
+            WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             overlayHost.windowType,
             // Touchable for the buttons; NOT_TOUCH_MODAL passes every touch
@@ -284,13 +307,13 @@ internal class TranslationErrorPills(private val overlayHost: OverlayHost) {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT,
-        ).apply {
-            applyTopFrame(this)
-            y = windowYPx(displayContext)
-        }
+        )
         val s = Stack(displayId, displayContext, root, params, wm)
+        // Laid out at its first layout and at each new height (a pill added,
+        // removed or rewrapped): a window placed below the stack (the no-text
+        // pill) reads its height, so the display is laid out again.
         root.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
-            if (stack === s && bottom - top != oldBottom - oldTop) onStackMoved?.invoke(displayId)
+            if (stack === s && bottom - top != oldBottom - oldTop) overlayHost.invalidateLayout(displayId)
         }
         root.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {}
@@ -304,7 +327,8 @@ internal class TranslationErrorPills(private val overlayHost: OverlayHost) {
                 onWithdrawn?.invoke(s.rows.keys.toList())
             }
         })
-        if (!overlayHost.addOverlayWindow(root, wm, params, displayId)) return null
+        val placement = OverlayPlacement.Placed { env, p -> layoutStack(s, env, p) }
+        if (!overlayHost.addOverlayWindow(root, wm, params, displayId, placement)) return null
         stack = s
         if (fadeIn) fadeIn(root)
         return s
@@ -325,7 +349,7 @@ internal class TranslationErrorPills(private val overlayHost: OverlayHost) {
             gravity = Gravity.CENTER_VERTICAL
             minimumHeight = px(ROW_HEIGHT_DP)
             layoutParams = LinearLayout.LayoutParams(
-                pillWidthPx(s.displayContext), LinearLayout.LayoutParams.WRAP_CONTENT,
+                s.pillWidth, LinearLayout.LayoutParams.WRAP_CONTENT,
             )
             // The floating icon menu card's recipe (FloatingIconMenu.menuCard):
             // ptBg fill, the 1dp ptDivider hairline, 8dp elevation. The
@@ -416,29 +440,6 @@ internal class TranslationErrorPills(private val overlayHost: OverlayHost) {
         view.animate().alpha(1f).translationY(0f).setDuration(ENTER_MS).start()
     }
 
-    /** A pill's width: the display's, less [SCREEN_MARGIN_DP] a side. */
-    private fun pillWidthPx(displayContext: Context): Int {
-        val dp = displayContext.resources.displayMetrics.density
-        return (displayContext.displaySizePx().x - 2 * SCREEN_MARGIN_DP * dp).toInt()
-            .coerceAtLeast((MIN_PILL_WIDTH_DP * dp).toInt())
-    }
-
-    /** The window's width: a pill plus the shadow room on each side. The
-     *  same integers as [pillWidthPx] and the root's padding, so the pills
-     *  fill the window exactly. */
-    private fun windowWidthPx(displayContext: Context): Int {
-        val dp = displayContext.resources.displayMetrics.density
-        return pillWidthPx(displayContext) + 2 * (SHADOW_ROOM_DP * dp).toInt()
-    }
-
-    /** The window's y: [SHADOW_ROOM_DP] above where the first pill's top edge
-     *  goes ([topOffsetPx]), so the room its shadow needs above it doesn't
-     *  push the pill down; never above the display's edge. */
-    private fun windowYPx(displayContext: Context): Int {
-        val dp = displayContext.resources.displayMetrics.density
-        return (topOffsetPx(displayContext) - (SHADOW_ROOM_DP * dp).toInt()).coerceAtLeast(0)
-    }
-
     private fun gapPx(context: Context): Int =
         (GAP_DP * context.resources.displayMetrics.density).toInt()
 
@@ -469,36 +470,35 @@ internal class TranslationErrorPills(private val overlayHost: OverlayHost) {
         private const val ENTER_SLIDE_DP = 8
         private const val ENTER_MS = 180L
 
-        /** API 29's placement: the no-text pill's fixed offset, since there
-         *  is no inset-free frame to measure a status bar against. */
+        /** API 29's line: a fixed offset, since there are no insets to place
+         *  against there (the pills keep the platform's frame below R). */
         private const val LEGACY_TOP_DP = 40
 
-        /** A TOP|CENTER_HORIZONTAL window measured from the display's top
-         *  edge. From R the frame is the whole display (no inset fitting,
-         *  cutout included), so `y` means the same thing whatever the bars
-         *  are doing; API 29 keeps the platform's default frame, the one the
-         *  no-text pill has always used. */
-        fun applyTopFrame(params: WindowManager.LayoutParams) {
-            params.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                params.fitInsetsTypes = 0
-                params.layoutInDisplayCutoutMode =
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-            }
-        }
+        /**
+         * The line the pills hang from on a display: the first error pill's
+         * top edge, and the no-text pill's when no error pill is up (one line
+         * for both, Gilad, 2026-10-11). [TOP_MARGIN_DP] below the bar room
+         * ([OverlayEnvironment.barRoom]: the status bar's room whether or not
+         * it is showing, and the cutout): a game that hides its bars can
+         * reveal them with a swipe, and a revealed bar must not land on a
+         * pill. On API 29, [LEGACY_TOP_DP].
+         */
+        fun topLinePx(env: OverlayEnvironment, density: Float): Int =
+            if (env.insetsKnown) env.barRoom.top + (TOP_MARGIN_DP * density).toInt()
+            else (LEGACY_TOP_DP * density).toInt()
 
-        /** Below the status bar and any cutout, whether or not the bar is
-         *  showing right now: a game that hides its bars can reveal them with
-         *  a swipe, and a revealed bar must not land on the pill. */
-        fun topOffsetPx(displayContext: Context): Int {
-            val dp = displayContext.resources.displayMetrics.density
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return (LEGACY_TOP_DP * dp).toInt()
-            val inset = displayContext.displayWindowMetrics()?.windowInsets
-                ?.getInsetsIgnoringVisibility(
-                    WindowInsets.Type.statusBars() or WindowInsets.Type.displayCutout(),
-                )?.top ?: 0
-            return inset + (TOP_MARGIN_DP * dp).toInt()
-        }
+        /** The horizontal span the pills stay inside: the display less the
+         *  bar room on each side, a side navigation bar's room (shown or not)
+         *  and a side cutout, on both backends. Below the bars one would
+         *  cover a pill's end and its ×; above them a pill would sit over
+         *  the bar's buttons and take their touches. */
+        fun clearSpan(env: OverlayEnvironment): IntRange =
+            env.barRoom.left..(env.geometry.width - env.barRoom.right)
+
+        /** The x of a TOP|CENTER_HORIZONTAL window centred in [clearSpan]:
+         *  the gravity's offset from the display's centre. */
+        fun centreOffsetPx(env: OverlayEnvironment): Int =
+            (env.barRoom.left - env.barRoom.right) / 2
     }
 }
 

@@ -29,6 +29,7 @@ import androidx.core.widget.TextViewCompat
 import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.R
 import com.playtranslate.overlay.OverlayHost
+import com.playtranslate.overlay.OverlayPlacement
 import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
 
@@ -384,7 +385,7 @@ class OverlayAlert private constructor(
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
-        if (!overlayHost.addOverlayWindow(scrimView, wm, params, displayId)) return
+        if (!overlayHost.addOverlayWindow(scrimView, wm, params, displayId, OverlayPlacement.Content)) return
         ViewCompat.requestApplyInsets(scrimView)
         scrim = scrimView
         dismissAction = { overlayHost.removeOverlayWindow(scrimView) }

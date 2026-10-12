@@ -20,6 +20,7 @@ import android.widget.TextView
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.graphics.drawable.DrawableCompat
 import com.playtranslate.overlay.OverlayHost
+import com.playtranslate.overlay.OverlayPlacement
 import com.playtranslate.overlay.WindowChurnGate
 import com.playtranslate.R
 import androidx.core.graphics.toColorInt
@@ -222,7 +223,7 @@ class WordLookupPopup(
             // also mirrors the game's system-bar state onto this focusable
             // window, so taking focus doesn't flash the nav pill over an
             // immersive game.
-            if (!overlayHost.addOverlayWindow(container, wm, popupParams, displayId)) return false
+            if (!overlayHost.addOverlayWindow(container, wm, popupParams, displayId, OverlayPlacement.Fixed)) return false
         } else {
             // Activity-window popup: the focused panel becomes the system-bar
             // control target just like an overlay would, so mirror the hosting

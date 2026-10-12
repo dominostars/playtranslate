@@ -5,18 +5,16 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Point
 import android.graphics.Rect
-import android.os.Build
+import android.util.Log
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
-import com.playtranslate.PlayTranslateAccessibilityService
+import com.playtranslate.overlay.OverlayEnvironment
 import com.playtranslate.overlay.OverlayHost
-import com.playtranslate.displaySizePx
-import com.playtranslate.displayWindowMetrics
+import com.playtranslate.overlay.OverlayPlacement
 import kotlin.math.abs
 import androidx.core.graphics.toColorInt
 import androidx.core.graphics.withTranslation
@@ -156,11 +154,10 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     private fun showSpinnerWindow() {
         hideSpinnerWindow()
         val wm = this.wm ?: return
-        val p = params ?: return
+        val host = overlayHost ?: return
         val spinSize = (28 * resources.displayMetrics.density).toInt()
         val padding = (6 * resources.displayMetrics.density).toInt()
         val totalSize = spinSize + padding * 2
-        val gap = (32 * resources.displayMetrics.density).toInt()
 
         val spinner = android.widget.FrameLayout(context).apply {
             background = android.graphics.drawable.GradientDrawable().apply {
@@ -176,19 +173,11 @@ class FloatingOverlayIcon(context: Context) : View(context) {
             })
         }
 
-        // Position to the visible side of the icon
-        val spinX = if (currentEdge == Edge.LEFT) {
-            p.x + viewSizePx + gap
-        } else {
-            p.x - totalSize - gap
-        }
-        val spinY = p.y + (viewSizePx - totalSize) / 2
-
         // On the MediaProjection backend the spinner must stay touchable: a
         // non-touchable TYPE_APPLICATION_OVERLAY is opacity-capped. The icon's
         // window owns the hold gesture, so a touchable spinner steals nothing.
         var flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-        if (overlayHost?.windowType != WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY) {
+        if (host.windowType != WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY) {
             flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
         }
         val lp = WindowManager.LayoutParams(
@@ -197,29 +186,32 @@ class FloatingOverlayIcon(context: Context) : View(context) {
             flags,
             android.graphics.PixelFormat.TRANSLUCENT
         ).apply {
-            x = spinX
-            y = spinY
             gravity = android.view.Gravity.TOP or android.view.Gravity.LEFT
         }
 
-        val host = overlayHost
-        val added = if (host != null) host.addOverlayWindow(spinner, wm, lp, displayId)
-            else PlayTranslateAccessibilityService.addOverlay(spinner, wm, lp, displayId)
-        if (!added) return
+        // Beside the icon's window as it is whenever the host lays the
+        // display out: a controller or hotkey hold shows the spinner with no
+        // finger on the icon, so the icon is free to settle while it is up,
+        // and the spinner follows in the same refresh.
+        val placement = OverlayPlacement.Placed { _, spinnerParams -> placeSpinner(spinnerParams) }
+        if (!host.addOverlayWindow(spinner, wm, lp, displayId, placement)) return
         spinnerView = spinner
         spinnerWm = wm
     }
 
     private fun hideSpinnerWindow() {
-        val view = spinnerView
-        val w = spinnerWm
-        if (view != null && w != null) {
-            val host = overlayHost
-            if (host != null) host.removeOverlayWindow(view)
-            else PlayTranslateAccessibilityService.removeOverlay(view, w)
-        }
+        spinnerView?.let { overlayHost?.removeOverlayWindow(it) }
         spinnerView = null
         spinnerWm = null
+    }
+
+    /** The spinner window's origin: beside the icon's visible side, centred
+     *  on it, from the icon window's params as they are now. */
+    private fun placeSpinner(lp: WindowManager.LayoutParams) {
+        val p = params ?: return
+        val gap = (32 * resources.displayMetrics.density).toInt()
+        lp.x = if (currentEdge == Edge.LEFT) p.x + viewSizePx + gap else p.x - lp.width - gap
+        lp.y = p.y + (viewSizePx - lp.height) / 2
     }
 
     // ── Drag mode paints (ring + magnifying glass) ──────────────────────
@@ -243,7 +235,8 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     var onDragStart: (() -> Unit)? = null
     /** Called on every ACTION_MOVE during a drag (rawX, rawY screen coords). */
     var onDragMove: ((Float, Float) -> Unit)? = null
-    /** Called on ACTION_UP after a drag. Return true if popup is active (icon returns to saved pos). */
+    /** Called on ACTION_UP after a drag. Return true if the lens went sticky
+     *  (the icon settles on its dock without a glide). */
     var onDragEnd: (() -> Boolean)? = null
     /** Called on ACTION_CANCEL while a drag was active — system cancellation
      *  (focus loss, parent intercept, etc.). Drag teardown for the gesture
@@ -274,32 +267,80 @@ class FloatingOverlayIcon(context: Context) : View(context) {
      *  blanking scopes correctly. */
     var displayId: Int = android.view.Display.DEFAULT_DISPLAY
     var params: WindowManager.LayoutParams? = null
-    /** Active capture backend's overlay host, used to attach the loading
-     *  spinner sub-window with the right window type. Null falls back to the
-     *  accessibility-service path (which fails on the MediaProjection
-     *  backend, where no accessibility service is connected). */
+    /** Active capture backend's overlay host: it places this window
+     *  ([layoutAtRest]) and the loading spinner. Null for the Settings
+     *  preview, which is never a window. */
     var overlayHost: OverlayHost? = null
 
-    private fun queryScreenSize(): Point = context.displaySizePx()
+    /** The slot the icon rests on: [setSlot]'s arguments, or the edge and
+     *  fraction a snap decided. The one description of where the window
+     *  belongs at rest; the host realises it against the display as it is
+     *  ([layoutAtRest]), and nothing restores pixels. */
+    private var dockSlot: Pair<Edge, Float>? = null
 
-    private val screenW: Int get() = queryScreenSize().x
-    private val screenH: Int get() = queryScreenSize().y
+    /** The window has been placed on its slot once ([layoutAtRest]). */
+    private var placedOnce = false
 
-    /** Display-cutout safe insets in the icon's coordinate space. The icon's
-     *  window has [FLAG_LAYOUT_NO_LIMITS] so its origin is at the absolute
-     *  display origin (not the cutout-safe origin); on devices with a notch
-     *  this means snapping x=0 lands the icon behind the cutout. Edge-snap
-     *  code consults these insets so "Edge.LEFT" means "left of the safe
-     *  area" instead of "left of the display". */
-    private fun cutoutSafeInsetX(): Pair<Int, Int> {
-        // WindowMetrics.windowInsets is API 30+. displayWindowMetrics() already
-        // returns null below R, but guard explicitly so the API-30 member access
-        // is off the API-29 compile path. Pre-30 the icon skips cutout-safe
-        // insetting (no notch handling) — acceptable.
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return 0 to 0
-        val cutout = context.displayWindowMetrics()?.windowInsets?.displayCutout
-            ?: return 0 to 0
-        return cutout.safeInsetLeft to cutout.safeInsetRight
+    /** Whether no gesture or glide owns the window. While one does, the
+     *  window is wherever the finger or the glide put it, and a change of
+     *  the display waits for its end, which settles. */
+    private val atRest: Boolean
+        get() = !hasActiveGesture && !inDragMode && snapAnimator?.isRunning != true
+
+    /** The window origin for [slot] in [env] ([IconDock]). The dock lines
+     *  are the display's edges moved inboard by what covers this window
+     *  ([OverlayEnvironment.covered]): the cutout and, on the
+     *  MediaProjection backend, whose windows lie below the system bars, a
+     *  bar the app beneath shows. An accessibility overlay lies above the
+     *  bars, nothing covers it, and it docks on the display edge as it
+     *  always did, visible and reachable over the buttons: docking it
+     *  inboard would hide its clipped outer half over the bar's inner strip
+     *  while that half kept taking the bar's touches (a window's extent is
+     *  its touch region, and the platform offers no way to shrink one). */
+    private fun placeFor(slot: Pair<Edge, Float>, env: OverlayEnvironment): IconDock.Place =
+        IconDock.place(
+            env.geometry.width, env.geometry.height, env.covered,
+            slot.first == Edge.LEFT, slot.second, viewSizePx, gestureInsetPx,
+        )
+
+    /**
+     * This window's layout ([OverlayPlacement.Placed]), run by the host at
+     * the add and whenever the display changes or something on it moved: at
+     * rest, the window goes to its slot's place in [env]. While a gesture or
+     * a glide owns the window it stays where they put it, and their end lays
+     * the display out again ([settle]). Logged when the window moves, with
+     * what its place was computed from, so a field report's screenshot can be
+     * matched to a line.
+     */
+    fun layoutAtRest(env: OverlayEnvironment, p: WindowManager.LayoutParams) {
+        if (!atRest) return
+        val slot = dockSlot ?: return
+        val place = placeFor(slot, env)
+        if (p.x == place.x && p.y == place.y) return
+        p.x = place.x
+        p.y = place.y
+        // A first placement (an install, or a re-raise's fresh window, every
+        // live cycle on the accessibility backend) moved nothing on screen.
+        val moved = placedOnce
+        placedOnce = true
+        if (!moved) return
+        Log.i(
+            TAG,
+            "dock[$displayId] rot=${env.geometry.rotation} " +
+                "screen=${env.geometry.width}x${env.geometry.height} covered=${env.covered} " +
+                "edge=${slot.first} f=${slot.second} -> (${place.x},${place.y}) view=$viewSizePx",
+        )
+    }
+
+    /** The window comes to rest: the host lays the display out again, this
+     *  window on its slot and everything placed beside it (the spinner, the
+     *  sonar intro, the floating menu) with it. Every gesture's end and every
+     *  glide's end run it, so a change that came during a press or a glide
+     *  is applied at the end without anything remembering that it did. A
+     *  no-op while a gesture or glide owns the window. */
+    private fun settle() {
+        if (!atRest) return
+        overlayHost?.invalidateLayout(displayId)
     }
 
     private var velocityTracker: VelocityTracker? = null
@@ -311,9 +352,6 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     private var snapAnimator: ValueAnimator? = null
     private var lastXVel = 0f
     private var lastYVel = 0f
-    /** Saved position before drag started (for restoring when popup is shown). */
-    private var savedParamX = 0
-    private var savedParamY = 0
     /** True while a drag gesture is active. Set as soon as the user crosses
      *  the tap threshold so other code (popup dismissal, region-indicator
      *  restore) can tell "the user is dragging" before the screenshot lands.
@@ -364,12 +402,13 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         private set
 
     private val tapThresholdPx = TAP_THRESHOLD_DP * resources.displayMetrics.density
-    /** Inset from top/bottom to avoid system gesture zones. */
+    /** The clearance the centre keeps inside the top and bottom dock lines
+     *  ([IconDock.verticalRange]): off the system gesture zones on a bare
+     *  edge, and the same margin above a bar the window lies below. */
     private val gestureInsetPx = (48 * resources.displayMetrics.density).toInt()
-    private val minCy get() = gestureInsetPx
-    private val maxCy get() = screenH - gestureInsetPx
 
     companion object {
+        private const val TAG = "FloatingIcon"
         private const val FLING_THRESHOLD = 600f // px/s
         private const val TAP_THRESHOLD_DP = 18f
         private const val SNAP_DURATION_MS = 250L
@@ -421,6 +460,19 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         // translate.
         val compactOffset = r * 0.5f
         val cx = if (currentEdge == Edge.LEFT) center - compactOffset else center + compactOffset
+        // Nothing past the dock line, which runs through the view's centre
+        // ([IconDock]): off the display when docked on its edge, and over a
+        // navigation bar when docked inboard of one, where the disc's far
+        // side would otherwise show, cut flat by the view's own bound. Not
+        // while a glide carries the window across the screen to its dock: the
+        // whole disc travels, as it always did.
+        if (snapAnimator?.isRunning != true) {
+            if (currentEdge == Edge.LEFT) {
+                canvas.clipRect(center, 0f, viewSizePx.toFloat(), viewSizePx.toFloat())
+            } else {
+                canvas.clipRect(0f, 0f, center, viewSizePx.toFloat())
+            }
+        }
         canvas.withTranslation(y = orbitDy) {
             applyDim(circlePaint, circleColor)
             canvas.drawCircle(cx, center, r, circlePaint)
@@ -549,6 +601,10 @@ class FloatingOverlayIcon(context: Context) : View(context) {
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                // The gesture owns the window before the glide it interrupts
+                // ends: the glide's end settles only at rest, so the window
+                // stays where the finger caught it.
+                hasActiveGesture = true
                 snapAnimator?.cancel()
                 velocityTracker?.recycle()
                 velocityTracker = VelocityTracker.obtain()
@@ -557,14 +613,11 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                 downRawY = event.rawY
                 downParamX = params?.x ?: 0
                 downParamY = params?.y ?: 0
-                savedParamX = downParamX
-                savedParamY = downParamY
                 totalMovement = 0f
                 lastXVel = 0f
                 lastYVel = 0f
                 dragStartFired = false
                 holdFired = false
-                hasActiveGesture = true
                 postDelayed(holdRunnable, holdDelayMs)
                 return true
             }
@@ -635,20 +688,26 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                 val heldLongEnough = event.eventTime - event.downTime >= holdDelayMs
                 if (wasDragStarted) {
                     if (onDragEnd?.invoke() == true) {
-                        restorePositionInstantly()
+                        // The release committed the sticky lens: straight to
+                        // the dock, no glide. The definitions bind and the
+                        // full-screen lens relayout own the next frames, and
+                        // a concurrent glide froze mid-screen (~50 ms stall
+                        // measured, parked near panel centre). The lens is
+                        // the payload; the icon just reappears at its dock.
+                        settle()
                     } else {
                         snapToEdge(lastXVel, lastYVel)
                     }
                 } else if (holdFired || (heldLongEnough && totalMovement < tapThresholdPx)) {
                     holdFired = false
-                    val p = params
-                    if (p != null) {
-                        p.x = savedParamX
-                        p.y = savedParamY
-                        try { wm?.updateViewLayout(this, p) } catch (_: Exception) {}
-                    }
+                    // The window did not move (it follows the finger only
+                    // once the drag's visuals are up); a bar that appeared
+                    // during the hold is applied here.
+                    settle()
                     onHoldEnd?.invoke()
                 } else if (totalMovement < tapThresholdPx) {
+                    // Before the tap's menu anchors on the icon.
+                    settle()
                     performClick()
                 }
                 return true
@@ -663,14 +722,14 @@ class FloatingOverlayIcon(context: Context) : View(context) {
                 exitDragMode()
                 if (wasInDrag) {
                     // System-driven cancellation (focus loss, parent intercept).
-                    // Revert to the icon's pre-gesture position rather than
-                    // snapping to an edge — the user didn't pick a new spot,
-                    // so an interrupted drag shouldn't reposition their icon
-                    // as a side effect.
-                    restorePosition()
+                    // Glide back to the slot rather than snapping to a new
+                    // one: the user didn't pick a new spot, so an interrupted
+                    // drag shouldn't reposition their icon as a side effect.
+                    glideToSlot()
                     onDragCancel?.invoke()
                 } else {
-                    snapToEdge(0f, 0f)
+                    // The window never moved; nothing to snap.
+                    settle()
                 }
                 return true
             }
@@ -680,8 +739,15 @@ class FloatingOverlayIcon(context: Context) : View(context) {
 
     private fun snapToEdge(xVel: Float, yVel: Float) {
         val p = params ?: return
+        // The display as it is at the release: the decision is taken once,
+        // here, and the glide's end lays the window out against the display
+        // as it is then.
+        val env = overlayHost?.environment(displayId) ?: return
         val cx = p.x + viewHalf
         val cy = p.y + viewHalf
+        val screenW = env.geometry.width
+        val screenH = env.geometry.height
+        val covered = env.covered
 
         val dragDx = p.x - downParamX
         val flingMatchesDrag = (xVel > 0) == (dragDx > 0) && dragDx != 0
@@ -694,80 +760,71 @@ class FloatingOverlayIcon(context: Context) : View(context) {
             else -> Edge.RIGHT
         }
 
-        val (cutLeft, cutRight) = cutoutSafeInsetX()
-        val edgeCx = if (edge == Edge.LEFT) cutLeft else screenW - cutRight
-        val targetX = edgeCx - viewHalf
-
+        val edgeCx = IconDock.dockX(screenW, covered, edge == Edge.LEFT)
         val targetCy: Int = if (hasFling && abs(xVel) > 1f) {
             (cy + (edgeCx - cx).toFloat() / xVel * yVel).toInt()
         } else {
             cy
         }
-
-        val targetY = targetCy.coerceIn(minCy, maxCy) - viewHalf
-        animateTo(targetX, targetY, edge)
+        // The release decides the slot; the glide is the transition to its
+        // place, and the glide's end settles, so a bar or display change
+        // during it is applied then.
+        val fraction = IconDock.fraction(targetCy, screenH, covered, gestureInsetPx)
+        dock(edge, fraction)
+        onPositionChanged?.invoke(edge.ordinal, fraction)
+        glideToSlot()
     }
 
-    private fun animateTo(targetX: Int, targetY: Int, edge: Edge? = null) {
-        val p = params ?: return
-        val startX = p.x
-        val startY = p.y
-        if (edge != null) {
+    /** Record [edge] and [fraction] as the slot the window rests on. */
+    private fun dock(edge: Edge, fraction: Float) {
+        dockSlot = edge to fraction
+        if (currentEdge != edge) {
             currentEdge = edge
             invalidate()
         }
+    }
+
+    /** Glide the window to [dockSlot]'s place in the display as it is now;
+     *  the glide's end settles. A touch down mid-glide cancels it, and the
+     *  end's settle finds the new gesture owning the window and leaves it
+     *  there. */
+    private fun glideToSlot() {
+        val slot = dockSlot ?: return
+        val p = params ?: return
+        val env = overlayHost?.environment(displayId) ?: return
         snapAnimator?.cancel()
+        val target = placeFor(slot, env)
+        val startX = p.x
+        val startY = p.y
         snapAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = SNAP_DURATION_MS
             interpolator = DecelerateInterpolator()
             addUpdateListener { anim ->
                 val t = anim.animatedValue as Float
-                p.x = (startX + (targetX - startX) * t).toInt()
-                p.y = (startY + (targetY - startY) * t).toInt()
+                p.x = (startX + (target.x - startX) * t).toInt()
+                p.y = (startY + (target.y - startY) * t).toInt()
                 try { wm?.updateViewLayout(this@FloatingOverlayIcon, p) } catch (_: Exception) {}
             }
-            if (edge != null) {
-                addListener(object : android.animation.AnimatorListenerAdapter() {
-                    override fun onAnimationEnd(animation: android.animation.Animator) {
-                        val cy = p.y + viewHalf
-                        val range = maxCy - minCy
-                        val fraction = if (range > 0) (cy - minCy).toFloat() / range else 0.5f
-                        onPositionChanged?.invoke(edge.ordinal, fraction.coerceIn(0f, 1f))
-                    }
-                })
-            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    // Clipped at the dock line again (onDraw).
+                    invalidate()
+                    settle()
+                }
+            })
             start()
         }
+        // The whole disc for the glide (onDraw).
+        invalidate()
     }
 
-    private fun restorePosition() {
-        animateTo(savedParamX, savedParamY)
-    }
-
-    /** [restorePosition] without the glide: one updateViewLayout straight to
-     *  the saved dock. Used when a release commits the sticky lens — the
-     *  definitions bind and full-screen lens relayout own the next frames, so
-     *  a concurrent glide freezes mid-screen (~50ms stall measured, parked
-     *  near panel centre) before finishing. The lens is the payload there;
-     *  the icon just reappears at its dock. */
-    private fun restorePositionInstantly() {
-        snapAnimator?.cancel()
-        val p = params ?: return
-        p.x = savedParamX
-        p.y = savedParamY
-        try { wm?.updateViewLayout(this, p) } catch (_: Exception) {}
-    }
-
-    /** Sets position from persisted edge + fraction without animation. */
-    fun setPosition(edgeOrdinal: Int, fraction: Float) {
+    /** Sets the slot from the persisted edge + fraction (a fraction outside
+     *  0..1 reads as the middle). No pixels: the host places the window on
+     *  the slot when it is added ([layoutAtRest]), and the Settings preview,
+     *  which is never a window, takes only the edge it draws on. */
+    fun setSlot(edgeOrdinal: Int, fraction: Float) {
         val edge = if (edgeOrdinal == Edge.LEFT.ordinal) Edge.LEFT else Edge.RIGHT
-        currentEdge = edge
-        val f = if (fraction in 0f..1f) fraction else 0.5f
-        val p = params ?: return
-        val (cutLeft, cutRight) = cutoutSafeInsetX()
-        p.x = if (edge == Edge.LEFT) cutLeft - viewHalf else screenW - cutRight - viewHalf
-        val cy = (minCy + f * (maxCy - minCy)).toInt().coerceIn(minCy, maxCy)
-        p.y = cy - viewHalf
+        dock(edge, if (fraction in 0f..1f) fraction else 0.5f)
     }
 
     // ── OLED burn-in mitigation: idle-dim + micro-orbit drivers ─────────

@@ -8,7 +8,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
-import android.os.Build
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
@@ -17,7 +16,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.view.ViewTreeObserver
-import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
@@ -683,44 +681,27 @@ class OverlayWorkspace(
         // re-fires this and the card re-lays out; the display cutout is
         // folded in because it obscures pixels even while bars are hidden.
         root.setOnApplyWindowInsetsListener { _, insets ->
-            val navInset: Int
-            val imeLift: Int
-            val topInset: Int
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val nav = insets.getInsets(WindowInsets.Type.navigationBars()).bottom
-                navInset = if (insets.isVisible(WindowInsets.Type.navigationBars())) nav else 0
-                val ime = insets.getInsets(WindowInsets.Type.ime()).bottom
-                imeLift = if (insets.isVisible(WindowInsets.Type.ime())) ime else 0
-                val status = insets.getInsets(WindowInsets.Type.statusBars()).top
-                topInset = maxOf(
-                    if (insets.isVisible(WindowInsets.Type.statusBars())) status else 0,
-                    insets.getInsets(WindowInsets.Type.displayCutout()).top,
-                )
-            } else {
-                // API 29 fallback — see CaptureResultOverlay's inset listener.
-                @Suppress("DEPRECATION")
-                val current = insets.systemWindowInsetBottom
-                @Suppress("DEPRECATION")
-                val stable = insets.stableInsetBottom
-                navInset = minOf(current, stable)
-                imeLift = if (current > stable) current else 0
-                // Top mirror of the same visible-bar isolation: current is 0
-                // with bars hidden, the bar height with them up; no IME term.
-                @Suppress("DEPRECATION")
-                val currentTop = insets.systemWindowInsetTop
-                @Suppress("DEPRECATION")
-                val stableTop = insets.stableInsetTop
-                topInset = maxOf(
-                    minOf(currentTop, stableTop),
-                    insets.displayCutout?.safeInsetTop ?: 0,
-                )
-            }
+            // A side navigation bar (a phone moves three-button navigation to
+            // a side in landscape) and a side cutout keep the card clear of
+            // that side the same way; see [ContentInsets].
+            val clear = ContentInsets.of(insets)
+            val navInset = clear.bottom
+            val navLeft = clear.left
+            val navRight = clear.right
+            val imeLift = clear.imeLift
+            val topInset = clear.top
             val lp = cardWrap.layoutParams as FrameLayout.LayoutParams
             val wantBottom = insetPx + maxOf(navInset, imeLift)
             val wantTop = insetPx + topInset
-            if (lp.bottomMargin != wantBottom || lp.topMargin != wantTop) {
+            val wantLeft = insetPx + navLeft
+            val wantRight = insetPx + navRight
+            if (lp.bottomMargin != wantBottom || lp.topMargin != wantTop ||
+                lp.leftMargin != wantLeft || lp.rightMargin != wantRight
+            ) {
                 lp.bottomMargin = wantBottom
                 lp.topMargin = wantTop
+                lp.leftMargin = wantLeft
+                lp.rightMargin = wantRight
                 cardWrap.requestLayout()
             }
             insets

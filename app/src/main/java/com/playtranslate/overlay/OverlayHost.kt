@@ -44,13 +44,30 @@ class OverlayHost(
     /** Registered overlay window. The stored handle keeps the wm + params so
      *  blanking can flip [WindowManager.LayoutParams.alpha] and call
      *  [WindowManager.updateViewLayout] without each call site managing its
-     *  own state. */
-    data class OverlayHandle(
+     *  own state. Compared by identity. */
+    class OverlayHandle(
         val view: View,
         val wm: WindowManager,
         val params: WindowManager.LayoutParams,
         val displayId: Int,
-    )
+        val placement: OverlayPlacement,
+        /** True when the window asked for MATCH_PARENT and [addOverlayWindow]
+         *  pinned it to the display's pixel size, so a size change must
+         *  re-pin it ([refresh]). */
+        val pinned: Boolean,
+    ) {
+        /** The environment this window was last laid out against. Per
+         *  window, not per display: a window added while the display is
+         *  mid-change (the Thor's ~1 s natural-portrait blip, an icon
+         *  re-raised every live cycle) records what it saw, and the next
+         *  refresh finds it different and lays it out again. */
+        var laidOutWith: OverlayEnvironment? = null
+
+        /** The environment moves this window: it is pinned to the display's
+         *  size, or the host places it. */
+        val followsEnvironment: Boolean
+            get() = pinned || placement is OverlayPlacement.Placed
+    }
 
     private val overlayWindows = mutableListOf<OverlayHandle>()
 
@@ -123,6 +140,7 @@ class OverlayHost(
         wm: WindowManager,
         params: WindowManager.LayoutParams,
         displayId: Int,
+        placement: OverlayPlacement,
     ): Boolean {
         // Belt: a re-add of a view with a pending gated destroy would make
         // the addView below throw "view already attached", so flush it first.
@@ -145,7 +163,11 @@ class OverlayHost(
         params.flags = params.flags or WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
         val fullScreen = params.width == WindowManager.LayoutParams.MATCH_PARENT &&
             params.height == WindowManager.LayoutParams.MATCH_PARENT
-        applyFullScreenOverlayDefaults(params)
+        applyOverlayLayoutDefaults(params, placement)
+        // The display as it is now: a pinned window takes its size, a Placed
+        // window is laid out against it before it exists, so it appears in
+        // place.
+        val env = if (fullScreen || placement is OverlayPlacement.Placed) environment(displayId) else null
         // MATCH_PARENT sizing delegates to the platform, and that delegation is
         // measurably broken on both sides of the R boundary: below R it resolves
         // to the inset content area (short of the panel; overlay/capture scale
@@ -158,8 +180,24 @@ class OverlayHost(
         // same delegation (Thor 2026-09-26: the translation-error pills' wrap
         // window came out 1240px wide on the 1920px screen), so a window whose
         // content can be wider than the narrowest display pins its own width
-        // (TranslationErrorPills does).
-        if (fullScreen) pinFullScreenSize(params, displayId)
+        // (TranslationErrorPills does). Cost of pinning: the window no longer
+        // follows a rotation by itself; [refresh] re-pins it.
+        val pinned = fullScreen && env != null
+        if (pinned) pin(params, env!!)
+        if (env != null && placement is OverlayPlacement.Placed) placement.layout(env, params)
+        // A Placed window that is dispatched the bars (below them; on Android
+        // 11 every window) hears the app beneath show or hide one through its
+        // own insets: every source change is dispatched to it, whatever its
+        // frame (InsetsController.onStateChanged ->
+        // ViewRootImpl.notifyInsetsChanged -> dispatchApplyInsets,
+        // android-16.0.0_r1). The signal exists exactly while a window that
+        // needs it does. The view's own onApplyWindowInsets still runs.
+        if (placement is OverlayPlacement.Placed && hearsBars) {
+            view.setOnApplyWindowInsetsListener { v, insets ->
+                onBarsHeard(displayId, insets)
+                v.onApplyWindowInsets(insets)
+            }
+        }
         // A focusable window becomes the system-bar control target on focus,
         // and its default requested state is "bars visible" — which yanks the
         // nav pill (and status bar) back over an immersive game the moment a
@@ -176,12 +214,22 @@ class OverlayHost(
         return try {
             wm.addView(view, params)
             if (focusable) mirrorSystemBars(view, hiddenBars)
-            val handle = OverlayHandle(view, wm, params, displayId)
+            val handle = OverlayHandle(view, wm, params, displayId, placement, pinned)
+            handle.laidOutWith = env
             overlayWindows += handle
             capture?.saved?.add(SavedHandle(handle, requestedAlpha))
             logOverlayGeometry(view, params, displayId, fullScreen)
             logFocusableOverlay("add", view, params, displayId)
             DrawRateProbe.attach(view, "${view.javaClass.simpleName}@d$displayId")
+            // This window saw a display its neighbours were not laid out
+            // against (a change whose own event is still on its way): bring
+            // them to the same environment now.
+            if (env != null && overlayWindows.any {
+                    it.displayId == displayId && it !== handle && it.followsEnvironment && it.laidOutWith != env
+                }
+            ) {
+                refresh(displayId, "add", force = false)
+            }
             true
         } catch (e: Exception) {
             params.alpha = requestedAlpha
@@ -190,41 +238,173 @@ class OverlayHost(
         }
     }
 
-    /** Pin [params] to [displayId]'s current pixel size, replacing
-     *  MATCH_PARENT (see [addOverlayWindow] for why platform sizing can't be
-     *  trusted). The size comes from the window's OWN display — resolved by
-     *  [displayId], never a hardcoded display — via the window-context query.
-     *  Cost of pinning: the window no longer follows a rotation by itself;
-     *  [resizeFullScreenOverlayForDisplay] re-pins from the display-change
-     *  path. Returns true if a size was pinned. */
-    private fun pinFullScreenSize(
-        params: WindowManager.LayoutParams,
-        displayId: Int,
-    ): Boolean {
-        val display = context.getSystemService(DisplayManager::class.java)
-            ?.getDisplay(displayId) ?: return false
-        val size = context.createDisplayContext(display).displaySizePx()
-        if (size.x <= 0 || size.y <= 0) return false
-        params.width = size.x
-        params.height = size.y
+    /** Pin [params] to [env]'s pixel size, replacing MATCH_PARENT (see
+     *  [addOverlayWindow] for why platform sizing can't be trusted). The size
+     *  comes from the window's OWN display's environment, never a hardcoded
+     *  display. */
+    private fun pin(params: WindowManager.LayoutParams, env: OverlayEnvironment) {
+        params.width = env.geometry.width
+        params.height = env.geometry.height
         params.gravity = Gravity.TOP or Gravity.START
-        return true
     }
 
-    /** Re-pin an open full-screen overlay's window to [displayId]'s current
-     *  size after a display change. [addOverlayWindow] froze the window to an
-     *  explicit pixel size that does NOT follow the display through a
-     *  rotation, so a portrait→landscape turn would leave it at the old width
-     *  — and anything re-anchored against the new bounds (e.g. a right-edge
-     *  floating menu) could land off the still-old-sized surface. Driven from
-     *  the display-change listener, so a size pinned during a transient
-     *  reconfiguration (the ~1s natural-portrait blip on Thor) is corrected by
-     *  the next event through the same path that introduced it. The view must
-     *  have been added as a full-screen overlay. */
-    fun resizeFullScreenOverlayForDisplay(view: View, displayId: Int) {
-        val handle = overlayWindows.firstOrNull { it.view === view } ?: return
-        if (!pinFullScreenSize(handle.params, displayId)) return
-        try { handle.wm.updateViewLayout(view, handle.params) } catch (_: Exception) {}
+    /** True for a host whose windows are dispatched the system bars and so
+     *  hear them change through their insets: below the bars
+     *  (MediaProjection) from R, and on Android 11 the accessibility
+     *  backend's too ([OverlayEnvironment.hearsBars]). Below R there are no
+     *  per-type insets to place against. */
+    private val hearsBars: Boolean
+        get() = OverlayEnvironment.hearsBars(
+            belowBars = windowType == WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+        )
+
+    /** The display read behind [environment]; tests substitute one. */
+    internal var environmentReader: (displayId: Int) -> OverlayEnvironment? = { displayId ->
+        context.getSystemService(DisplayManager::class.java)?.getDisplay(displayId)?.let { display ->
+            OverlayEnvironment.read(
+                context.createDisplayContext(display),
+                display,
+                belowBars = windowType == WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            )
+        }
+    }
+
+    /** [displayId]'s environment as it is now, read fresh, or null for a
+     *  display that went away. For a decision taken once at one event; a
+     *  placement that must follow the display registers as
+     *  [OverlayPlacement.Placed] instead. */
+    fun environment(displayId: Int): OverlayEnvironment? = environmentReader(displayId)
+
+    /** A pass is under way ([refresh]); a refresh asked for meanwhile runs
+     *  after it. */
+    private var refreshing = false
+    /** Refreshes asked for during a pass, per display: force if any asked. */
+    private val refreshAfterPass = linkedMapOf<Int, Boolean>()
+    /** Displays with a bars refresh posted and not yet run. */
+    private val barsRefreshPosted = mutableSetOf<Int>()
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** Per display, which bars the Placed windows last heard hidden
+     *  ([hiddenBarsMask]). */
+    private val barsHeard = mutableMapOf<Int, Int>()
+
+    /**
+     * A Placed window on [displayId] was dispatched [insets]. A window is
+     * re-dispatched its insets whenever its own frame changes as well
+     * (InsetsController.onFrameChanged, android-16.0.0_r1), which is every
+     * frame of the icon's drag and glide, so only a change in which bars are
+     * shown refreshes the display; several windows hear one change, and one
+     * refresh per display runs after them. Not heard here: a bar that
+     * changes size without showing or hiding (switching navigation modes
+     * with our windows up), which the next display change or add applies.
+     */
+    private fun onBarsHeard(displayId: Int, insets: WindowInsets) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        val hidden = hiddenBarsMask(insets)
+        if (barsHeard.put(displayId, hidden) == hidden) return
+        if (!barsRefreshPosted.add(displayId)) return
+        mainHandler.post {
+            barsRefreshPosted.remove(displayId)
+            refresh(displayId, "bars", force = false)
+        }
+    }
+
+    /** Lay out every Placed window on [displayId] again against the display
+     *  as it is now, whatever each was laid out with: a window others derive
+     *  from moved or changed (the icon at a gesture's or glide's end, the
+     *  region editor's box at a drag's end, the error pills' height). */
+    fun invalidateLayout(displayId: Int) = refresh(displayId, "invalidate", force = true)
+
+    /** The display [displayId] changed (rotation, resize, or an event with
+     *  nothing behind it, e.g. a refresh-rate switch): every window on it
+     *  follows. Forced, so a window that recorded the display mid-change is
+     *  laid out again even when the change has already reverted. */
+    fun onDisplayChanged(displayId: Int) = refresh(displayId, "display", force = true)
+
+    /**
+     * Bring every window on [displayId] to the display's environment as it is
+     * now: re-pin each pinned window whose size differs, and run each
+     * [OverlayPlacement.Placed] layout whose window was laid out with
+     * another environment, or every one with [force]. A window's params are
+     * committed only when the pass changed them, so a pass that moves
+     * nothing relayouts nothing. Windows that derive from another window
+     * read its live params; when a pass moved anything another pass follows,
+     * so the order windows were added in never matters (at most
+     * [MAX_LAYOUT_PASSES]). A refresh asked for during a pass runs after it.
+     * Main thread.
+     */
+    fun refresh(displayId: Int, reason: String, force: Boolean) {
+        if (refreshing) {
+            refreshAfterPass[displayId] = (refreshAfterPass[displayId] ?: false) || force
+            return
+        }
+        refreshing = true
+        try {
+            runPasses(displayId, reason, force)
+            var rounds = 0
+            while (refreshAfterPass.isNotEmpty() && rounds++ < MAX_LAYOUT_PASSES) {
+                val (id, f) = refreshAfterPass.entries.first().toPair()
+                refreshAfterPass.remove(id)
+                runPasses(id, "$reason+nested", f)
+            }
+            if (refreshAfterPass.isNotEmpty()) {
+                Log.w(TAG, "env: refreshes still asked for after $MAX_LAYOUT_PASSES rounds ($reason)")
+                refreshAfterPass.clear()
+            }
+        } finally {
+            refreshing = false
+        }
+    }
+
+    private fun runPasses(displayId: Int, reason: String, force: Boolean) {
+        // Nothing on the display follows it (every display event reaches
+        // both backends' hosts): no read.
+        if (overlayWindows.none { it.displayId == displayId && it.followsEnvironment }) return
+        val env = environment(displayId) ?: return
+        var passForce = force
+        for (pass in 1..MAX_LAYOUT_PASSES) {
+            val commits = layoutPass(displayId, env, passForce)
+            if (commits == 0) return
+            Log.i(
+                TAG,
+                "env[$displayId] reason=$reason pass=$pass rot=${env.geometry.rotation} " +
+                    "size=${env.geometry.width}x${env.geometry.height} covered=${env.covered} " +
+                    "barRoom=${env.barRoom} commits=$commits",
+            )
+            passForce = true
+        }
+        Log.w(TAG, "env[$displayId] did not settle in $MAX_LAYOUT_PASSES passes ($reason)")
+    }
+
+    /** One pass over [displayId]'s windows; returns how many were committed. */
+    private fun layoutPass(displayId: Int, env: OverlayEnvironment, force: Boolean): Int {
+        var commits = 0
+        for (handle in overlayWindows.toList()) {
+            if (handle.displayId != displayId || !handle.followsEnvironment) continue
+            // Removed by an earlier window's layout in this pass.
+            if (overlayWindows.none { it === handle }) continue
+            try {
+                val before = WindowManager.LayoutParams().apply { copyFrom(handle.params) }
+                if (handle.pinned) pin(handle.params, env)
+                val placement = handle.placement
+                if (placement is OverlayPlacement.Placed && (force || handle.laidOutWith != env)) {
+                    placement.layout(env, handle.params)
+                }
+                handle.laidOutWith = env
+                // copyFrom reports what differs (x, y, size, gravity, flags,
+                // alpha...): the params the layout changed, nothing else.
+                if (before.copyFrom(handle.params) != 0) {
+                    handle.wm.updateViewLayout(handle.view, handle.params)
+                    commits++
+                }
+            } catch (e: Exception) {
+                // The relayout itself is scheduled, never reported here; the
+                // one throw is a view the manager no longer holds, a handle
+                // that outlived its window.
+                Log.w(TAG, "layout on display $displayId: ${handle.view.javaClass.simpleName}: ${e.message}")
+            }
+        }
+        return commits
     }
 
     /**
@@ -398,7 +578,7 @@ class OverlayHost(
                 WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT,
         )
-        if (addOverlayWindow(view, wm, params, displayId)) {
+        if (addOverlayWindow(view, wm, params, displayId, OverlayPlacement.Fixed)) {
             touchSentinels[displayId] = view
         }
     }
@@ -506,6 +686,7 @@ class OverlayHost(
         val handles = overlayWindows.toList()
         overlayWindows.clear()
         touchSentinels.clear()
+        barsHeard.clear()
         for (h in handles) {
             WindowChurnGate.removeWindow(h.view, h.wm, h.params, h.displayId)
         }
@@ -514,24 +695,13 @@ class OverlayHost(
     companion object {
         private const val TAG = "OverlayHost"
 
-        /**
-         * Defensive defaults for full-display (MATCH_PARENT × MATCH_PARENT)
-         * overlays — they must cover the whole display so OCR-box coordinates,
-         * which are in capture-bitmap pixels, map 1:1 onto the overlay.
-         *
-         * The SIZE itself is pinned to explicit display pixels in
-         * [addOverlayWindow] (platform MATCH_PARENT sizing is untrustworthy —
-         * see there). These flags handle the POSITION/inset side: without
-         * `fitInsetsTypes = 0` a non-focusable TYPE_APPLICATION_OVERLAY (the
-         * translation overlay) is laid out inside the system-bar insets —
-         * offset from the capture — which shifts every box.
-         * `FLAG_LAYOUT_NO_LIMITS` alone does not prevent that; the cutout mode
-         * (`..._ALWAYS` from API 30, `..._SHORT_EDGES` on 29) covers the display
-         * cutout.
-         *
-         * Idempotent. Honors callers that explicitly set a non-DEFAULT cutout
-         * mode — only the DEFAULT case is upgraded.
-         */
+        /** Passes a [refresh] runs while windows keep moving. Derivations go
+         *  one level deep (the spinner, sonar intro and menu from the icon;
+         *  the no-text pill from the error pills), so two passes settle and a
+         *  third confirms; a fourth that still moves something is a layout
+         *  that never settles, logged. */
+        private const val MAX_LAYOUT_PASSES = 4
+
         /** Per-type mask of the system bars currently hidden, read from
          *  [view]'s last-received window insets. Private on purpose: valid
          *  ONLY for a window that sits BELOW the system bars in Z order — an
@@ -634,22 +804,86 @@ class OverlayHost(
             )
         }
 
-        fun applyFullScreenOverlayDefaults(params: WindowManager.LayoutParams) {
+        /** What [applyOverlayLayoutDefaults] does to a window, decided from
+         *  its size request, its placement and the API level, as plain
+         *  values so the decision is testable at any level. */
+        internal data class LayoutDefaults(
+            /** The window's origin is the display's: nothing the platform
+             *  fits moves it, and the cutout is entered. */
+            val displayFrame: Boolean,
+            val noLimits: Boolean,
+        )
+
+        internal fun layoutDefaults(fullScreen: Boolean, placement: OverlayPlacement, sdk: Int): LayoutDefaults =
+            LayoutDefaults(
+                displayFrame = fullScreen ||
+                    (sdk >= Build.VERSION_CODES.R && placement !is OverlayPlacement.Fixed),
+                noLimits = fullScreen,
+            )
+
+        /**
+         * The layout contract a window added through [addOverlayWindow] gets
+         * from its [placement].
+         *
+         * A window the host places or sizes (every placement but
+         * [OverlayPlacement.Fixed], from R) is laid out in display pixels: its
+         * origin is the display's own origin, and nothing the platform fits
+         * moves it. Every such surface computes its position in display pixels
+         * (the capture's pixels for the translation overlays and the sheet,
+         * the environment's insets for the icon's dock and the pills), so the
+         * window's parent frame must BE the display. By default it is not: a
+         * window's parent frame is the display inset by the bars in its
+         * `fitInsetsTypes`, and a window with `FLAG_LAYOUT_IN_SCREEN` still
+         * fits a VISIBLE navigation bar
+         * (`ViewRootImpl.adjustLayoutParamsForCompatibility` strips only the
+         * status bar; `WindowLayout.computeFrames` places x/y against the
+         * inset parent frame and uses `FLAG_LAYOUT_NO_LIMITS` only to widen
+         * the final clamp; android-16.0.0_r1). The bars' sources reach a
+         * window only when it lies BELOW them in Z, so the shift happened on
+         * the MediaProjection backend alone: on the Moto G with three-button
+         * navigation on the left (rotation 270) every fixed-size window of
+         * ours began 84 px to the right, which put a right-docked icon off the
+         * display and a left-docked one, drawn as if flush, almost whole
+         * beside the buttons, while the accessibility backend never moved.
+         * `fitInsetsTypes = 0` ends that; what a window keeps clear of comes
+         * from [OverlayEnvironment] (a Placed window) or its own insets (a
+         * Content window). The cutout mode (`..._ALWAYS` from API 30,
+         * `..._SHORT_EDGES` on 29) lets the window cover the display cutout
+         * for the same reason.
+         *
+         * A MATCH_PARENT window also gets `FLAG_LAYOUT_NO_LIMITS`; its SIZE
+         * is pinned to explicit display pixels in [addOverlayWindow]
+         * (platform MATCH_PARENT sizing is untrustworthy, see there).
+         *
+         * Below R everything is as it was before the contract: there is no
+         * `fitInsetsTypes` and no environment to place against, so only the
+         * full-screen windows get the display frame (`FLAG_LAYOUT_IN_SCREEN`
+         * as the pre-30 spelling of the display origin), and a fixed-size
+         * window keeps the platform's layout, which keeps it clear of the
+         * bars there. A [OverlayPlacement.Fixed] window keeps the platform's
+         * layout on every level.
+         *
+         * Idempotent. Honors callers that explicitly set a non-DEFAULT cutout
+         * mode: only the DEFAULT case is upgraded.
+         */
+        fun applyOverlayLayoutDefaults(params: WindowManager.LayoutParams, placement: OverlayPlacement) {
             val fullScreen =
                 params.width == WindowManager.LayoutParams.MATCH_PARENT &&
                     params.height == WindowManager.LayoutParams.MATCH_PARENT
-            if (!fullScreen) return
-            params.flags = params.flags or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            val defaults = layoutDefaults(fullScreen, placement, Build.VERSION.SDK_INT)
+            if (!defaults.displayFrame) return
+            if (defaults.noLimits) {
+                params.flags = params.flags or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                // fitInsetsTypes=0 keeps the window origin out of the
-                // system-bar insets; the size is pinned in addOverlayWindow.
                 params.fitInsetsTypes = 0
             } else {
-                // Pre-30 has no fitInsetsTypes. FLAG_LAYOUT_IN_SCREEN pins the
-                // window ORIGIN to the screen top-left (under the status bar);
-                // [addOverlayWindow] pins an explicit full-display SIZE. Together
-                // (origin 0,0 + size == capture) the overlay matches the capture
-                // bitmap so OCR boxes align.
+                // Pre-30 has no fitInsetsTypes, and only a full-screen window
+                // gets here. FLAG_LAYOUT_IN_SCREEN pins the window ORIGIN to
+                // the screen top-left (under the status bar); [addOverlayWindow]
+                // pins an explicit full-display SIZE. Together (origin 0,0 +
+                // size == capture) the overlay matches the capture bitmap so
+                // OCR boxes align.
                 @Suppress("DEPRECATION")
                 params.flags = params.flags or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN

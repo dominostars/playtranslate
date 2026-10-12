@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import com.playtranslate.overlay.OverlayHost
+import com.playtranslate.overlay.OverlayPlacement
 
 /**
  * Where a full-screen overlay panel lives: an overlay WINDOW over another
@@ -90,7 +91,7 @@ class WindowSheetHost(
         params = lp
         // addOverlayWindow itself mirrors the bars onto an attach-time
         // focusable window; later flips re-arm from the latch below.
-        overlayHost.addOverlayWindow(root, wm, lp, displayId)
+        overlayHost.addOverlayWindow(root, wm, lp, displayId, OverlayPlacement.Content)
     }
 
     override fun detach(root: View) {

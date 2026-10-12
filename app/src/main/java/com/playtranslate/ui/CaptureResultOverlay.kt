@@ -19,13 +19,11 @@ import android.graphics.Point
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
-import android.os.Build
 import android.text.InputType
 import android.text.Layout
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
-import android.view.WindowInsets
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
@@ -68,7 +66,9 @@ import com.playtranslate.model.TextSegments
 import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.PendingTranslation
 import com.playtranslate.model.TranslationResult
+import com.playtranslate.overlay.OverlayEnvironment
 import com.playtranslate.overlay.OverlayHost
+import com.playtranslate.overlay.Sides
 import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
 import kotlinx.coroutines.CancellationException
@@ -113,6 +113,18 @@ class CaptureResultOverlay(
     private val sheetHost: SheetHost = WindowSheetHost(wm, displayId, overlayHost),
 ) {
     private val ctx = overlayThemedContext(rawCtx)
+
+    /** The sides the one-or-two-columns decision reserves: what covers this
+     *  sheet's window with the bars counted shown or not
+     *  ([OverlayEnvironment.coveredReserved]), on the display the sheet's own
+     *  context belongs to (an activity-hosted sheet may be on another screen
+     *  than the display id it was given). Tests substitute a bar. */
+    internal var sideReserveReader: (Context) -> Sides = { context ->
+        OverlayEnvironment.read(
+            context,
+            belowBars = overlayHost.windowType == WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+        )?.coveredReserved ?: Sides.NONE
+    }
     private val density = ctx.resources.displayMetrics.density
     private val cornerRadiusPx = ctx.resources.getDimension(R.dimen.pt_radius) * CORNER_RADIUS_MULT
     private val shadowHeightPx = (cornerRadiusPx + density * SHADOW_BLUR_DP * 2.5f).toInt()
@@ -801,8 +813,23 @@ class CaptureResultOverlay(
         // Park below the bottom edge; the entrance animation (below) raises it.
         panel.translationY = panelHeightPx.toFloat()
 
+        // The width the sections share is the screen less the sides the
+        // body buffers (the inset listener below): a side navigation bar
+        // where this window lies below the bars (the MediaProjection
+        // backend; an accessibility overlay is above them and never hears
+        // one) and the display cutout. The decision is made once, here, and
+        // the bar can come and go under a non-focusable sheet, so it
+        // reserves the bar's inset whether or not the bar is showing
+        // ([OverlayEnvironment.coveredReserved], as the error pills do): a display whose
+        // landscape width lies within a bar's width above the breakpoint
+        // keeps one column rather than two that a later bar would squeeze
+        // (Codex reviews, 2026-10-11: a 640 dp display with a 48 dp side
+        // bar chose two columns for 592 dp, and re-deciding mid-session
+        // would rebuild the bound panel).
+        val side = sideReserveReader(ctx)
         val sideBySide = CaptureResultGeometry.shouldUseSideBySide(
-            screenW, dp(1), (CaptureResultGeometry.SIDE_BY_SIDE_FALLBACK_SECTION_DP * density).toInt(),
+            screenW - side.left - side.right, dp(1),
+            (CaptureResultGeometry.SIDE_BY_SIDE_FALLBACK_SECTION_DP * density).toInt(),
         )
         buildContent(sideBySide)
 
@@ -906,32 +933,17 @@ class CaptureResultOverlay(
         // Best-effort: transient reveals in sticky immersive may not dispatch a
         // visibility change to other windows on every OEM.
         root.setOnApplyWindowInsetsListener { _, insets ->
-            val navInset: Int
-            val imeLift: Int
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val nav = insets.getInsets(WindowInsets.Type.navigationBars()).bottom
-                navInset = if (insets.isVisible(WindowInsets.Type.navigationBars())) nav else 0
-                val ime = insets.getInsets(WindowInsets.Type.ime()).bottom
-                imeLift = if (insets.isVisible(WindowInsets.Type.ime())) ime else 0
-            } else {
-                // API 29: the deprecated insets are the only signal.
-                // stableInsetBottom is the nav bar's reserved height
-                // (IME-independent); systemWindowInsetBottom is what's currently
-                // consumed — 0 with bars hidden, the nav height with bars up,
-                // the IME height while typing. min() isolates the visible nav
-                // bar; anything past stable is the IME.
-                @Suppress("DEPRECATION")
-                val current = insets.systemWindowInsetBottom
-                @Suppress("DEPRECATION")
-                val stable = insets.stableInsetBottom
-                navInset = minOf(current, stable)
-                imeLift = if (current > stable) current else 0
-            }
-            if (navInset != bottomInsetPx) {
+            // A side navigation bar (a phone moves three-button navigation to
+            // a side in landscape) and a side cutout buffer the content's
+            // sides the same way; see [ContentInsets].
+            val clear = ContentInsets.of(insets)
+            val navInset = clear.bottom
+            val sideLeft = clear.left
+            val sideRight = clear.right
+            val imeLift = clear.imeLift
+            if (navInset != bottomInsetPx || sideLeft != body.paddingLeft || sideRight != body.paddingRight) {
                 bottomInsetPx = navInset
-                body.setPadding(
-                    body.paddingLeft, body.paddingTop, body.paddingRight, navInset,
-                )
+                body.setPadding(sideLeft, body.paddingTop, sideRight, navInset)
                 // The buffer participates in every height formula — re-park
                 // the sliver / re-fit the content to the new inner height.
                 if (sliverMode) {

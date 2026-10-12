@@ -923,7 +923,7 @@ class SettingsRenderer(
             isClickable = false
             isFocusable = false
             // No window params, so this only sets the edge the slice is drawn on.
-            setPosition(edge.ordinal, 0.5f)
+            setSlot(edge.ordinal, 0.5f)
         }
         overlayIconPreviewSlot.addView(
             preview,
