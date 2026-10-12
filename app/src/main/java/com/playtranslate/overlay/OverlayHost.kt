@@ -281,12 +281,17 @@ class OverlayHost(
      * [OverlayPlacement.Placed] instead.
      *
      * A failed read ([OverlayEnvironment.provisional]) tells nothing new:
-     * the display's last real read stands in for it while the rotation (read
-     * from the display itself, never failing) is the same, so a bar heard,
-     * an icon released or a window added during a failure moves and resizes
-     * nothing and places the new window clear of the bars. Across a rotation
-     * the stand-in is all there is, and a window must still go somewhere: it
-     * is laid out against that, and the next real read lays it out again.
+     * the display's last real read stands in for it while the display's
+     * geometry is the same, so a bar heard, an icon released or a window
+     * added during a failure moves and resizes nothing and places the new
+     * window clear of the bars. A failed read still knows its geometry: the
+     * rotation comes from the display itself, which never fails, and the
+     * size is the one the display read before at that rotation and panel
+     * size ([com.playtranslate.DisplayWindowContexts.knownSize]), so the
+     * same geometry here means what it means there. Across a rotation or a
+     * resize the stand-in is all there is, and a window must still go
+     * somewhere: it is laid out against that, and the next real read lays it
+     * out again.
      *
      * Accepted: nothing retries a failed read. A bar shown or hidden during a
      * failure is heard once, its refresh reads the stand-in, and the change
@@ -306,11 +311,11 @@ class OverlayHost(
             lastRead[displayId] = env
             return env
         }
-        val last = lastRead[displayId]?.takeIf { it.geometry.rotation == env.geometry.rotation }
+        val last = lastRead[displayId]?.takeIf { it.geometry == env.geometry }
         Log.w(
             TAG,
             "env[$displayId] read failed: " +
-                if (last != null) "the last real read stands in" else "no real read of rot=${env.geometry.rotation}, placing without insets",
+                if (last != null) "the last real read stands in" else "no real read of ${env.geometry}, placing without insets",
         )
         return last ?: env
     }
