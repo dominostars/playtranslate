@@ -36,7 +36,10 @@ import androidx.annotation.RequiresApi
  * WindowManagerService tokenCountExceed), and the MediaProjection capture
  * loop reads twice per capture; in live mode that ran out about once a minute
  * and the capture was rebuilt at the size of the app area (API 30 emulator,
- * 2026-10-12).
+ * 2026-10-12). Kept contexts still need a new one per rotation, so rotations
+ * faster than garbage collection could run Android 11 out again (24 rotations
+ * on the emulator did not); a read that fails then still knows the display's
+ * size from an earlier read at the same rotation ([displaySizePx]).
  *
  * The window context is typed `TYPE_APPLICATION_OVERLAY`, not
  * `TYPE_ACCESSIBILITY_OVERLAY`: the latter makes `createWindowContext` throw
@@ -71,30 +74,30 @@ fun Context.displayWindowMetrics(): WindowMetrics? {
  * The window context every read of a display goes through
  * ([displayWindowMetrics]): one per display, kept while the display's
  * [Geometry] is the one it was made against and made again when it differs.
- * It also knows which displays' last read failed, and runs what waits on one
- * at its next successful read ([whenReadable]): a consumer that placed
- * something from a stand-in for a failed read has no other signal that a
- * real read is available again. Process-wide, so every reader of a display
- * shares it; [reset] runs at Application.onCreate, since a JVM that runs many
- * tests keeps statics across their Applications.
+ * It also remembers the size each display read at each geometry
+ * ([knownSize]): one display at one rotation and panel size always has the
+ * same size, so a failed read of a geometry read before still knows it.
+ * Process-wide, so every reader of a display shares it; [reset] runs at
+ * Application.onCreate, since a JVM that runs many tests keeps statics across
+ * their Applications.
  */
 internal object DisplayWindowContexts {
 
     /** What a display's bounds depend on, read from the display itself: its
      *  rotation and its panel mode's size (a resolution switch or a fold
      *  changes the mode's size; a refresh-rate switch changes the mode but
-     *  not its size, and keeps the context). */
+     *  not its size, and keeps the context). A forced display size (`wm
+     *  size`, some makers' resolution settings) changes the bounds alone; a
+     *  kept context follows it, and only [knownSize] can lag it, for a read
+     *  that fails right after such a change. */
     private data class Geometry(val rotation: Int, val modeWidth: Int, val modeHeight: Int)
 
     private class Entry(val windowContext: Context, val geometry: Geometry)
 
     private val entries = HashMap<Int, Entry>()
 
-    /** Displays whose last read failed. */
-    private val failing = HashSet<Int>()
-
-    /** Per display, what runs at its next successful read ([whenReadable]). */
-    private val waiting = HashMap<Int, MutableList<() -> Unit>>()
+    /** Per display, the size it last read at each geometry. */
+    private val sizes = HashMap<Int, HashMap<Geometry, Point>>()
 
     /** Makes a display's window context; tests substitute one that fails. */
     @RequiresApi(Build.VERSION_CODES.R)
@@ -104,76 +107,62 @@ internal object DisplayWindowContexts {
     }
 
     /** [displayId]'s window metrics now, or null when the read failed or the
-     *  display went away. A success after a failure runs what waited on it,
-     *  on the reading thread. */
+     *  display went away. */
     @RequiresApi(Build.VERSION_CODES.R)
     fun metrics(app: Context, displayId: Int): WindowMetrics? {
         val dm = app.getSystemService(DisplayManager::class.java) ?: return null
-        val ready = ArrayList<() -> Unit>()
-        val metrics = synchronized(this) {
-            forgetRemoved(dm, ready)
-            val display = dm.getDisplay(displayId)
-            if (display == null) {
-                forget(displayId, ready)
+        synchronized(this) {
+            forgetRemoved(dm)
+            val display = dm.getDisplay(displayId) ?: return null
+            val geometry = geometryOf(display)
+            val read = try {
+                OwnWindows.manager(of(app, display, geometry))?.currentWindowMetrics
+            } catch (e: RuntimeException) {
+                Log.w("DisplaySize", "windowMetrics query failed; using fallback metrics", e)
                 null
-            } else {
-                val read = try {
-                    OwnWindows.manager(of(app, display))?.currentWindowMetrics
-                } catch (e: RuntimeException) {
-                    Log.w("DisplaySize", "windowMetrics query failed; using fallback metrics", e)
-                    null
-                }
-                if (read == null) {
-                    failing += displayId
-                } else if (failing.remove(displayId)) {
-                    waiting.remove(displayId)?.let { ready += it }
-                }
-                read
             }
+            read?.bounds?.takeIf { it.width() > 0 && it.height() > 0 }?.let {
+                sizes.getOrPut(displayId) { HashMap() }[geometry] = Point(it.width(), it.height())
+            }
+            return read
         }
-        ready.forEach { it() }
-        return metrics
     }
 
-    /** Runs [action] at [displayId]'s next successful read, or when the
-     *  display goes away; at once (on this thread) when its last read did not
-     *  fail. Once. */
-    fun whenReadable(displayId: Int, action: () -> Unit) {
-        val now = synchronized(this) {
-            if (displayId in failing) {
-                waiting.getOrPut(displayId) { ArrayList() } += action
-                false
-            } else true
-        }
-        if (now) action()
+    /** The size [displayId] read when it last had the rotation and panel
+     *  size it has now, or null when it never has. */
+    fun knownSize(app: Context, displayId: Int): Point? {
+        val display = app.getSystemService(DisplayManager::class.java)?.getDisplay(displayId) ?: return null
+        return synchronized(this) { sizes[displayId]?.get(geometryOf(display))?.let { Point(it) } }
     }
 
     /** The window context of [displayId], or null for a display that went
      *  away. Throws what createWindowContext throws. */
     @RequiresApi(Build.VERSION_CODES.R)
     fun of(app: Context, displayId: Int): Context? =
-        app.getSystemService(DisplayManager::class.java)?.getDisplay(displayId)?.let { of(app, it) }
+        app.getSystemService(DisplayManager::class.java)?.getDisplay(displayId)
+            ?.let { of(app, it, geometryOf(it)) }
 
     @RequiresApi(Build.VERSION_CODES.R)
-    private fun of(app: Context, display: Display): Context = synchronized(this) {
-        val mode = display.mode
-        val geometry = Geometry(display.rotation, mode.physicalWidth, mode.physicalHeight)
+    private fun of(app: Context, display: Display, geometry: Geometry): Context = synchronized(this) {
         entries[display.displayId]?.takeIf { it.geometry == geometry }?.let { return it.windowContext }
         make(app, display).also { entries[display.displayId] = Entry(it, geometry) }
     }
 
-    /** Every display this holds anything for and the platform no longer has
-     *  is forgotten: on Android 11 a kept context holds one of the app's five
-     *  windowless tokens, and what waits on a display that is gone runs. */
-    private fun forgetRemoved(dm: DisplayManager, ready: MutableList<() -> Unit>) {
-        val known = entries.keys + failing + waiting.keys
-        for (id in known) if (dm.getDisplay(id) == null) forget(id, ready)
+    private fun geometryOf(display: Display): Geometry {
+        val mode = display.mode
+        return Geometry(display.rotation, mode.physicalWidth, mode.physicalHeight)
     }
 
-    private fun forget(displayId: Int, ready: MutableList<() -> Unit>) {
-        entries.remove(displayId)
-        failing.remove(displayId)
-        waiting.remove(displayId)?.let { ready += it }
+    /** Every display this holds anything for and the platform no longer has
+     *  is forgotten: on Android 11 a kept context holds one of the app's five
+     *  windowless tokens until it is collected. */
+    private fun forgetRemoved(dm: DisplayManager) {
+        for (id in entries.keys + sizes.keys) {
+            if (dm.getDisplay(id) == null) {
+                entries.remove(id)
+                sizes.remove(id)
+            }
+        }
     }
 
     /** The displays a window context is kept for. */
@@ -181,8 +170,7 @@ internal object DisplayWindowContexts {
 
     fun reset() = synchronized(this) {
         entries.clear()
-        failing.clear()
-        waiting.clear()
+        sizes.clear()
     }
 }
 
@@ -191,6 +179,13 @@ internal object DisplayWindowContexts {
 fun Context.displaySizePx(): Point {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         displayWindowMetrics()?.bounds?.let { return Point(it.width(), it.height()) }
+        // The read failed: the size this display read when it last had its
+        // current rotation and panel size is the size it has now. The coarse
+        // read below is not the display's size (the header), and handed out
+        // it rebuilt the capture at the wrong size and read to the capture
+        // panel and the drag session as a display change.
+        val displayId = try { display?.displayId } catch (_: RuntimeException) { null }
+        displayId?.let { DisplayWindowContexts.knownSize(applicationContext, it) }?.let { return it }
     } else {
         // API 29 has no window context. getRealSize from the display context's
         // default display reports the correct post-rotation panel size here
