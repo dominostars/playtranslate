@@ -23,9 +23,11 @@ import com.playtranslate.overlay.Sides
  * [top], [left], [right] and [bottom] are the bars that are showing and the
  * display cutout; [imeLift] the keyboard's height while it is up (the window
  * is FLAG_LAYOUT_NO_LIMITS, so the platform's ADJUST_RESIZE never applies and
- * the content lifts itself). Below R only v3.3.1's arithmetic exists: the
- * bottom bar and the keyboard told apart by the stable insets, and the top;
- * no sides, since a window there keeps the platform's own layout.
+ * the content lifts itself). The cutout counts on every side: Android puts
+ * one only on a short edge, which is the bottom of a phone held upside down.
+ * Below R only v3.3.1's arithmetic exists, plus the bottom cutout: the bottom
+ * bar and the keyboard told apart by the stable insets, and the top; no
+ * sides, since a window there keeps the platform's own layout.
  */
 internal data class ContentInsets(
     val top: Int,
@@ -56,7 +58,7 @@ internal data class ContentInsets(
         /** From R: per-type insets with their visibility. A phone moves
          *  three-button navigation to a side in landscape, so the sides take
          *  a shown navigation bar; the cutout obscures pixels even with the
-         *  bars hidden, so it always counts on the sides and the top. */
+         *  bars hidden, so it always counts, on every side. */
         fun ofShown(
             nav: Sides,
             navShown: Boolean,
@@ -69,7 +71,7 @@ internal data class ContentInsets(
             top = maxOf(if (statusShown) statusTop else 0, cutout.top),
             left = maxOf(if (navShown) nav.left else 0, cutout.left),
             right = maxOf(if (navShown) nav.right else 0, cutout.right),
-            bottom = if (navShown) nav.bottom else 0,
+            bottom = maxOf(if (navShown) nav.bottom else 0, cutout.bottom),
             imeLift = if (imeShown) ime else 0,
         )
 
@@ -79,18 +81,19 @@ internal data class ContentInsets(
          *  hidden, the bar's height with them up, the keyboard's height while
          *  typing. Their minimum isolates the shown bar; anything past the
          *  stable inset is the keyboard. The top mirrors it with no keyboard
-         *  term, and takes the cutout. */
+         *  term; both take the cutout on their edge. */
         fun ofLegacy(
             currentBottom: Int,
             stableBottom: Int,
             currentTop: Int,
             stableTop: Int,
             cutoutTop: Int,
+            cutoutBottom: Int,
         ): ContentInsets = ContentInsets(
             top = maxOf(minOf(currentTop, stableTop), cutoutTop),
             left = 0,
             right = 0,
-            bottom = minOf(currentBottom, stableBottom),
+            bottom = maxOf(minOf(currentBottom, stableBottom), cutoutBottom),
             imeLift = if (currentBottom > stableBottom) currentBottom else 0,
         )
 
@@ -101,6 +104,7 @@ internal data class ContentInsets(
             currentTop = insets.systemWindowInsetTop,
             stableTop = insets.stableInsetTop,
             cutoutTop = insets.displayCutout?.safeInsetTop ?: 0,
+            cutoutBottom = insets.displayCutout?.safeInsetBottom ?: 0,
         )
     }
 }
