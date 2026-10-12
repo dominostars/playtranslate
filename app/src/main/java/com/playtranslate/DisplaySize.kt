@@ -87,9 +87,16 @@ internal object DisplayWindowContexts {
      *  rotation and its panel mode's size (a resolution switch or a fold
      *  changes the mode's size; a refresh-rate switch changes the mode but
      *  not its size, and keeps the context). A forced display size (`wm
-     *  size`, some makers' resolution settings) changes the bounds alone; a
-     *  kept context follows it, and only [knownSize] can lag it, for a read
-     *  that fails right after such a change. */
+     *  size`, some makers' resolution settings) changes the bounds alone:
+     *  the kept context follows once the platform's configuration update
+     *  reaches it, and a read between the change and that update reports
+     *  the old bounds, where a context made for the read would not have
+     *  from Android 13 (it is attached with the current configuration;
+     *  android-13 WindowTokenClient.attachToDisplayArea). A layout made from
+     *  such a read stands until the display's next refresh. Not keyed on:
+     *  only a display event would show the change, and rebuilding at every
+     *  one (a refresh-rate switch is one) would spend Android 11's five
+     *  windowless contexts. [knownSize] can lag it the same way. */
     private data class Geometry(val rotation: Int, val modeWidth: Int, val modeHeight: Int)
 
     private class Entry(val windowContext: Context, val geometry: Geometry)
