@@ -7,6 +7,7 @@ import android.view.Surface
 import androidx.test.core.app.ApplicationProvider
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
@@ -113,37 +114,43 @@ class DisplayWindowContextsTest {
         assertEquals(setOf(Display.DEFAULT_DISPLAY), DisplayWindowContexts.kept())
     }
 
-    @Test fun `what waits on a failing display runs at its next successful read`() {
-        contextsRefused()
-        assertNull(read())
-        var ran = 0
-        DisplayWindowContexts.whenReadable(Display.DEFAULT_DISPLAY) { ran++ }
-        assertNull(read())
-        assertEquals("still failing", 0, ran)
-        DisplayWindowContexts.make = realMake
-        assertNotNull(read())
-        assertEquals(1, ran)
-        read()
-        assertEquals("once", 1, ran)
+    /** A context of the default display whose own display metrics, the
+     *  coarse fallback, say 1x1: what [displaySizePx] returns is then
+     *  either a real read or that fallback, never both. */
+    private fun displayContextWithCoarseFallback(): Context {
+        val base = app.createDisplayContext(display)
+        // Deprecated for apps; a test needs metrics no display reports.
+        val coarse = android.content.res.Resources(
+            base.assets,
+            android.util.DisplayMetrics(),
+            base.resources.configuration,
+        ).apply {
+            // Its own metrics; the constructor recomputes what it is given.
+            displayMetrics.widthPixels = 1
+            displayMetrics.heightPixels = 1
+        }
+        return object : android.content.ContextWrapper(base) {
+            override fun getResources() = coarse
+        }
     }
 
-    @Test fun `what waits on a display that reads fine runs at once`() {
-        read()
-        var ran = 0
-        DisplayWindowContexts.whenReadable(Display.DEFAULT_DISPLAY) { ran++ }
-        assertEquals(1, ran)
-    }
+    @Test fun `a failed read knows the size the display read at the same rotation`() {
+        val ctx = displayContextWithCoarseFallback()
+        val portrait = ctx.displaySizePx()
+        assertNotEquals("a real read", android.graphics.Point(1, 1), portrait)
 
-    @Test fun `what waits on a display that goes away runs`() {
-        val second = ShadowDisplayManager.addDisplay("w400dp-h300dp")
+        // A rotation needs a new context; Android 11 has none to give.
+        shadowOf(display).setRotation(Surface.ROTATION_90)
         contextsRefused()
-        assertNull(read(second))
-        var ran = 0
-        DisplayWindowContexts.whenReadable(second) { ran++ }
-        ShadowDisplayManager.removeDisplay(second)
+        assertEquals("never read at this rotation: the coarse fallback", android.graphics.Point(1, 1), ctx.displaySizePx())
         DisplayWindowContexts.make = realMake
-        read()
-        assertEquals(1, ran)
+        val landscape = ctx.displaySizePx()
+
+        shadowOf(display).setRotation(Surface.ROTATION_0)
+        contextsRefused()
+        assertEquals("read before at this rotation", portrait, ctx.displaySizePx())
+        shadowOf(display).setRotation(Surface.ROTATION_90)
+        assertEquals(landscape, ctx.displaySizePx())
     }
 
     @Test fun `a new Application starts with none`() {

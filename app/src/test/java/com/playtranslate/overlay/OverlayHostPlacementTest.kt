@@ -45,21 +45,10 @@ class OverlayHostPlacementTest {
         other to testEnvironment(1920, 1080),
     )
     private var reads = 0
-    /** What waits on each display's next successful read. */
-    private val waitingOnRead = mutableListOf<Pair<Int, () -> Unit>>()
     private val host = mpHost()
 
     private fun mpHost() = OverlayHost(ctx, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY).also {
         it.environmentReader = { id -> reads++; env[id] }
-        it.whenReadable = { id, action -> waitingOnRead += id to action }
-    }
-
-    /** [id] reads again: what waited on it runs. */
-    private fun readsAgain(id: Int = display) {
-        val due = waitingOnRead.filter { it.first == id }
-        waitingOnRead.removeAll(due)
-        due.forEach { it.second() }
-        idle()
     }
 
     private fun params(w: Int, h: Int, flags: Int = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) =
@@ -332,53 +321,6 @@ class OverlayHostPlacementTest {
         host.refresh(display, "bars", force = false)
         assertEquals(2000 - 100, a.p.x)
         assertEquals(1000 - 100, a.p.y)
-    }
-
-    @Test fun `a bar shown during a failed read is applied at the next successful read`() {
-        val a = Docked(); a.add()
-        idle()
-        a.view.dispatchApplyWindowInsets(barsInsets(shown = false))
-        idle()
-        // The game shows its navigation bar; the read the windows' insets
-        // trigger fails, so the pass places against the last real read.
-        env[display] = failedRead(w = 1000, h = 2000)
-        a.view.dispatchApplyWindowInsets(barsInsets(shown = true))
-        idle()
-        assertEquals("nothing moved yet", 2000 - 100, a.p.y)
-        // Reads work again, but the windows hear the same bars as before:
-        // the bar change was heard already and asks for nothing.
-        env[display] = testEnvironment(1000, 2000, shownBars = Sides(0, 0, 0, 84))
-        a.view.dispatchApplyWindowInsets(barsInsets(shown = true))
-        idle()
-        assertEquals("the insets ask for nothing more", 2000 - 100, a.p.y)
-
-        readsAgain()
-        assertEquals("clear of the bar the failure hid", 2000 - 84 - 100, a.p.y)
-    }
-
-    @Test fun `a window placed against a stand-in is placed again at the next successful read, with no other event`() {
-        val a = Docked(); a.add()
-        // Its first insets are heard before the failure, as on a device.
-        idle()
-        env[display] = failedRead(w = 1800, h = 1000, rotation = 1)
-        host.onDisplayChanged(display)
-        assertEquals("on the stand-in", 1800 - 100, a.p.x)
-        env[display] = testEnvironment(2000, 1000, rotation = 1)
-        readsAgain()
-        assertEquals(2000 - 100, a.p.x)
-        assertEquals(1000 - 100, a.p.y)
-    }
-
-    @Test fun `a display owes one re-layout however many passes used a stand-in, and teardown forgets it`() {
-        Docked().add()
-        env[display] = failedRead()
-        host.refresh(display, "bars", force = false)
-        host.invalidateLayout(display)
-        assertEquals("one wait per display however many passes", 1, waitingOnRead.size)
-        host.removeAll()
-        reads = 0
-        readsAgain()
-        assertEquals("torn down: nothing read", 0, reads)
     }
 
     // ── Hearing the bars ──────────────────────────────────────────────────
