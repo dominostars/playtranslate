@@ -17,6 +17,7 @@ import android.view.WindowInsetsController
 import android.view.WindowManager
 import androidx.annotation.RequiresApi
 import androidx.core.view.doOnLayout
+import com.playtranslate.DisplayWindowContexts
 import com.playtranslate.DrawRateProbe
 import com.playtranslate.displaySizePx
 import com.playtranslate.displayWindowMetrics
@@ -167,7 +168,8 @@ class OverlayHost(
         // The display as it is now: a pinned window takes its size, a Placed
         // window is laid out against it before it exists, so it appears in
         // place.
-        val env = if (fullScreen || placement is OverlayPlacement.Placed) environment(displayId) else null
+        val reading = if (fullScreen || placement is OverlayPlacement.Placed) read(displayId) else null
+        val env = reading?.env
         // MATCH_PARENT sizing delegates to the platform, and that delegation is
         // measurably broken on both sides of the R boundary: below R it resolves
         // to the inset content area (short of the panel; overlay/capture scale
@@ -217,6 +219,7 @@ class OverlayHost(
             val handle = OverlayHandle(view, wm, params, displayId, placement, pinned)
             handle.laidOutWith = env
             overlayWindows += handle
+            if (reading?.standIn == true) owe(displayId)
             capture?.saved?.add(SavedHandle(handle, requestedAlpha))
             logOverlayGeometry(view, params, displayId, fullScreen)
             logFocusableOverlay("add", view, params, displayId)
@@ -286,9 +289,17 @@ class OverlayHost(
      * an icon released or a window added during a failure moves and resizes
      * nothing and places the new window clear of the bars. Across a rotation
      * the stand-in is all there is, and a window must still go somewhere: it
-     * is laid out against that, and the next real read lays it out again.
+     * is laid out against that. Either way what the failure hid (a bar
+     * shown, the rotation itself) is still owed: windows laid out against a
+     * stand-in are laid out again at the display's next successful read
+     * ([owe]).
      */
-    fun environment(displayId: Int): OverlayEnvironment? {
+    fun environment(displayId: Int): OverlayEnvironment? = read(displayId)?.env
+
+    /** An environment, and whether it stands in for a failed read. */
+    private class Read(val env: OverlayEnvironment, val standIn: Boolean)
+
+    private fun read(displayId: Int): Read? {
         val env = environmentReader(displayId)
         if (env == null) {
             lastRead.remove(displayId)
@@ -296,7 +307,7 @@ class OverlayHost(
         }
         if (!env.provisional) {
             lastRead[displayId] = env
-            return env
+            return Read(env, standIn = false)
         }
         val last = lastRead[displayId]?.takeIf { it.geometry.rotation == env.geometry.rotation }
         Log.w(
@@ -304,7 +315,29 @@ class OverlayHost(
             "env[$displayId] read failed: " +
                 if (last != null) "the last real read stands in" else "no real read of rot=${env.geometry.rotation}, placing without insets",
         )
-        return last ?: env
+        return Read(last ?: env, standIn = true)
+    }
+
+    /** Displays whose windows were laid out against a stand-in for a failed
+     *  read, each laid out again at its next successful read. Without this a
+     *  failure swallows the event that read for it: a bar the windows heard
+     *  shown is recorded as heard ([barsHeard]) whether or not the pass that
+     *  followed could place against it. */
+    private val owed = mutableSetOf<Int>()
+
+    /** Runs an action at a display's next successful read
+     *  ([DisplayWindowContexts.whenReadable]); tests substitute one. */
+    internal var whenReadable: (displayId: Int, action: () -> Unit) -> Unit = DisplayWindowContexts::whenReadable
+
+    /** [displayId]'s windows were just laid out against a stand-in: lay them
+     *  out again, forced, once the display reads again. */
+    private fun owe(displayId: Int) {
+        if (!owed.add(displayId)) return
+        whenReadable(displayId) {
+            mainHandler.post {
+                if (owed.remove(displayId)) refresh(displayId, "readable", force = true)
+            }
+        }
     }
 
     /** A pass is under way ([refresh]); a refresh asked for meanwhile runs
@@ -392,7 +425,9 @@ class OverlayHost(
         // Nothing on the display follows it (every display event reaches
         // both backends' hosts): no read.
         if (overlayWindows.none { it.displayId == displayId && it.followsEnvironment }) return
-        val env = environment(displayId) ?: return
+        val reading = read(displayId) ?: return
+        val env = reading.env
+        if (reading.standIn) owe(displayId)
         var passForce = force
         for (pass in 1..MAX_LAYOUT_PASSES) {
             val commits = layoutPass(displayId, env, passForce)
@@ -719,6 +754,7 @@ class OverlayHost(
         overlayWindows.clear()
         touchSentinels.clear()
         barsHeard.clear()
+        owed.clear()
         for (h in handles) {
             WindowChurnGate.removeWindow(h.view, h.wm, h.params, h.displayId)
         }

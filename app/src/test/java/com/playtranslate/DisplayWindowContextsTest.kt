@@ -5,11 +5,13 @@ import android.hardware.display.DisplayManager
 import android.view.Display
 import android.view.Surface
 import androidx.test.core.app.ApplicationProvider
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -33,6 +35,22 @@ class DisplayWindowContextsTest {
     private val display: Display get() = dm.getDisplay(Display.DEFAULT_DISPLAY)
 
     private fun windowContext(id: Int = Display.DEFAULT_DISPLAY) = DisplayWindowContexts.of(app, id)
+
+    private val realMake = DisplayWindowContexts.make
+
+    @Before fun setUp() = DisplayWindowContexts.reset()
+
+    @After fun tearDown() {
+        DisplayWindowContexts.make = realMake
+        DisplayWindowContexts.reset()
+    }
+
+    /** Window contexts can't be made now (Android 11 out of tokens). */
+    private fun contextsRefused() {
+        DisplayWindowContexts.make = { _, _ -> throw UnsupportedOperationException("refused (test)") }
+    }
+
+    private fun read(id: Int = Display.DEFAULT_DISPLAY) = DisplayWindowContexts.metrics(app, id)
 
     @Test fun `every read of a display shares one window context`() {
         val first = windowContext()
@@ -84,6 +102,48 @@ class DisplayWindowContextsTest {
         assertNotSame(windowContext(), mine)
         ShadowDisplayManager.removeDisplay(second)
         assertNull(windowContext(second))
+    }
+
+    @Test fun `a removed display's context is dropped at the next read of any display`() {
+        val second = ShadowDisplayManager.addDisplay("w400dp-h300dp")
+        assertNotNull(read(second))
+        read()
+        ShadowDisplayManager.removeDisplay(second)
+        read()
+        assertEquals(setOf(Display.DEFAULT_DISPLAY), DisplayWindowContexts.kept())
+    }
+
+    @Test fun `what waits on a failing display runs at its next successful read`() {
+        contextsRefused()
+        assertNull(read())
+        var ran = 0
+        DisplayWindowContexts.whenReadable(Display.DEFAULT_DISPLAY) { ran++ }
+        assertNull(read())
+        assertEquals("still failing", 0, ran)
+        DisplayWindowContexts.make = realMake
+        assertNotNull(read())
+        assertEquals(1, ran)
+        read()
+        assertEquals("once", 1, ran)
+    }
+
+    @Test fun `what waits on a display that reads fine runs at once`() {
+        read()
+        var ran = 0
+        DisplayWindowContexts.whenReadable(Display.DEFAULT_DISPLAY) { ran++ }
+        assertEquals(1, ran)
+    }
+
+    @Test fun `what waits on a display that goes away runs`() {
+        val second = ShadowDisplayManager.addDisplay("w400dp-h300dp")
+        contextsRefused()
+        assertNull(read(second))
+        var ran = 0
+        DisplayWindowContexts.whenReadable(second) { ran++ }
+        ShadowDisplayManager.removeDisplay(second)
+        DisplayWindowContexts.make = realMake
+        read()
+        assertEquals(1, ran)
     }
 
     @Test fun `a new Application starts with none`() {

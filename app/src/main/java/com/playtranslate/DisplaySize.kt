@@ -6,6 +6,7 @@ import android.graphics.Point
 import android.hardware.display.DisplayManager
 import android.os.Build
 import android.util.Log
+import android.view.Display
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.WindowMetrics
@@ -55,25 +56,27 @@ fun Context.displayWindowMetrics(): WindowMetrics? {
     // no window context at all; callers fall back to coarser metrics (see
     // [displaySizePx] / [statusBarHeightPx]).
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
-    return try {
-        // This context names the display; a context with none throws here,
-        // as createWindowContext on it would.
-        val displayId = display?.displayId ?: return null
-        val windowContext = DisplayWindowContexts.of(applicationContext, displayId) ?: return null
-        OwnWindows.manager(windowContext)?.currentWindowMetrics
+    // This context names the display; a context with none throws here, as
+    // createWindowContext on it would.
+    val displayId = try {
+        display?.displayId
     } catch (e: RuntimeException) {
         Log.w("DisplaySize", "windowMetrics query failed; using fallback metrics", e)
         null
-    }
+    } ?: return null
+    return DisplayWindowContexts.metrics(applicationContext, displayId)
 }
 
 /**
  * The window context every read of a display goes through
  * ([displayWindowMetrics]): one per display, kept while the display's
  * [Geometry] is the one it was made against and made again when it differs.
- * Process-wide, so every reader of a display shares it; [reset] runs at
- * Application.onCreate, since a JVM that runs many tests keeps statics
- * across their Applications.
+ * It also knows which displays' last read failed, and runs what waits on one
+ * at its next successful read ([whenReadable]): a consumer that placed
+ * something from a stand-in for a failed read has no other signal that a
+ * real read is available again. Process-wide, so every reader of a display
+ * shares it; [reset] runs at Application.onCreate, since a JVM that runs many
+ * tests keeps statics across their Applications.
  */
 internal object DisplayWindowContexts {
 
@@ -87,32 +90,100 @@ internal object DisplayWindowContexts {
 
     private val entries = HashMap<Int, Entry>()
 
-    /** The window context of [displayId], made from [app] (never from a
-     *  caller's activity, which a kept context would outlive), or null for
-     *  a display that went away. Throws what createWindowContext throws. */
+    /** Displays whose last read failed. */
+    private val failing = HashSet<Int>()
+
+    /** Per display, what runs at its next successful read ([whenReadable]). */
+    private val waiting = HashMap<Int, MutableList<() -> Unit>>()
+
+    /** Makes a display's window context; tests substitute one that fails. */
     @RequiresApi(Build.VERSION_CODES.R)
-    fun of(app: Context, displayId: Int): Context? {
-        val dm = app.getSystemService(DisplayManager::class.java) ?: return null
-        synchronized(this) {
-            val display = dm.getDisplay(displayId)
-            if (display == null) {
-                entries.remove(displayId)
-                return null
-            }
-            val mode = display.mode
-            val geometry = Geometry(display.rotation, mode.physicalWidth, mode.physicalHeight)
-            entries[displayId]?.takeIf { it.geometry == geometry }?.let { return it.windowContext }
-            val made = app.createDisplayContext(display)
-                .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
-            entries[displayId] = Entry(made, geometry)
-            // A display removed since keeps nothing: on Android 11 its
-            // context would hold one of the app's five windowless tokens.
-            entries.keys.retainAll { dm.getDisplay(it) != null }
-            return made
-        }
+    internal var make: (app: Context, display: Display) -> Context = { app, display ->
+        app.createDisplayContext(display)
+            .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
     }
 
-    fun reset() = synchronized(this) { entries.clear() }
+    /** [displayId]'s window metrics now, or null when the read failed or the
+     *  display went away. A success after a failure runs what waited on it,
+     *  on the reading thread. */
+    @RequiresApi(Build.VERSION_CODES.R)
+    fun metrics(app: Context, displayId: Int): WindowMetrics? {
+        val dm = app.getSystemService(DisplayManager::class.java) ?: return null
+        val ready = ArrayList<() -> Unit>()
+        val metrics = synchronized(this) {
+            forgetRemoved(dm, ready)
+            val display = dm.getDisplay(displayId)
+            if (display == null) {
+                forget(displayId, ready)
+                null
+            } else {
+                val read = try {
+                    OwnWindows.manager(of(app, display))?.currentWindowMetrics
+                } catch (e: RuntimeException) {
+                    Log.w("DisplaySize", "windowMetrics query failed; using fallback metrics", e)
+                    null
+                }
+                if (read == null) {
+                    failing += displayId
+                } else if (failing.remove(displayId)) {
+                    waiting.remove(displayId)?.let { ready += it }
+                }
+                read
+            }
+        }
+        ready.forEach { it() }
+        return metrics
+    }
+
+    /** Runs [action] at [displayId]'s next successful read, or when the
+     *  display goes away; at once (on this thread) when its last read did not
+     *  fail. Once. */
+    fun whenReadable(displayId: Int, action: () -> Unit) {
+        val now = synchronized(this) {
+            if (displayId in failing) {
+                waiting.getOrPut(displayId) { ArrayList() } += action
+                false
+            } else true
+        }
+        if (now) action()
+    }
+
+    /** The window context of [displayId], or null for a display that went
+     *  away. Throws what createWindowContext throws. */
+    @RequiresApi(Build.VERSION_CODES.R)
+    fun of(app: Context, displayId: Int): Context? =
+        app.getSystemService(DisplayManager::class.java)?.getDisplay(displayId)?.let { of(app, it) }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun of(app: Context, display: Display): Context = synchronized(this) {
+        val mode = display.mode
+        val geometry = Geometry(display.rotation, mode.physicalWidth, mode.physicalHeight)
+        entries[display.displayId]?.takeIf { it.geometry == geometry }?.let { return it.windowContext }
+        make(app, display).also { entries[display.displayId] = Entry(it, geometry) }
+    }
+
+    /** Every display this holds anything for and the platform no longer has
+     *  is forgotten: on Android 11 a kept context holds one of the app's five
+     *  windowless tokens, and what waits on a display that is gone runs. */
+    private fun forgetRemoved(dm: DisplayManager, ready: MutableList<() -> Unit>) {
+        val known = entries.keys + failing + waiting.keys
+        for (id in known) if (dm.getDisplay(id) == null) forget(id, ready)
+    }
+
+    private fun forget(displayId: Int, ready: MutableList<() -> Unit>) {
+        entries.remove(displayId)
+        failing.remove(displayId)
+        waiting.remove(displayId)?.let { ready += it }
+    }
+
+    /** The displays a window context is kept for. */
+    internal fun kept(): Set<Int> = synchronized(this) { entries.keys.toSet() }
+
+    fun reset() = synchronized(this) {
+        entries.clear()
+        failing.clear()
+        waiting.clear()
+    }
 }
 
 /** Full pixel size of this context's display in its current rotation. Falls
