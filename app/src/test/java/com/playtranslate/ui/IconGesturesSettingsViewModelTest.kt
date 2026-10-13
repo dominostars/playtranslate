@@ -85,7 +85,7 @@ class IconGesturesSettingsViewModelTest {
         vm.setTapAction(TapAction.CAPTURE_SCREEN)
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(TapAction.CAPTURE_SCREEN, vm.state.value.tap)
-        assertEquals(HoldAction.SHOW_TRANSLATIONS, vm.state.value.hold)
+        assertEquals(HoldAction.CAPTURE_SCREEN, vm.state.value.hold)
     }
 
     @Test fun `an unknown stored value reads as the gesture's default`() {

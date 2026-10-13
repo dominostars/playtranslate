@@ -13,9 +13,10 @@ import com.playtranslate.language.HintTextKind
  * title and says which source languages offer it. This shared face is what
  * the Settings surfaces render, the "On the floating icon" cell and the
  * picker page it opens: a title per candidate, and whether the current
- * source language offers it. "Open the quick menu", the auto-translate
- * toggle, the swap and the game-language change are each offered on two
- * gestures and so are each a constant in two enums, sharing their strings;
+ * source language offers it. "Open the quick menu", the capture, the
+ * auto-translate toggle, the swap and the game-language change are each
+ * offered on two gestures and so are each a constant in two enums, sharing
+ * their strings;
  * [IconGestureBindings.quickMenuReachable] is the one place that treats the
  * two menu constants as the same thing.
  *
@@ -75,6 +76,12 @@ enum class DragAction : IconAction {
 /** Press the icon without moving. Fires at the hold threshold; the lift, or
  *  a slide past the drag threshold, ends it. */
 enum class HoldAction : IconAction {
+    /** The quick menu's Capture button at the hold threshold
+     *  ([TapAction.CAPTURE_SCREEN]): a one-shot capture of this display's
+     *  current region, replacing any showing result. The lift does
+     *  nothing; a slide into a drag cancels the one-shot, as it cancels
+     *  the hold-to-preview's. */
+    CAPTURE_SCREEN,
     /** Hold-to-preview: a one-shot translation of this display while held
      *  (in live mode, a peek at the game under the overlay). */
     SHOW_TRANSLATIONS,
@@ -92,6 +99,7 @@ enum class HoldAction : IconAction {
     CHANGE_GAME_LANGUAGE;
 
     override fun titleRes(hint: HintTextKind): Int = when (this) {
+        CAPTURE_SCREEN -> R.string.icon_action_capture_screen
         SHOW_TRANSLATIONS -> R.string.icon_action_show_translations
         OPEN_QUICK_MENU -> R.string.icon_action_open_quick_menu
         TOGGLE_AUTO_TRANSLATE -> R.string.icon_action_toggle_auto_translate
@@ -100,12 +108,15 @@ enum class HoldAction : IconAction {
     }
 
     override fun isOfferedOn(hint: HintTextKind): Boolean = when (this) {
-        SHOW_TRANSLATIONS, OPEN_QUICK_MENU, TOGGLE_AUTO_TRANSLATE, CHANGE_GAME_LANGUAGE -> true
+        CAPTURE_SCREEN, SHOW_TRANSLATIONS, OPEN_QUICK_MENU, TOGGLE_AUTO_TRANSLATE,
+        CHANGE_GAME_LANGUAGE -> true
         SWAP_OVERLAY_MODE -> SwapOverlayMode.isOfferedOn(hint)
     }
 
     companion object {
-        val DEFAULT = SHOW_TRANSLATIONS
+        /** The capture, since 2026-10-13; hold-to-preview before it. A
+         *  stored binding is kept; only an unset one reads as this. */
+        val DEFAULT = CAPTURE_SCREEN
     }
 }
 

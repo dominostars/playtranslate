@@ -18,9 +18,9 @@ class IconGestureBindingsTest {
     private val hintKinds = HintTextKind.entries
     private val withHint = HintTextKind.entries - HintTextKind.NONE
 
-    @Test fun `defaults are lookup, hold-to-preview and tap-to-menu`() {
+    @Test fun `defaults are lookup, hold-to-capture and tap-to-menu`() {
         assertEquals(DragAction.LOOKUP_WORDS, DragAction.DEFAULT)
-        assertEquals(HoldAction.SHOW_TRANSLATIONS, HoldAction.DEFAULT)
+        assertEquals(HoldAction.CAPTURE_SCREEN, HoldAction.DEFAULT)
         assertEquals(TapAction.OPEN_QUICK_MENU, TapAction.DEFAULT)
         for (hint in hintKinds) {
             assertTrue(bindings(HoldAction.DEFAULT, TapAction.DEFAULT, hint).quickMenuReachable)
@@ -98,6 +98,7 @@ class IconGestureBindingsTest {
             assertEquals(R.string.icon_action_show_translations, HoldAction.SHOW_TRANSLATIONS.titleRes(hint))
             assertEquals(R.string.icon_action_open_quick_menu, HoldAction.OPEN_QUICK_MENU.titleRes(hint))
             assertEquals(R.string.icon_action_open_quick_menu, TapAction.OPEN_QUICK_MENU.titleRes(hint))
+            assertEquals(R.string.icon_action_capture_screen, HoldAction.CAPTURE_SCREEN.titleRes(hint))
             assertEquals(R.string.icon_action_capture_screen, TapAction.CAPTURE_SCREEN.titleRes(hint))
             assertEquals(
                 R.string.icon_action_toggle_auto_translate,

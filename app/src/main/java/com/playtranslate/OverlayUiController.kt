@@ -1441,13 +1441,14 @@ class OverlayUiController(
                     TapAction.CHANGE_GAME_LANGUAGE -> changeGameLanguage(display)
                 }
             }
-            // True from a hold whose toggle stopped auto-translate until that
-            // gesture ends: at the lift (onHoldEnd), or at the drag a slide
-            // turns it into (onDragStart, right after onHoldCancel in the same
-            // move). That drag leaves live mode alone. With the app in front
-            // on the other screen the stop is a message to MainActivity, so
-            // the drag can still find the session running; pausing it would
-            // resume it when the lens closes, undoing the stop.
+            // True from a hold whose toggle, or whose capture, stopped
+            // auto-translate until that gesture ends: at the lift
+            // (onHoldEnd), or at the drag a slide turns it into (onDragStart,
+            // right after onHoldCancel in the same move). That drag leaves
+            // live mode alone. With the app in front on the other screen the
+            // stop is a message to MainActivity, so the drag can still find
+            // the session running; pausing it would resume it when the lens
+            // closes, undoing the stop.
             var holdStoppedLive = false
             icon.onDragStart = {
                 ensureService()
@@ -1496,6 +1497,11 @@ class OverlayUiController(
                 val action = prefs.iconHoldAction
                 heldAction = action
                 when (action) {
+                    // The quick menu's Capture button at the threshold, as
+                    // the tap's: a fresh one-shot, replacing any showing
+                    // result. It stops a running auto-translate first, which
+                    // the drag a slide turns this hold into must not resume.
+                    HoldAction.CAPTURE_SCREEN -> holdStoppedLive = captureCurrentRegionForDisplay(displayId)
                     HoldAction.SHOW_TRANSLATIONS -> CaptureService.instance?.holdStart(displayId)
                     HoldAction.OPEN_QUICK_MENU -> showFloatingMenu(display)
                     HoldAction.TOGGLE_AUTO_TRANSLATE -> holdStoppedLive = toggleLiveFromOverlay()
@@ -1508,12 +1514,13 @@ class OverlayUiController(
                     HoldAction.SHOW_TRANSLATIONS -> CaptureService.instance?.holdEnd()
                     // The menu opened at the hold threshold and stays up; the
                     // lift ends the gesture, not the menu. Likewise the
-                    // toggle, the swap and the game-language change (its
-                    // switch, or its picker) happened at the threshold. A
-                    // lift with no start latched (the starved hold above)
-                    // therefore does none of them.
-                    HoldAction.OPEN_QUICK_MENU, HoldAction.TOGGLE_AUTO_TRANSLATE,
-                    HoldAction.SWAP_OVERLAY_MODE, HoldAction.CHANGE_GAME_LANGUAGE -> Unit
+                    // capture, the toggle, the swap and the game-language
+                    // change (its switch, or its picker) happened at the
+                    // threshold. A lift with no start latched (the starved
+                    // hold above) therefore does none of them.
+                    HoldAction.CAPTURE_SCREEN, HoldAction.OPEN_QUICK_MENU,
+                    HoldAction.TOGGLE_AUTO_TRANSLATE, HoldAction.SWAP_OVERLAY_MODE,
+                    HoldAction.CHANGE_GAME_LANGUAGE -> Unit
                 }
                 heldAction = null
                 holdStoppedLive = false
@@ -1528,6 +1535,15 @@ class OverlayUiController(
                     // touch stream, so the menu's tap-outside dismissal never
                     // saw it). Close the menu first.
                     HoldAction.OPEN_QUICK_MENU -> dismissFloatingMenu()
+                    // The one-shot this hold began is cancelled, as the
+                    // hold-to-preview's is: its panel, in flight or already
+                    // up on this display, would come up under the lens
+                    // (the dismiss bumps the capture generation, so a shot
+                    // still in flight is dropped). A capture sent to the app
+                    // in front on the other screen is the app's and stands.
+                    // The auto-translate it stopped stays stopped
+                    // (holdStoppedLive), as after the toggle's stop.
+                    HoldAction.CAPTURE_SCREEN -> dismissCaptureResultOverlay()
                     // The toggle and the swap stand: the drag that follows
                     // pauses a running auto-translate and resumes it
                     // afterwards, in the mode the swap left, as any drag does,
@@ -2494,20 +2510,26 @@ class OverlayUiController(
 
     /**
      * Run a one-shot capture of [displayId]'s current region (full screen unless
-     * one is set) — the action shared by the floating menu's Capture button and
-     * the capture-screen hotkey. [handleRegionSelection] routes single- vs
-     * dual-screen and configures the override itself; a running auto session is
-     * stopped first so this is a clean one-shot, not a live refresh. Marks
-     * capture the most-recently-used primary (styling for the next menu open).
+     * one is set) — the action shared by the floating menu's Capture button,
+     * the capture-screen hotkey and the icon's capture gesture
+     * ([HoldAction.CAPTURE_SCREEN], [TapAction.CAPTURE_SCREEN]).
+     * [handleRegionSelection] routes single- vs dual-screen and configures the
+     * override itself; a running auto session is stopped first so this is a
+     * clean one-shot, not a live refresh. Marks capture the most-recently-used
+     * primary (styling for the next menu open). Returns true when it stopped
+     * auto-translate, or asked MainActivity to, as [toggleLiveFromOverlay]
+     * does: a hold's drag reads it.
      */
-    private fun captureCurrentRegionForDisplay(displayId: Int) {
+    private fun captureCurrentRegionForDisplay(displayId: Int): Boolean {
         captureIsPreferredPrimary = true
         val region = CaptureService.instance?.activeRegionForDisplay(displayId)
             ?: CaptureService.DEFAULT_REGION
-        if (CaptureService.instance?.isLive == true) {
+        val stoppedLive = CaptureService.instance?.isLive == true
+        if (stoppedLive) {
             stopLiveRouted()
         }
         handleRegionSelection(displayId, region)
+        return stoppedLive
     }
 
     private fun sendMainActivityIntent(action: String, targetDisplayId: Int? = null) {
