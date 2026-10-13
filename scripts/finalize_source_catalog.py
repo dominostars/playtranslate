@@ -4,8 +4,8 @@
 For each source language with a built <lang>/<lang>.zip under --build-dir, bump
 its catalog entry to the new packVersion (default 2), KEEP additiveFromVersion
 unchanged so the previous version takes the additive / optional ("Update Later")
-upgrade path, point the URL at the <lang>-v<version> release tag, and refresh
-sha256 + size from the actual zip.
+upgrade path, point the URL at the <lang>-v<version> release tag (on the packs host, see
+scripts/pack_urls.py), and refresh sha256 + size from the actual zip.
 
 Run AFTER uploading each <lang>.zip to its <lang>-v<version> release on
 github.com/dominostars/playtranslate-langpacks, then commit the catalog.
@@ -20,9 +20,10 @@ import json
 import re
 from pathlib import Path
 
+import pack_urls
+
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "app" / "src" / "main" / "assets" / "langpack_catalog.json"
-RELEASES = "https://github.com/dominostars/playtranslate-langpacks/releases/download"
 
 def rewrite_entry(text: str, lang: str, fields: dict[str, object]) -> str:
     """Rewrites the scalar [fields] of one pack entry in the catalog's TEXT,
@@ -84,7 +85,7 @@ def main() -> int:
             "additiveFromVersion": entry.get("additiveFromVersion", 1),
             "packVersion": args.pack_version,
             "size": len(data),
-            "url": f"{RELEASES}/{lang}-v{args.pack_version}/{lang}.zip",
+            "url": pack_urls.langpack_url(f"{lang}-v{args.pack_version}", f"{lang}.zip"),
             "sha256": hashlib.sha256(data).hexdigest(),
         }
         entry.update(fields)

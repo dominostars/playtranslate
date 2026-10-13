@@ -5,9 +5,10 @@ Generate Bergamot (Firefox Translations) catalog entries for langpack_catalog.js
 Mozilla's manifest (db/models.json) only carries an uncompressed hash for the
 *model* file, not the vocab/shortlist — so for each direction we download every
 file from the public GCS bucket, gunzip it, and compute the uncompressed SHA-256
-and size ourselves. The catalog `url` still points at Mozilla's gzipped object
-(the app downloads from there at runtime and gunzips via the MultiFile downloader,
-verifying against these uncompressed hashes).
+and size ourselves. The catalog `url` is the packs-host path for Mozilla's gzipped
+object (scripts/pack_urls.py; the website's `_redirects` forwards it to the bucket),
+which the app downloads at runtime and gunzips via the MultiFile downloader,
+verifying against these uncompressed hashes.
 
 We ship the `base-memory` tier (what Firefox Android uses). Most directions ship
 one shared `vocab`; the CJK targets (en->ja/zh/ko) ship a split `srcVocab`+`trgVocab`
@@ -40,6 +41,8 @@ import gzip
 import hashlib
 import os
 import urllib.request
+
+import pack_urls
 
 BUCKET = "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data"
 MANIFEST_URL = f"{BUCKET}/db/models.json"
@@ -120,6 +123,9 @@ def build_entry(direction: str, variant: dict):
             return None
         path = info["path"]
         url = f"{BUCKET}/{path}"
+        if not path.startswith("models/"):
+            raise SystemExit(f"{direction}: unexpected manifest path {path!r}, expected models/...")
+        catalog_url = pack_urls.bergamot_url(path[len("models/"):])
         name = os.path.basename(path)
         if name.endswith(".gz"):
             name = name[:-3]
@@ -127,7 +133,7 @@ def build_entry(direction: str, variant: dict):
         sha = hashlib.sha256(raw).hexdigest()
         size = len(raw)
         total += size
-        entry_files.append({"path": name, "url": url, "size": size, "sha256": sha, "gzip": True})
+        entry_files.append({"path": name, "url": catalog_url, "size": size, "sha256": sha, "gzip": True})
         print(f"  {direction} {role:16s} {name}  {size} bytes")
     entry = {
         "display": f"Firefox Translations {direction}",

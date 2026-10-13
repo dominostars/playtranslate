@@ -82,6 +82,7 @@ from wiktionary_filters import WIKT_EXCLUDED_POS, WIKT_REDIRECT_KEYS, filter_mis
 # whitespace stripping, non-ASCII rejection). See scripts/iso_codes.py for the
 # bug class this prevents.
 from iso_codes import normalize_lang_code
+import pack_urls
 
 
 def shorten_pos(pos_text: str) -> str:
@@ -635,7 +636,7 @@ def build_target_pack(args: argparse.Namespace) -> None:
     print(f'    "bundled": false,')
     print(f'    "packVersion": {pack_version},')
     print(f'    "size": {zip_size},')
-    print(f'    "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-{target}-v{pack_version}/{zip_name}",')
+    print(f'    "url": "{pack_urls.langpack_url(f"target-{target}-v{pack_version}", zip_name)}",')
     print(f'    "sha256": "{sha256}"')
     print(f"  }}")
 
