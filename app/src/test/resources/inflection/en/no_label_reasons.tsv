@@ -1,0 +1,23 @@
+# Tagsets of the en pack the English labeller leaves without a label, with the reason. Read by EnglishTagsetGoldenTest: every unlabelled line of labels.tsv needs its tags here, and no line here may be stale.
+-i plural	a page tagged with a foreign plural suffix (adjectives): not an English form
+-na plural	a page tagged with a foreign plural suffix (adjectives): not an English form
+accusative possessive	a pronoun form in two cases at once (her)
+dative form-of	a grammar-term page (datives of purpose)
+error-unknown-tag especially noun plural	extraction error tag (khakies)
+error-unknown-tag noun plural	extraction error tag (punx)
+error-unknown-tag participle past	extraction error tag (hove)
+error-unknown-tag past	extraction error tag (hove)
+error-unknown-tag plural	extraction error tag (beaver)
+form-of formal	a register alone (let us)
+form-of gerund negative	a negated construction page (un-othering) the line does not read
+form-of infinitive present	a construction page tagged infinitive and present (use to)
+form-of informal	a register alone ('bortion)
+form-of negative	a negated construction page (didn't used to) the line does not read
+form-of past perfect	a compound (perfect) construction page (there had been) the line does not read
+form-of perfect plural present	a compound (perfect) construction page (there have been) the line does not read
+form-of perfect present	a compound (perfect) construction page (worm has turned) the line does not read
+form-of perfect present singular	a compound (perfect) construction page (there has been) the line does not read
+form-of singular third-person	a pronoun's slashed form (his/her), nothing to say
+objective plural singular	both numbers on one page (of who)
+oblique possessive	a pronoun form in two cases at once (her)
+past perfect	a compound (perfect) construction page (could have cared less) the line does not read

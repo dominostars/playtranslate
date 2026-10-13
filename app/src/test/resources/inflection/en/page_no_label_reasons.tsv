@@ -1,0 +1,10 @@
+# Form-of page tagsets (sorted, form-of removed) whose tags the English labeller all knows but which say nothing the line names. Read by PackInflectionOracleTest.
+gerund participle past present	a page tagging a form both participles
+indicative plural present singular third-person	both numbers on one page
+indicative present second-person singular subjunctive	a page merging two moods (beest)
+infinitive present	a construction page tagged infinitive and present
+past second-person singular subjunctive	a subjunctive with a person, which the paradigm names only bare
+plural singular	both numbers on one page
+present singular subjunctive third-person	a subjunctive with a person, which the paradigm names only bare
+second-person singular	a page naming no tense (fuckest, juts)
+singular third-person	a page naming no tense (fuckest, juts)
