@@ -1,0 +1,35 @@
+# Form-of page tagsets (sorted, form-of removed) whose tags the German labeller all knows but which say nothing the line names. Read by PackInflectionOracleTest.
+feminine first-person genitive singular	a pronoun page tagged by gender and person
+feminine singular third-person	a pronoun page tagged by gender and person
+first-person imperative singular	an imperative for the first person, which German has not
+first-person imperfect singular subjunctive third-person	a Konjunktiv tagged neither I nor II
+first-person indicative singular	a page naming no tense
+first-person past plural subjunctive third-person	a Konjunktiv tagged neither I nor II
+first-person plural	a page naming no tense
+first-person present singular subjunctive third-person	a Konjunktiv tagged neither I nor II
+first-person present third-person	a page naming no number
+first-person preterite third-person	a page naming no number
+first-person singular	a page naming no tense
+first-person singular third-person	a page naming no tense
+imperative	an imperative with no number
+imperfect	a tense with no person
+imperfect indicative	a tense with no person
+indicative plural second-person	a page naming no tense
+indicative second-person singular	a page naming no tense
+infinitive neuter strong	a verbal noun page (das Verb) tagged infinitive with a gender
+participle	a participle page with a stray tense or none the paradigm names
+participle preterite	a participle page with a stray tense or none the paradigm names
+past	a tense with no person
+plural present second-person subjunctive	a Konjunktiv tagged neither I nor II
+plural second-person	a page naming no tense
+plural singular third-person	both numbers and no tense
+plural third-person	a page naming no tense
+present second-person	a page naming no number
+present singular subjunctive third-person	a Konjunktiv tagged neither I nor II
+present third-person	a page naming no number
+preterite	a tense with no person
+preterite singular	a tense with no person
+second-person	a page naming no number
+second-person singular	a page naming no tense
+singular	the lemma's own singular, nothing to say
+singular third-person	a page naming no tense

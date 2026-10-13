@@ -495,7 +495,7 @@ FORM_OF_KEEP_TAGS = frozenset({
     "masculine", "feminine", "neuter", "common",
     "present", "preterite", "imperfect", "future", "conditional", "pluperfect", "historic", "perfect", "past",
     "indicative", "subjunctive", "imperative", "negative", "formal", "informal", "vos-form", "with-voseo",
-    "infinitive", "gerund", "participle",
+    "infinitive", "infinitive-zu", "gerund", "participle",
     "comparative", "superlative", "diminutive", "augmentative",
     "nominative", "genitive", "dative", "accusative", "vocative", "instrumental", "locative", "ablative",
     "oblique", "definite", "indefinite",

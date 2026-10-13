@@ -1,0 +1,58 @@
+# Tagsets of the de pack the German labeller leaves without a label, with the reason. Read by GermanTagsetGoldenTest: every unlabelled line of labels.tsv needs its tags here, and no line here may be stale.
+Northwest-German auxiliary colloquial	the perfect auxiliary row of a verb's table (haben, sein), not a form
+archaic indicative preterite pronominal subordinate-clause table-2	an impersonal verb's row carries no person (dass es schlagend ward)
+archaic indicative preterite singular	an impersonal verb's row carries no person (es ward schlagend)
+auxiliary	the perfect auxiliary row of a verb's table (haben, sein), not a form
+auxiliary colloquial	the perfect auxiliary row of a verb's table (haben, sein), not a form
+auxiliary pronominal table-2	the perfect auxiliary row of a verb's table (haben, sein), not a form
+auxiliary pronominal table-3	the perfect auxiliary row of a verb's table (haben, sein), not a form
+auxiliary pronominal table-4	the perfect auxiliary row of a verb's table (haben, sein), not a form
+auxiliary rare	the perfect auxiliary row of a verb's table (haben, sein), not a form
+auxiliary table-2	the perfect auxiliary row of a verb's table (haben, sein), not a form
+auxiliary table-3	the perfect auxiliary row of a verb's table (haben, sein), not a form
+auxiliary table-4	the perfect auxiliary row of a verb's table (haben, sein), not a form
+auxiliary table-5	the perfect auxiliary row of a verb's table (haben, sein), not a form
+auxiliary table-6	the perfect auxiliary row of a verb's table (haben, sein), not a form
+error-unknown-tag genitive	extraction error tag (runden tisches)
+feminine plural predicative third-person	a page merging a participle's agreement with a person (ist gekocht): kaikki merged two pages
+feminine predicative singular	the lemma itself, predicative positive
+feminine predicative singular table-4	the lemma itself, predicative positive
+feminine singular third-person	a possessive variant of a phrase (ihres zeichens)
+first-person form-of plural	a page naming no tense (mühlen)
+first-person form-of plural third-person	a page naming no tense (setzen über)
+first-person form-of singular	a page naming no tense (schriee)
+first-person form-of singular third-person	a page naming no tense (setze über)
+first-person plural	a possessive variant of a phrase (unseres zeichens)
+first-person singular	a possessive variant of a phrase (meines zeichens)
+form-of plural second-person	a page naming no tense (setzet über)
+form-of plural third-person	a page naming no tense (hagelten)
+form-of second-person singular	a page naming no tense (setzest über)
+form-of singular	the lemma's own singular (wochenendpendlers), nothing to say
+form-of singular third-person	a page naming no tense (schriee)
+formal pronominal rare subjunctive subjunctive-ii subordinate-clause table-2	an impersonal verb's row carries no person (dass es in strömen regnete)
+formal rare singular subjunctive subjunctive-ii	an impersonal verb's row carries no person (es hagelte)
+indicative present pronominal subordinate-clause table-2	an impersonal verb's row carries no person (dass es in strömen regnet)
+indicative present singular	an impersonal verb's row carries no person (es hagelt)
+indicative preterite pronominal subordinate-clause table-2	an impersonal verb's row carries no person (dass es in strömen regnete)
+indicative preterite singular	an impersonal verb's row carries no person (es hagelte)
+masculine predicative singular	the lemma itself, predicative positive
+masculine predicative singular table-4	the lemma itself, predicative positive
+masculine predicative singular third-person	a page merging a participle's agreement with a person (ist gekocht): kaikki merged two pages
+masculine singular third-person	a possessive variant of a phrase (seines zeichens)
+neuter predicative singular	the lemma itself, predicative positive
+neuter predicative singular table-4	the lemma itself, predicative positive
+neuter singular third-person	a possessive variant of a phrase (seines zeichens)
+past	a tense or mood with no person (leavte)
+past subjunctive	a tense or mood with no person (schlüge zeit tot)
+plural predicative	the lemma itself, predicative positive
+plural predicative table-4	the lemma itself, predicative positive
+plural predicative third-person	a page merging a participle's agreement with a person (sind gekocht): kaikki merged two pages
+plural second-person	a possessive variant of a phrase (eueres zeichens)
+plural third-person	a possessive variant of a phrase (ihres zeichens)
+prepositional	a preposition's form page (in), not an inflection
+pronominal subjunctive subjunctive-i subordinate-clause table-2	an impersonal verb's row carries no person (dass es in strömen regne)
+pronominal subjunctive subjunctive-ii subordinate-clause table-2	an impersonal verb's row carries no person (dass es schwerfiele)
+second-person singular	a possessive variant of a phrase (deines zeichens)
+singular	the lemma's own singular (schuld), nothing to say
+singular subjunctive subjunctive-i	an impersonal verb's row carries no person (es hagele)
+singular subjunctive subjunctive-ii	an impersonal verb's row carries no person (es fiele schwer)

@@ -41,6 +41,11 @@ class Column(
 /** A grid section: a mood as a chip, pronouns down, columns across. */
 class GridSection(val title: String, val rows: List<PersonRow>, val columns: List<Column>, val rareMarker: String? = null)
 
+/** What a noun's, adjective's or pronoun's form says: its [name] on the line
+ *  ("femenino plural", "Dativ Plural"), and for a language that declines, its
+ *  [case] and number for the declension grid. */
+data class NominalReading(val name: String, val case: String? = null, val plural: Boolean? = null)
+
 /**
  * The machinery shared by the Romance paradigms (Spanish, Portuguese, French):
  * one reader of a form's kaikki tags, [classified], from which both the line
@@ -104,6 +109,8 @@ abstract class RomanceParadigm : InflectionParadigm {
     protected open val qualifiers: Set<String> = emptySet()
     /** Tags that change nothing the label says: a region, a usage note, a spelling variant's marker. */
     protected abstract val ignored: Set<String>
+    /** Tags the language's [nominal] hook reads (German's cases and declension types): known, and theirs to interpret. */
+    protected open val nominalTags: Set<String> = emptySet()
 
     protected abstract val gridSections: List<GridSection>
     protected abstract val nonFiniteTitle: String
@@ -118,6 +125,29 @@ abstract class RomanceParadigm : InflectionParadigm {
     protected open fun isPronominalLemma(lemma: String): Boolean = false
     /** The pronoun(s) written onto a clitic form, read off the surface; null when the form cannot be read. */
     protected open fun attachedPronouns(tags: Set<String>, surface: String): String? = null
+    /** Whether the verb leads a multi-word form (German's separable verbs: "stehe auf"), so the
+     *  arrival surface is matched against the first word too. */
+    protected open val verbLeadsPhrase: Boolean = false
+    /** The persons a finite form has when kaikki tags none (a German page's "imperative singular" is du's). */
+    protected open fun impliedPersons(moods: Set<String>, plural: Boolean): List<Int> = emptyList()
+
+    /** A noun's, adjective's or pronoun's form: what the line says, or null for
+     *  nothing to say or a form not read. The Romance default names degree,
+     *  gender and number and reads a person or a polarity as a page it does not
+     *  read; a declining language overrides it with cases. */
+    protected open fun nominal(tags: Set<String>, persons: List<Int>, numbers: List<Boolean>, negative: Boolean): NominalReading? {
+        // A person or a polarity on a noun's or adjective's form is a page this
+        // does not read ("a mis solas": first-person singular); a register is a
+        // usage note there and changes nothing the label says.
+        if (persons.isNotEmpty() || numbers.size > 1 || negative || PAST in tags) return null
+        if (tags.any { it in voseoTags }) return null
+        return agreement(tags, participle = false)?.let { NominalReading(it, plural = numbers.singleOrNull()) }
+    }
+
+    /** The table for an entry whose forms are all nominal (a declension grid),
+     *  or null; the Romance languages draw none. Receives every classified
+     *  nominal form as (surface, reading) and the arrival surface. */
+    protected open fun nominalTable(forms: List<Pair<String, NominalReading>>, target: String?): ConjugationTable? = null
 
     // ── the classification ─────────────────────────────────────────────
 
@@ -143,6 +173,8 @@ abstract class RomanceParadigm : InflectionParadigm {
         /** Non-finite: its name as listed. */
         val nonFiniteName: String?,
         val agreement: String?,
+        /** Nominal, in a declining language: the case. */
+        val case: String?,
         val readings: List<Reading>,
     )
 
@@ -153,7 +185,7 @@ abstract class RomanceParadigm : InflectionParadigm {
     }
     private val known: Set<String> by lazy {
         PERSONS.keys + NUMBERS.keys + MOODS + NEGATIVE + tenseTags + nonFiniteForms.keys.flatten() + PAST +
-            formalTags + informalTags + voseoTags + genderNames.keys + degreeNames.keys + cliticTags + qualifiers + ignored +
+            formalTags + informalTags + voseoTags + genderNames.keys + degreeNames.keys + cliticTags + qualifiers + ignored + nominalTags +
             setOf(FORM_OF_TAG, InflectionForm.PRONOMINAL_TAG)
     }
 
@@ -211,7 +243,7 @@ abstract class RomanceParadigm : InflectionParadigm {
             return Classified(
                 form, Kind.NON_FINITE, clitic = null, persons = emptyList(), plural = null, address = Address.PLAIN,
                 moods = emptySet(), tenseKeys = emptyList(), qualifiers = emptySet(), negative = false, nonFiniteName = match.value,
-                agreement = agreement, readings = listOf(Reading(null, listOfNotNull(match.value, agreement).joinToString(" "))),
+                agreement = agreement, case = null, readings = listOf(Reading(null, listOfNotNull(match.value, agreement).joinToString(" "))),
             )
         }
 
@@ -222,7 +254,13 @@ abstract class RomanceParadigm : InflectionParadigm {
             // and the indicative is the mood that goes unsaid. A page may merge
             // the indicative and the subjunctive where the forms coincide (ils
             // absentent); the imperative stands alone.
-            val read = moods.ifEmpty { listOf(INDICATIVE) }.toSet()
+            // A tense that belongs to one mood names it when kaikki left the mood
+            // unsaid (a German page's `subjunctive-i` alone is the Konjunktiv).
+            val read = moods.ifEmpty {
+                val indicativeKey = indicativeTenses.keys.any { k -> k.all { it in tags } }
+                val subjunctiveKey = subjunctiveTenses.keys.any { k -> k.all { it in tags } }
+                listOf(if (subjunctiveKey && !indicativeKey) SUBJUNCTIVE else INDICATIVE)
+            }.toSet()
             if (IMPERATIVE in read && read.size > 1) return null
             val keys = ArrayList<Set<String>>()
             val names = ArrayList<String>()
@@ -256,16 +294,12 @@ abstract class RomanceParadigm : InflectionParadigm {
             return finite(form, read, keys.distinct(), names, persons, numbers, negative)
         }
 
-        // A noun's or adjective's form. A person or a polarity on it is a page
-        // this does not read ("a mis solas": first-person singular); a register
-        // is a usage note there and changes nothing the label says.
-        if (persons.isNotEmpty() || numbers.size > 1 || negative || PAST in tags) return null
-        if (tags.any { it in voseoTags }) return null
-        val agreement = agreement(tags, participle = false) ?: return null
+        // A noun's, adjective's or pronoun's form: the language's nominal reading.
+        val nominal = nominal(tags, persons, numbers, negative) ?: return null
         return Classified(
-            form, Kind.NOMINAL, clitic = null, persons = emptyList(), plural = numbers.singleOrNull(), address = Address.PLAIN,
+            form, Kind.NOMINAL, clitic = null, persons = emptyList(), plural = nominal.plural, address = Address.PLAIN,
             moods = emptySet(), tenseKeys = emptyList(), qualifiers = emptySet(), negative = false, nonFiniteName = null,
-            agreement = agreement, readings = listOf(Reading(null, agreement)),
+            agreement = nominal.name, case = nominal.case, readings = listOf(Reading(null, nominal.name)),
         )
     }
 
@@ -274,12 +308,16 @@ abstract class RomanceParadigm : InflectionParadigm {
         persons: List<Int>, numbers: List<Boolean>, negative: Boolean,
     ): Classified? {
         val tags = form.tags
-        if (names.isEmpty() || persons.isEmpty() || numbers.size != 1) return null
-        val plural = numbers.single()
+        if (names.isEmpty() || numbers.isEmpty()) return null
+        // A page may merge both numbers where the forms coincide (German
+        // abbisst: du and ihr); the grid places the form by the first.
+        val plural = numbers.first()
+        val persons = persons.ifEmpty { if (numbers.size == 1) impliedPersons(moods, plural) else emptyList() }
+        if (persons.isEmpty()) return null
         // An imperative exists for the persons the language's grid has rows
         // for (no yo imperative; French has none for il): a page tagging one
         // elsewhere (ferme-la, "first-person singular imperative") is not read.
-        if (IMPERATIVE in moods && persons.any { (it to plural) !in imperativeCells }) return null
+        if (IMPERATIVE in moods && numbers.any { n -> persons.any { (it to n) !in imperativeCells } }) return null
         val formal = tags.any { it in formalTags }
         val informal = tags.any { it in informalTags }
         val voseo = tags.any { it in voseoTags }
@@ -294,11 +332,11 @@ abstract class RomanceParadigm : InflectionParadigm {
             IMPERATIVE in moods && persons == listOf(3) -> Address.FORMAL
             else -> Address.PLAIN
         }
-        val who = persons.map { pronouns[Triple(it, plural, address)] ?: return null }
+        val who = numbers.flatMap { n -> persons.map { pronouns[Triple(it, n, address)] ?: return null } }
         return Classified(
             form, Kind.FINITE, clitic = null, persons = persons, plural = plural, address = address,
             moods = moods, tenseKeys = keys, qualifiers = tags.filterTo(HashSet()) { it in qualifiers }, negative = negative,
-            nonFiniteName = null, agreement = null, readings = who.flatMap { pronoun -> names.map { Reading(pronoun, it) } },
+            nonFiniteName = null, agreement = null, case = null, readings = who.flatMap { pronoun -> names.map { Reading(pronoun, it) } },
         )
     }
 
@@ -307,7 +345,7 @@ abstract class RomanceParadigm : InflectionParadigm {
      *  is the participle itself and says nothing). A bare masculine reading
      *  is a feminine lemma's counterpart (matrón under matrona). Null when the
      *  tags say nothing (a noun's own singular). */
-    private fun agreement(tags: Set<String>, participle: Boolean): String? {
+    protected fun agreement(tags: Set<String>, participle: Boolean): String? {
         val words = buildList {
             for ((tag, name) in degreeNames) if (tag in tags) add(name)
             // One plural for both genders (grandes) is tagged feminine AND
@@ -357,9 +395,11 @@ abstract class RomanceParadigm : InflectionParadigm {
         // cells. Clitic-attached forms are labelled but are not cells. A line
         // the classifier does not read is no cell.
         val classified = forms.filterNot { it.fromPronominalVariant }.mapNotNull { classified(it) }
-        if (classified.none { it.kind != Kind.NOMINAL }) return null
-        val usable = classified.filter { it.clitic == null && (pronominal || !cliticLedIsVariant || !isCliticLed(it.form.surface)) }
         val target = highlight?.lowercase(locale)
+        if (classified.none { it.kind != Kind.NOMINAL }) {
+            return nominalTable(classified.map { it.form.surface to NominalReading(it.agreement!!, it.case, it.plural) }, target)
+        }
+        val usable = classified.filter { it.clitic == null && (pronominal || !cliticLedIsVariant || !isCliticLed(it.form.surface)) }
 
         val grids = gridSections.map { grid(it, usable, target) }
         val finiteCells = grids.sumOf { s -> s.rows.sumOf { r -> r.cells.count { it.forms.isNotEmpty() } } }
@@ -412,11 +452,13 @@ abstract class RomanceParadigm : InflectionParadigm {
         ' ' in surface && surface.substringBefore(' ') in leadingClitics
 
     /** The arrival surface matches a cell form directly, the verb of a
-     *  two-word pronominal form ("quejo" in "me quejo"), or the verb after an
-     *  elided pronoun ("absente" in "m'absente"). */
-    private fun hits(form: String, target: String): Boolean =
+     *  two-word pronominal form ("quejo" in "me quejo"), the verb after an
+     *  elided pronoun ("absente" in "m'absente"), or, where the verb leads the
+     *  phrase, its first word ("stehe" in "stehe auf"). */
+    protected fun hits(form: String, target: String): Boolean =
         form == target || (' ' in form && form.substringAfterLast(' ') == target) ||
-            ('\'' in form && form.substringAfterLast('\'') == target)
+            ('\'' in form && form.substringAfterLast('\'') == target) ||
+            (verbLeadsPhrase && ' ' in form && form.substringBefore(' ') == target)
 
     protected companion object {
         const val TABLE_PREFIX = "table-"
