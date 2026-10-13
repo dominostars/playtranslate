@@ -119,15 +119,15 @@
 1	yerren	Spain plural present subjunctive third-person
 1	yerres	Spain present second-person singular subjunctive
 1	yerre	Spain present singular subjunctive third-person
-5	apagas	Uruguay feminine participle past plural
+6	apagas	Uruguay feminine participle past plural
 1	propagas	Uruguay feminine participle past plural pronominal table-2
 1	propaga	Uruguay feminine participle past pronominal singular table-2
-5	apaga	Uruguay feminine participle past singular
-5	apagos	Uruguay masculine participle past plural
+6	apaga	Uruguay feminine participle past singular
+6	apagos	Uruguay masculine participle past plural
 1	propagos	Uruguay masculine participle past plural pronominal table-2
 1	propago	Uruguay masculine participle past pronominal singular table-2
-5	apago	Uruguay masculine participle past singular
-3	pago el pato	Uruguay participle past
+6	apago	Uruguay masculine participle past singular
+4	pago el pato	Uruguay participle past
 4	pléganos	accusative archaic combined-form formal imperative object-first-person object-plural second-person singular
 4	plégame	accusative archaic combined-form formal imperative object-first-person object-singular second-person singular
 4	plégalas	accusative archaic combined-form formal imperative object-plural object-third-person second-person singular
@@ -135,45 +135,45 @@
 4	plégala	accusative archaic combined-form formal imperative object-singular object-third-person second-person singular
 4	plégalo	accusative archaic combined-form formal imperative object-singular object-third-person second-person singular
 4	plégase	accusative archaic combined-form formal imperative object-singular object-third-person second-person singular
-3085	absolvámonos	accusative combined-form first-person imperative object-first-person object-plural plural
+3103	absolvámonos	accusative combined-form first-person imperative object-first-person object-plural plural
 8	llovámonos	accusative combined-form first-person imperative object-first-person object-plural plural table-2
-3085	absolvámoos	accusative combined-form first-person imperative object-plural object-second-person plural
+3103	absolvámoos	accusative combined-form first-person imperative object-plural object-second-person plural
 8	llovámoos	accusative combined-form first-person imperative object-plural object-second-person plural table-2
-3085	absolvámoslas	accusative combined-form first-person imperative object-plural object-third-person plural
-3085	absolvámoslos	accusative combined-form first-person imperative object-plural object-third-person plural
+3103	absolvámoslas	accusative combined-form first-person imperative object-plural object-third-person plural
+3103	absolvámoslos	accusative combined-form first-person imperative object-plural object-third-person plural
 8	llovámoslas	accusative combined-form first-person imperative object-plural object-third-person plural table-2
 8	llovámoslos	accusative combined-form first-person imperative object-plural object-third-person plural table-2
-3085	absolvámoste	accusative combined-form first-person imperative object-second-person object-singular plural
+3103	absolvámoste	accusative combined-form first-person imperative object-second-person object-singular plural
 8	llovámoste	accusative combined-form first-person imperative object-second-person object-singular plural table-2
-3085	absolvámosla	accusative combined-form first-person imperative object-singular object-third-person plural
-3085	absolvámoslo	accusative combined-form first-person imperative object-singular object-third-person plural
+3103	absolvámosla	accusative combined-form first-person imperative object-singular object-third-person plural
+3103	absolvámoslo	accusative combined-form first-person imperative object-singular object-third-person plural
 8	llovámosla	accusative combined-form first-person imperative object-singular object-third-person plural table-2
 8	llovámoslo	accusative combined-form first-person imperative object-singular object-third-person plural table-2
 1	afiérrennos	accusative combined-form formal imperative object-first-person object-plural obsolete plural second-person
 1	afiérrenos	accusative combined-form formal imperative object-first-person object-plural obsolete second-person singular
-3101	absuélvannos	accusative combined-form formal imperative object-first-person object-plural plural second-person
+3119	absuélvannos	accusative combined-form formal imperative object-first-person object-plural plural second-person
 8	lluévannos	accusative combined-form formal imperative object-first-person object-plural plural second-person table-2
-3101	absuélvanos	accusative combined-form formal imperative object-first-person object-plural second-person singular
+3119	absuélvanos	accusative combined-form formal imperative object-first-person object-plural second-person singular
 8	lluévanos	accusative combined-form formal imperative object-first-person object-plural second-person singular table-2
 1	afiérrenme	accusative combined-form formal imperative object-first-person object-singular obsolete plural second-person
 1	afiérreme	accusative combined-form formal imperative object-first-person object-singular obsolete second-person singular
-3101	absuélvanme	accusative combined-form formal imperative object-first-person object-singular plural second-person
+3119	absuélvanme	accusative combined-form formal imperative object-first-person object-singular plural second-person
 8	lluévanme	accusative combined-form formal imperative object-first-person object-singular plural second-person table-2
-3101	absuélvame	accusative combined-form formal imperative object-first-person object-singular second-person singular
+3119	absuélvame	accusative combined-form formal imperative object-first-person object-singular second-person singular
 8	lluévame	accusative combined-form formal imperative object-first-person object-singular second-person singular table-2
 1	afiérrenlas	accusative combined-form formal imperative object-plural object-third-person obsolete plural second-person
 1	afiérrenlos	accusative combined-form formal imperative object-plural object-third-person obsolete plural second-person
 1	afiérrense	accusative combined-form formal imperative object-plural object-third-person obsolete plural second-person
 1	afiérrelas	accusative combined-form formal imperative object-plural object-third-person obsolete second-person singular
 1	afiérrelos	accusative combined-form formal imperative object-plural object-third-person obsolete second-person singular
-3101	absuélvanlas	accusative combined-form formal imperative object-plural object-third-person plural second-person
-3101	absuélvanlos	accusative combined-form formal imperative object-plural object-third-person plural second-person
-3101	absuélvanse	accusative combined-form formal imperative object-plural object-third-person plural second-person
+3119	absuélvanlas	accusative combined-form formal imperative object-plural object-third-person plural second-person
+3119	absuélvanlos	accusative combined-form formal imperative object-plural object-third-person plural second-person
+3119	absuélvanse	accusative combined-form formal imperative object-plural object-third-person plural second-person
 8	lluévanlas	accusative combined-form formal imperative object-plural object-third-person plural second-person table-2
 8	lluévanlos	accusative combined-form formal imperative object-plural object-third-person plural second-person table-2
 8	lluévanse	accusative combined-form formal imperative object-plural object-third-person plural second-person table-2
-3101	absuélvalas	accusative combined-form formal imperative object-plural object-third-person second-person singular
-3101	absuélvalos	accusative combined-form formal imperative object-plural object-third-person second-person singular
+3119	absuélvalas	accusative combined-form formal imperative object-plural object-third-person second-person singular
+3119	absuélvalos	accusative combined-form formal imperative object-plural object-third-person second-person singular
 8	lluévalas	accusative combined-form formal imperative object-plural object-third-person second-person singular table-2
 8	lluévalos	accusative combined-form formal imperative object-plural object-third-person second-person singular table-2
 1	afiérrenla	accusative combined-form formal imperative object-singular object-third-person obsolete plural second-person
@@ -181,140 +181,127 @@
 1	afiérrela	accusative combined-form formal imperative object-singular object-third-person obsolete second-person singular
 1	afiérrelo	accusative combined-form formal imperative object-singular object-third-person obsolete second-person singular
 1	afiérrese	accusative combined-form formal imperative object-singular object-third-person obsolete second-person singular
-3101	absuélvanla	accusative combined-form formal imperative object-singular object-third-person plural second-person
-3101	absuélvanlo	accusative combined-form formal imperative object-singular object-third-person plural second-person
+3119	absuélvanla	accusative combined-form formal imperative object-singular object-third-person plural second-person
+3119	absuélvanlo	accusative combined-form formal imperative object-singular object-third-person plural second-person
 8	lluévanla	accusative combined-form formal imperative object-singular object-third-person plural second-person table-2
 8	lluévanlo	accusative combined-form formal imperative object-singular object-third-person plural second-person table-2
-3101	absuélvala	accusative combined-form formal imperative object-singular object-third-person second-person singular
-3101	absuélvalo	accusative combined-form formal imperative object-singular object-third-person second-person singular
-3101	absuélvase	accusative combined-form formal imperative object-singular object-third-person second-person singular
+3119	absuélvala	accusative combined-form formal imperative object-singular object-third-person second-person singular
+3119	absuélvalo	accusative combined-form formal imperative object-singular object-third-person second-person singular
+3119	absuélvase	accusative combined-form formal imperative object-singular object-third-person second-person singular
 8	lluévala	accusative combined-form formal imperative object-singular object-third-person second-person singular table-2
 8	lluévalo	accusative combined-form formal imperative object-singular object-third-person second-person singular table-2
 8	lluévase	accusative combined-form formal imperative object-singular object-third-person second-person singular table-2
-3087	absolviéndonos	accusative combined-form gerund object-first-person object-plural
+3105	absolviéndonos	accusative combined-form gerund object-first-person object-plural
 8	lloviéndonos	accusative combined-form gerund object-first-person object-plural table-2
-3087	absolviéndome	accusative combined-form gerund object-first-person object-singular
+3105	absolviéndome	accusative combined-form gerund object-first-person object-singular
 8	lloviéndome	accusative combined-form gerund object-first-person object-singular table-2
-3087	absolviéndoos	accusative combined-form gerund object-plural object-second-person
+3105	absolviéndoos	accusative combined-form gerund object-plural object-second-person
 8	lloviéndoos	accusative combined-form gerund object-plural object-second-person table-2
-3087	absolviéndolas	accusative combined-form gerund object-plural object-third-person
-3087	absolviéndolos	accusative combined-form gerund object-plural object-third-person
-3087	absolviéndose	accusative combined-form gerund object-plural object-third-person
+3105	absolviéndolas	accusative combined-form gerund object-plural object-third-person
+3105	absolviéndolos	accusative combined-form gerund object-plural object-third-person
+3105	absolviéndose	accusative combined-form gerund object-plural object-third-person
 8	lloviéndolas	accusative combined-form gerund object-plural object-third-person table-2
 8	lloviéndolos	accusative combined-form gerund object-plural object-third-person table-2
 8	lloviéndose	accusative combined-form gerund object-plural object-third-person table-2
-3087	absolviéndote	accusative combined-form gerund object-second-person object-singular
+3105	absolviéndote	accusative combined-form gerund object-second-person object-singular
 8	lloviéndote	accusative combined-form gerund object-second-person object-singular table-2
-3087	absolviéndola	accusative combined-form gerund object-singular object-third-person
-3087	absolviéndolo	accusative combined-form gerund object-singular object-third-person
-3087	absolviéndose	accusative combined-form gerund object-singular object-third-person
+3105	absolviéndola	accusative combined-form gerund object-singular object-third-person
+3105	absolviéndolo	accusative combined-form gerund object-singular object-third-person
+3105	absolviéndose	accusative combined-form gerund object-singular object-third-person
 8	lloviéndola	accusative combined-form gerund object-singular object-third-person table-2
 8	lloviéndolo	accusative combined-form gerund object-singular object-third-person table-2
 8	lloviéndose	accusative combined-form gerund object-singular object-third-person table-2
 1	afiérranos	accusative combined-form imperative informal object-first-person object-plural obsolete second-person singular with-tú
-3080	absolvednos	accusative combined-form imperative informal object-first-person object-plural plural second-person
+3098	absolvednos	accusative combined-form imperative informal object-first-person object-plural plural second-person
 8	llovednos	accusative combined-form imperative informal object-first-person object-plural plural second-person table-2
 8	lluévenos	accusative combined-form imperative informal object-first-person object-plural second-person singular table-2 with-tú
 8	llovenos	accusative combined-form imperative informal object-first-person object-plural second-person singular table-2 with-vos
-3086	absuélvenos	accusative combined-form imperative informal object-first-person object-plural second-person singular with-tú
-3067	absolvenos	accusative combined-form imperative informal object-first-person object-plural second-person singular with-vos
+3103	absuélvenos	accusative combined-form imperative informal object-first-person object-plural second-person singular with-tú
+3084	absolvenos	accusative combined-form imperative informal object-first-person object-plural second-person singular with-vos
 1	afiérrame	accusative combined-form imperative informal object-first-person object-singular obsolete second-person singular with-tú
-3080	absolvedme	accusative combined-form imperative informal object-first-person object-singular plural second-person
+3098	absolvedme	accusative combined-form imperative informal object-first-person object-singular plural second-person
 8	llovedme	accusative combined-form imperative informal object-first-person object-singular plural second-person table-2
 8	lluéveme	accusative combined-form imperative informal object-first-person object-singular second-person singular table-2 with-tú
 8	lloveme	accusative combined-form imperative informal object-first-person object-singular second-person singular table-2 with-vos
-3086	absuélveme	accusative combined-form imperative informal object-first-person object-singular second-person singular with-tú
-3067	absolveme	accusative combined-form imperative informal object-first-person object-singular second-person singular with-vos
-3081	absolveos	accusative combined-form imperative informal object-plural object-second-person plural second-person
+3103	absuélveme	accusative combined-form imperative informal object-first-person object-singular second-person singular with-tú
+3084	absolveme	accusative combined-form imperative informal object-first-person object-singular second-person singular with-vos
+3099	absolveos	accusative combined-form imperative informal object-plural object-second-person plural second-person
 8	lloveos	accusative combined-form imperative informal object-plural object-second-person plural second-person table-2
 1	afiérralas	accusative combined-form imperative informal object-plural object-third-person obsolete second-person singular with-tú
 1	afiérralos	accusative combined-form imperative informal object-plural object-third-person obsolete second-person singular with-tú
-3080	absolvedlas	accusative combined-form imperative informal object-plural object-third-person plural second-person
-3080	absolvedlos	accusative combined-form imperative informal object-plural object-third-person plural second-person
+3098	absolvedlas	accusative combined-form imperative informal object-plural object-third-person plural second-person
+3098	absolvedlos	accusative combined-form imperative informal object-plural object-third-person plural second-person
 8	llovedlas	accusative combined-form imperative informal object-plural object-third-person plural second-person table-2
 8	llovedlos	accusative combined-form imperative informal object-plural object-third-person plural second-person table-2
 8	lluévelas	accusative combined-form imperative informal object-plural object-third-person second-person singular table-2 with-tú
 8	lluévelos	accusative combined-form imperative informal object-plural object-third-person second-person singular table-2 with-tú
 8	llovelas	accusative combined-form imperative informal object-plural object-third-person second-person singular table-2 with-vos
 8	llovelos	accusative combined-form imperative informal object-plural object-third-person second-person singular table-2 with-vos
-3084	absuélvelas	accusative combined-form imperative informal object-plural object-third-person second-person singular with-tú
-3084	absuélvelos	accusative combined-form imperative informal object-plural object-third-person second-person singular with-tú
-3067	absolvelas	accusative combined-form imperative informal object-plural object-third-person second-person singular with-vos
-3067	absolvelos	accusative combined-form imperative informal object-plural object-third-person second-person singular with-vos
+3101	absuélvelas	accusative combined-form imperative informal object-plural object-third-person second-person singular with-tú
+3101	absuélvelos	accusative combined-form imperative informal object-plural object-third-person second-person singular with-tú
+3084	absolvelas	accusative combined-form imperative informal object-plural object-third-person second-person singular with-vos
+3084	absolvelos	accusative combined-form imperative informal object-plural object-third-person second-person singular with-vos
 1	afiérrate	accusative combined-form imperative informal object-second-person object-singular obsolete second-person singular with-tú
 8	lluévete	accusative combined-form imperative informal object-second-person object-singular second-person singular table-2 with-tú
 8	llovete	accusative combined-form imperative informal object-second-person object-singular second-person singular table-2 with-vos
-3086	absuélvete	accusative combined-form imperative informal object-second-person object-singular second-person singular with-tú
-3067	absolvete	accusative combined-form imperative informal object-second-person object-singular second-person singular with-vos
+3103	absuélvete	accusative combined-form imperative informal object-second-person object-singular second-person singular with-tú
+3084	absolvete	accusative combined-form imperative informal object-second-person object-singular second-person singular with-vos
 1	afiérrala	accusative combined-form imperative informal object-singular object-third-person obsolete second-person singular with-tú
 1	afiérralo	accusative combined-form imperative informal object-singular object-third-person obsolete second-person singular with-tú
-3080	absolvedla	accusative combined-form imperative informal object-singular object-third-person plural second-person
-3080	absolvedlo	accusative combined-form imperative informal object-singular object-third-person plural second-person
+3098	absolvedla	accusative combined-form imperative informal object-singular object-third-person plural second-person
+3098	absolvedlo	accusative combined-form imperative informal object-singular object-third-person plural second-person
 8	llovedla	accusative combined-form imperative informal object-singular object-third-person plural second-person table-2
 8	llovedlo	accusative combined-form imperative informal object-singular object-third-person plural second-person table-2
 8	lluévela	accusative combined-form imperative informal object-singular object-third-person second-person singular table-2 with-tú
 8	lluévelo	accusative combined-form imperative informal object-singular object-third-person second-person singular table-2 with-tú
 8	llovela	accusative combined-form imperative informal object-singular object-third-person second-person singular table-2 with-vos
 8	llovelo	accusative combined-form imperative informal object-singular object-third-person second-person singular table-2 with-vos
-3084	absuélvela	accusative combined-form imperative informal object-singular object-third-person second-person singular with-tú
-3084	absuélvelo	accusative combined-form imperative informal object-singular object-third-person second-person singular with-tú
-3067	absolvela	accusative combined-form imperative informal object-singular object-third-person second-person singular with-vos
-3067	absolvelo	accusative combined-form imperative informal object-singular object-third-person second-person singular with-vos
-3087	absolvernos	accusative combined-form infinitive object-first-person object-plural
+3101	absuélvela	accusative combined-form imperative informal object-singular object-third-person second-person singular with-tú
+3101	absuélvelo	accusative combined-form imperative informal object-singular object-third-person second-person singular with-tú
+3084	absolvela	accusative combined-form imperative informal object-singular object-third-person second-person singular with-vos
+3084	absolvelo	accusative combined-form imperative informal object-singular object-third-person second-person singular with-vos
+3105	absolvernos	accusative combined-form infinitive object-first-person object-plural
 8	llovernos	accusative combined-form infinitive object-first-person object-plural table-2
-3087	absolverme	accusative combined-form infinitive object-first-person object-singular
+3105	absolverme	accusative combined-form infinitive object-first-person object-singular
 8	lloverme	accusative combined-form infinitive object-first-person object-singular table-2
-3087	absolveros	accusative combined-form infinitive object-plural object-second-person
+3105	absolveros	accusative combined-form infinitive object-plural object-second-person
 8	lloveros	accusative combined-form infinitive object-plural object-second-person table-2
-3087	absolverlas	accusative combined-form infinitive object-plural object-third-person
-3087	absolverlos	accusative combined-form infinitive object-plural object-third-person
-3087	absolverse	accusative combined-form infinitive object-plural object-third-person
+3105	absolverlas	accusative combined-form infinitive object-plural object-third-person
+3105	absolverlos	accusative combined-form infinitive object-plural object-third-person
+3105	absolverse	accusative combined-form infinitive object-plural object-third-person
 8	lloverlas	accusative combined-form infinitive object-plural object-third-person table-2
 8	lloverlos	accusative combined-form infinitive object-plural object-third-person table-2
 8	lloverse	accusative combined-form infinitive object-plural object-third-person table-2
-3087	absolverte	accusative combined-form infinitive object-second-person object-singular
+3105	absolverte	accusative combined-form infinitive object-second-person object-singular
 8	lloverte	accusative combined-form infinitive object-second-person object-singular table-2
-3087	absolverla	accusative combined-form infinitive object-singular object-third-person
-3087	absolverlo	accusative combined-form infinitive object-singular object-third-person
-3087	absolverse	accusative combined-form infinitive object-singular object-third-person
+3105	absolverla	accusative combined-form infinitive object-singular object-third-person
+3105	absolverlo	accusative combined-form infinitive object-singular object-third-person
+3105	absolverse	accusative combined-form infinitive object-singular object-third-person
 8	lloverla	accusative combined-form infinitive object-singular object-third-person table-2
 8	lloverlo	accusative combined-form infinitive object-singular object-third-person table-2
 8	lloverse	accusative combined-form infinitive object-singular object-third-person table-2
 2	las	accusative feminine form-of plural
-1	cosquillémoslas	accusative first-person form-of imperative object-feminine object-plural object-third-person plural
-1	cosquillémosla	accusative first-person form-of imperative object-feminine object-singular object-third-person plural
-1	cosquillémoslos	accusative first-person form-of imperative object-masculine object-plural object-third-person plural
-1	cosquillémoslo	accusative first-person form-of imperative object-masculine object-singular object-third-person plural
 3	me	accusative form-of
 2	nos	accusative form-of
-13	pecándolas	accusative form-of gerund object-feminine object-plural object-third-person
-13	pecándola	accusative form-of gerund object-feminine object-singular object-third-person
-13	pecándolos	accusative form-of gerund object-masculine object-plural object-third-person
-13	pecándolo	accusative form-of gerund object-masculine object-singular object-third-person
-1	cosquilladlas	accusative form-of imperative object-feminine object-plural object-third-person plural second-person
-1	cosquíllenlas	accusative form-of imperative object-feminine object-plural object-third-person plural third-person
-10	estalas	accusative form-of imperative object-feminine object-plural object-third-person second-person singular
-16	estalas	accusative form-of imperative object-feminine object-plural object-third-person second-person singular with-voseo
-2	bárrelas	accusative form-of imperative object-feminine object-plural object-third-person singular third-person
-1	cosquilladla	accusative form-of imperative object-feminine object-singular object-third-person plural second-person
-1	cosquíllenla	accusative form-of imperative object-feminine object-singular object-third-person plural third-person
-11	estala	accusative form-of imperative object-feminine object-singular object-third-person second-person singular
-28	estala	accusative form-of imperative object-feminine object-singular object-third-person second-person singular with-voseo
-1	cosquíllela	accusative form-of imperative object-feminine object-singular object-third-person singular third-person
-1	cosquilladlos	accusative form-of imperative object-masculine object-plural object-third-person plural second-person
-1	cosquíllenlos	accusative form-of imperative object-masculine object-plural object-third-person plural third-person
-9	estalos	accusative form-of imperative object-masculine object-plural object-third-person second-person singular
-8	estalos	accusative form-of imperative object-masculine object-plural object-third-person second-person singular with-voseo
-1	cosquíllelos	accusative form-of imperative object-masculine object-plural object-third-person singular third-person
-2	mazadlo	accusative form-of imperative object-masculine object-singular object-third-person plural second-person
-1	cosquíllenlo	accusative form-of imperative object-masculine object-singular object-third-person plural third-person
-11	estalo	accusative form-of imperative object-masculine object-singular object-third-person second-person singular
-17	estalo	accusative form-of imperative object-masculine object-singular object-third-person second-person singular with-voseo
-2	cíelo	accusative form-of imperative object-masculine object-singular object-third-person singular third-person
-14	pecarlas	accusative form-of infinitive object-feminine object-plural object-third-person
-21	finirla	accusative form-of infinitive object-feminine object-singular object-third-person
-16	pecarlos	accusative form-of infinitive object-masculine object-plural object-third-person
-25	finirlo	accusative form-of infinitive object-masculine object-singular object-third-person
+7	pecándolas	accusative form-of gerund object-feminine object-plural object-third-person
+7	pecándola	accusative form-of gerund object-feminine object-singular object-third-person
+7	pecándolos	accusative form-of gerund object-masculine object-plural object-third-person
+7	pecándolo	accusative form-of gerund object-masculine object-singular object-third-person
+9	estalas	accusative form-of imperative object-feminine object-plural object-third-person second-person singular
+15	estalas	accusative form-of imperative object-feminine object-plural object-third-person second-person singular with-voseo
+1	bárrelas	accusative form-of imperative object-feminine object-plural object-third-person singular third-person
+10	estala	accusative form-of imperative object-feminine object-singular object-third-person second-person singular
+27	estala	accusative form-of imperative object-feminine object-singular object-third-person second-person singular with-voseo
+8	estalos	accusative form-of imperative object-masculine object-plural object-third-person second-person singular
+7	estalos	accusative form-of imperative object-masculine object-plural object-third-person second-person singular with-voseo
+1	mazadlo	accusative form-of imperative object-masculine object-singular object-third-person plural second-person
+10	estalo	accusative form-of imperative object-masculine object-singular object-third-person second-person singular
+16	estalo	accusative form-of imperative object-masculine object-singular object-third-person second-person singular with-voseo
+1	cíelo	accusative form-of imperative object-masculine object-singular object-third-person singular third-person
+8	pecarlas	accusative form-of infinitive object-feminine object-plural object-third-person
+15	finirla	accusative form-of infinitive object-feminine object-singular object-third-person
+10	pecarlos	accusative form-of infinitive object-masculine object-plural object-third-person
+19	finirlo	accusative form-of infinitive object-masculine object-singular object-third-person
 4	pléganos	archaic combined-form dative formal imperative object-first-person object-plural second-person singular
 4	plégame	archaic combined-form dative formal imperative object-first-person object-singular second-person singular
 4	plégales	archaic combined-form dative formal imperative object-plural object-third-person second-person singular
@@ -339,165 +326,159 @@
 2	padrote	augmentative feminine form-of masculine
 8	nadota	augmentative form-of
 147	perrote	augmentative form-of masculine
-3085	absolvámonos	combined-form dative first-person imperative object-first-person object-plural plural
+3103	absolvámonos	combined-form dative first-person imperative object-first-person object-plural plural
 8	llovámonos	combined-form dative first-person imperative object-first-person object-plural plural table-2
-3085	absolvámoos	combined-form dative first-person imperative object-plural object-second-person plural
+3103	absolvámoos	combined-form dative first-person imperative object-plural object-second-person plural
 8	llovámoos	combined-form dative first-person imperative object-plural object-second-person plural table-2
-3085	absolvámosles	combined-form dative first-person imperative object-plural object-third-person plural
+3103	absolvámosles	combined-form dative first-person imperative object-plural object-third-person plural
 8	llovámosles	combined-form dative first-person imperative object-plural object-third-person plural table-2
-3085	absolvámoste	combined-form dative first-person imperative object-second-person object-singular plural
+3103	absolvámoste	combined-form dative first-person imperative object-second-person object-singular plural
 8	llovámoste	combined-form dative first-person imperative object-second-person object-singular plural table-2
-3085	absolvámosle	combined-form dative first-person imperative object-singular object-third-person plural
+3103	absolvámosle	combined-form dative first-person imperative object-singular object-third-person plural
 8	llovámosle	combined-form dative first-person imperative object-singular object-third-person plural table-2
 1	afiérrennos	combined-form dative formal imperative object-first-person object-plural obsolete plural second-person
 1	afiérrenos	combined-form dative formal imperative object-first-person object-plural obsolete second-person singular
-3101	absuélvannos	combined-form dative formal imperative object-first-person object-plural plural second-person
+3119	absuélvannos	combined-form dative formal imperative object-first-person object-plural plural second-person
 8	lluévannos	combined-form dative formal imperative object-first-person object-plural plural second-person table-2
-3101	absuélvanos	combined-form dative formal imperative object-first-person object-plural second-person singular
+3119	absuélvanos	combined-form dative formal imperative object-first-person object-plural second-person singular
 8	lluévanos	combined-form dative formal imperative object-first-person object-plural second-person singular table-2
 1	afiérrenme	combined-form dative formal imperative object-first-person object-singular obsolete plural second-person
 1	afiérreme	combined-form dative formal imperative object-first-person object-singular obsolete second-person singular
-3101	absuélvanme	combined-form dative formal imperative object-first-person object-singular plural second-person
+3119	absuélvanme	combined-form dative formal imperative object-first-person object-singular plural second-person
 8	lluévanme	combined-form dative formal imperative object-first-person object-singular plural second-person table-2
-3101	absuélvame	combined-form dative formal imperative object-first-person object-singular second-person singular
+3119	absuélvame	combined-form dative formal imperative object-first-person object-singular second-person singular
 8	lluévame	combined-form dative formal imperative object-first-person object-singular second-person singular table-2
 1	afiérrenles	combined-form dative formal imperative object-plural object-third-person obsolete plural second-person
 1	afiérrense	combined-form dative formal imperative object-plural object-third-person obsolete plural second-person
 1	afiérreles	combined-form dative formal imperative object-plural object-third-person obsolete second-person singular
-3101	absuélvanles	combined-form dative formal imperative object-plural object-third-person plural second-person
-3101	absuélvanse	combined-form dative formal imperative object-plural object-third-person plural second-person
+3119	absuélvanles	combined-form dative formal imperative object-plural object-third-person plural second-person
+3119	absuélvanse	combined-form dative formal imperative object-plural object-third-person plural second-person
 8	lluévanles	combined-form dative formal imperative object-plural object-third-person plural second-person table-2
 8	lluévanse	combined-form dative formal imperative object-plural object-third-person plural second-person table-2
-3101	absuélvales	combined-form dative formal imperative object-plural object-third-person second-person singular
+3119	absuélvales	combined-form dative formal imperative object-plural object-third-person second-person singular
 8	lluévales	combined-form dative formal imperative object-plural object-third-person second-person singular table-2
 1	afiérrenle	combined-form dative formal imperative object-singular object-third-person obsolete plural second-person
 1	afiérrele	combined-form dative formal imperative object-singular object-third-person obsolete second-person singular
 1	afiérrese	combined-form dative formal imperative object-singular object-third-person obsolete second-person singular
-3101	absuélvanle	combined-form dative formal imperative object-singular object-third-person plural second-person
+3119	absuélvanle	combined-form dative formal imperative object-singular object-third-person plural second-person
 8	lluévanle	combined-form dative formal imperative object-singular object-third-person plural second-person table-2
-3101	absuélvale	combined-form dative formal imperative object-singular object-third-person second-person singular
-3101	absuélvase	combined-form dative formal imperative object-singular object-third-person second-person singular
+3119	absuélvale	combined-form dative formal imperative object-singular object-third-person second-person singular
+3119	absuélvase	combined-form dative formal imperative object-singular object-third-person second-person singular
 8	lluévale	combined-form dative formal imperative object-singular object-third-person second-person singular table-2
 8	lluévase	combined-form dative formal imperative object-singular object-third-person second-person singular table-2
-3087	absolviéndonos	combined-form dative gerund object-first-person object-plural
+3105	absolviéndonos	combined-form dative gerund object-first-person object-plural
 8	lloviéndonos	combined-form dative gerund object-first-person object-plural table-2
-3087	absolviéndome	combined-form dative gerund object-first-person object-singular
+3105	absolviéndome	combined-form dative gerund object-first-person object-singular
 8	lloviéndome	combined-form dative gerund object-first-person object-singular table-2
-3087	absolviéndoos	combined-form dative gerund object-plural object-second-person
+3105	absolviéndoos	combined-form dative gerund object-plural object-second-person
 8	lloviéndoos	combined-form dative gerund object-plural object-second-person table-2
-3087	absolviéndoles	combined-form dative gerund object-plural object-third-person
-3087	absolviéndose	combined-form dative gerund object-plural object-third-person
+3105	absolviéndoles	combined-form dative gerund object-plural object-third-person
+3105	absolviéndose	combined-form dative gerund object-plural object-third-person
 8	lloviéndoles	combined-form dative gerund object-plural object-third-person table-2
 8	lloviéndose	combined-form dative gerund object-plural object-third-person table-2
-3087	absolviéndote	combined-form dative gerund object-second-person object-singular
+3105	absolviéndote	combined-form dative gerund object-second-person object-singular
 8	lloviéndote	combined-form dative gerund object-second-person object-singular table-2
-3087	absolviéndole	combined-form dative gerund object-singular object-third-person
-3087	absolviéndose	combined-form dative gerund object-singular object-third-person
+3105	absolviéndole	combined-form dative gerund object-singular object-third-person
+3105	absolviéndose	combined-form dative gerund object-singular object-third-person
 8	lloviéndole	combined-form dative gerund object-singular object-third-person table-2
 8	lloviéndose	combined-form dative gerund object-singular object-third-person table-2
 1	afiérranos	combined-form dative imperative informal object-first-person object-plural obsolete second-person singular with-tú
-3080	absolvednos	combined-form dative imperative informal object-first-person object-plural plural second-person
+3098	absolvednos	combined-form dative imperative informal object-first-person object-plural plural second-person
 8	llovednos	combined-form dative imperative informal object-first-person object-plural plural second-person table-2
 8	lluévenos	combined-form dative imperative informal object-first-person object-plural second-person singular table-2 with-tú
 8	llovenos	combined-form dative imperative informal object-first-person object-plural second-person singular table-2 with-vos
-3086	absuélvenos	combined-form dative imperative informal object-first-person object-plural second-person singular with-tú
-3067	absolvenos	combined-form dative imperative informal object-first-person object-plural second-person singular with-vos
+3103	absuélvenos	combined-form dative imperative informal object-first-person object-plural second-person singular with-tú
+3084	absolvenos	combined-form dative imperative informal object-first-person object-plural second-person singular with-vos
 1	afiérrame	combined-form dative imperative informal object-first-person object-singular obsolete second-person singular with-tú
-3080	absolvedme	combined-form dative imperative informal object-first-person object-singular plural second-person
+3098	absolvedme	combined-form dative imperative informal object-first-person object-singular plural second-person
 8	llovedme	combined-form dative imperative informal object-first-person object-singular plural second-person table-2
 8	lluéveme	combined-form dative imperative informal object-first-person object-singular second-person singular table-2 with-tú
 8	lloveme	combined-form dative imperative informal object-first-person object-singular second-person singular table-2 with-vos
-3086	absuélveme	combined-form dative imperative informal object-first-person object-singular second-person singular with-tú
-3067	absolveme	combined-form dative imperative informal object-first-person object-singular second-person singular with-vos
-3081	absolveos	combined-form dative imperative informal object-plural object-second-person plural second-person
+3103	absuélveme	combined-form dative imperative informal object-first-person object-singular second-person singular with-tú
+3084	absolveme	combined-form dative imperative informal object-first-person object-singular second-person singular with-vos
+3099	absolveos	combined-form dative imperative informal object-plural object-second-person plural second-person
 8	lloveos	combined-form dative imperative informal object-plural object-second-person plural second-person table-2
 1	afiérrales	combined-form dative imperative informal object-plural object-third-person obsolete second-person singular with-tú
-3080	absolvedles	combined-form dative imperative informal object-plural object-third-person plural second-person
+3098	absolvedles	combined-form dative imperative informal object-plural object-third-person plural second-person
 8	llovedles	combined-form dative imperative informal object-plural object-third-person plural second-person table-2
 8	lluéveles	combined-form dative imperative informal object-plural object-third-person second-person singular table-2 with-tú
 8	lloveles	combined-form dative imperative informal object-plural object-third-person second-person singular table-2 with-vos
-3084	absuélveles	combined-form dative imperative informal object-plural object-third-person second-person singular with-tú
-3067	absolveles	combined-form dative imperative informal object-plural object-third-person second-person singular with-vos
+3101	absuélveles	combined-form dative imperative informal object-plural object-third-person second-person singular with-tú
+3084	absolveles	combined-form dative imperative informal object-plural object-third-person second-person singular with-vos
 1	afiérrate	combined-form dative imperative informal object-second-person object-singular obsolete second-person singular with-tú
 8	lluévete	combined-form dative imperative informal object-second-person object-singular second-person singular table-2 with-tú
 8	llovete	combined-form dative imperative informal object-second-person object-singular second-person singular table-2 with-vos
-3086	absuélvete	combined-form dative imperative informal object-second-person object-singular second-person singular with-tú
-3067	absolvete	combined-form dative imperative informal object-second-person object-singular second-person singular with-vos
+3103	absuélvete	combined-form dative imperative informal object-second-person object-singular second-person singular with-tú
+3084	absolvete	combined-form dative imperative informal object-second-person object-singular second-person singular with-vos
 1	afiérrale	combined-form dative imperative informal object-singular object-third-person obsolete second-person singular with-tú
-3080	absolvedle	combined-form dative imperative informal object-singular object-third-person plural second-person
+3098	absolvedle	combined-form dative imperative informal object-singular object-third-person plural second-person
 8	llovedle	combined-form dative imperative informal object-singular object-third-person plural second-person table-2
 8	lluévele	combined-form dative imperative informal object-singular object-third-person second-person singular table-2 with-tú
 8	llovele	combined-form dative imperative informal object-singular object-third-person second-person singular table-2 with-vos
-3084	absuélvele	combined-form dative imperative informal object-singular object-third-person second-person singular with-tú
-3067	absolvele	combined-form dative imperative informal object-singular object-third-person second-person singular with-vos
-3087	absolvernos	combined-form dative infinitive object-first-person object-plural
+3101	absuélvele	combined-form dative imperative informal object-singular object-third-person second-person singular with-tú
+3084	absolvele	combined-form dative imperative informal object-singular object-third-person second-person singular with-vos
+3105	absolvernos	combined-form dative infinitive object-first-person object-plural
 8	llovernos	combined-form dative infinitive object-first-person object-plural table-2
-3087	absolverme	combined-form dative infinitive object-first-person object-singular
+3105	absolverme	combined-form dative infinitive object-first-person object-singular
 8	lloverme	combined-form dative infinitive object-first-person object-singular table-2
-3087	absolveros	combined-form dative infinitive object-plural object-second-person
+3105	absolveros	combined-form dative infinitive object-plural object-second-person
 8	lloveros	combined-form dative infinitive object-plural object-second-person table-2
-3087	absolverles	combined-form dative infinitive object-plural object-third-person
-3087	absolverse	combined-form dative infinitive object-plural object-third-person
+3105	absolverles	combined-form dative infinitive object-plural object-third-person
+3105	absolverse	combined-form dative infinitive object-plural object-third-person
 8	lloverles	combined-form dative infinitive object-plural object-third-person table-2
 8	lloverse	combined-form dative infinitive object-plural object-third-person table-2
-3087	absolverte	combined-form dative infinitive object-second-person object-singular
+3105	absolverte	combined-form dative infinitive object-second-person object-singular
 8	lloverte	combined-form dative infinitive object-second-person object-singular table-2
-3087	absolverle	combined-form dative infinitive object-singular object-third-person
-3087	absolverse	combined-form dative infinitive object-singular object-third-person
+3105	absolverle	combined-form dative infinitive object-singular object-third-person
+3105	absolverse	combined-form dative infinitive object-singular object-third-person
 8	lloverle	combined-form dative infinitive object-singular object-third-person table-2
 8	lloverse	combined-form dative infinitive object-singular object-third-person table-2
 6	peor	comparative
 2	mayor	comparative feminine form-of masculine
 1	más tarde	comparative form-of
-26	quejaríamos	conditional first-person form-of plural
-16	alistaría	conditional first-person form-of singular third-person
-3413	absolveríamos	conditional first-person indicative plural
-138	nos estaríamos	conditional first-person indicative plural pronominal table-2
+13	quejaríamos	conditional first-person form-of plural
+3	desvelaría	conditional first-person form-of singular third-person
+3440	absolveríamos	conditional first-person indicative plural
+141	nos estaríamos	conditional first-person indicative plural pronominal table-2
 1	nos lloviznaríamos	conditional first-person indicative plural pronominal table-3
 8	lloveríamos	conditional first-person indicative plural table-2
-138	me estaría	conditional first-person indicative pronominal singular table-2
+141	me estaría	conditional first-person indicative pronominal singular table-2
 1	me lloviznaría	conditional first-person indicative pronominal singular table-3
-3413	absolvería	conditional first-person indicative singular
+3440	absolvería	conditional first-person indicative singular
 8	llovería	conditional first-person indicative singular table-2
-26	quejaríais	conditional form-of plural second-person
-26	quejarían	conditional form-of plural third-person
-26	quejarías	conditional form-of second-person singular
+13	quejaríais	conditional form-of plural second-person
+13	quejarían	conditional form-of plural third-person
+13	quejarías	conditional form-of second-person singular
 10	quejaría	conditional form-of singular third-person
-138	os estaríais	conditional indicative plural pronominal second-person table-2
+141	os estaríais	conditional indicative plural pronominal second-person table-2
 1	os lloviznaríais	conditional indicative plural pronominal second-person table-3
-138	se estarían	conditional indicative plural pronominal table-2 third-person
+141	se estarían	conditional indicative plural pronominal table-2 third-person
 1	se lloviznarían	conditional indicative plural pronominal table-3 third-person
-3413	absolveríais	conditional indicative plural second-person
+3440	absolveríais	conditional indicative plural second-person
 8	lloveríais	conditional indicative plural second-person table-2
 8	lloverían	conditional indicative plural table-2 third-person
-3417	absolverían	conditional indicative plural third-person
-138	te estarías	conditional indicative pronominal second-person singular table-2
+3444	absolverían	conditional indicative plural third-person
+141	te estarías	conditional indicative pronominal second-person singular table-2
 1	te lloviznarías	conditional indicative pronominal second-person singular table-3
-138	se estaría	conditional indicative pronominal singular table-2 third-person
+141	se estaría	conditional indicative pronominal singular table-2 third-person
 1	se lloviznaría	conditional indicative pronominal singular table-3 third-person
-3413	absolverías	conditional indicative second-person singular
+3440	absolverías	conditional indicative second-person singular
 8	lloverías	conditional indicative second-person singular table-2
 8	llovería	conditional indicative singular table-2 third-person
-3423	absolvería	conditional indicative singular third-person
+3450	absolvería	conditional indicative singular third-person
 1	les	dative
-1	cosquillémosles	dative first-person form-of imperative object-plural object-third-person plural
-1	cosquillémosle	dative first-person form-of imperative object-singular object-third-person plural
 1	me	dative form-of
 1	nos	dative form-of
-13	pecándoles	dative form-of gerund object-plural object-third-person
-13	pecándole	dative form-of gerund object-singular object-third-person
-1	cosquilladles	dative form-of imperative object-plural object-third-person plural second-person
-1	cosquíllenles	dative form-of imperative object-plural object-third-person plural third-person
-13	estales	dative form-of imperative object-plural object-third-person second-person singular
-62	estales	dative form-of imperative object-plural object-third-person second-person singular with-voseo
-3	túneles	dative form-of imperative object-plural object-third-person singular third-person
-1	cosquilladle	dative form-of imperative object-singular object-third-person plural second-person
-1	cosquíllenle	dative form-of imperative object-singular object-third-person plural third-person
-12	estale	dative form-of imperative object-singular object-third-person second-person singular
-48	estale	dative form-of imperative object-singular object-third-person second-person singular with-voseo
-2	bástale	dative form-of imperative object-singular object-third-person singular third-person
-14	pecarles	dative form-of infinitive object-plural object-third-person
-26	finirle	dative form-of infinitive object-singular object-third-person
+7	pecándoles	dative form-of gerund object-plural object-third-person
+7	pecándole	dative form-of gerund object-singular object-third-person
+12	estales	dative form-of imperative object-plural object-third-person second-person singular
+61	estales	dative form-of imperative object-plural object-third-person second-person singular with-voseo
+2	túneles	dative form-of imperative object-plural object-third-person singular third-person
+11	estale	dative form-of imperative object-singular object-third-person second-person singular
+46	estale	dative form-of imperative object-singular object-third-person second-person singular with-voseo
+1	bástale	dative form-of imperative object-singular object-third-person singular third-person
+8	pecarles	dative form-of infinitive object-plural object-third-person
+20	finirle	dative form-of infinitive object-singular object-third-person
 35	perrillo	diminutive
 522	llamita	diminutive feminine form-of
 5	paragüita	diminutive feminine form-of masculine
@@ -514,516 +495,498 @@
 1	gerenta	error-exponential-tagsets error-unknown-tag feminine
 1	gerentas	error-exponential-tagsets error-unknown-tag feminine plural
 2	paupérrimo	error-unknown-tag superlative
-5001	perra	feminine
-82	amiga	feminine form-of
+5040	perra	feminine
+72	amiga	feminine form-of
 6	proviniente	feminine form-of masculine
 4	godes	feminine form-of masculine plural
 2	mayor	feminine form-of masculine superlative
-1	meridas	feminine form-of participle plural
-1	merida	feminine form-of participle singular
-33	íes	feminine form-of plural
-17	cosquilla	feminine form-of singular
-1487	deales	feminine masculine plural
+14	onces	feminine form-of plural
+2	cosquilla	feminine form-of singular
+1492	deales	feminine masculine plural
 1	bocas flojas	feminine masculine plural uncommon
 4	ésas	feminine medial plural
 4	ésa	feminine medial singular
-3423	absueltas	feminine participle past plural
-138	estadas	feminine participle past plural pronominal table-2
+3450	absueltas	feminine participle past plural
+141	estadas	feminine participle past plural pronominal table-2
 1	lloviznadas	feminine participle past plural pronominal table-3
 8	llovidas	feminine participle past plural table-2
-138	estada	feminine participle past pronominal singular table-2
+141	estada	feminine participle past pronominal singular table-2
 1	lloviznada	feminine participle past pronominal singular table-3
-3423	absuelta	feminine participle past singular
+3450	absuelta	feminine participle past singular
 8	llovida	feminine participle past singular table-2
-4983	perras	feminine plural
+5022	perras	feminine plural
 4	éstas	feminine plural proximal
 4	ésta	feminine proximal singular
 1	tanta	feminine singular
-26	quejaremos	first-person form-of future indicative plural
-26	quejaré	first-person form-of future indicative singular
-26	quejáremos	first-person form-of future plural subjunctive
-17	alistare	first-person form-of future singular subjunctive third-person
-1	adueñándonos	first-person form-of gerund plural
-1	adueñándome	first-person form-of gerund singular
-4	empañémonos	first-person form-of imperative object-first-person object-plural plural
-1	cosquillémoos	first-person form-of imperative object-plural object-second-person plural
-1	cosquillémoste	first-person form-of imperative object-second-person object-singular plural
-17	adueñémonos	first-person form-of imperative plural
-26	quejábamos	first-person form-of imperfect indicative plural
-16	alistaba	first-person form-of imperfect indicative singular third-person
-52	quejáramos	first-person form-of imperfect plural subjunctive
-32	alistara	first-person form-of imperfect singular subjunctive third-person
+1	a mis anchas	first-person form-of
+13	quejaremos	first-person form-of future indicative plural
+13	quejaré	first-person form-of future indicative singular
+13	quejáremos	first-person form-of future plural subjunctive
+3	desvelare	first-person form-of future singular subjunctive third-person
+3	empañémonos	first-person form-of imperative object-first-person object-plural plural
+3	desvelemos	first-person form-of imperative plural
+13	quejábamos	first-person form-of imperfect indicative plural
+3	desvelaba	first-person form-of imperfect indicative singular third-person
+26	quejáramos	first-person form-of imperfect plural subjunctive
+6	desvelara	first-person form-of imperfect singular subjunctive third-person
 1	entrometemos	first-person form-of indicative plural present
-25	quejamos	first-person form-of indicative plural present preterite
+12	quejamos	first-person form-of indicative plural present preterite
 1	entrometimos	first-person form-of indicative plural preterite
-32	seigo	first-person form-of indicative present singular
-17	quejé	first-person form-of indicative preterite singular
-1	adueñarnos	first-person form-of infinitive plural
-1	adueñarme	first-person form-of infinitive singular
-16	alistemos	first-person form-of plural present subjunctive
-27	fuelle	first-person form-of present singular subjunctive third-person
+21	seigo	first-person form-of indicative present singular
+7	quejé	first-person form-of indicative preterite singular
+3	desvelemos	first-person form-of plural present subjunctive
+13	fuelle	first-person form-of present singular subjunctive third-person
 2	por mi cuenta	first-person form-of singular
-3413	absolveremos	first-person future indicative plural
-138	nos estaremos	first-person future indicative plural pronominal table-2
+3440	absolveremos	first-person future indicative plural
+141	nos estaremos	first-person future indicative plural pronominal table-2
 1	nos lloviznaremos	first-person future indicative plural pronominal table-3
 8	lloveremos	first-person future indicative plural table-2
-138	me estaré	first-person future indicative pronominal singular table-2
+141	me estaré	first-person future indicative pronominal singular table-2
 1	me lloviznaré	first-person future indicative pronominal singular table-3
-3413	absolveré	first-person future indicative singular
+3440	absolveré	first-person future indicative singular
 8	lloveré	first-person future indicative singular table-2
-138	nos estuviéremos	first-person future plural pronominal subjunctive table-2
+141	nos estuviéremos	first-person future plural pronominal subjunctive table-2
 1	nos lloviznáremos	first-person future plural pronominal subjunctive table-3
-3410	absolviéremos	first-person future plural subjunctive
+3437	absolviéremos	first-person future plural subjunctive
 8	lloviéremos	first-person future plural subjunctive table-2
-138	me estuviere	first-person future pronominal singular subjunctive table-2
+141	me estuviere	first-person future pronominal singular subjunctive table-2
 1	me lloviznare	first-person future pronominal singular subjunctive table-3
-3410	absolviere	first-person future singular subjunctive
+3437	absolviere	first-person future singular subjunctive
 8	lloviere	first-person future singular subjunctive table-2
-17	quejándonos	first-person gerund plural
-138	estándonos	first-person gerund plural pronominal table-2
+18	quejándonos	first-person gerund plural
+141	estándonos	first-person gerund plural pronominal table-2
 1	lloviznándonos	first-person gerund plural pronominal table-3
-138	estándome	first-person gerund pronominal singular table-2
+141	estándome	first-person gerund pronominal singular table-2
 1	lloviznándome	first-person gerund pronominal singular table-3
-17	quejándome	first-person gerund singular
-3416	absolvamos	first-person imperative negative plural
-138	nos estemos	first-person imperative negative plural pronominal table-2
+18	quejándome	first-person gerund singular
+3443	absolvamos	first-person imperative negative plural
+141	nos estemos	first-person imperative negative plural pronominal table-2
 1	nos lloviznemos	first-person imperative negative plural pronominal table-3
 8	llovamos	first-person imperative negative plural table-2
-3417	absolvamos	first-person imperative plural
-139	estémonos	first-person imperative plural pronominal table-2
+3444	absolvamos	first-person imperative plural
+142	estémonos	first-person imperative plural pronominal table-2
 1	lloviznémonos	first-person imperative plural pronominal table-3
 8	llovamos	first-person imperative plural table-2
-138	nos estuviésemos	first-person imperfect imperfect-se plural pronominal subjunctive table-2
+141	nos estuviésemos	first-person imperfect imperfect-se plural pronominal subjunctive table-2
 1	nos lloviznásemos	first-person imperfect imperfect-se plural pronominal subjunctive table-3
-3410	absolviésemos	first-person imperfect imperfect-se plural subjunctive
+3437	absolviésemos	first-person imperfect imperfect-se plural subjunctive
 8	lloviésemos	first-person imperfect imperfect-se plural subjunctive table-2
-138	me estuviese	first-person imperfect imperfect-se pronominal singular subjunctive table-2
+141	me estuviese	first-person imperfect imperfect-se pronominal singular subjunctive table-2
 1	me lloviznase	first-person imperfect imperfect-se pronominal singular subjunctive table-3
-3410	absolviese	first-person imperfect imperfect-se singular subjunctive
+3437	absolviese	first-person imperfect imperfect-se singular subjunctive
 8	lloviese	first-person imperfect imperfect-se singular subjunctive table-2
-3410	absolvíamos	first-person imperfect indicative plural
-138	nos estábamos	first-person imperfect indicative plural pronominal table-2
+3437	absolvíamos	first-person imperfect indicative plural
+141	nos estábamos	first-person imperfect indicative plural pronominal table-2
 1	nos lloviznábamos	first-person imperfect indicative plural pronominal table-3
 8	llovíamos	first-person imperfect indicative plural table-2
-138	me estaba	first-person imperfect indicative pronominal singular table-2
+141	me estaba	first-person imperfect indicative pronominal singular table-2
 1	me lloviznaba	first-person imperfect indicative pronominal singular table-3
-3410	absolvía	first-person imperfect indicative singular
+3437	absolvía	first-person imperfect indicative singular
 8	llovía	first-person imperfect indicative singular table-2
-138	nos estuviéramos	first-person imperfect plural pronominal subjunctive table-2
+141	nos estuviéramos	first-person imperfect plural pronominal subjunctive table-2
 1	nos lloviznáramos	first-person imperfect plural pronominal subjunctive table-3
-3410	absolviéramos	first-person imperfect plural subjunctive
+3437	absolviéramos	first-person imperfect plural subjunctive
 8	lloviéramos	first-person imperfect plural subjunctive table-2
-138	me estuviera	first-person imperfect pronominal singular subjunctive table-2
+141	me estuviera	first-person imperfect pronominal singular subjunctive table-2
 1	me lloviznara	first-person imperfect pronominal singular subjunctive table-3
-3410	absolviera	first-person imperfect singular subjunctive
+3437	absolviera	first-person imperfect singular subjunctive
 8	lloviera	first-person imperfect singular subjunctive table-2
 1	afierro	first-person indicative obsolete present singular
-3410	absolvemos	first-person indicative plural present
-138	nos estamos	first-person indicative plural present pronominal table-2
+3437	absolvemos	first-person indicative plural present
+141	nos estamos	first-person indicative plural present pronominal table-2
 1	nos lloviznamos	first-person indicative plural present pronominal table-3
 8	llovemos	first-person indicative plural present table-2
-3410	absolvimos	first-person indicative plural preterite
-138	nos estuvimos	first-person indicative plural preterite pronominal table-2
+3437	absolvimos	first-person indicative plural preterite
+141	nos estuvimos	first-person indicative plural preterite pronominal table-2
 1	nos lloviznamos	first-person indicative plural preterite pronominal table-3
 8	llovimos	first-person indicative plural preterite table-2
-138	me estoy	first-person indicative present pronominal singular table-2
+141	me estoy	first-person indicative present pronominal singular table-2
 1	me llovizno	first-person indicative present pronominal singular table-3
-3434	absuelvo	first-person indicative present singular
+3461	absuelvo	first-person indicative present singular
 8	lluevo	first-person indicative present singular table-2
 1	desaforo	first-person indicative present singular uncommon
-138	me estuve	first-person indicative preterite pronominal singular table-2
+141	me estuve	first-person indicative preterite pronominal singular table-2
 1	me llovizné	first-person indicative preterite pronominal singular table-3
-3410	absolví	first-person indicative preterite singular
+3437	absolví	first-person indicative preterite singular
 8	lloví	first-person indicative preterite singular table-2
-17	quejarnos	first-person infinitive plural
-138	estarnos	first-person infinitive plural pronominal table-2
+18	quejarnos	first-person infinitive plural
+141	estarnos	first-person infinitive plural pronominal table-2
 1	lloviznarnos	first-person infinitive plural pronominal table-3
-138	estarme	first-person infinitive pronominal singular table-2
+141	estarme	first-person infinitive pronominal singular table-2
 1	lloviznarme	first-person infinitive pronominal singular table-3
-17	quejarme	first-person infinitive singular
+18	quejarme	first-person infinitive singular
 1	afierre	first-person obsolete present singular subjunctive
 2	a nuestras solas	first-person plural
-138	nos estemos	first-person plural present pronominal subjunctive table-2
+141	nos estemos	first-person plural present pronominal subjunctive table-2
 1	nos lloviznemos	first-person plural present pronominal subjunctive table-3
-3416	absolvamos	first-person plural present subjunctive
+3443	absolvamos	first-person plural present subjunctive
 8	llovamos	first-person plural present subjunctive table-2
 2	of singular masculine	first-person possessive singular
-138	me esté	first-person present pronominal singular subjunctive table-2
+141	me esté	first-person present pronominal singular subjunctive table-2
 1	me llovizne	first-person present pronominal singular subjunctive table-3
-1032	saco de quicio	first-person present singular
-3434	absuelva	first-person present singular subjunctive
+1049	saco de quicio	first-person present singular
+3461	absuelva	first-person present singular subjunctive
 8	llueva	first-person present singular subjunctive table-2
 1	desafore	first-person present singular subjunctive uncommon
-1032	saqué de quicio	first-person preterite singular
+1049	saqué de quicio	first-person preterite singular
 1	a mis solas	first-person singular
 2	simplicísimo	form-of formal superlative
-26	quejaréis	form-of future indicative plural second-person
-26	quejarán	form-of future indicative plural third-person
-26	quejarás	form-of future indicative second-person singular
-26	quejará	form-of future indicative singular third-person
-26	quejareis	form-of future plural second-person subjunctive
-26	quejaren	form-of future plural subjunctive third-person
-26	quejares	form-of future second-person singular subjunctive
+13	quejaréis	form-of future indicative plural second-person
+13	quejarán	form-of future indicative plural third-person
+13	quejarás	form-of future indicative second-person singular
+13	quejará	form-of future indicative singular third-person
+13	quejareis	form-of future plural second-person subjunctive
+13	quejaren	form-of future plural subjunctive third-person
+13	quejares	form-of future second-person singular subjunctive
 10	quejare	form-of future singular subjunctive third-person
-17	adueñándose	form-of gerund
-13	pecándonos	form-of gerund object-first-person object-plural
-13	pecándome	form-of gerund object-first-person object-singular
-13	pecándoos	form-of gerund object-plural object-second-person
-13	pecándote	form-of gerund object-second-person object-singular
-1	adueñándoos	form-of gerund plural second-person
-1	adueñándose	form-of gerund plural singular third-person
-17	pecándose	form-of gerund reflexive
-1	adueñándote	form-of gerund second-person singular
-1	cosquilladnos	form-of imperative object-first-person object-plural plural second-person
-1	cosquíllennos	form-of imperative object-first-person object-plural plural third-person
-11	estanos	form-of imperative object-first-person object-plural second-person singular
-24	estanos	form-of imperative object-first-person object-plural second-person singular with-voseo
-1	cosquíllenos	form-of imperative object-first-person object-plural singular third-person
-1	cosquilladme	form-of imperative object-first-person object-singular plural second-person
-1	cosquíllenme	form-of imperative object-first-person object-singular plural third-person
-8	estame	form-of imperative object-first-person object-singular second-person singular
-13	estame	form-of imperative object-first-person object-singular second-person singular with-voseo
-2	bástame	form-of imperative object-first-person object-singular singular third-person
-19	pilaos	form-of imperative object-plural object-second-person plural second-person
-13	estate	form-of imperative object-second-person object-singular second-person singular
-125	estate	form-of imperative object-second-person object-singular second-person singular with-voseo
-5	empáñense	form-of imperative plural reflexive third-person
-18	adueñaos	form-of imperative plural second-person
-28	fuellen	form-of imperative plural third-person
-4	empáñese	form-of imperative reflexive singular third-person
-28	fuella	form-of imperative second-person singular
-18	adueñate	form-of imperative second-person singular with-voseo
-28	fuelle	form-of imperative singular third-person
-26	quejabais	form-of imperfect indicative plural second-person
-26	quejaban	form-of imperfect indicative plural third-person
-26	quejabas	form-of imperfect indicative second-person singular
+3	desvelando	form-of gerund
+7	pecándonos	form-of gerund object-first-person object-plural
+7	pecándome	form-of gerund object-first-person object-singular
+7	pecándoos	form-of gerund object-plural object-second-person
+7	pecándote	form-of gerund object-second-person object-singular
+11	pecándose	form-of gerund reflexive
+10	estanos	form-of imperative object-first-person object-plural second-person singular
+22	estanos	form-of imperative object-first-person object-plural second-person singular with-voseo
+7	estame	form-of imperative object-first-person object-singular second-person singular
+12	estame	form-of imperative object-first-person object-singular second-person singular with-voseo
+1	bástame	form-of imperative object-first-person object-singular singular third-person
+18	pilaos	form-of imperative object-plural object-second-person plural second-person
+12	estate	form-of imperative object-second-person object-singular second-person singular
+122	estate	form-of imperative object-second-person object-singular second-person singular with-voseo
+4	empáñense	form-of imperative plural reflexive third-person
+3	desvelad	form-of imperative plural second-person
+13	fuellen	form-of imperative plural third-person
+3	empáñese	form-of imperative reflexive singular third-person
+13	fuella	form-of imperative second-person singular
+3	desvelá	form-of imperative second-person singular with-voseo
+13	fuelle	form-of imperative singular third-person
+13	quejabais	form-of imperfect indicative plural second-person
+13	quejaban	form-of imperfect indicative plural third-person
+13	quejabas	form-of imperfect indicative second-person singular
 10	quejaba	form-of imperfect indicative singular third-person
-52	quejarais	form-of imperfect plural second-person subjunctive
-52	quejaran	form-of imperfect plural subjunctive third-person
-52	quejaras	form-of imperfect second-person singular subjunctive
+26	quejarais	form-of imperfect plural second-person subjunctive
+26	quejaran	form-of imperfect plural subjunctive third-person
+26	quejaras	form-of imperfect second-person singular subjunctive
 20	quejara	form-of imperfect singular subjunctive third-person
 1	cuantísimo	form-of indefinite superlative
-26	quejáis	form-of indicative plural present second-person
-37	quejan	form-of indicative plural present third-person
-26	quejasteis	form-of indicative plural preterite second-person
-26	quejaron	form-of indicative plural preterite third-person
-37	quejas	form-of indicative present second-person singular
-34	estái	form-of indicative present second-person singular with-voseo
-27	fuella	form-of indicative present singular third-person
-26	quejaste	form-of indicative preterite second-person singular
-27	quejó	form-of indicative preterite singular third-person
-13	pecarnos	form-of infinitive object-first-person object-plural
-14	pecarme	form-of infinitive object-first-person object-singular
-15	pecaros	form-of infinitive object-plural object-second-person
-16	pecarte	form-of infinitive object-second-person object-singular
-1	adueñaros	form-of infinitive plural second-person
-28	pecarse	form-of infinitive reflexive
-1	adueñarte	form-of infinitive second-person singular
+13	quejáis	form-of indicative plural present second-person
+23	quejan	form-of indicative plural present third-person
+13	quejasteis	form-of indicative plural preterite second-person
+13	quejaron	form-of indicative plural preterite third-person
+23	quejas	form-of indicative present second-person singular
+19	estái	form-of indicative present second-person singular with-voseo
+13	fuella	form-of indicative present singular third-person
+13	quejaste	form-of indicative preterite second-person singular
+13	quejó	form-of indicative preterite singular third-person
+7	pecarnos	form-of infinitive object-first-person object-plural
+8	pecarme	form-of infinitive object-first-person object-singular
+9	pecaros	form-of infinitive object-plural object-second-person
+10	pecarte	form-of infinitive object-second-person object-singular
+22	pecarse	form-of infinitive reflexive
 3	grx	form-of informal
 1	i a saber	form-of informal second-person with-voseo
 24	nopor	form-of masculine
 1	respuso	form-of masculine participle past singular
-1	meridos	form-of masculine participle plural
-49	vans	form-of masculine plural
+24	vans	form-of masculine plural
 2	paco	form-of masculine singular
 1	alte	form-of neuter singular
-10	adueñado	form-of participle past
-40	aes	form-of plural
-26	quejéis	form-of plural present second-person subjunctive
-27	fuellen	form-of plural present subjunctive third-person
+23	aes	form-of plural
+13	quejéis	form-of plural present second-person subjunctive
+13	fuellen	form-of plural present subjunctive third-person
 1	por vuestra cuenta	form-of plural second-person
-36	quejes	form-of present second-person singular subjunctive
-26	quejés	form-of present second-person singular subjunctive with-voseo
+23	quejes	form-of present second-person singular subjunctive
+13	quejés	form-of present second-person singular subjunctive with-voseo
 10	queje	form-of present singular subjunctive third-person
 1	me	form-of reflexive
 1	nos	form-of reflexive
 3	echarse a perder	form-of reflexive
+1	a tus anchas	form-of second-person
 1	por tu cuenta	form-of second-person singular
-345	gratísimo	form-of superlative
+344	gratísimo	form-of superlative
 1	enseñar su pata	form-of third-person
 1	afierren	formal imperative negative obsolete plural second-person-semantically third-person
 1	afierre	formal imperative negative obsolete second-person-semantically singular third-person
-138	se estén	formal imperative negative plural pronominal second-person-semantically table-2 third-person
+141	se estén	formal imperative negative plural pronominal second-person-semantically table-2 third-person
 1	se lloviznen	formal imperative negative plural pronominal second-person-semantically table-3 third-person
 8	lluevan	formal imperative negative plural second-person-semantically table-2 third-person
-3434	absuelvan	formal imperative negative plural second-person-semantically third-person
+3461	absuelvan	formal imperative negative plural second-person-semantically third-person
 1	desaforen	formal imperative negative plural second-person-semantically third-person uncommon
-138	se esté	formal imperative negative pronominal second-person-semantically singular table-2 third-person
+141	se esté	formal imperative negative pronominal second-person-semantically singular table-2 third-person
 1	se llovizne	formal imperative negative pronominal second-person-semantically singular table-3 third-person
 8	llueva	formal imperative negative second-person-semantically singular table-2 third-person
-3434	absuelva	formal imperative negative second-person-semantically singular third-person
+3461	absuelva	formal imperative negative second-person-semantically singular third-person
 1	desafore	formal imperative negative second-person-semantically singular third-person uncommon
 1	afierren	formal imperative obsolete plural second-person-semantically third-person
 1	afierre	formal imperative obsolete second-person-semantically singular third-person
-138	estense	formal imperative plural pronominal second-person-semantically table-2 third-person
+141	estense	formal imperative plural pronominal second-person-semantically table-2 third-person
 1	llovíznense	formal imperative plural pronominal second-person-semantically table-3 third-person
 8	lluevan	formal imperative plural second-person-semantically table-2 third-person
-3434	absuelvan	formal imperative plural second-person-semantically third-person
+3461	absuelvan	formal imperative plural second-person-semantically third-person
 1	desaforen	formal imperative plural second-person-semantically third-person uncommon
-138	estese	formal imperative pronominal second-person-semantically singular table-2 third-person
+141	estese	formal imperative pronominal second-person-semantically singular table-2 third-person
 1	llovíznese	formal imperative pronominal second-person-semantically singular table-3 third-person
 8	llueva	formal imperative second-person-semantically singular table-2 third-person
-3434	absuelva	formal imperative second-person-semantically singular third-person
+3461	absuelva	formal imperative second-person-semantically singular third-person
 1	desafore	formal imperative second-person-semantically singular third-person uncommon
 1	vaya a saber	formal second-person
-138	os estaréis	future indicative plural pronominal second-person table-2
+141	os estaréis	future indicative plural pronominal second-person table-2
 1	os lloviznaréis	future indicative plural pronominal second-person table-3
-138	se estarán	future indicative plural pronominal table-2 third-person
+141	se estarán	future indicative plural pronominal table-2 third-person
 1	se lloviznarán	future indicative plural pronominal table-3 third-person
-3413	absolveréis	future indicative plural second-person
+3440	absolveréis	future indicative plural second-person
 8	lloveréis	future indicative plural second-person table-2
 8	lloverán	future indicative plural table-2 third-person
-3417	absolverán	future indicative plural third-person
-138	te estarás	future indicative pronominal second-person singular table-2
+3444	absolverán	future indicative plural third-person
+141	te estarás	future indicative pronominal second-person singular table-2
 1	te lloviznarás	future indicative pronominal second-person singular table-3
-138	se estará	future indicative pronominal singular table-2 third-person
+141	se estará	future indicative pronominal singular table-2 third-person
 1	se lloviznará	future indicative pronominal singular table-3 third-person
-3413	absolverás	future indicative second-person singular
+3440	absolverás	future indicative second-person singular
 8	lloverás	future indicative second-person singular table-2
 8	lloverá	future indicative singular table-2 third-person
-3423	absolverá	future indicative singular third-person
-138	os estuviereis	future plural pronominal second-person subjunctive table-2
+3450	absolverá	future indicative singular third-person
+141	os estuviereis	future plural pronominal second-person subjunctive table-2
 1	os lloviznareis	future plural pronominal second-person subjunctive table-3
-138	se estuvieren	future plural pronominal subjunctive table-2 third-person
+141	se estuvieren	future plural pronominal subjunctive table-2 third-person
 1	se lloviznaren	future plural pronominal subjunctive table-3 third-person
-3410	absolviereis	future plural second-person subjunctive
+3437	absolviereis	future plural second-person subjunctive
 8	lloviereis	future plural second-person subjunctive table-2
 8	llovieren	future plural subjunctive table-2 third-person
-3414	absolvieren	future plural subjunctive third-person
-138	te estuvieres	future pronominal second-person singular subjunctive table-2
+3441	absolvieren	future plural subjunctive third-person
+141	te estuvieres	future pronominal second-person singular subjunctive table-2
 1	te lloviznares	future pronominal second-person singular subjunctive table-3
-138	se estuviere	future pronominal singular subjunctive table-2 third-person
+141	se estuviere	future pronominal singular subjunctive table-2 third-person
 1	se lloviznare	future pronominal singular subjunctive table-3 third-person
-3410	absolvieres	future second-person singular subjunctive
+3437	absolvieres	future second-person singular subjunctive
 8	llovieres	future second-person singular subjunctive table-2
 8	lloviere	future singular subjunctive table-2 third-person
-3420	absolviere	future singular subjunctive third-person
-3420	absolviendo	gerund
-138	estándoos	gerund plural pronominal second-person table-2
+3447	absolviere	future singular subjunctive third-person
+3447	absolviendo	gerund
+141	estándoos	gerund plural pronominal second-person table-2
 1	lloviznándoos	gerund plural pronominal second-person table-3
-138	estándose	gerund plural pronominal table-2 third-person
+141	estándose	gerund plural pronominal table-2 third-person
 1	lloviznándose	gerund plural pronominal table-3 third-person
-17	quejándoos	gerund plural second-person
-17	quejándose	gerund plural third-person
-138	estándote	gerund pronominal second-person singular table-2
+18	quejándoos	gerund plural second-person
+18	quejándose	gerund plural third-person
+141	estándote	gerund pronominal second-person singular table-2
 1	lloviznándote	gerund pronominal second-person singular table-3
-138	estándose	gerund pronominal singular table-2 third-person
+141	estándose	gerund pronominal singular table-2 third-person
 1	lloviznándose	gerund pronominal singular table-3 third-person
-138	estándose	gerund pronominal table-2
+141	estándose	gerund pronominal table-2
 1	lloviznándose	gerund pronominal table-3
-17	quejándote	gerund second-person singular
-17	quejándose	gerund singular third-person
+18	quejándote	gerund second-person singular
+18	quejándose	gerund singular third-person
 8	lloviendo	gerund table-2
 1	afierra	imperative informal obsolete second-person singular
-134	vete	imperative informal pronominal second-person singular table-2
-134	andate	imperative informal pronominal second-person singular table-2 vos-form
+137	vete	imperative informal pronominal second-person singular table-2
+137	andate	imperative informal pronominal second-person singular table-2 vos-form
 1	llovíznate	imperative informal pronominal second-person singular table-3
 1	lloviznate	imperative informal pronominal second-person singular table-3 vos-form
-3389	absuelve	imperative informal second-person singular
+3415	absuelve	imperative informal second-person singular
 8	llueve	imperative informal second-person singular table-2
 8	llové	imperative informal second-person singular table-2 vos-form
 1	desafora	imperative informal second-person singular uncommon
-3394	absolvé	imperative informal second-person singular vos-form
+3420	absolvé	imperative informal second-person singular vos-form
 1	afierren	imperative negative obsolete plural third-person
 1	afierres	imperative negative obsolete second-person singular
 1	afierre	imperative negative obsolete singular third-person
-138	os estéis	imperative negative plural pronominal second-person table-2
+141	os estéis	imperative negative plural pronominal second-person table-2
 1	os lloviznéis	imperative negative plural pronominal second-person table-3
-138	se estén	imperative negative plural pronominal table-2 third-person
+141	se estén	imperative negative plural pronominal table-2 third-person
 1	se lloviznen	imperative negative plural pronominal table-3 third-person
-3416	absolváis	imperative negative plural second-person
+3443	absolváis	imperative negative plural second-person
 8	llováis	imperative negative plural second-person table-2
 8	lluevan	imperative negative plural table-2 third-person
-3434	absuelvan	imperative negative plural third-person
+3461	absuelvan	imperative negative plural third-person
 1	desaforen	imperative negative plural third-person uncommon
-138	te estés	imperative negative pronominal second-person singular table-2
+141	te estés	imperative negative pronominal second-person singular table-2
 1	te lloviznes	imperative negative pronominal second-person singular table-3
-138	se esté	imperative negative pronominal singular table-2 third-person
+141	se esté	imperative negative pronominal singular table-2 third-person
 1	se llovizne	imperative negative pronominal singular table-3 third-person
-3434	absuelvas	imperative negative second-person singular
+3461	absuelvas	imperative negative second-person singular
 8	lluevas	imperative negative second-person singular table-2
 1	desafores	imperative negative second-person singular uncommon
 8	llueva	imperative negative singular table-2 third-person
-3434	absuelva	imperative negative singular third-person
+3461	absuelva	imperative negative singular third-person
 1	desafore	imperative negative singular third-person uncommon
 1	afierren	imperative obsolete plural third-person
 1	afierre	imperative obsolete singular third-person
-139	estaos	imperative plural pronominal second-person table-2
+142	estaos	imperative plural pronominal second-person table-2
 1	lloviznaos	imperative plural pronominal second-person table-3
-138	estense	imperative plural pronominal table-2 third-person
+141	estense	imperative plural pronominal table-2 third-person
 1	llovíznense	imperative plural pronominal table-3 third-person
-3410	absolved	imperative plural second-person
+3437	absolved	imperative plural second-person
 8	lloved	imperative plural second-person table-2
 8	lluevan	imperative plural table-2 third-person
-3434	absuelvan	imperative plural third-person
+3461	absuelvan	imperative plural third-person
 1	desaforen	imperative plural third-person uncommon
 5	estate	imperative pronominal second-person singular table-2
-138	estese	imperative pronominal singular table-2 third-person
+141	estese	imperative pronominal singular table-2 third-person
 1	llovíznese	imperative pronominal singular table-3 third-person
-42	está	imperative second-person singular
+43	está	imperative second-person singular
 8	llueva	imperative singular table-2 third-person
-3434	absuelva	imperative singular third-person
+3461	absuelva	imperative singular third-person
 1	desafore	imperative singular third-person uncommon
-138	os estuvieseis	imperfect imperfect-se plural pronominal second-person subjunctive table-2
+141	os estuvieseis	imperfect imperfect-se plural pronominal second-person subjunctive table-2
 1	os lloviznaseis	imperfect imperfect-se plural pronominal second-person subjunctive table-3
-138	se estuviesen	imperfect imperfect-se plural pronominal subjunctive table-2 third-person
+141	se estuviesen	imperfect imperfect-se plural pronominal subjunctive table-2 third-person
 1	se lloviznasen	imperfect imperfect-se plural pronominal subjunctive table-3 third-person
-3410	absolvieseis	imperfect imperfect-se plural second-person subjunctive
+3437	absolvieseis	imperfect imperfect-se plural second-person subjunctive
 8	llovieseis	imperfect imperfect-se plural second-person subjunctive table-2
 8	lloviesen	imperfect imperfect-se plural subjunctive table-2 third-person
-3414	absolviesen	imperfect imperfect-se plural subjunctive third-person
-138	te estuvieses	imperfect imperfect-se pronominal second-person singular subjunctive table-2
+3441	absolviesen	imperfect imperfect-se plural subjunctive third-person
+141	te estuvieses	imperfect imperfect-se pronominal second-person singular subjunctive table-2
 1	te lloviznases	imperfect imperfect-se pronominal second-person singular subjunctive table-3
-138	se estuviese	imperfect imperfect-se pronominal singular subjunctive table-2 third-person
+141	se estuviese	imperfect imperfect-se pronominal singular subjunctive table-2 third-person
 1	se lloviznase	imperfect imperfect-se pronominal singular subjunctive table-3 third-person
-3410	absolvieses	imperfect imperfect-se second-person singular subjunctive
+3437	absolvieses	imperfect imperfect-se second-person singular subjunctive
 8	llovieses	imperfect imperfect-se second-person singular subjunctive table-2
 8	lloviese	imperfect imperfect-se singular subjunctive table-2 third-person
-3420	absolviese	imperfect imperfect-se singular subjunctive third-person
-138	os estabais	imperfect indicative plural pronominal second-person table-2
+3447	absolviese	imperfect imperfect-se singular subjunctive third-person
+141	os estabais	imperfect indicative plural pronominal second-person table-2
 1	os lloviznabais	imperfect indicative plural pronominal second-person table-3
-138	se estaban	imperfect indicative plural pronominal table-2 third-person
+141	se estaban	imperfect indicative plural pronominal table-2 third-person
 1	se lloviznaban	imperfect indicative plural pronominal table-3 third-person
-3410	absolvíais	imperfect indicative plural second-person
+3437	absolvíais	imperfect indicative plural second-person
 8	llovíais	imperfect indicative plural second-person table-2
 8	llovían	imperfect indicative plural table-2 third-person
-3414	absolvían	imperfect indicative plural third-person
-138	te estabas	imperfect indicative pronominal second-person singular table-2
+3441	absolvían	imperfect indicative plural third-person
+141	te estabas	imperfect indicative pronominal second-person singular table-2
 1	te lloviznabas	imperfect indicative pronominal second-person singular table-3
-138	se estaba	imperfect indicative pronominal singular table-2 third-person
+141	se estaba	imperfect indicative pronominal singular table-2 third-person
 1	se lloviznaba	imperfect indicative pronominal singular table-3 third-person
-3410	absolvías	imperfect indicative second-person singular
+3437	absolvías	imperfect indicative second-person singular
 8	llovías	imperfect indicative second-person singular table-2
 8	llovía	imperfect indicative singular table-2 third-person
-3420	absolvía	imperfect indicative singular third-person
-138	os estuvierais	imperfect plural pronominal second-person subjunctive table-2
+3447	absolvía	imperfect indicative singular third-person
+141	os estuvierais	imperfect plural pronominal second-person subjunctive table-2
 1	os lloviznarais	imperfect plural pronominal second-person subjunctive table-3
-138	se estuvieran	imperfect plural pronominal subjunctive table-2 third-person
+141	se estuvieran	imperfect plural pronominal subjunctive table-2 third-person
 1	se lloviznaran	imperfect plural pronominal subjunctive table-3 third-person
-3410	absolvierais	imperfect plural second-person subjunctive
+3437	absolvierais	imperfect plural second-person subjunctive
 8	llovierais	imperfect plural second-person subjunctive table-2
 8	llovieran	imperfect plural subjunctive table-2 third-person
-3414	absolvieran	imperfect plural subjunctive third-person
-138	te estuvieras	imperfect pronominal second-person singular subjunctive table-2
+3441	absolvieran	imperfect plural subjunctive third-person
+141	te estuvieras	imperfect pronominal second-person singular subjunctive table-2
 1	te lloviznaras	imperfect pronominal second-person singular subjunctive table-3
-138	se estuviera	imperfect pronominal singular subjunctive table-2 third-person
+141	se estuviera	imperfect pronominal singular subjunctive table-2 third-person
 1	se lloviznara	imperfect pronominal singular subjunctive table-3 third-person
-3410	absolvieras	imperfect second-person singular subjunctive
+3437	absolvieras	imperfect second-person singular subjunctive
 8	llovieras	imperfect second-person singular subjunctive table-2
 8	lloviera	imperfect singular subjunctive table-2 third-person
-3420	absolviera	imperfect singular subjunctive third-person
+3447	absolviera	imperfect singular subjunctive third-person
 1	afierras	indicative informal obsolete present second-person singular
-133	te metes	indicative informal present pronominal second-person singular table-2
-133	te metés	indicative informal present pronominal second-person singular table-2 vos-form
+136	te metes	indicative informal present pronominal second-person singular table-2
+136	te metés	indicative informal present pronominal second-person singular table-2 vos-form
 1	te lloviznas	indicative informal present pronominal second-person singular table-3
 1	te lloviznás	indicative informal present pronominal second-person singular table-3 vos-form
-3389	absuelves	indicative informal present second-person singular
+3415	absuelves	indicative informal present second-person singular
 8	llueves	indicative informal present second-person singular table-2
 8	llovés	indicative informal present second-person singular table-2 vos-form
 1	desaforas	indicative informal present second-person singular uncommon
-3394	absolvés	indicative informal present second-person singular vos-form
+3420	absolvés	indicative informal present second-person singular vos-form
 1	afierran	indicative obsolete plural present third-person
 1	afierra	indicative obsolete present singular third-person
-138	os estáis	indicative plural present pronominal second-person table-2
+141	os estáis	indicative plural present pronominal second-person table-2
 1	os lloviznáis	indicative plural present pronominal second-person table-3
-138	se están	indicative plural present pronominal table-2 third-person
+141	se están	indicative plural present pronominal table-2 third-person
 1	se lloviznan	indicative plural present pronominal table-3 third-person
-3410	absolvéis	indicative plural present second-person
+3437	absolvéis	indicative plural present second-person
 8	llovéis	indicative plural present second-person table-2
 8	llueven	indicative plural present table-2 third-person
-3431	absuelven	indicative plural present third-person
+3458	absuelven	indicative plural present third-person
 1	desaforan	indicative plural present third-person uncommon
-138	os estuvisteis	indicative plural preterite pronominal second-person table-2
+141	os estuvisteis	indicative plural preterite pronominal second-person table-2
 1	os lloviznasteis	indicative plural preterite pronominal second-person table-3
-138	se estuvieron	indicative plural preterite pronominal table-2 third-person
+141	se estuvieron	indicative plural preterite pronominal table-2 third-person
 1	se lloviznaron	indicative plural preterite pronominal table-3 third-person
-3410	absolvisteis	indicative plural preterite second-person
+3437	absolvisteis	indicative plural preterite second-person
 8	llovisteis	indicative plural preterite second-person table-2
 8	llovieron	indicative plural preterite table-2 third-person
-3414	absolvieron	indicative plural preterite third-person
+3441	absolvieron	indicative plural preterite third-person
 5	te estás	indicative present pronominal second-person singular table-2
-139	se está	indicative present pronominal singular table-2 third-person
+142	se está	indicative present pronominal singular table-2 third-person
 1	se llovizna	indicative present pronominal singular table-3 third-person
-38	estás	indicative present second-person singular
+39	estás	indicative present second-person singular
 8	llueve	indicative present singular table-2 third-person
-3438	absuelve	indicative present singular third-person
+3465	absuelve	indicative present singular third-person
 1	desafora	indicative present singular third-person uncommon
-138	te estuviste	indicative preterite pronominal second-person singular table-2
+141	te estuviste	indicative preterite pronominal second-person singular table-2
 1	te lloviznaste	indicative preterite pronominal second-person singular table-3
-138	se estuvo	indicative preterite pronominal singular table-2 third-person
+141	se estuvo	indicative preterite pronominal singular table-2 third-person
 1	se lloviznó	indicative preterite pronominal singular table-3 third-person
-3410	absolviste	indicative preterite second-person singular
+3437	absolviste	indicative preterite second-person singular
 8	lloviste	indicative preterite second-person singular table-2
 8	llovió	indicative preterite singular table-2 third-person
-3420	absolvió	indicative preterite singular third-person
-3420	absolver	infinitive
-138	estaros	infinitive plural pronominal second-person table-2
+3447	absolvió	indicative preterite singular third-person
+3447	absolver	infinitive
+141	estaros	infinitive plural pronominal second-person table-2
 1	lloviznaros	infinitive plural pronominal second-person table-3
-138	estarse	infinitive plural pronominal table-2 third-person
+141	estarse	infinitive plural pronominal table-2 third-person
 1	lloviznarse	infinitive plural pronominal table-3 third-person
-17	quejaros	infinitive plural second-person
-17	quejarse	infinitive plural third-person
-138	estarte	infinitive pronominal second-person singular table-2
+18	quejaros	infinitive plural second-person
+18	quejarse	infinitive plural third-person
+141	estarte	infinitive pronominal second-person singular table-2
 1	lloviznarte	infinitive pronominal second-person singular table-3
-138	estarse	infinitive pronominal singular table-2 third-person
+141	estarse	infinitive pronominal singular table-2 third-person
 1	lloviznarse	infinitive pronominal singular table-3 third-person
-138	estarse	infinitive pronominal table-2
+141	estarse	infinitive pronominal table-2
 1	lloviznarse	infinitive pronominal table-3
-17	quejarte	infinitive second-person singular
-17	quejarse	infinitive singular third-person
+18	quejarte	infinitive second-person singular
+18	quejarse	infinitive singular third-person
 8	llover	infinitive table-2
 1	afierres	informal obsolete present second-person singular subjunctive
-136	te veas	informal present pronominal second-person singular subjunctive table-2
-136	te veás	informal present pronominal second-person singular subjunctive table-2 vos-form
+139	te veas	informal present pronominal second-person singular subjunctive table-2
+139	te veás	informal present pronominal second-person singular subjunctive table-2 vos-form
 1	te lloviznes	informal present pronominal second-person singular subjunctive table-3
 1	te lloviznés	informal present pronominal second-person singular subjunctive table-3 vos-form
-3395	absuelvas	informal present second-person singular subjunctive
+3421	absuelvas	informal present second-person singular subjunctive
 8	lluevas	informal present second-person singular subjunctive table-2
 8	llovás	informal present second-person singular subjunctive table-2 vos-form
 1	desafores	informal present second-person singular subjunctive uncommon
-3398	absolvás	informal present second-person singular subjunctive vos-form
+3424	absolvás	informal present second-person singular subjunctive vos-form
 128	abuelo	masculine
 4	ésos	masculine medial plural
 4	ése	masculine medial singular
-3423	absueltos	masculine participle past plural
-138	estados	masculine participle past plural pronominal table-2
+3450	absueltos	masculine participle past plural
+141	estados	masculine participle past plural pronominal table-2
 1	lloviznados	masculine participle past plural pronominal table-3
 8	llovidos	masculine participle past plural table-2
-138	estado	masculine participle past pronominal singular table-2
+141	estado	masculine participle past pronominal singular table-2
 1	lloviznado	masculine participle past pronominal singular table-3
-3429	absuelto	masculine participle past singular
+3456	absuelto	masculine participle past singular
 8	llovido	masculine participle past singular table-2
-3556	perros	masculine plural
+3581	perros	masculine plural
 4	éstos	masculine plural proximal
 4	éste	masculine proximal singular
-6	before a noun san	masculine singular
+9	before a noun san	masculine singular
 4	eso	medial neuter singular
-4	lo	neuter
+5	lo	neuter
 4	esto	neuter proximal singular
 3	te	oblique
 1	les	oblique plural
 1	afierren	obsolete plural present subjunctive third-person
 1	afierre	obsolete present singular subjunctive third-person
-1043	sacado de quicio	participle past
-15538	pies	plural
-138	os estéis	plural present pronominal second-person subjunctive table-2
+1060	sacado de quicio	participle past
+15672	pies	plural
+141	os estéis	plural present pronominal second-person subjunctive table-2
 1	os lloviznéis	plural present pronominal second-person subjunctive table-3
-138	se estén	plural present pronominal subjunctive table-2 third-person
+141	se estén	plural present pronominal subjunctive table-2 third-person
 1	se lloviznen	plural present pronominal subjunctive table-3 third-person
-3416	absolváis	plural present second-person subjunctive
+3443	absolváis	plural present second-person subjunctive
 8	llováis	plural present second-person subjunctive table-2
 8	lluevan	plural present subjunctive table-2 third-person
-3438	absuelvan	plural present subjunctive third-person
+3465	absuelvan	plural present subjunctive third-person
 1	desaforen	plural present subjunctive third-person uncommon
 1	a vuestras solas	plural second-person
 1	que sepan	plural second-person third-person
 2	fanes	plural uncommon
 2	te estés	present pronominal second-person singular subjunctive table-2
-138	se esté	present pronominal singular subjunctive table-2 third-person
+141	se esté	present pronominal singular subjunctive table-2 third-person
 1	se llovizne	present pronominal singular subjunctive table-3 third-person
-47	estés	present second-person singular subjunctive
+48	estés	present second-person singular subjunctive
 8	llueva	present singular subjunctive table-2 third-person
-3444	absuelva	present singular subjunctive third-person
+3471	absuelva	present singular subjunctive third-person
 1	desafore	present singular subjunctive third-person uncommon
 12	llueve a mares	present singular third-person
 10	llovió a mares	preterite singular third-person
