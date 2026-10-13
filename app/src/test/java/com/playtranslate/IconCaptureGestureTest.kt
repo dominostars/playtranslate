@@ -263,6 +263,36 @@ class IconCaptureGestureTest {
         )
     }
 
+    // Codex review, 2026-10-13: with no CaptureService (the icon outlives
+    // it; a gesture's own start is asynchronous) the one-shot falls back to
+    // the full-screen result page, launched once its shot is in hand, and
+    // the slide used to leave that launch untouched: the page opened under
+    // the lens and stayed after it closed.
+    @Test fun `with no service a slide into a drag drops the hold's fallback result page, and a lift keeps it`() {
+        prefs.iconHoldAction = HoldAction.CAPTURE_SCREEN
+        val icon = icon()
+        assertNull(CaptureService.instance)
+
+        // The shot is in flight when the finger slides.
+        icon.onHoldStart!!.invoke()
+        icon.onHoldCancel!!.invoke()
+        icon.onDragStart!!.invoke()
+        settle()
+        assertEquals("no result page", emptyList<String>(), resultPages())
+        closeLens()
+
+        // A hold that lifts lets the page open, as before.
+        icon.onHoldStart!!.invoke()
+        icon.onHoldEnd!!.invoke()
+        settle()
+        assertEquals(1, resultPages().size)
+    }
+
+    /** The full-screen result pages started since the last call. */
+    private fun resultPages(): List<String> =
+        started().mapNotNull { it.component?.className }
+            .filter { it == TranslationResultActivity::class.java.name }
+
     // The stop is a message to the app, so the drag a slide turns the hold
     // into finds the session still running; it must not pause it and start
     // it again when the lens closes, over the capture's result. The capture
