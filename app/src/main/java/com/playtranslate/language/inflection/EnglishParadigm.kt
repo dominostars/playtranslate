@@ -38,7 +38,12 @@ import com.playtranslate.language.inflection.KaikkiTags.THIRD
  * is built from the parts present, in a fixed order: person, number, then the
  * tense or mood; a participle is "past participle" or "present participle"
  * whatever else is tagged beside it. US and UK spellings (penciled, pencilled)
- * are both the form and read the same; archaic rows read their grammar.
+ * are both the form and read the same. A usage tag follows the name in
+ * parentheses, in kaikki's own word (speakest · second-person singular present
+ * (archaic); sitten · past participle (archaic, dialectal); citri · plural
+ * (formal)), since a player meeting thou speakest in a game wants the
+ * register as much as the grammar; a named region (US, Scotland) says
+ * nothing.
  */
 object EnglishParadigm : InflectionParadigm {
 
@@ -54,16 +59,20 @@ object EnglishParadigm : InflectionParadigm {
         "accusative" to "objective", "objective" to "objective", "oblique" to "objective",
         "possessive" to "possessive", "genitive" to "genitive",
     )
-    /** Tags that change nothing the label says: a region or spelling, a usage note. */
+    /** kaikki's usage tags the en pack's rows carry, shown after the name in display order. */
+    private val USAGE_WORDS = listOf(
+        "archaic", "dated", "rare", "uncommon", "colloquial", "informal", "formal", "literary", "poetic", "humorous", "childish",
+        "nonstandard", "hypercorrect", "misconstruction", "dialectal", "regional",
+    )
+    /** Tags that change nothing the label says: a region or spelling, a template's connective, a lexical
+     *  note (`gender-neutral` on a pronoun's form, `Early Modern` split in two: left silent). */
     private val IGNORED = setOf(
         "form-of", InflectionForm.PRONOMINAL_TAG, INDICATIVE,
         "US", "UK", "Canada", "Australia", "New-Zealand", "Scotland", "Commonwealth", "Southern-US", "Internet",
-        "archaic", "dialectal", "informal", "uncommon", "nonstandard", "rare", "hypercorrect", "especially", "also",
-        "poetic", "colloquial", "humorous", "formal", "dated", "gender-neutral", "common", "regional", "misconstruction",
-        "childish", "literary", "usually", "sometimes", "in-compounds", "modal", "suppletive", "Early", "Modern", "Lao",
+        "especially", "also", "gender-neutral", "common", "usually", "sometimes", "in-compounds", "modal", "suppletive", "Early", "Modern", "Lao",
     )
     private val KNOWN: Set<String> = PERSON_WORDS.keys + NUMBER_WORDS.keys + TENSE_WORDS.keys + DEGREE_WORDS.keys +
-        GENDER_WORDS.keys + CASE_WORDS.keys + setOf(PARTICIPLE, GERUND, INFINITIVE, IMPERATIVE, SUBJUNCTIVE, REFLEXIVE) + IGNORED
+        GENDER_WORDS.keys + CASE_WORDS.keys + setOf(PARTICIPLE, GERUND, INFINITIVE, IMPERATIVE, SUBJUNCTIVE, REFLEXIVE) + USAGE_WORDS + IGNORED
 
     private const val TABLE_PREFIX = "table-"
     private const val MAX_LABEL_PARTS = 3
@@ -88,20 +97,22 @@ object EnglishParadigm : InflectionParadigm {
     override fun table(lemma: String, forms: List<InflectionForm>, highlight: String?): ConjugationTable? = null
 
     /** The form's names: one, or one per person when a page merges persons
-     *  (was: first-person and third-person singular past). Empty when a tag is
-     *  outside the vocabulary, the tags contradict each other, or they say
-     *  nothing (a lemma's own singular). */
+     *  (was: first-person and third-person singular past), each followed by
+     *  the form's usage notes. Empty when a tag is outside the vocabulary, the
+     *  tags contradict each other, or they say nothing (a lemma's own
+     *  singular; a usage note alone names no form). */
     private fun namesOf(tags: Set<String>): List<String> {
         if (tags.any { !isKnown(it) }) return emptyList()
+        val usage = USAGE_WORDS.filter { it in tags }.let { if (it.isEmpty()) "" else " (${it.joinToString(", ")})" }
         val persons = PERSON_WORDS.filterKeys { it in tags }.values.toList()
         val numbers = NUMBER_WORDS.filterKeys { it in tags }.values
         val tenses = TENSE_WORDS.filterKeys { it in tags }.values
         if (persons.size > 1 && tenses.size == 1 && numbers.size == 1 && SUBJUNCTIVE !in tags && IMPERATIVE !in tags &&
             PARTICIPLE !in tags && GERUND !in tags && INFINITIVE !in tags
         ) {
-            return persons.map { "$it ${numbers.single()} ${tenses.single()}" }
+            return persons.map { "$it ${numbers.single()} ${tenses.single()}$usage" }
         }
-        return listOfNotNull(nameOf(tags))
+        return listOfNotNull(nameOf(tags)?.let { it + usage })
     }
 
     private fun nameOf(tags: Set<String>): String? {

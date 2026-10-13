@@ -45,6 +45,13 @@ class PortugueseParadigmTest {
         assertEquals("feminino plural", PortugueseParadigm.label(listOf(f("casas", "feminine", "plural"))))
         assertEquals("diminutivo masculino", PortugueseParadigm.label(listOf(f("amiguinho", "diminutive", "form-of", "masculine"))))
         assertNull(PortugueseParadigm.label(listOf(f("naum", "form-of", "informal"))))
+        // Usage notes follow the name; informal on a noun's form is its register, not an address.
+        assertEquals("feminino (informal)", PortugueseParadigm.label(listOf(f("chefa", "feminine", "informal"))))
+        assertEquals("feminino plural (pouco comum)", PortugueseParadigm.label(listOf(f("morcegas", "feminine", "plural", "uncommon"))))
+        assertEquals("nós · imperativo negativo (arcaico, proscrito)", PortugueseParadigm.label(listOf(
+            f("não pairamos", "archaic", "first-person", "imperative", "negative", "plural", "proscribed", "sometimes"),
+        )))
+        assertEquals("aumentativo masculino (informal)", PortugueseParadigm.label(listOf(f("viajão", "augmentative", "form-of", "informal", "masculine"))))
         assertNull(PortugueseParadigm.label(listOf(f("falo", "first-person", "indicative", "present", "singular", "Angola"))))
     }
 

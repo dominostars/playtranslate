@@ -47,13 +47,40 @@ class GermanParadigmTest {
             f("den freien", "accusative", "definite", "includes-article", "masculine", "singular", "weak"),
             f("keine freien", "includes-article", "indefinite", "mixed", "negative", "nominative", "plural"),
         )))
-        assertEquals("dekliniert (Komparativ)", GermanParadigm.label(listOf(f("freieren", "comparative", "dative", "plural", "strong", "table-2", "without-article"))))
+        assertEquals("dekliniert im Komparativ", GermanParadigm.label(listOf(f("freieren", "comparative", "dative", "plural", "strong", "table-2", "without-article"))))
         // A page tags an adjective's form by declension without a case; a page merging du and ihr names both.
         assertEquals("dekliniert", GermanParadigm.label(listOf(f("abartigen", "form-of", "mixed", "plural", "weak"))))
         assertEquals("du / ihr · Präteritum", GermanParadigm.label(listOf(f("abbisst", "form-of", "plural", "preterite", "second-person", "singular"))))
         assertEquals("Komparativ", GermanParadigm.label(listOf(f("freier", "comparative", "masculine", "predicative", "singular", "table-2"))))
         // The positive predicative form is the lemma itself.
         assertNull(GermanParadigm.label(listOf(f("frei", "masculine", "predicative", "singular"))))
+    }
+
+    @Test
+    fun `usage notes read in Duden's words, and the Konjunktiv II template's formal rare says nothing`() {
+        assertEquals("dekliniert im Komparativ (selten)", GermanParadigm.label(listOf(
+            f("übelere", "accusative", "comparative", "rare", "singular", "strong", "table-2", "without-article"),
+        )))
+        assertEquals("Genitiv Singular (umgangssprachlich)", GermanParadigm.label(listOf(f("bärs", "genitive", "informal", "singular"))))
+        assertEquals("Nominativ Plural (gehoben)", GermanParadigm.label(listOf(f("zahnpasten", "definite", "formal", "nominative", "plural"))))
+        assertEquals("Akkusativ Plural (selten, landschaftlich)", GermanParadigm.label(listOf(
+            f("scheiter", "Austria", "accusative", "definite", "plural", "rare", "regional"),
+        )))
+        assertEquals("Partizip II (veraltet, mundartlich)", GermanParadigm.label(listOf(f("gescheint", "dialectal", "obsolete", "participle", "past"))))
+        // Two tags with one word show it once; dated with nonstandard and proscribed is two words.
+        assertEquals("Akkusativ Plural (veraltet)", GermanParadigm.label(listOf(f("härne", "accusative", "archaic", "definite", "obsolete", "plural"))))
+        assertEquals("Akkusativ Plural (veraltend, nicht standardsprachlich)", GermanParadigm.label(listOf(
+            f("lobbies", "accusative", "dated", "definite", "nonstandard", "plural", "proscribed"),
+        )))
+        // The Konjunktiv II's own rows: nothing; rare on a Konjunktiv II page with another note keeps the other.
+        assertEquals("wir · Konjunktiv II", GermanParadigm.label(listOf(
+            f("anerkennten", "Swiss-German", "first-person", "formal", "plural", "rare", "subjunctive", "subjunctive-ii"),
+        )))
+        assertEquals("ich · Konjunktiv II (veraltet)", GermanParadigm.label(listOf(
+            f("stünde", "archaic", "first-person", "formal", "rare", "singular", "subjunctive", "subjunctive-ii"),
+        )))
+        // A note never names a form on its own.
+        assertNull(GermanParadigm.label(listOf(f("frei", "masculine", "predicative", "rare", "singular"))))
     }
 
     @Test
@@ -72,7 +99,7 @@ class GermanParadigmTest {
         assertEquals("Genitiv", GermanParadigm.label(listOf(f("sms", "genitive"))))
         assertEquals("Dativ Singular", GermanParadigm.label(listOf(f("mir", "dative", "first-person", "personal", "pronoun", "singular"))))
         assertEquals("Femininum", GermanParadigm.label(listOf(f("pharaonin", "feminine"))))
-        assertEquals("dekliniert (Superlativ)", GermanParadigm.label(listOf(f("blondsten", "dative", "form-of", "genitive", "singular", "superlative"))))
+        assertEquals("dekliniert im Superlativ", GermanParadigm.label(listOf(f("blondsten", "dative", "form-of", "genitive", "singular", "superlative"))))
         // A page's imperative without a person is du's or ihr's.
         assertEquals("du · Imperativ", GermanParadigm.label(listOf(f("seh", "form-of", "imperative", "singular"))))
         assertEquals("ihr · Imperativ", GermanParadigm.label(listOf(f("setzt über", "form-of", "imperative", "plural"))))

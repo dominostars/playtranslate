@@ -55,14 +55,18 @@ data class NominalReading(val name: String, val case: String? = null, val plural
  * The classification is total over the language's closed vocabulary: every tag
  * the pack's tagsets carry is in one role (person, number, tense, mood,
  * polarity, register, voseo, non-finite, agreement, degree, clitic, qualifier,
- * or explicitly ignored), and a form is classified only when all its tags are
- * known and resolve without contradiction; anything else gets no label and no
- * cell. Nothing falls through to a default: the pronoun is a lookup over the
- * language's (person, number, address) cells, a tense is named only by the tag
- * set that identifies it, and a tag the vocabulary does not place fails the
- * form. Each language's golden test runs every tagset of its pack through
- * [label] against a reviewed file, and the oracle judges the grid by
- * [classify].
+ * usage note, or explicitly ignored), and a form is classified only when all
+ * its tags are known and resolve without contradiction; anything else gets no
+ * label and no cell. A usage note (archaic, rare, colloquial) changes no
+ * grammar and is shown after the name in the language's own word, in
+ * parentheses: "usted · imperativo + nos (arcaico)"; a register tag (formal,
+ * informal) is an address on a finite form and a usage note on a nominal one
+ * (chefa: feminino (informal)). Nothing falls through to a default: the
+ * pronoun is a lookup over the language's (person, number, address) cells, a
+ * tense is named only by the tag set that identifies it, and a tag the
+ * vocabulary does not place fails the form. Each language's golden test runs
+ * every tagset of its pack through [label] against a reviewed file, and the
+ * oracle judges the grid by [classify].
  *
  * kaikki's shared Romance conventions this encodes: a finite form is tagged
  * person + number + tense + mood, the conditional carries no mood (or the
@@ -107,7 +111,14 @@ abstract class RomanceParadigm : InflectionParadigm {
     protected open val cliticTags: Set<String> = emptySet()
     /** Known tags that qualify a tense without naming one, read by the grid's columns (Spanish `imperfect-se`). */
     protected open val qualifiers: Set<String> = emptySet()
-    /** Tags that change nothing the label says: a region, a usage note, a spelling variant's marker. */
+    /** kaikki's usage tags and the word the line shows for each (archaic → arcaico, rare → selten), in
+     *  display order; the ones the language's pack carries on its rows. Two tags may share a word
+     *  (German's archaic and obsolete are both veraltet) and the word is shown once. */
+    protected open val usageNames: LinkedHashMap<String, String> = linkedMapOf()
+    /** The words for the register tags ([formalTags], [informalTags]) on a nominal form, where they are a
+     *  usage note (chefa is the informal feminine) rather than an address. */
+    protected open val registerNames: Map<String, String> = emptyMap()
+    /** Tags that change nothing the label says: a region, a template's connective, a spelling variant's marker. */
     protected abstract val ignored: Set<String>
     /** Tags the language's [nominal] hook reads (German's cases and declension types): known, and theirs to interpret. */
     protected open val nominalTags: Set<String> = emptySet()
@@ -130,6 +141,9 @@ abstract class RomanceParadigm : InflectionParadigm {
     protected open val verbLeadsPhrase: Boolean = false
     /** The persons a finite form has when kaikki tags none (a German page's "imperative singular" is du's). */
     protected open fun impliedPersons(moods: Set<String>, plural: Boolean): List<Int> = emptyList()
+    /** The usage tags of a form that say something about it; a language drops the ones kaikki's
+     *  template writes on every row (German's `rare` on the Konjunktiv II). */
+    protected open fun usageTagsOf(tags: Set<String>): Set<String> = tags.filterTo(HashSet()) { it in usageNames }
 
     /** A noun's, adjective's or pronoun's form: what the line says, or null for
      *  nothing to say or a form not read. The Romance default names degree,
@@ -138,7 +152,7 @@ abstract class RomanceParadigm : InflectionParadigm {
     protected open fun nominal(tags: Set<String>, persons: List<Int>, numbers: List<Boolean>, negative: Boolean): NominalReading? {
         // A person or a polarity on a noun's or adjective's form is a page this
         // does not read ("a mis solas": first-person singular); a register is a
-        // usage note there and changes nothing the label says.
+        // usage note there, shown through registerNames.
         if (persons.isNotEmpty() || numbers.size > 1 || negative || PAST in tags) return null
         if (tags.any { it in voseoTags }) return null
         return agreement(tags, participle = false)?.let { NominalReading(it, plural = numbers.singleOrNull()) }
@@ -153,7 +167,10 @@ abstract class RomanceParadigm : InflectionParadigm {
 
     private enum class Kind { FINITE, NON_FINITE, NOMINAL }
 
-    private data class Reading(val pronoun: String?, val name: String)
+    /** One (pronoun, name) the line says, with the form's usage notes, which render after the name. */
+    private data class Reading(val pronoun: String?, val name: String, val usage: List<String> = emptyList()) {
+        val rendered: String get() = if (usage.isEmpty()) name else "$name (${usage.joinToString(", ")})"
+    }
 
     /** One pack line as read here, the only reading of its tags. */
     private data class Classified(
@@ -185,8 +202,8 @@ abstract class RomanceParadigm : InflectionParadigm {
     }
     private val known: Set<String> by lazy {
         PERSONS.keys + NUMBERS.keys + MOODS + NEGATIVE + tenseTags + nonFiniteForms.keys.flatten() + PAST +
-            formalTags + informalTags + voseoTags + genderNames.keys + degreeNames.keys + cliticTags + qualifiers + ignored + nominalTags +
-            setOf(FORM_OF_TAG, InflectionForm.PRONOMINAL_TAG)
+            formalTags + informalTags + voseoTags + genderNames.keys + degreeNames.keys + cliticTags + qualifiers + usageNames.keys +
+            registerNames.keys + ignored + nominalTags + setOf(FORM_OF_TAG, InflectionForm.PRONOMINAL_TAG)
     }
 
     override fun isKnown(tag: String): Boolean = tag in known || tag.startsWith(TABLE_PREFIX)
@@ -209,7 +226,7 @@ abstract class RomanceParadigm : InflectionParadigm {
         if (cliticTags.isNotEmpty() && tags.any { it in cliticTags }) {
             val base = classified(InflectionForm(form.surface, tags - cliticTags)) ?: return null
             val attached = attachedPronouns(tags, form.surface) ?: return null
-            return base.copy(form = form, clitic = attached, readings = base.readings.map { Reading(it.pronoun, "${it.name} + $attached") })
+            return base.copy(form = form, clitic = attached, readings = base.readings.map { it.copy(name = "${it.name} + $attached") })
         }
         val persons = PERSONS.entries.filter { it.key in tags }.map { it.value }
         val numbers = NUMBERS.entries.filter { it.key in tags }.map { it.value }
@@ -217,12 +234,13 @@ abstract class RomanceParadigm : InflectionParadigm {
         val negative = NEGATIVE in tags
         val agreementTagged = tags.any { it in genderNames || it in degreeNames }
         val register = tags.any { it in formalTags || it in informalTags || it in voseoTags }
+        val usage = usageWordsOf(tags)
 
         // Portuguese: an infinitive with a person and number is the personal
         // infinitive, a finite paradigm of its own.
         if (personalInfinitiveName != null && INFINITIVE in tags && persons.isNotEmpty()) {
             if (moods.isNotEmpty() || negative || agreementTagged || tags.any { it in tenseTags }) return null
-            return finite(form, setOf(INFINITIVE), emptyList(), listOf(personalInfinitiveName!!), persons, numbers, negative = false)
+            return finite(form, setOf(INFINITIVE), emptyList(), listOf(personalInfinitiveName!!), persons, numbers, negative = false, usage)
         }
 
         val nonFinite = nonFiniteForms.entries.filter { (key, _) -> key.all { it in tags } }
@@ -243,7 +261,7 @@ abstract class RomanceParadigm : InflectionParadigm {
             return Classified(
                 form, Kind.NON_FINITE, clitic = null, persons = emptyList(), plural = null, address = Address.PLAIN,
                 moods = emptySet(), tenseKeys = emptyList(), qualifiers = emptySet(), negative = false, nonFiniteName = match.value,
-                agreement = agreement, case = null, readings = listOf(Reading(null, listOfNotNull(match.value, agreement).joinToString(" "))),
+                agreement = agreement, case = null, readings = listOf(Reading(null, listOfNotNull(match.value, agreement).joinToString(" "), usage)),
             )
         }
 
@@ -291,21 +309,29 @@ abstract class RomanceParadigm : InflectionParadigm {
             // stray one (`past` on a Spanish finite form) is a form not read.
             val covered = keys.flatMapTo(HashSet()) { it }
             if (tags.any { (it in tenseTags || it == PAST) && it !in covered }) return null
-            return finite(form, read, keys.distinct(), names, persons, numbers, negative)
+            return finite(form, read, keys.distinct(), names, persons, numbers, negative, usage)
         }
 
-        // A noun's, adjective's or pronoun's form: the language's nominal reading.
+        // A noun's, adjective's or pronoun's form: the language's nominal
+        // reading, with a register tag read as a usage note.
         val nominal = nominal(tags, persons, numbers, negative) ?: return null
+        val nominalUsage = (usage + registerNames.filterKeys { it in tags }.values).distinct()
         return Classified(
             form, Kind.NOMINAL, clitic = null, persons = emptyList(), plural = nominal.plural, address = Address.PLAIN,
             moods = emptySet(), tenseKeys = emptyList(), qualifiers = emptySet(), negative = false, nonFiniteName = null,
-            agreement = nominal.name, case = nominal.case, readings = listOf(Reading(null, nominal.name)),
+            agreement = nominal.name, case = nominal.case, readings = listOf(Reading(null, nominal.name, nominalUsage)),
         )
+    }
+
+    /** The words for a form's usage tags, in [usageNames] order, each once. */
+    private fun usageWordsOf(tags: Set<String>): List<String> {
+        val present = usageTagsOf(tags)
+        return usageNames.entries.filter { it.key in present }.map { it.value }.distinct()
     }
 
     private fun finite(
         form: InflectionForm, moods: Set<String>, keys: List<Set<String>>, names: List<String>,
-        persons: List<Int>, numbers: List<Boolean>, negative: Boolean,
+        persons: List<Int>, numbers: List<Boolean>, negative: Boolean, usage: List<String>,
     ): Classified? {
         val tags = form.tags
         if (names.isEmpty() || numbers.isEmpty()) return null
@@ -336,7 +362,7 @@ abstract class RomanceParadigm : InflectionParadigm {
         return Classified(
             form, Kind.FINITE, clitic = null, persons = persons, plural = plural, address = address,
             moods = moods, tenseKeys = keys, qualifiers = tags.filterTo(HashSet()) { it in qualifiers }, negative = negative,
-            nonFiniteName = null, agreement = null, case = null, readings = who.flatMap { pronoun -> names.map { Reading(pronoun, it) } },
+            nonFiniteName = null, agreement = null, case = null, readings = who.flatMap { pronoun -> names.map { Reading(pronoun, it, usage) } },
         )
     }
 
@@ -373,9 +399,10 @@ abstract class RomanceParadigm : InflectionParadigm {
         // One group per pronoun with its tenses joined ("nosotros · presente /
         // pretérito"), then pronouns whose tense lists are identical merge
         // ("yo / él, ella, usted · imperfecto"); groups are separated by "; ".
-        // A reading without a pronoun (gerundio, plural) is named alone.
+        // A reading without a pronoun (gerundio, plural) is named alone. A
+        // name carries its usage notes ("imperativo (arcaico)").
         val namesByPronoun: Map<String?, List<String>> = parts.groupBy { it.pronoun }
-            .mapValues { (_, group) -> group.map { it.name }.distinct() }
+            .mapValues { (_, group) -> group.map { it.rendered }.distinct() }
         val pronounsByNames = LinkedHashMap<List<String>, MutableList<String?>>()
         for ((pronoun, names) in namesByPronoun) pronounsByNames.getOrPut(names) { mutableListOf() }.add(pronoun)
         val groups = pronounsByNames.map { (names, who) ->

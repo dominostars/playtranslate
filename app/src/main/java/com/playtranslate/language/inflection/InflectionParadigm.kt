@@ -24,8 +24,18 @@ interface InflectionParadigm {
 
     /** The line for a looked-up form from its [readings] (every pack line whose
      *  surface is the one looked up): "nosotros · presente / pretérito",
-     *  "gerundio", "femenino plural". Null when the readings say nothing
-     *  worth a line (a noun's own masculine singular). */
+     *  "gerundio", "femenino plural", "second-person singular present
+     *  (archaic)". Null when the readings say nothing worth a line (a noun's
+     *  own masculine singular).
+     *
+     *  The format every paradigm keeps, since the gates parse it: groups are
+     *  joined by "; ", a group is "pronoun · name" or "name", pronouns and
+     *  names are each joined by " / ", and a name never contains " · ". A
+     *  name's parentheses hold only its usage notes, the words for kaikki's
+     *  usage tags (archaic, rare, colloquial, dialectal) in the language's own
+     *  terms, so a player reading "speakest · second-person singular present
+     *  (archaic)" learns the register as well as the grammar; the oracle
+     *  compares the grammar with the parentheses stripped. */
     fun label(readings: List<InflectionForm>): String?
 
     /** The table for [lemma]'s whole set of pack [forms], or null when they

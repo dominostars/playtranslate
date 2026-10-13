@@ -128,13 +128,13 @@
 1	propago	participio	Uruguay masculine participle past pronominal singular table-2
 5	apago	participio	Uruguay masculine participle past singular
 3	pago el pato	participio	Uruguay participle past
-4	pléganos	usted · imperativo + nos	accusative archaic combined-form formal imperative object-first-person object-plural second-person singular
-4	plégame	usted · imperativo + me	accusative archaic combined-form formal imperative object-first-person object-singular second-person singular
-4	plégalas	usted · imperativo + las	accusative archaic combined-form formal imperative object-plural object-third-person second-person singular
-4	plégalos	usted · imperativo + los	accusative archaic combined-form formal imperative object-plural object-third-person second-person singular
-4	plégala	usted · imperativo + la	accusative archaic combined-form formal imperative object-singular object-third-person second-person singular
-4	plégalo	usted · imperativo + lo	accusative archaic combined-form formal imperative object-singular object-third-person second-person singular
-4	plégase	usted · imperativo + se	accusative archaic combined-form formal imperative object-singular object-third-person second-person singular
+4	pléganos	usted · imperativo + nos (arcaico)	accusative archaic combined-form formal imperative object-first-person object-plural second-person singular
+4	plégame	usted · imperativo + me (arcaico)	accusative archaic combined-form formal imperative object-first-person object-singular second-person singular
+4	plégalas	usted · imperativo + las (arcaico)	accusative archaic combined-form formal imperative object-plural object-third-person second-person singular
+4	plégalos	usted · imperativo + los (arcaico)	accusative archaic combined-form formal imperative object-plural object-third-person second-person singular
+4	plégala	usted · imperativo + la (arcaico)	accusative archaic combined-form formal imperative object-singular object-third-person second-person singular
+4	plégalo	usted · imperativo + lo (arcaico)	accusative archaic combined-form formal imperative object-singular object-third-person second-person singular
+4	plégase	usted · imperativo + se (arcaico)	accusative archaic combined-form formal imperative object-singular object-third-person second-person singular
 3085	absolvámonos	nosotros · imperativo + nos	accusative combined-form first-person imperative object-first-person object-plural plural
 8	llovámonos	nosotros · imperativo + nos	accusative combined-form first-person imperative object-first-person object-plural plural table-2
 3085	absolvámoos	nosotros · imperativo + os	accusative combined-form first-person imperative object-plural object-second-person plural
@@ -149,23 +149,23 @@
 3085	absolvámoslo	nosotros · imperativo + lo	accusative combined-form first-person imperative object-singular object-third-person plural
 8	llovámosla	nosotros · imperativo + la	accusative combined-form first-person imperative object-singular object-third-person plural table-2
 8	llovámoslo	nosotros · imperativo + lo	accusative combined-form first-person imperative object-singular object-third-person plural table-2
-1	afiérrennos	ustedes · imperativo + nos	accusative combined-form formal imperative object-first-person object-plural obsolete plural second-person
-1	afiérrenos	usted · imperativo + nos	accusative combined-form formal imperative object-first-person object-plural obsolete second-person singular
+1	afiérrennos	ustedes · imperativo + nos (obsoleto)	accusative combined-form formal imperative object-first-person object-plural obsolete plural second-person
+1	afiérrenos	usted · imperativo + nos (obsoleto)	accusative combined-form formal imperative object-first-person object-plural obsolete second-person singular
 3101	absuélvannos	ustedes · imperativo + nos	accusative combined-form formal imperative object-first-person object-plural plural second-person
 8	lluévannos	ustedes · imperativo + nos	accusative combined-form formal imperative object-first-person object-plural plural second-person table-2
 3101	absuélvanos	usted · imperativo + nos	accusative combined-form formal imperative object-first-person object-plural second-person singular
 8	lluévanos	usted · imperativo + nos	accusative combined-form formal imperative object-first-person object-plural second-person singular table-2
-1	afiérrenme	ustedes · imperativo + me	accusative combined-form formal imperative object-first-person object-singular obsolete plural second-person
-1	afiérreme	usted · imperativo + me	accusative combined-form formal imperative object-first-person object-singular obsolete second-person singular
+1	afiérrenme	ustedes · imperativo + me (obsoleto)	accusative combined-form formal imperative object-first-person object-singular obsolete plural second-person
+1	afiérreme	usted · imperativo + me (obsoleto)	accusative combined-form formal imperative object-first-person object-singular obsolete second-person singular
 3101	absuélvanme	ustedes · imperativo + me	accusative combined-form formal imperative object-first-person object-singular plural second-person
 8	lluévanme	ustedes · imperativo + me	accusative combined-form formal imperative object-first-person object-singular plural second-person table-2
 3101	absuélvame	usted · imperativo + me	accusative combined-form formal imperative object-first-person object-singular second-person singular
 8	lluévame	usted · imperativo + me	accusative combined-form formal imperative object-first-person object-singular second-person singular table-2
-1	afiérrenlas	ustedes · imperativo + las	accusative combined-form formal imperative object-plural object-third-person obsolete plural second-person
-1	afiérrenlos	ustedes · imperativo + los	accusative combined-form formal imperative object-plural object-third-person obsolete plural second-person
-1	afiérrense	ustedes · imperativo + se	accusative combined-form formal imperative object-plural object-third-person obsolete plural second-person
-1	afiérrelas	usted · imperativo + las	accusative combined-form formal imperative object-plural object-third-person obsolete second-person singular
-1	afiérrelos	usted · imperativo + los	accusative combined-form formal imperative object-plural object-third-person obsolete second-person singular
+1	afiérrenlas	ustedes · imperativo + las (obsoleto)	accusative combined-form formal imperative object-plural object-third-person obsolete plural second-person
+1	afiérrenlos	ustedes · imperativo + los (obsoleto)	accusative combined-form formal imperative object-plural object-third-person obsolete plural second-person
+1	afiérrense	ustedes · imperativo + se (obsoleto)	accusative combined-form formal imperative object-plural object-third-person obsolete plural second-person
+1	afiérrelas	usted · imperativo + las (obsoleto)	accusative combined-form formal imperative object-plural object-third-person obsolete second-person singular
+1	afiérrelos	usted · imperativo + los (obsoleto)	accusative combined-form formal imperative object-plural object-third-person obsolete second-person singular
 3101	absuélvanlas	ustedes · imperativo + las	accusative combined-form formal imperative object-plural object-third-person plural second-person
 3101	absuélvanlos	ustedes · imperativo + los	accusative combined-form formal imperative object-plural object-third-person plural second-person
 3101	absuélvanse	ustedes · imperativo + se	accusative combined-form formal imperative object-plural object-third-person plural second-person
@@ -176,11 +176,11 @@
 3101	absuélvalos	usted · imperativo + los	accusative combined-form formal imperative object-plural object-third-person second-person singular
 8	lluévalas	usted · imperativo + las	accusative combined-form formal imperative object-plural object-third-person second-person singular table-2
 8	lluévalos	usted · imperativo + los	accusative combined-form formal imperative object-plural object-third-person second-person singular table-2
-1	afiérrenla	ustedes · imperativo + la	accusative combined-form formal imperative object-singular object-third-person obsolete plural second-person
-1	afiérrenlo	ustedes · imperativo + lo	accusative combined-form formal imperative object-singular object-third-person obsolete plural second-person
-1	afiérrela	usted · imperativo + la	accusative combined-form formal imperative object-singular object-third-person obsolete second-person singular
-1	afiérrelo	usted · imperativo + lo	accusative combined-form formal imperative object-singular object-third-person obsolete second-person singular
-1	afiérrese	usted · imperativo + se	accusative combined-form formal imperative object-singular object-third-person obsolete second-person singular
+1	afiérrenla	ustedes · imperativo + la (obsoleto)	accusative combined-form formal imperative object-singular object-third-person obsolete plural second-person
+1	afiérrenlo	ustedes · imperativo + lo (obsoleto)	accusative combined-form formal imperative object-singular object-third-person obsolete plural second-person
+1	afiérrela	usted · imperativo + la (obsoleto)	accusative combined-form formal imperative object-singular object-third-person obsolete second-person singular
+1	afiérrelo	usted · imperativo + lo (obsoleto)	accusative combined-form formal imperative object-singular object-third-person obsolete second-person singular
+1	afiérrese	usted · imperativo + se (obsoleto)	accusative combined-form formal imperative object-singular object-third-person obsolete second-person singular
 3101	absuélvanla	ustedes · imperativo + la	accusative combined-form formal imperative object-singular object-third-person plural second-person
 3101	absuélvanlo	ustedes · imperativo + lo	accusative combined-form formal imperative object-singular object-third-person plural second-person
 8	lluévanla	ustedes · imperativo + la	accusative combined-form formal imperative object-singular object-third-person plural second-person table-2
@@ -211,14 +211,14 @@
 8	lloviéndola	gerundio + la	accusative combined-form gerund object-singular object-third-person table-2
 8	lloviéndolo	gerundio + lo	accusative combined-form gerund object-singular object-third-person table-2
 8	lloviéndose	gerundio + se	accusative combined-form gerund object-singular object-third-person table-2
-1	afiérranos	tú · imperativo + nos	accusative combined-form imperative informal object-first-person object-plural obsolete second-person singular with-tú
+1	afiérranos	tú · imperativo + nos (obsoleto)	accusative combined-form imperative informal object-first-person object-plural obsolete second-person singular with-tú
 3080	absolvednos	vosotros · imperativo + nos	accusative combined-form imperative informal object-first-person object-plural plural second-person
 8	llovednos	vosotros · imperativo + nos	accusative combined-form imperative informal object-first-person object-plural plural second-person table-2
 8	lluévenos	tú · imperativo + nos	accusative combined-form imperative informal object-first-person object-plural second-person singular table-2 with-tú
 8	llovenos	vos · imperativo + nos	accusative combined-form imperative informal object-first-person object-plural second-person singular table-2 with-vos
 3086	absuélvenos	tú · imperativo + nos	accusative combined-form imperative informal object-first-person object-plural second-person singular with-tú
 3067	absolvenos	vos · imperativo + nos	accusative combined-form imperative informal object-first-person object-plural second-person singular with-vos
-1	afiérrame	tú · imperativo + me	accusative combined-form imperative informal object-first-person object-singular obsolete second-person singular with-tú
+1	afiérrame	tú · imperativo + me (obsoleto)	accusative combined-form imperative informal object-first-person object-singular obsolete second-person singular with-tú
 3080	absolvedme	vosotros · imperativo + me	accusative combined-form imperative informal object-first-person object-singular plural second-person
 8	llovedme	vosotros · imperativo + me	accusative combined-form imperative informal object-first-person object-singular plural second-person table-2
 8	lluéveme	tú · imperativo + me	accusative combined-form imperative informal object-first-person object-singular second-person singular table-2 with-tú
@@ -227,8 +227,8 @@
 3067	absolveme	vos · imperativo + me	accusative combined-form imperative informal object-first-person object-singular second-person singular with-vos
 3081	absolveos	vosotros · imperativo + os	accusative combined-form imperative informal object-plural object-second-person plural second-person
 8	lloveos	vosotros · imperativo + os	accusative combined-form imperative informal object-plural object-second-person plural second-person table-2
-1	afiérralas	tú · imperativo + las	accusative combined-form imperative informal object-plural object-third-person obsolete second-person singular with-tú
-1	afiérralos	tú · imperativo + los	accusative combined-form imperative informal object-plural object-third-person obsolete second-person singular with-tú
+1	afiérralas	tú · imperativo + las (obsoleto)	accusative combined-form imperative informal object-plural object-third-person obsolete second-person singular with-tú
+1	afiérralos	tú · imperativo + los (obsoleto)	accusative combined-form imperative informal object-plural object-third-person obsolete second-person singular with-tú
 3080	absolvedlas	vosotros · imperativo + las	accusative combined-form imperative informal object-plural object-third-person plural second-person
 3080	absolvedlos	vosotros · imperativo + los	accusative combined-form imperative informal object-plural object-third-person plural second-person
 8	llovedlas	vosotros · imperativo + las	accusative combined-form imperative informal object-plural object-third-person plural second-person table-2
@@ -241,13 +241,13 @@
 3084	absuélvelos	tú · imperativo + los	accusative combined-form imperative informal object-plural object-third-person second-person singular with-tú
 3067	absolvelas	vos · imperativo + las	accusative combined-form imperative informal object-plural object-third-person second-person singular with-vos
 3067	absolvelos	vos · imperativo + los	accusative combined-form imperative informal object-plural object-third-person second-person singular with-vos
-1	afiérrate	tú · imperativo + te	accusative combined-form imperative informal object-second-person object-singular obsolete second-person singular with-tú
+1	afiérrate	tú · imperativo + te (obsoleto)	accusative combined-form imperative informal object-second-person object-singular obsolete second-person singular with-tú
 8	lluévete	tú · imperativo + te	accusative combined-form imperative informal object-second-person object-singular second-person singular table-2 with-tú
 8	llovete	vos · imperativo + te	accusative combined-form imperative informal object-second-person object-singular second-person singular table-2 with-vos
 3086	absuélvete	tú · imperativo + te	accusative combined-form imperative informal object-second-person object-singular second-person singular with-tú
 3067	absolvete	vos · imperativo + te	accusative combined-form imperative informal object-second-person object-singular second-person singular with-vos
-1	afiérrala	tú · imperativo + la	accusative combined-form imperative informal object-singular object-third-person obsolete second-person singular with-tú
-1	afiérralo	tú · imperativo + lo	accusative combined-form imperative informal object-singular object-third-person obsolete second-person singular with-tú
+1	afiérrala	tú · imperativo + la (obsoleto)	accusative combined-form imperative informal object-singular object-third-person obsolete second-person singular with-tú
+1	afiérralo	tú · imperativo + lo (obsoleto)	accusative combined-form imperative informal object-singular object-third-person obsolete second-person singular with-tú
 3080	absolvedla	vosotros · imperativo + la	accusative combined-form imperative informal object-singular object-third-person plural second-person
 3080	absolvedlo	vosotros · imperativo + lo	accusative combined-form imperative informal object-singular object-third-person plural second-person
 8	llovedla	vosotros · imperativo + la	accusative combined-form imperative informal object-singular object-third-person plural second-person table-2
@@ -315,27 +315,27 @@
 21	finirla	infinitivo + la	accusative form-of infinitive object-feminine object-singular object-third-person
 16	pecarlos	infinitivo + los	accusative form-of infinitive object-masculine object-plural object-third-person
 25	finirlo	infinitivo + lo	accusative form-of infinitive object-masculine object-singular object-third-person
-4	pléganos	usted · imperativo + nos	archaic combined-form dative formal imperative object-first-person object-plural second-person singular
-4	plégame	usted · imperativo + me	archaic combined-form dative formal imperative object-first-person object-singular second-person singular
-4	plégales	usted · imperativo + les	archaic combined-form dative formal imperative object-plural object-third-person second-person singular
-4	plégale	usted · imperativo + le	archaic combined-form dative formal imperative object-singular object-third-person second-person singular
-4	plégase	usted · imperativo + se	archaic combined-form dative formal imperative object-singular object-third-person second-person singular
-4	plega	usted · imperativo negativo	archaic formal imperative negative second-person-semantically singular third-person
-4	plega	usted · imperativo	archaic formal imperative second-person-semantically singular third-person
-2	pluguieren	ellos, ellas, ustedes · futuro de subjuntivo	archaic future plural subjunctive third-person
-2	pluguiere	él, ella, usted · futuro de subjuntivo	archaic future singular subjunctive third-person
-4	plega	usted · imperativo negativo	archaic imperative negative singular third-person
-4	plega	usted · imperativo	archaic imperative singular third-person
-2	pluguiesen	ellos, ellas, ustedes · imperfecto de subjuntivo	archaic imperfect imperfect-se plural subjunctive third-person
-2	pluguiese	él, ella, usted · imperfecto de subjuntivo	archaic imperfect imperfect-se singular subjunctive third-person
-2	pluguieran	ellos, ellas, ustedes · imperfecto de subjuntivo	archaic imperfect plural subjunctive third-person
-2	pluguiera	él, ella, usted · imperfecto de subjuntivo	archaic imperfect singular subjunctive third-person
-2	pluguieron	ellos, ellas, ustedes · pretérito	archaic indicative plural preterite third-person
-2	plugo	él, ella, usted · pretérito	archaic indicative preterite singular third-person
-4	plega	él, ella, usted · presente de subjuntivo	archaic present singular subjunctive third-person
+4	pléganos	usted · imperativo + nos (arcaico)	archaic combined-form dative formal imperative object-first-person object-plural second-person singular
+4	plégame	usted · imperativo + me (arcaico)	archaic combined-form dative formal imperative object-first-person object-singular second-person singular
+4	plégales	usted · imperativo + les (arcaico)	archaic combined-form dative formal imperative object-plural object-third-person second-person singular
+4	plégale	usted · imperativo + le (arcaico)	archaic combined-form dative formal imperative object-singular object-third-person second-person singular
+4	plégase	usted · imperativo + se (arcaico)	archaic combined-form dative formal imperative object-singular object-third-person second-person singular
+4	plega	usted · imperativo negativo (arcaico)	archaic formal imperative negative second-person-semantically singular third-person
+4	plega	usted · imperativo (arcaico)	archaic formal imperative second-person-semantically singular third-person
+2	pluguieren	ellos, ellas, ustedes · futuro de subjuntivo (arcaico)	archaic future plural subjunctive third-person
+2	pluguiere	él, ella, usted · futuro de subjuntivo (arcaico)	archaic future singular subjunctive third-person
+4	plega	usted · imperativo negativo (arcaico)	archaic imperative negative singular third-person
+4	plega	usted · imperativo (arcaico)	archaic imperative singular third-person
+2	pluguiesen	ellos, ellas, ustedes · imperfecto de subjuntivo (arcaico)	archaic imperfect imperfect-se plural subjunctive third-person
+2	pluguiese	él, ella, usted · imperfecto de subjuntivo (arcaico)	archaic imperfect imperfect-se singular subjunctive third-person
+2	pluguieran	ellos, ellas, ustedes · imperfecto de subjuntivo (arcaico)	archaic imperfect plural subjunctive third-person
+2	pluguiera	él, ella, usted · imperfecto de subjuntivo (arcaico)	archaic imperfect singular subjunctive third-person
+2	pluguieron	ellos, ellas, ustedes · pretérito (arcaico)	archaic indicative plural preterite third-person
+2	plugo	él, ella, usted · pretérito (arcaico)	archaic indicative preterite singular third-person
+4	plega	él, ella, usted · presente de subjuntivo (arcaico)	archaic present singular subjunctive third-person
 5	besote	aumentativo	augmentative
 16	casona	aumentativo femenino	augmentative feminine form-of
-1	tetaza	aumentativo femenino	augmentative feminine form-of informal
+1	tetaza	aumentativo femenino (informal)	augmentative feminine form-of informal
 2	padrote	aumentativo	augmentative feminine form-of masculine
 8	nadota	aumentativo	augmentative form-of
 147	perrote	aumentativo masculino	augmentative form-of masculine
@@ -349,30 +349,30 @@
 8	llovámoste	nosotros · imperativo + te	combined-form dative first-person imperative object-second-person object-singular plural table-2
 3085	absolvámosle	nosotros · imperativo + le	combined-form dative first-person imperative object-singular object-third-person plural
 8	llovámosle	nosotros · imperativo + le	combined-form dative first-person imperative object-singular object-third-person plural table-2
-1	afiérrennos	ustedes · imperativo + nos	combined-form dative formal imperative object-first-person object-plural obsolete plural second-person
-1	afiérrenos	usted · imperativo + nos	combined-form dative formal imperative object-first-person object-plural obsolete second-person singular
+1	afiérrennos	ustedes · imperativo + nos (obsoleto)	combined-form dative formal imperative object-first-person object-plural obsolete plural second-person
+1	afiérrenos	usted · imperativo + nos (obsoleto)	combined-form dative formal imperative object-first-person object-plural obsolete second-person singular
 3101	absuélvannos	ustedes · imperativo + nos	combined-form dative formal imperative object-first-person object-plural plural second-person
 8	lluévannos	ustedes · imperativo + nos	combined-form dative formal imperative object-first-person object-plural plural second-person table-2
 3101	absuélvanos	usted · imperativo + nos	combined-form dative formal imperative object-first-person object-plural second-person singular
 8	lluévanos	usted · imperativo + nos	combined-form dative formal imperative object-first-person object-plural second-person singular table-2
-1	afiérrenme	ustedes · imperativo + me	combined-form dative formal imperative object-first-person object-singular obsolete plural second-person
-1	afiérreme	usted · imperativo + me	combined-form dative formal imperative object-first-person object-singular obsolete second-person singular
+1	afiérrenme	ustedes · imperativo + me (obsoleto)	combined-form dative formal imperative object-first-person object-singular obsolete plural second-person
+1	afiérreme	usted · imperativo + me (obsoleto)	combined-form dative formal imperative object-first-person object-singular obsolete second-person singular
 3101	absuélvanme	ustedes · imperativo + me	combined-form dative formal imperative object-first-person object-singular plural second-person
 8	lluévanme	ustedes · imperativo + me	combined-form dative formal imperative object-first-person object-singular plural second-person table-2
 3101	absuélvame	usted · imperativo + me	combined-form dative formal imperative object-first-person object-singular second-person singular
 8	lluévame	usted · imperativo + me	combined-form dative formal imperative object-first-person object-singular second-person singular table-2
-1	afiérrenles	ustedes · imperativo + les	combined-form dative formal imperative object-plural object-third-person obsolete plural second-person
-1	afiérrense	ustedes · imperativo + se	combined-form dative formal imperative object-plural object-third-person obsolete plural second-person
-1	afiérreles	usted · imperativo + les	combined-form dative formal imperative object-plural object-third-person obsolete second-person singular
+1	afiérrenles	ustedes · imperativo + les (obsoleto)	combined-form dative formal imperative object-plural object-third-person obsolete plural second-person
+1	afiérrense	ustedes · imperativo + se (obsoleto)	combined-form dative formal imperative object-plural object-third-person obsolete plural second-person
+1	afiérreles	usted · imperativo + les (obsoleto)	combined-form dative formal imperative object-plural object-third-person obsolete second-person singular
 3101	absuélvanles	ustedes · imperativo + les	combined-form dative formal imperative object-plural object-third-person plural second-person
 3101	absuélvanse	ustedes · imperativo + se	combined-form dative formal imperative object-plural object-third-person plural second-person
 8	lluévanles	ustedes · imperativo + les	combined-form dative formal imperative object-plural object-third-person plural second-person table-2
 8	lluévanse	ustedes · imperativo + se	combined-form dative formal imperative object-plural object-third-person plural second-person table-2
 3101	absuélvales	usted · imperativo + les	combined-form dative formal imperative object-plural object-third-person second-person singular
 8	lluévales	usted · imperativo + les	combined-form dative formal imperative object-plural object-third-person second-person singular table-2
-1	afiérrenle	ustedes · imperativo + le	combined-form dative formal imperative object-singular object-third-person obsolete plural second-person
-1	afiérrele	usted · imperativo + le	combined-form dative formal imperative object-singular object-third-person obsolete second-person singular
-1	afiérrese	usted · imperativo + se	combined-form dative formal imperative object-singular object-third-person obsolete second-person singular
+1	afiérrenle	ustedes · imperativo + le (obsoleto)	combined-form dative formal imperative object-singular object-third-person obsolete plural second-person
+1	afiérrele	usted · imperativo + le (obsoleto)	combined-form dative formal imperative object-singular object-third-person obsolete second-person singular
+1	afiérrese	usted · imperativo + se (obsoleto)	combined-form dative formal imperative object-singular object-third-person obsolete second-person singular
 3101	absuélvanle	ustedes · imperativo + le	combined-form dative formal imperative object-singular object-third-person plural second-person
 8	lluévanle	ustedes · imperativo + le	combined-form dative formal imperative object-singular object-third-person plural second-person table-2
 3101	absuélvale	usted · imperativo + le	combined-form dative formal imperative object-singular object-third-person second-person singular
@@ -395,14 +395,14 @@
 3087	absolviéndose	gerundio + se	combined-form dative gerund object-singular object-third-person
 8	lloviéndole	gerundio + le	combined-form dative gerund object-singular object-third-person table-2
 8	lloviéndose	gerundio + se	combined-form dative gerund object-singular object-third-person table-2
-1	afiérranos	tú · imperativo + nos	combined-form dative imperative informal object-first-person object-plural obsolete second-person singular with-tú
+1	afiérranos	tú · imperativo + nos (obsoleto)	combined-form dative imperative informal object-first-person object-plural obsolete second-person singular with-tú
 3080	absolvednos	vosotros · imperativo + nos	combined-form dative imperative informal object-first-person object-plural plural second-person
 8	llovednos	vosotros · imperativo + nos	combined-form dative imperative informal object-first-person object-plural plural second-person table-2
 8	lluévenos	tú · imperativo + nos	combined-form dative imperative informal object-first-person object-plural second-person singular table-2 with-tú
 8	llovenos	vos · imperativo + nos	combined-form dative imperative informal object-first-person object-plural second-person singular table-2 with-vos
 3086	absuélvenos	tú · imperativo + nos	combined-form dative imperative informal object-first-person object-plural second-person singular with-tú
 3067	absolvenos	vos · imperativo + nos	combined-form dative imperative informal object-first-person object-plural second-person singular with-vos
-1	afiérrame	tú · imperativo + me	combined-form dative imperative informal object-first-person object-singular obsolete second-person singular with-tú
+1	afiérrame	tú · imperativo + me (obsoleto)	combined-form dative imperative informal object-first-person object-singular obsolete second-person singular with-tú
 3080	absolvedme	vosotros · imperativo + me	combined-form dative imperative informal object-first-person object-singular plural second-person
 8	llovedme	vosotros · imperativo + me	combined-form dative imperative informal object-first-person object-singular plural second-person table-2
 8	lluéveme	tú · imperativo + me	combined-form dative imperative informal object-first-person object-singular second-person singular table-2 with-tú
@@ -411,19 +411,19 @@
 3067	absolveme	vos · imperativo + me	combined-form dative imperative informal object-first-person object-singular second-person singular with-vos
 3081	absolveos	vosotros · imperativo + os	combined-form dative imperative informal object-plural object-second-person plural second-person
 8	lloveos	vosotros · imperativo + os	combined-form dative imperative informal object-plural object-second-person plural second-person table-2
-1	afiérrales	tú · imperativo + les	combined-form dative imperative informal object-plural object-third-person obsolete second-person singular with-tú
+1	afiérrales	tú · imperativo + les (obsoleto)	combined-form dative imperative informal object-plural object-third-person obsolete second-person singular with-tú
 3080	absolvedles	vosotros · imperativo + les	combined-form dative imperative informal object-plural object-third-person plural second-person
 8	llovedles	vosotros · imperativo + les	combined-form dative imperative informal object-plural object-third-person plural second-person table-2
 8	lluéveles	tú · imperativo + les	combined-form dative imperative informal object-plural object-third-person second-person singular table-2 with-tú
 8	lloveles	vos · imperativo + les	combined-form dative imperative informal object-plural object-third-person second-person singular table-2 with-vos
 3084	absuélveles	tú · imperativo + les	combined-form dative imperative informal object-plural object-third-person second-person singular with-tú
 3067	absolveles	vos · imperativo + les	combined-form dative imperative informal object-plural object-third-person second-person singular with-vos
-1	afiérrate	tú · imperativo + te	combined-form dative imperative informal object-second-person object-singular obsolete second-person singular with-tú
+1	afiérrate	tú · imperativo + te (obsoleto)	combined-form dative imperative informal object-second-person object-singular obsolete second-person singular with-tú
 8	lluévete	tú · imperativo + te	combined-form dative imperative informal object-second-person object-singular second-person singular table-2 with-tú
 8	llovete	vos · imperativo + te	combined-form dative imperative informal object-second-person object-singular second-person singular table-2 with-vos
 3086	absuélvete	tú · imperativo + te	combined-form dative imperative informal object-second-person object-singular second-person singular with-tú
 3067	absolvete	vos · imperativo + te	combined-form dative imperative informal object-second-person object-singular second-person singular with-vos
-1	afiérrale	tú · imperativo + le	combined-form dative imperative informal object-singular object-third-person obsolete second-person singular with-tú
+1	afiérrale	tú · imperativo + le (obsoleto)	combined-form dative imperative informal object-singular object-third-person obsolete second-person singular with-tú
 3080	absolvedle	vosotros · imperativo + le	combined-form dative imperative informal object-singular object-third-person plural second-person
 8	llovedle	vosotros · imperativo + le	combined-form dative imperative informal object-singular object-third-person plural second-person table-2
 8	lluévele	tú · imperativo + le	combined-form dative imperative informal object-singular object-third-person second-person singular table-2 with-tú
@@ -503,7 +503,7 @@
 5	paragüita	diminutivo	diminutive feminine form-of masculine
 1	ganitas	diminutivo femenino plural	diminutive feminine form-of plural
 155	baratito	diminutivo	diminutive form-of
-1	chistín	diminutivo masculino	diminutive form-of informal masculine
+1	chistín	diminutivo masculino (informal)	diminutive form-of informal masculine
 758	piececillo	diminutivo masculino	diminutive form-of masculine
 1	shortcitos	diminutivo masculino plural	diminutive form-of masculine plural
 4	aquéllas	femenino plural	distal feminine plural
@@ -524,7 +524,7 @@
 33	íes	femenino plural	feminine form-of plural
 17	cosquilla	femenino	feminine form-of singular
 1487	deales	plural	feminine masculine plural
-1	bocas flojas	plural	feminine masculine plural uncommon
+1	bocas flojas	plural (poco común)	feminine masculine plural uncommon
 4	ésas	femenino plural	feminine medial plural
 4	ésa	femenino	feminine medial singular
 3423	absueltas	participio femenino plural	feminine participle past plural
@@ -617,7 +617,7 @@
 1	me lloviznara	yo · imperfecto de subjuntivo	first-person imperfect pronominal singular subjunctive table-3
 3410	absolviera	yo · imperfecto de subjuntivo	first-person imperfect singular subjunctive
 8	lloviera	yo · imperfecto de subjuntivo	first-person imperfect singular subjunctive table-2
-1	afierro	yo · presente	first-person indicative obsolete present singular
+1	afierro	yo · presente (obsoleto)	first-person indicative obsolete present singular
 3410	absolvemos	nosotros · presente	first-person indicative plural present
 138	nos estamos	nosotros · presente	first-person indicative plural present pronominal table-2
 1	nos lloviznamos	nosotros · presente	first-person indicative plural present pronominal table-3
@@ -630,7 +630,7 @@
 1	me llovizno	yo · presente	first-person indicative present pronominal singular table-3
 3434	absuelvo	yo · presente	first-person indicative present singular
 8	lluevo	yo · presente	first-person indicative present singular table-2
-1	desaforo	yo · presente	first-person indicative present singular uncommon
+1	desaforo	yo · presente (poco común)	first-person indicative present singular uncommon
 138	me estuve	yo · pretérito	first-person indicative preterite pronominal singular table-2
 1	me llovizné	yo · pretérito	first-person indicative preterite pronominal singular table-3
 3410	absolví	yo · pretérito	first-person indicative preterite singular
@@ -641,7 +641,7 @@
 138	estarme	infinitivo	first-person infinitive pronominal singular table-2
 1	lloviznarme	infinitivo	first-person infinitive pronominal singular table-3
 17	quejarme	infinitivo	first-person infinitive singular
-1	afierre	yo · presente de subjuntivo	first-person obsolete present singular subjunctive
+1	afierre	yo · presente de subjuntivo (obsoleto)	first-person obsolete present singular subjunctive
 2	a nuestras solas		first-person plural
 138	nos estemos	nosotros · presente de subjuntivo	first-person plural present pronominal subjunctive table-2
 1	nos lloviznemos	nosotros · presente de subjuntivo	first-person plural present pronominal subjunctive table-3
@@ -653,10 +653,10 @@
 1032	saco de quicio	yo · presente	first-person present singular
 3434	absuelva	yo · presente de subjuntivo	first-person present singular subjunctive
 8	llueva	yo · presente de subjuntivo	first-person present singular subjunctive table-2
-1	desafore	yo · presente de subjuntivo	first-person present singular subjunctive uncommon
+1	desafore	yo · presente de subjuntivo (poco común)	first-person present singular subjunctive uncommon
 1032	saqué de quicio	yo · pretérito	first-person preterite singular
 1	a mis solas		first-person singular
-2	simplicísimo	superlativo	form-of formal superlative
+2	simplicísimo	superlativo (formal)	form-of formal superlative
 26	quejaréis	vosotros · futuro	form-of future indicative plural second-person
 26	quejarán	ellos, ellas, ustedes · futuro	form-of future indicative plural third-person
 26	quejarás	tú · futuro	form-of future indicative second-person singular
@@ -741,30 +741,30 @@
 1	por tu cuenta		form-of second-person singular
 345	gratísimo	superlativo	form-of superlative
 1	enseñar su pata		form-of third-person
-1	afierren	ustedes · imperativo negativo	formal imperative negative obsolete plural second-person-semantically third-person
-1	afierre	usted · imperativo negativo	formal imperative negative obsolete second-person-semantically singular third-person
+1	afierren	ustedes · imperativo negativo (obsoleto)	formal imperative negative obsolete plural second-person-semantically third-person
+1	afierre	usted · imperativo negativo (obsoleto)	formal imperative negative obsolete second-person-semantically singular third-person
 138	se estén	ustedes · imperativo negativo	formal imperative negative plural pronominal second-person-semantically table-2 third-person
 1	se lloviznen	ustedes · imperativo negativo	formal imperative negative plural pronominal second-person-semantically table-3 third-person
 8	lluevan	ustedes · imperativo negativo	formal imperative negative plural second-person-semantically table-2 third-person
 3434	absuelvan	ustedes · imperativo negativo	formal imperative negative plural second-person-semantically third-person
-1	desaforen	ustedes · imperativo negativo	formal imperative negative plural second-person-semantically third-person uncommon
+1	desaforen	ustedes · imperativo negativo (poco común)	formal imperative negative plural second-person-semantically third-person uncommon
 138	se esté	usted · imperativo negativo	formal imperative negative pronominal second-person-semantically singular table-2 third-person
 1	se llovizne	usted · imperativo negativo	formal imperative negative pronominal second-person-semantically singular table-3 third-person
 8	llueva	usted · imperativo negativo	formal imperative negative second-person-semantically singular table-2 third-person
 3434	absuelva	usted · imperativo negativo	formal imperative negative second-person-semantically singular third-person
-1	desafore	usted · imperativo negativo	formal imperative negative second-person-semantically singular third-person uncommon
-1	afierren	ustedes · imperativo	formal imperative obsolete plural second-person-semantically third-person
-1	afierre	usted · imperativo	formal imperative obsolete second-person-semantically singular third-person
+1	desafore	usted · imperativo negativo (poco común)	formal imperative negative second-person-semantically singular third-person uncommon
+1	afierren	ustedes · imperativo (obsoleto)	formal imperative obsolete plural second-person-semantically third-person
+1	afierre	usted · imperativo (obsoleto)	formal imperative obsolete second-person-semantically singular third-person
 138	estense	ustedes · imperativo	formal imperative plural pronominal second-person-semantically table-2 third-person
 1	llovíznense	ustedes · imperativo	formal imperative plural pronominal second-person-semantically table-3 third-person
 8	lluevan	ustedes · imperativo	formal imperative plural second-person-semantically table-2 third-person
 3434	absuelvan	ustedes · imperativo	formal imperative plural second-person-semantically third-person
-1	desaforen	ustedes · imperativo	formal imperative plural second-person-semantically third-person uncommon
+1	desaforen	ustedes · imperativo (poco común)	formal imperative plural second-person-semantically third-person uncommon
 138	estese	usted · imperativo	formal imperative pronominal second-person-semantically singular table-2 third-person
 1	llovíznese	usted · imperativo	formal imperative pronominal second-person-semantically singular table-3 third-person
 8	llueva	usted · imperativo	formal imperative second-person-semantically singular table-2 third-person
 3434	absuelva	usted · imperativo	formal imperative second-person-semantically singular third-person
-1	desafore	usted · imperativo	formal imperative second-person-semantically singular third-person uncommon
+1	desafore	usted · imperativo (poco común)	formal imperative second-person-semantically singular third-person uncommon
 1	vaya a saber		formal second-person
 138	os estaréis	vosotros · futuro	future indicative plural pronominal second-person table-2
 1	os lloviznaréis	vosotros · futuro	future indicative plural pronominal second-person table-3
@@ -814,7 +814,7 @@
 17	quejándote	gerundio	gerund second-person singular
 17	quejándose	gerundio	gerund singular third-person
 8	lloviendo	gerundio	gerund table-2
-1	afierra	tú · imperativo	imperative informal obsolete second-person singular
+1	afierra	tú · imperativo (obsoleto)	imperative informal obsolete second-person singular
 134	vete	tú · imperativo	imperative informal pronominal second-person singular table-2
 134	andate	vos · imperativo	imperative informal pronominal second-person singular table-2 vos-form
 1	llovíznate	tú · imperativo	imperative informal pronominal second-person singular table-3
@@ -822,11 +822,11 @@
 3389	absuelve	tú · imperativo	imperative informal second-person singular
 8	llueve	tú · imperativo	imperative informal second-person singular table-2
 8	llové	vos · imperativo	imperative informal second-person singular table-2 vos-form
-1	desafora	tú · imperativo	imperative informal second-person singular uncommon
+1	desafora	tú · imperativo (poco común)	imperative informal second-person singular uncommon
 3394	absolvé	vos · imperativo	imperative informal second-person singular vos-form
-1	afierren	ustedes · imperativo negativo	imperative negative obsolete plural third-person
-1	afierres	tú · imperativo negativo	imperative negative obsolete second-person singular
-1	afierre	usted · imperativo negativo	imperative negative obsolete singular third-person
+1	afierren	ustedes · imperativo negativo (obsoleto)	imperative negative obsolete plural third-person
+1	afierres	tú · imperativo negativo (obsoleto)	imperative negative obsolete second-person singular
+1	afierre	usted · imperativo negativo (obsoleto)	imperative negative obsolete singular third-person
 138	os estéis	vosotros · imperativo negativo	imperative negative plural pronominal second-person table-2
 1	os lloviznéis	vosotros · imperativo negativo	imperative negative plural pronominal second-person table-3
 138	se estén	ustedes · imperativo negativo	imperative negative plural pronominal table-2 third-person
@@ -835,19 +835,19 @@
 8	llováis	vosotros · imperativo negativo	imperative negative plural second-person table-2
 8	lluevan	ustedes · imperativo negativo	imperative negative plural table-2 third-person
 3434	absuelvan	ustedes · imperativo negativo	imperative negative plural third-person
-1	desaforen	ustedes · imperativo negativo	imperative negative plural third-person uncommon
+1	desaforen	ustedes · imperativo negativo (poco común)	imperative negative plural third-person uncommon
 138	te estés	tú · imperativo negativo	imperative negative pronominal second-person singular table-2
 1	te lloviznes	tú · imperativo negativo	imperative negative pronominal second-person singular table-3
 138	se esté	usted · imperativo negativo	imperative negative pronominal singular table-2 third-person
 1	se llovizne	usted · imperativo negativo	imperative negative pronominal singular table-3 third-person
 3434	absuelvas	tú · imperativo negativo	imperative negative second-person singular
 8	lluevas	tú · imperativo negativo	imperative negative second-person singular table-2
-1	desafores	tú · imperativo negativo	imperative negative second-person singular uncommon
+1	desafores	tú · imperativo negativo (poco común)	imperative negative second-person singular uncommon
 8	llueva	usted · imperativo negativo	imperative negative singular table-2 third-person
 3434	absuelva	usted · imperativo negativo	imperative negative singular third-person
-1	desafore	usted · imperativo negativo	imperative negative singular third-person uncommon
-1	afierren	ustedes · imperativo	imperative obsolete plural third-person
-1	afierre	usted · imperativo	imperative obsolete singular third-person
+1	desafore	usted · imperativo negativo (poco común)	imperative negative singular third-person uncommon
+1	afierren	ustedes · imperativo (obsoleto)	imperative obsolete plural third-person
+1	afierre	usted · imperativo (obsoleto)	imperative obsolete singular third-person
 139	estaos	vosotros · imperativo	imperative plural pronominal second-person table-2
 1	lloviznaos	vosotros · imperativo	imperative plural pronominal second-person table-3
 138	estense	ustedes · imperativo	imperative plural pronominal table-2 third-person
@@ -856,14 +856,14 @@
 8	lloved	vosotros · imperativo	imperative plural second-person table-2
 8	lluevan	ustedes · imperativo	imperative plural table-2 third-person
 3434	absuelvan	ustedes · imperativo	imperative plural third-person
-1	desaforen	ustedes · imperativo	imperative plural third-person uncommon
+1	desaforen	ustedes · imperativo (poco común)	imperative plural third-person uncommon
 5	estate	tú · imperativo	imperative pronominal second-person singular table-2
 138	estese	usted · imperativo	imperative pronominal singular table-2 third-person
 1	llovíznese	usted · imperativo	imperative pronominal singular table-3 third-person
 42	está	tú · imperativo	imperative second-person singular
 8	llueva	usted · imperativo	imperative singular table-2 third-person
 3434	absuelva	usted · imperativo	imperative singular third-person
-1	desafore	usted · imperativo	imperative singular third-person uncommon
+1	desafore	usted · imperativo (poco común)	imperative singular third-person uncommon
 138	os estuvieseis	vosotros · imperfecto de subjuntivo	imperfect imperfect-se plural pronominal second-person subjunctive table-2
 1	os lloviznaseis	vosotros · imperfecto de subjuntivo	imperfect imperfect-se plural pronominal second-person subjunctive table-3
 138	se estuviesen	ellos, ellas, ustedes · imperfecto de subjuntivo	imperfect imperfect-se plural pronominal subjunctive table-2 third-person
@@ -912,7 +912,7 @@
 8	llovieras	tú · imperfecto de subjuntivo	imperfect second-person singular subjunctive table-2
 8	lloviera	él, ella, usted · imperfecto de subjuntivo	imperfect singular subjunctive table-2 third-person
 3420	absolviera	él, ella, usted · imperfecto de subjuntivo	imperfect singular subjunctive third-person
-1	afierras	tú · presente	indicative informal obsolete present second-person singular
+1	afierras	tú · presente (obsoleto)	indicative informal obsolete present second-person singular
 133	te metes	tú · presente	indicative informal present pronominal second-person singular table-2
 133	te metés	vos · presente	indicative informal present pronominal second-person singular table-2 vos-form
 1	te lloviznas	tú · presente	indicative informal present pronominal second-person singular table-3
@@ -920,10 +920,10 @@
 3389	absuelves	tú · presente	indicative informal present second-person singular
 8	llueves	tú · presente	indicative informal present second-person singular table-2
 8	llovés	vos · presente	indicative informal present second-person singular table-2 vos-form
-1	desaforas	tú · presente	indicative informal present second-person singular uncommon
+1	desaforas	tú · presente (poco común)	indicative informal present second-person singular uncommon
 3394	absolvés	vos · presente	indicative informal present second-person singular vos-form
-1	afierran	ellos, ellas, ustedes · presente	indicative obsolete plural present third-person
-1	afierra	él, ella, usted · presente	indicative obsolete present singular third-person
+1	afierran	ellos, ellas, ustedes · presente (obsoleto)	indicative obsolete plural present third-person
+1	afierra	él, ella, usted · presente (obsoleto)	indicative obsolete present singular third-person
 138	os estáis	vosotros · presente	indicative plural present pronominal second-person table-2
 1	os lloviznáis	vosotros · presente	indicative plural present pronominal second-person table-3
 138	se están	ellos, ellas, ustedes · presente	indicative plural present pronominal table-2 third-person
@@ -932,7 +932,7 @@
 8	llovéis	vosotros · presente	indicative plural present second-person table-2
 8	llueven	ellos, ellas, ustedes · presente	indicative plural present table-2 third-person
 3431	absuelven	ellos, ellas, ustedes · presente	indicative plural present third-person
-1	desaforan	ellos, ellas, ustedes · presente	indicative plural present third-person uncommon
+1	desaforan	ellos, ellas, ustedes · presente (poco común)	indicative plural present third-person uncommon
 138	os estuvisteis	vosotros · pretérito	indicative plural preterite pronominal second-person table-2
 1	os lloviznasteis	vosotros · pretérito	indicative plural preterite pronominal second-person table-3
 138	se estuvieron	ellos, ellas, ustedes · pretérito	indicative plural preterite pronominal table-2 third-person
@@ -947,7 +947,7 @@
 38	estás	tú · presente	indicative present second-person singular
 8	llueve	él, ella, usted · presente	indicative present singular table-2 third-person
 3438	absuelve	él, ella, usted · presente	indicative present singular third-person
-1	desafora	él, ella, usted · presente	indicative present singular third-person uncommon
+1	desafora	él, ella, usted · presente (poco común)	indicative present singular third-person uncommon
 138	te estuviste	tú · pretérito	indicative preterite pronominal second-person singular table-2
 1	te lloviznaste	tú · pretérito	indicative preterite pronominal second-person singular table-3
 138	se estuvo	él, ella, usted · pretérito	indicative preterite pronominal singular table-2 third-person
@@ -972,7 +972,7 @@
 17	quejarte	infinitivo	infinitive second-person singular
 17	quejarse	infinitivo	infinitive singular third-person
 8	llover	infinitivo	infinitive table-2
-1	afierres	tú · presente de subjuntivo	informal obsolete present second-person singular subjunctive
+1	afierres	tú · presente de subjuntivo (obsoleto)	informal obsolete present second-person singular subjunctive
 136	te veas	tú · presente de subjuntivo	informal present pronominal second-person singular subjunctive table-2
 136	te veás	vos · presente de subjuntivo	informal present pronominal second-person singular subjunctive table-2 vos-form
 1	te lloviznes	tú · presente de subjuntivo	informal present pronominal second-person singular subjunctive table-3
@@ -980,7 +980,7 @@
 3395	absuelvas	tú · presente de subjuntivo	informal present second-person singular subjunctive
 8	lluevas	tú · presente de subjuntivo	informal present second-person singular subjunctive table-2
 8	llovás	vos · presente de subjuntivo	informal present second-person singular subjunctive table-2 vos-form
-1	desafores	tú · presente de subjuntivo	informal present second-person singular subjunctive uncommon
+1	desafores	tú · presente de subjuntivo (poco común)	informal present second-person singular subjunctive uncommon
 3398	absolvás	vos · presente de subjuntivo	informal present second-person singular subjunctive vos-form
 128	abuelo	masculino	masculine
 4	ésos	masculino plural	masculine medial plural
@@ -1002,8 +1002,8 @@
 4	esto	neutro	neuter proximal singular
 3	te		oblique
 1	les		oblique plural
-1	afierren	ellos, ellas, ustedes · presente de subjuntivo	obsolete plural present subjunctive third-person
-1	afierre	él, ella, usted · presente de subjuntivo	obsolete present singular subjunctive third-person
+1	afierren	ellos, ellas, ustedes · presente de subjuntivo (obsoleto)	obsolete plural present subjunctive third-person
+1	afierre	él, ella, usted · presente de subjuntivo (obsoleto)	obsolete present singular subjunctive third-person
 1043	sacado de quicio	participio	participle past
 15538	pies	plural	plural
 138	os estéis	vosotros · presente de subjuntivo	plural present pronominal second-person subjunctive table-2
@@ -1014,17 +1014,17 @@
 8	llováis	vosotros · presente de subjuntivo	plural present second-person subjunctive table-2
 8	lluevan	ellos, ellas, ustedes · presente de subjuntivo	plural present subjunctive table-2 third-person
 3438	absuelvan	ellos, ellas, ustedes · presente de subjuntivo	plural present subjunctive third-person
-1	desaforen	ellos, ellas, ustedes · presente de subjuntivo	plural present subjunctive third-person uncommon
+1	desaforen	ellos, ellas, ustedes · presente de subjuntivo (poco común)	plural present subjunctive third-person uncommon
 1	a vuestras solas		plural second-person
 1	que sepan		plural second-person third-person
-2	fanes	plural	plural uncommon
+2	fanes	plural (poco común)	plural uncommon
 2	te estés	tú · presente de subjuntivo	present pronominal second-person singular subjunctive table-2
 138	se esté	él, ella, usted · presente de subjuntivo	present pronominal singular subjunctive table-2 third-person
 1	se llovizne	él, ella, usted · presente de subjuntivo	present pronominal singular subjunctive table-3 third-person
 47	estés	tú · presente de subjuntivo	present second-person singular subjunctive
 8	llueva	él, ella, usted · presente de subjuntivo	present singular subjunctive table-2 third-person
 3444	absuelva	él, ella, usted · presente de subjuntivo	present singular subjunctive third-person
-1	desafore	él, ella, usted · presente de subjuntivo	present singular subjunctive third-person uncommon
+1	desafore	él, ella, usted · presente de subjuntivo (poco común)	present singular subjunctive third-person uncommon
 12	llueve a mares	él, ella, usted · presente	present singular third-person
 10	llovió a mares	él, ella, usted · pretérito	preterite singular third-person
 1	a tus solas		second-person singular

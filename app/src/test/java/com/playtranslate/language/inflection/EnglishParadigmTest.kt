@@ -28,7 +28,7 @@ class EnglishParadigmTest {
     fun `the fully conjugated verbs read person and number before the tense, and spellings read the same`() {
         assertEquals("first-person singular present", EnglishParadigm.label(listOf(f("am", "first-person", "present", "singular"))))
         assertEquals("plural past / past subjunctive", EnglishParadigm.label(listOf(f("were", "past", "plural"), f("were", "past", "subjunctive"))))
-        assertEquals("second-person singular present", EnglishParadigm.label(listOf(f("speakest", "archaic", "present", "second-person", "singular"))))
+        assertEquals("second-person singular present (archaic)", EnglishParadigm.label(listOf(f("speakest", "archaic", "present", "second-person", "singular"))))
         assertEquals("imperative", EnglishParadigm.label(listOf(f("be", "imperative", "present"))))
         assertEquals("infinitive", EnglishParadigm.label(listOf(f("be", "infinitive"))))
         assertEquals("past participle", EnglishParadigm.label(listOf(f("pencilled", "UK", "participle", "past"))))
@@ -39,6 +39,24 @@ class EnglishParadigmTest {
         assertEquals("first-person singular past / third-person singular past", EnglishParadigm.label(listOf(
             f("was", "first-person", "form-of", "indicative", "past", "singular", "third-person"),
         )))
+    }
+
+    @Test
+    fun `usage tags follow the name in parentheses, and alone name no form`() {
+        assertEquals("past participle (archaic, dialectal)", EnglishParadigm.label(listOf(f("sitten", "archaic", "dialectal", "participle", "past"))))
+        assertEquals("first-person singular past (dated, poetic)", EnglishParadigm.label(listOf(f("sate", "dated", "first-person", "past", "poetic", "singular"))))
+        assertEquals("plural (formal)", EnglishParadigm.label(listOf(f("citri", "formal", "plural"))))
+        assertEquals("comparative (informal)", EnglishParadigm.label(listOf(f("funner", "comparative", "informal"))))
+        assertEquals("past participle (informal)", EnglishParadigm.label(listOf(f("snuck up", "US", "informal", "participle", "past"))))
+        // A page merging persons carries the note on each name.
+        assertEquals("first-person singular past (archaic) / third-person singular past (archaic)", EnglishParadigm.label(listOf(
+            f("wast", "archaic", "first-person", "form-of", "past", "singular", "third-person"),
+        )))
+        // Two readings of one surface keep their own notes.
+        assertEquals("past / past participle (colloquial, nonstandard)", EnglishParadigm.label(listOf(
+            f("rode", "past"), f("rode", "colloquial", "nonstandard", "participle", "past"),
+        )))
+        assertNull(EnglishParadigm.label(listOf(f("'bortion", "form-of", "informal"))))
     }
 
     @Test

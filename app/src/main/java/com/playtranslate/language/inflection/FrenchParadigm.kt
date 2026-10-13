@@ -4,7 +4,9 @@ import com.playtranslate.language.inflection.KaikkiTags.COMPARATIVE
 import com.playtranslate.language.inflection.KaikkiTags.CONDITIONAL
 import com.playtranslate.language.inflection.KaikkiTags.DIMINUTIVE
 import com.playtranslate.language.inflection.KaikkiTags.FEMININE
+import com.playtranslate.language.inflection.KaikkiTags.FORMAL
 import com.playtranslate.language.inflection.KaikkiTags.FUTURE
+import com.playtranslate.language.inflection.KaikkiTags.INFORMAL
 import com.playtranslate.language.inflection.KaikkiTags.GERUND
 import com.playtranslate.language.inflection.KaikkiTags.HISTORIC
 import com.playtranslate.language.inflection.KaikkiTags.IMPERATIVE
@@ -36,7 +38,10 @@ import java.util.Locale
  * `reflexive` and a pronoun before the verb (m'absente, nous absentions), the
  * lemma's own forms and so cells, while another verb's bundled reflexive
  * table (se lever under lever) is tagged `pronominal` by the builder and
- * stays out; there is no negative imperative and no clitic row.
+ * stays out; there is no negative imperative and no clitic row. The rows
+ * carry two usage tags, `uncommon` on a plural (oufs) and `derogatory` on a
+ * feminine (beurette), shown as rare and péjoratif; `informal` on a noun's
+ * form is its register, familier.
  */
 object FrenchParadigm : RomanceParadigm() {
 
@@ -70,9 +75,11 @@ object FrenchParadigm : RomanceParadigm() {
     override val genderNames = mapOf(FEMININE to "féminin", MASCULINE to "masculin")
     override val degreeNames = linkedMapOf(SUPERLATIVE to "superlatif", COMPARATIVE to "comparatif", DIMINUTIVE to "diminutif")
     override val pluralWord = "pluriel"
+    override val usageNames = linkedMapOf("uncommon" to "rare", "derogatory" to "péjoratif")
+    override val registerNames = mapOf(INFORMAL to "familier", FORMAL to "soutenu")
     override val ignored = setOf(
         "reflexive", "before-vowel", "traditional", "suppletive",
-        "Canada", "Louisiana", "Brazilian", "especially", "also", "derogatory", "uncommon",
+        "Canada", "Louisiana", "Brazilian", "especially", "also",
     )
 
     private val PERSON_ROWS = listOf(
