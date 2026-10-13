@@ -142,6 +142,24 @@ class ConjugationTableViewTest {
     }
 
     @Test
+    fun `a one-section table shows its rows without the chip strip`() {
+        val forms = ConjugationTable(
+            listOf(ConjugationSection("Forms", emptyList(), listOf(
+                ConjugationRow("past", listOf(cell("spoke", highlighted = true))),
+                ConjugationRow("past participle", listOf(cell("spoken"))),
+            ), isList = true)),
+            openSection = 0,
+        )
+        val view = ConjugationTableView(ctx).apply { bind(forms) }
+        assertEquals(android.view.View.GONE, view.chipStrip.visibility)
+        assertEquals(listOf("past", "past participle"), view.rowLabels.map { it.text.toString() })
+        assertEquals(listOf("spoke", "spoken"), view.cells.map { it.single().text.toString() })
+        // Binding a many-section table afterwards brings the strip back.
+        view.bind(fixture)
+        assertEquals(android.view.View.VISIBLE, view.chipStrip.visibility)
+    }
+
+    @Test
     fun `an out-of-range open section is clamped`() {
         val view = ConjugationTableView(ctx).apply { bind(fixture.copy(openSection = 7)) }
         assertEquals(2, view.selectedSection)

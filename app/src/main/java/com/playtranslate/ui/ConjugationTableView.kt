@@ -34,7 +34,9 @@ import com.playtranslate.themeColor
  * [PtGroupCard], which hosts it on the word detail page ([WordDetailBinder]).
  * The selected chip is a solid accent pill with its text in the theme
  * background colour. Chips are clickable, so the workspace's controller nav
- * reaches them; cells are static in this version.
+ * reaches them; cells are static in this version. A table with one section
+ * (a German noun's declension, the English Forms list) shows no chip strip:
+ * the card's header already names it.
  */
 class ConjugationTableView(ctx: Context) : LinearLayout(ctx) {
 
@@ -50,6 +52,8 @@ class ConjugationTableView(ctx: Context) : LinearLayout(ctx) {
         orientation = HORIZONTAL
         setPadding(dp(10), dp(10), dp(10), dp(6))
     }
+    /** The chip row and the hairline under it, hidden for a one-section table. */
+    internal val chipStrip = LinearLayout(ctx).apply { orientation = VERTICAL }
     /** The grid area, on the card's own colour: a darker band was tried and
      *  read too heavy (2026-10-12); the hairline under the chips is
      *  the separation. */
@@ -72,14 +76,15 @@ class ConjugationTableView(ctx: Context) : LinearLayout(ctx) {
     init {
         orientation = VERTICAL
         layoutParams = LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        addView(HorizontalScrollView(ctx).apply {
+        chipStrip.addView(HorizontalScrollView(ctx).apply {
             isHorizontalScrollBarEnabled = false
             addView(chipRow)
         })
-        addView(View(ctx).apply {
+        chipStrip.addView(View(ctx).apply {
             setBackgroundColor(dividerColor)
             layoutParams = LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
         })
+        addView(chipStrip)
         addView(body)
     }
 
@@ -103,6 +108,7 @@ class ConjugationTableView(ctx: Context) : LinearLayout(ctx) {
             chips.add(chip)
             chipRow.addView(chip)
         }
+        chipStrip.visibility = if (table.sections.size > 1) View.VISIBLE else View.GONE
         selectSection(table.openSection.coerceIn(0, (table.sections.size - 1).coerceAtLeast(0)))
     }
 

@@ -176,6 +176,8 @@
 
     <string name="word_detail_group_definitions">释义</string>
     <string name="word_detail_group_conjugation">变位</string>
+    <string name="word_detail_group_declension">变格</string>
+    <string name="word_detail_group_forms">词形</string>
 
     <string name="word_detail_group_kanji">汉字</string>
 

@@ -35,6 +35,7 @@ import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.InflectedForm
 import com.playtranslate.language.InflectionTag
 import com.playtranslate.language.inflection.ConjugationTable
+import com.playtranslate.language.inflection.TableKind
 import com.playtranslate.language.inflection.InflectionParadigms
 import com.playtranslate.language.LanguagePackCatalogLoader
 import com.playtranslate.language.OfflineFallbackTranslators
@@ -1011,13 +1012,20 @@ class WordDetailBinder(
             }
         }
 
-        // ── Conjugation (Wiktionary packs with inflection tables) ─────────
-        // The card names its lemma whenever that is not the page's headword
-        // (vino's page lists venir's senses and so carries venir's table) or
-        // when there are several cards.
+        // ── Conjugation / Declension / Forms (Wiktionary packs with inflection tables) ──
+        // The header names what the table is of (a verb's conjugation, a German
+        // noun's declension, an English word's forms), and the card names its
+        // lemma whenever that is not the page's headword (vino's page lists
+        // venir's senses and so carries venir's table) or when there are
+        // several cards.
         for ((entry, table) in tables) {
+            val title = when (table.kind) {
+                TableKind.CONJUGATION -> R.string.word_detail_group_conjugation
+                TableKind.DECLENSION -> R.string.word_detail_group_declension
+                TableKind.FORMS -> R.string.word_detail_group_forms
+            }
             addGroupHeader(
-                content, ctx.getString(R.string.word_detail_group_conjugation),
+                content, ctx.getString(title),
                 suffix = entry.slug.takeIf { it != primary.slug || tables.size > 1 },
             )
             addGroupCard(content).addView(ConjugationTableView(ctx).apply { bind(table) })
