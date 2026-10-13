@@ -78,7 +78,10 @@ class WiktionaryDictionaryManager private constructor(
      *  dropped with it in [close]: ids are interned per build, so a map that
      *  outlived a pack swap (a dev sideload, an in-process es-v4 → es-v5
      *  upgrade) would label the new pack's blobs with the old pack's tags.
-     *  Empty when the pack predates the tables or the language reads none. */
+     *  Empty when the pack predates the tables or the language reads none,
+     *  and then the per-entry blob read is skipped ([inflectionFormsOf]): the
+     *  one query at open stands in for a "no such table" failure per entry
+     *  per lookup on every pack still at a pre-table version. */
     private var tagsets: Map<Int, Set<String>> = emptyMap()
 
     suspend fun preload() = ensureOpen()
@@ -533,8 +536,12 @@ class WiktionaryDictionaryManager private constructor(
     /** The entry's `inflection` blob decoded: one [InflectionForm] per line
      *  (`<tagset id>\t<surface>`, table order). Null for a pack without the
      *  table or an entry without a blob; a line naming an unknown tagset id
-     *  is dropped. */
+     *  is dropped. A pack without tagsets has no table to read (the builder
+     *  writes both or neither, and verify_pack holds it to that), so the
+     *  query is not run: on a pre-table pack it would throw, and be caught,
+     *  once per entry per lookup. */
     private fun inflectionFormsOf(db: SQLiteDatabase, idStr: String): List<InflectionForm>? {
+        if (tagsets.isEmpty()) return null
         val blob = try {
             db.rawQuery("SELECT forms FROM inflection WHERE entry_id=?", arrayOf(idStr)).use { c ->
                 if (c.moveToFirst()) c.getString(0) else null
