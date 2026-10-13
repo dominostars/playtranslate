@@ -1,5 +1,5 @@
-1	alemoa	feminino	Brazil feminine humorous
-1	alemoas	feminino plural	Brazil feminine humorous plural
+1	alemoa	feminino (humorístico)	Brazil feminine humorous
+1	alemoas	feminino plural (humorístico)	Brazil feminine humorous plural
 6	inclusas	particípio feminino plural	Brazil feminine participle past plural short-form
 6	inclusa	particípio feminino	Brazil feminine participle past short-form singular
 9	não averigüemos	nós · imperativo negativo	Brazil first-person imperative negative plural
@@ -51,21 +51,21 @@
 3	negoceie	ele, ela, você · presente do subjuntivo	Portugal present singular subjunctive third-person
 1	lhe		accusative form-of
 1	nos		accusative form-of
-1	não pairamos	nós · imperativo negativo	archaic first-person imperative negative plural proscribed sometimes
-1	pairamos	nós · imperativo	archaic first-person imperative plural proscribed sometimes
-1	pairo	eu · presente	archaic first-person indicative present proscribed singular sometimes
-1	pairamos	nós · presente do subjuntivo	archaic first-person plural present proscribed sometimes subjunctive
-1	paira	eu · presente do subjuntivo	archaic first-person present proscribed singular sometimes subjunctive
-1	não pairais	vós · imperativo negativo	archaic imperative negative plural proscribed second-person sometimes
-1	não pairam	vocês · imperativo negativo	archaic imperative negative plural proscribed sometimes third-person
-1	não pairas	tu · imperativo negativo	archaic imperative negative proscribed second-person singular sometimes
-1	não paira	você · imperativo negativo	archaic imperative negative proscribed singular sometimes third-person
-1	pairam	vocês · imperativo	archaic imperative plural proscribed sometimes third-person
-1	paira	você · imperativo	archaic imperative proscribed singular sometimes third-person
-1	pairais	vós · presente do subjuntivo	archaic plural present proscribed second-person sometimes subjunctive
-1	pairam	eles, elas, vocês · presente do subjuntivo	archaic plural present proscribed sometimes subjunctive third-person
-1	pairas	tu · presente do subjuntivo	archaic present proscribed second-person singular sometimes subjunctive
-1	paira	ele, ela, você · presente do subjuntivo	archaic present proscribed singular sometimes subjunctive third-person
+1	não pairamos	nós · imperativo negativo (arcaico, proscrito)	archaic first-person imperative negative plural proscribed sometimes
+1	pairamos	nós · imperativo (arcaico, proscrito)	archaic first-person imperative plural proscribed sometimes
+1	pairo	eu · presente (arcaico, proscrito)	archaic first-person indicative present proscribed singular sometimes
+1	pairamos	nós · presente do subjuntivo (arcaico, proscrito)	archaic first-person plural present proscribed sometimes subjunctive
+1	paira	eu · presente do subjuntivo (arcaico, proscrito)	archaic first-person present proscribed singular sometimes subjunctive
+1	não pairais	vós · imperativo negativo (arcaico, proscrito)	archaic imperative negative plural proscribed second-person sometimes
+1	não pairam	vocês · imperativo negativo (arcaico, proscrito)	archaic imperative negative plural proscribed sometimes third-person
+1	não pairas	tu · imperativo negativo (arcaico, proscrito)	archaic imperative negative proscribed second-person singular sometimes
+1	não paira	você · imperativo negativo (arcaico, proscrito)	archaic imperative negative proscribed singular sometimes third-person
+1	pairam	vocês · imperativo (arcaico, proscrito)	archaic imperative plural proscribed sometimes third-person
+1	paira	você · imperativo (arcaico, proscrito)	archaic imperative proscribed singular sometimes third-person
+1	pairais	vós · presente do subjuntivo (arcaico, proscrito)	archaic plural present proscribed second-person sometimes subjunctive
+1	pairam	eles, elas, vocês · presente do subjuntivo (arcaico, proscrito)	archaic plural present proscribed sometimes subjunctive third-person
+1	pairas	tu · presente do subjuntivo (arcaico, proscrito)	archaic present proscribed second-person singular sometimes subjunctive
+1	paira	ele, ela, você · presente do subjuntivo (arcaico, proscrito)	archaic present proscribed singular sometimes subjunctive third-person
 97	timão	aumentativo	augmentative
 32	ratazana	aumentativo feminino	augmentative feminine form-of
 1	japona	aumentativo	augmentative feminine form-of masculine
@@ -73,8 +73,8 @@
 8	famosonas	aumentativo feminino plural	augmentative feminine plural
 8	famosona	aumentativo feminino	augmentative feminine singular
 15	listão	aumentativo	augmentative form-of
-1	brigadão	aumentativo	augmentative form-of informal
-1	viajão	aumentativo masculino	augmentative form-of informal masculine
+1	brigadão	aumentativo (informal)	augmentative form-of informal
+1	viajão	aumentativo masculino (informal)	augmentative form-of informal masculine
 145	amigão	aumentativo masculino	augmentative form-of masculine
 1	criaturinhas	aumentativo plural	augmentative form-of plural
 3	telão	aumentativo masculino	augmentative masculine
@@ -122,7 +122,7 @@
 1	luzes-em-cu		error-unknown-tag plural
 3901	nua	feminino	feminine
 51	raptora	feminino	feminine form-of
-1	alemoa	feminino	feminine form-of informal
+1	alemoa	feminino (informal)	feminine form-of informal
 1	dues		feminine form-of informal masculine
 1	negre		feminine form-of informal masculine singular
 4	zulo		feminine form-of masculine
@@ -131,8 +131,8 @@
 1	maior	superlativo	feminine form-of masculine superlative
 15	sãs	feminino plural	feminine form-of plural
 6	sã	feminino	feminine form-of singular
-2	chefa	feminino	feminine informal
-2	chefas	feminino plural	feminine informal plural
+2	chefa	feminino (informal)	feminine informal
+2	chefas	feminino plural (informal)	feminine informal plural
 53	soltadas	particípio feminino plural	feminine long-form participle past plural
 53	soltada	particípio feminino	feminine long-form participle past singular
 3188	abatidas	particípio feminino plural	feminine participle past plural
@@ -142,14 +142,14 @@
 3188	abatida	particípio feminino	feminine participle past singular
 54	datada	particípio feminino	feminine participle past singular table-2
 4023	nuas	feminino plural	feminine plural
-1	deias	feminino plural	feminine plural poetic
+1	deias	feminino plural (poético)	feminine plural poetic
 8	famosas	feminino plural	feminine plural positive
 8	famosíssimas	superlativo feminino plural	feminine plural superlative
-1	morcegas	feminino plural	feminine plural uncommon
-1	deia	feminino	feminine poetic
+1	morcegas	feminino plural (pouco comum)	feminine plural uncommon
+1	deia	feminino (poético)	feminine poetic
 8	famosa	feminino	feminine positive singular
 8	famosíssima	superlativo feminino	feminine singular superlative
-1	morcega	feminino	feminine uncommon
+1	morcega	feminino (pouco comum)	feminine uncommon
 7	imo	nós · futuro	first-person form-of future indicative plural
 6	bordarei	eu · futuro	first-person form-of future indicative singular
 7	bordarmos	nós · futuro do subjuntivo	first-person form-of future plural subjunctive
@@ -212,7 +212,7 @@
 3243	abata	eu · presente do subjuntivo	first-person present singular subjunctive
 50	teja	eu · presente do subjuntivo	first-person present singular subjunctive table-2
 289	bordei	eu · pretérito perfeito	first-person preterite singular
-1	dulcíssimo	superlativo	form-of formal superlative
+1	dulcíssimo	superlativo (formal)	form-of formal superlative
 6	bordareis	vós · futuro	form-of future indicative plural second-person
 6	bordarão	eles, elas, vocês · futuro	form-of future indicative plural third-person
 6	bordarás	tu · futuro	form-of future indicative second-person singular
@@ -244,7 +244,7 @@
 6	bordarem	eles, elas, vocês · infinitivo pessoal	form-of infinitive plural third-person
 6	bordares	tu · infinitivo pessoal	form-of infinitive second-person singular
 4	naum		form-of informal
-1	negre	neutro	form-of informal neuter singular
+1	negre	neutro (informal)	form-of informal neuter singular
 1	filho da mãe	masculino	form-of masculine
 31	pechisbeques	masculino plural	form-of masculine plural
 2	pau	masculino	form-of masculine singular
@@ -369,7 +369,7 @@
 50	tejais	vós · presente do subjuntivo	plural present second-person subjunctive table-2
 51	tejam	eles, elas, vocês · presente do subjuntivo	plural present subjunctive table-2 third-person
 3289	abatam	eles, elas, vocês · presente do subjuntivo	plural present subjunctive third-person
-7	quantuns	plural	plural uncommon
+7	quantuns	plural (pouco comum)	plural uncommon
 3243	abatas	tu · presente do subjuntivo	present second-person singular subjunctive
 50	tejas	tu · presente do subjuntivo	present second-person singular subjunctive table-2
 51	teja	ele, ela, você · presente do subjuntivo	present singular subjunctive table-2 third-person
@@ -377,4 +377,4 @@
 6	veste a camisa	ele, ela, você · presente	present singular third-person
 1	doeu em	ele, ela, você · pretérito perfeito	preterite singular third-person
 890	o mais amigo	superlativo	superlative
-1	bichíssimo	superlativo	superlative uncommon
+1	bichíssimo	superlativo (pouco comum)	superlative uncommon

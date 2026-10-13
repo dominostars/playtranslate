@@ -27,15 +27,25 @@ import java.util.Locale
  * Imperativ (du, ihr), the infinite forms as a list (Infinitiv, zu-Infinitiv,
  * Partizip I, Partizip II). Nouns get a declension card: the four cases down,
  * Singular and Plural across. Adjectives get the line only: a declined form
- * reads "dekliniert" (with its degree), since kaikki's adjective table is
- * three declensions by four cases by four gender-number columns, a surface such
- * as freien sits in a dozen of its cells, and the article that would settle
- * the case is not in the word the player tapped; a predicative comparative or
- * superlative reads its degree. A product decision for v1, to revisit.
+ * reads "dekliniert" (with its degree: "dekliniert im Komparativ"), since
+ * kaikki's adjective table is three declensions by four cases by four
+ * gender-number columns, a surface such as freien sits in a dozen of its
+ * cells, and the article that would settle the case is not in the word the
+ * player tapped; a predicative comparative or superlative reads its degree. A
+ * product decision for v1, to revisit.
+ *
+ * Usage notes read in Duden's words: veraltet, veraltend, selten,
+ * umgangssprachlich, gehoben, dichterisch, fachsprachlich, scherzhaft, nicht
+ * standardsprachlich, mundartlich, landschaftlich, übertragen ("übelere ·
+ * dekliniert im Komparativ (selten)"; "bärs · Genitiv Singular
+ * (umgangssprachlich)"). `honorific` (Themata) is left silent, its meaning in
+ * kaikki's German unverified; a named region (Austria) says nothing.
  *
  * kaikki's German conventions this encodes (the de extract, 2026-10): the
- * Konjunktiv II rows carry `formal rare`, which here says nothing (there is
- * no formal address in the tables; Sie is the third-person plural); separable
+ * Konjunktiv II rows carry `formal rare`, which there says nothing (the
+ * template writes it on every row; there is no formal address in the tables,
+ * Sie being the third-person plural), while `rare` on any other row is a usage
+ * note (a rare comparative, a rare plural); separable
  * verbs' finite rows lead with the verb ("stehe auf") and the
  * `subordinate-clause` rows give the joined form ("aufstehe"), both the
  * lemma's own; `auxiliary` rows name the perfect auxiliary (haben, sein) and
@@ -80,15 +90,26 @@ object GermanParadigm : RomanceParadigm() {
     override val formalTags: Set<String> = emptySet()
     override val informalTags: Set<String> = emptySet()
     override val nominalTags = CASES.keys + DECLENSIONS + PREDICATIVE
+    override val usageNames = linkedMapOf(
+        "archaic" to "veraltet", "obsolete" to "veraltet", "dated" to "veraltend",
+        "rare" to "selten", "uncommon" to "selten",
+        "colloquial" to "umgangssprachlich", "informal" to "umgangssprachlich", "vernacular" to "umgangssprachlich",
+        "formal" to "gehoben", "literary" to "gehoben", "poetic" to "dichterisch", "jargon" to "fachsprachlich", "humorous" to "scherzhaft",
+        "nonstandard" to "nicht standardsprachlich", "proscribed" to "nicht standardsprachlich",
+        "dialectal" to "mundartlich", "regional" to "landschaftlich", "figuratively" to "übertragen",
+    )
     override val ignored = setOf(
-        "formal", "rare", "subordinate-clause", "dependent", "auxiliary", "informal",
+        "subordinate-clause", "dependent", "auxiliary",
         "definite", "indefinite", "includes-article", "without-article", "with-article", "usually-without-article",
         "pronoun", "personal", "common", "prepositional", "before-noun", "mutation", "reflexive",
-        "uncommon", "archaic", "colloquial", "nonstandard", "vernacular", "proscribed", "obsolete", "dated", "poetic",
-        "literary", "jargon", "humorous", "figuratively", "dialectal", "especially", "honorific",
-        "Standard", "standard", "regional", "German", "Austria", "Switzerland", "Swiss-German",
+        "especially", "honorific",
+        "Standard", "standard", "German", "Austria", "Switzerland", "Swiss-German",
         "Southern-Germany", "southern-Germany", "Upper-German", "Northwest-German",
     )
+
+    /** The Konjunktiv II template writes `formal rare` on every row; neither says anything there. */
+    override fun usageTagsOf(tags: Set<String>): Set<String> =
+        super.usageTagsOf(tags).let { if (SUBJUNCTIVE_II in tags) it - setOf("rare", "formal") else it }
 
     private val PERSON_ROWS = listOf(
         PersonRow("ich", 1, false), PersonRow("du", 2, false), PersonRow("er, sie, es", 3, false),
@@ -111,8 +132,9 @@ object GermanParadigm : RomanceParadigm() {
 
     /** A noun's form reads its case(s) and number ("Dativ Plural"; a page may
      *  merge cases, "Nominativ / Akkusativ Plural", or carry none, "Genitiv");
-     *  an adjective's declined form reads "dekliniert" with its degree (the
-     *  table tags the declension, a page only a case with a gender or degree),
+     *  an adjective's declined form reads "dekliniert" with its degree
+     *  ("dekliniert im Komparativ"; the table tags the declension, a page only
+     *  a case with a gender or degree),
      *  a predicative one its degree alone (the positive is the lemma itself);
      *  a pronoun's case form reads its case, its person being the lemma's; a
      *  feminine, a diminutive or a bare plural reads that. */
@@ -137,7 +159,7 @@ object GermanParadigm : RomanceParadigm() {
         val adjective = PREDICATIVE in tags || (cases.isNotEmpty() && (declension || degree.isNotEmpty())) ||
             (("mixed" in tags || "weak" in tags) && cases.isEmpty() && genders.isEmpty())
         return when {
-            adjective && PREDICATIVE !in tags -> NominalReading(degree.firstOrNull()?.let { "dekliniert ($it)" } ?: "dekliniert")
+            adjective && PREDICATIVE !in tags -> NominalReading(degree.firstOrNull()?.let { "dekliniert im $it" } ?: "dekliniert")
             PREDICATIVE in tags -> degree.takeIf { it.isNotEmpty() }?.let { NominalReading(it.joinToString(" ")) }
             cases.isNotEmpty() -> {
                 // One name per case, each with the number, so a merged page's

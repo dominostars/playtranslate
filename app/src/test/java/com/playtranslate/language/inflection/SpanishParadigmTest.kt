@@ -125,7 +125,9 @@ class SpanishParadigmTest {
         assertEquals("superlativo", SpanishParadigm.label(listOf(f("blanquísimo", "superlative"))))
         assertEquals("neutro", SpanishParadigm.label(listOf(f("alte", "form-of", "neuter", "singular"))))
         // A register on a noun's or adjective's form is a usage note (simplicísimo: the learned superlative).
-        assertEquals("superlativo", SpanishParadigm.label(listOf(f("simplicísimo", "form-of", "formal", "superlative"))))
+        assertEquals("superlativo (formal)", SpanishParadigm.label(listOf(f("simplicísimo", "form-of", "formal", "superlative"))))
+        assertEquals("aumentativo femenino (informal)", SpanishParadigm.label(listOf(f("tetaza", "augmentative", "feminine", "form-of", "informal"))))
+        assertEquals("plural (poco común)", SpanishParadigm.label(listOf(f("bocas flojas", "feminine", "masculine", "plural", "uncommon"))))
         // A bare masculine reading is a feminine lemma's counterpart (matrón under matrona).
         assertEquals("masculino", SpanishParadigm.label(listOf(f("matrón", "masculine"))))
         // A participle's masculine singular is the participle itself.
@@ -172,6 +174,19 @@ class SpanishParadigmTest {
             f("dámelo", "accusative", "combined-form", "dative", "imperative", "informal", "object-first-person",
               "object-singular", "object-third-person", "second-person", "singular", "with-tú"),
         )))
+    }
+
+    @Test
+    fun `a usage note follows the name, after an attached pronoun`() {
+        assertEquals("usted · imperativo + nos (arcaico)", SpanishParadigm.label(listOf(
+            f("pléganos", "accusative", "archaic", "combined-form", "formal", "imperative", "object-first-person", "object-plural", "second-person", "singular"),
+        )))
+        assertEquals("ustedes · imperativo + nos (obsoleto)", SpanishParadigm.label(listOf(
+            f("afiérrennos", "accusative", "combined-form", "formal", "imperative", "object-first-person", "object-plural", "obsolete", "plural", "second-person"),
+        )))
+        // A note never names a form on its own, and on a finite form informal is tú, not a note.
+        assertNull(SpanishParadigm.label(listOf(f("grx", "form-of", "informal"))))
+        assertEquals("tú · presente", SpanishParadigm.label(listOf(f("hablas", "indicative", "informal", "present", "second-person", "singular"))))
     }
 
     @Test

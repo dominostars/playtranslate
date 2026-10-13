@@ -49,6 +49,9 @@ class FrenchParadigmTest {
         assertNull(FrenchParadigm.label(listOf(f("parle", "first-person", "indicative", "present", "singular", "Quebec"))))
         // A register alone, a pronoun page.
         assertNull(FrenchParadigm.label(listOf(f("nan", "form-of", "informal"))))
+        // Usage notes follow the name.
+        assertEquals("féminin (péjoratif)", FrenchParadigm.label(listOf(f("beurette", "derogatory", "feminine"))))
+        assertEquals("pluriel (rare)", FrenchParadigm.label(listOf(f("oufs", "plural", "uncommon"))))
         assertNull(FrenchParadigm.label(listOf(f("je", "singular"))))
     }
 

@@ -5,7 +5,9 @@ import com.playtranslate.language.inflection.KaikkiTags.COMPARATIVE
 import com.playtranslate.language.inflection.KaikkiTags.CONDITIONAL
 import com.playtranslate.language.inflection.KaikkiTags.DIMINUTIVE
 import com.playtranslate.language.inflection.KaikkiTags.FEMININE
+import com.playtranslate.language.inflection.KaikkiTags.FORMAL
 import com.playtranslate.language.inflection.KaikkiTags.FUTURE
+import com.playtranslate.language.inflection.KaikkiTags.INFORMAL
 import com.playtranslate.language.inflection.KaikkiTags.GERUND
 import com.playtranslate.language.inflection.KaikkiTags.IMPERATIVE
 import com.playtranslate.language.inflection.KaikkiTags.IMPERFECT
@@ -39,6 +41,11 @@ import java.util.Locale
  * `Brazil` and `Portugal` mark spelling variants listed side by side (falámos
  * and falamos), `short-form` and `long-form` the two participles of verbs
  * that have both (aceito, aceitado); there are no clitic rows in the tables.
+ * The usage tags the rows carry (`archaic` and `proscribed` on a defective
+ * verb's negative imperative, `uncommon`, `poetic` and `humorous` on nouns'
+ * feminines and plurals) are shown as arcaico, proscrito, pouco comum,
+ * poético and humorístico; `informal` on a noun's feminine (chefa) is its
+ * register.
  */
 object PortugueseParadigm : RomanceParadigm() {
 
@@ -71,9 +78,13 @@ object PortugueseParadigm : RomanceParadigm() {
     override val degreeNames = linkedMapOf(SUPERLATIVE to "superlativo", COMPARATIVE to "comparativo", DIMINUTIVE to "diminutivo", AUGMENTATIVE to "aumentativo")
     override val pluralWord = "plural"
     /** `personal` is what a page calls the personal infinitive, which the person tags already say. */
+    override val usageNames = linkedMapOf(
+        "archaic" to "arcaico", "uncommon" to "pouco comum", "poetic" to "poético", "humorous" to "humorístico", "proscribed" to "proscrito",
+    )
+    override val registerNames = mapOf(INFORMAL to "informal", FORMAL to "formal")
+    /** `sometimes` is the connective of "sometimes proscribed". */
     override val ignored = setOf(
-        "impersonal", "personal", "Brazil", "Portugal", "short-form", "long-form", "positive",
-        "archaic", "proscribed", "sometimes", "uncommon", "humorous", "poetic",
+        "impersonal", "personal", "Brazil", "Portugal", "short-form", "long-form", "positive", "sometimes",
     )
 
     private val PERSON_ROWS = listOf(

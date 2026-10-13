@@ -8,6 +8,7 @@ import com.playtranslate.language.inflection.KaikkiTags.CONDITIONAL
 import com.playtranslate.language.inflection.KaikkiTags.DATIVE
 import com.playtranslate.language.inflection.KaikkiTags.DIMINUTIVE
 import com.playtranslate.language.inflection.KaikkiTags.FEMININE
+import com.playtranslate.language.inflection.KaikkiTags.FORMAL
 import com.playtranslate.language.inflection.KaikkiTags.FUTURE
 import com.playtranslate.language.inflection.KaikkiTags.GERUND
 import com.playtranslate.language.inflection.KaikkiTags.IMPERATIVE
@@ -52,7 +53,10 @@ import java.util.Locale
  * imperfect subjunctive carries `imperfect-se` beside `imperfect`; negative
  * imperatives are tagged `negative` on the bare verb (kaikki drops the "no",
  * the grid writes it); a pronominal lemma's finite forms are two words
- * (`me quejo`).
+ * (`me quejo`). The usage tags the rows carry are `archaic` and `obsolete` on
+ * a few clitic imperatives (pléganos) and `uncommon` on a phrase's plural,
+ * shown as arcaico, obsoleto and poco común; `informal` and `formal` on a
+ * page's noun or adjective (tetaza, simplicísimo) are its register.
  */
 object SpanishParadigm : RomanceParadigm() {
 
@@ -102,8 +106,9 @@ object SpanishParadigm : RomanceParadigm() {
         OBJECT_MASCULINE, OBJECT_FEMININE, DATIVE, ACCUSATIVE, REFLEXIVE,
     )
     override val qualifiers = setOf(IMPERFECT_SE)
+    override val usageNames = linkedMapOf("archaic" to "arcaico", "obsolete" to "obsoleto", "uncommon" to "poco común")
+    override val registerNames = mapOf(INFORMAL to "informal", FORMAL to "formal")
     override val ignored = setOf(
-        "archaic", "obsolete", "uncommon",
         "proximal", "medial", "distal",
         "Argentina", "El-Salvador", "Latin-America", "Spain", "Uruguay",
     )

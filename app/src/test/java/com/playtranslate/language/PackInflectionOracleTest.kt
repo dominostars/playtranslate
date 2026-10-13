@@ -391,7 +391,7 @@ class PackInflectionOracleTest {
                     ) fail(PRONOMINAL_DISAGREES).add(example)
                     // The participle of a phrasal lemma may follow an adverb (mejor
                     // valido): any word of the surface may carry the ending.
-                    cfg.participleEndings[cls.label.substringBefore(" + ")]?.let { endings ->
+                    cfg.participleEndings[grammarOf(cls.label.substringBefore(" + "))]?.let { endings ->
                         if (f.surface.split(' ').none { w -> endings.any { w.endsWith(it) } }) fail(PARTICIPLE_AGREEMENT).add(example)
                     }
                 }
@@ -475,12 +475,20 @@ class PackInflectionOracleTest {
 
     /** A label's (pronoun, name) pairs: "yo / él, ella, usted · presente /
      *  pretérito; gerundio" names (yo, presente), (yo, pretérito), (él, ella,
-     *  usted, presente), (él, ella, usted, pretérito) and (null, gerundio). */
+     *  usted, presente), (él, ella, usted, pretérito) and (null, gerundio). A
+     *  name's usage notes, the parentheses after it ("imperativo + nos
+     *  (arcaico)"), are not grammar and are stripped: the page's usage tags
+     *  describe the word and were removed before it was labelled, the row's
+     *  describe the form, and kaikki wrote the two independently; the golden
+     *  gate reviews the notes on every tagset. */
     private fun atoms(label: String?): Set<Atom> = label?.split("; ")?.flatMapTo(HashSet()) { group ->
         val pronouns = if (" · " in group) group.substringBefore(" · ").split(" / ") else listOf(null)
         val names = group.substringAfter(" · ").split(" / ")
-        pronouns.flatMap { p -> names.map { n -> Atom(p, n) } }
+        pronouns.flatMap { p -> names.map { n -> Atom(p, grammarOf(n)) } }
     } ?: emptySet()
+
+    /** A name without its usage notes (the label format reserves a name's parentheses for them). */
+    private fun grammarOf(name: String): String = name.replace(USAGE_NOTES, "")
 
     private fun posOf(entry: com.playtranslate.model.DictionaryEntry): List<String> =
         entry.senses.flatMap { it.partsOfSpeech }.filterNot { it.startsWith("[") }
@@ -574,6 +582,8 @@ class PackInflectionOracleTest {
         const val EXCUSE_LEMMA_NOT_IN_PACK = "lemmaNotInPack"
         const val EXCUSE_LEMMA_POS_NOT_IN_PACK = "lemmaPosNotInPack"
         const val EXCUSE_PAGE_USAGE_ONLY = "pageUsageOnly"
+        /** The usage notes after a name: " (arcaico)", " (archaic, dialectal)". */
+        val USAGE_NOTES = Regex(" \\([^()]*\\)$")
         const val EXCUSE_PAGE_SAYS_NOTHING = "pageSaysNothing"
         const val EXCUSE_OMITTED_FORM = "omittedForm"
         const val EXCUSE_OWN_ENTRY = "ownEntry"
@@ -751,7 +761,7 @@ class PackInflectionOracleTest {
                     },
                     Allowance("a page names a degree alone (abartigsten: superlative) where the rows are that degree's declined forms") { _, _, page, readings ->
                         page.isNotEmpty() && page.all { it.pronoun == null && it.name in setOf("Komparativ", "Superlativ") } &&
-                            page.all { d -> Atom(null, "dekliniert (${d.name})") in readings }
+                            page.all { d -> Atom(null, "dekliniert im ${d.name}") in readings }
                     },
                     Allowance("a page's colloquial first-person present without -e (ich aal) shares its surface with the du imperative, and the builder keeps the table's row") { _, _, page, readings ->
                         page == setOf(Atom("ich", "Präsens")) && Atom("du", "Imperativ") in readings
