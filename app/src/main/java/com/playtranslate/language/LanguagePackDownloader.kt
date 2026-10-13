@@ -56,11 +56,15 @@ sealed interface InstallResult {
  * and re-downloaded from scratch.
  *
  * The contract is intentionally pinned-URL-friendly: we do NOT send
- * `If-Range`, on the assumption that the [url] points at byte-stable content
- * (HuggingFace `resolve/main/<file>` URLs are git-LFS-hashed and immutable;
- * GitHub release-asset URLs are immutable per release tag). Callers that
- * point at mutable URLs should NOT rely on resume — pass a fresh empty file
- * or always delete before retry.
+ * `If-Range`, on the assumption that the [url] points at byte-stable content.
+ * Catalog URLs live on packs.playtranslate.com, a redirect layer (the website
+ * repo's `_redirects`) that answers each path with a 302 to the backend
+ * holding the bytes today (a GitHub release asset, a HuggingFace
+ * `resolve/main` file, Mozilla's model bucket). OkHttp follows it with the
+ * Range header intact, and the catalog's sha256 pins the bytes whichever
+ * backend answers, so a resume that straddles a backend move still verifies
+ * or fails closed. Callers that point at mutable URLs should NOT rely on
+ * resume — pass a fresh empty file or always delete before retry.
  */
 class LanguagePackDownloader(
     private val httpClient: OkHttpClient = defaultClient(),

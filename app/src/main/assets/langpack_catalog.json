@@ -11,19 +11,19 @@
       "files": [
         {
           "path": "det.mnn",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/meiki-ja/det.mnn",
+          "url": "https://packs.playtranslate.com/models/playtranslate/ocr-models/meiki-ja/det.mnn",
           "size": 14723792,
           "sha256": "7ff93668ddd0cf454b18e44ac398d050758fd5bdfcaf2805d943af70f4d6373b"
         },
         {
           "path": "rec_horizontal.mnn",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/meiki-ja/rec_horizontal.mnn",
+          "url": "https://packs.playtranslate.com/models/playtranslate/ocr-models/meiki-ja/rec_horizontal.mnn",
           "size": 18820188,
           "sha256": "a018031161d1c967d57ec9bd379368f8595f912e31b3a1492c7aaa23871832b9"
         },
         {
           "path": "rec_vertical.mnn",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/meiki-ja/rec_vertical.mnn",
+          "url": "https://packs.playtranslate.com/models/playtranslate/ocr-models/meiki-ja/rec_vertical.mnn",
           "size": 13127440,
           "sha256": "492169ab5dc65ccf8df2d4e73c6b48041aceb99db7614cec5a72f0f95eaef095"
         }
@@ -51,19 +51,19 @@
       "files": [
         {
           "path": "encoder.mnn",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/manga-ocr-ja/encoder.mnn",
+          "url": "https://packs.playtranslate.com/models/playtranslate/ocr-models/manga-ocr-ja/encoder.mnn",
           "size": 11336800,
           "sha256": "46d97d406be8af9118317ae2276e76664ce3f0fc9437a9a2c330d9c92592158a"
         },
         {
           "path": "decoder.mnn",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/manga-ocr-ja/decoder.mnn",
+          "url": "https://packs.playtranslate.com/models/playtranslate/ocr-models/manga-ocr-ja/decoder.mnn",
           "size": 59152340,
           "sha256": "15ad40d9065f9efa10622e5fa164a533c648819be116ec5c1df30df34fd34c0e"
         },
         {
           "path": "vocab.txt",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/manga-ocr-ja/vocab.txt",
+          "url": "https://packs.playtranslate.com/models/playtranslate/ocr-models/manga-ocr-ja/vocab.txt",
           "size": 24072,
           "sha256": "344fbb6b8bf18c57839e924e2c9365434697e0227fac00b88bb4899b78aa594d"
         }
@@ -91,13 +91,13 @@
       "files": [
         {
           "path": "rec.mnn",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-unified/rec.mnn",
+          "url": "https://packs.playtranslate.com/models/playtranslate/ocr-models/paddle-rec-unified/rec.mnn",
           "size": 10646680,
           "sha256": "b5a910c032b12116e31167e451da757306d837b6fbce5a2878cae2a4262e8e3d"
         },
         {
           "path": "keys.txt",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-unified/keys.txt",
+          "url": "https://packs.playtranslate.com/models/playtranslate/ocr-models/paddle-rec-unified/keys.txt",
           "size": 74946,
           "sha256": "f7aa897ca828a4c7c9e2739c30f9161a33306d532f020bcdb91dcfb664a5507e"
         }
@@ -125,13 +125,13 @@
       "files": [
         {
           "path": "rec.mnn",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-korean/rec.mnn",
+          "url": "https://packs.playtranslate.com/models/playtranslate/ocr-models/paddle-rec-korean/rec.mnn",
           "size": 13397704,
           "sha256": "6e9cfdc3bd03d3166c13ab72b98f4679dd1a74812333721c08899b904f437af6"
         },
         {
           "path": "keys.txt",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-korean/keys.txt",
+          "url": "https://packs.playtranslate.com/models/playtranslate/ocr-models/paddle-rec-korean/keys.txt",
           "size": 47450,
           "sha256": "a7872c929cd25cf615cdfea08579cf800db1943900fe683468df4dcff6f848bb"
         }
@@ -159,13 +159,13 @@
       "files": [
         {
           "path": "rec.mnn",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-arabic/rec.mnn",
+          "url": "https://packs.playtranslate.com/models/playtranslate/ocr-models/paddle-rec-arabic/rec.mnn",
           "size": 7977872,
           "sha256": "1f444fb900d97b7766bc7151a26e082d394fc53111684ec3c6d01df7a0a89ecb"
         },
         {
           "path": "keys.txt",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-arabic/keys.txt",
+          "url": "https://packs.playtranslate.com/models/playtranslate/ocr-models/paddle-rec-arabic/keys.txt",
           "size": 2368,
           "sha256": "8f239c13f6c8b1bdf15f332a65a05002ddd4d99b9286a4bfaf6f0327c36ebbec"
         }
@@ -193,13 +193,13 @@
       "files": [
         {
           "path": "rec.mnn",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-cyrillic/rec.mnn",
+          "url": "https://packs.playtranslate.com/models/playtranslate/ocr-models/paddle-rec-cyrillic/rec.mnn",
           "size": 8027724,
           "sha256": "6b4ce6917fd32786daaa9652a04617d5737a65cc40be1253a3768ea3e9464aac"
         },
         {
           "path": "keys.txt",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-cyrillic/keys.txt",
+          "url": "https://packs.playtranslate.com/models/playtranslate/ocr-models/paddle-rec-cyrillic/keys.txt",
           "size": 2780,
           "sha256": "2de016b31edd687acfc1bf72170f4feff9f0c4893edac87cef30b2c5a82443ec"
         }
@@ -227,13 +227,13 @@
       "files": [
         {
           "path": "rec.mnn",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-devanagari/rec.mnn",
+          "url": "https://packs.playtranslate.com/models/playtranslate/ocr-models/paddle-rec-devanagari/rec.mnn",
           "size": 7891236,
           "sha256": "9d44355de916fdedf4a0cc300cd50b0609444920e40e8b69102db2673bab2e51"
         },
         {
           "path": "keys.txt",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-devanagari/keys.txt",
+          "url": "https://packs.playtranslate.com/models/playtranslate/ocr-models/paddle-rec-devanagari/keys.txt",
           "size": 1942,
           "sha256": "c66d17ef6ced6fbfb4413810e75f0f788cfde37d4192bd17af7923fa190066c8"
         }
@@ -261,13 +261,13 @@
       "files": [
         {
           "path": "rec.mnn",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-thai/rec.mnn",
+          "url": "https://packs.playtranslate.com/models/playtranslate/ocr-models/paddle-rec-thai/rec.mnn",
           "size": 7869940,
           "sha256": "a76b29f16eeb507090f4e1c0a15ccb544bcfc62e0a457f6f0e72abb1872093fc"
         },
         {
           "path": "keys.txt",
-          "url": "https://huggingface.co/playtranslate/ocr-models/resolve/main/paddle-rec-thai/keys.txt",
+          "url": "https://packs.playtranslate.com/models/playtranslate/ocr-models/paddle-rec-thai/keys.txt",
           "size": 1766,
           "sha256": "e0f32101004cc828ed4505bba80126be06e282700c4c79175ed2b21a4d454dfa"
         }
@@ -294,7 +294,7 @@
       "additiveFromVersion": 1,
       "extract": true,
       "size": 2886914305,
-      "url": "https://huggingface.co/playtranslate/gemma-4-E2B-it-mnn/resolve/main/gemma-4-E2B-it-mnn.zip",
+      "url": "https://packs.playtranslate.com/models/playtranslate/gemma-4-E2B-it-mnn/gemma-4-E2B-it-mnn.zip",
       "sha256": "72d8b68a9c5d9fc39f5e6e5ce06e60e9ff459d36cc7750208211be0534059d81",
       "licenses": [
         {
@@ -319,7 +319,7 @@
       "additiveFromVersion": 1,
       "extract": true,
       "size": 728368682,
-      "url": "https://huggingface.co/playtranslate/qwen2.5-1.5b-instruct-mnn/resolve/main/qwen2.5-1.5b-instruct-mnn.zip",
+      "url": "https://packs.playtranslate.com/models/playtranslate/qwen2.5-1.5b-instruct-mnn/qwen2.5-1.5b-instruct-mnn.zip",
       "sha256": "644d247eac0f7b26504185664abb0877830a6fc0b15c51cd9fef8fa32cfb4f60",
       "licenses": [
         {
@@ -343,7 +343,7 @@
       "additiveFromVersion": 1,
       "extract": true,
       "size": 1381347361,
-      "url": "https://huggingface.co/playtranslate/qwen3.5-2b-mnn/resolve/main/qwen3.5-2b-mnn.zip",
+      "url": "https://packs.playtranslate.com/models/playtranslate/qwen3.5-2b-mnn/qwen3.5-2b-mnn.zip",
       "sha256": "48c4d09a93759280dac816cd680d4080f34133bbb452bd6868f741e8059d38da",
       "licenses": [
         {
@@ -369,31 +369,31 @@
       "files": [
         {
           "path": "config.json",
-          "url": "https://huggingface.co/playtranslate/hy-mt2-1.8b-mnn/resolve/main/config.json",
+          "url": "https://packs.playtranslate.com/models/playtranslate/hy-mt2-1.8b-mnn/config.json",
           "size": 502,
           "sha256": "801311d0461dceffb4fe06f71a38b8ffb9616022626109537d3343ecc747619f"
         },
         {
           "path": "llm.mnn",
-          "url": "https://huggingface.co/playtranslate/hy-mt2-1.8b-mnn/resolve/main/llm.mnn",
+          "url": "https://packs.playtranslate.com/models/playtranslate/hy-mt2-1.8b-mnn/llm.mnn",
           "size": 575192,
           "sha256": "e58616348ba5d80d6e2d51913104edaa08c4aea6926ed61ecc72865462f979ce"
         },
         {
           "path": "llm.mnn.weight",
-          "url": "https://huggingface.co/playtranslate/hy-mt2-1.8b-mnn/resolve/main/llm.mnn.weight",
+          "url": "https://packs.playtranslate.com/models/playtranslate/hy-mt2-1.8b-mnn/llm.mnn.weight",
           "size": 1008538714,
           "sha256": "bae6b34bff0234e95c98460649578f7fb6febbca340e72bc99c37a3412fc39f0"
         },
         {
           "path": "tokenizer.mtok",
-          "url": "https://huggingface.co/playtranslate/hy-mt2-1.8b-mnn/resolve/main/tokenizer.mtok",
+          "url": "https://packs.playtranslate.com/models/playtranslate/hy-mt2-1.8b-mnn/tokenizer.mtok",
           "size": 3454710,
           "sha256": "c8b146938905b88f5aeff4dac65aeea5f3dc0e3a2f8e0e9f1ae56b405e4a71aa"
         },
         {
           "path": "llm_config.json",
-          "url": "https://huggingface.co/playtranslate/hy-mt2-1.8b-mnn/resolve/main/llm_config.json",
+          "url": "https://packs.playtranslate.com/models/playtranslate/hy-mt2-1.8b-mnn/llm_config.json",
           "size": 1233,
           "sha256": "b72080d8d0096ab93dfbcb164a2d7ff0ee1716335eac97ef41d61681cb2d7196"
         }
@@ -423,31 +423,31 @@
       "files": [
         {
           "path": "config.json",
-          "url": "https://huggingface.co/wangjazz/Hunyuan-MT1.5-1.8B-MNN/resolve/main/config.json",
+          "url": "https://packs.playtranslate.com/models/wangjazz/Hunyuan-MT1.5-1.8B-MNN/config.json",
           "size": 210,
           "sha256": "c4bd25dbbc950feffccc3b154d634fdfbce96fbed453dd738bda4abfc763b73a"
         },
         {
           "path": "llm.mnn",
-          "url": "https://huggingface.co/wangjazz/Hunyuan-MT1.5-1.8B-MNN/resolve/main/llm.mnn",
+          "url": "https://packs.playtranslate.com/models/wangjazz/Hunyuan-MT1.5-1.8B-MNN/llm.mnn",
           "size": 575704,
           "sha256": "b66f4f64caf6907084b26ee4eef48261261cb9af3f3799f50a3a9b2afd42ea04"
         },
         {
           "path": "llm.mnn.weight",
-          "url": "https://huggingface.co/wangjazz/Hunyuan-MT1.5-1.8B-MNN/resolve/main/llm.mnn.weight",
+          "url": "https://packs.playtranslate.com/models/wangjazz/Hunyuan-MT1.5-1.8B-MNN/llm.mnn.weight",
           "size": 1008538714,
           "sha256": "e580b0e95da5a0c4612295ac22c977d78b7d3ba64ac253e072b4ceb986e905a4"
         },
         {
           "path": "tokenizer.txt",
-          "url": "https://huggingface.co/wangjazz/Hunyuan-MT1.5-1.8B-MNN/resolve/main/tokenizer.txt",
+          "url": "https://packs.playtranslate.com/models/wangjazz/Hunyuan-MT1.5-1.8B-MNN/tokenizer.txt",
           "size": 1354726,
           "sha256": "4a5b5be3a5d172341df2d118c916401be1faca99d20fe3a160d65a0f828aee5e"
         },
         {
           "path": "llm_config.json",
-          "url": "https://huggingface.co/wangjazz/Hunyuan-MT1.5-1.8B-MNN/resolve/main/llm_config.json",
+          "url": "https://packs.playtranslate.com/models/wangjazz/Hunyuan-MT1.5-1.8B-MNN/llm_config.json",
           "size": 1043,
           "sha256": "fe8e28d90da5246d6f78db62182ee410d1c7f83446c55ca43b106d7a714a889b"
         }
@@ -472,7 +472,7 @@
       "packVersion": 5,
       "additiveFromVersion": 3,
       "size": 99889772,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/ja-v5/ja.zip",
+      "url": "https://packs.playtranslate.com/langpacks/ja-v5/ja.zip",
       "sha256": "a58536ca98590cef75d80085d1090dcb4aa16227ed61d2a118c81f7e7f83b83a",
       "licenses": [
         {
@@ -504,7 +504,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 15506035,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/zh-v2/zh.zip",
+      "url": "https://packs.playtranslate.com/langpacks/zh-v2/zh.zip",
       "sha256": "b35fcace95c16c7caa174de16f98ac0e6e2258853bb23fc15b461d2bc770d935",
       "licenses": [
         {
@@ -526,7 +526,7 @@
       "packVersion": 5,
       "additiveFromVersion": 1,
       "size": 21187157,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/es-v5/es.zip",
+      "url": "https://packs.playtranslate.com/langpacks/es-v5/es.zip",
       "sha256": "aba5876c98e3af395c7117ca76fd4484352e4863af323b9ce1049ed37f6c8375",
       "licenses": [
         {
@@ -543,7 +543,7 @@
       "packVersion": 4,
       "additiveFromVersion": 1,
       "size": 12223132,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/ru-v4/ru.zip",
+      "url": "https://packs.playtranslate.com/langpacks/ru-v4/ru.zip",
       "sha256": "392d656f37c5964fc0bd80f5c73871156f8a5988e7ab46e9f95bc75335751c92",
       "licenses": [
         {
@@ -560,7 +560,7 @@
       "packVersion": 4,
       "additiveFromVersion": 1,
       "size": 14653896,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/ar-v4/ar.zip",
+      "url": "https://packs.playtranslate.com/langpacks/ar-v4/ar.zip",
       "sha256": "982493550a12c0ca28e4bab2f79d41a68b4de83f808e8a182e12b0ada157e78e",
       "licenses": [
         {
@@ -587,7 +587,7 @@
       "packVersion": 4,
       "additiveFromVersion": 1,
       "size": 2303692,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/th-v4/th.zip",
+      "url": "https://packs.playtranslate.com/langpacks/th-v4/th.zip",
       "sha256": "966ae93a1009c93c5593b2bcd04aa4c9addd17f9eca82ed6d5b0d10f1649a131",
       "licenses": [
         {
@@ -609,7 +609,7 @@
       "packVersion": 5,
       "additiveFromVersion": 1,
       "size": 2534975,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/hi-v5/hi.zip",
+      "url": "https://packs.playtranslate.com/langpacks/hi-v5/hi.zip",
       "sha256": "a0f0e36cc8ecb03aec955cf7da9bf7ac36e93b1fc96d956bddf3343ee0a67990",
       "licenses": [
         {
@@ -626,7 +626,7 @@
       "packVersion": 5,
       "additiveFromVersion": 1,
       "size": 36434725,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/en-v5/en.zip",
+      "url": "https://packs.playtranslate.com/langpacks/en-v5/en.zip",
       "sha256": "4d504a15bcaf7d1112c13913320f6b28fe59c10db2687a746cf394100731c8fb",
       "licenses": [
         {
@@ -643,7 +643,7 @@
       "packVersion": 5,
       "additiveFromVersion": 1,
       "size": 10060454,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/fr-v5/fr.zip",
+      "url": "https://packs.playtranslate.com/langpacks/fr-v5/fr.zip",
       "sha256": "39da8d80c05ef578a7bbbb7348358ed26e7bf4e7a492c209e9d15aca94fe1ab4",
       "licenses": [
         {
@@ -660,7 +660,7 @@
       "packVersion": 5,
       "additiveFromVersion": 1,
       "size": 16426760,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/de-v5/de.zip",
+      "url": "https://packs.playtranslate.com/langpacks/de-v5/de.zip",
       "sha256": "c97286c47658e3685a4927af1780a00dd87668301153d596138ce1aaf1952baa",
       "licenses": [
         {
@@ -677,7 +677,7 @@
       "packVersion": 4,
       "additiveFromVersion": 1,
       "size": 8422764,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/it-v4/it.zip",
+      "url": "https://packs.playtranslate.com/langpacks/it-v4/it.zip",
       "sha256": "e291cb93c49fb50e0398911e358f27a8faa647a3e8fc644518e270b129d43a3c",
       "licenses": [
         {
@@ -694,7 +694,7 @@
       "packVersion": 5,
       "additiveFromVersion": 1,
       "size": 10991159,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/pt-v5/pt.zip",
+      "url": "https://packs.playtranslate.com/langpacks/pt-v5/pt.zip",
       "sha256": "8ce613b58ca34d71706acefc9c084d1e9484856790b8fea3c4d959ed386850be",
       "licenses": [
         {
@@ -711,7 +711,7 @@
       "packVersion": 4,
       "additiveFromVersion": 1,
       "size": 4484726,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/nl-v4/nl.zip",
+      "url": "https://packs.playtranslate.com/langpacks/nl-v4/nl.zip",
       "sha256": "3ea6ced1602a9704be648748fa17931a187d4f749afcafbfd64b82c93b0274a8",
       "licenses": [
         {
@@ -728,7 +728,7 @@
       "packVersion": 4,
       "additiveFromVersion": 1,
       "size": 37798324,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/tr-v4/tr.zip",
+      "url": "https://packs.playtranslate.com/langpacks/tr-v4/tr.zip",
       "sha256": "a0e7e78433ab62e08f6f6819a9b46aff582c4e1ebd5f77864df7c51a27adf37f",
       "licenses": [
         {
@@ -745,7 +745,7 @@
       "packVersion": 4,
       "additiveFromVersion": 1,
       "size": 2536690,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/vi-v4/vi.zip",
+      "url": "https://packs.playtranslate.com/langpacks/vi-v4/vi.zip",
       "sha256": "97dcfab03d68a9ab05558f7b85b3c03bfc7e9be9061e086d782b0e3fc62468fb",
       "licenses": [
         {
@@ -762,7 +762,7 @@
       "packVersion": 4,
       "additiveFromVersion": 1,
       "size": 2337977,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/id-v4/id.zip",
+      "url": "https://packs.playtranslate.com/langpacks/id-v4/id.zip",
       "sha256": "782636050a52d6285563ba5d18dba3688ce75062f1f3237b2ef1fd9fb0b2c02f",
       "licenses": [
         {
@@ -779,7 +779,7 @@
       "packVersion": 4,
       "additiveFromVersion": 1,
       "size": 5868479,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/sv-v4/sv.zip",
+      "url": "https://packs.playtranslate.com/langpacks/sv-v4/sv.zip",
       "sha256": "f7bd879664050b1fa7d83cbc89ea6d0ff4b7a4639146fd153d446d88558a2338",
       "licenses": [
         {
@@ -796,7 +796,7 @@
       "packVersion": 4,
       "additiveFromVersion": 1,
       "size": 2661287,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/da-v4/da.zip",
+      "url": "https://packs.playtranslate.com/langpacks/da-v4/da.zip",
       "sha256": "6210642759d8518df2d4be20f64280e8b24fca7c06da1260b08df76e7bbad812",
       "licenses": [
         {
@@ -813,7 +813,7 @@
       "packVersion": 4,
       "additiveFromVersion": 1,
       "size": 2237215,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/no-v4/no.zip",
+      "url": "https://packs.playtranslate.com/langpacks/no-v4/no.zip",
       "sha256": "d589da61eca09c6a9bb347dfa6094260bd20552cfd1eafc337547419c70ddd62",
       "licenses": [
         {
@@ -830,7 +830,7 @@
       "packVersion": 4,
       "additiveFromVersion": 1,
       "size": 14804966,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/fi-v4/fi.zip",
+      "url": "https://packs.playtranslate.com/langpacks/fi-v4/fi.zip",
       "sha256": "0ddfd89c13a98d8e421b25346efdec35a535e3c7c5e826185c99208519d57214",
       "licenses": [
         {
@@ -847,7 +847,7 @@
       "packVersion": 4,
       "additiveFromVersion": 1,
       "size": 17247305,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/hu-v4/hu.zip",
+      "url": "https://packs.playtranslate.com/langpacks/hu-v4/hu.zip",
       "sha256": "c990600a41f6ce64933640e32d0c97131f5ab096d0154d6114305c858e351ee2",
       "licenses": [
         {
@@ -864,7 +864,7 @@
       "packVersion": 4,
       "additiveFromVersion": 1,
       "size": 4901955,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/ro-v4/ro.zip",
+      "url": "https://packs.playtranslate.com/langpacks/ro-v4/ro.zip",
       "sha256": "d084ab5476b1e296ea98898279f50f9533a9370ff9156c8adff5b0a435540859",
       "licenses": [
         {
@@ -881,7 +881,7 @@
       "packVersion": 4,
       "additiveFromVersion": 1,
       "size": 5519009,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/ca-v4/ca.zip",
+      "url": "https://packs.playtranslate.com/langpacks/ca-v4/ca.zip",
       "sha256": "92d5ed5c9087b9b1deadad45e677cbea47bb6511d21eda40cd957428d94f8bbb",
       "licenses": [
         {
@@ -898,7 +898,7 @@
       "packVersion": 4,
       "additiveFromVersion": 1,
       "size": 16463700,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/ko-v4/ko.zip",
+      "url": "https://packs.playtranslate.com/langpacks/ko-v4/ko.zip",
       "sha256": "1978056e126fe858c167728522709fe3b794cc5d87b3d1ba3ca4ab131f65eb59",
       "licenses": [
         {
@@ -920,7 +920,7 @@
       "packVersion": 4,
       "additiveFromVersion": 1,
       "size": 18216271,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/pl-v4/pl.zip",
+      "url": "https://packs.playtranslate.com/langpacks/pl-v4/pl.zip",
       "sha256": "0384331b33619608272f67095e138055f86ae1f8b2694eda8d38c78a859330f1",
       "licenses": [
         {
@@ -943,7 +943,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 55478363,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-fr-v2/fr.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-fr-v2/fr.zip",
       "sha256": "e007cfa49704e90c58bb96cebfaf76e4ed4ecc02a8dda8b21dee784c255117db",
       "licenses": [
         {
@@ -971,7 +971,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 9411672,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-es-v2/es.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-es-v2/es.zip",
       "sha256": "4054ce6aacabff9fcd2c334d6ffed455cdd7b822fd324cbf39012a14be9620b8",
       "licenses": [
         {
@@ -994,7 +994,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 13520651,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-ja-v2/ja.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-ja-v2/ja.zip",
       "sha256": "3f16fa8f9d6f5265e0124e986c488dff800a1247b2d7c125ec60b2e5c6b0cefa",
       "licenses": [
         {
@@ -1012,7 +1012,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 29373330,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-zh-v2/zh.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-zh-v2/zh.zip",
       "sha256": "c70566f1afb5125aadfd89dc9cff2ce98766e788fa88fbf75b956487e484a990",
       "licenses": [
         {
@@ -1030,7 +1030,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 5349344,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-cs-v2/cs.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-cs-v2/cs.zip",
       "sha256": "676f6ac2e7c06f830acad0af360905e2f1ef5064ac3ac9ee4dc20d8ba191ccea",
       "licenses": [
         {
@@ -1048,7 +1048,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 18948941,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-nl-v2/nl.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-nl-v2/nl.zip",
       "sha256": "e130ba8e60f8ef3a10e438af61b9558e98432413ed8c7a867ef0ca77843cd8ef",
       "licenses": [
         {
@@ -1071,7 +1071,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 105132064,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-de-v2/de.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-de-v2/de.zip",
       "sha256": "2f9df95e3b6103b08d410246ab7362b2beb6a5598dd66145ed1ed7594825af2b",
       "licenses": [
         {
@@ -1099,7 +1099,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 10515479,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-el-v2/el.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-el-v2/el.zip",
       "sha256": "53e3626c36cb381bccf76f7a669d502b8a21b7494fe95ac1ed1c8e920b5ea7b4",
       "licenses": [
         {
@@ -1117,7 +1117,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 1369837,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-id-v2/id.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-id-v2/id.zip",
       "sha256": "6704cca040383b4f005d8ea194939f6823e5ac3d6c52127f3853660970eabef1",
       "licenses": [
         {
@@ -1135,7 +1135,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 5500875,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-it-v2/it.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-it-v2/it.zip",
       "sha256": "4da505c63171003841a8a920664277b13c8f6da5da6ef4752085e3b7a1887864",
       "licenses": [
         {
@@ -1153,7 +1153,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 6369207,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-ko-v2/ko.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-ko-v2/ko.zip",
       "sha256": "9e7c93341a3467e3901385612c6f4072a5bea5a4e1b192f75be47680203171a3",
       "licenses": [
         {
@@ -1171,7 +1171,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 674835,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-ms-v2/ms.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-ms-v2/ms.zip",
       "sha256": "f5fab57a8d5a5cd46a80005cc47689be0585d4755918316761cdd51dfa89a159",
       "licenses": [
         {
@@ -1189,7 +1189,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 20997626,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-pl-v2/pl.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-pl-v2/pl.zip",
       "sha256": "ea24afc6dc52778129015ad939e5657469a338ec9367446c53cb8e50caeb5056",
       "licenses": [
         {
@@ -1207,7 +1207,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 7896814,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-pt-v2/pt.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-pt-v2/pt.zip",
       "sha256": "a307bf587c3f818562cd83c8e6a1b58a001a2ad1dd453e9998740e2e2a12767e",
       "licenses": [
         {
@@ -1225,7 +1225,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 2960354,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-th-v2/th.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-th-v2/th.zip",
       "sha256": "ae5de428db1c17dd4167cc0e7c16c44a03c48a35575e69bf5da61321675fd74f",
       "licenses": [
         {
@@ -1243,7 +1243,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 9649117,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-tr-v2/tr.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-tr-v2/tr.zip",
       "sha256": "67fb14a1754a66767e7e3f0f58e92e3e2ce92f2c22d0c7c42d5c90831b9ea4f5",
       "licenses": [
         {
@@ -1261,7 +1261,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 10669440,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-vi-v2/vi.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-vi-v2/vi.zip",
       "sha256": "118dd688fbc8278108915b9ea02b5c509155bb4c47d48825c72c86f1d8cb3678",
       "licenses": [
         {
@@ -1279,7 +1279,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 45581396,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-ru-v2/ru.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-ru-v2/ru.zip",
       "sha256": "bd9d6806bf0ab60c19485b5b0f7880edd472ea9e4d624e4d767869883cac2cbb",
       "licenses": [
         {
@@ -1302,7 +1302,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 47048500,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-ar-v2/ar.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-ar-v2/ar.zip",
       "sha256": "919b4bb5c24b8e3055d022e9c4ca2d36c058ef6240adebef5a2206d96b35a991",
       "licenses": [
         {
@@ -1320,7 +1320,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 31405247,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-hi-v2/hi.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-hi-v2/hi.zip",
       "sha256": "5869b9151507e8c3f2f975453813375d74aadeb4ca780eaa21f40b7a8773e6bf",
       "licenses": [
         {
@@ -1338,7 +1338,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 29523202,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-he-v2/he.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-he-v2/he.zip",
       "sha256": "f92d3125fc9670c6c338e8cad518feaaa22e06af1b1e6ca4962bf84833fd2c8b",
       "licenses": [
         {
@@ -1356,7 +1356,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 31992191,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-fa-v2/fa.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-fa-v2/fa.zip",
       "sha256": "718ebb60e284121d79c2b39e4ca4b887b56be7bd51b61830a978229a9396e4c6",
       "licenses": [
         {
@@ -1374,7 +1374,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 30019412,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-uk-v2/uk.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-uk-v2/uk.zip",
       "sha256": "b9b121292c9aca3746b68643b079264659eb9ad6d8abf399576e633ca2ac9a39",
       "licenses": [
         {
@@ -1392,7 +1392,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 49248845,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-hu-v2/hu.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-hu-v2/hu.zip",
       "sha256": "119e01bb1d045f28916097e2de2b6915bca5a9d967a118b4e32e2bbbc53e4885",
       "licenses": [
         {
@@ -1410,7 +1410,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 70027858,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-fi-v2/fi.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-fi-v2/fi.zip",
       "sha256": "3cfcbea0533e08f98e164f54525b9c4224b6970d51a00f382d6a3120a7babca2",
       "licenses": [
         {
@@ -1428,7 +1428,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 53714936,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-sv-v2/sv.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-sv-v2/sv.zip",
       "sha256": "797b72cb4367d795f58e230bf5fa437e0607f1286e9d5324378e2f155165955f",
       "licenses": [
         {
@@ -1446,7 +1446,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 15037682,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-af-v2/af.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-af-v2/af.zip",
       "sha256": "70f4c049ade4eaf721288f13dc8cc0c515564107498d7f4f72b72043caad7d4b",
       "licenses": [
         {
@@ -1464,7 +1464,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 7035528,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-sq-v2/sq.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-sq-v2/sq.zip",
       "sha256": "f1f8025d1bfb3c283c9988bcc2ecfdcb0409697936e8a3934de78834d930b8fd",
       "licenses": [
         {
@@ -1482,7 +1482,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 16743462,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-be-v2/be.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-be-v2/be.zip",
       "sha256": "db49dffc6932fc607814ea2a2465c5f0a194d01510d74a0e0676192fe7f707aa",
       "licenses": [
         {
@@ -1500,7 +1500,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 33324406,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-bg-v2/bg.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-bg-v2/bg.zip",
       "sha256": "99cca6ddb54564843c033c44f14cf4b4738d24e5d40f22811e8729fc35a0e62a",
       "licenses": [
         {
@@ -1518,7 +1518,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 13167593,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-bn-v2/bn.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-bn-v2/bn.zip",
       "sha256": "62c1493ae812bcde49db2a6809036f434db6aef47a7dd07eed4e508feba25cd4",
       "licenses": [
         {
@@ -1536,7 +1536,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 42509878,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-ca-v2/ca.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-ca-v2/ca.zip",
       "sha256": "50202c41760b09c70747f9a278cd623842f7639eb0a48e40e26ac09326fb40c0",
       "licenses": [
         {
@@ -1554,7 +1554,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 15908038,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-cy-v2/cy.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-cy-v2/cy.zip",
       "sha256": "83a7db13ffa5e1db82d2f9cdd1cc511c31e88232a35b1d86459512e8c1336c69",
       "licenses": [
         {
@@ -1572,7 +1572,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 37386920,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-da-v2/da.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-da-v2/da.zip",
       "sha256": "f2cdaa4db11763ceb9f90e1adbe3539fe0848c82d84214e92000e85cf2948ae9",
       "licenses": [
         {
@@ -1590,7 +1590,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 43582552,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-eo-v2/eo.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-eo-v2/eo.zip",
       "sha256": "3674171558fe861a2139e00a75eac38aaf5b84bcc1557e6f7e6fee34c1e4074a",
       "licenses": [
         {
@@ -1608,7 +1608,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 29681531,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-et-v2/et.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-et-v2/et.zip",
       "sha256": "6946a25edf9c6889081f957d6967df4c267bd43bfbb03f2114c825f44c6e94da",
       "licenses": [
         {
@@ -1626,7 +1626,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 14896055,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-ga-v2/ga.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-ga-v2/ga.zip",
       "sha256": "6040625972a8c53da2c9bd1c80e7953b6ddfc8a5ce1eee0d3ed57f3ba5a1bcf0",
       "licenses": [
         {
@@ -1644,7 +1644,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 22415558,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-gl-v2/gl.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-gl-v2/gl.zip",
       "sha256": "2dc310e6a9f0a7c5a5130dbdad277d7f953d98ed1279edfd6ee77a060a18c5d0",
       "licenses": [
         {
@@ -1662,7 +1662,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 8839499,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-gu-v2/gu.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-gu-v2/gu.zip",
       "sha256": "8c18faa5a324741de7362ddf64ee85d6799035161b232ba552ee99c94a2e4180",
       "licenses": [
         {
@@ -1680,7 +1680,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 37241257,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-hr-v2/hr.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-hr-v2/hr.zip",
       "sha256": "0a0f176bcc8ac1b05ccf22224e23cb63a3e52eb2372d584fbd1b4d12eef9dda7",
       "licenses": [
         {
@@ -1698,7 +1698,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 3608667,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-ht-v2/ht.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-ht-v2/ht.zip",
       "sha256": "e0cb99a954fff1e29697d2da969c4409048dccfcd9b3be6b0ecaf4ad54aecb28",
       "licenses": [
         {
@@ -1716,7 +1716,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 22983082,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-is-v2/is.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-is-v2/is.zip",
       "sha256": "a7ca6a9db3e82b55fcf227da53526d2bd39441b775ae0fb44d792f17a0ad146b",
       "licenses": [
         {
@@ -1734,7 +1734,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 18190485,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-ka-v2/ka.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-ka-v2/ka.zip",
       "sha256": "8aa94ba7bb6898453494af041ce2b2546aae00a7dd9beff58562cb1e82364297",
       "licenses": [
         {
@@ -1752,7 +1752,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 7748998,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-kn-v2/kn.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-kn-v2/kn.zip",
       "sha256": "e08e4aba44d1142e4bbdb741308003610090a082c891d5f45a869f1f83364ba9",
       "licenses": [
         {
@@ -1770,7 +1770,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 26804366,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-lt-v2/lt.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-lt-v2/lt.zip",
       "sha256": "c7e28af0a5eeffb363101489a79a70fadf762525a5b0163484b24ad8f8e2721c",
       "licenses": [
         {
@@ -1788,7 +1788,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 23394047,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-lv-v2/lv.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-lv-v2/lv.zip",
       "sha256": "c78acbaeb0f81a81aaae36a503bc2f28c567b1d88a9a1963ea6ad8d9c77c3a9d",
       "licenses": [
         {
@@ -1806,7 +1806,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 17394183,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-mk-v2/mk.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-mk-v2/mk.zip",
       "sha256": "817ae4a1d55c74d10440b91980d79393c54b27062b8e36891561aa474f57d572",
       "licenses": [
         {
@@ -1824,7 +1824,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 9745093,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-mr-v2/mr.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-mr-v2/mr.zip",
       "sha256": "8a3d840b265b066262a87faa37c09a5082eecd6810185c840a591429be00b5db",
       "licenses": [
         {
@@ -1842,7 +1842,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 7941549,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-mt-v2/mt.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-mt-v2/mt.zip",
       "sha256": "c8e7e813d291d1c45b8ec399a9dc893a042fba35aab85310f92bc4ffeb12a27b",
       "licenses": [
         {
@@ -1860,7 +1860,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 40744239,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-no-v2/no.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-no-v2/no.zip",
       "sha256": "83e84ca65a0a9bda43691ec9ddcc6f40919e6382ebb40b006b1d892ac85885d9",
       "licenses": [
         {
@@ -1878,7 +1878,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 33518481,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-ro-v2/ro.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-ro-v2/ro.zip",
       "sha256": "059d5d436f0d75c9e221d6e6e96a763e558791afeab7fc38d9a5adbaa2fff22d",
       "licenses": [
         {
@@ -1896,7 +1896,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 38550558,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-sk-v2/sk.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-sk-v2/sk.zip",
       "sha256": "bb6ae1508b571614af1f6a0268c507f157ac5cb4a3ae328e30302a23880044d6",
       "licenses": [
         {
@@ -1914,7 +1914,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 32300348,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-sl-v2/sl.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-sl-v2/sl.zip",
       "sha256": "80b9e094a193cf31f4d82513a7cdee516471b31ea6577e2bdbe40811a86ee50b",
       "licenses": [
         {
@@ -1932,7 +1932,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 13414874,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-sw-v2/sw.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-sw-v2/sw.zip",
       "sha256": "cfcf81a9e3391c67db51e32ae6296784d343a49b53c7f562de9a510558152424",
       "licenses": [
         {
@@ -1950,7 +1950,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 12163407,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-ta-v2/ta.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-ta-v2/ta.zip",
       "sha256": "af53d4fb93b301587796a98de30d4ba7e95a4c0b39eeda542f5fbbf607169e67",
       "licenses": [
         {
@@ -1968,7 +1968,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 12259037,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-te-v2/te.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-te-v2/te.zip",
       "sha256": "35c7f28265a3844f5ae2c611a7126fd4be9d66b2eaf133f10fc16674768ef9d6",
       "licenses": [
         {
@@ -1986,7 +1986,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 7078137,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-tl-v2/tl.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-tl-v2/tl.zip",
       "sha256": "72670f9c9b22f56e052eab84de7e2d7bbb2f46ee7b3c286578e61793dfda3699",
       "licenses": [
         {
@@ -2004,7 +2004,7 @@
       "packVersion": 2,
       "additiveFromVersion": 1,
       "size": 11842897,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/target-ur-v2/ur.zip",
+      "url": "https://packs.playtranslate.com/langpacks/target-ur-v2/ur.zip",
       "sha256": "40403699b1aa29aed769f30594feec3b34ecfe14ceae4ba7acfebc465db490a2",
       "licenses": [
         {
@@ -2025,21 +2025,21 @@
       "files": [
         {
           "path": "model.jaen.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ja-en/cjk_retrain_base-memory_NLRJLD_pQFyrvgKtbie2nA/exported/model.jaen.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/ja-en/cjk_retrain_base-memory_NLRJLD_pQFyrvgKtbie2nA/exported/model.jaen.intgemm.alphas.bin.gz",
           "size": 43977787,
           "sha256": "3a603e20bfe1be86071913f9e23ab5129075bc0a8490151020ac4821e4f17302",
           "gzip": true
         },
         {
           "path": "vocab.jaen.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ja-en/cjk_retrain_base-memory_NLRJLD_pQFyrvgKtbie2nA/exported/vocab.jaen.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/ja-en/cjk_retrain_base-memory_NLRJLD_pQFyrvgKtbie2nA/exported/vocab.jaen.spm.gz",
           "size": 1443222,
           "sha256": "5cb217758bae05877bb3f0c2f612e4e7c1e4cb03c10db11f4a47098d7ae62919",
           "gzip": true
         },
         {
           "path": "lex.50.50.jaen.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ja-en/cjk_retrain_base-memory_NLRJLD_pQFyrvgKtbie2nA/exported/lex.50.50.jaen.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/ja-en/cjk_retrain_base-memory_NLRJLD_pQFyrvgKtbie2nA/exported/lex.50.50.jaen.s2t.bin.gz",
           "size": 9348172,
           "sha256": "525f412f0d210536c2933c78ae395fa0bf2b5ee6cc5dda61ebc2e79410ebaee4",
           "gzip": true
@@ -2064,21 +2064,21 @@
       "files": [
         {
           "path": "model.esen.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/es-en/retrain_hr_HbNjJ60BTwmVTbhfFxuduA/exported/model.esen.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/es-en/retrain_hr_HbNjJ60BTwmVTbhfFxuduA/exported/model.esen.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "4aed7734152ae0045d1a69ae49c86cfda18f53c61f90e95e1d1de1c7c7c3b033",
           "gzip": true
         },
         {
           "path": "vocab.esen.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/es-en/retrain_hr_HbNjJ60BTwmVTbhfFxuduA/exported/vocab.esen.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/es-en/retrain_hr_HbNjJ60BTwmVTbhfFxuduA/exported/vocab.esen.spm.gz",
           "size": 816054,
           "sha256": "5ae254fa9b15aa182e70fd2a6186b1333c63a29a48043a9224c6aa4fcac058ad",
           "gzip": true
         },
         {
           "path": "lex.50.50.esen.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/es-en/retrain_hr_HbNjJ60BTwmVTbhfFxuduA/exported/lex.50.50.esen.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/es-en/retrain_hr_HbNjJ60BTwmVTbhfFxuduA/exported/lex.50.50.esen.s2t.bin.gz",
           "size": 4636248,
           "sha256": "e2610211d3b9577d012638fe7e7e74ed7b4b708ce96b9e792e67c282a6492daa",
           "gzip": true
@@ -2103,21 +2103,21 @@
       "files": [
         {
           "path": "model.enes.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-es/retrain_hr_fix_names_CUAEXUHoQum_cFqh-ZAryw/exported/model.enes.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-es/retrain_hr_fix_names_CUAEXUHoQum_cFqh-ZAryw/exported/model.enes.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "3b1c399511c01c84c36fae5c0524df44096288efdc8236e182b5c97d7ad2244c",
           "gzip": true
         },
         {
           "path": "vocab.enes.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-es/retrain_hr_fix_names_CUAEXUHoQum_cFqh-ZAryw/exported/vocab.enes.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-es/retrain_hr_fix_names_CUAEXUHoQum_cFqh-ZAryw/exported/vocab.enes.spm.gz",
           "size": 816054,
           "sha256": "5ae254fa9b15aa182e70fd2a6186b1333c63a29a48043a9224c6aa4fcac058ad",
           "gzip": true
         },
         {
           "path": "lex.50.50.enes.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-es/retrain_hr_fix_names_CUAEXUHoQum_cFqh-ZAryw/exported/lex.50.50.enes.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-es/retrain_hr_fix_names_CUAEXUHoQum_cFqh-ZAryw/exported/lex.50.50.enes.s2t.bin.gz",
           "size": 4198436,
           "sha256": "7d51237c0a07027dcd61643cfbbb0f8c48597d19907ef53d2cae9d6bec2cf25c",
           "gzip": true
@@ -2142,21 +2142,21 @@
       "files": [
         {
           "path": "model.zhen.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/zh-en/cjk_retrain_base-memory_cNY_yaJCStGwnTeXgW8A5w/exported/model.zhen.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/zh-en/cjk_retrain_base-memory_cNY_yaJCStGwnTeXgW8A5w/exported/model.zhen.intgemm.alphas.bin.gz",
           "size": 43977787,
           "sha256": "5cd149601802fc8a18124a1c1306144dbbedc058630c4ddb2d53aa76fa9c7c06",
           "gzip": true
         },
         {
           "path": "vocab.zhen.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/zh-en/cjk_retrain_base-memory_cNY_yaJCStGwnTeXgW8A5w/exported/vocab.zhen.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/zh-en/cjk_retrain_base-memory_cNY_yaJCStGwnTeXgW8A5w/exported/vocab.zhen.spm.gz",
           "size": 1359697,
           "sha256": "dff594318ab7d8b7b60b844ab98ebe6b932ae8045fab15235404c787715965b3",
           "gzip": true
         },
         {
           "path": "lex.50.50.zhen.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/zh-en/cjk_retrain_base-memory_cNY_yaJCStGwnTeXgW8A5w/exported/lex.50.50.zhen.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/zh-en/cjk_retrain_base-memory_cNY_yaJCStGwnTeXgW8A5w/exported/lex.50.50.zhen.s2t.bin.gz",
           "size": 9219192,
           "sha256": "8524dd4c93ffd7f0ae7be32f77a7c14fea7cdbbebe34ea6ad0ec368d5ddd8b13",
           "gzip": true
@@ -2181,21 +2181,21 @@
       "files": [
         {
           "path": "model.koen.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ko-en/cjk_retrain_base-memory_QgYNtG3BTzKBFSV1wl06Pg/exported/model.koen.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/ko-en/cjk_retrain_base-memory_QgYNtG3BTzKBFSV1wl06Pg/exported/model.koen.intgemm.alphas.bin.gz",
           "size": 43977787,
           "sha256": "7cb30cbc0a86e242084756445268a2346136771c92b884d9b4ebb077f67d5507",
           "gzip": true
         },
         {
           "path": "vocab.koen.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ko-en/cjk_retrain_base-memory_QgYNtG3BTzKBFSV1wl06Pg/exported/vocab.koen.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/ko-en/cjk_retrain_base-memory_QgYNtG3BTzKBFSV1wl06Pg/exported/vocab.koen.spm.gz",
           "size": 1410063,
           "sha256": "1c72b740ab793cdc3a8f16913dd6b4e806c77421077dd2d85edeb7be38418598",
           "gzip": true
         },
         {
           "path": "lex.50.50.koen.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ko-en/cjk_retrain_base-memory_QgYNtG3BTzKBFSV1wl06Pg/exported/lex.50.50.koen.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/ko-en/cjk_retrain_base-memory_QgYNtG3BTzKBFSV1wl06Pg/exported/lex.50.50.koen.s2t.bin.gz",
           "size": 8617516,
           "sha256": "b26291f063ce216a74239275f0485534a38111203e59d42a2a56ba62d6eeb196",
           "gzip": true
@@ -2220,21 +2220,21 @@
       "files": [
         {
           "path": "model.fren.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/fr-en/retrain_hr_EFgIftH_RrCyzl5gjemVNg/exported/model.fren.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/fr-en/retrain_hr_EFgIftH_RrCyzl5gjemVNg/exported/model.fren.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "15f997bc0d13808b0b0fbd0786e684a3c8a52adcd8071844b76123fdacbf2b90",
           "gzip": true
         },
         {
           "path": "vocab.fren.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/fr-en/retrain_hr_EFgIftH_RrCyzl5gjemVNg/exported/vocab.fren.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/fr-en/retrain_hr_EFgIftH_RrCyzl5gjemVNg/exported/vocab.fren.spm.gz",
           "size": 814404,
           "sha256": "783abf3abe075afdf8d85d233994bef2c3a064e935ab1bed946820aff6ac002a",
           "gzip": true
         },
         {
           "path": "lex.50.50.fren.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/fr-en/retrain_hr_EFgIftH_RrCyzl5gjemVNg/exported/lex.50.50.fren.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/fr-en/retrain_hr_EFgIftH_RrCyzl5gjemVNg/exported/lex.50.50.fren.s2t.bin.gz",
           "size": 4824120,
           "sha256": "87c6752ea908f5f0347c10ac0cf7d80d9c2f4f20c81c90168f3e8230b56d4440",
           "gzip": true
@@ -2259,21 +2259,21 @@
       "files": [
         {
           "path": "model.deen.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/de-en/retrain_hr2_WZOW24i4QJmIib61LeHfwg/exported/model.deen.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/de-en/retrain_hr2_WZOW24i4QJmIib61LeHfwg/exported/model.deen.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "3e6f7c2c2425d10824797270b382bee718ff34af2cab9308841c82ca46dc6f20",
           "gzip": true
         },
         {
           "path": "vocab.deen.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/de-en/retrain_hr2_WZOW24i4QJmIib61LeHfwg/exported/vocab.deen.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/de-en/retrain_hr2_WZOW24i4QJmIib61LeHfwg/exported/vocab.deen.spm.gz",
           "size": 810073,
           "sha256": "69f730becafa48e3bb2c244eab66456877c08959a02f2bd5519b5a3088b62f9c",
           "gzip": true
         },
         {
           "path": "lex.50.50.deen.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/de-en/retrain_hr2_WZOW24i4QJmIib61LeHfwg/exported/lex.50.50.deen.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/de-en/retrain_hr2_WZOW24i4QJmIib61LeHfwg/exported/lex.50.50.deen.s2t.bin.gz",
           "size": 4945796,
           "sha256": "113b98460468360cca68c042e1cddf49c4e1931cbb975ed04349c9a3bd607010",
           "gzip": true
@@ -2298,21 +2298,21 @@
       "files": [
         {
           "path": "model.iten.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/it-en/retrain_hr_d1nPDwVeSD6t-HdtWA4xNg/exported/model.iten.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/it-en/retrain_hr_d1nPDwVeSD6t-HdtWA4xNg/exported/model.iten.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "21b70978ce2f3b4da7a06b5de86a09abe3acd30b9eee1b2ebb3582b9bad790bf",
           "gzip": true
         },
         {
           "path": "vocab.iten.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/it-en/retrain_hr_d1nPDwVeSD6t-HdtWA4xNg/exported/vocab.iten.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/it-en/retrain_hr_d1nPDwVeSD6t-HdtWA4xNg/exported/vocab.iten.spm.gz",
           "size": 812724,
           "sha256": "3ef0211d4ae6db21440892f180f2019fe2bfc110a330ffa9d2eca9665e4f2bc5",
           "gzip": true
         },
         {
           "path": "lex.50.50.iten.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/it-en/retrain_hr_d1nPDwVeSD6t-HdtWA4xNg/exported/lex.50.50.iten.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/it-en/retrain_hr_d1nPDwVeSD6t-HdtWA4xNg/exported/lex.50.50.iten.s2t.bin.gz",
           "size": 4713616,
           "sha256": "0700d6d70b30490e68ff9deca0b45b80310745b491855bde3a13e1692d0cbce1",
           "gzip": true
@@ -2337,21 +2337,21 @@
       "files": [
         {
           "path": "model.pten.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/pt-en/retrain_hr_drxrs5bGSsOWvfK9lyZISw/exported/model.pten.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/pt-en/retrain_hr_drxrs5bGSsOWvfK9lyZISw/exported/model.pten.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "7b854f1ec5a485dd33efd7c1bc01dd7d5a57f566957c5e47722af333f0ce9157",
           "gzip": true
         },
         {
           "path": "vocab.pten.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/pt-en/retrain_hr_drxrs5bGSsOWvfK9lyZISw/exported/vocab.pten.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/pt-en/retrain_hr_drxrs5bGSsOWvfK9lyZISw/exported/vocab.pten.spm.gz",
           "size": 816726,
           "sha256": "d9f46182823d5bbc84201252b2dfcac28f63e561f0ec827ed858f241864c9def",
           "gzip": true
         },
         {
           "path": "lex.50.50.pten.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/pt-en/retrain_hr_drxrs5bGSsOWvfK9lyZISw/exported/lex.50.50.pten.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/pt-en/retrain_hr_drxrs5bGSsOWvfK9lyZISw/exported/lex.50.50.pten.s2t.bin.gz",
           "size": 4634492,
           "sha256": "2685d8b6530be92a4db4cc61f15a097eb114552be15cb6c1699e9d2d99d24470",
           "gzip": true
@@ -2376,21 +2376,21 @@
       "files": [
         {
           "path": "model.enfr.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-fr/retrain_hr_NLIxDbE1TBGyOTI-zwZagw/exported/model.enfr.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-fr/retrain_hr_NLIxDbE1TBGyOTI-zwZagw/exported/model.enfr.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "6322e296d4fecfe395a8d5723da4ec37ecbe6d7613bb1dfcf4b28e2a47498b68",
           "gzip": true
         },
         {
           "path": "vocab.enfr.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-fr/retrain_hr_NLIxDbE1TBGyOTI-zwZagw/exported/vocab.enfr.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-fr/retrain_hr_NLIxDbE1TBGyOTI-zwZagw/exported/vocab.enfr.spm.gz",
           "size": 814404,
           "sha256": "783abf3abe075afdf8d85d233994bef2c3a064e935ab1bed946820aff6ac002a",
           "gzip": true
         },
         {
           "path": "lex.50.50.enfr.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-fr/retrain_hr_NLIxDbE1TBGyOTI-zwZagw/exported/lex.50.50.enfr.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-fr/retrain_hr_NLIxDbE1TBGyOTI-zwZagw/exported/lex.50.50.enfr.s2t.bin.gz",
           "size": 4372936,
           "sha256": "2585ed98d3af0bc949865aedeb390493d591f56870814376e73e4144c41ed059",
           "gzip": true
@@ -2415,21 +2415,21 @@
       "files": [
         {
           "path": "model.ende.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-de/retrain_hr_fix_names_SCgGhxUPQ2WAECHLRtzrMg/exported/model.ende.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-de/retrain_hr_fix_names_SCgGhxUPQ2WAECHLRtzrMg/exported/model.ende.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "8df29d9494d19f47fd5d97c6a73474c6f657e9f81c1a607c431d02befdf3810f",
           "gzip": true
         },
         {
           "path": "vocab.ende.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-de/retrain_hr_fix_names_SCgGhxUPQ2WAECHLRtzrMg/exported/vocab.ende.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-de/retrain_hr_fix_names_SCgGhxUPQ2WAECHLRtzrMg/exported/vocab.ende.spm.gz",
           "size": 810073,
           "sha256": "69f730becafa48e3bb2c244eab66456877c08959a02f2bd5519b5a3088b62f9c",
           "gzip": true
         },
         {
           "path": "lex.50.50.ende.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-de/retrain_hr_fix_names_SCgGhxUPQ2WAECHLRtzrMg/exported/lex.50.50.ende.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-de/retrain_hr_fix_names_SCgGhxUPQ2WAECHLRtzrMg/exported/lex.50.50.ende.s2t.bin.gz",
           "size": 4347672,
           "sha256": "7ed39f1cffbd68a27ddf05bbfe068de2060f1d7e69f1a20e27ae923551dd7393",
           "gzip": true
@@ -2454,21 +2454,21 @@
       "files": [
         {
           "path": "model.enit.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-it/retrain_hr_fix_names_GPSr_u8PSmC9fOx1ZDCHoA/exported/model.enit.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-it/retrain_hr_fix_names_GPSr_u8PSmC9fOx1ZDCHoA/exported/model.enit.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "248f47568788ecc351da7e5e07064d4153b4f71e011364ae2c931ffeec4d1cc2",
           "gzip": true
         },
         {
           "path": "vocab.enit.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-it/retrain_hr_fix_names_GPSr_u8PSmC9fOx1ZDCHoA/exported/vocab.enit.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-it/retrain_hr_fix_names_GPSr_u8PSmC9fOx1ZDCHoA/exported/vocab.enit.spm.gz",
           "size": 812724,
           "sha256": "3ef0211d4ae6db21440892f180f2019fe2bfc110a330ffa9d2eca9665e4f2bc5",
           "gzip": true
         },
         {
           "path": "lex.50.50.enit.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-it/retrain_hr_fix_names_GPSr_u8PSmC9fOx1ZDCHoA/exported/lex.50.50.enit.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-it/retrain_hr_fix_names_GPSr_u8PSmC9fOx1ZDCHoA/exported/lex.50.50.enit.s2t.bin.gz",
           "size": 4133192,
           "sha256": "8b21914804625b2777dae7fdb636eb78f02a3eb8b7bceaa50f29ac740961da93",
           "gzip": true
@@ -2493,21 +2493,21 @@
       "files": [
         {
           "path": "model.enpt.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-pt/retrain_hr_fix_names_Vnb0RUXTTd67hR-oLHM3eg/exported/model.enpt.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-pt/retrain_hr_fix_names_Vnb0RUXTTd67hR-oLHM3eg/exported/model.enpt.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "07892fd2544ee79dcb643615d8f2debb9793fae16842e87c328e27a3dd26a770",
           "gzip": true
         },
         {
           "path": "vocab.enpt.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-pt/retrain_hr_fix_names_Vnb0RUXTTd67hR-oLHM3eg/exported/vocab.enpt.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-pt/retrain_hr_fix_names_Vnb0RUXTTd67hR-oLHM3eg/exported/vocab.enpt.spm.gz",
           "size": 816726,
           "sha256": "d9f46182823d5bbc84201252b2dfcac28f63e561f0ec827ed858f241864c9def",
           "gzip": true
         },
         {
           "path": "lex.50.50.enpt.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-pt/retrain_hr_fix_names_Vnb0RUXTTd67hR-oLHM3eg/exported/lex.50.50.enpt.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-pt/retrain_hr_fix_names_Vnb0RUXTTd67hR-oLHM3eg/exported/lex.50.50.enpt.s2t.bin.gz",
           "size": 3970340,
           "sha256": "ccb4c31c9e1899d77a200e71a86958e6ef6c8649627d0bbf3f873b57d9f236bd",
           "gzip": true
@@ -2532,21 +2532,21 @@
       "files": [
         {
           "path": "model.enru.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ru/retrain_base-memory_KJ23-iDVTcymG1ZldWY17w/exported/model.enru.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ru/retrain_base-memory_KJ23-iDVTcymG1ZldWY17w/exported/model.enru.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "184cb5cda528eeefc0f75f5d0035d787b71d74af135e3c5608d01ae02ecfb920",
           "gzip": true
         },
         {
           "path": "vocab.enru.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ru/retrain_base-memory_KJ23-iDVTcymG1ZldWY17w/exported/vocab.enru.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ru/retrain_base-memory_KJ23-iDVTcymG1ZldWY17w/exported/vocab.enru.spm.gz",
           "size": 904455,
           "sha256": "56ee63e14e8cb926c394242adc3ed7cc602644c3d33058cff2ce2959d52a6258",
           "gzip": true
         },
         {
           "path": "lex.50.50.enru.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ru/retrain_base-memory_KJ23-iDVTcymG1ZldWY17w/exported/lex.50.50.enru.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ru/retrain_base-memory_KJ23-iDVTcymG1ZldWY17w/exported/lex.50.50.enru.s2t.bin.gz",
           "size": 2774540,
           "sha256": "4d91839726b960e70b6d05c53d0cffd16262832b1c0e1ea99d66f412dcc6a239",
           "gzip": true
@@ -2571,28 +2571,28 @@
       "files": [
         {
           "path": "model.enja.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ja/llmaat_finetune10M_qe8_f2_ApiGGQIwTKuF9i_k3n9Q2Q/exported/model.enja.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ja/llmaat_finetune10M_qe8_f2_ApiGGQIwTKuF9i_k3n9Q2Q/exported/model.enja.intgemm.alphas.bin.gz",
           "size": 43849787,
           "sha256": "59ae659f9bb63e4f81f474fe3c03d3f4499434b5f9e779fab7c12a45f31fd562",
           "gzip": true
         },
         {
           "path": "srcvocab.enja.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ja/llmaat_finetune10M_qe8_f2_ApiGGQIwTKuF9i_k3n9Q2Q/exported/srcvocab.enja.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ja/llmaat_finetune10M_qe8_f2_ApiGGQIwTKuF9i_k3n9Q2Q/exported/srcvocab.enja.spm.gz",
           "size": 796275,
           "sha256": "970c98d174fc01e0339fbabbf45af36a4be3f26f819ec1a5ea1189f71e091889",
           "gzip": true
         },
         {
           "path": "trgvocab.enja.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ja/llmaat_finetune10M_qe8_f2_ApiGGQIwTKuF9i_k3n9Q2Q/exported/trgvocab.enja.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ja/llmaat_finetune10M_qe8_f2_ApiGGQIwTKuF9i_k3n9Q2Q/exported/trgvocab.enja.spm.gz",
           "size": 827144,
           "sha256": "3b3d9f8f3a034d98d0a476f1794fa79c01e4e98a967ceb6777a66ba2d03ec1e1",
           "gzip": true
         },
         {
           "path": "lex.50.50.enja.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ja/llmaat_finetune10M_qe8_f2_ApiGGQIwTKuF9i_k3n9Q2Q/exported/lex.50.50.enja.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ja/llmaat_finetune10M_qe8_f2_ApiGGQIwTKuF9i_k3n9Q2Q/exported/lex.50.50.enja.s2t.bin.gz",
           "size": 4128360,
           "sha256": "edfb7eb47b98a2689b804ab3614c31b24f1257aa54b1154da3d85e1ae8152d9f",
           "gzip": true
@@ -2617,28 +2617,28 @@
       "files": [
         {
           "path": "model.enzh.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-zh/llmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g/exported/model.enzh.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-zh/llmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g/exported/model.enzh.intgemm.alphas.bin.gz",
           "size": 43849787,
           "sha256": "4e5accc141373565ddc8fa1565bceaa8d0c3482a82cab8131c719ebcc6c2157c",
           "gzip": true
         },
         {
           "path": "srcvocab.enzh.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-zh/llmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g/exported/srcvocab.enzh.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-zh/llmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g/exported/srcvocab.enzh.spm.gz",
           "size": 806952,
           "sha256": "bd9b65504acc6d9726dd281f7defc2adb7c2c22d0688fe2f84697de25197c8c5",
           "gzip": true
         },
         {
           "path": "trgvocab.enzh.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-zh/llmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g/exported/trgvocab.enzh.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-zh/llmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g/exported/trgvocab.enzh.spm.gz",
           "size": 772004,
           "sha256": "aded6993c36e440284d11cec3f6b8aef9c0e43188a772d80be342a713adf223d",
           "gzip": true
         },
         {
           "path": "lex.50.50.enzh.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-zh/llmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g/exported/lex.50.50.enzh.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-zh/llmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g/exported/lex.50.50.enzh.s2t.bin.gz",
           "size": 4485184,
           "sha256": "8575d8daa10e2dbff316dcdf8e1ce475357bcc2c92bdc63b736a2d5add22f681",
           "gzip": true
@@ -2663,28 +2663,28 @@
       "files": [
         {
           "path": "model.enko.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ko/cjk_retrain_base-memory_GP50C3MpQ9apCWZOW-f3PA/exported/model.enko.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ko/cjk_retrain_base-memory_GP50C3MpQ9apCWZOW-f3PA/exported/model.enko.intgemm.alphas.bin.gz",
           "size": 43849787,
           "sha256": "ffe5ef2ce3f2e944055e35310bab186f6a70d533a0ee4394adf716a0e383afbb",
           "gzip": true
         },
         {
           "path": "srcvocab.enko.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ko/cjk_retrain_base-memory_GP50C3MpQ9apCWZOW-f3PA/exported/srcvocab.enko.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ko/cjk_retrain_base-memory_GP50C3MpQ9apCWZOW-f3PA/exported/srcvocab.enko.spm.gz",
           "size": 791280,
           "sha256": "8d4e3141868efd410eb86c2b60d41aa6bc6b46e4c4b2c0b85e3792493c69d802",
           "gzip": true
         },
         {
           "path": "trgvocab.enko.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ko/cjk_retrain_base-memory_GP50C3MpQ9apCWZOW-f3PA/exported/trgvocab.enko.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ko/cjk_retrain_base-memory_GP50C3MpQ9apCWZOW-f3PA/exported/trgvocab.enko.spm.gz",
           "size": 815353,
           "sha256": "2ece21b28dd7022d36127d17423a74dabf544787dfc1cf614f7b565f93a4a1d3",
           "gzip": true
         },
         {
           "path": "lex.50.50.enko.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ko/cjk_retrain_base-memory_GP50C3MpQ9apCWZOW-f3PA/exported/lex.50.50.enko.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ko/cjk_retrain_base-memory_GP50C3MpQ9apCWZOW-f3PA/exported/lex.50.50.enko.s2t.bin.gz",
           "size": 6449612,
           "sha256": "96efba97d4bb93ab362e5569bea0f115184d2f68d63b67305ee663c18e32fbeb",
           "gzip": true
@@ -2709,21 +2709,21 @@
       "files": [
         {
           "path": "model.nlen.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/nl-en/retrain_hr_JbTCb42HREGvK8d6aOCjFQ/exported/model.nlen.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/nl-en/retrain_hr_JbTCb42HREGvK8d6aOCjFQ/exported/model.nlen.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "ff987741ff15a5d94fff16cbef28f2b0a85a6e9547d982fad60ac09d16d11270",
           "gzip": true
         },
         {
           "path": "vocab.nlen.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/nl-en/retrain_hr_JbTCb42HREGvK8d6aOCjFQ/exported/vocab.nlen.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/nl-en/retrain_hr_JbTCb42HREGvK8d6aOCjFQ/exported/vocab.nlen.spm.gz",
           "size": 807708,
           "sha256": "c09588ca5662b230ed65bd39a07f58d9f7dd21c3a19e4aeb1bff39bf3b297c56",
           "gzip": true
         },
         {
           "path": "lex.50.50.nlen.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/nl-en/retrain_hr_JbTCb42HREGvK8d6aOCjFQ/exported/lex.50.50.nlen.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/nl-en/retrain_hr_JbTCb42HREGvK8d6aOCjFQ/exported/lex.50.50.nlen.s2t.bin.gz",
           "size": 4862412,
           "sha256": "811ac8f9dcbd12706e2d73a7057a7bbe6b9f0607d15170ffe9439977e8229b41",
           "gzip": true
@@ -2748,21 +2748,21 @@
       "files": [
         {
           "path": "model.ennl.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-nl/retrain_hr_fix_names_fR8XhBiBQniIbi4I_ebJ2Q/exported/model.ennl.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-nl/retrain_hr_fix_names_fR8XhBiBQniIbi4I_ebJ2Q/exported/model.ennl.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "7e8402da61972dc2fdcf7147c7f1e12f7916a6d9349514ee7a731288357575a9",
           "gzip": true
         },
         {
           "path": "vocab.ennl.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-nl/retrain_hr_fix_names_fR8XhBiBQniIbi4I_ebJ2Q/exported/vocab.ennl.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-nl/retrain_hr_fix_names_fR8XhBiBQniIbi4I_ebJ2Q/exported/vocab.ennl.spm.gz",
           "size": 807708,
           "sha256": "c09588ca5662b230ed65bd39a07f58d9f7dd21c3a19e4aeb1bff39bf3b297c56",
           "gzip": true
         },
         {
           "path": "lex.50.50.ennl.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-nl/retrain_hr_fix_names_fR8XhBiBQniIbi4I_ebJ2Q/exported/lex.50.50.ennl.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-nl/retrain_hr_fix_names_fR8XhBiBQniIbi4I_ebJ2Q/exported/lex.50.50.ennl.s2t.bin.gz",
           "size": 4030624,
           "sha256": "bb4922718f8ca6d746ad090c0a88110a664dc050ee3f311bce33698b4e1679e9",
           "gzip": true
@@ -2787,21 +2787,21 @@
       "files": [
         {
           "path": "model.tren.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/tr-en/statmt_xxxxxxxxRxSxxxxxxxxxxA/exported/model.tren.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/tr-en/statmt_xxxxxxxxRxSxxxxxxxxxxA/exported/model.tren.intgemm.alphas.bin.gz",
           "size": 17140836,
           "sha256": "bd18594ac5a7f1d9997e7ea5bd80272082219cf8b1ce604766e4f207eb86abbf",
           "gzip": true
         },
         {
           "path": "vocab.tren.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/tr-en/statmt_xxxxxxxxRxSxxxxxxxxxxA/exported/vocab.tren.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/tr-en/statmt_xxxxxxxxRxSxxxxxxxxxxA/exported/vocab.tren.spm.gz",
           "size": 811353,
           "sha256": "ed328e589a3ccd70fd3ce7773fc3c01d8b7b18c687464cacf17fd40a8c0daadd",
           "gzip": true
         },
         {
           "path": "lex.50.50.tren.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/tr-en/statmt_xxxxxxxxRxSxxxxxxxxxxA/exported/lex.50.50.tren.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/tr-en/statmt_xxxxxxxxRxSxxxxxxxxxxA/exported/lex.50.50.tren.s2t.bin.gz",
           "size": 4662492,
           "sha256": "d3374ab5267a73ee1aa1d926a298bd349426835f40856991ee959bc5cd4f9fce",
           "gzip": true
@@ -2832,21 +2832,21 @@
       "files": [
         {
           "path": "model.entr.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-tr/spring-2024_LiFGeNrEQpKdNlziG2qP_A/exported/model.entr.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-tr/spring-2024_LiFGeNrEQpKdNlziG2qP_A/exported/model.entr.intgemm.alphas.bin.gz",
           "size": 17141051,
           "sha256": "ea3cd4ee09de190df265c78d84260e277a9a8a3ddff05eb55d72afe7fc0fdbf4",
           "gzip": true
         },
         {
           "path": "vocab.entr.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-tr/spring-2024_LiFGeNrEQpKdNlziG2qP_A/exported/vocab.entr.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-tr/spring-2024_LiFGeNrEQpKdNlziG2qP_A/exported/vocab.entr.spm.gz",
           "size": 798793,
           "sha256": "a220363d60391f7ce3df8ec9785424dbc00c24d5786d1a4308cf8ca3ed3385c2",
           "gzip": true
         },
         {
           "path": "lex.50.50.entr.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-tr/spring-2024_LiFGeNrEQpKdNlziG2qP_A/exported/lex.50.50.entr.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-tr/spring-2024_LiFGeNrEQpKdNlziG2qP_A/exported/lex.50.50.entr.s2t.bin.gz",
           "size": 3261300,
           "sha256": "3aba0be842bd4c192659c781e6fdce8eb9b2b1fff29a40d22f75da369d59f46f",
           "gzip": true
@@ -2877,21 +2877,21 @@
       "files": [
         {
           "path": "model.vien.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/vi-en/spring-2024_Nc0SHbrgQaiFt4_FmKBXOA/exported/model.vien.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/vi-en/spring-2024_Nc0SHbrgQaiFt4_FmKBXOA/exported/model.vien.intgemm.alphas.bin.gz",
           "size": 17141051,
           "sha256": "de4bf2b9ffb4d910e32720ec3a43655fb6f4062ce5219332f824fc1bdca7a5f4",
           "gzip": true
         },
         {
           "path": "vocab.vien.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/vi-en/spring-2024_Nc0SHbrgQaiFt4_FmKBXOA/exported/vocab.vien.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/vi-en/spring-2024_Nc0SHbrgQaiFt4_FmKBXOA/exported/vocab.vien.spm.gz",
           "size": 757250,
           "sha256": "cb152765d1e71ea3cf96fdb339c764b7201be7b9ab32e20cfebcf16a20fc0939",
           "gzip": true
         },
         {
           "path": "lex.50.50.vien.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/vi-en/spring-2024_Nc0SHbrgQaiFt4_FmKBXOA/exported/lex.50.50.vien.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/vi-en/spring-2024_Nc0SHbrgQaiFt4_FmKBXOA/exported/lex.50.50.vien.s2t.bin.gz",
           "size": 3910184,
           "sha256": "3a071ed3d982f6eb6ee116b84067bf70041e4229e43ea65ecb6d7c2796e8851b",
           "gzip": true
@@ -2922,21 +2922,21 @@
       "files": [
         {
           "path": "model.envi.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-vi/test_prompsit_Ep8JhBQ3QRizDT91JVy8KQ/exported/model.envi.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-vi/test_prompsit_Ep8JhBQ3QRizDT91JVy8KQ/exported/model.envi.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "04fa6044593a404c2aa02b3096f203880852df6f8f41e5eb966ed9f2b4366737",
           "gzip": true
         },
         {
           "path": "vocab.envi.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-vi/test_prompsit_Ep8JhBQ3QRizDT91JVy8KQ/exported/vocab.envi.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-vi/test_prompsit_Ep8JhBQ3QRizDT91JVy8KQ/exported/vocab.envi.spm.gz",
           "size": 785200,
           "sha256": "76daa9a49e393e50c865c889290e4dc36e9453e5e1ec9df7b9f3bc39ea782537",
           "gzip": true
         },
         {
           "path": "lex.50.50.envi.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-vi/test_prompsit_Ep8JhBQ3QRizDT91JVy8KQ/exported/lex.50.50.envi.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-vi/test_prompsit_Ep8JhBQ3QRizDT91JVy8KQ/exported/lex.50.50.envi.s2t.bin.gz",
           "size": 4597684,
           "sha256": "18116817fcd3d24dcdfd97cb57e9e60472800dae3b8a007f6f36d61d645f699c",
           "gzip": true
@@ -2961,21 +2961,21 @@
       "files": [
         {
           "path": "model.iden.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/id-en/spring-2024_Yl0wXq-iQE6G9PpA3AQfcg/exported/model.iden.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/id-en/spring-2024_Yl0wXq-iQE6G9PpA3AQfcg/exported/model.iden.intgemm.alphas.bin.gz",
           "size": 17141051,
           "sha256": "eeed3d8c2c78ec7011b31b2419e1d2dfdf2a7cc0ee0dbb1fcd164c934cb5d328",
           "gzip": true
         },
         {
           "path": "vocab.iden.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/id-en/spring-2024_Yl0wXq-iQE6G9PpA3AQfcg/exported/vocab.iden.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/id-en/spring-2024_Yl0wXq-iQE6G9PpA3AQfcg/exported/vocab.iden.spm.gz",
           "size": 772941,
           "sha256": "a2dd1462abd17cccbbf3fefc562131f06b293f8ff6a5efad73ebb0176810d835",
           "gzip": true
         },
         {
           "path": "lex.50.50.iden.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/id-en/spring-2024_Yl0wXq-iQE6G9PpA3AQfcg/exported/lex.50.50.iden.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/id-en/spring-2024_Yl0wXq-iQE6G9PpA3AQfcg/exported/lex.50.50.iden.s2t.bin.gz",
           "size": 4050348,
           "sha256": "7a543087d4e9c1fe2f6b6f735b5e31aeadab80235e734c0388278722042ee3a2",
           "gzip": true
@@ -3006,21 +3006,21 @@
       "files": [
         {
           "path": "model.enid.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-id/spring-2024_bbjDBFoDTNGSUo2if3ET_A/exported/model.enid.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-id/spring-2024_bbjDBFoDTNGSUo2if3ET_A/exported/model.enid.intgemm.alphas.bin.gz",
           "size": 17141051,
           "sha256": "f81f13eef703a4e0650ffc3138a0f4bab7b6c8bfd173ef1b7bda68d16b8bc7e8",
           "gzip": true
         },
         {
           "path": "vocab.enid.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-id/spring-2024_bbjDBFoDTNGSUo2if3ET_A/exported/vocab.enid.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-id/spring-2024_bbjDBFoDTNGSUo2if3ET_A/exported/vocab.enid.spm.gz",
           "size": 773211,
           "sha256": "61bc7db24d3b6de638a02a280580a273fe0c942ecbe8a8204b2f81978211db22",
           "gzip": true
         },
         {
           "path": "lex.50.50.enid.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-id/spring-2024_bbjDBFoDTNGSUo2if3ET_A/exported/lex.50.50.enid.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-id/spring-2024_bbjDBFoDTNGSUo2if3ET_A/exported/lex.50.50.enid.s2t.bin.gz",
           "size": 3515428,
           "sha256": "d37f72bcab6e7bc52fd223350f95521b5810bb2486a97275f86077988fced3f4",
           "gzip": true
@@ -3051,21 +3051,21 @@
       "files": [
         {
           "path": "model.sven.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/sv-en/spring-2024_ObaRXwXeSW6HA_-J5_dE-g/exported/model.sven.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/sv-en/spring-2024_ObaRXwXeSW6HA_-J5_dE-g/exported/model.sven.intgemm.alphas.bin.gz",
           "size": 17141051,
           "sha256": "92d79e2725718b84aed486473bdfcbe6bba3e7094922d4bead8a121cfa346372",
           "gzip": true
         },
         {
           "path": "vocab.sven.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/sv-en/spring-2024_ObaRXwXeSW6HA_-J5_dE-g/exported/vocab.sven.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/sv-en/spring-2024_ObaRXwXeSW6HA_-J5_dE-g/exported/vocab.sven.spm.gz",
           "size": 793049,
           "sha256": "93427195fac4125722ed778707478ef78cb77b3fdf1ed5b93bee9fd36e30a8ec",
           "gzip": true
         },
         {
           "path": "lex.50.50.sven.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/sv-en/spring-2024_ObaRXwXeSW6HA_-J5_dE-g/exported/lex.50.50.sven.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/sv-en/spring-2024_ObaRXwXeSW6HA_-J5_dE-g/exported/lex.50.50.sven.s2t.bin.gz",
           "size": 4645680,
           "sha256": "1c4640765e806d905cdc4f51158f6f869c78709b9e8a43070877965fa13c160e",
           "gzip": true
@@ -3096,21 +3096,21 @@
       "files": [
         {
           "path": "model.ensv.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-sv/spring-2024_bQQme71PS4eZRDl3NM-kgA/exported/model.ensv.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-sv/spring-2024_bQQme71PS4eZRDl3NM-kgA/exported/model.ensv.intgemm.alphas.bin.gz",
           "size": 17141051,
           "sha256": "65ea0db8e658435846f297384face62dbf1804cfc92de8388b0e368e6ecc25a7",
           "gzip": true
         },
         {
           "path": "vocab.ensv.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-sv/spring-2024_bQQme71PS4eZRDl3NM-kgA/exported/vocab.ensv.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-sv/spring-2024_bQQme71PS4eZRDl3NM-kgA/exported/vocab.ensv.spm.gz",
           "size": 793868,
           "sha256": "ff7e366ff4228107e58d76ca348e7dea2eb325452363d68e0047e97fb483e40e",
           "gzip": true
         },
         {
           "path": "lex.50.50.ensv.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-sv/spring-2024_bQQme71PS4eZRDl3NM-kgA/exported/lex.50.50.ensv.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-sv/spring-2024_bQQme71PS4eZRDl3NM-kgA/exported/lex.50.50.ensv.s2t.bin.gz",
           "size": 3948180,
           "sha256": "5761c39887a0e0cd3dd38d22cadc31cecd2a43b0514c4bba96b426736e7fd72d",
           "gzip": true
@@ -3141,21 +3141,21 @@
       "files": [
         {
           "path": "model.daen.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/da-en/spring-2024_U1vVpsWWT-K4L9pRfP1K1g/exported/model.daen.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/da-en/spring-2024_U1vVpsWWT-K4L9pRfP1K1g/exported/model.daen.intgemm.alphas.bin.gz",
           "size": 17141051,
           "sha256": "2c1ace24220c905404bbb1de14bfeda8a391ef8d6c56f3b193a9d3e340d99b12",
           "gzip": true
         },
         {
           "path": "vocab.daen.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/da-en/spring-2024_U1vVpsWWT-K4L9pRfP1K1g/exported/vocab.daen.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/da-en/spring-2024_U1vVpsWWT-K4L9pRfP1K1g/exported/vocab.daen.spm.gz",
           "size": 796018,
           "sha256": "b9392fcd9c53b802628d33a160f6eb52ca3d25a07ec9e015ab93b6bd5c7e8033",
           "gzip": true
         },
         {
           "path": "lex.50.50.daen.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/da-en/spring-2024_U1vVpsWWT-K4L9pRfP1K1g/exported/lex.50.50.daen.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/da-en/spring-2024_U1vVpsWWT-K4L9pRfP1K1g/exported/lex.50.50.daen.s2t.bin.gz",
           "size": 4489412,
           "sha256": "e5f50fba646e0d3cedf2957575aa84c3bdca6798ce32ccd63c956fc043d774a3",
           "gzip": true
@@ -3186,21 +3186,21 @@
       "files": [
         {
           "path": "model.enda.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-da/spring-2024_XUm0Ij8WSfabkKeKA_Xv_g/exported/model.enda.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-da/spring-2024_XUm0Ij8WSfabkKeKA_Xv_g/exported/model.enda.intgemm.alphas.bin.gz",
           "size": 17141051,
           "sha256": "0157ed1162dd5a7a0fc6a3cc86014ec21cb47a8febf77164df24d8921270bb29",
           "gzip": true
         },
         {
           "path": "vocab.enda.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-da/spring-2024_XUm0Ij8WSfabkKeKA_Xv_g/exported/vocab.enda.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-da/spring-2024_XUm0Ij8WSfabkKeKA_Xv_g/exported/vocab.enda.spm.gz",
           "size": 795349,
           "sha256": "b06349522bf053e4a6f01efc4d1450e4fe35717a938a82831988c087229c9619",
           "gzip": true
         },
         {
           "path": "lex.50.50.enda.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-da/spring-2024_XUm0Ij8WSfabkKeKA_Xv_g/exported/lex.50.50.enda.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-da/spring-2024_XUm0Ij8WSfabkKeKA_Xv_g/exported/lex.50.50.enda.s2t.bin.gz",
           "size": 3864788,
           "sha256": "d183786cae59a5df06d5b00c58e3ec2a5791d302240a65540fc6a1da2b66eada",
           "gzip": true
@@ -3231,21 +3231,21 @@
       "files": [
         {
           "path": "model.noen.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/no-en/h1-2025_YKogHXi6Q4es3P7fEWEaBw/exported/model.noen.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/no-en/h1-2025_YKogHXi6Q4es3P7fEWEaBw/exported/model.noen.intgemm.alphas.bin.gz",
           "size": 17141051,
           "sha256": "00ab7b969156f6c948be59dad4755e47a24eeb31aa39f02f1de7bce43081cc2a",
           "gzip": true
         },
         {
           "path": "vocab.noen.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/no-en/h1-2025_YKogHXi6Q4es3P7fEWEaBw/exported/vocab.noen.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/no-en/h1-2025_YKogHXi6Q4es3P7fEWEaBw/exported/vocab.noen.spm.gz",
           "size": 802367,
           "sha256": "23eb1743070efac5a447f4f72aafda69b1985af272cece85a2f0bb08e6fcdeef",
           "gzip": true
         },
         {
           "path": "lex.50.50.noen.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/no-en/h1-2025_YKogHXi6Q4es3P7fEWEaBw/exported/lex.50.50.noen.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/no-en/h1-2025_YKogHXi6Q4es3P7fEWEaBw/exported/lex.50.50.noen.s2t.bin.gz",
           "size": 4517876,
           "sha256": "cc07976874c905e859918be71d3fe993c9ec8696d986db2418bb1a16ff4ea500",
           "gzip": true
@@ -3276,21 +3276,21 @@
       "files": [
         {
           "path": "model.enno.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-no/h1-2025_A0d8NsivR6Szy2dI4Nz6FQ/exported/model.enno.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-no/h1-2025_A0d8NsivR6Szy2dI4Nz6FQ/exported/model.enno.intgemm.alphas.bin.gz",
           "size": 17141051,
           "sha256": "78429eb7f544361061c9d9ec2f0872adf30b76e4c9ef3dbaab1210a0f2aa19b5",
           "gzip": true
         },
         {
           "path": "vocab.enno.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-no/h1-2025_A0d8NsivR6Szy2dI4Nz6FQ/exported/vocab.enno.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-no/h1-2025_A0d8NsivR6Szy2dI4Nz6FQ/exported/vocab.enno.spm.gz",
           "size": 802190,
           "sha256": "cad75f2c3eccb9545b571ca32f235e6ffaae6d8a77bfa808cf8068948c421f10",
           "gzip": true
         },
         {
           "path": "lex.50.50.enno.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-no/h1-2025_A0d8NsivR6Szy2dI4Nz6FQ/exported/lex.50.50.enno.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-no/h1-2025_A0d8NsivR6Szy2dI4Nz6FQ/exported/lex.50.50.enno.s2t.bin.gz",
           "size": 4234572,
           "sha256": "0780a1659ef460864ba92da6d58ca6f9056fb8ec8be507c189aeb25ce23e429f",
           "gzip": true
@@ -3321,21 +3321,21 @@
       "files": [
         {
           "path": "model.fien.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/fi-en/retrain_hr_C7-zSzS7Tm6zkOfVP7k0Gw/exported/model.fien.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/fi-en/retrain_hr_C7-zSzS7Tm6zkOfVP7k0Gw/exported/model.fien.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "e3887341f18bcc7787d9b59eb1229b56eefce18d49b7ebf1e62c55d65a377321",
           "gzip": true
         },
         {
           "path": "vocab.fien.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/fi-en/retrain_hr_C7-zSzS7Tm6zkOfVP7k0Gw/exported/vocab.fien.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/fi-en/retrain_hr_C7-zSzS7Tm6zkOfVP7k0Gw/exported/vocab.fien.spm.gz",
           "size": 818770,
           "sha256": "6a866911427f2916609ae89c7f2f04a78de3fdd8aa183039ecba986635d4f246",
           "gzip": true
         },
         {
           "path": "lex.50.50.fien.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/fi-en/retrain_hr_C7-zSzS7Tm6zkOfVP7k0Gw/exported/lex.50.50.fien.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/fi-en/retrain_hr_C7-zSzS7Tm6zkOfVP7k0Gw/exported/lex.50.50.fien.s2t.bin.gz",
           "size": 5195132,
           "sha256": "8bad431e07b062ba47f363b76e4656cc743fd608316d8a4830a4315e44ac9abb",
           "gzip": true
@@ -3360,21 +3360,21 @@
       "files": [
         {
           "path": "model.enfi.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-fi/retrain_hr_b45LsGaNQFyDRhHAvBbKrA/exported/model.enfi.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-fi/retrain_hr_b45LsGaNQFyDRhHAvBbKrA/exported/model.enfi.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "88b0caa4cc6980d632801cb2b1950748f1dc43ad2ac83678917ad86c720b5cdd",
           "gzip": true
         },
         {
           "path": "vocab.enfi.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-fi/retrain_hr_b45LsGaNQFyDRhHAvBbKrA/exported/vocab.enfi.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-fi/retrain_hr_b45LsGaNQFyDRhHAvBbKrA/exported/vocab.enfi.spm.gz",
           "size": 818770,
           "sha256": "6a866911427f2916609ae89c7f2f04a78de3fdd8aa183039ecba986635d4f246",
           "gzip": true
         },
         {
           "path": "lex.50.50.enfi.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-fi/retrain_hr_b45LsGaNQFyDRhHAvBbKrA/exported/lex.50.50.enfi.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-fi/retrain_hr_b45LsGaNQFyDRhHAvBbKrA/exported/lex.50.50.enfi.s2t.bin.gz",
           "size": 3490092,
           "sha256": "26e95a87f87e4b0fa9a35524cf9fea691204504453877ba4ac81ccc66af1488c",
           "gzip": true
@@ -3399,21 +3399,21 @@
       "files": [
         {
           "path": "model.huen.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/hu-en/andre_xxxxxxxxRxSxxxxxxxxxxA/exported/model.huen.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/hu-en/andre_xxxxxxxxRxSxxxxxxxxxxA/exported/model.huen.intgemm.alphas.bin.gz",
           "size": 17140899,
           "sha256": "518356dbb0c071739318601963a87580fb41732652f52bd3635246330c186d9e",
           "gzip": true
         },
         {
           "path": "vocab.huen.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/hu-en/andre_xxxxxxxxRxSxxxxxxxxxxA/exported/vocab.huen.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/hu-en/andre_xxxxxxxxRxSxxxxxxxxxxA/exported/vocab.huen.spm.gz",
           "size": 820746,
           "sha256": "0db772702235b02d1f29abafb7a49ed77e54c60245b3a46e90716e74263aedd6",
           "gzip": true
         },
         {
           "path": "lex.50.50.huen.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/hu-en/andre_xxxxxxxxRxSxxxxxxxxxxA/exported/lex.50.50.huen.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/hu-en/andre_xxxxxxxxRxSxxxxxxxxxxA/exported/lex.50.50.huen.s2t.bin.gz",
           "size": 5162428,
           "sha256": "fff56b2501258ec4c46a8fc715caee7aeb15d853f859cdfacd3ef9903ed2fff1",
           "gzip": true
@@ -3444,21 +3444,21 @@
       "files": [
         {
           "path": "model.enhu.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-hu/h1-2025_J8_9zNmQT2GfHg7_heOI_Q/exported/model.enhu.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-hu/h1-2025_J8_9zNmQT2GfHg7_heOI_Q/exported/model.enhu.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "ec0c210d09cd5d8a5edf7a50462db0a8fb5dd78d03bbc6d4d72d91074f0490e4",
           "gzip": true
         },
         {
           "path": "vocab.enhu.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-hu/h1-2025_J8_9zNmQT2GfHg7_heOI_Q/exported/vocab.enhu.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-hu/h1-2025_J8_9zNmQT2GfHg7_heOI_Q/exported/vocab.enhu.spm.gz",
           "size": 806121,
           "sha256": "2eee837cfdcc45c091d025f585d3fcdb293db7794e316b38a0aeff8c47a659e0",
           "gzip": true
         },
         {
           "path": "lex.50.50.enhu.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-hu/h1-2025_J8_9zNmQT2GfHg7_heOI_Q/exported/lex.50.50.enhu.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-hu/h1-2025_J8_9zNmQT2GfHg7_heOI_Q/exported/lex.50.50.enhu.s2t.bin.gz",
           "size": 3490288,
           "sha256": "f3d1e61003597d1cc9d87e05d2b398a7ae2b3941e3f96947764aac239df1a808",
           "gzip": true
@@ -3483,21 +3483,21 @@
       "files": [
         {
           "path": "model.roen.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ro-en/spring-2024_RwH0W_MDRK2BmZA6VzAmBg/exported/model.roen.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/ro-en/spring-2024_RwH0W_MDRK2BmZA6VzAmBg/exported/model.roen.intgemm.alphas.bin.gz",
           "size": 17141051,
           "sha256": "e7542557fc6dbafacddae7b48e67fcdb07bd67b3fb55a76139edf366eca5dbdb",
           "gzip": true
         },
         {
           "path": "vocab.roen.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ro-en/spring-2024_RwH0W_MDRK2BmZA6VzAmBg/exported/vocab.roen.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/ro-en/spring-2024_RwH0W_MDRK2BmZA6VzAmBg/exported/vocab.roen.spm.gz",
           "size": 800832,
           "sha256": "2a690fbcd1b79bc9b99c43d582252720e0900245c82ecc813c8eb05cf063fd0c",
           "gzip": true
         },
         {
           "path": "lex.50.50.roen.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ro-en/spring-2024_RwH0W_MDRK2BmZA6VzAmBg/exported/lex.50.50.roen.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/ro-en/spring-2024_RwH0W_MDRK2BmZA6VzAmBg/exported/lex.50.50.roen.s2t.bin.gz",
           "size": 4691708,
           "sha256": "d242745eadff6f345784fccf1d58046061501b28c8190ba5912a9da5f056cd2f",
           "gzip": true
@@ -3528,21 +3528,21 @@
       "files": [
         {
           "path": "model.enro.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ro/spring-2024_Ov3G4D_DRJa-4qTlILkPhg/exported/model.enro.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ro/spring-2024_Ov3G4D_DRJa-4qTlILkPhg/exported/model.enro.intgemm.alphas.bin.gz",
           "size": 17141051,
           "sha256": "aa98c415e5beb1c5ee2f7d2508a3bbba949be223d7d9e5e1788ad0ae8598dda5",
           "gzip": true
         },
         {
           "path": "vocab.enro.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ro/spring-2024_Ov3G4D_DRJa-4qTlILkPhg/exported/vocab.enro.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ro/spring-2024_Ov3G4D_DRJa-4qTlILkPhg/exported/vocab.enro.spm.gz",
           "size": 801522,
           "sha256": "d89eedf6cbbcb30d7ed4b0b092189196ac2b010ec0c3ede33a6676b17ea1c95e",
           "gzip": true
         },
         {
           "path": "lex.50.50.enro.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ro/spring-2024_Ov3G4D_DRJa-4qTlILkPhg/exported/lex.50.50.enro.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ro/spring-2024_Ov3G4D_DRJa-4qTlILkPhg/exported/lex.50.50.enro.s2t.bin.gz",
           "size": 3739880,
           "sha256": "508bce64a8bc906a99043ad2f4855b4662e06f8827c1c6a75ab83181b4f17f81",
           "gzip": true
@@ -3573,21 +3573,21 @@
       "files": [
         {
           "path": "model.caen.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ca-en/target-side-dedup_xxxxxxxxRxSxxxxxxxxxxA/exported/model.caen.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/ca-en/target-side-dedup_xxxxxxxxRxSxxxxxxxxxxA/exported/model.caen.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "b7f9c70823052f60c257eb1c4eff893abea3648aa9d1c23c8774e1e5ef061434",
           "gzip": true
         },
         {
           "path": "vocab.caen.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ca-en/target-side-dedup_xxxxxxxxRxSxxxxxxxxxxA/exported/vocab.caen.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/ca-en/target-side-dedup_xxxxxxxxRxSxxxxxxxxxxA/exported/vocab.caen.spm.gz",
           "size": 810273,
           "sha256": "6d22da90905873c2793d0805e34e5c27901b16e7e7a7a427696696f67dfe1f0e",
           "gzip": true
         },
         {
           "path": "lex.50.50.caen.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ca-en/target-side-dedup_xxxxxxxxRxSxxxxxxxxxxA/exported/lex.50.50.caen.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/ca-en/target-side-dedup_xxxxxxxxRxSxxxxxxxxxxA/exported/lex.50.50.caen.s2t.bin.gz",
           "size": 4359552,
           "sha256": "74880047539925630601d61aa6c29a0672046236ca6cf33eeaf6f6f6690e914e",
           "gzip": true
@@ -3612,21 +3612,21 @@
       "files": [
         {
           "path": "model.enca.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ca/short-sentences_dqpjVFEaT2WLVB2nV0_H2g/exported/model.enca.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ca/short-sentences_dqpjVFEaT2WLVB2nV0_H2g/exported/model.enca.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "735881c99ff303e55eb2e92a3b86762523d5dd1a4797b2574b851062051426ee",
           "gzip": true
         },
         {
           "path": "vocab.enca.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ca/short-sentences_dqpjVFEaT2WLVB2nV0_H2g/exported/vocab.enca.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ca/short-sentences_dqpjVFEaT2WLVB2nV0_H2g/exported/vocab.enca.spm.gz",
           "size": 810653,
           "sha256": "64ebcb5f6cb5a954ced615e48a44a85e77a644e4910544014b299b8ee0fa1b1f",
           "gzip": true
         },
         {
           "path": "lex.50.50.enca.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ca/short-sentences_dqpjVFEaT2WLVB2nV0_H2g/exported/lex.50.50.enca.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ca/short-sentences_dqpjVFEaT2WLVB2nV0_H2g/exported/lex.50.50.enca.s2t.bin.gz",
           "size": 4344092,
           "sha256": "8f2151a7fb75454f5167a8df8758ec02ab02c0302893851bad7caa6b729822fb",
           "gzip": true
@@ -3651,21 +3651,21 @@
       "files": [
         {
           "path": "model.ruen.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ru-en/spring-2024_QrcdYgbwS7e7xbhtOSdoNQ/exported/model.ruen.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/ru-en/spring-2024_QrcdYgbwS7e7xbhtOSdoNQ/exported/model.ruen.intgemm.alphas.bin.gz",
           "size": 17141051,
           "sha256": "b1d85c13cfbb05e1d326dd6f0fb5ef270a2011b547450260f96567a93f446c94",
           "gzip": true
         },
         {
           "path": "vocab.ruen.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ru-en/spring-2024_QrcdYgbwS7e7xbhtOSdoNQ/exported/vocab.ruen.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/ru-en/spring-2024_QrcdYgbwS7e7xbhtOSdoNQ/exported/vocab.ruen.spm.gz",
           "size": 905257,
           "sha256": "93bdc941b16e523695c319f74778bca9fd8b75a25ad75020cdc98aef74cdc0fc",
           "gzip": true
         },
         {
           "path": "lex.50.50.ruen.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ru-en/spring-2024_QrcdYgbwS7e7xbhtOSdoNQ/exported/lex.50.50.ruen.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/ru-en/spring-2024_QrcdYgbwS7e7xbhtOSdoNQ/exported/lex.50.50.ruen.s2t.bin.gz",
           "size": 4483844,
           "sha256": "f654693577505fd38b1f3d220cdd4ffffbb45afb900a60cf751f0724eadc74e0",
           "gzip": true
@@ -3696,21 +3696,21 @@
       "files": [
         {
           "path": "model.aren.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ar-en/retrain_base-memory_X9fDxFreTOCslPKzb1CXTg/exported/model.aren.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/ar-en/retrain_base-memory_X9fDxFreTOCslPKzb1CXTg/exported/model.aren.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "7b7af0282dc5f4d8805b9a298c2fa828967e3f09ca10f1942ebeea0b2cfc12fa",
           "gzip": true
         },
         {
           "path": "vocab.aren.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ar-en/retrain_base-memory_X9fDxFreTOCslPKzb1CXTg/exported/vocab.aren.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/ar-en/retrain_base-memory_X9fDxFreTOCslPKzb1CXTg/exported/vocab.aren.spm.gz",
           "size": 860035,
           "sha256": "51b4ee3f828d10015464523d0b4f5a6c086b0b2a9bde716a581001cf6c260366",
           "gzip": true
         },
         {
           "path": "lex.50.50.aren.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/ar-en/retrain_base-memory_X9fDxFreTOCslPKzb1CXTg/exported/lex.50.50.aren.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/ar-en/retrain_base-memory_X9fDxFreTOCslPKzb1CXTg/exported/lex.50.50.aren.s2t.bin.gz",
           "size": 4627200,
           "sha256": "4b45f14dbea40d368093a13563fc1ca48457ee70c1291c82b206f3baff210081",
           "gzip": true
@@ -3735,21 +3735,21 @@
       "files": [
         {
           "path": "model.enar.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ar/retrain_base-memory_G3CmhwG_TZext3cys-udHg/exported/model.enar.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ar/retrain_base-memory_G3CmhwG_TZext3cys-udHg/exported/model.enar.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "ae659d7045fc2e5d6ba50583586a5d94ee4358d92c019847e37b57a0e627faa8",
           "gzip": true
         },
         {
           "path": "vocab.enar.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ar/retrain_base-memory_G3CmhwG_TZext3cys-udHg/exported/vocab.enar.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ar/retrain_base-memory_G3CmhwG_TZext3cys-udHg/exported/vocab.enar.spm.gz",
           "size": 863591,
           "sha256": "8d93c54aa5e2044c416ec680b5ff9af0227bd698521666e8b1a1ea1b041fbae8",
           "gzip": true
         },
         {
           "path": "lex.50.50.enar.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-ar/retrain_base-memory_G3CmhwG_TZext3cys-udHg/exported/lex.50.50.enar.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-ar/retrain_base-memory_G3CmhwG_TZext3cys-udHg/exported/lex.50.50.enar.s2t.bin.gz",
           "size": 3139692,
           "sha256": "2b7194817c5dd9225ca90c0d908cc92e1d6d1f45625781a5feb037ac568d6a61",
           "gzip": true
@@ -3774,21 +3774,21 @@
       "files": [
         {
           "path": "model.then.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/th-en/new-opuscleaner-en-th_aIiNAAZbRny4ODcYGOMlEA/exported/model.then.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/th-en/new-opuscleaner-en-th_aIiNAAZbRny4ODcYGOMlEA/exported/model.then.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "f70a501324743668b031bee19cd001a66839e8e5dfc0b4a1c44d5ea99d4e8d66",
           "gzip": true
         },
         {
           "path": "vocab.then.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/th-en/new-opuscleaner-en-th_aIiNAAZbRny4ODcYGOMlEA/exported/vocab.then.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/th-en/new-opuscleaner-en-th_aIiNAAZbRny4ODcYGOMlEA/exported/vocab.then.spm.gz",
           "size": 995429,
           "sha256": "b625d3dcdfa2b4bbec496c9a0a30d169c917464ac5ea75506c0699972fea95f0",
           "gzip": true
         },
         {
           "path": "lex.50.50.then.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/th-en/new-opuscleaner-en-th_aIiNAAZbRny4ODcYGOMlEA/exported/lex.50.50.then.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/th-en/new-opuscleaner-en-th_aIiNAAZbRny4ODcYGOMlEA/exported/lex.50.50.then.s2t.bin.gz",
           "size": 4487056,
           "sha256": "3a7661a7f5c811c83f05f53008083b042fea0334fc6044ca1fda4982a8d48453",
           "gzip": true
@@ -3813,21 +3813,21 @@
       "files": [
         {
           "path": "model.enth.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-th/new-opuscleaner-en-th-onestage-topk10_WIvJuHhrSyiXLtJBJOUrsA/exported/model.enth.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-th/new-opuscleaner-en-th-onestage-topk10_WIvJuHhrSyiXLtJBJOUrsA/exported/model.enth.intgemm.alphas.bin.gz",
           "size": 31561787,
           "sha256": "80e326097655fca75f841130da3338a849aa245374e1616448bcf37b9523a05a",
           "gzip": true
         },
         {
           "path": "vocab.enth.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-th/new-opuscleaner-en-th-onestage-topk10_WIvJuHhrSyiXLtJBJOUrsA/exported/vocab.enth.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-th/new-opuscleaner-en-th-onestage-topk10_WIvJuHhrSyiXLtJBJOUrsA/exported/vocab.enth.spm.gz",
           "size": 993517,
           "sha256": "5deff7093d558768f8c22406449202e27595f023cc383a2b66beed240ed46443",
           "gzip": true
         },
         {
           "path": "lex.50.50.enth.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/en-th/new-opuscleaner-en-th-onestage-topk10_WIvJuHhrSyiXLtJBJOUrsA/exported/lex.50.50.enth.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/en-th/new-opuscleaner-en-th-onestage-topk10_WIvJuHhrSyiXLtJBJOUrsA/exported/lex.50.50.enth.s2t.bin.gz",
           "size": 3016612,
           "sha256": "6961ce07f38e6c113a70855706aa7cad4cc828f986d1751c33f14699f885a2e8",
           "gzip": true
@@ -3852,21 +3852,21 @@
       "files": [
         {
           "path": "model.hien.intgemm.alphas.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/hi-en/h1-2025_IcUQD-GbSJWB6WV08oDoEw/exported/model.hien.intgemm.alphas.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/hi-en/h1-2025_IcUQD-GbSJWB6WV08oDoEw/exported/model.hien.intgemm.alphas.bin.gz",
           "size": 17141051,
           "sha256": "c82fd6ed3794b79fb9dde0718a22324502a408a9eca73497b5d0a4b8024ec6de",
           "gzip": true
         },
         {
           "path": "vocab.hien.spm",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/hi-en/h1-2025_IcUQD-GbSJWB6WV08oDoEw/exported/vocab.hien.spm.gz",
+          "url": "https://packs.playtranslate.com/bergamot/hi-en/h1-2025_IcUQD-GbSJWB6WV08oDoEw/exported/vocab.hien.spm.gz",
           "size": 925436,
           "sha256": "9cbc02094ac2ebd75211b3bb6789a9d6fa112ce3c08e897f1645f18b21fbab00",
           "gzip": true
         },
         {
           "path": "lex.50.50.hien.s2t.bin",
-          "url": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/hi-en/h1-2025_IcUQD-GbSJWB6WV08oDoEw/exported/lex.50.50.hien.s2t.bin.gz",
+          "url": "https://packs.playtranslate.com/bergamot/hi-en/h1-2025_IcUQD-GbSJWB6WV08oDoEw/exported/lex.50.50.hien.s2t.bin.gz",
           "size": 4605984,
           "sha256": "e789be33dfdb639e98f5cf9eb01aa945ec3c882f68f3c8860389cf846f0112d8",
           "gzip": true

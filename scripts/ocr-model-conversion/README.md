@@ -99,7 +99,9 @@ to one recognizer pack (PaddleOCR detection is language-independent).
 3. **Catalog**: add a `type:"ocr"` entry to `app/src/main/assets/langpack_catalog.json`
    with real `size` + `sha256` per file (`shasum -a 256 <file>`, `stat -f%z <file>`),
    top-level `size` = sum of file sizes. `url` =
-   `https://huggingface.co/playtranslate/ocr-models/resolve/main/<pack-key>/<path>`.
+   `https://packs.playtranslate.com/models/playtranslate/ocr-models/<pack-key>/<path>`
+   (the website repo's `_redirects` forwards it to the Hugging Face file; see
+   `scripts/pack_urls.py`).
    Entries with placeholder/missing sha are treated as *not shippable* and the engine
    is hidden (`OcrPackModelHelper.isShippable` / `OcrModelManager.availableBackends`).
 4. **Wire** (only if a new source language / script family is involved): map it in

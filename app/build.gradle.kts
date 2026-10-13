@@ -159,6 +159,23 @@ kotlin {
     jvmToolchain(17)
 }
 
+// Every release artifact first holds the live pack redirect layer to the
+// catalog: scripts/verify_catalog_urls.py asks packs.playtranslate.com for
+// every langpack_catalog.json URL and expects the 302 scripts/pack_urls.py
+// predicts, then a 206 of the catalog's size from the upstream. The catalog
+// ships inside the APK, so a misrouted rule or a deleted upstream asset has
+// to stop the build here rather than a user's install. A live check, so it
+// is never up to date; debug builds never run it.
+val verifyCatalogUrls = tasks.register<Exec>("verifyCatalogUrls") {
+    group = "verification"
+    description = "Checks the live pack redirect layer against every langpack_catalog.json URL."
+    workingDir = rootDir
+    commandLine("python3", rootProject.file("scripts/verify_catalog_urls.py").path)
+    inputs.file(layout.projectDirectory.file("src/main/assets/langpack_catalog.json"))
+    inputs.files(rootProject.file("scripts/verify_catalog_urls.py"), rootProject.file("scripts/pack_urls.py"))
+    outputs.upToDateWhen { false }
+}
+
 // Every APK this module builds is checked for ARM libraries that define ELF
 // thread-locals (see VerifyNoArmElfTlsTask) before assemble or install
 // completes, whether the library is ours or came in with an AAR.
@@ -179,6 +196,9 @@ androidComponents {
         // the obfuscated build, assemble, install, bundle or the bare minify
         // task, leaves the mapping behind, up to date or not.
         if (variant.buildType == "release") {
+            tasks.matching { it.name == "assemble$variantName" || it.name == "bundle$variantName" }
+                .configureEach { dependsOn(verifyCatalogUrls) }
+
             val output = variant.outputs.first()
             val archive = tasks.register<ArchiveMappingTask>("archive${variantName}Mapping") {
                 mappingFile.set(variant.artifacts.get(SingleArtifact.OBFUSCATION_MAPPING_FILE))
