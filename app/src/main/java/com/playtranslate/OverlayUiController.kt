@@ -2670,11 +2670,29 @@ class OverlayUiController(
         }
     }
 
-    /** Pre-overlay fallback: launch [TranslationResultActivity]. Used only when
-     *  the capture-service handle is briefly unavailable. */
+    /**
+     * The one-shot's fallback when no over-game panel can be shown (no
+     * CaptureService yet, a gone display, no window manager): the
+     * full-screen result page, launched once a clean shot is in hand. It is
+     * the capture job, gated on the capture generation, as the panel's shot
+     * is, so a [dismissCaptureResultOverlay] while the shot is in flight
+     * drops it instead of letting the page open later: the icon's capture
+     * hold sliding into a drag (the page would open under the lens), a menu
+     * opening, or a newer capture superseding it (two pages used to open).
+     * The no-service case is a real state, not only the moment before the
+     * service's sticky restart: after a restore whose start was refused the
+     * icon stays up with no service until the restart or the next app open,
+     * and a gesture's own start is asynchronous, so that gesture's one-shot
+     * takes this path.
+     */
     private fun launchResultActivity(displayId: Int, region: RegionEntry) {
-        scope.launch {
+        val gen = captureGeneration
+        captureJob = scope.launch {
             val frame = CaptureBackendResolver.active().captureSource?.requestClean(displayId)
+            if (gen != captureGeneration) {
+                frame?.recycle()
+                return@launch
+            }
             val intent = Intent(context, com.playtranslate.ui.TranslationResultActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_TOP_FRAC, region.top)
