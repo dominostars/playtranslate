@@ -109,8 +109,9 @@ class PackInflectionOracleTest {
      *  forgiven when [applies] to (page pos, the page's pairs, the readings' pairs). */
     private class Allowance(val reason: String, val applies: (pos: String, surface: String, page: Set<Atom>, readings: Set<Atom>) -> Boolean)
 
-    /** A surface the pack does not index, by design: the page is excused when [applies] to its label. */
-    private class UnresolvedExcuse(val reason: String, val applies: (pageLabel: String) -> Boolean)
+    /** A page excused by a rule over its label, surface and lemma: a surface the pack does not index by
+     *  design, a lemma the lookup does not return, a form the table does not list. */
+    private class UnresolvedExcuse(val reason: String, val applies: (pageLabel: String, surface: String, lemma: String) -> Boolean)
 
     /** What the oracle knows about one language beyond its paradigm: kaikki's
      *  page-side usage tags, the principled allowances, the named exceptions,
@@ -123,8 +124,10 @@ class PackInflectionOracleTest {
          *  removed before the page is labelled; every entry must occur or the test fails it as stale. */
         val usageTags: Map<String, String>,
         val allowances: List<Allowance>,
-        /** Pages and rows that differ on one form, by "surface|lemma", with why. */
+        /** Pages and rows that differ on one form, by "surface|lemma" or "*|lemma", with why. */
         val knownDisagreements: Map<String, String>,
+        /** Pages and rows that differ across a family of lemmas, by a rule over (label, surface, lemma). */
+        val knownDisagreementRules: List<UnresolvedExcuse> = emptyList(),
         val unresolvedExcuses: List<UnresolvedExcuse>,
         /** Surfaces the pack does not index, each a named gap with its cause. */
         val unresolvedSurfaceExcuses: Map<String, String>,
@@ -132,6 +135,8 @@ class PackInflectionOracleTest {
         val lemmaNotReturnedExcuses: Map<String, String>,
         /** Pages whose lemma the lookup does not return, excused by a rule over the page label. */
         val lemmaNotReturnedRules: List<UnresolvedExcuse> = emptyList(),
+        /** Pages whose entry has no row for the surface, excused by a rule (a form kind the tables never list). */
+        val noReadingExcuses: List<UnresolvedExcuse> = emptyList(),
         /** The pronoun that leads a two-word pronominal form, and the labelled persons it agrees with. */
         val leadingClitics: Map<String, Set<String>>,
         /** A participle's allowed endings for each labelled agreement. */
@@ -260,7 +265,7 @@ class PackInflectionOracleTest {
                         }
                         response == null && omitted -> excuse("$EXCUSE_OMITTED_FORM: ${REASONS.getValue(EXCUSE_OMITTED_FORM)}")
                         response == null -> {
-                            val rule = cfg.unresolvedExcuses.firstOrNull { it.applies(pageLabel) }
+                            val rule = cfg.unresolvedExcuses.firstOrNull { it.applies(pageLabel, surface, e.lemma) }
                             val gap = cfg.unresolvedSurfaceExcuses[surface]
                             if (rule != null) {
                                 fired += "unresolved:${rule.reason}"
@@ -278,7 +283,7 @@ class PackInflectionOracleTest {
                         }
                         byLemma.isEmpty() -> {
                             val reason = cfg.lemmaNotReturnedExcuses["$surface|${e.lemma}"]
-                            val rule = cfg.lemmaNotReturnedRules.firstOrNull { it.applies(pageLabel) }
+                            val rule = cfg.lemmaNotReturnedRules.firstOrNull { it.applies(pageLabel, surface, e.lemma) }
                             when {
                                 reason != null -> { fired += "notReturned:$surface|${e.lemma}"; excuse("$EXCUSE_LEMMA_NOT_RETURNED: $reason") }
                                 rule != null -> { fired += "notReturnedRule:${rule.reason}"; excuse("$EXCUSE_LEMMA_NOT_RETURNED: ${rule.reason}") }
@@ -292,13 +297,21 @@ class PackInflectionOracleTest {
                         // for a lemma match, by design.
                         surface == e.lemma -> excuse("$EXCUSE_SURFACE_IS_LEMMA: ${REASONS.getValue(EXCUSE_SURFACE_IS_LEMMA)}")
                         readings.isEmpty() && omitted -> excuse("$EXCUSE_OMITTED_FORM: ${REASONS.getValue(EXCUSE_OMITTED_FORM)}")
+                        // The entry has no table: its rows are the pages' own, and the
+                        // builder keeps one page per surface, so a second page's
+                        // reading of the same surface (denke durch: Konjunktiv I beside
+                        // the present) is not in the blob by construction.
+                        readings.isNotEmpty() && readings.all { "form-of" in it.tags } && !readingAtoms.containsAll(pageAtoms) ->
+                            excuse("$EXCUSE_PAGES_ONLY_ENTRY: ${REASONS.getValue(EXCUSE_PAGES_ONLY_ENTRY)}")
                         readings.isEmpty() -> {
                             // The entry's blob has the surface on a row the paradigm
                             // leaves unlabelled: by design only when the row's tagset
                             // has its reason.
                             val rows = matching.mapNotNull { engine.inflectionTable(it) }.flatten()
                                 .filter { it.surface == surface && !it.fromPronominalVariant }
+                            val noRow = cfg.noReadingExcuses.firstOrNull { it.applies(pageLabel, surface, e.lemma) }
                             when {
+                                noRow != null -> { fired += "noReading:${noRow.reason}"; excuse("$EXCUSE_NO_ROW: ${noRow.reason}") }
                                 rows.isEmpty() -> fail(NO_READING).add(example)
                                 rows.all { it.tags.sorted().joinToString(" ") in rowReasons } -> {
                                     rows.forEach { fired += "row:${it.tags.sorted().joinToString(" ")}" }
@@ -313,6 +326,7 @@ class PackInflectionOracleTest {
                             val disagreement = if (agree || allowance != null) null
                                 else cfg.knownDisagreements["$surface|${e.lemma}"]?.also { fired += "known:$surface|${e.lemma}" }
                                     ?: cfg.knownDisagreements["*|${e.lemma}"]?.also { fired += "known:*|${e.lemma}" }
+                                    ?: cfg.knownDisagreementRules.firstOrNull { it.applies(pageLabel, surface, e.lemma) }?.reason?.also { fired += "knownRule:$it" }
                             when {
                                 !agree && allowance == null && disagreement == null && omitted ->
                                     excuse("$EXCUSE_OMITTED_FORM: ${REASONS.getValue(EXCUSE_OMITTED_FORM)}")
@@ -422,9 +436,11 @@ class PackInflectionOracleTest {
             // An allowance or excuse that never fired is stale: it would
             // forgive a case that no longer exists, or never did.
             val stale = (cfg.allowances.map { "allow:${it.reason}" } + cfg.knownDisagreements.keys.map { "known:$it" } +
+                cfg.knownDisagreementRules.map { "knownRule:${it.reason}" } +
                 cfg.usageTags.keys.map { "usage:$it" } + cfg.unresolvedExcuses.map { "unresolved:${it.reason}" } +
                 cfg.unresolvedSurfaceExcuses.keys.map { "unresolvedSurface:$it" } +
                 cfg.lemmaNotReturnedExcuses.keys.map { "notReturned:$it" } + cfg.lemmaNotReturnedRules.map { "notReturnedRule:${it.reason}" } +
+                cfg.noReadingExcuses.map { "noReading:${it.reason}" } +
                 pageReasons.keys.map { "page:$it" })
                 .filter { it !in fired }
             for (s in stale) fail(STALE_ALLOWLIST).add { JSONObject().put("entry", s) }
@@ -564,6 +580,8 @@ class PackInflectionOracleTest {
         const val EXCUSE_UNRESOLVED_BY_DESIGN = "unresolvedByDesign"
         const val EXCUSE_UNRESOLVED_GAP = "unresolvedGap"
         const val EXCUSE_SURFACE_IS_LEMMA = "surfaceIsLemma"
+        const val EXCUSE_NO_ROW = "noRowByDesign"
+        const val EXCUSE_PAGES_ONLY_ENTRY = "pagesOnlyEntry"
         const val EXCUSE_LEMMA_NOT_RETURNED = "lemmaNotReturned"
         const val EXCUSE_ROW_UNLABELLED = "rowUnlabelled"
         const val EXCUSE_ALLOWANCE = "allowance"
@@ -573,13 +591,16 @@ class PackInflectionOracleTest {
             EXCUSE_LEMMA_POS_NOT_IN_PACK to "the pack has the page's lemma in no entry of the page's part of speech (angular the adjective, the page's verb): no entry could carry the reading",
             EXCUSE_PAGE_USAGE_ONLY to "the page carries no grammatical tag (only usage notes, or none at all): a variant of the word, not a form of it",
             EXCUSE_SURFACE_IS_LEMMA to "the surface is the lemma itself (orlar, a Portuguese verb's future subjunctive and personal infinitive): the lookup shows the headword and reads no line for it, by design",
+            EXCUSE_PAGES_ONLY_ENTRY to "the entry has no table, its rows are the pages' own, and the builder keeps one page per surface (append_form_of): a second page's reading of that surface is not in the blob",
             EXCUSE_PAGE_SAYS_NOTHING to "the page's grammatical tags are all known and say nothing the line would carry; the tagset is named in page_no_label_reasons.tsv",
             EXCUSE_OMITTED_FORM to "the page is of an obsolete, rare, nonstandard or proscribed form (avemos, cocho, dijistes, sabo; sé the archaic imperative of saber): the table lists the standard current forms and the alias pass follows it",
             EXCUSE_OWN_ENTRY to "the surface is an entry of its own (pajarito), which the lookup rightly returns; the page's lemma is extra",
             EXCUSE_ROW_UNLABELLED to "the entry's row for the surface is one the paradigm leaves unlabelled by design, named in no_label_reasons.tsv",
         )
 
-        val LANGUAGES: Map<String, OracleLanguage> by lazy { mapOf("es" to spanish(), "pt" to portuguese(), "fr" to french()) }
+        val LANGUAGES: Map<String, OracleLanguage> by lazy {
+            mapOf("es" to spanish(), "pt" to portuguese(), "fr" to french(), "de" to german(), "en" to english())
+        }
 
         /** A nominal pair with its gender word removed ("masculino plural" → "plural"). */
         fun Atom.genderless(genderWords: Set<String>): Atom? =
@@ -632,9 +653,275 @@ class PackInflectionOracleTest {
             nominal && rowPlural == surfacePlural && pagePlural != surfacePlural
         }
 
+        private fun german(): OracleLanguage {
+            val genderWords = setOf("Maskulinum", "Femininum", "Neutrum")
+            val numberWords = setOf("Singular", "Plural")
+            fun Atom.caseOnly() = Atom(pronoun, name.split(' ').filterNot { it in numberWords }.joinToString(" "))
+            fun Atom.numberOnly() = name.split(' ').lastOrNull()?.takeIf { it in numberWords }
+            val diminutive = UnresolvedExcuse("a diminutive: the alias pass does not index them (build_latin_dict.FORM_TAG_BLOCKLIST)") { label, _, _ -> label == "Diminutiv" }
+            return OracleLanguage(
+                tableOmitsTags = OMITTED + "dialectal",
+                genderWords = genderWords,
+                usageTags = mapOf(
+                    // regions
+                    "Bavaria" to "a region", "Northern-Germany" to "a region", "Eastern" to "a region", "Westphalia" to "a region",
+                    "Germany" to "a region", "Northern" to "a region", "Rhineland" to "a region", "Judaism" to "a community's usage",
+                    // registers and usage
+                    "derogatory" to "a register", "endearing" to "a register", "euphemistic" to "a register", "historical" to "a usage note",
+                    "polite" to "a register", "bureaucratese" to "a register", "childish" to "a register", "vulgar" to "a register",
+                    "neologism" to "a usage note", "emphatic" to "a lexical note", "dialectal" to "a usage note",
+                    // lexical categories and notes
+                    "gerund" to "a verbal noun page (das Aalen)", "no-plural" to "a noun's number note", "agent" to "an agent noun page",
+                    "colloquial" to "a register", "poetic" to "a register", "archaic" to "a usage note", "obsolete" to "a usage note", "rare" to "a usage note",
+                    "pronominal" to "a reflexive variant page", "reflexive" to "a reflexive variant page", "pronoun" to "a pronoun's category",
+                    "adjectival" to "a lexical note", "uncountable" to "a noun's countability", "countable" to "a noun's countability",
+                    "noun-from-verb" to "a lexical note", "possessive" to "a determiner's category", "relative" to "a pronoun's category",
+                    "demonstrative" to "a determiner's category", "interrogative" to "a pronoun's category", "determiner" to "a category",
+                    "proper-noun" to "a category", "prefix" to "a morpheme's category", "adverb" to "a category", "demonym" to "a lexical note",
+                    "collective" to "a lexical note", "transitive" to "a verb's valency", "intransitive" to "a verb's valency",
+                    "causative" to "a verb's category", "active" to "a lexical note", "clitic" to "a pronoun's category", "contracted" to "a lexical note",
+                    "in-compounds" to "a lexical note", "morpheme" to "a lexical note", "not-comparable" to "an inflection note",
+                    "plural-only" to "a plurale tantum note", "invariable" to "an inflection note", "suppletive" to "a lexical note",
+                    "syncope" to "a spelling note", "abbreviation" to "an abbreviation page", "gender-neutral" to "a gender note",
+                    "conditional" to "a page calling the Konjunktiv II conditional", "conjunctive" to "a page calling the Konjunktiv conjunctive",
+                    // template connectives
+                    "usually" to "a template's connective", "sometimes" to "a template's connective",
+                ),
+                allowances = listOf(
+                    nounGenderAllowance(genderWords), oneSidedGenderAllowance(genderWords),
+                    Allowance("a nominalized adjective or an adjective-noun phrase (Abgeordneter, astronomische Einheit): its rows carry the declension and read dekliniert, its page names the case or number") { pos, _, page, readings ->
+                        pos == "noun" && page.isNotEmpty() && page.all { it.pronoun == null } && readings.any { it.name.startsWith("dekliniert") }
+                    },
+                    Allowance("an adjective's page appended as a row carries no declension tag, so the row names its case while the page reads dekliniert (allerleie)") { _, _, page, readings ->
+                        page.isNotEmpty() && page.all { it.pronoun == null && it.name.startsWith("dekliniert") } && readings.isNotEmpty() &&
+                            readings.all { it.pronoun == null && !it.name.startsWith("dekliniert") }
+                    },
+                    Allowance("a weak verb's Konjunktiv II is its Präteritum, and its Konjunktiv I for ich, wir, sie and ihr coincides with the Präsens: the page names one, the row the other") { _, _, page, readings ->
+                        page.isNotEmpty() && page.all { a ->
+                            a in readings ||
+                                (a.name == "Konjunktiv II" && Atom(a.pronoun, "Präteritum") in readings) ||
+                                (a.name == "Konjunktiv I" && a.pronoun in setOf("ich", "wir", "sie, Sie", "ihr") && Atom(a.pronoun, "Präsens") in readings)
+                        }
+                    },
+                    Allowance("kaikki's -eln verb template calls the contracted first-person singular (adele) the first-person plural Konjunktiv I") { _, _, page, readings ->
+                        page == setOf(Atom("wir", "Konjunktiv I")) && Atom("ich", "Konjunktiv I") in readings
+                    },
+                    Allowance("a comparative surface coincides with a declined positive (absichtlicher): the page names the degree, the row the declension") { _, _, page, readings ->
+                        page == setOf(Atom(null, "Komparativ")) && Atom(null, "dekliniert") in readings
+                    },
+                    Allowance("a page's plural cases against a row's dative singular in -e (Atlasse): the archaic dative -e coincides with a plural the table lacks") { _, surface, page, readings ->
+                        surface.endsWith("e") && readings == setOf(Atom(null, "Dativ Singular")) && page.isNotEmpty() && page.all { it.name.endsWith(" Plural") }
+                    },
+                    Allowance("German forms that coincide: a strong verb's Konjunktiv II that kaikki's page calls Konjunktiv I (befielest), the du imperative of a weak verb and its ich Präsens (durchblute), " +
+                        "the ihr imperative and the ihr Präsens or Konjunktiv I (durchdringt, gehet), the ihr Präsens and the er Präsens (-t), an inseparable verb's Partizip II and its er/ihr Präsens (durchkämmt)") { _, _, page, readings ->
+                        page.isNotEmpty() && page.all { a ->
+                            a in readings ||
+                                (a.name == "Konjunktiv I" && Atom(a.pronoun, "Konjunktiv II") in readings) ||
+                                (a == Atom("du", "Imperativ") && Atom("ich", "Präsens") in readings) ||
+                                (a == Atom("ihr", "Imperativ") && (Atom("ihr", "Präsens") in readings || Atom("ihr", "Konjunktiv I") in readings || Atom("er, sie, es", "Präsens") in readings)) ||
+                                (a == Atom(null, "Infinitiv") && Atom(null, "zu-Infinitiv") in readings) ||
+                                (a == Atom("ihr", "Präsens") && Atom("er, sie, es", "Präsens") in readings) ||
+                                (a == Atom(null, "Partizip II") && (Atom("er, sie, es", "Präsens") in readings || Atom("ihr", "Präsens") in readings ||
+                                    Atom("wir", "Präteritum") in readings || Atom("sie, Sie", "Präteritum") in readings))
+                        }
+                    },
+                    Allowance("kaikki's form-of template lists every person for a defective verb (wölken, bevorstehen, seine Pappenheimer kennen) whose table has the third person only") { _, _, page, readings ->
+                        page.isNotEmpty() && page.all { a ->
+                            a in readings || (a.pronoun == "ich" && Atom("er, sie, es", a.name) in readings) || (a.pronoun == "wir" && Atom("sie, Sie", a.name) in readings)
+                        }
+                    },
+                    Allowance("a page's dative singular in -e against a row's plural (Kappapageie): the archaic dative -e coincides with the plural") { _, surface, page, readings ->
+                        surface.endsWith("e") && page == setOf(Atom(null, "Dativ Singular")) && readings.isNotEmpty() && readings.all { it.name.endsWith(" Plural") }
+                    },
+                    Allowance("a page merging several persons whose forms coincide (du / er verstößt; du / er / ihr / sie wachst) where the table lists some of them") { _, _, page, readings ->
+                        val names = page.map { it.name }.toSet()
+                        page.isNotEmpty() && names.size == 1 && page.size >= 2 && page.any { it in readings }
+                    },
+                    Allowance("a pronoun's or determiner's page names a case where its rows carry a declension (mehrere): the rows read dekliniert") { pos, _, page, readings ->
+                        pos in setOf("pron", "det") && page.isNotEmpty() && page.all { it.pronoun == null } && readings.all { it.name.startsWith("dekliniert") }
+                    },
+                    Allowance("an -s plural coinciding with the genitive singular (Bugs, Baslers, Hubs): the table lists the genitive, the page the plural") { _, surface, page, readings ->
+                        surface.endsWith("s") && readings == setOf(Atom(null, "Genitiv Singular")) && page.isNotEmpty() && page.all { it.name.endsWith("Plural") }
+                    },
+                    Allowance("a page or a row names only a number (plural; Femininum Plural, the lemma's gender) where the other names the cases of that number") { _, _, page, readings ->
+                        fun Set<Atom>.numbersOnly() = isNotEmpty() && all { a -> a.name.split(' ').all { it in numberWords || it in genderWords } }
+                        fun Set<Atom>.numbers() = mapNotNullTo(HashSet()) { it.numberOnly() }
+                        (page.numbersOnly() && page.numbers().all { n -> readings.any { it.numberOnly() == n } }) ||
+                            (readings.numbersOnly() && page.numbers().isNotEmpty() && page.numbers().all { n -> readings.any { it.numberOnly() == n } })
+                    },
+                    Allowance("a page names a degree alone (abartigsten: superlative) where the rows are that degree's declined forms") { _, _, page, readings ->
+                        page.isNotEmpty() && page.all { it.pronoun == null && it.name in setOf("Komparativ", "Superlativ") } &&
+                            page.all { d -> Atom(null, "dekliniert (${d.name})") in readings }
+                    },
+                    Allowance("a page's colloquial first-person present without -e (ich aal) shares its surface with the du imperative, and the builder keeps the table's row") { _, _, page, readings ->
+                        page == setOf(Atom("ich", "Präsens")) && Atom("du", "Imperativ") in readings
+                    },
+                    Allowance("a case named with and without the number (Genitiv, Genitiv Singular): a singular-only noun's genitive") { _, _, page, readings ->
+                        page.isNotEmpty() && page.all { it.pronoun == null } && readings.all { it.pronoun == null } &&
+                            readings.mapTo(HashSet()) { it.caseOnly() }.containsAll(page.map { it.caseOnly() })
+                    },
+                ),
+                // Separable and prefixed verbs whose form-of pages give a form the wrong person (kaikki's template shifts them).
+                knownDisagreementRules = listOf(
+                    UnresolvedExcuse("kaikki's template for the -wenden compounds (anwenden, zuwenden: wandte / wendete) shifts the persons of their pages") { _, _, lemma -> lemma.endsWith("wenden") },
+                    UnresolvedExcuse("kaikki's template for the -schießen compounds calls the ich/er Präteritum (schoss ab) the ihr form") { _, _, lemma -> lemma.endsWith("schießen") },
+                    UnresolvedExcuse("kaikki's template for the -scheißen compounds calls the ich/er Präteritum (schiss an) the ihr form") { _, _, lemma -> lemma.endsWith("scheißen") },
+                ),
+                knownDisagreements = listOf(
+                    "einhalten" to "the page calls hält ein a du imperative: kaikki page error",
+                    "ablesen" to "the page calls lest ab the er form: kaikki page error",
+                    "kriegen" to "the page calls kriegt a du form: kaikki page error",
+                    "entwässern" to "the pages call entwässeret an indicative: kaikki page errors",
+                    "erschrecken" to "erschrecken is two verbs (erschrickt, erschreckt); the pages and the table split them differently",
+                    "ergötzen" to "the page calls the imperative ergötz a Partizip II: kaikki page error",
+                    "verzapfen" to "the page calls the Präteritum verzapfte a Partizip II: kaikki page error",
+                    "listen" to "the page calls the Partizip II gelistet a Partizip I: kaikki page error",
+                    "vollbringen" to "the page calls the present vollbringt a Partizip I: kaikki page error",
+                    "kalb" to "the page calls Kälber a dative plural (that is Kälbern): kaikki page error",
+                    "schwimmmeister" to "the page calls Schwimmmeistern a genitive singular: kaikki page error",
+                    "finale klasse" to "the page calls finale Klassen a genitive singular: kaikki page error",
+                    "vorpommer" to "the page calls Vorpommern a singular: kaikki page error",
+                    // Single pages whose reading the table contradicts, each named with both sides (de oracle, 2026-10-13).
+                    "abblasen" to "the page calls blieset ab \"ihr · Präteritum\" where the table says \"ihr · Konjunktiv II\": kaikki page error",
+                    "abklatschen" to "the page calls klatscht ab \"du · Präsens\" where the table says \"er, sie, es · Präsens\": kaikki page error",
+                    "absaufen" to "the page calls sauft ab \"er, sie, es · Präsens\" where the table says \"ihr · Präsens | ihr · Imperativ\": kaikki page error",
+                    "abstrafen" to "the page calls strafte ab \"du · Imperativ\" where the table says \"ich · Präteritum | ich · Konjunktiv II\": kaikki page error",
+                    "beschäftigen" to "the page calls beschäftigte \"ich / er, sie, es · Präsens\" where the table says \"ich · Präteritum | ich · Konjunktiv II\": kaikki page error",
+                    "betreiben" to "the page calls betrieb \"ich / er, sie, es · Präsens\" where the table says \"ich · Präteritum | er, sie, es · Präteritum\": kaikki page error",
+                    "bevorstehen" to "the page calls stehe bevor \"du · Imperativ\" where the table says \"er, sie, es · Konjunktiv I\": kaikki page error",
+                    "brauchen" to "the page calls brauch \"er, sie, es · Präsens\" where the table says \"du · Imperativ\": kaikki page error",
+                    "covern" to "the page calls coverst \"du · Konjunktiv I\" where the table says \"du · Präsens\": kaikki page error",
+                    "erlöschen" to "the page calls erlöschest \"du · Konjunktiv II\" where the table says \"du · Konjunktiv I\": kaikki page error",
+                    "gelüsten" to "the page calls gelüstet \"er, sie, es · Präsens\" where the table says \"Partizip II\": kaikki page error",
+                    "heißen" to "the page calls heißet \"er, sie, es · Präsens\" where the table says \"ihr · Konjunktiv I\": kaikki page error",
+                    "leben" to "the page calls lebe \"wir / sie, Sie · Konjunktiv I\" where the table says \"ich · Präsens | ich · Konjunktiv I\": kaikki page error",
+                    "legen" to "the page calls leg \"er, sie, es · Konjunktiv I\" where the table says \"du · Imperativ\": kaikki page error",
+                    "mahnen" to "the page calls mahnten \"ihr · Konjunktiv II\" where the table says \"wir · Präteritum | wir · Konjunktiv II\": kaikki page error",
+                    "staken" to "the page calls stakt \"du · Präsens\" where the table says \"ihr · Präsens | er, sie, es · Präsens\": kaikki page error",
+                    "verhalten" to "the page calls verhaltet \"ihr · Präsens / Präteritum\" where the table says \"ihr · Präsens | ihr · Konjunktiv I\": kaikki page error",
+                    "verschlafen" to "the page calls verschliefst \"du · Präsens\" where the table says \"du · Präteritum | du · Konjunktiv II\": kaikki page error",
+                    "verspäten" to "the page calls verspätet \"er, sie, es · Präsens / Präteritum\" where the table says \"Partizip II | ihr · Präsens\": kaikki page error",
+                    "vollziehen" to "the page calls vollzogen \"er, sie, es · Präsens\" where the table says \"Partizip II | wir · Präteritum\": kaikki page error",
+                    "wollen" to "the page calls wolle \"du · Imperativ\" where the table says \"ich · Konjunktiv I | er, sie, es · Konjunktiv I\": kaikki page error",
+                    "zumachen" to "the page calls mach zu \"ich / er, sie, es · Konjunktiv I\" where the table says \"du · Imperativ\": kaikki page error",
+                    "übertreten" to "the page calls übertritt \"du · Imperativ\" where the table says \"er, sie, es · Präsens\": kaikki page error",
+                ).associate { (lemma, reason) -> "*|$lemma" to reason },
+                unresolvedExcuses = listOf(
+                    diminutive,
+                    UnresolvedExcuse("a derived noun page (Oberin, Drängler, Schwund: a feminine, an agent noun, a verbal noun) the pack indexes neither as an alias nor as a lemma") { label, _, _ -> label in genderWords },
+                ),
+                unresolvedSurfaceExcuses = emptyMap(),
+                lemmaNotReturnedExcuses = mapOf(
+                    "fähe|wolf" to "the female of the wolf, a page the pack does not index; the lookup falls to the stem of fahen",
+                ),
+                lemmaNotReturnedRules = listOf(
+                    UnresolvedExcuse("a derived noun page (Schank, Versammler) the pack does not index; the lookup falls to a stem") { label, _, _ -> label in genderWords },
+                ),
+                noReadingExcuses = listOf(
+                    UnresolvedExcuse("an abbreviation page (atmo for Atmosphäre) the table does not list") { _, surface, lemma -> lemma.startsWith(surface) && surface.length < lemma.length },
+                ),
+                leadingClitics = emptyMap(),
+                participleEndings = emptyMap(),
+            )
+        }
+
+        private fun english(): OracleLanguage {
+            val genderWords = setOf("feminine", "masculine", "neuter")
+            val personNumber = setOf("first-person", "second-person", "third-person", "singular", "plural")
+            fun Atom.bare() = Atom(pronoun, name.split(' ').filterNot { it in personNumber }.joinToString(" "))
+            val diminutive = UnresolvedExcuse("a diminutive: the alias pass does not index them (build_latin_dict.FORM_TAG_BLOCKLIST)") { label, _, _ -> label.split(' ').any { it == "diminutive" } }
+            val phrase = UnresolvedExcuse("a multi-word page (a phrase's plural, or a longer variant of a phrase): the alias pass indexes single words") { _, surface, _ -> ' ' in surface }
+            return OracleLanguage(
+                tableOmitsTags = OMITTED + setOf("dialectal", "alternative", "misspelling"),
+                genderWords = genderWords,
+                usageTags = mapOf(
+                    "in-compounds" to "a lexical note", "especially" to "a template's connective", "sometimes" to "a template's connective", "usually" to "a template's connective",
+                    // regions and varieties
+                    "Northern-England" to "a region", "Ireland" to "a region", "Geordie" to "a dialect", "West-Country" to "a region", "India" to "a region",
+                    "Multicultural-London-English" to "a dialect", "English" to "a variety note", "Philippines" to "a region", "British" to "a region",
+                    "Oxford" to "a spelling convention", "Yorkshire" to "a region", "Caribbean" to "a region", "East-Anglia" to "a region", "Leet" to "a register",
+                    "Appalachia" to "a region", "Australian" to "a region", "East" to "a region", "England" to "a region", "Jamaica" to "a region",
+                    "Judaism" to "a community's usage", "Louisiana" to "a region", "Malaysia" to "a region", "Midlands" to "a region", "New-England" to "a region",
+                    "Nigeria" to "a region", "Northern-Ireland" to "a region", "Northern-US" to "a region", "Roman" to "a usage note", "Singapore" to "a region",
+                    "Ulster" to "a region", "Western" to "a region", "outside-Northumbria" to "a region",
+                    // the paradigm's own usage tags, stripped here too
+                    "US" to "a region", "UK" to "a region", "Canada" to "a region", "Australia" to "a region", "New-Zealand" to "a region", "Scotland" to "a region",
+                    "Commonwealth" to "a region", "Southern-US" to "a region", "Internet" to "a medium", "rare" to "a usage note", "uncommon" to "a usage note",
+                    "informal" to "a register", "formal" to "a register", "dialectal" to "a usage note", "colloquial" to "a register", "humorous" to "a register",
+                    "hypercorrect" to "a usage note", "nonstandard" to "a nonstandard form", "archaic" to "a usage note", "poetic" to "a register",
+                    "dated" to "a usage note", "childish" to "a register", "literary" to "a register",
+                    // registers and usage
+                    "obsolete" to "a usage note", "euphemistic" to "a register", "proscribed" to "a proscribed form", "slang" to "a register", "vulgar" to "a register",
+                    "derogatory" to "a register", "offensive" to "a register", "endearing" to "a register", "slur" to "a register", "familiar" to "a register",
+                    "historical" to "a usage note", "figuratively" to "a usage note", "idiomatic" to "a usage note", "nonce-word" to "a usage note",
+                    "exaggerated" to "a usage note", "mildly" to "a template's connective", "broadly" to "a usage note", "mainly" to "a template's connective",
+                    "possibly" to "a template's connective", "often" to "a template's connective", "standard" to "a usage note", "variant" to "a lexical note",
+                    "alternative" to "an alternative form", "alt-of" to "an alternative-form page", "misspelling" to "a misspelling page", "abbreviation" to "an abbreviation page",
+                    "contraction" to "a contraction", "contracted" to "a contraction", "reduced" to "a reduced form", "clitic" to "a clitic",
+                    // lexical categories and notes
+                    "agent" to "an agent noun page", "uncountable" to "a noun's countability", "countable" to "a noun's countability", "attributive" to "a lexical note",
+                    "plural-only" to "a plurale tantum note", "not-comparable" to "an inflection note", "no-comparative" to "an inflection note", "morpheme" to "a lexical note",
+                    "emphatic" to "a lexical note", "transitive" to "a verb's valency", "no-plural" to "a noun's number note", "noun-from-verb" to "a lexical note",
+                    "plural-normally" to "a number note", "plural-of" to "a template's leftover", "in-plural" to "a number note", "perfect" to "a compound construction's tag",
+                    "auxiliary" to "a verb's category", "interrogative" to "a pronoun's category", "negative" to "a negated construction's tag",
+                    "no-past-participle" to "an inflection note", "no-present-participle" to "an inflection note", "predicative" to "a lexical note",
+                    "pronoun" to "a pronoun's category", "vocative" to "a case note", "adjectival" to "a lexical note", "adverbial" to "a lexical note",
+                    "animate" to "a lexical note", "collective" to "a lexical note", "dative" to "a grammar term", "defective" to "an inflection note",
+                    "determiner" to "a category", "hortative" to "a mood note", "indirect" to "a lexical note", "ordinal" to "a numeral's category",
+                    "postpositional" to "a lexical note", "singulative" to "a number note", "with-definite-article" to "a lexical note", "with-up" to "a phrasal note",
+                ),
+                allowances = listOf(
+                    nounGenderAllowance(genderWords),
+                    Allowance("a page and a row differ only in how specific they are about person and number (past vs. first-person singular past; first-person plural present vs. plural present): English's full tables name persons, its pages mostly the tense") { _, _, page, readings ->
+                        page.isNotEmpty() && page.all { p -> readings.any { it.bare() == p.bare() } }
+                    },
+                    Allowance("a page calling a past form the past participle (backbit) where the table lists only the past: the two coincide for most English verbs and kaikki lists the participle separately only when it differs") { _, _, page, readings ->
+                        page == setOf(Atom(null, "past participle")) && Atom(null, "past") in readings
+                    },
+                    Allowance("a phrasal verb's, phrase's or hyphenated compound's pages carry another form's tags (choosing up tagged as chooses up, gold-digging): kaikki template errors on multi-word lemmas") { _, surface, page, _ ->
+                        (' ' in surface || '-' in surface) && page.isNotEmpty()
+                    },
+                    Allowance("a page calling a form a participle where its ending says otherwise (lavacasts as a present participle, injurying as a past participle): kaikki template errors") { _, surface, page, _ ->
+                        page.isNotEmpty() && page.all { it.name.endsWith("participle") } &&
+                            (surface.endsWith("s") || (surface.endsWith("ing") && page.any { it.name == "past participle" }))
+                    },
+                ),
+                knownDisagreements = mapOf(
+                    "silliest|silly" to "the page calls silliest a comparative; it is the superlative the row says",
+                    "clumb|climb" to "clumb is a dialectal past the page describes; the row is an archaic participle",
+                    "thrun|throw" to "thrun is an Irish past the page describes; the row is a dialectal participle",
+                    "partialling|partial" to "the row tags partialling a bare UK present; the page says present participle",
+                ),
+                unresolvedExcuses = listOf(diminutive, phrase,
+                    UnresolvedExcuse("a feminine counterpart (directrix) or a foreign plural (umaraʾ) the pack indexes neither as an alias nor as a lemma") { label, _, _ -> label == "feminine" || label == "plural" },
+                ),
+                unresolvedSurfaceExcuses = emptyMap(),
+                lemmaNotReturnedExcuses = mapOf(
+                    "dices|when" to "a junk page naming when as the lemma of dices",
+                    "ips|ip" to "the plural of the abbreviation ip; the lookup falls to in-plane switching",
+                    "occupate|occupied" to "an obsolete participle whose page names occupied as the lemma",
+                    "posses|posse" to "posse is below the frequency gate; the lookup falls to the stem of possible",
+                    "rae|ray" to "a name's feminine page; the lookup falls to the stem of right",
+                    "wester|west" to "a comparative the page gives west; the lookup falls to westerly",
+                    "9s|9" to "a digit's plural page; the pack keeps no digit entries",
+                    "esses|es" to "the plural of the letter name es; the lookup falls to ess",
+                    "flys|butterfly stroke" to "a page naming a different lemma (butterfly stroke) for the plural of fly",
+                    "cris|christian" to "a nickname page the pack does not index; the lookup falls to kris",
+                    "foxie|fox" to "a diminutive the alias pass does not index; the lookup falls to foxy",
+                ),
+                lemmaNotReturnedRules = listOf(phrase, diminutive),
+                noReadingExcuses = listOf(phrase,
+                    UnresolvedExcuse("English tables list no possessives (anybody's)") { label, _, _ -> label == "possessive" },
+                    UnresolvedExcuse("the singular of a plural-only lemma (deep pocket, sweep) is an entry of its own or reached by its stem, with no readings for the plural lemma") { label, _, _ -> label == "singular" },
+                ),
+                leadingClitics = emptyMap(),
+                participleEndings = emptyMap(),
+            )
+        }
+
         private fun portuguese(): OracleLanguage {
             val genderWords = setOf("masculino", "feminino", "neutro")
-            val evaluative = UnresolvedExcuse("a diminutive or augmentative: the alias pass does not index them (build_latin_dict.FORM_TAG_BLOCKLIST); the lookup finds nothing, or falls to a stem") { label ->
+            val evaluative = UnresolvedExcuse("a diminutive or augmentative: the alias pass does not index them (build_latin_dict.FORM_TAG_BLOCKLIST); the lookup finds nothing, or falls to a stem") { label, _, _ ->
                 label.split(' ').any { it == "diminutivo" || it == "aumentativo" }
             }
             return OracleLanguage(
@@ -801,7 +1088,7 @@ class PackInflectionOracleTest {
                     "*|reboire" to "reboire's page calls the present reboit a subjunctive: kaikki page error",
                 ),
                 unresolvedExcuses = listOf(
-                    UnresolvedExcuse("a diminutive: the alias pass does not index them (build_latin_dict.FORM_TAG_BLOCKLIST)") { label ->
+                    UnresolvedExcuse("a diminutive: the alias pass does not index them (build_latin_dict.FORM_TAG_BLOCKLIST)") { label, _, _ ->
                         label.split(' ').any { it == "diminutif" }
                     },
                 ),
@@ -902,7 +1189,7 @@ class PackInflectionOracleTest {
 
         /** Surfaces the pack does not index, by its design; the page is excused by its label. */
         val UNRESOLVED_EXCUSES = listOf(
-            UnresolvedExcuse("a diminutive or augmentative (abrazote, ajete): the alias pass does not index them (build_latin_dict.FORM_TAG_BLOCKLIST)") { label ->
+            UnresolvedExcuse("a diminutive or augmentative (abrazote, ajete): the alias pass does not index them (build_latin_dict.FORM_TAG_BLOCKLIST)") { label, _, _ ->
                 label.split(' ').any { it == "diminutivo" || it == "aumentativo" }
             },
         )

@@ -75,6 +75,7 @@ object InflectionParadigms {
         SourceLangId.ES -> SpanishParadigm
         SourceLangId.PT -> PortugueseParadigm
         SourceLangId.FR -> FrenchParadigm
+        SourceLangId.DE -> GermanParadigm
         else -> null
     }
 
