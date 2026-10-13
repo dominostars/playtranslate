@@ -1201,8 +1201,6 @@ class PackInflectionOracleTest {
 
         /** Surfaces the pack does not index, each a named gap in the pack with its cause. */
         val UNRESOLVED_SURFACE_EXCUSES = mapOf(
-            "cosas en sí" to "a multi-word plural: the alias pass indexes single-word forms only",
-            "guardias de seguridad" to "a multi-word plural: the alias pass indexes single-word forms only",
             "elfa" to "a page with a sense of its own (female elf) below the frequency gate, so neither a lemma nor a rescued redirect",
             "resienta" to "resentirse's table lists the subjunctive as se resienta; the alias pass indexed resiento and resientes from their two-word rows but not resienta, a pack alias gap the line does not touch",
         )
@@ -1223,6 +1221,8 @@ class PackInflectionOracleTest {
             "lamparón|lámpara" to "an augmentative the alias pass does not index; the lookup falls to the stem of lampar",
             "gorrilla|gorra" to "a diminutive the alias pass does not index; the lookup falls to gorila",
             "pechito|pecho" to "a diminutive the alias pass does not index; the lookup falls to the stem of pechar",
+            "arrepienta|arrepentirse" to "kaikki's extract of 2026-10-03 keeps arrepiente as a verb entry of its own (\"only used in se arrepiente, " +
+                "third-person singular present indicative of arrepentirse\"), and the alias pass gives arrepienta to it, arrepentirse's own row being the two-word se arrepienta",
         )
 
         val LEADING_CLITICS = mapOf(
