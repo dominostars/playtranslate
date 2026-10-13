@@ -67,7 +67,7 @@ class IconGesturesSettingsRowsTest {
         val page = open()
         assertEquals(
             listOf(
-                showTranslations to false, quickMenu to false, toggle to false,
+                capture to false, showTranslations to false, quickMenu to false, toggle to false,
                 swapFurigana to true, changeLanguage to false,
             ),
             rows(page, R.id.optionsHold),
@@ -86,7 +86,7 @@ class IconGesturesSettingsRowsTest {
         val page = open()
         assertEquals(
             listOf(
-                showTranslations to false, quickMenu to false, toggle to false,
+                capture to false, showTranslations to false, quickMenu to false, toggle to false,
                 swapPinyin to true, changeLanguage to false,
             ),
             rows(page, R.id.optionsHold),
@@ -104,7 +104,10 @@ class IconGesturesSettingsRowsTest {
         prefs.sourceLang = "en"
         val page = open()
         assertEquals(
-            listOf(showTranslations to true, quickMenu to false, toggle to false, changeLanguage to false),
+            listOf(
+                capture to true, showTranslations to false, quickMenu to false, toggle to false,
+                changeLanguage to false,
+            ),
             rows(page, R.id.optionsHold),
         )
         assertEquals(
@@ -119,7 +122,10 @@ class IconGesturesSettingsRowsTest {
         prefs.iconTapAction = TapAction.CHANGE_GAME_LANGUAGE
         val page = open()
         assertEquals(
-            listOf(showTranslations to false, quickMenu to false, toggle to false, changeLanguage to true),
+            listOf(
+                capture to false, showTranslations to false, quickMenu to false, toggle to false,
+                changeLanguage to true,
+            ),
             rows(page, R.id.optionsHold),
         )
         assertEquals(
@@ -134,7 +140,10 @@ class IconGesturesSettingsRowsTest {
         prefs.sourceLang = "en"
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(
-            listOf(showTranslations to true, quickMenu to false, toggle to false, changeLanguage to false),
+            listOf(
+                capture to true, showTranslations to false, quickMenu to false, toggle to false,
+                changeLanguage to false,
+            ),
             rows(page, R.id.optionsHold),
         )
         assertEquals(

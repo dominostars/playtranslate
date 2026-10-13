@@ -214,9 +214,9 @@ class IconSwapGestureTest {
         assertEquals(emptyList<String?>(), startedActions())
     }
 
-    // Show translations while auto-translate runs over the game is a peek:
-    // the hold pauses the overlay (holdActive) until the lift.
-    @Test fun `without a reading hint a stored hold swap shows translations`() {
+    // The hold's default is the capture: a one-shot, after stopping the
+    // running session on this screen; no swap, and no hold-to-preview peek.
+    @Test fun `without a reading hint a stored hold swap captures the screen`() {
         prefs.sourceLang = "en"
         prefs.iconHoldAction = HoldAction.SWAP_OVERLAY_MODE
         val icon = icon()
@@ -224,12 +224,14 @@ class IconSwapGestureTest {
         val svc = service!!.get()
 
         icon.onHoldStart!!.invoke()
-        assertTrue("the peek began", svc.holdActive)
-        assertEquals(OverlayMode.TRANSLATION, prefs.overlayMode)
+        assertEquals("the session stopped for the one-shot", 1, mode.stops)
+        assertFalse(svc.isLive)
+        assertFalse("no peek", svc.holdActive)
+        assertEquals("no swap", OverlayMode.TRANSLATION, prefs.overlayMode)
 
         icon.onHoldEnd!!.invoke()
-        assertFalse("the lift ended it", svc.holdActive)
+        assertFalse(svc.holdActive)
         assertEquals(OverlayMode.TRANSLATION, prefs.overlayMode)
-        assertEquals(0, mode.stops)
+        assertEquals(1, mode.stops)
     }
 }
