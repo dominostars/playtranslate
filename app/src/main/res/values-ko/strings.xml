@@ -177,6 +177,8 @@
 
     <string name="word_detail_group_definitions">정의</string>
     <string name="word_detail_group_conjugation">활용</string>
+    <string name="word_detail_group_declension">격변화</string>
+    <string name="word_detail_group_forms">어형</string>
 
     <string name="word_detail_group_kanji">한자</string>
 

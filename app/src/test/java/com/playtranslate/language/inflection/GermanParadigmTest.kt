@@ -129,6 +129,7 @@ class GermanParadigmTest {
     @Test
     fun `the verb card has the German sections and a separable verb lights its cell from its first word`() {
         val table = GermanParadigm.table("sprechen", sprechen(), highlight = "sprichst")!!
+        assertEquals(TableKind.CONJUGATION, table.kind)
         assertEquals(listOf("Indikativ", "Konjunktiv", "Imperativ", "Infinite Formen"), table.sections.map { it.title })
         assertEquals(listOf("Präsens", "Präteritum"), table.section("Indikativ").columns)
         assertEquals(listOf("sprichst"), table.section("Indikativ").cell("du", "Präsens").forms)
@@ -162,6 +163,7 @@ class GermanParadigmTest {
             f("häuschen", "diminutive", "form-of", "neuter"),
         )
         val table = GermanParadigm.table("haus", haus, highlight = "häusern")!!
+        assertEquals(TableKind.DECLENSION, table.kind)
         val d = table.section("Deklination")
         assertEquals(listOf("Singular", "Plural"), d.columns)
         assertEquals(listOf("Nominativ", "Genitiv", "Dativ", "Akkusativ"), d.rows.map { it.label })

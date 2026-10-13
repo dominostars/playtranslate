@@ -187,6 +187,6 @@ object GermanParadigm : RomanceParadigm() {
             })
         }
         if (rows.sumOf { r -> r.cells.count { it.forms.isNotEmpty() } } < 4) return null
-        return ConjugationTable(listOf(ConjugationSection("Deklination", listOf("Singular", "Plural"), rows)), 0)
+        return ConjugationTable(listOf(ConjugationSection("Deklination", listOf("Singular", "Plural"), rows)), 0, TableKind.DECLENSION)
     }
 }

@@ -511,6 +511,18 @@
          Rendered uppercase like the Definitions header; one noun. -->
     <string name="word_detail_group_conjugation">Conjugation</string>
 
+    <!-- Group header for the Declension group in the word-detail sheet: a
+         noun's case-and-number table from the dictionary pack (German first:
+         Nominativ, Genitiv, Dativ, Akkusativ by Singular and Plural).
+         Rendered uppercase like the Definitions header; one noun. -->
+    <string name="word_detail_group_declension">Declension</string>
+
+    <!-- Group header for the Forms group in the word-detail sheet: a word's
+         inflected forms as a label-and-form list, for a language that draws
+         no grid (English: speaks, spoke, spoken, speaking; bigger, biggest).
+         Rendered uppercase like the Definitions header; one noun. -->
+    <string name="word_detail_group_forms">Forms</string>
+
     <!-- Group header for the per-kanji breakdown group (Japanese). -->
     <string name="word_detail_group_kanji">Kanji</string>
 

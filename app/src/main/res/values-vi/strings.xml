@@ -176,6 +176,8 @@
 
     <string name="word_detail_group_definitions">Định nghĩa</string>
     <string name="word_detail_group_conjugation">Chia động từ</string>
+    <string name="word_detail_group_declension">Biến cách</string>
+    <string name="word_detail_group_forms">Dạng từ</string>
 
     <string name="word_detail_group_kanji">Kanji</string>
 

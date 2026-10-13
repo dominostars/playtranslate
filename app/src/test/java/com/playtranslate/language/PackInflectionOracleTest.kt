@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.language.inflection.FormClass
 import com.playtranslate.language.inflection.InflectionParadigm
 import com.playtranslate.language.inflection.InflectionParadigms
+import com.playtranslate.language.inflection.TableKind
 import com.playtranslate.ui.InflectionChain
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
@@ -144,6 +145,8 @@ class PackInflectionOracleTest {
         /** The paradigm's rule for a plain lemma's clitic-led two-word rows being a bundled variant's (Spanish). */
         val variantLeadClitics: Set<String> = emptySet(),
         val pronominalLemma: (String) -> Boolean = { false },
+        /** What the grid writes before a bare negative imperative the pack stores without it (Spanish "no "). */
+        val negativePrefix: String? = null,
     )
 
     @Test
@@ -410,7 +413,14 @@ class PackInflectionOracleTest {
                 val verbal = forms.filterNot { it.fromPronominalVariant }
                     .mapNotNull { f -> paradigm.classify(f)?.takeIf { it.verbal && !it.clitic }?.let { f to it } }
                     .filter { (f, _) -> pronominal || !(' ' in f.surface && f.surface.substringBefore(' ') in cfg.variantLeadClitics) }
-                val plainSurfaces = verbal.filterNot { it.second.voseo }.mapTo(HashSet()) { it.first.surface }
+                // A grid's main forms are verbal; a Forms list lists every line the
+                // paradigm reads, a verb entry's nominal rows among them (vide's
+                // plural videte), so its rows are judged against every read line.
+                val plainSurfaces = if (table.kind == TableKind.FORMS) {
+                    forms.filterNot { it.fromPronominalVariant }.filter { paradigm.classify(it) != null }.mapTo(HashSet()) { it.surface }
+                } else {
+                    verbal.filterNot { it.second.voseo }.mapTo(HashSet()) { it.first.surface }
+                }
                 val voseoSurfaces = verbal.filter { it.second.voseo }.mapTo(HashSet()) { it.first.surface }
                 // Placed: every finite form, and every bare non-finite form (the
                 // agreeing participles are labelled, not listed).
@@ -418,8 +428,8 @@ class PackInflectionOracleTest {
                 val placed = HashSet<String>()
                 for (s in table.sections) for (r in s.rows) for ((ci, c) in r.cells.withIndex()) {
                     val where = { JSONObject().put("lemma", lemma).put("section", s.title).put("row", r.label).put("column", s.columns.getOrNull(ci)) }
-                    // The negativo column writes "no " before the bare form the pack stores.
-                    for (m in c.forms.map { it.removePrefix("no ") }) {
+                    // Spanish's negativo column writes "no " before the bare form the pack stores.
+                    for (m in c.forms.map { f -> cfg.negativePrefix?.let { f.removePrefix(it) } ?: f }) {
                         placed += m
                         if (m !in plainSurfaces) fail(GRID_MAIN_NOT_PLAIN).add { where().put("form", m) }
                     }
@@ -1242,6 +1252,7 @@ class PackInflectionOracleTest {
             participleEndings = PARTICIPLE_ENDINGS,
             variantLeadClitics = setOf("me", "te", "se", "nos", "os"),
             pronominalLemma = { it.endsWith("se") },
+            negativePrefix = "no ",
         )
         }
     }

@@ -179,6 +179,8 @@
 
     <string name="word_detail_group_definitions">Définitions</string>
     <string name="word_detail_group_conjugation">Conjugaison</string>
+    <string name="word_detail_group_declension">Déclinaison</string>
+    <string name="word_detail_group_forms">Formes</string>
 
     <string name="word_detail_group_kanji">Kanji</string>
 

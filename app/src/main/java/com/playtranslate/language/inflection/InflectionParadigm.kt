@@ -167,15 +167,22 @@ object KaikkiTags {
     const val AUGMENTATIVE = "augmentative"
 }
 
+/** What a [ConjugationTable] is of, which names the card: a verb's
+ *  conjugation, a noun's declension (German), or a word's forms as a plain
+ *  list (English). The card's header is UI text, chosen by this. */
+enum class TableKind { CONJUGATION, DECLENSION, FORMS }
+
 /**
  * A rendered conjugation table, language-neutral: one [ConjugationSection]
  * per chip (a mood, or the non-finite forms), each a grid of
  * [ConjugationRow]s (a pronoun) by columns (a tense), or a two-column list
- * when [ConjugationSection.isList]. [openSection] is the chip to start on.
+ * when [ConjugationSection.isList]. [openSection] is the chip to start on;
+ * a table with one section shows no chips. [kind] names the card.
  */
 data class ConjugationTable(
     val sections: List<ConjugationSection>,
     val openSection: Int,
+    val kind: TableKind = TableKind.CONJUGATION,
 )
 
 data class ConjugationSection(
