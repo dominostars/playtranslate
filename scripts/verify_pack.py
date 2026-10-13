@@ -45,9 +45,15 @@ REGRESSION_TOLERANCE = 0.05
 # built with a pre-inflection builder and would ship as "no label, no card"
 # with nothing else failing; a pack whose table emptied (an upstream `source`
 # rename, a blocklist that grew) is caught by the floor. es: 4,570 verb entries
-# in es-v4, every one with a kaikki table.
+# in es-v4, every one with a kaikki table. pt, fr, de, en: about three quarters
+# of the entries with a table in the 2026-10 dev packs (pt 20,986, fr 24,236,
+# de 28,757, en 116,810), since nouns and adjectives carry tables too.
 INFLECTION_REQUIRED: dict[str, tuple[int, int]] = {
     "es": (5, 4_000),
+    "pt": (5, 15_000),
+    "fr": (5, 18_000),
+    "de": (5, 21_000),
+    "en": (5, 85_000),
 }
 
 FAILURES: list[str] = []

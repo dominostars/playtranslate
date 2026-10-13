@@ -53,8 +53,10 @@ SUMMARY = WORK / "SUMMARY.json"
 #              the conjugation line and card) ahead of the fleet as es-v5, so a
 #              fleet rebuild that lands while the catalog still says es 5 must not
 #              stamp es back to the baseline.
+#   - pt, fr, de, en -> 5: the same tables, behind the Portuguese, French, German
+#              and English paradigms, shipped as <lang>-v5 ahead of the fleet.
 PACK_VERSION = 4
-PACK_VERSION_OVERRIDES: dict[str, int] = {"hi": 5, "es": 5}
+PACK_VERSION_OVERRIDES: dict[str, int] = {"hi": 5, "es": 5, "pt": 5, "fr": 5, "de": 5, "en": 5}
 
 
 def pack_version_for(code: str) -> int:
