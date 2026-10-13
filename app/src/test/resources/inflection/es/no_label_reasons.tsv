@@ -14,7 +14,9 @@ error-unknown-tag superlative	extraction error tag (paupérrimo)
 # A page tagged both genders with no number says nothing of the form (proviniente).
 feminine form-of masculine	both genders and no number: the page does not say what the form is
 # Phrase pages whose only tags are a person: possessive variants of a phrase (a mis solas, por tu cuenta) and phrases tagged by their subject (vaya a saber, que sepan). Not inflections; the pack keeps them as aliases with the marker.
+first-person form-of	a possessive variant of a phrase (a mis anchas)
 first-person form-of singular	a possessive variant of a phrase (por mi cuenta)
+form-of second-person	a possessive variant of a phrase (a tus anchas)
 first-person plural	a possessive variant of a phrase (a nuestras solas)
 first-person possessive singular	a possessive variant of a phrase, junk surface ("of singular masculine")
 first-person singular	a possessive variant of a phrase (a mis solas)
