@@ -118,7 +118,7 @@ class WiktionaryInflectionLookupTest {
     }
 
     @Test fun `a language without a paradigm keeps the marker even on a pack with the tables`() = runBlocking {
-        val manager = fixture(SourceLangId.FR, withTables = true)
+        val manager = fixture(SourceLangId.VI, withTables = true)
         val hablar = manager.lookup(surface = "hablamos", stemmed = "habl")!!.entries.single()
         assertTrue(hablar.formReadings.isEmpty())
         assertEquals("[inflected]", hablar.senses.first().partsOfSpeech.first())

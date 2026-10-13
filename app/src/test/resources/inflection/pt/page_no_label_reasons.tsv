@@ -1,0 +1,19 @@
+# Form-of page tagsets (sorted, form-of removed) whose tags the Portuguese labeller all knows but which say nothing the line names. Read by PackInflectionOracleTest.
+# An epicene form tagged both genders, or both numbers on one page: kaikki merged two forms.
+feminine masculine singular	both genders: an epicene form, nothing to say
+feminine masculine	both genders: an epicene form, nothing to say
+feminine plural singular	both numbers on one page: kaikki merged two forms (cobertas, encontrada)
+imperative plural second-person singular	both numbers on one page: kaikki merged two forms (argui)
+indicative plural present second-person singular	both numbers on one page: kaikki merged two forms (arguis)
+# A page's grammar kaikki got wrong or incomplete.
+first-person imperative singular third-person	an imperative for the first person, which Portuguese has not (homologue)
+first-person indicative masculine present singular	a gender on a finite verb form (capricho)
+first-person indicative plural	a page naming no tense
+indicative plural third-person	a page naming no tense (jogam)
+# A register alone (denada, doido varrido): a variant, not a form.
+informal	a register alone (denada)
+# After the usage tags are removed: an epicene form (dues, negre) tagged both genders with a register, a mood with no person (explodir, a euphemism page), the lemma's own singular (não binárie).
+feminine informal masculine	both genders: an epicene form (dues), nothing to say
+feminine informal masculine singular	both genders: an epicene form (negre), nothing to say
+subjunctive	a mood with no person or tense (explodir, a euphemism page)
+singular	the lemma's own singular, nothing to say (não binárie)

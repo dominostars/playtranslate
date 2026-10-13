@@ -138,7 +138,7 @@ class InflectionChainTest {
             listOf(ParadigmReading(SourceLangId.ES, preterite, lemma = null)),
             InflectionParadigms.readingsOf(SourceLangId.ES, listOf(venir), headword = "venir"),
         )
-        assertEquals(emptyList<ParadigmReading>(), InflectionParadigms.readingsOf(SourceLangId.FR, listOf(venir), "venir"))
+        assertEquals(emptyList<ParadigmReading>(), InflectionParadigms.readingsOf(SourceLangId.VI, listOf(venir), "venir"))
     }
 
     @Test
@@ -148,7 +148,7 @@ class InflectionChainTest {
             headwords = emptyList(), senses = emptyList(), formReadings = hablamos,
         )
         assertEquals(ParadigmReading(SourceLangId.ES, hablamos), InflectionParadigms.readingOf(SourceLangId.ES, entry))
-        assertNull(InflectionParadigms.readingOf(SourceLangId.FR, entry))
+        assertNull(InflectionParadigms.readingOf(SourceLangId.VI, entry))
         assertNull(InflectionParadigms.readingOf(SourceLangId.ES, entry.copy(formReadings = emptyList())))
         // A reading from a page's later table (vete under ir) is not a reading of the lemma.
         val secondary = InflectionForm("vete", setOf("imperative", "informal", "second-person", "singular", "table-2", "pronominal"))

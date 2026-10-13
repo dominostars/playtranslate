@@ -1,0 +1,17 @@
+# Tagsets of the fr pack the French labeller leaves without a label, with the reason. Read by FrenchTagsetGoldenTest: every unlabelled line of labels.tsv needs its tags here, and no line here may be stale.
+# wiktextract's own error tags: the extraction did not understand the page.
+Brazilian error-unknown-tag plural	extraction error tag (reais)
+Spanish error-unknown-tag plural	extraction error tag (reales)
+error-unknown-tag feminine	extraction error tag (tribunesse)
+error-unknown-tag plural	extraction error tag (bla-blas)
+# Personal pronouns' case forms (lu, lui) and pronoun pages (je, tu): not inflections the line names.
+accusative	a personal pronoun's case form (lu)
+dative	a personal pronoun's case form (lui)
+informal singular	a pronoun page (tu), nothing to say
+singular	a pronoun page (je), nothing to say
+# Pages whose grammar kaikki got wrong or incomplete.
+first-person form-of imperative singular	a page calling ferme-la a first-person singular imperative, which French has not
+form-of indicative present singular	a phrase page with no person (il y a)
+form-of indicative singular third-person	a page naming no tense (ensuit)
+# A register alone (nan, the informal non).
+form-of informal	a register alone (nan)

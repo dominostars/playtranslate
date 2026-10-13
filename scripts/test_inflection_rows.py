@@ -76,6 +76,18 @@ def test_construction_placeholders_and_scaffolding_rows_are_dropped():
     assert got == [(("gerund",), "hablando")], got
 
 
+def test_compound_tense_fragments_are_dropped_by_their_tag():
+    # kaikki's French compound tenses: most rows read "avoir + past participle"
+    # and fall to the " + " rule; the fragments without a plus ("ayant", "past
+    # historic of avoir") carry only the tag.
+    got = rows([
+        form("parlant", ["gerund", "participle", "present"]),
+        form("ayant", ["gerund", "multiword-construction", "participle", "present"]),
+        form("past historic of avoir", ["anterior", "indicative", "multiword-construction", "past"]),
+    ], lang="fr")
+    assert got == [(("gerund", "participle", "present"), "parlant")], got
+
+
 def test_multi_word_forms_are_kept_unlike_the_alias_pass():
     got = rows([form("me arrepiento", ["first-person", "indicative", "present", "singular"])],
                lemma="arrepentirse")

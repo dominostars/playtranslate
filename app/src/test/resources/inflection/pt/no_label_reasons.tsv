@@ -1,0 +1,15 @@
+# Tagsets of the pt pack the Portuguese labeller leaves without a label, with the reason. Read by PortugueseTagsetGoldenTest: every unlabelled line of labels.tsv needs its tags here, and no line here may be stale.
+# Personal pronouns' case forms (lhe, nos): a pronoun's case is not an inflection the line names.
+accusative form-of	a personal pronoun's case form (lhe, nos)
+dative form-of	a personal pronoun's case form (lhe, nos)
+# wiktextract's own error tag: the extraction did not understand the page.
+error-unknown-tag plural	extraction error tag (luzes-em-cu)
+# A page tagged both genders with no number (zulo, dues, negre): an epicene or gender-neutral form, nothing to say.
+feminine form-of informal masculine	both genders: an epicene form (dues), nothing to say
+feminine form-of informal masculine singular	both genders: an epicene form (negre), nothing to say
+feminine form-of masculine	both genders: an epicene form (zulo), nothing to say
+# A register alone (naum, the informal não), or the lemma's own singular (não binárie): not a form the line names.
+form-of informal	a register alone (naum)
+form-of singular	the lemma's own singular, nothing to say (não binárie)
+# A reflexive variant page tagged subjunctive with no person (explodir): kaikki merged two facts.
+form-of reflexive subjunctive	a reflexive variant page with a mood and no person (explodir)
