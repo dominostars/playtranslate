@@ -6,6 +6,8 @@ import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.InflectedForm
 import com.playtranslate.language.InflectionTag
+import com.playtranslate.language.ParadigmReading
+import com.playtranslate.language.inflection.InflectionParadigms
 import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.SourceLanguageEngine
 import com.playtranslate.language.TargetGlossDatabaseProvider
@@ -260,6 +262,7 @@ suspend fun resolveWordRows(
                                 frequencies = display.frequencies,
                                 inflectedForms = rowInflectedForms(
                                     occurrencesByLemma[word].orEmpty(), response.deinflection,
+                                    InflectionParadigms.readingsOf(engine.profile.id, response.entries, displayWord),
                                 ),
                                 // Same ordering the word detail page uses; bold the
                                 // occurrence (the selected headword's reading).
@@ -315,13 +318,17 @@ suspend fun resolveWordRows(
  * (かけろ resolved to かける) still gets one. An occurrence with no tags under an
  * empty chain yields nothing. Taking every occurrence, not the lemma-deduped
  * first one, keeps a verb seen as 食べたい and 食べられない showing both forms.
- * Pure; unit-tested in WordRowResolverTest.
+ * [paradigms] are a Wiktionary-pack language's readings of the row's surface,
+ * one per entry that reads it as a form ([InflectionParadigms.readingsOf]);
+ * Latin rows have one surface per lemma, so each draws one line. Pure;
+ * unit-tested in WordRowResolverTest.
  */
 internal fun rowInflectedForms(
     occurrences: List<TokenSpan>,
     deinflection: List<InflectionTag>,
+    paradigms: List<ParadigmReading> = emptyList(),
 ): List<InflectedForm> =
-    occurrences.mapNotNull { InflectionChain.compose(it.surface, deinflection, it.inflections) }
+    occurrences.flatMap { InflectionChain.lines(it.surface, deinflection, it.inflections, paradigms) }
         .distinct()
 
 /** Max distinct inflected-form lines a single word row shows before overflow. */

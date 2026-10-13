@@ -173,6 +173,7 @@
     </plurals>
 
     <string name="word_detail_group_definitions">التعريفات</string>
+    <string name="word_detail_group_conjugation">التصريف</string>
 
     <string name="word_detail_group_kanji">كانجي</string>
 

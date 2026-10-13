@@ -304,6 +304,324 @@ def eligible_form_surfaces(obj: dict, lang: str, word_lower: str,
     return out
 
 
+# ── Inflection tables (pack `inflection` + `inflection_tagset`) ──────────────
+# The position-2 alias rows above index every conjugated surface but throw the
+# tags away; these two tables keep them, one blob per lemma entry, so the app
+# can label a looked-up form ("hablamos · nosotros · presente / pretérito") and
+# draw the lemma's full table. kaikki's tags are stored VERBATIM (sorted,
+# space-joined, interned per build in `inflection_tagset`) so one rebuild per
+# pack is enough: which tags mean "nosotros", which tenses form a grid and what
+# to call them is app-side, per language (InflectionParadigm). The format is
+# written only through InflectionBlobs below.
+#
+#   inflection(entry_id PK, forms)   forms = "\n"-joined "<tagset_id>\t<surface>"
+#                                    lines, kaikki table order
+#   inflection_tagset(id PK, tags)   tags  = sorted kaikki tags, space-joined
+#
+# Measured on the es-v4 extract: 4,570 verbs with tables, 77 lines each without
+# the clitic "combined forms", 91 tag sets, ~4.5 MB raw / ~0.9 MB zipped. The
+# normalized alternative (one row per form) was 11.7 MB raw / 4.2 MB zipped and
+# every read is per entry anyway.
+INFLECTION_SCHEMA_SQL = """
+CREATE TABLE inflection_tagset (
+    id   INTEGER PRIMARY KEY,
+    tags TEXT    NOT NULL
+);
+CREATE TABLE inflection (
+    entry_id INTEGER PRIMARY KEY,
+    forms    TEXT    NOT NULL
+);
+"""
+
+# forms[] rows that come from a rendered table (the lemma's conjugation /
+# declension). Headline rows (no `source`) duplicate the table for verbs and
+# are the ONLY forms a noun or adjective has in the Romance extracts, so they
+# are used as a fallback when the entry has no table rows at all.
+INFLECTION_TABLE_SOURCES = frozenset({"conjugation", "declension", "inflection"})
+
+# Table rows dropped from the blob. Empty since 2026-10-12: the clitic-attached
+# `combined-form` rows (háblame, dímelo: 124 of hablar's 201) were excluded at
+# first for size, but game dialogue is imperative-heavy and kaikki tags them
+# exactly (object person/number, dative/accusative), so they are stored and the
+# paradigm labels them ("tú · imperativo + me"). They stay out of the grid.
+INFLECTION_EXCLUDED_TAGS: frozenset[str] = frozenset()
+COMBINED_FORM_TAG = "combined-form"
+
+# Headline-fallback gate: a row counts as an inflection only when it carries a
+# grammatical tag and none of the "this is a variant spelling / register" tags.
+INFLECTION_HEADLINE_TAGS = frozenset({
+    "plural", "singular", "dual", "feminine", "masculine", "neuter", "common",
+    "comparative", "superlative", "diminutive", "augmentative",
+    "past", "present", "future", "participle", "gerund", "infinitive",
+    "imperative", "first-person", "second-person", "third-person",
+    "nominative", "genitive", "dative", "accusative", "vocative",
+    "instrumental", "locative", "ablative", "oblique", "definite", "indefinite",
+})
+INFLECTION_HEADLINE_EXCLUDE = frozenset({
+    "alternative", "canonical", "romanization", "obsolete", "archaic",
+    "dialectal", "rare", "misspelling", "nonstandard", "auxiliary",
+    "pronunciation-spelling", "apocopic", "colloquial", "slang", "dated",
+    "proscribed",
+})
+
+# kaikki's Hungarian conjugation extraction is broken (every row carries
+# error-unrecognized-form, person tags are shifted; verified on 4 verbs,
+# 2026-10-09), so hu packs carry no table until upstream fixes it.
+INFLECTION_TABLE_SKIP_LANGS: frozenset[str] = frozenset({"hu"})
+
+# A Wiktionary page can carry several conjugation tables, and kaikki flattens
+# them into one forms[] list where each table opens with `table-tags` and
+# `inflection-template` marker rows and the rows themselves carry NO table
+# identity: ir's page is ir's table, ir's clitic combinations, then irse's
+# table, and irse's single-word imperatives (vete, váyase, vámonos) arrive
+# with exactly ir's imperative tags. 307 of 8,950 Spanish verbs have a second
+# table, 299 of them the pronominal variant (2026-10-12). Rows of the second
+# and later PARADIGM tables get a synthetic `table-N` tag (N = the paradigm
+# table's ordinal) so the app can tell them apart; the first table's rows carry
+# no such tag. A table made only of `combined-form` rows is the preceding
+# paradigm's own clitic table (es-conj renders it separately), not a new
+# paradigm: it takes the preceding table's ordinal.
+#
+# Not every later table is a variant to hide: acostar's page carries the
+# stem-changing table (acuesta) AND the regular nautical one (acosta), both
+# the lemma's own forms. The variant the plain lemma must not show is the
+# PRONOMINAL one, recognisable in any language by its finite forms being two
+# words ("me voy", "se acuesta"): a later table whose finite forms are all
+# multi-word is tagged `pronominal` as well, and the app drops those rows; a
+# later table with one-word finite forms stays in, its forms alternates of the
+# first table's in the same cells.
+INFLECTION_TABLE_TAG_PREFIX = "table-"
+PRONOMINAL_TABLE_TAG = "pronominal"
+_FINITE_MOOD_TAGS = frozenset({"indicative", "subjunctive"})
+
+
+def eligible_inflection_rows(obj: dict, lang: str, word_lower: str,
+                             lemma_scripts: frozenset) -> list[tuple[tuple[str, ...], str]]:
+    """The entry's inflection rows for the `inflection` blob: (sorted tags,
+    build-normalized surface) in kaikki order, deduplicated on the pair.
+
+    Differs from eligible_form_surfaces on purpose:
+      - keeps the tags (the whole point);
+      - keeps MULTI-WORD forms ("me arrepiento", "não fales", "habe
+        gesprochen" are the paradigm; the app decides what to render) and
+        the lemma-identical row (the infinitive is a table cell);
+      - takes table-sourced rows only, falling back to tagged headline rows
+        when the entry has no table (nouns, adjectives);
+      - keeps the clitic-attached `combined-form` rows (the label reads them;
+        the grid does not show them);
+      - drops " + " construction placeholders ("avoir + past participle") on
+        top of the shared blocklist and junk gate (which also removes kaikki
+        French's IPA rows);
+      - tags the rows of a page's second and later paradigm tables `table-N`
+        (INFLECTION_TABLE_TAG_PREFIX), since kaikki gives them the first
+        table's tags verbatim, and `pronominal` when such a table's finite
+        forms are all multi-word (irse under ir); a combined-forms-only table
+        belongs to the paradigm table before it."""
+    if lang in INFLECTION_TABLE_SKIP_LANGS:
+        return []
+    # Pass 1: the table-sourced rows grouped by table (a new group opens at
+    # each inflection-template marker; rows before any marker form group 0),
+    # and the headline rows.
+    groups: list[list[tuple[set[str], str]]] = [[]]
+    headline: list[tuple[tuple[str, ...], str]] = []
+    for form_obj in obj.get("forms") or ():
+        tag_set = set(form_obj.get("tags") or ())
+        source = form_obj.get("source")
+        if "inflection-template" in tag_set and source in INFLECTION_TABLE_SOURCES:
+            if groups[-1]:
+                groups.append([])
+            continue
+        if tag_set & FORM_TAG_BLOCKLIST or tag_set & INFLECTION_EXCLUDED_TAGS:
+            continue
+        form_text = lower_for_lang((form_obj.get("form") or "").strip(), lang)
+        if not form_text or form_text in _FORM_JUNK_LITERALS:
+            continue
+        if " + " in form_text or "\t" in form_text or "\n" in form_text:
+            continue
+        if _alias_surface_is_junk(form_text, lemma_scripts):
+            continue
+        if source in INFLECTION_TABLE_SOURCES:
+            groups[-1].append((tag_set, form_text))
+        elif source is None and tag_set & INFLECTION_HEADLINE_TAGS \
+                and not tag_set & INFLECTION_HEADLINE_EXCLUDE:
+            headline.append((tuple(sorted(tag_set)), form_text))
+    # Pass 2: number the paradigm tables. A group with no row outside the
+    # combined forms is the preceding paradigm's clitic table and keeps its
+    # ordinal; the first paradigm table is ordinal 1 and untagged.
+    table: list[tuple[tuple[str, ...], str]] = []
+    seen: set[tuple[tuple[str, ...], str]] = set()
+    ordinal = 0
+    for group in groups:
+        if not group:
+            continue
+        if any(COMBINED_FORM_TAG not in tags for tags, _ in group) or ordinal == 0:
+            ordinal += 1
+        finite = [text for tags, text in group if tags & _FINITE_MOOD_TAGS and COMBINED_FORM_TAG not in tags]
+        pronominal = ordinal > 1 and bool(finite) and all(" " in text for text in finite)
+        for tag_set, form_text in group:
+            if ordinal > 1:
+                tag_set = tag_set | {f"{INFLECTION_TABLE_TAG_PREFIX}{ordinal}"}
+                if pronominal:
+                    tag_set = tag_set | {PRONOMINAL_TABLE_TAG}
+            row = (tuple(sorted(tag_set)), form_text)
+            if row not in seen:
+                seen.add(row)
+                table.append(row)
+    if table:
+        return table
+    out: list[tuple[tuple[str, ...], str]] = []
+    for row in headline:
+        if row not in seen:
+            seen.add(row)
+            out.append(row)
+    return out
+
+
+# Tags kept from a "form of" page's sense (the page for `pon`: "second-person
+# singular imperative of poner", tags `form-of imperative second-person
+# singular`). Where the lemma's table has no row for the page's surface, those
+# tags become the surface's blob line: nouns' diminutives and augmentatives
+# (cintita, perrazo) and verbs whose page has no table but whose forms have
+# pages (dietó) have no other source. `form-of` itself is kept as provenance;
+# the app ignores tags it does not know. Register and region tags are not
+# grammar and are dropped.
+FORM_OF_KEEP_TAGS = frozenset({
+    "form-of", "first-person", "second-person", "third-person", "singular", "plural", "dual",
+    "masculine", "feminine", "neuter", "common",
+    "present", "preterite", "imperfect", "future", "conditional", "pluperfect", "historic", "perfect", "past",
+    "indicative", "subjunctive", "imperative", "negative", "formal", "informal", "vos-form", "with-voseo",
+    "infinitive", "gerund", "participle",
+    "comparative", "superlative", "diminutive", "augmentative",
+    "nominative", "genitive", "dative", "accusative", "vocative", "instrumental", "locative", "ablative",
+    "oblique", "definite", "indefinite",
+    "object-first-person", "object-second-person", "object-third-person", "object-singular", "object-plural",
+    "object-masculine", "object-feminine", "reflexive", "combined-form",
+})
+# A form-of sense carrying any of these describes a spelling or register, not
+# an inflection, and contributes no line.
+FORM_OF_EXCLUDE_TAGS = frozenset({
+    "alt-of", "alternative", "misspelling", "obsolete", "archaic", "dialectal", "rare", "nonstandard",
+    "abbreviation", "initialism", "romanization", "pronunciation-spelling", "apocopic", "contraction",
+})
+
+
+def form_of_rows(obj: dict, lang: str) -> list[tuple[str, tuple[str, ...], str]]:
+    """(target lemma lowercased, sorted kept tags, surface lowercased) for every
+    sense of [obj] that is a form-of pointer with grammatical tags; empty for
+    other pages. build_sqlite appends these to the target lemma's blob when
+    its own table has no row for the surface."""
+    word = (obj.get("word") or "").strip()
+    if not word or " + " in word:
+        return []
+    surface = lower_for_lang(word, lang)
+    if not surface or "\t" in surface or "\n" in surface:
+        return []
+    out: list[tuple[str, tuple[str, ...], str]] = []
+    for sense in obj.get("senses") or ():
+        targets = [t.get("word", "").strip() for t in (sense.get("form_of") or ()) if t.get("word")]
+        if not targets:
+            continue
+        tags = set(sense.get("tags") or ())
+        if "form-of" not in tags or tags & FORM_OF_EXCLUDE_TAGS:
+            continue
+        kept = tuple(sorted(tags & FORM_OF_KEEP_TAGS))
+        if len(kept) < 2:  # `form-of` alone says nothing
+            continue
+        for target in targets:
+            target_l = lower_for_lang(target, lang)
+            if target_l and target_l != surface:
+                out.append((target_l, kept, surface))
+    return out
+
+
+class InflectionBlobs:
+    """Encodes an entry's inflection rows into the `inflection.forms` blob and
+    interns tag sets for `inflection_tagset`. One instance per build, the only
+    writer of the format."""
+
+    def __init__(self) -> None:
+        self.tagset_ids: dict[str, int] = {}
+        self.entries = 0
+        self.lines = 0
+        self.multiword = 0
+        self.form_of_lines = 0
+
+    def encode_lines(self, rows: list[tuple[tuple[str, ...], str]]) -> list[str]:
+        out: list[str] = []
+        for tags, surface in rows:
+            key = " ".join(tags)
+            tid = self.tagset_ids.get(key)
+            if tid is None:
+                tid = len(self.tagset_ids) + 1
+                self.tagset_ids[key] = tid
+            out.append(f"{tid}\t{surface}")
+            if " " in surface:
+                self.multiword += 1
+        self.lines += len(out)
+        return out
+
+    def encode(self, rows: list[tuple[tuple[str, ...], str]]) -> str | None:
+        if not rows:
+            return None
+        out = self.encode_lines(rows)
+        self.entries += 1
+        return "\n".join(out)
+
+    def append_form_of(self, cur: sqlite3.Cursor, entry_id: int,
+                       rows: list[tuple[tuple[str, ...], str]]) -> None:
+        """Add form-of page lines for surfaces the entry's own table lacks (its
+        own rows win), creating the blob when the entry had none. A bundled
+        pronominal variant's rows (PRONOMINAL_TABLE_TAG) do not count as having
+        the surface: chalar's page carries chalarse's table, whose `chálese` is
+        the variant's imperative under the variant's tags, and the app keeps
+        those rows out of chalar's readings, so the page's reading of chálese
+        as chalar + se must still get in (the es oracle, 2026-10-12: 24 clitic
+        pages lost this way)."""
+        existing = cur.execute("SELECT forms FROM inflection WHERE entry_id = ?", (entry_id,)).fetchone()
+        have: set[str] = set()
+        if existing:
+            variant_ids = {tid for key, tid in self.tagset_ids.items() if PRONOMINAL_TABLE_TAG in key.split()}
+            for line in existing[0].split("\n"):
+                tid, surface = line.split("\t", 1)
+                if int(tid) not in variant_ids:
+                    have.add(surface)
+        fresh: list[tuple[tuple[str, ...], str]] = []
+        seen: set[tuple[tuple[str, ...], str]] = set()
+        for tags, surface in rows:
+            if surface in have or (tags, surface) in seen:
+                continue
+            seen.add((tags, surface))
+            fresh.append((tags, surface))
+        if not fresh:
+            return
+        lines = self.encode_lines(fresh)
+        self.form_of_lines += len(lines)
+        if existing:
+            cur.execute("UPDATE inflection SET forms = ? WHERE entry_id = ?",
+                        (existing[0] + "\n" + "\n".join(lines), entry_id))
+        else:
+            self.entries += 1
+            cur.execute("INSERT INTO inflection VALUES (?, ?)", (entry_id, "\n".join(lines)))
+
+    def tagset_rows(self) -> list[tuple[int, str]]:
+        return sorted((tid, key) for key, tid in self.tagset_ids.items())
+
+
+def decode_inflection_blob(blob: str, tagsets: dict[int, str]) -> list[tuple[frozenset[str], str]]:
+    """The reverse of InflectionBlobs.encode, for the smoke test, verify_pack
+    and tests: (tags, surface) per line. Raises KeyError on an unknown tagset
+    id and ValueError on a malformed line, which is what the gates want."""
+    rows: list[tuple[frozenset[str], str]] = []
+    for line in blob.split("\n"):
+        tid_s, surface = line.split("\t", 1)
+        rows.append((frozenset(tagsets[int(tid_s)].split()), surface))
+    return rows
+
+
+def load_inflection_tagsets(conn: sqlite3.Connection) -> dict[int, str]:
+    return {tid: tags for tid, tags in conn.execute("SELECT id, tags FROM inflection_tagset")}
+
+
 # Chained-redirect resolution depth for pass 2 (see resolve_redirect_chain).
 # 2 hops covers the motivating population — inflection page → alternative-
 # spelling page → lemma ("criticised" → "criticise" → "criticize"); one
@@ -606,6 +924,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
         CREATE INDEX idx_sense_entry    ON sense(entry_id, position);
         """
     )
+    conn.executescript(INFLECTION_SCHEMA_SQL)
 
 
 def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
@@ -663,6 +982,12 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
     # `volontari`, so we track every entry_id per word and pass 2 emits
     # an alias row for each.
     kept_lemma_ids: dict[str, list[int]] = {}
+    # (word_lower, kaikki pos) -> the entries kept under it: one for most
+    # languages (pass 1 dedups on that key), several for Korean's homograph
+    # etymologies. Form-of pages are matched on this key, not on the word:
+    # such a page names a lemma AND a part of speech (`fue` is a verb page,
+    # "preterite of ser"), and ser the noun must not carry the verb's lines.
+    kept_ids_by_word_pos: dict[tuple[str, str], list[int]] = {}
     # Inflection-table aliases mined from each kept lemma's own `forms[]`
     # (pass 1); merged into the pass-2 alias set before the single position-2
     # insert. See the block below and docs/polish-source-language-plan.md §3.3.
@@ -670,8 +995,13 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
     # surface -> the redirect pages under it, held for the post-pass-2 rescue.
     redirect_pages: dict[str, list[tuple]] = {}
 
+    blobs = InflectionBlobs()
+    # (target lemma lowercased, the form page's pos) -> form-of page rows,
+    # applied after pass 2 to the lemma's entry of that pos.
+    form_of_by_target: dict[tuple[str, str], list[tuple[tuple[str, ...], str]]] = {}
+
     def emit_lemma(word_lower, pos_raw, senses_data, glosses_list, freq,
-                   form_surfaces, etym_num=1):
+                   form_surfaces, etym_num=1, inflection_rows=()):
         """Insert one lexeme: entry row, position-0 headword, stem row, senses
         and examples, plus its forms[] alias contributions. Shared by pass 1 and
         by the post-pass-2 rescue of redirect pages that resolved to nothing, so
@@ -702,6 +1032,11 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
             "INSERT INTO entry VALUES (?, ?, ?)",
             (entry_id, is_common, freq_score),
         )
+        # The entry's inflection table, tags kept (eligible_inflection_rows);
+        # the tag sets it interns are written to inflection_tagset after pass 2.
+        blob = blobs.encode(list(inflection_rows))
+        if blob is not None:
+            cur.execute("INSERT INTO inflection VALUES (?, ?)", (entry_id, blob))
         cur.execute(
             "INSERT INTO headword VALUES (?, ?, ?)",
             (entry_id, 0, word_lower),
@@ -712,6 +1047,7 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         # entry_ids — we keep them all so an alias like "volontari" fans
         # out to both the "volunteer" (noun) and "voluntary" (adj) entries.
         kept_lemma_ids.setdefault(word_lower, []).append(entry_id)
+        kept_ids_by_word_pos.setdefault((word_lower, pos_raw), []).append(entry_id)
 
         # Inflection-table aliases. kaikki lemma entries carry their full
         # declension/conjugation table inline in `forms[]`, which pass 2's
@@ -787,6 +1123,12 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
             continue
         if len(word.split()) > MAX_HEADWORD_WORDS:
             continue
+        # Form-of senses (any page: a pure redirect page or a lemma with a
+        # form-of sense among real ones) feed the blob of the target lemma's
+        # entry of this page's pos after pass 2, for surfaces its own table
+        # lacks.
+        for target_l, tags, surface in form_of_rows(obj, lang):
+            form_of_by_target.setdefault((target_l, pos_raw), []).append((tags, surface))
 
         # Entries whose senses are ALL redirects do not become lemmas here:
         # keeping them shadows the real word on direct lookup (tap `volontari`
@@ -833,6 +1175,7 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         # Shared by the lexeme-aggregate frequency probe below and the
         # forms[] alias emission after the entry inserts.
         form_surfaces = eligible_form_surfaces(obj, lang, word_lower, lemma_scripts)
+        inflection_rows = eligible_inflection_rows(obj, lang, word_lower, lemma_scripts)
         if lang == "ko":
             key = word_lower
             if pos_raw in ("verb", "adj") and len(key) > 1 and key.endswith("다"):
@@ -929,7 +1272,7 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
                 seen_redirect_pages.add(key)
                 redirect_pages.setdefault(word_lower, []).append(
                     (pos_raw, senses_data, glosses_list, freq, form_surfaces,
-                     _etym_num(obj))
+                     _etym_num(obj), inflection_rows)
                 )
             continue
 
@@ -954,7 +1297,7 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         #     (usually primary meaning first), which is the right thing
         #     for sort-by-freq-score-desc.
         emit_lemma(word_lower, pos_raw, senses_data, glosses_list, freq,
-                   form_surfaces, _etym_num(obj))
+                   form_surfaces, _etym_num(obj), inflection_rows)
 
     # ── Pass 2: redirect-alias indexing ─────────────────────────────
     # Re-stream the kaikki file. For each entry we dropped as a redirect
@@ -1145,9 +1488,9 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         if not terminals:
             terminals = set(pending)
         for surface in sorted(terminals):
-            for pos_raw_, senses_data_, glosses_, freq_, forms_, etym_ in redirect_pages[surface]:
+            for pos_raw_, senses_data_, glosses_, freq_, forms_, etym_, infl_ in redirect_pages[surface]:
                 emit_lemma(surface, pos_raw_, senses_data_, glosses_, freq_,
-                           forms_, etym_)
+                           forms_, etym_, infl_)
                 redirect_lemmas += 1
         pending -= terminals
         unresolved -= terminals          # they are lemmas now, never aliases
@@ -1177,6 +1520,23 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
             [(tid, 2, surf) for (tid, surf) in alias_pairs],
         )
 
+    # Form-of pages: lines for surfaces the lemma's own table lacks. The page
+    # names a lemma and a part of speech (`fue`, a verb page, points at ser),
+    # so its rows go to the lemma's entry of that pos and to no sibling: ser
+    # the noun must not label `fue` as a preterite nor draw the verb's grid
+    # (Codex review 2026-10-12: 8,598 of es's 13,253 form-of lines sat on an
+    # entry of another pos). A page whose pos the pack kept no entry for
+    # contributes nothing. The surface-present check in append_form_of keeps
+    # a table's own rows from being doubled.
+    for key, rows in form_of_by_target.items():
+        for tid in kept_ids_by_word_pos.get(key, ()):
+            blobs.append_form_of(cur, tid, rows)
+
+    # The tag sets every inflection blob refers to (InflectionBlobs interns
+    # them as the lemmas are emitted, in pass 1, in the rescue and from the
+    # form-of pages).
+    cur.executemany("INSERT INTO inflection_tagset VALUES (?, ?)", blobs.tagset_rows())
+
     conn.commit()
     conn.close()
     distinct_targets = len({tid for (tid, _) in alias_pairs})
@@ -1190,6 +1550,11 @@ def build_sqlite(input_path: Path, db_path: Path, lang: str) -> None:
         f"{len(alias_pairs):,} alias rows covering {distinct_targets:,} lemmas "
         f"({forms_only:,} of them from inflection tables / forms[]), "
         f"{example_rows:,} example rows)."
+    )
+    print(
+        f"  inflection tables: {blobs.entries:,} entries, {blobs.lines:,} lines "
+        f"({blobs.multiword:,} multi-word, {blobs.form_of_lines:,} from form-of pages), "
+        f"{len(blobs.tagset_ids):,} tag sets."
     )
 
 
@@ -1630,22 +1995,100 @@ def postprocess_polish(db_path: Path, polimorf_tsv: Path) -> None:
         conn.close()
 
 
+# Inflection-table fixtures: (lemma, form, tags the form's blob line must
+# carry). Guards the tagged rows the way SMOKE_FIXTURES guards resolution:
+# a table that silently emptied (an upstream `source` rename, a blocklist
+# that grew) would otherwise ship as "no label, no card" with no failure.
+INFLECTION_SMOKE: dict[str, list[tuple[str, str, frozenset[str]]]] = {
+    "es": [
+        ("hablar", "hablamos", frozenset({"first-person", "plural", "present", "indicative"})),
+        ("ser", "fue", frozenset({"third-person", "singular", "preterite", "indicative"})),
+        ("ir", "voy", frozenset({"first-person", "singular", "present", "indicative"})),
+        # Pronominal verb: its finite forms are multi-word and must survive.
+        ("quejarse", "me quejo", frozenset({"first-person", "singular", "present", "indicative"})),
+    ],
+}
+
+# (lemma, pos, form): the lemma's entry of that pos must NOT carry the form.
+# `fue` is a form of ser the verb; ser the noun ("being") is a sibling entry
+# and a form-of page matched by word alone used to land on it too.
+INFLECTION_SMOKE_ABSENT: dict[str, list[tuple[str, str, str]]] = {
+    "es": [("ser", "noun", "fue")],
+}
+
+
+def inflection_smoke_failures(conn: sqlite3.Connection, lang: str) -> list[str]:
+    """INFLECTION_SMOKE over an open pack db: every (lemma, form, tags) must
+    appear as a line of some position-0 entry of the lemma whose tags
+    include the required ones; INFLECTION_SMOKE_ABSENT's (lemma, pos, form)
+    must appear on no entry of the lemma with that pos. Pure over the
+    connection, for tests."""
+    fixtures = INFLECTION_SMOKE.get(lang, [])
+    absent = INFLECTION_SMOKE_ABSENT.get(lang, [])
+    if not fixtures and not absent:
+        return []
+    tagsets = load_inflection_tagsets(conn)
+    failures: list[str] = []
+    for lemma, form, required in fixtures:
+        blobs = conn.execute(
+            "SELECT i.forms FROM headword h JOIN inflection i ON i.entry_id = h.entry_id "
+            "WHERE h.text = ? AND h.position = 0",
+            (lower_for_lang(lemma, lang),),
+        ).fetchall()
+        if not blobs:
+            failures.append(f"  {lemma!r}: no inflection blob on any position-0 entry")
+            continue
+        form_l = lower_for_lang(form, lang)
+        hits = [
+            tags for (blob,) in blobs
+            for tags, surface in decode_inflection_blob(blob, tagsets)
+            if surface == form_l
+        ]
+        if not hits:
+            failures.append(f"  {lemma!r}: form {form!r} is not in its table")
+        elif not any(required <= tags for tags in hits):
+            failures.append(
+                f"  {lemma!r}: {form!r} is tagged {[sorted(t) for t in hits]}, "
+                f"expected a line carrying {sorted(required)}"
+            )
+    for lemma, pos, form in absent:
+        form_l = lower_for_lang(form, lang)
+        blobs = conn.execute(
+            "SELECT DISTINCT i.forms FROM headword h "
+            "JOIN sense s ON s.entry_id = h.entry_id "
+            "JOIN inflection i ON i.entry_id = h.entry_id "
+            "WHERE h.text = ? AND h.position = 0 AND s.pos = ?",
+            (lower_for_lang(lemma, lang), pos),
+        ).fetchall()
+        if any(
+            surface == form_l
+            for (blob,) in blobs
+            for _tags, surface in decode_inflection_blob(blob, tagsets)
+        ):
+            failures.append(
+                f"  {lemma!r} ({pos}): carries {form!r}, a form of another part of speech"
+            )
+    return failures
+
+
 def run_smoke_test(db_path: Path, lang: str) -> None:
     """Replay WiktionaryDictionaryManager.lookup against a small fixture
     set to catch regressions where plurals/conjugations no longer
-    resolve to their lemma gloss. Raises on failure; no-op when the
-    language has no fixtures."""
+    resolve to their lemma gloss, and check the inflection-table
+    fixtures (INFLECTION_SMOKE). Raises on failure; no-op when the
+    language has no fixtures of either kind."""
     if lang == "ar":
         _assert_arabic_normalize()
         _assert_arabic_fold()
     fixtures = SMOKE_FIXTURES.get(lang, {})
-    if not fixtures:
+    if not fixtures and not INFLECTION_SMOKE.get(lang):
         return
     algo = SNOWBALL_ALGO_FOR_LANG.get(lang)
     stemmer = _snowball_stemmer(algo) if algo else None
     conn = sqlite3.connect(db_path)
     failures: list[str] = []
     try:
+        failures.extend(inflection_smoke_failures(conn, lang))
         for surface, expected_substr in fixtures.items():
             surface_l = lower_for_lang(surface, lang)
             # Mirror WiktionaryDictionaryManager.lookup's cascade exactly:
@@ -1693,7 +2136,10 @@ def run_smoke_test(db_path: Path, lang: str) -> None:
         for f in failures:
             print(f, file=sys.stderr)
         raise SystemExit(2)
-    print(f"Smoke test OK — {len(fixtures)} fixture(s) passed for '{lang}'.")
+    print(
+        f"Smoke test OK — {len(fixtures)} lookup fixture(s) and "
+        f"{len(INFLECTION_SMOKE.get(lang, []))} inflection fixture(s) passed for '{lang}'."
+    )
 
 
 def main() -> int:

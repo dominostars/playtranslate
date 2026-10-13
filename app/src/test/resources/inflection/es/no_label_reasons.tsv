@@ -1,0 +1,35 @@
+# Tagsets of the es pack the Spanish labeller leaves without a label, with the reason. Read by SpanishTagsetGoldenTest: every unlabelled line of labels.tsv needs its tags here, and no line here may be labelled or gone.
+# Personal pronouns' case forms (me, te, nos, les under yo, tú, nosotros, ellos): a pronoun's case is not an inflection the line names.
+accusative feminine form-of plural	a personal pronoun's case form (las)
+accusative form-of	a personal pronoun's case form (me, nos)
+dative	a personal pronoun's case form (les)
+dative form-of	a personal pronoun's case form (me, nos)
+form-of reflexive	a personal pronoun's reflexive form (me, nos), or a reflexive variant page of a phrasal verb (echarse a perder under echar a perder), neither a form of the lemma
+oblique	a personal pronoun's case form (te)
+oblique plural	a personal pronoun's case form (les)
+# wiktextract's own error tags: the extraction did not understand the page.
+error-exponential-tagsets error-unknown-tag feminine	extraction error tags (gerenta)
+error-exponential-tagsets error-unknown-tag feminine plural	extraction error tags (gerentas)
+error-unknown-tag superlative	extraction error tag (paupérrimo)
+# A page tagged both genders with no number says nothing of the form (proviniente).
+feminine form-of masculine	both genders and no number: the page does not say what the form is
+# Phrase pages whose only tags are a person: possessive variants of a phrase (a mis solas, por tu cuenta) and phrases tagged by their subject (vaya a saber, que sepan). Not inflections; the pack keeps them as aliases with the marker.
+first-person form-of singular	a possessive variant of a phrase (por mi cuenta)
+first-person plural	a possessive variant of a phrase (a nuestras solas)
+first-person possessive singular	a possessive variant of a phrase, junk surface ("of singular masculine")
+first-person singular	a possessive variant of a phrase (a mis solas)
+form-of informal second-person with-voseo	a phrase tagged by its subject with no number (i a saber)
+form-of plural second-person	a possessive variant of a phrase (por vuestra cuenta)
+form-of second-person singular	a possessive variant of a phrase (por tu cuenta)
+form-of third-person	a phrase tagged by its subject with no number (enseñar su pata)
+formal second-person	a phrase tagged by its subject with no number (vaya a saber)
+plural second-person	a possessive variant of a phrase (a vuestras solas)
+plural second-person third-person	a phrase tagged by its subject with no number (que sepan)
+second-person singular	a possessive variant of a phrase (a tus solas)
+third-person	a phrase tagged by its subject with no number (a sus solas)
+# A determiner's category tag outside the vocabulary (cuantísimo), one form.
+form-of indefinite superlative	a determiner's category tag (indefinite) outside the vocabulary
+# A register alone says nothing of the form (grx, the informal gracias).
+form-of informal	a register alone, no grammatical tag (grx)
+# The lemma's own singular says nothing (usted).
+singular	the lemma's own singular, nothing to say

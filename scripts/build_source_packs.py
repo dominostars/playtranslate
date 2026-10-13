@@ -49,8 +49,12 @@ SUMMARY = WORK / "SUMMARY.json"
 #              fleet (catalog hi.packVersion == 4), so the coverage rebuild that
 #              takes the fleet 3 -> 4 has to take hi 4 -> 5 or its manifest would
 #              read as a downgrade against the catalog it is being finalized into.
+#   - es -> 5: es ships the inflection tables (build_latin_dict INFLECTION_SCHEMA_SQL,
+#              the conjugation line and card) ahead of the fleet as es-v5, so a
+#              fleet rebuild that lands while the catalog still says es 5 must not
+#              stamp es back to the baseline.
 PACK_VERSION = 4
-PACK_VERSION_OVERRIDES: dict[str, int] = {"hi": 5}
+PACK_VERSION_OVERRIDES: dict[str, int] = {"hi": 5, "es": 5}
 
 
 def pack_version_for(code: str) -> int:

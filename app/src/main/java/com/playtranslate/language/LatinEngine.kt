@@ -2,6 +2,7 @@ package com.playtranslate.language
 
 import android.content.Context
 import android.icu.text.BreakIterator
+import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.DictionaryResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -219,6 +220,9 @@ class LatinEngine(
     override fun close() {
         dict.close()
     }
+
+    override suspend fun inflectionTable(entry: DictionaryEntry): List<InflectionForm>? =
+        entry.packId?.let { dict.inflectionTable(it) }
 
     /** Returns the stem for [word], or the lowercased surface when the
      *  language has no Snowball stemmer. Lowercasing runs under the

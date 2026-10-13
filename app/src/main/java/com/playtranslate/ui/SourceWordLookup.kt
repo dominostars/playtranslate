@@ -6,6 +6,7 @@ import com.playtranslate.R
 import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.InflectionTag
+import com.playtranslate.language.inflection.InflectionParadigms
 import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.PhraseOccurrence
 import com.playtranslate.language.SourceLanguageEngines
@@ -467,8 +468,9 @@ object SourceWordLookup {
             appCtx, prefs.sourceLangId.yomitanConsumingLang(), importedGroups,
         )
         val inflectedForms = surface?.let {
-            listOfNotNull(
-                InflectionChain.compose(it, defResult?.response?.deinflection.orEmpty(), tokenTags),
+            InflectionChain.lines(
+                it, defResult?.response?.deinflection.orEmpty(), tokenTags,
+                InflectionParadigms.readingsOf(prefs.sourceLangId, entries, word),
             )
         }.orEmpty()
 

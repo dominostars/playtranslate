@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.util.Log
+import com.playtranslate.language.inflection.InflectionParadigms
 import com.playtranslate.dictionary.PREFIX_EXACT_BONUS
 import com.playtranslate.dictionary.prefixUpperBound
 import com.playtranslate.model.DictionaryEntry
@@ -63,6 +64,23 @@ class WiktionaryDictionaryManager private constructor(
     // locale-aware casing here instead of the default `.lowercase()`.
     private val locale = langId.locale
 
+    /** Whether this language has an
+     *  [com.playtranslate.language.inflection.InflectionParadigm] to render the
+     *  pack's inflection tables ([inflectionTable]). Gates the per-lookup blob
+     *  read in [buildEntry] and the `[inflected]` marker's suppression: a pack
+     *  can carry the tables for a language the app cannot label yet (the fleet
+     *  rebuild gives every Wiktionary pack one), and such a language must keep
+     *  today's marker and pay no extra query. */
+    private val paradigm = InflectionParadigms[langId]
+    private val readsInflections = paradigm != null
+
+    /** `inflection_tagset` as id → tags, loaded beside [db] in [ensureOpen] and
+     *  dropped with it in [close]: ids are interned per build, so a map that
+     *  outlived a pack swap (a dev sideload, an in-process es-v4 → es-v5
+     *  upgrade) would label the new pack's blobs with the old pack's tags.
+     *  Empty when the pack predates the tables or the language reads none. */
+    private var tagsets: Map<Int, Set<String>> = emptyMap()
+
     suspend fun preload() = ensureOpen()
 
     /**
@@ -98,7 +116,7 @@ class WiktionaryDictionaryManager private constructor(
         val surfaceLower = surface.lowercase(locale)
         val surfaceIds = queryEntryIds(database, surfaceLower)
         if (surfaceIds.isNotEmpty()) {
-            return@withContext buildResponse(database, surfaceIds)
+            return@withContext buildResponse(database, surfaceIds, surfaceLower = surfaceLower)
         }
 
         // Folded-variant fallback (Arabic casual/variant spellings — [ArabicFold]).
@@ -120,7 +138,12 @@ class WiktionaryDictionaryManager private constructor(
             if (stemmedLower != surfaceLower) {
                 val stemIds = queryEntryIds(database, stemmedLower)
                 if (stemIds.isNotEmpty()) {
-                    return@withContext buildResponse(database, stemIds, forceNote = "stem")
+                    // The key is the stem, but the readings are of the SURFACE: a
+                    // form the alias pass missed (its page fell under the
+                    // frequency cut) can still be a line of the lemma's blob.
+                    return@withContext buildResponse(
+                        database, stemIds, forceNote = "stem", surfaceLower = surfaceLower, exactSurface = true,
+                    )
                 }
             }
         }
@@ -184,9 +207,23 @@ class WiktionaryDictionaryManager private constructor(
             .flatMapTo(mutableSetOf()) { byLower[it].orEmpty() }
     }
 
+    /**
+     * The whole inflection table of the pack entry [entryId] (its `inflection`
+     * blob decoded through `inflection_tagset`), for the detail page's
+     * conjugation card: every form with its kaikki tags, in table order. Null
+     * when the pack predates the tables, when the entry has none, or when this
+     * language has no paradigm to render them.
+     */
+    suspend fun inflectionTable(entryId: Long): List<InflectionForm>? = withContext(Dispatchers.IO) {
+        if (!readsInflections) return@withContext null
+        val database = ensureOpen() ?: return@withContext null
+        inflectionFormsOf(database, entryId.toString())
+    }
+
     fun close() {
         db?.close()
         db = null
+        tagsets = emptyMap()
     }
 
     // ── Init ──────────────────────────────────────────────────────────────
@@ -212,6 +249,7 @@ class WiktionaryDictionaryManager private constructor(
             Log.e(TAG, "Failed to open ${langId.code} pack: ${e.message}")
             null
         }
+        tagsets = if (readsInflections) db?.let { loadTagsets(it) }.orEmpty() else emptyMap()
         db
     }
 
@@ -269,7 +307,7 @@ class WiktionaryDictionaryManager private constructor(
         db: SQLiteDatabase,
         word: String,
         foldedTier: Boolean = false,
-    ): List<Pair<Long, Int>> {
+    ): List<Hit> {
         // Two DISJOINT query modes:
         //  - canonical (surface, stem): positions 0-2.
         //  - folded fallback in [lookup]: position 3 EXACTLY — the
@@ -282,19 +320,27 @@ class WiktionaryDictionaryManager private constructor(
         // No-op distinction for non-Arabic packs — they have no position-3 rows,
         // so canonical lookups never call this with foldedTier=true.
         val positionClause = if (foldedTier) " AND h.position = 3" else " AND h.position <= 2"
-        val results = mutableListOf<Pair<Long, Int>>()
+        val results = mutableListOf<Hit>()
         db.rawQuery(
-            "SELECT h.entry_id, MIN(h.position) AS pos FROM headword h " +
+            "SELECT h.entry_id, MIN(h.position) AS pos, " +
+                "MAX(CASE WHEN h.position = 2 THEN 1 ELSE 0 END) AS alias FROM headword h " +
                 "JOIN entry e ON e.id = h.entry_id " +
                 "WHERE h.text = ?$positionClause " +
                 "GROUP BY h.entry_id " +
                 "ORDER BY pos ASC, e.freq_score DESC, h.entry_id ASC LIMIT 8",
             arrayOf(word)
         ).use { c ->
-            while (c.moveToNext()) results.add(c.getLong(0) to c.getInt(1))
+            while (c.moveToNext()) results.add(Hit(c.getLong(0), c.getInt(1), c.getInt(2) == 1))
         }
         return results
     }
+
+    /** One entry a key matched: its lowest matching headword position (the
+     *  ranking tier and the marker) and whether an alias row (position 2)
+     *  matched too, independently of that minimum. poner's Snowball stem row
+     *  is `pon`, which is also its imperative alias: the minimum says stem,
+     *  the alias flag says the key is a form with readings. */
+    private data class Hit(val entryId: Long, val minPosition: Int, val hasAlias: Boolean)
 
     /**
      * Materializes [idsWithPos] into a full [DictionaryResponse], deriving
@@ -303,14 +349,33 @@ class WiktionaryDictionaryManager private constructor(
      * [forceNote] overrides the position-based derivation — used by
      * [lookup]'s stem-fallback branch, which always wants `[stem]`
      * regardless of which position the stem query happened to match.
+     *
+     * [surfaceLower] is the lowercased key the SURFACE branch matched; an
+     * entry it matched on the alias tier gets its readings of that key
+     * ([DictionaryEntry.formReadings]). The stem branch passes nothing: its
+     * key is the Snowball stem, which in es-v4 equals some alias text 949
+     * times (ve, the imperative of ver, is also the stem of ves), so filtering
+     * the blob by it would attach a real form's label to a surface that is
+     * not that form.
      */
     private fun buildResponse(
         db: SQLiteDatabase,
-        idsWithPos: List<Pair<Long, Int>>,
+        hits: List<Hit>,
         forceNote: String? = null,
+        surfaceLower: String? = null,
+        exactSurface: Boolean = false,
     ): DictionaryResponse {
-        val entries = idsWithPos.mapNotNull { (id, pos) ->
-            buildEntry(db, id, forceNote ?: markerForPosition(pos))
+        val entries = hits.mapNotNull { hit ->
+            // Readings whenever the entry has an alias row for the key, not
+            // only when that row is its lowest: `pon` is poner's stem row AND
+            // its imperative alias, and the label must win over `[stem]`. On
+            // the stem branch ([exactSurface]) the blob is filtered by the
+            // surface itself, which is safe where filtering by the stem was
+            // not: a blob line equal to the surface IS that form.
+            buildEntry(
+                db, hit.entryId, forceNote ?: markerForPosition(hit.minPosition),
+                surfaceLower.takeIf { exactSurface || hit.hasAlias },
+            )
         }
         return DictionaryResponse(entries = entries)
     }
@@ -334,8 +399,30 @@ class WiktionaryDictionaryManager private constructor(
         else -> "inflected"  // 2 = alias; any future tier defaults here
     }
 
-    private fun buildEntry(db: SQLiteDatabase, id: Long, inflectionNote: String?): DictionaryEntry? {
+    private fun buildEntry(
+        db: SQLiteDatabase,
+        id: Long,
+        inflectionNote: String?,
+        surfaceForReadings: String? = null,
+    ): DictionaryEntry? {
         val idStr = id.toString()
+
+        // The pack's readings of the looked-up surface as a form of this entry
+        // (hablamos → hablar's present and preterite lines), for the conjugation
+        // line; read only where a paradigm renders them, and kept only when it
+        // can put words to them. A reading the paradigm has no label for (a
+        // mis solas, tagged first-person singular and nothing else; 31 of the
+        // es oracle's 297,210 pages) would otherwise withhold the `[inflected]`
+        // marker below and draw a line of just the surface.
+        val formReadings = if (paradigm != null && surfaceForReadings != null) {
+            inflectionFormsOf(db, idStr)
+                ?.filter { it.surface == surfaceForReadings && !it.fromPronominalVariant }
+                .orEmpty()
+                .takeIf { paradigm.label(it) != null }
+                .orEmpty()
+        } else {
+            emptyList()
+        }
 
         var isCommon = false
         var freqScore = 0
@@ -392,7 +479,10 @@ class WiktionaryDictionaryManager private constructor(
                 val posList   = PosVocabulary.parse(c.getString(1))
                 val glossList = c.getString(2).split('\t').filter { it.isNotBlank() }
                 val miscList  = c.getString(3).split('\t').filter { it.isNotBlank() }
-                val finalPos  = if (inflectionNote != null && senses.isEmpty())
+                // The marker is withheld when the entry carries labelled readings
+                // of the surface: the conjugation line then says what the
+                // bracket token only hinted at.
+                val finalPos  = if (inflectionNote != null && formReadings.isEmpty() && senses.isEmpty())
                     listOf("[$inflectionNote]") + posList
                 else
                     posList
@@ -413,6 +503,7 @@ class WiktionaryDictionaryManager private constructor(
 
         return DictionaryEntry(
             slug = headwordTexts.first(),
+            packId = id,
             isCommon = isCommon,
             tags = emptyList(),
             jlpt = emptyList(),
@@ -422,7 +513,41 @@ class WiktionaryDictionaryManager private constructor(
             // DB stores 0-100 (fine-grained, used for ORDER BY). Normalize to
             // 0-5 for display consistency with JMdict's 0-5 star scale.
             freqScore = (freqScore * 5 / 100).coerceIn(0, 5),
+            formReadings = formReadings,
         )
+    }
+
+    /** `inflection_tagset` as id → tags; empty for a pack built before the tables. */
+    private fun loadTagsets(database: SQLiteDatabase): Map<Int, Set<String>> = try {
+        val out = HashMap<Int, Set<String>>()
+        database.rawQuery("SELECT id, tags FROM inflection_tagset", null).use { c ->
+            while (c.moveToNext()) {
+                out[c.getInt(0)] = c.getString(1).split(' ').filterTo(LinkedHashSet()) { it.isNotEmpty() }
+            }
+        }
+        out
+    } catch (_: android.database.sqlite.SQLiteException) {
+        emptyMap() // pack built before the inflection tables
+    }
+
+    /** The entry's `inflection` blob decoded: one [InflectionForm] per line
+     *  (`<tagset id>\t<surface>`, table order). Null for a pack without the
+     *  table or an entry without a blob; a line naming an unknown tagset id
+     *  is dropped. */
+    private fun inflectionFormsOf(db: SQLiteDatabase, idStr: String): List<InflectionForm>? {
+        val blob = try {
+            db.rawQuery("SELECT forms FROM inflection WHERE entry_id=?", arrayOf(idStr)).use { c ->
+                if (c.moveToFirst()) c.getString(0) else null
+            }
+        } catch (_: android.database.sqlite.SQLiteException) {
+            null // pack built before the inflection tables
+        } ?: return null
+        return blob.lineSequence().mapNotNull { line ->
+            val tab = line.indexOf('\t')
+            if (tab <= 0) return@mapNotNull null
+            val tags = line.substring(0, tab).toIntOrNull()?.let(tagsets::get) ?: return@mapNotNull null
+            InflectionForm(line.substring(tab + 1), tags)
+        }.toList()
     }
 
     companion object {

@@ -34,6 +34,8 @@ import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.InflectedForm
 import com.playtranslate.language.InflectionTag
+import com.playtranslate.language.inflection.ConjugationTable
+import com.playtranslate.language.inflection.InflectionParadigms
 import com.playtranslate.language.LanguagePackCatalogLoader
 import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.SourceLangId
@@ -410,9 +412,6 @@ class WordDetailBinder(
                     engine.alternativesOf(span, primaryIds = emptySet())
                 }
             }.orEmpty()
-            val inflectedForm = InflectionChain.compose(
-                surface ?: lookupForm, response?.deinflection.orEmpty(), tokenTags,
-            )
             // Wiktionary-derived source packs (en/de/fr/es/...) split each
             // POS section into its own entry, so a lookup of "surprise"
             // returns three entries: noun, verb, intj. Render them all back
@@ -423,6 +422,24 @@ class WordDetailBinder(
             // headwords are duplicated across entries anyway).
             val entries = response?.entries.orEmpty()
             val primary = entries.firstOrNull()
+            val inflectedForms = InflectionChain.lines(
+                surface ?: lookupForm, response?.deinflection.orEmpty(), tokenTags,
+                InflectionParadigms.readingsOf(sourceLangId, entries, primary?.slug),
+            )
+            // The conjugation cards: each entry's whole table from the pack
+            // ([SourceLanguageEngine.inflectionTable]), laid out by the
+            // language's paradigm with the form the user arrived from lit.
+            // One per table-bearing entry: the page already renders every
+            // entry's senses (fue lists ser and ir), so the ser page carries
+            // ir's grid below ser's, labelled by lemma.
+            val tables: List<Pair<DictionaryEntry, ConjugationTable>> = withContext(Dispatchers.IO) {
+                val paradigm = InflectionParadigms[sourceLangId]
+                if (paradigm == null) emptyList() else entries.mapNotNull { e ->
+                    engine.inflectionTable(e)
+                        ?.let { paradigm.table(e.slug, it, highlight = surface ?: lookupForm) }
+                        ?.let { e to it }
+                }
+            }
             // Hold the whole completion bind, not just the styled block,
             // until the host's entrance settles: a partial (native-first)
             // render with a styled upgrade behind it is the flat-then-styled
@@ -448,7 +465,7 @@ class WordDetailBinder(
             val display = pageHeadwordDisplay(primary, word, lookupForm)
             val secondaryHost = buildContent(
                 content, entries, engine, sourceLangId, defResult, initialTranslations,
-                translationRegistry, targetLangCode, enToTargetWrapper, display, inflectedForm,
+                translationRegistry, targetLangCode, enToTargetWrapper, display, inflectedForms, tables,
             )
             scrollView?.scrollTo(0, 0)
 
@@ -800,7 +817,8 @@ class WordDetailBinder(
         targetLangCode: String,
         enToTargetTranslator: WordTranslator?,
         display: HeadwordDisplay,
-        inflectedForm: InflectedForm?,
+        inflectedForms: List<InflectedForm>,
+        tables: List<Pair<DictionaryEntry, ConjugationTable>> = emptyList(),
     ): LinearLayout {
         // [primary] is the first entry. Header / Anki / character-breakdown
         // sections are word-level, so they pull from primary even when the
@@ -808,7 +826,7 @@ class WordDetailBinder(
         // Wiktionary-derived packs that POS-split into separate entries).
         val primary = entries.first()
         // ── Header block: headword + reading + badges ─────────────────────
-        addHeaderBlock(content, primary, sourceLangId, display, inflectedForm)
+        addHeaderBlock(content, primary, sourceLangId, display, inflectedForms)
 
         // ── Definitions group ─────────────────────────────────────────────
         // Target-driven render path: for non-English targets with a Native
@@ -991,6 +1009,18 @@ class WordDetailBinder(
                 )
                 displayCount++
             }
+        }
+
+        // ── Conjugation (Wiktionary packs with inflection tables) ─────────
+        // The card names its lemma whenever that is not the page's headword
+        // (vino's page lists venir's senses and so carries venir's table) or
+        // when there are several cards.
+        for ((entry, table) in tables) {
+            addGroupHeader(
+                content, ctx.getString(R.string.word_detail_group_conjugation),
+                suffix = entry.slug.takeIf { it != primary.slug || tables.size > 1 },
+            )
+            addGroupCard(content).addView(ConjugationTableView(ctx).apply { bind(table) })
         }
 
         // ── More examples (Tatoeba, online) ──────────────────────────────
@@ -1319,15 +1349,15 @@ class WordDetailBinder(
      * in [bind] (typeface, pivot, scroll listener); here we just rewrite
      * its text to the canonical headword [display] ([pageHeadwordDisplay])
      * and emit the reading line (with its speak chip) plus the Common pill
-     * and stars badge row. [inflectedForm], when there is one, is drawn as
-     * the conjugation line between the headword and the readings.
+     * and stars badge row. [inflectedForms], when there are any, are drawn as
+     * the conjugation lines between the headword and the readings.
      */
     private fun addHeaderBlock(
         parent: LinearLayout,
         entry: DictionaryEntry,
         sourceLangId: SourceLangId,
         display: HeadwordDisplay,
-        inflectedForm: InflectedForm?,
+        inflectedForms: List<InflectedForm>,
     ) {
         val written = display.written
         val readingRows = entry.orderedReadingRows(readingHint)
@@ -1364,7 +1394,7 @@ class WordDetailBinder(
 
         // The conjugation line (飲んでいなかった · -て « -いる « negative « -た),
         // muted, at the size the results cell draws the same line.
-        inflectedForm?.let { form ->
+        for (form in inflectedForms) {
             block.addView(TextView(ctx).apply {
                 text = InflectionChain.format(ctx, form)
                 setTextColor(ctx.themeColor(R.attr.ptTextMuted))

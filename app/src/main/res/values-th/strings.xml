@@ -166,6 +166,7 @@
     </plurals>
 
     <string name="word_detail_group_definitions">คำจำกัดความ</string>
+    <string name="word_detail_group_conjugation">การผันกริยา</string>
 
     <string name="word_detail_group_kanji">คันจิ</string>
 

@@ -2,6 +2,7 @@ package com.playtranslate.language
 
 import android.content.Context
 import com.playtranslate.model.CharacterDetail
+import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.DictionaryResponse
 import java.util.concurrent.ConcurrentHashMap
 
@@ -207,6 +208,15 @@ interface SourceLanguageEngine {
      * overrides.
      */
     suspend fun alternativesOf(span: TokenSpan, primaryIds: Set<Long>): List<TokenSpan> = emptyList()
+
+    /**
+     * The pack's whole inflection table for [entry] (its conjugation or
+     * declension: every form with kaikki's tags, in table order), for the
+     * detail page's conjugation card. Default: none; [LatinEngine] reads it
+     * off the Wiktionary pack for the languages that have an
+     * [com.playtranslate.language.inflection.InflectionParadigm].
+     */
+    suspend fun inflectionTable(entry: DictionaryEntry): List<InflectionForm>? = null
 
     /** Character-level lookup. JA returns [com.playtranslate.model.KanjiDetail];
      *  ZH returns [com.playtranslate.model.HanziDetail]. Other engines return null.

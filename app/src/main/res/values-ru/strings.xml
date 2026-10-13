@@ -181,6 +181,7 @@
     </plurals>
 
     <string name="word_detail_group_definitions">Определения</string>
+    <string name="word_detail_group_conjugation">Спряжение</string>
 
     <string name="word_detail_group_kanji">Кандзи</string>
 

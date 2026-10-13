@@ -1,0 +1,26 @@
+# Form-of page tagsets (sorted, form-of removed, as the oracle TSV stores them) whose tags the Spanish labeller all knows but which say nothing the line names, with the reason. Read by PackInflectionOracleTest: every such page needs its tags here, and no line here may be stale.
+# Phrase pages tagged by their possessive's person (a mis solas, a tus anchas, por mi cuenta): variants of a phrase, not forms.
+first-person	a possessive variant of a phrase (a mis anchas)
+first-person singular	a possessive variant of a phrase (a mis solas)
+first-person plural	a possessive variant of a phrase (a nuestras solas)
+second-person	a possessive variant of a phrase (a tus anchas)
+second-person singular	a possessive variant of a phrase (a tus solas)
+plural second-person	a possessive variant of a phrase (a vuestras solas)
+third-person	a possessive variant of a phrase (a sus solas)
+# An epicene adjective's or noun's common-gender form is tagged both genders (alienígena, chama): the page says nothing of the form.
+feminine masculine singular	both genders: an epicene form, nothing to say
+feminine masculine	both genders: an epicene form, nothing to say
+# Only a register tag (informal): a variant, not a form.
+informal	a register alone (como tas)
+# A phrase page tagged by its subject with no number (vaya a saber, i a saber).
+formal second-person	a phrase tagged by its subject with no number (vaya a saber)
+informal second-person with-voseo	a phrase tagged by its subject with no number (i a saber)
+second-person with-voseo	a phrase tagged by its subject with no number (i a saber)
+# Personal pronouns' case forms (me, la, les under yo, ella, ustedes) and reflexive or pronominal variant pages of a verb (darse de alta under dar de alta, iniciarse under iniciar): not forms the line names.
+accusative	a personal pronoun's case form (la, los)
+accusative feminine plural	a personal pronoun's case form (las)
+dative	a personal pronoun's case form (les)
+reflexive	a personal pronoun's reflexive form (me), or a reflexive variant page of a verb (darse de alta, iniciarse)
+pronominal	a pronominal variant page of a verb (hacerse la rata)
+# A page tagged both numbers (empleada: feminine plural singular): kaikki merged two forms.
+feminine plural singular	both numbers on one page: kaikki merged two forms (empleada)

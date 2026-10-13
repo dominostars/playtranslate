@@ -26,6 +26,7 @@ import com.playtranslate.language.DefinitionResolver
 import com.playtranslate.language.DefinitionResult
 import com.playtranslate.language.InflectedForm
 import com.playtranslate.language.InflectionTag
+import com.playtranslate.language.inflection.InflectionParadigms
 import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.SourceLanguageEngine
 import com.playtranslate.language.SourceLanguageEngines
@@ -1449,10 +1450,9 @@ class DragLookupController(
         val displaySurface = matchedSurface
         // The dragged form's conjugation line: the lookup's own deinflection
         // chain, then the matched token's (both dictionary form outward).
-        val inflectedForms = listOfNotNull(
-            InflectionChain.compose(
-                matchedSurface, response?.deinflection.orEmpty(), matchedToken?.inflections.orEmpty(),
-            ),
+        val inflectedForms = InflectionChain.lines(
+            matchedSurface, response?.deinflection.orEmpty(), matchedToken?.inflections.orEmpty(),
+            InflectionParadigms.readingsOf(Prefs(context).sourceLangId, entries, entry?.slug),
         )
         val popupData: PopupData = if (entry != null && defResult != null) {
             val display = entry.headwordDisplay(
@@ -1644,7 +1644,10 @@ class DragLookupController(
             lookupForm = lookupForm,
             lookupReading = readingHint,
             inflectedForms = foundAs?.let {
-                listOfNotNull(InflectionChain.compose(it, result.response.deinflection, foundTags))
+                InflectionChain.lines(
+                    it, result.response.deinflection, foundTags,
+                    InflectionParadigms.readingsOf(Prefs(context).sourceLangId, entries, entry.slug),
+                )
             }.orEmpty(),
             senses = buildSenseDisplays(result, entries, targetLang),
             freqScore = entry.freqScore,
