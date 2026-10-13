@@ -523,11 +523,11 @@
       "display": "Spanish",
       "script": "LATIN",
       "bundled": false,
-      "packVersion": 4,
+      "packVersion": 5,
       "additiveFromVersion": 1,
-      "size": 18237353,
-      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/es-v4/es.zip",
-      "sha256": "2783308055e0ca5ad402f99996a1c6d9589f40dcc10015cf0e1e996f557edfee",
+      "size": 21187157,
+      "url": "https://github.com/dominostars/playtranslate-langpacks/releases/download/es-v5/es.zip",
+      "sha256": "aba5876c98e3af395c7117ca76fd4484352e4863af323b9ce1049ed37f6c8375",
       "licenses": [
         {
           "component": "Wiktionary",
