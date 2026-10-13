@@ -1,0 +1,36 @@
+# Form-of page tagsets (sorted, form-of removed) whose tags the French labeller all knows but which say nothing the line names. Read by PackInflectionOracleTest.
+# An epicene form tagged both genders.
+feminine masculine	both genders: an epicene form, nothing to say
+# Imperatives French has not (first person singular, third person), or imperatives with no person or number.
+first-person imperative singular	an imperative for the first person singular, which French has not
+imperative plural third-person	an imperative for the third person, which French has not
+imperative singular third-person	an imperative for the third person, which French has not
+imperative indicative plural third-person	two moods merged, one an imperative French has not
+imperative present second-person	an imperative with no number
+imperative second-person	an imperative with no number
+imperative singular	an imperative with no person
+# Pages merging a participle with finite forms (cendre), or naming no tense, number or person.
+first-person imperative participle plural	a participle merged with a finite form: kaikki merged two pages
+first-person indicative participle plural present	a participle merged with a finite form: kaikki merged two pages
+first-person indicative participle present singular subjunctive third-person	a participle merged with finite forms (cendre): kaikki merged two pages
+indicative participle plural present second-person	a participle merged with a finite form: kaikki merged two pages
+indicative participle plural present subjunctive third-person	a participle merged with finite forms: kaikki merged two pages
+indicative participle present second-person singular subjunctive	a participle merged with finite forms: kaikki merged two pages
+imperative participle plural second-person	a participle merged with an imperative: kaikki merged two pages
+imperative participle second-person singular	a participle merged with an imperative: kaikki merged two pages
+first-person indicative present second-person	a page naming no number
+first-person indicative present subjunctive third-person	a page naming no number
+first-person indicative singular subjunctive third-person	a page naming no tense
+first-person present second-person subjunctive	a page naming no number
+first-person singular third-person	a page naming no tense or mood (blague)
+first-person subjunctive third-person	a page naming no tense or number (blague)
+historic past plural	a page naming no person
+indicative singular third-person	a page naming no tense
+# A register alone (bon ap').
+informal	a register alone (bon ap')
+# Pronoun pages tagged by person (elle, elles), impersonal verbs' pages with no person (gît, il y a), the lemma's own singular (heureuxe).
+feminine singular third-person	a pronoun page tagged by its person (elle), nothing to say
+feminine plural third-person	a pronoun page tagged by its person (elles), nothing to say
+indicative present	an impersonal verb's page with no person (gît)
+indicative present singular	an impersonal verb's page with no person (il y a)
+singular	the lemma's own singular, nothing to say (heureuxe)

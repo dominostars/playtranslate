@@ -339,12 +339,17 @@ CREATE TABLE inflection (
 # are used as a fallback when the entry has no table rows at all.
 INFLECTION_TABLE_SOURCES = frozenset({"conjugation", "declension", "inflection"})
 
-# Table rows dropped from the blob. Empty since 2026-10-12: the clitic-attached
-# `combined-form` rows (háblame, dímelo: 124 of hablar's 201) were excluded at
-# first for size, but game dialogue is imperative-heavy and kaikki tags them
-# exactly (object person/number, dative/accusative), so they are stored and the
-# paradigm labels them ("tú · imperativo + me"). They stay out of the grid.
-INFLECTION_EXCLUDED_TAGS: frozenset[str] = frozenset()
+# Table rows dropped from the blob by tag. The clitic-attached `combined-form`
+# rows (háblame, dímelo: 124 of hablar's 201) were excluded at first for size,
+# but game dialogue is imperative-heavy and kaikki tags them exactly (object
+# person/number, dative/accusative), so since 2026-10-12 they are stored and the
+# paradigm labels them ("tú · imperativo + me"); they stay out of the grid.
+# `multiword-construction` is kaikki's compound-tense scaffolding (French "avoir
+# + past participle", "present indicative of avoir + past participle"); most of
+# it is dropped by the " + " rule below, but kaikki also emits fragments without
+# the plus ("ayant", "past historic of avoir": 454 rows in fr), which only the
+# tag identifies.
+INFLECTION_EXCLUDED_TAGS: frozenset[str] = frozenset({"multiword-construction"})
 COMBINED_FORM_TAG = "combined-form"
 
 # Headline-fallback gate: a row counts as an inflection only when it carries a

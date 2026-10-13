@@ -73,6 +73,8 @@ object InflectionParadigms {
 
     operator fun get(lang: SourceLangId): InflectionParadigm? = when (lang) {
         SourceLangId.ES -> SpanishParadigm
+        SourceLangId.PT -> PortugueseParadigm
+        SourceLangId.FR -> FrenchParadigm
         else -> null
     }
 
