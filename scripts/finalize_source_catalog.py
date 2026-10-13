@@ -17,11 +17,38 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "app" / "src" / "main" / "assets" / "langpack_catalog.json"
 RELEASES = "https://github.com/dominostars/playtranslate-langpacks/releases/download"
+
+def rewrite_entry(text: str, lang: str, fields: dict[str, object]) -> str:
+    """Rewrites the scalar [fields] of one pack entry in the catalog's TEXT,
+    touching nothing else, so the commit diffs as that entry's lines alone.
+    The file mixes literal non-ASCII text with \\uXXXX escapes (the Hy-MT2
+    attributions), which no json.dumps setting reproduces, so re-serializing
+    the whole catalog rewrote lines outside the entry being finalized (the
+    es-v5 run of 2026-10-13). A field the entry lacks (additiveFromVersion on
+    an entry that never had it) is inserted after packVersion."""
+    entry = re.search(r'^    "%s": \{\n.*?^    \}' % re.escape(lang), text, re.S | re.M)
+    if entry is None:
+        raise SystemExit(f"{lang}: no entry at indent 4 in the catalog text")
+    block = entry.group(0)
+    for key, value in fields.items():
+        rendered = json.dumps(value, ensure_ascii=False)
+        line = re.compile(r'^(      "%s": )(.*?)(,?)$' % re.escape(key), re.M)
+        if line.search(block) is None:
+            anchor = re.search(r'^      "packVersion": .*\n', block, re.M)
+            if anchor is None:
+                raise SystemExit(f"{lang}: neither {key} nor packVersion in the entry text")
+            block = block[:anchor.end()] + f'      "{key}": {rendered},\n' + block[anchor.end():]
+        else:
+            block, n = line.subn(lambda m, r=rendered: m.group(1) + r + m.group(3), block, count=1)
+            if n != 1:
+                raise SystemExit(f"{lang}: {key} not rewritten")
+    return text[:entry.start()] + block + text[entry.end():]
 
 
 def main() -> int:
@@ -33,7 +60,9 @@ def main() -> int:
     ap.add_argument("--pack-version", type=int, default=2)
     args = ap.parse_args()
 
-    catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
+    original = CATALOG.read_text(encoding="utf-8")
+    text = original
+    catalog = json.loads(original)
     packs = catalog["packs"]
     updated: list[str] = []
     skipped: list[str] = []
@@ -50,17 +79,22 @@ def main() -> int:
             continue
         # Keep additiveFromVersion as-is so the prior version stays an optional
         # upgrade; only fall back to 1 if the entry never had it.
-        entry.setdefault("additiveFromVersion", 1)
         data = zip_path.read_bytes()
-        entry["packVersion"] = args.pack_version
-        entry["size"] = len(data)
-        entry["url"] = f"{RELEASES}/{lang}-v{args.pack_version}/{lang}.zip"
-        entry["sha256"] = hashlib.sha256(data).hexdigest()
+        fields: dict[str, object] = {
+            "additiveFromVersion": entry.get("additiveFromVersion", 1),
+            "packVersion": args.pack_version,
+            "size": len(data),
+            "url": f"{RELEASES}/{lang}-v{args.pack_version}/{lang}.zip",
+            "sha256": hashlib.sha256(data).hexdigest(),
+        }
+        entry.update(fields)
+        text = rewrite_entry(text, lang, fields)
         updated.append(lang)
 
-    CATALOG.write_text(
-        json.dumps(catalog, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
+    # The textual edit must mean exactly what the dict edit means.
+    if json.loads(text) != catalog:
+        raise SystemExit("the catalog text after the edit does not parse to the edited catalog; nothing written")
+    CATALOG.write_text(text, encoding="utf-8")
     print(f"Updated {len(updated)} source pack(s) to v{args.pack_version} "
           f"(additive/optional): {', '.join(updated) or '(none)'}")
     if skipped:
