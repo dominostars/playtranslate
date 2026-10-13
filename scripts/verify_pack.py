@@ -39,6 +39,17 @@ APP_VERSION_CODE = 14  # app/build.gradle.kts
 # churn per table before failing.
 REGRESSION_TOLERANCE = 0.05
 
+# Inflection tables (build_latin_dict.INFLECTION_SCHEMA_SQL): per language, the
+# packVersion from which the pack must carry them and the minimum number of
+# entries with a blob. A pack at or past that version WITHOUT the tables was
+# built with a pre-inflection builder and would ship as "no label, no card"
+# with nothing else failing; a pack whose table emptied (an upstream `source`
+# rename, a blocklist that grew) is caught by the floor. es: 4,570 verb entries
+# in es-v4, every one with a kaikki table.
+INFLECTION_REQUIRED: dict[str, tuple[int, int]] = {
+    "es": (5, 4_000),
+}
+
 FAILURES: list[str] = []
 
 # JmdictSchemaProbe.kt:31-52 — all five must answer or the pack is force-wiped.
@@ -84,7 +95,14 @@ def compare_against_published(old_zip: Path, new_conn: sqlite3.Connection, work:
         return
     old = sqlite3.connect(f"file:{old_dir / 'dict.sqlite'}?mode=ro", uri=True)
     try:
-        for table in ("entry", "headword", "sense", "example"):
+        tables = ["entry", "headword", "sense", "example"]
+        # The inflection table joins the gate once both sides carry it (the
+        # old pack predates it on the first rebuild that adds it).
+        have_old = {r[0] for r in old.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        have_new = {r[0] for r in new_conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if "inflection" in have_old and "inflection" in have_new:
+            tables.append("inflection")
+        for table in tables:
             old_n = old.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
             new_n = new_conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
             delta = (new_n - old_n) / old_n if old_n else 0.0
@@ -173,6 +191,49 @@ def stub_audit(conn: sqlite3.Connection) -> dict:
         "dangling": sorted(dangling),
         "selfref": sorted(selfref),
     }
+
+
+def check_inflection_tables(conn: sqlite3.Connection, lang: str, pack_version: int) -> None:
+    """`inflection` + `inflection_tagset` consistency: both or neither; every
+    blob line is `<tagset id>\\t<surface>` with a known id; every blob belongs
+    to an entry; and the per-language floor from INFLECTION_REQUIRED holds
+    from the version that introduced the tables. Stdlib-only on purpose (this
+    gate runs outside the pack-build venv), so the line format is parsed here
+    rather than through build_latin_dict.decode_inflection_blob."""
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    has_blobs, has_tagsets = "inflection" in tables, "inflection_tagset" in tables
+    required = INFLECTION_REQUIRED.get(lang)
+    if has_blobs != has_tagsets:
+        fail("inflection / inflection_tagset: one table without the other")
+        return
+    if not has_blobs:
+        if required and pack_version >= required[0]:
+            fail(f"no inflection table — {lang} v{pack_version}+ packs carry one "
+                 f"(built with a pre-inflection builder?)")
+        else:
+            ok("no inflection table (not required for this pack)")
+        return
+    tagsets = {tid for (tid,) in conn.execute("SELECT id FROM inflection_tagset")}
+    orphans = conn.execute(
+        "SELECT count(*) FROM inflection i LEFT JOIN entry e ON e.id = i.entry_id WHERE e.id IS NULL"
+    ).fetchone()[0]
+    n_entries = n_lines = bad_lines = 0
+    for (blob,) in conn.execute("SELECT forms FROM inflection"):
+        n_entries += 1
+        for line in blob.split("\n"):
+            n_lines += 1
+            tid, sep, surface = line.partition("\t")
+            if not sep or not surface or not tid.isdigit() or int(tid) not in tagsets:
+                bad_lines += 1
+    if orphans:
+        fail(f"inflection: {orphans:,} blobs belong to no entry")
+    if bad_lines:
+        fail(f"inflection: {bad_lines:,} malformed or unknown-tagset lines")
+    floor = required[1] if required and pack_version >= required[0] else 0
+    if n_entries < floor:
+        fail(f"inflection: {n_entries:,} entries with a table, floor for {lang} is {floor:,}")
+    elif not orphans and not bad_lines:
+        ok(f"inflection: {n_entries:,} entries, {n_lines:,} lines, {len(tagsets):,} tag sets")
 
 
 def misc_vocabulary(root: Path) -> tuple[set[str], set[str]]:
@@ -279,6 +340,9 @@ def main() -> int:
             fail(f"integrity_check={integ!r}")
         else:
             ok("integrity_check ok")
+
+        # ── inflection tables ─────────────────────────────────────────────
+        check_inflection_tables(conn, args.lang, args.pack_version)
 
         # ── per-language traps ────────────────────────────────────────────
         if args.lang == "ja":

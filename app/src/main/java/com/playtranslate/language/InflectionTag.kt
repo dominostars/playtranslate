@@ -128,5 +128,13 @@ enum class InflectionTag(
  * found plus the [tags] it expresses. A single lemma can surface in several
  * forms within one passage (食べたい / 食べられない), so a word-result row carries a
  * list of these rather than collapsing to the first occurrence's form.
+ *
+ * [paradigm], when set, is a Wiktionary-pack language's reading of the surface
+ * ([ParadigmReading], the pack's tagged lines for it), rendered through that
+ * language's paradigm instead of a [tags] chain; [tags] is then empty.
  */
-data class InflectedForm(val surface: String, val tags: List<InflectionTag>)
+data class InflectedForm(
+    val surface: String,
+    val tags: List<InflectionTag>,
+    val paradigm: ParadigmReading? = null,
+)

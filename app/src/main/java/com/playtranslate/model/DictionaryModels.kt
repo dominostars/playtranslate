@@ -1,5 +1,6 @@
 package com.playtranslate.model
 
+import com.playtranslate.language.InflectionForm
 import com.playtranslate.language.InflectionTag
 
 /**
@@ -68,6 +69,17 @@ data class DictionaryEntry(
      *  秘密 and 漏らす (Thor, 2026-09-07). `copy` keeps it. Sense-less
      *  synthesized entries leave the default, having no POS to judge. */
     val isExpression: Boolean = false,
+    /** The Wiktionary pack's readings of the looked-up surface as a form of
+     *  THIS entry: every `inflection` line whose surface is the key that
+     *  matched on the alias tier (hablamos → hablar's first-person plural
+     *  present and preterite lines), kaikki tags verbatim. Rendered through
+     *  the language's paradigm as the conjugation line in place of the raw
+     *  `[inflected]` marker, which is withheld when this is non-empty; the
+     *  manager keeps the readings only when the paradigm labels them, so a
+     *  form it has no words for keeps the marker. Empty for a lemma or stem
+     *  match, for a pack built before the tables, for a language without a
+     *  paradigm, and for every other engine. */
+    val formReadings: List<InflectionForm> = emptyList(),
 )
 
 /** One imported term dictionary's definitions for a looked-up word.

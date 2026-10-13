@@ -159,6 +159,7 @@
     </plurals>
 
     <string name="word_detail_group_definitions">Tanımlar</string>
+    <string name="word_detail_group_conjugation">Çekim</string>
 
     <string name="word_detail_group_kanji">Kanji</string>
 

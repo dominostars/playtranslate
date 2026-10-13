@@ -506,6 +506,11 @@
     <!-- Group header for the Definitions group in the word-detail sheet. -->
     <string name="word_detail_group_definitions">Definitions</string>
 
+    <!-- Group header for the Conjugation group in the word-detail sheet: the
+         verb's conjugation table from the dictionary pack (Spanish first).
+         Rendered uppercase like the Definitions header; one noun. -->
+    <string name="word_detail_group_conjugation">Conjugation</string>
+
     <!-- Group header for the per-kanji breakdown group (Japanese). -->
     <string name="word_detail_group_kanji">Kanji</string>
 

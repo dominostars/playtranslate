@@ -175,6 +175,7 @@
     </plurals>
 
     <string name="word_detail_group_definitions">定義</string>
+    <string name="word_detail_group_conjugation">活用</string>
 
     <string name="word_detail_group_kanji">漢字</string>
 

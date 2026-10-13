@@ -1,7 +1,10 @@
 package com.playtranslate.ui
 
 import com.playtranslate.language.InflectedForm
+import com.playtranslate.language.InflectionForm
 import com.playtranslate.language.InflectionTag
+import com.playtranslate.language.ParadigmReading
+import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.TokenSpan
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -119,5 +122,19 @@ class WordRowResolverTest {
         val (shown, overflow) = capInflectionForms(forms, max = 3)
         assertEquals(1, shown.size)
         assertEquals(0, overflow)
+    }
+
+    @Test
+    fun `a paradigm reading draws one line for a Latin row's tagless occurrences`() {
+        val reading = ParadigmReading(
+            SourceLangId.ES,
+            listOf(InflectionForm("hablamos", setOf("first-person", "indicative", "plural", "present"))),
+        )
+        val forms = rowInflectedForms(
+            listOf(span("hablamos", "hablamos"), span("hablamos", "hablamos")),
+            deinflection = emptyList(),
+            paradigms = listOf(reading),
+        )
+        assertEquals(listOf(InflectedForm("hablamos", emptyList(), reading)), forms)
     }
 }

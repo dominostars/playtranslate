@@ -177,6 +177,7 @@
     </plurals>
 
     <string name="word_detail_group_definitions">Definitionen</string>
+    <string name="word_detail_group_conjugation">Konjugation</string>
 
     <string name="word_detail_group_kanji">Kanji</string>
 
