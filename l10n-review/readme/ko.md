@@ -138,3 +138,17 @@ Out of scope (app strings, not this README): values-ko `accessibility_dialog_mes
 ### Disposition (2026-10-08)
 
 Applied the 1 💬 (step 2 restructured with the path in parentheses). The out-of-scope app-string note (다운로드된 앱 vs AOSP 다운로드한 앱) is reported to the developer, not changed here.
+
+## Delta review 2026-10-14 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] ko -> readme/README.ko.md`, no warnings; the same with `--require-header`). **No 🛑 issues.**
+
+| section | severity | current | suggested | note |
+|---|---|---|---|---|
+| Optional: Online Translation Backends (lead) | 💬 | "아래 서비스 중 원하는 서비스를 추가하세요. 서비스는 원하는 만큼 추가할 수 있습니다." | "아래 서비스를 원하는 만큼 추가하세요." | Now that 등록하세요 is 추가하세요, the two sentences repeat 원하는, 서비스 and 추가 back to back. One sentence keeps both "any of the following" and "as many as you like". The next sentence (각 서비스가 …) follows on unchanged. Optional. |
+
+Clean areas: The lead's verb is the app's 추가 (`add_online_service_title` 번역 서비스 추가). The API-key clause is gone and the ~하세요 instruction form is kept. The new bullet comes before 사용자 지정 with the Latin brand in bold, and its link text and URL are byte-identical to the English. It follows the list's pattern: the remark sits in half-width parentheses attached to the link with no space. 「(무료, API 키 불필요)」 has the form of `service_no_account_required` (계정 불필요) and says what the app's note says. Leaving the intro alone was correct, since Korean has no article to drop. The bold count went up by one, as in English (38 each).
+
+### Disposition (2026-10-14)
+
+Applied the 1 💬 (the lead merged into "아래 서비스를 원하는 만큼 추가하세요.").

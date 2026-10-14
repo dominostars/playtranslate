@@ -121,3 +121,17 @@ Outside this delta (not reviewed, for the record): install step 2's labels diffe
 ### Disposition (2026-10-08)
 
 Applied the ⚠️ (Pixel's «أدوات تسهيل الاستخدام» added in parentheses after the app's path term) and both 💬 (the switch named; «إعدادات إمكانية الوصول» in step 4). Out-of-scope notes (install step 2's "Allow from this source" and "Special app access" labels, the app's own path strings) are reported to the developer, not changed here.
+
+## Delta review 2026-10-14 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] ar -> readme/README.ar.md`, no warnings; the same with `--require-header`). **No 🛑 issues.**
+
+| section | severity | current | suggested | note |
+|---|---|---|---|---|
+| اختياري: خدمات الترجمة عبر الإنترنت > Bilibili Index-Translate bullet | ⚠️ | "**Bilibili Index-Translate**: [index-translate.bilibili.com](https://index-translate.bilibili.com/)، خدمة مجانية لا تحتاج إلى مفتاح API" | "**Bilibili Index-Translate**: خدمة مجانية لا تحتاج إلى مفتاح API، متاحة على [index-translate.bilibili.com](https://index-translate.bilibili.com/)" | The text is right but the layout is not. With the link straight after the colon, the Latin name, the colon and the link resolve to one left-to-right run. So "…bilibili.com", not the bold name, sits beside the bullet, and the colon lands inside the Latin run. In the 8 sibling bullets an Arabic word follows the colon, so the name stands alone at the bullet. This was computed with `java.text.Bidi` on the rendered text in a right-to-left paragraph (`<strong>` and `<a>` do not isolate), not rendered on GitHub. As translated, the runs read on screen, left to right: `API` · «، خدمة مجانية لا تحتاج إلى مفتاح» · `Bilibili Index-Translate: index-translate.bilibili.com` · RLM. With the suggestion, `Bilibili Index-Translate` is its own run beside the bullet, as `Claude` is. The new wording mirrors the DeepL bullet's «باقة مجانية متاحة على [link]». The U+200F before `**` lies outside the quoted text and stays. |
+
+Clean areas: The lead sentence drops the API key as the English does («يمكنك إضافة أيٍّ من الخدمات التالية ضمن **الإعدادات ← خدمات الترجمة**»). The path, its bold and its ← arrow are unchanged, and «أضف منها ما تشاء» still follows. The bullet sits between Claude and «مخصص», as in English, and starts with U+200F like the other 8 Latin-led backend bullets (checked by code point). It keeps the brand in Latin script and the link byte-identical (checker). «مفتاح API» is the app's `llm_backend_api_key_label`, and "free" and "no API key" are both there, in line with the app's own note («الخدمة مجانية ولا تتطلب مفتاح API»). Its punctuation is the Arabic comma, and it adds no hidden character other than that mark. The intro was correctly left alone: «تطبيق Android للترجمة الفورية…» has no indefinite article for the English "A" change to remove. The RTL wrapper is intact.
+
+### Disposition (2026-10-14)
+
+Applied the 1 ⚠️ (the Arabic text first, then «متاحة على» and the link, in the DeepL bullet's order, so the bold name sits next to the bullet).

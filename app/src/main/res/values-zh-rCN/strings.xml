@@ -759,6 +759,7 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="llm_backend_api_key_label">API 密钥</string>
+    <string name="llm_backend_index_translate_note">免费，无需 API 密钥。由 Bilibili 运营，未公布使用上限。截取到的文字会发送给 Bilibili 进行翻译。</string>
 
     <string name="llm_backend_model_label">模型</string>
 
@@ -777,6 +778,7 @@
     <string name="llm_model_picker_loading">正在加载模型…</string>
 
     <string name="llm_model_picker_fetch_failed">无法获取模型列表。请检查 API 密钥，或通过“自定义…”输入模型 ID。</string>
+    <string name="llm_model_picker_fetch_failed_keyless">无法获取模型列表。请稍后重试，或通过“自定义…”输入模型 ID。</string>
 
     <string name="llm_backend_invalid_key_alert_title">无法验证 API 密钥</string>
 
@@ -879,6 +881,7 @@
     <string name="tr_service_remove_title_fmt">移除 <xliff:g id="service_name" example="OpenAI">%1$s</xliff:g>？</string>
 
     <string name="tr_service_remove_message">这会将该服务从列表中移除，并删除已保存的 API 密钥。</string>
+    <string name="tr_service_remove_message_keyless">这会将该服务从列表中移除。</string>
 
     <string name="tr_service_remove_confirm">移除</string>
 

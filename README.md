@@ -172,7 +172,7 @@ PlayTranslate translates from **26 game languages** (the text it can read off th
 
 ## Optional: Online Translation Backends
 
-By default, translation uses [Lingva](https://github.com/thedaviddelta/lingva-translate) with ML Kit as an offline fallback. For higher quality translations, you can plug in an API key for any of the following under **Settings → Translation services**. Add as many as you like — each service is its own entry in the list, so you can keep several configured and reorder them to pick which one translates first:
+By default, translation uses [Lingva](https://github.com/thedaviddelta/lingva-translate) with ML Kit as an offline fallback. For higher quality translations, you can add any of the following under **Settings → Translation services**. Add as many as you like — each service is its own entry in the list, so you can keep several configured and reorder them to pick which one translates first:
 
 - **DeepL**: free tier at [deepl.com/en/pro#developer](https://www.deepl.com/en/pro#developer)
 - **OpenAI**: [platform.openai.com](https://platform.openai.com/api-keys) — pick a model at runtime
@@ -182,6 +182,7 @@ By default, translation uses [Lingva](https://github.com/thedaviddelta/lingva-tr
 - **Groq**: [console.groq.com](https://console.groq.com/keys) — pick a model at runtime
 - **OpenRouter**: [openrouter.ai](https://openrouter.ai/keys) — pick a model at runtime
 - **Claude**: [platform.claude.com](https://platform.claude.com/settings/keys) — pick a model at runtime
+- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://index-translate.bilibili.com/) — free, no API key needed
 - **Custom**: any other OpenAI-compatible endpoint — point it at your own base URL
 
 ## Optional: Anki Flashcards

@@ -975,3 +975,19 @@ No new findings.
 **PASS.** Round 1 had no findings, so there was nothing to apply, and the file still holds the values round 1 passed. There are no new findings (0 ❌, 0 ⚠️, 0 💬) and no 🛑. Two items carry over from round 1, neither blocking:
 1. A device pass on an ar device for the toast wrap and the centered alerts.
 2. On a Xiaomi set to Arabic, check that a Settings search for «التشغيل التلقائي» finds the autostart switch. The only Arabic Xiaomi text found (Huawei-authored, Android 9) writes «تشغيل تلقائي», and neither phrase contains the other.
+
+## Delta review 2026-10-14 (Bilibili Index-Translate: 3 keys)
+
+Mechanical layer: `python3 scripts/l10n_diff.py --locale app/src/main/res/values-ar/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync". The three keys are present once each, beside the same neighbours as in English, and the file parses as XML. This delta has no `<xliff:g>`, placeholder, plural, markup, apostrophe, ASCII quote or dash. "Bilibili" stays in Latin script, twice in the note. **No 🛑 build-breaking issues.**
+
+Render code read before reviewing: the note is `tvProviderNote` (RowSubtitle, wraps, no `maxLines`), shown in place of the API-key section on the service's page under the untranslated title "Bilibili Index-Translate". The picker line is a 13 sp wrapping TextView above the model list, used when the account takes no key. The keyless body appears under `tr_service_remove_title_fmt` for Lingva and Bilibili Index-Translate.
+
+| key | severity | current | suggested | note |
+|---|---|---|---|---|
+| llm_backend_index_translate_note | 💬 | `تديرها Bilibili، ولا تنشر أي حدود للاستخدام لها.` | `تديرها Bilibili، ولا تنشر أي حدود لاستخدامها.` | «حدود للاستخدام لها» stacks two لـ phrases ("limits for use for it"). «لاستخدامها» ("on its use") says the same with one, closer to the file's construct «حدود استخدام» (`keep_running_samsung_never_sleeping_line`). ـها still points to the service. Optional. |
+
+Clean areas: The note keeps all three English facts: free and keyless; run by Bilibili, with no published limits; the captured text goes to Bilibili. Each of its sentences opens with an Arabic word. Bidi was computed with `java.text.Bidi` on the string, with a right-to-left paragraph: each Latin token (API, Bilibili twice) is its own run, and the period after «API» and the «،» after «Bilibili» resolve to the right-to-left side. Feminine agreement for Bilibili (تديرها، تنشر) matches how the file treats companies («تُدخل Samsung»). «النص الملتقَط» is the captured-text term of `tr_service_order_footer` and `history_hide_translations_toggle_subtitle`. «مفتاح API» is `llm_backend_api_key_label`, and «مجانية» is the file's word for free (`deepl_settings_get_key_subtitle`). The keyless picker line keeps the sibling's first sentence and its «اكتب معرّف نموذج عبر «مخصص…»» clause byte for byte, and «مخصص…» matches `llm_backend_model_custom_entry`. «حاول مرة أخرى» is the file's retry phrase (`hidden_word_save_failed`, `settings_ocr_download_failed`), and «لاحقًا» is its "later". It uses masculine-singular imperatives (حاول، اكتب), as the sibling does. Read as one screen, the delete alert is «إزالة Lingva؟», then «يؤدي هذا إلى إزالة الخدمة من القائمة.», then the button «إزالة». The body is the sibling without its key clause, and it uses إزالة (remove) with no حذف, since nothing is deleted.
+
+### Disposition (2026-10-14)
+
+Applied the 1 💬 («حدود لاستخدامها»).

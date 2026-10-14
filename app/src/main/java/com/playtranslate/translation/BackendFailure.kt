@@ -21,7 +21,8 @@ enum class BackendFailureKind {
     DAILY_QUOTA,
     /** A per-month quota is used up (DeepL's 456). */
     MONTHLY_QUOTA,
-    /** Too many requests: a 429, or Lingva's 403 block. */
+    /** Too many requests: a 429, or a keyless endpoint's 401/403 block
+     *  ([isKeylessRefusal]: Lingva, Index-Translate). */
     RATE_LIMITED,
     /** The service's servers failed (5xx). */
     SERVER_ERROR,
@@ -62,6 +63,15 @@ fun httpStatusFailure(code: Int): BackendFailure = BackendFailure(
     if (code >= 500) BackendFailureKind.SERVER_ERROR else BackendFailureKind.REJECTED,
     code,
 )
+
+/** Whether a status from a KEYLESS endpoint is the endpoint refusing us:
+ *  a 401 or 403 can't mean "fix your credentials" when there are none.
+ *  Its abuse blocks are the only thing it can be, and those want the same
+ *  back-off as a 429 ([CooldownState.recordRetryAfterFailure]) and a
+ *  [BackendFailureKind.RATE_LIMITED] failure, not a retry per cycle and
+ *  never an "invalid key" message. One predicate for Lingva and the keyless
+ *  OpenAI-compatible presets, so they can't disagree about either status. */
+fun isKeylessRefusal(code: Int): Boolean = code == 401 || code == 403
 
 /**
  * Implemented by every exception an online backend throws on purpose, so

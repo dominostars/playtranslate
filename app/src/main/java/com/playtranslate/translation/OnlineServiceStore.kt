@@ -79,6 +79,15 @@ object OnlineServiceStore {
     const val CLAUDE_BASE_URL = "https://api.anthropic.com/v1"
     const val CLAUDE_API_VERSION = "2023-06-01"
 
+    /** Bilibili's Index-Translate endpoint: chat-completions and /models
+     *  under /v1, free and keyless ([OpenAiPreset.INDEX_TRANSLATE] needs no
+     *  account). Bilibili's own client sends no Authorization header and
+     *  switches thinking off through `chat_template_kwargs`
+     *  ([OnlineBackendFactory.requestExtrasFor]). A maintainer gave its
+     *  public limits as 32K input and 4K output tokens; no rate limit is
+     *  published. */
+    const val INDEX_TRANSLATE_BASE_URL = "https://index-translate.bilibili.com/v1"
+
     /** Migrated instances keep the legacy encrypted key slots so no
      *  ciphertext ever moves: SecretCodec binds each blob to its slot
      *  name as GCM AAD, so a copy to a new slot would not decrypt. */

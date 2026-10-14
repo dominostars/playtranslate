@@ -925,3 +925,17 @@ names no auto-launch entry. vivo « démarrage automatique » and Xiaomi « Batt
 #### Verdict (round 2)
 **PASS.** Both round-1 fixes landed exactly as suggested, nothing around them broke, and the
 15 follow-up keys have no open items.
+
+## Delta review 2026-10-14 (Bilibili Index-Translate: 3 keys)
+
+Mechanical layer: `python3 scripts/l10n_diff.py --locale app/src/main/res/values-fr/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync". The three keys are present once each, beside the same neighbours as in English, and the file parses as XML. Both apostrophes in the note are escaped (`clé d\'API`, `limite d\'utilisation`). This delta has no `<xliff:g>`, placeholder, plural, markup, ASCII quote or dash. "Bilibili" stays in Latin script, twice in the note. **No 🛑 build-breaking issues.**
+
+Render code read before reviewing: the note is `tvProviderNote` (RowSubtitle, wraps, no `maxLines`), shown in place of the API-key section under the untranslated title "Bilibili Index-Translate". The picker line is a 13 sp wrapping TextView, used when the account takes no key. The keyless body appears under `tr_service_remove_title_fmt` for Lingva and Bilibili Index-Translate.
+
+No findings.
+
+Clean areas: The note keeps all three English facts: free and keyless; run by Bilibili, with no published limits; the captured text goes to Bilibili. «Gratuit» agrees with the service. In «Service géré par Bilibili, qui ne publie aucune limite d'utilisation», the noun «Service» that heads the sentence carries English's "for it", so leaving it out loses nothing. «limite d'utilisation» is in line with «limite quotidienne» (`translation_error_daily_quota`). «Le texte capturé» is the captured-text term of `tr_service_order_footer` and `history_hide_translations_toggle_subtitle`, and «clé d'API» is `llm_backend_api_key_label`. The keyless picker line keeps the sibling's first sentence and its «, ou saisissez un identifiant de modèle via Personnalisé….» byte for byte, comma included. «Personnalisé…» matches `llm_backend_model_custom_entry`. «Réessayez» is the file's retry verb (`hidden_word_save_failed`, `settings_ocr_download_failed`), in the vous form. Read as one screen, the delete alert is «Retirer Lingva ?», then «Cette action retire le service de la liste.», then the button «Retirer». The body is the sibling without its key clause, and it keeps retirer (remove) apart from supprimer (delete).
+
+### Disposition (2026-10-14)
+
+No findings; nothing to apply.

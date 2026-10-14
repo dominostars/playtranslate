@@ -172,7 +172,7 @@ PlayTranslate dịch từ **26 ngôn ngữ trò chơi** (ngôn ngữ của văn 
 
 ## Dịch vụ dịch thuật trực tuyến (tùy chọn)
 
-Theo mặc định, PlayTranslate dịch bằng [Lingva](https://github.com/thedaviddelta/lingva-translate), còn ML Kit là công cụ dịch ngoại tuyến được dùng dự phòng khi bản dịch trực tuyến không khả dụng. Để có bản dịch chất lượng cao hơn, bạn có thể thêm khóa API cho bất kỳ dịch vụ nào dưới đây trong **Cài đặt → Dịch vụ dịch thuật**. Bạn có thể thêm bao nhiêu dịch vụ tùy thích. Mỗi dịch vụ là một mục riêng trong danh sách, nên bạn có thể thiết lập sẵn nhiều dịch vụ và sắp xếp lại thứ tự để chọn dịch vụ nào dịch trước:
+Theo mặc định, PlayTranslate dịch bằng [Lingva](https://github.com/thedaviddelta/lingva-translate), còn ML Kit là công cụ dịch ngoại tuyến được dùng dự phòng khi bản dịch trực tuyến không khả dụng. Để có bản dịch chất lượng cao hơn, bạn có thể thêm bất kỳ dịch vụ nào dưới đây trong **Cài đặt → Dịch vụ dịch thuật**. Bạn có thể thêm bao nhiêu dịch vụ tùy thích. Mỗi dịch vụ là một mục riêng trong danh sách, nên bạn có thể thiết lập sẵn nhiều dịch vụ và sắp xếp lại thứ tự để chọn dịch vụ nào dịch trước:
 
 - **DeepL**: Gói miễn phí tại [deepl.com/en/pro#developer](https://www.deepl.com/en/pro#developer)
 - **OpenAI**: [platform.openai.com](https://platform.openai.com/api-keys), chọn mô hình ngay trong ứng dụng
@@ -182,6 +182,7 @@ Theo mặc định, PlayTranslate dịch bằng [Lingva](https://github.com/thed
 - **Groq**: [console.groq.com](https://console.groq.com/keys), chọn mô hình ngay trong ứng dụng
 - **OpenRouter**: [openrouter.ai](https://openrouter.ai/keys), chọn mô hình ngay trong ứng dụng
 - **Claude**: [platform.claude.com](https://platform.claude.com/settings/keys), chọn mô hình ngay trong ứng dụng
+- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://index-translate.bilibili.com/), miễn phí, không cần khóa API
 - **Tùy chỉnh**: Bất kỳ máy chủ nào khác tương thích với OpenAI; hãy nhập URL máy chủ của bạn vào ô “URL tùy chỉnh”
 
 ## Thẻ ghi nhớ Anki (tùy chọn)

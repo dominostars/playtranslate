@@ -44,6 +44,7 @@ BRANDS = [
     "Lingva", "Qwen", "Gemma", "Hunyuan", "Tencent", "Tatoeba", "Firefox Translations",
     "Bergamot", "ML Kit", "PaddleOCR", "Meiki", "Discord", "GitHub", "Migaku", "Lapis",
     "JPMN", "Mistral", "Groq", "OpenRouter", "Claude", "Ko-fi", "Yomitan", "Ayn Thor",
+    "Bilibili", "Index-Translate",
 ]
 POINTER_LINKS = {REPO + "#credits", REPO + "/blob/main/LICENSE"}
 VIDEO = re.compile(r"\[[^\]]*\]\(https://github\.com/user-attachments/assets/[^)\s]+\)|https://github\.com/user-attachments/assets/\S+")

@@ -758,6 +758,7 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="llm_backend_api_key_label">Khóa API</string>
+    <string name="llm_backend_index_translate_note">Miễn phí, không cần khóa API. Dịch vụ do Bilibili vận hành và không công bố giới hạn sử dụng. Văn bản đã chụp sẽ được gửi đến Bilibili để dịch.</string>
 
     <string name="llm_backend_model_label">Mô hình</string>
 
@@ -774,6 +775,7 @@
     <string name="llm_model_picker_loading">Đang tải mô hình…</string>
 
     <string name="llm_model_picker_fetch_failed">Không thể lấy danh sách mô hình. Hãy kiểm tra khóa API, hoặc nhập id mô hình qua Tùy chỉnh….</string>
+    <string name="llm_model_picker_fetch_failed_keyless">Không thể lấy danh sách mô hình. Hãy thử lại sau, hoặc nhập id mô hình qua Tùy chỉnh….</string>
 
     <string name="llm_backend_invalid_key_alert_title">Không thể xác minh khóa API</string>
 
@@ -843,6 +845,7 @@
     <string name="tr_service_key_tail_fmt">Khóa ••••<xliff:g id="key_tail" example="4f2a">%1$s</xliff:g></string>
     <string name="tr_service_remove_title_fmt">Gỡ <xliff:g id="service_name" example="OpenAI">%1$s</xliff:g>?</string>
     <string name="tr_service_remove_message">Việc này sẽ gỡ dịch vụ khỏi danh sách và xóa khóa API đã lưu của nó.</string>
+    <string name="tr_service_remove_message_keyless">Việc này sẽ gỡ dịch vụ khỏi danh sách.</string>
     <string name="tr_service_remove_confirm">Gỡ</string>
     <string name="tr_service_delete_cd">Gỡ dịch vụ</string>
 

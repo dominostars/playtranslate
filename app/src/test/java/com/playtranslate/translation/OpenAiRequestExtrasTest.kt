@@ -2,6 +2,7 @@ package com.playtranslate.translation
 
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -19,7 +20,8 @@ import org.junit.Test
  * default on Claude 5 models (Sonnet 5: 4.9 s and 23.4 s for two small
  * batches on the Thor, 2026-09-06), and `thinking` is the only field it
  * passes through, so the switch has to reach the wire on the single-text
- * and the batch path alike.
+ * and the batch path alike. Index-Translate's Qwen 3.5 models think unless
+ * the chat template is told not to, and Bilibili's own client always does.
  */
 class OpenAiRequestExtrasTest {
 
@@ -41,11 +43,31 @@ class OpenAiRequestExtrasTest {
         }
     }
 
+    /** Every preset's thinking switch, as a table: Claude's `thinking`,
+     *  Index-Translate's chat-template switch, nothing for the rest. */
     @Test
-    fun otherPresetsSendNothingExtra() {
-        OpenAiPreset.entries.filter { it != OpenAiPreset.CLAUDE }.forEach { preset ->
-            assertTrue(preset.name, OnlineBackendFactory.requestExtrasFor(preset, "claude-sonnet-5").isEmpty())
+    fun everyPresetSendsItsOwnExtras() {
+        OpenAiPreset.entries.forEach { preset ->
+            val expected = when (preset) {
+                OpenAiPreset.CLAUDE -> """{"thinking":{"type":"disabled"}}"""
+                OpenAiPreset.INDEX_TRANSLATE -> """{"chat_template_kwargs":{"enable_thinking":false}}"""
+                else -> "{}"
+            }
+            val extras = OnlineBackendFactory.requestExtrasFor(preset, "claude-sonnet-5")
+            assertEquals(preset.name, expected, JsonObject(extras).toString())
         }
+    }
+
+    /** Index-Translate's switch is model-independent: every model behind
+     *  that endpoint is a Qwen 3.5 hybrid thinker. */
+    @Test
+    fun indexTranslateThinkingOffReachesBothBodies() = runBlocking {
+        val seen = mutableListOf<String>()
+        val backend = backendWith(seen) { OnlineBackendFactory.requestExtrasFor(OpenAiPreset.INDEX_TRANSLATE, it) }
+        backend.translate("hello", "en", "ja")
+        backend.translateBatch(listOf("a", "b"), "en", "ja")
+        assertEquals(2, seen.size)
+        seen.forEach { assertTrue(it, it.contains(INDEX_THINKING_OFF)) }
     }
 
     @Test
@@ -107,6 +129,7 @@ class OpenAiRequestExtrasTest {
     )
 
     private companion object {
+        const val INDEX_THINKING_OFF = """"chat_template_kwargs":{"enable_thinking":false}"""
         const val SINGLE_OK = """{"choices":[{"message":{"content":"こんにちは"}}]}"""
         const val BATCH_OK = """{"choices":[{"message":{"content":"{\"translations\":[\"あ\",\"い\"]}"}}]}"""
     }

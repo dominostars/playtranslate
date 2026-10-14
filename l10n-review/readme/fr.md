@@ -101,3 +101,15 @@ Clean areas: vous throughout, no tu. All six Android labels match AOSP Android 1
 ### Disposition (2026-10-08)
 
 Applied all 4 💬, including the non-breaking spaces (U+00A0 before the colons, U+202F inside « ») in this section, and the same spacing in the pointer section's « Credits », which predates this change.
+
+## Delta review 2026-10-14 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] fr -> readme/README.fr.md`), with the two standing warnings "table 1 header cells left in English: ['Code']" and "table 2 header cells left in English: ['Code']". They are false positives: « Code » is French, and the tables are outside this delta. The same holds with `--require-header`. **No 🛑 issues.**
+
+No findings.
+
+Clean areas: The lead drops the API key as the English does: «vous pouvez ajouter l'un des services suivants dans **Paramètres → Services de traduction**». «Ajoutez-en autant que vous le souhaitez» still follows, and ajouter is the app's verb for this step (`tr_service_add_online` «Ajouter un service de traduction en ligne»). The path and its bold are unchanged. The bullet sits between Claude and Personnalisé, as in English, with a space before the colon and a comma after the link, like its siblings' «, avec choix du modèle dans l'application». «gratuit et sans clé d'API» uses the app's term and agrees with the service. The brand stays in Latin script and the link is byte-identical (checker). The intro was correctly left alone: in «PlayTranslate est une application Android de …» the article belongs to a full sentence with a verb, not to a tagline that mirrors the English "A". vous throughout.
+
+### Disposition (2026-10-14)
+
+No findings; nothing to apply.

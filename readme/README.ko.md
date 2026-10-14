@@ -172,7 +172,7 @@ PlayTranslate는 **게임 언어 26개**(화면에서 읽어 들이는 텍스트
 
 ## 온라인 번역 서비스(선택 사항)
 
-기본 번역에는 [Lingva](https://github.com/thedaviddelta/lingva-translate)를 사용하고, 온라인 번역을 사용할 수 없을 때는 오프라인에서 작동하는 ML Kit 번역으로 대체합니다. 더 높은 품질의 번역이 필요하면 **설정 → 번역 서비스**에서 아래 서비스 중 원하는 서비스의 API 키를 등록하세요. 서비스는 원하는 만큼 추가할 수 있습니다. 각 서비스가 목록에 개별 항목으로 표시되므로 여러 서비스를 설정해 두고 순서를 바꿔 가장 먼저 번역할 서비스를 정할 수 있습니다.
+기본 번역에는 [Lingva](https://github.com/thedaviddelta/lingva-translate)를 사용하고, 온라인 번역을 사용할 수 없을 때는 오프라인에서 작동하는 ML Kit 번역으로 대체합니다. 더 높은 품질의 번역이 필요하면 **설정 → 번역 서비스**에서 아래 서비스를 원하는 만큼 추가하세요. 각 서비스가 목록에 개별 항목으로 표시되므로 여러 서비스를 설정해 두고 순서를 바꿔 가장 먼저 번역할 서비스를 정할 수 있습니다.
 
 - **DeepL**: [deepl.com/en/pro#developer](https://www.deepl.com/en/pro#developer)(무료 요금제 제공)
 - **OpenAI**: [platform.openai.com](https://platform.openai.com/api-keys)(모델은 앱에서 선택)
@@ -182,6 +182,7 @@ PlayTranslate는 **게임 언어 26개**(화면에서 읽어 들이는 텍스트
 - **Groq**: [console.groq.com](https://console.groq.com/keys)(모델은 앱에서 선택)
 - **OpenRouter**: [openrouter.ai](https://openrouter.ai/keys)(모델은 앱에서 선택)
 - **Claude**: [platform.claude.com](https://platform.claude.com/settings/keys)(모델은 앱에서 선택)
+- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://index-translate.bilibili.com/)(무료, API 키 불필요)
 - **사용자 지정**: 그 밖의 OpenAI 호환 엔드포인트(“사용자 지정 URL”에 사용할 백엔드 URL을 입력)
 
 ## Anki 플래시카드(선택 사항)

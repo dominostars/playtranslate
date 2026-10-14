@@ -13,7 +13,7 @@
 </div>
 <!-- /l10n-header -->
 
-一款 Android 即時翻譯與語言學習應用程式，適用於遊戲、視覺小說、漫畫以及螢幕上的任何其他文字。支援 26 種遊戲語言，可翻譯成 59 種語言！
+Android 即時翻譯與語言學習應用程式，適用於遊戲、視覺小說、漫畫以及螢幕上的任何其他文字。支援 26 種遊戲語言，可翻譯成 59 種語言！
 
 [按此下載最新版本](https://github.com/dominostars/playtranslate/releases/latest)
 
@@ -172,7 +172,7 @@ PlayTranslate 可以把 **26 種遊戲語言**（能從螢幕上讀取的文字�
 
 ## 可選：線上翻譯服務
 
-預設使用 [Lingva](https://github.com/thedaviddelta/lingva-translate) 進行翻譯；線上翻譯不可用時，便以 ML Kit 作為離線後備方案。如想獲得更高質素的翻譯，可以在**設定 → 翻譯服務**中為以下任意服務填入 API 金鑰。服務數量不限，每項服務在清單中單獨列出，你可以同時設定多項，再調整次序，決定優先由哪一項翻譯：
+預設使用 [Lingva](https://github.com/thedaviddelta/lingva-translate) 進行翻譯；線上翻譯不可用時，便以 ML Kit 作為離線後備方案。如想獲得更高質素的翻譯，可以在**設定 → 翻譯服務**中新增以下任意服務。服務數量不限，每項服務在清單中單獨列出，你可以同時設定多項，再調整次序，決定優先由哪一項翻譯：
 
 - **DeepL**：提供免費方案，前往 [deepl.com/en/pro#developer](https://www.deepl.com/en/pro#developer) 申請
 - **OpenAI**：[platform.openai.com](https://platform.openai.com/api-keys)，可在應用程式內選擇模型
@@ -182,6 +182,7 @@ PlayTranslate 可以把 **26 種遊戲語言**（能從螢幕上讀取的文字�
 - **Groq**：[console.groq.com](https://console.groq.com/keys)，可在應用程式內選擇模型
 - **OpenRouter**：[openrouter.ai](https://openrouter.ai/keys)，可在應用程式內選擇模型
 - **Claude**：[platform.claude.com](https://platform.claude.com/settings/keys)，可在應用程式內選擇模型
+- **Bilibili Index-Translate**：[index-translate.bilibili.com](https://index-translate.bilibili.com/)，免費，無需 API 金鑰
 - **自訂**：任何其他兼容 OpenAI 的端點，填入你自己的後端 URL 即可
 
 ## 可選：Anki 抽認卡

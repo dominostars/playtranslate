@@ -100,3 +100,17 @@ Clean areas: Accurate against the English: four steps in order with every clause
 ### Disposition (2026-10-08)
 
 Applied the 1 💬 (step 2 restructured with the path in parentheses).
+
+## Delta review 2026-10-14 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] ja -> readme/README.ja.md`, no warnings; the same with `--require-header`). **No 🛑 issues.**
+
+| section | severity | current | suggested | note |
+|---|---|---|---|---|
+| Optional: Online Translation Backends (lead) | 💬 | "次のいずれかのサービスを追加できます。サービスはいくつでも追加できます。" | "次のサービスをいくつでも追加できます。" | Now that the API-key clause is gone, two sentences in a row end 「…サービス…追加できます。」. One sentence carries both "any of the following" and "as many as you like". It also drops いずれか ("any one of"), which sits oddly next to いくつでも. Optional. |
+
+Clean areas: The lead now says 追加, like the app's `add_online_service_title` (翻訳サービスを追加) and `tr_service_add_online`. Like the English, it no longer mentions API keys. The new bullet comes before カスタム with the Latin brand in bold. Its link text and URL are byte-identical to the English, and it follows the list's pattern (full-width ：, the remark in （）). 「（無料、APIキー不要）」 agrees with the app's note (無料で、APIキーは不要です) and has the 〜不要 form of `service_no_account_required` (アカウント不要). Leaving the intro alone was correct: Japanese has no article to drop, and 「…Androidアプリです。」 was already a description. The bold count went up by one, as in English (38 each).
+
+### Disposition (2026-10-14)
+
+Applied the 1 💬 (the lead merged into 「次のサービスをいくつでも追加できます。」).

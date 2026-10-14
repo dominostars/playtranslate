@@ -754,6 +754,7 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="llm_backend_api_key_label">API Anahtarı</string>
+    <string name="llm_backend_index_translate_note">Ücretsizdir, API anahtarı gerekmez. Bilibili tarafından işletilir ve bu hizmet için kullanım sınırı yayımlanmamıştır. Yakalanan metin, çeviri için Bilibili\'ye gönderilir.</string>
 
     <string name="llm_backend_model_label">Model</string>
 
@@ -770,6 +771,7 @@
     <string name="llm_model_picker_loading">Modeller yükleniyor…</string>
 
     <string name="llm_model_picker_fetch_failed">Model listesi alınamadı. API anahtarını kontrol edin veya Özel… ile bir model kimliği yazın.</string>
+    <string name="llm_model_picker_fetch_failed_keyless">Model listesi alınamadı. Daha sonra tekrar deneyin veya Özel… ile bir model kimliği yazın.</string>
 
     <string name="llm_backend_invalid_key_alert_title">API anahtarı doğrulanamadı</string>
 
@@ -871,6 +873,7 @@
     <string name="tr_service_remove_title_fmt"><xliff:g id="service_name" example="OpenAI">%1$s</xliff:g> kaldırılsın mı?</string>
 
     <string name="tr_service_remove_message">Bu işlem hizmeti listeden kaldırır ve kayıtlı API anahtarını siler.</string>
+    <string name="tr_service_remove_message_keyless">Bu işlem hizmeti listeden kaldırır.</string>
 
     <string name="tr_service_remove_confirm">Kaldır</string>
 

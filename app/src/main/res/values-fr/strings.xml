@@ -769,6 +769,7 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="llm_backend_api_key_label">Clé d\'API</string>
+    <string name="llm_backend_index_translate_note">Gratuit, sans clé d\'API. Service géré par Bilibili, qui ne publie aucune limite d\'utilisation. Le texte capturé est envoyé à Bilibili pour être traduit.</string>
 
     <string name="llm_backend_model_label">Modèle</string>
 
@@ -785,6 +786,7 @@
     <string name="llm_model_picker_loading">Chargement des modèles…</string>
 
     <string name="llm_model_picker_fetch_failed">Impossible de récupérer la liste des modèles. Vérifiez la clé d\'API, ou saisissez un identifiant de modèle via Personnalisé….</string>
+    <string name="llm_model_picker_fetch_failed_keyless">Impossible de récupérer la liste des modèles. Réessayez plus tard, ou saisissez un identifiant de modèle via Personnalisé….</string>
 
     <string name="llm_backend_invalid_key_alert_title">Impossible de vérifier la clé d\'API</string>
 
@@ -882,6 +884,7 @@
     <string name="tr_service_remove_title_fmt">Retirer <xliff:g id="service_name" example="OpenAI">%1$s</xliff:g> ?</string>
 
     <string name="tr_service_remove_message">Cette action retire le service de la liste et supprime la clé d\'API enregistrée.</string>
+    <string name="tr_service_remove_message_keyless">Cette action retire le service de la liste.</string>
 
     <string name="tr_service_remove_confirm">Retirer</string>
 

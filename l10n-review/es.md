@@ -910,3 +910,19 @@ blocking:
 1. The unverified labels: Xiaomi «Batería» / «Energía» and vivo's battery wording (known issue 2).
 2. Spain's «nunca inactivas» for Samsung, which rests on secondary sources only (developer's call,
    recorded in the first pass).
+
+## Delta review 2026-10-14 (Bilibili Index-Translate: 3 keys)
+
+Mechanical layer: `python3 scripts/l10n_diff.py --locale app/src/main/res/values-es/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync". The three keys are present once each, beside the same neighbours as in English, and the file parses as XML. This delta has no `<xliff:g>`, placeholder, plural, markup, apostrophe, ASCII quote or dash. "Bilibili" stays in Latin script, twice in the note. **No 🛑 build-breaking issues.**
+
+Render code read before reviewing: the note is `tvProviderNote` (RowSubtitle, wraps, no `maxLines`), shown in place of the API-key section under the untranslated title "Bilibili Index-Translate". The picker line is a 13 sp wrapping TextView, used when the account takes no key. The keyless body appears under `tr_service_remove_title_fmt` for Lingva and Bilibili Index-Translate.
+
+| key | severity | current | suggested | note |
+|---|---|---|---|---|
+| llm_model_picker_fetch_failed_keyless | 💬 | `No se pudo obtener la lista de modelos. Vuelve a intentarlo más tarde o escribe un ID de modelo en Personalizado….` | `No se pudo obtener la lista de modelos. Inténtalo de nuevo más tarde o escribe un ID de modelo en Personalizado….` | «Inténtalo de nuevo» is the file's "try again" in 14 strings (`hidden_word_save_failed`, `anki_models_unavailable`, `settings_ocr_download_failed`, `yomitan_update_busy_message`, …), and «Vuelve a intentarlo» appears only here. Both are idiomatic, but the file should use one phrase. |
+
+Clean areas: The note keeps all three English facts: free and keyless; run by Bilibili, with no published limits; the captured text goes to Bilibili. «Gratis, sin clave de API.» is the natural standalone label, and the README bullet uses the same «gratis, sin clave de API». In «Lo gestiona Bilibili, que no publica límites de uso para este servicio», «Lo» resolves through «este servicio» in the same sentence and through the page title above it. «límites de uso» is in line with «límite diario» (`translation_error_daily_quota`) and the Samsung «Límites de uso en segundo plano». «El texto capturado» is the captured-text term of `tr_service_order_footer`, and «clave de API» is `llm_backend_api_key_label`. The picker line keeps the sibling's first sentence and its «o escribe un ID de modelo en Personalizado….» byte for byte. «Personalizado…» matches `llm_backend_model_custom_entry` and is unquoted, as in the sibling. tú throughout. Read as one screen, the delete alert is «¿Quitar Lingva?», then «Esto quita el servicio de la lista.», then the button «Quitar». The body is the sibling without its key clause, and it keeps quitar (remove) apart from eliminar (delete).
+
+### Disposition (2026-10-14)
+
+Applied the 1 💬 («Inténtalo de nuevo», the file's wording in 14 other strings).

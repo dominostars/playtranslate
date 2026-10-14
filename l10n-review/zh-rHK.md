@@ -411,3 +411,17 @@ read today) titles a question 可限制應用程式於背景使用時消耗電�
 vivo card's 背景高耗電 does, rather than the converted China-ROM 後台. The answer did not load, so the switch label
 itself stays unverified. Labels left unverified, as recorded: Xiaomi's names other than 自動啟動, the OPPO words,
 and vivo's 自動啟動 and 背景高耗電.
+
+## Delta review 2026-10-14 (Bilibili Index-Translate: 3 keys)
+
+Mechanical layer: `python3 scripts/l10n_diff.py --locale app/src/main/res/values-zh-rHK/strings.xml` reports `values-zh-rHK missing=0 orphan=0 modified=0`, "in sync". The three new names are each present once, in zh-rCN's key order, and are the file's only change (`git diff`). The delta has no `<xliff:g>`, placeholders or markup, no unescaped `'`/`"`, and no dashes. A script checked it for Big5-only Han, 「」 only, Pangu spacing, NFC, and no odd or double spaces. **No 🛑 build-breaking issues.**
+
+No findings.
+
+Clean areas: Render code read first. The note is `tvProviderNote` (13 sp, no line cap), shown where the key section would be. The picker and the remove alert switch to `_keyless` when `account.requiresKey` is false (Lingva, Index-Translate). **Derivation from zh-rCN.** The three values keep zh-rCN's structure, with the table's swaps applied: 密钥→金鑰, 截取→擷取, 发送→傳送, 获取→取得, 列表→清單, 通过→透過, 自定义→自訂, “ ”→「」. No Mainland term survives. The departures beyond the table are all natural Hong Kong usage. 營運 is the HK/TW order of zh-rCN's 运营. 未有公布 is the common HK written form. 上限 matches this file's `translation_error_daily_quota` 每日上限, and zh-rCN's review proposes the same. 傳送至 sits where the file otherwise maps 发送给 to 傳送給 (`crash_dialog_message`), but it is as natural for a service as `email_no_app_fallback`'s 傳送至. 請稍後再試 replaces the derived 重試, and it is Android's own Hong Kong wording: android-36 `values-zh-rHK` has 稍後再試 four times (`httpErrorIO`, `httpErrorTooManyRequests`, `face_error_lockout`, `restr_pin_try_later`) and 稍後重試 never. **`llm_backend_index_translate_note`** has all four English facts. 未有公布使用上限 keeps "publishes no usage limits" and does not say there are none. API 金鑰 is `llm_backend_api_key_label`, 「擷取到的文字」 is `tr_service_order_footer`'s own phrase, and 無需 is the form of `service_no_account_required` (無需帳戶). **`llm_model_picker_fetch_failed_keyless`** matches its sibling except for the middle clause, and 「自訂…」 is `llm_backend_model_custom_entry` in the same corner quotes. **`tr_service_remove_message_keyless`** is its sibling without the key clause. Read with the title 「移除 Bilibili Index-Translate？」 and the 移除 button, the alert uses one verb, and remove (移除) stays distinct from delete (刪除).
+
+Outside this delta, for the record: `anki_models_unavailable` still says 請稍後重試, the Mainland-derived form. With AOSP's 稍後再試 above, it is now the file's odd one out. This is reported, not reviewed here.
+
+### Disposition (2026-10-14)
+
+No findings in the delta; nothing to apply. The out-of-delta note (`anki_models_unavailable` still says 請稍後重試 where Android's Hong Kong wording is 請稍後再試) is reported to the developer.

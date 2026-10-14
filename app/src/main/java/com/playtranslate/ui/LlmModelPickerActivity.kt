@@ -64,7 +64,8 @@ class LlmModelPickerActivity : AppCompatActivity() {
         val instanceId = intent.getStringExtra(EXTRA_INSTANCE_ID)
             ?: error("LlmModelPickerActivity launched without EXTRA_INSTANCE_ID")
         // The picker is only reachable for saved instances (the Model
-        // sub-cell appears after the first successful key save).
+        // sub-cell appears once the instance is saved enabled: after the
+        // first successful key save, or at once for a keyless provider).
         val instance = OnlineServiceStore.byId(instanceId)
             ?: error("LlmModelPickerActivity launched for unknown instance $instanceId")
         config = LlmBackendConfigs.forInstance(this, instanceId, instance.type, instance.preset)
@@ -115,10 +116,14 @@ class LlmModelPickerActivity : AppCompatActivity() {
         val currentModel = config.getModel()
         val isCurrentInFetched = currentModel in fetched
         // Show a tiny inline-error TextView above the card if the fetch
-        // failed (empty list). Custom… is always the escape hatch.
+        // failed (empty list). Custom… is always the escape hatch. Only a
+        // provider that takes a key can be told to check it.
         if (fetched.isEmpty()) {
             val warn = TextView(this).apply {
-                text = getString(R.string.llm_model_picker_fetch_failed)
+                text = getString(
+                    if (config.account.requiresKey) R.string.llm_model_picker_fetch_failed
+                    else R.string.llm_model_picker_fetch_failed_keyless
+                )
                 setTextColor(themeColor(R.attr.ptTextMuted))
                 textSize = 13f
                 setPadding(0, 0, 0, (12 * resources.displayMetrics.density).toInt())

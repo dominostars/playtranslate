@@ -59,3 +59,17 @@ Outside this delta (not reviewed, for the record): AOSP Android 16's `external_s
 ### Disposition (2026-10-08)
 
 Applied the 1 💬 (ระบบ for the second Android). The out-of-scope install-step label note is reported to the developer.
+
+## Delta review 2026-10-14 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] th -> readme/README.th.md`, one warning: `39 bold spans, English has 38`; same with `--require-header`). This is the warning the 2026-10-08 review explained: the extra span is “สแกนแอปด้วย Play Protect” in the "Won't install?" line. This delta adds one bold span on each side (English 37 → 38, Thai 38 → 39). **No 🛑 issues.**
+
+| section | severity | current | suggested | note |
+|---|---|---|---|---|
+| Optional: Online Translation Backends > Bilibili Index-Translate | 💬 | "[index-translate.bilibili.com](https://index-translate.bilibili.com/) ใช้ได้ฟรีโดยไม่ต้องมีคีย์ API" | "ใช้ได้ฟรีโดยไม่ต้องมีคีย์ API ดูรายละเอียดได้ที่ [index-translate.bilibili.com](https://index-translate.bilibili.com/)" | It is the list's only bare link: every other Thai bullet introduces its link with a verb (สมัครได้ที่, รับคีย์ได้ที่). With the URL in front, it reads as the subject of ใช้ได้ฟรี. The suggestion follows the DeepL line's order (the claim first, then the link). Optional. |
+
+Clean areas: The lead's verb เพิ่ม is the app's (`add_online_service_title` เพิ่มบริการแปล), and the API-key clause is gone, as in English. The new bullet comes before กำหนดเอง with the Latin brand in bold, and its link text and URL are byte-identical to the English. Its remark 「ใช้ได้ฟรีโดยไม่ต้องมีคีย์ API」 is the app note's first sentence verbatim. Spaces border every Latin run and nothing else. Leaving the intro alone was correct: 「แอป Android สำหรับ…」 has no article to drop.
+
+### Disposition (2026-10-14)
+
+Applied the 1 💬 (the claim first, then ดูรายละเอียดได้ที่ and the link, in the DeepL line's order).

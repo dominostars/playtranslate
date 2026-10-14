@@ -845,3 +845,15 @@ What I checked:
 #### Verdict (round 2)
 
 PASS. The round-1 fix landed; no new findings (no 🛑, ❌, ⚠️ or 💬). Open, but not findings: the Xiaomi, OPPO and vivo labels are unverified (known issue 2).
+
+## Delta review 2026-10-14 (Bilibili Index-Translate: 3 keys)
+
+Mechanical layer: `python3 scripts/l10n_diff.py --locale app/src/main/res/values-th/strings.xml` reports `values-th missing=0 orphan=0 modified=0`, "in sync". The three new names are each present once and are the file's only change (`git diff`). The delta has no `<xliff:g>`, placeholders or markup, no unescaped `'`/`"`, no dashes, no odd or double spaces, and is NFC. **No 🛑 build-breaking issues.**
+
+No findings.
+
+Clean areas: Render code read first. The note is `tvProviderNote` (13 sp, no line cap), shown where the key section would be. The picker and the remove alert switch to `_keyless` when `account.requiresKey` is false (Lingva, Index-Translate). **`llm_backend_index_translate_note`** has all four English facts. 「ซึ่งไม่ได้เผยแพร่ขีดจำกัดการใช้งานไว้」 keeps "publishes no usage limits" with Bilibili as the agent, as in English. ขีดจำกัด is the error pill's word (`translation_error_daily_quota` ถึงขีดจำกัดรายวันแล้ว), and คีย์ API is `llm_backend_api_key_label`. 「ข้อความที่จับภาพไว้」 is the file's capture phrase (`tr_service_order_footer`, `settings_cell_history_summary_*`, `history_toggle_subtitle`). The passive จะถูกส่งไปยัง is already in `llm_prompt_fatal_missing_text`, and ให้บริการโดย is the natural Thai for a service's operator. Spaces fall only at the two sentence boundaries and around the Latin API and Bilibili. There are no particles and no sentence periods. **`llm_model_picker_fetch_failed_keyless`** matches its sibling except for the middle clause, with spaces at the same clause boundaries. ลองอีกครั้งในภายหลัง renders "later" and differs, correctly, from `anki_models_unavailable`'s ในอีกสักครู่ ("in a moment"). “กำหนดเอง…” is `llm_backend_model_custom_entry` verbatim in the same quotes. **`tr_service_remove_message_keyless`** is its sibling without the key clause. Read with the title 「นำ Bilibili Index-Translate ออกหรือไม่」 and the นำออก button, the alert uses one verb, and remove (นำออก) stays distinct from delete (ลบ), as in the sibling.
+
+### Disposition (2026-10-14)
+
+No findings; nothing to apply.

@@ -954,3 +954,17 @@ around it broke. The 15 follow-up keys and the first pass's 39 keys have no open
 carry over, neither blocking:
 1. A device check of the unverified Xiaomi and OPPO labels (known issue 2).
 2. The English-source "the switch" gap that round 1 reported.
+
+## Delta review 2026-10-14 (Bilibili Index-Translate: 3 keys)
+
+Mechanical layer: `python3 scripts/l10n_diff.py --locale app/src/main/res/values-de/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync". The three keys are present once each, beside the same neighbours as in English, and the file parses as XML. This delta has no `<xliff:g>`, placeholder, plural, markup, apostrophe, ASCII quote or dash. "Bilibili" stays in Latin script, twice in the note. **No 🛑 build-breaking issues.**
+
+Render code read before reviewing: the note is `tvProviderNote` (RowSubtitle, wraps, no `maxLines`), shown in place of the API-key section under the untranslated title "Bilibili Index-Translate". The picker line is a 13 sp wrapping TextView, used when the account takes no key. The keyless body appears under `tr_service_remove_title_fmt` for Lingva and Bilibili Index-Translate.
+
+No findings.
+
+Clean areas: The note keeps all three English facts: free and keyless; run by Bilibili, with no published limits; the captured text goes to Bilibili. «Betrieben von Bilibili, das dafür keine Nutzungslimits veröffentlicht» uses the neuter relative pronoun for the brand, and «dafür» carries "for it". «Nutzungslimits» is in line with «Tageslimit» (`translation_error_daily_quota`). «Der aufgenommene Text» is the captured-text term of `tr_service_order_footer` and `history_hide_translations_toggle_subtitle`, and «API-Schlüssel» is `llm_backend_api_key_label`. The note has no pronoun, so du/Sie does not arise. The keyless picker line keeps the sibling's first sentence and its «gib über „Benutzerdefiniert…“ eine Modell-ID ein» byte for byte. „Benutzerdefiniert…“ matches `llm_backend_model_custom_entry` and keeps the sibling's „ “ quotes. «Versuche es später erneut» is the file's du-form retry («versuche es erneut», `settings_ocr_download_failed`, `yomitan_update_busy_message`). Read as one screen, the delete alert is «Lingva entfernen?», then «Dadurch wird der Dienst aus der Liste entfernt.», then the button «Entfernen». The body is the sibling without its key clause, and it uses entfernen (remove), not löschen, since nothing is deleted.
+
+### Disposition (2026-10-14)
+
+No findings; nothing to apply.

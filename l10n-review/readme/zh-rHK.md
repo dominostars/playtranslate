@@ -144,3 +144,15 @@ Clean areas: The four steps match the English and zh-CN in content and order, wi
 ### Disposition (2026-10-08)
 
 No findings; nothing to apply.
+
+## Delta review 2026-10-14 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] zh-rHK -> readme/README.zh-HK.md`, no warnings; also PASS with `--require-header`). **No 🛑 issues.**
+
+No findings.
+
+Clean areas: The three changed lines are zh-CN's, with the swaps applied and no Mainland term left. The intro keeps 即時 and 應用程式 and drops 一款, as zh-CN does; it reads as a complete tagline sentence. The lead has 添加→新增, the swap table's form and the app's own verb (`add_online_service_title` 新增翻譯服務), and the API-key clause is gone, as in English. The bullet has 密钥→金鑰 and 免费→免費, and 「免費，無需 API 金鑰」 is the app note's first sentence. The new bullet comes before 自訂 with the Latin brand in bold, and its link text and URL are byte-identical to the English. It follows the siblings' pattern (full-width ： and ，). A script checked the three lines for Pangu spacing, Big5-only Han and NFC. The bold count went up by one, as in English (38 each).
+
+### Disposition (2026-10-14)
+
+No findings; nothing to apply.

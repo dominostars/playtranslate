@@ -4,7 +4,10 @@
      (one layout serves multiple providers, so app:title is intentionally
      omitted on the toolbar). The ADVANCED section (provider preset +
      base URL) is GONE'd for types without a configurable endpoint
-     (Gemini) — gated on LlmBackendConfig.allowsBaseUrl. -->
+     (Gemini) and for a pinned preset with its own picker row
+     (Index-Translate) — gated on LlmBackendConfig.allowsBaseUrl. The key
+     section is GONE'd for a provider that takes no key, which shows its
+     note instead. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
@@ -53,7 +56,8 @@
                     android:orientation="vertical">
 
                     <!-- Provider preset + base URL (OPENAI type only;
-                         GONE'd for Gemini — gated on allowsBaseUrl).
+                         GONE'd for Gemini and pinned presets — gated on
+                         allowsBaseUrl).
                          The Provider value cell opens a dropdown of
                          presets; pinned presets fill + disable the URL
                          field, Custom clears it for free entry. -->
@@ -102,42 +106,65 @@
 
                     </LinearLayout>
 
-                    <!-- API Key entry -->
+                    <!-- API key entry + where to get one. GONE'd for a
+                         provider that takes no key (gated on
+                         LlmBackendConfig.account). -->
                     <LinearLayout
+                        android:id="@+id/sectionApiKey"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:paddingHorizontal="@dimen/pt_row_h_padding"
-                        android:paddingVertical="@dimen/pt_row_v_padding">
+                        android:orientation="vertical">
 
-                        <TextView
-                            android:id="@+id/tvApiKeyLabel"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:labelFor="@+id/etApiKey"
-                            android:text="@string/llm_backend_api_key_label"
-                            style="@style/Text.PT.RowTitle" />
-
-                        <EditText
-                            android:id="@+id/etApiKey"
+                        <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:textColorHint="?attr/ptTextHint"
-                            android:textColor="?attr/ptText"
-                            android:textSize="13sp"
-                            android:fontFamily="monospace"
-                            android:singleLine="true"
-                            android:inputType="textVisiblePassword"
-                            android:background="?attr/ptSurface"
-                            android:padding="10dp"
-                            android:importantForAutofill="no" />
+                            android:orientation="vertical"
+                            android:paddingHorizontal="@dimen/pt_row_h_padding"
+                            android:paddingVertical="@dimen/pt_row_v_padding">
+
+                            <TextView
+                                android:id="@+id/tvApiKeyLabel"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:labelFor="@+id/etApiKey"
+                                android:text="@string/llm_backend_api_key_label"
+                                style="@style/Text.PT.RowTitle" />
+
+                            <EditText
+                                android:id="@+id/etApiKey"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:textColorHint="?attr/ptTextHint"
+                                android:textColor="?attr/ptText"
+                                android:textSize="13sp"
+                                android:fontFamily="monospace"
+                                android:singleLine="true"
+                                android:inputType="textVisiblePassword"
+                                android:background="?attr/ptSurface"
+                                android:padding="10dp"
+                                android:importantForAutofill="no" />
+                        </LinearLayout>
+
+                        <include layout="@layout/settings_row_divider" />
+
+                        <include layout="@layout/settings_row_link"
+                            android:id="@+id/rowGetKeyLink" />
                     </LinearLayout>
 
-                    <include layout="@layout/settings_row_divider" />
-
-                    <include layout="@layout/settings_row_link"
-                        android:id="@+id/rowGetKeyLink" />
+                    <!-- A provider's note in place of the key field (gated on
+                         LlmBackendConfig.noteRes): who runs a keyless service
+                         and where the captured text goes. Inside the card so a
+                         page with both sections GONE'd is never an empty
+                         outlined box. -->
+                    <TextView
+                        android:id="@+id/tvProviderNote"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingHorizontal="@dimen/pt_row_h_padding"
+                        android:paddingVertical="@dimen/pt_row_v_padding"
+                        android:visibility="gone"
+                        style="@style/Text.PT.RowSubtitle" />
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>

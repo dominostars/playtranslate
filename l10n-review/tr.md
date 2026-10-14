@@ -1023,3 +1023,17 @@ as sets:
 No suffix touches a span, every quote is “ ”, nothing is pre-uppercased, and none of the 15
 keys has a -ken clause. The AOSP label «Kısıtlanmış ayarlara izin verme» stands per the
 AOSP-wins rule: quoted and followed by «seçeneğini seçin», it reads as the item's name.
+
+## Delta review 2026-10-14 (Bilibili Index-Translate: 3 keys)
+
+Mechanical layer: `python3 scripts/l10n_diff.py --locale app/src/main/res/values-tr/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync". The three keys are present once each, beside the same neighbours as in English, and the file parses as XML. The one apostrophe is escaped (`Bilibili\'ye`). This delta has no `<xliff:g>`, placeholder, plural, markup, ASCII quote or dash. "Bilibili" stays in Latin script, twice in the note. **No 🛑 build-breaking issues.**
+
+Render code read before reviewing: the note is `tvProviderNote` (RowSubtitle, wraps, no `maxLines`, not uppercased), shown in place of the API-key section under the untranslated title "Bilibili Index-Translate". The picker line is a 13 sp wrapping TextView, used when the account takes no key. The keyless body appears under `tr_service_remove_title_fmt` for Lingva and Bilibili Index-Translate.
+
+No findings.
+
+Clean areas: The note keeps all three English facts: free and keyless; run by Bilibili, with no published limits; the captured text goes to Bilibili. «bu hizmet için» carries English's "for it". «kullanım sınırı» is in line with «günlük sınır» (`translation_error_daily_quota`) and the Samsung «Arka plan kullanım sınırları». «Yakalanan metin» is the captured-text term of `tr_service_order_footer` and `history_hide_translations_toggle_subtitle`, and «API anahtarı» is `llm_backend_api_key_label`. On suffixes, «Bilibili'ye» is right: the last vowel is i and the name ends in a vowel, so it takes -ye, with the escaped apostrophe the brand rule asks for. No suffix sits on anything variable. The keyless picker line keeps the sibling's first sentence and its «veya Özel… ile bir model kimliği yazın.» byte for byte. «Özel…» matches `llm_backend_model_custom_entry`. «Daha sonra tekrar deneyin» reuses the file's «tekrar deneyin» (`hidden_word_save_failed`, `settings_ocr_download_failed`), in the siz form. Read as one screen, the delete alert is «Lingva kaldırılsın mı?», then «Bu işlem hizmeti listeden kaldırır.», then the button «Kaldır». The body is the sibling without its key clause, and it keeps kaldırmak (remove) apart from silmek (delete), which the sibling uses only for the key.
+
+### Disposition (2026-10-14)
+
+No findings; nothing to apply.

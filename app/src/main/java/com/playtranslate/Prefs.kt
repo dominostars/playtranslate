@@ -1849,6 +1849,11 @@ class Prefs internal constructor(
          *  so a fresh instance shows as selected in the picker rather than as
          *  a custom entry. */
         const val DEFAULT_CLAUDE_MODEL    = "claude-haiku-4-5-20251001"
+        /** The only model Index-Translate's /v1/models lists (2026-10-14): a
+         *  35B mixture-of-experts with 3B active parameters, so it is also
+         *  the endpoint's fast tier. Bilibili calls it a preview that is
+         *  still training, and the id carries no version. */
+        const val DEFAULT_INDEX_TRANSLATE_MODEL = "Index-Translate-35B-A3B"
         private const val KEY_LEGACY_THEME_INDEX    = "theme_index"
         const val KEY_THEME_MODE                    = "theme_mode"
         const val KEY_ACCENT_NAME                   = "accent_name"

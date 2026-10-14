@@ -11,6 +11,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.annotation.StringRes
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -183,7 +184,7 @@ class OnlineServicesController(
                     OnlineBackendFactory.displayName(activity, instance),
                 )
             )
-            .setMessage(activity.getString(R.string.tr_service_remove_message))
+            .setMessage(activity.getString(removeConfirmationMessage(instance)))
             .addButton(
                 activity.getString(R.string.tr_service_remove_confirm),
                 activity.themeColor(R.attr.ptDanger),
@@ -307,8 +308,9 @@ class OnlineServicesController(
         }
 
         /** The inline "Model" sub-cell: LLM instances only, and only once
-         *  enabled (i.e. a key has been saved — the picker needs a real
-         *  key to call /models with). */
+         *  enabled (i.e. a key has been saved where the provider takes one —
+         *  the picker needs a real key to call /models with; a keyless
+         *  provider's catalog needs none). */
         private fun bindModelRow(holder: VH, instance: OnlineServiceInstance) {
             if (!instance.type.isLlm || !instance.enabled) {
                 holder.sectionModel.isGone = true
@@ -475,3 +477,11 @@ class OnlineServicesController(
         } ?: base
     }
 }
+
+/** The delete confirmation's body. Only a service that takes a key has one
+ *  to delete; Lingva and Index-Translate never stored one, so they are told
+ *  only that the service leaves the list. */
+@StringRes
+internal fun removeConfirmationMessage(instance: OnlineServiceInstance): Int =
+    if (instance.account.requiresKey) R.string.tr_service_remove_message
+    else R.string.tr_service_remove_message_keyless

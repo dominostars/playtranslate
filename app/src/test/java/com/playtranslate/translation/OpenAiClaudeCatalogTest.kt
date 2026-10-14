@@ -38,15 +38,55 @@ class OpenAiClaudeCatalogTest {
         assertFalse(headers.containsKey("Authorization"))
     }
 
+    /** The keyed presets' catalog dialect. A keyless preset never reaches
+     *  this function: it has no key to put in a header
+     *  ([keylessCatalogListsWithNoAuthHeader]). */
     @Test
-    fun everyOtherPresetKeepsTheBearerToken() {
-        OpenAiPreset.entries.filter { it != OpenAiPreset.CLAUDE }.forEach { preset ->
-            assertEquals(
-                preset.name,
-                mapOf("Authorization" to "Bearer k"),
-                OnlineBackendFactory.modelsAuthHeadersFor(preset, "k"),
-            )
+    fun everyOtherKeyedPresetKeepsTheBearerToken() {
+        OpenAiPreset.entries
+            .filter { it != OpenAiPreset.CLAUDE && it.account.requiresKey }
+            .forEach { preset ->
+                assertEquals(
+                    preset.name,
+                    mapOf("Authorization" to "Bearer k"),
+                    OnlineBackendFactory.modelsAuthHeadersFor(preset, "k"),
+                )
+            }
+    }
+
+    /** Index-Translate's /v1/models answers with no key at all; the picker
+     *  lists it with no stored key and sends no Authorization. */
+    @Test
+    fun keylessCatalogListsWithNoAuthHeader() {
+        val authHeaders = mutableListOf<String?>()
+        val http = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        http.createContext("/models") { exchange ->
+            authHeaders += exchange.requestHeaders.getFirst("Authorization")
+            val bytes = KEYLESS_MODELS_BODY.toByteArray()
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
         }
+        http.start()
+        server = http
+        val base = "http://127.0.0.1:${http.address.port}"
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val backend = OpenAiBackend(
+            id = "index-test",
+            displayName = "Bilibili Index-Translate",
+            priority = 15,
+            keyProvider = { "" },
+            enabledProvider = { true },
+            modelProvider = { "Index-Translate-35B-A3B" },
+            baseUrlProvider = { base },
+            modelsAuthHeaders = { OnlineBackendFactory.modelsAuthHeadersFor(OpenAiPreset.INDEX_TRANSLATE, it) },
+            account = { OpenAiPreset.INDEX_TRANSLATE.account },
+            usageTracker = UsageTracker(
+                context.getSharedPreferences("test_prefs", Context.MODE_PRIVATE), "index-test",
+            ),
+            applyOwnedByFilter = { false },
+        )
+        assertEquals(listOf("Index-Translate-35B-A3B"), runBlocking { backend.listModels() })
+        assertEquals(listOf<String?>(null), authHeaders)
     }
 
     /** A stand-in for api.anthropic.com/v1/models: 401 unless `x-api-key`
@@ -103,6 +143,9 @@ class OpenAiClaudeCatalogTest {
                 """{"type":"model","id":"claude-sonnet-5","display_name":"Claude Sonnet 5","created_at":"2026-03-01T00:00:00Z"},""" +
                 """{"type":"model","id":"claude-haiku-4-5-20251001","display_name":"Claude Haiku 4.5","created_at":"2025-10-01T00:00:00Z"}""" +
                 """],"has_more":false,"first_id":"claude-opus-5","last_id":"claude-haiku-4-5-20251001"}"""
+        /** What index-translate.bilibili.com/v1/models answered on 2026-10-14. */
+        private const val KEYLESS_MODELS_BODY =
+            """{"object":"list","data":[{"id":"Index-Translate-35B-A3B","object":"model","created":1727712000,"owned_by":"index-translate"}]}"""
         private const val NATIVE_401_BODY =
             """{"type":"error","error":{"type":"authentication_error","message":"x-api-key header is required"}}"""
     }

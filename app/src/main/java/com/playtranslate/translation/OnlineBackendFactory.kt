@@ -111,6 +111,9 @@ object OnlineBackendFactory {
             // exists and authenticates, so a 400 from the key probe is about
             // the key; a user-typed endpoint keeps the lenient probe.
             pinnedEndpoint = { current().preset != OpenAiPreset.CUSTOM },
+            // Whether a key exists to send: the preset's requirement, read
+            // through the one per-instance resolver (INDEX_TRANSLATE takes none).
+            account = { current().account },
             requestExtras = { model -> requestExtrasFor(current().preset, model) },
             usageTracker = UsageTracker(sharedPrefs, id),
             // owned_by filtering only makes sense against the canonical
@@ -138,6 +141,7 @@ object OnlineBackendFactory {
         OpenAiPreset.GROQ -> OnlineServiceStore.GROQ_BASE_URL
         OpenAiPreset.OPENROUTER -> OnlineServiceStore.OPENROUTER_BASE_URL
         OpenAiPreset.CLAUDE -> OnlineServiceStore.CLAUDE_BASE_URL
+        OpenAiPreset.INDEX_TRANSLATE -> OnlineServiceStore.INDEX_TRANSLATE_BASE_URL
         OpenAiPreset.CUSTOM -> instance.baseUrl.ifBlank { Prefs.DEFAULT_OPENAI_BASE_URL }
     }
 
@@ -149,6 +153,7 @@ object OnlineBackendFactory {
             OpenAiPreset.GROQ -> Prefs.DEFAULT_GROQ_MODEL
             OpenAiPreset.OPENROUTER -> Prefs.DEFAULT_OPENROUTER_MODEL
             OpenAiPreset.CLAUDE -> Prefs.DEFAULT_CLAUDE_MODEL
+            OpenAiPreset.INDEX_TRANSLATE -> Prefs.DEFAULT_INDEX_TRANSLATE_MODEL
             OpenAiPreset.OPENAI, OpenAiPreset.CUSTOM -> Prefs.DEFAULT_OPENAI_MODEL
         }
         ServiceType.DEEPL, ServiceType.LINGVA -> ""
@@ -165,24 +170,37 @@ object OnlineBackendFactory {
     }
 
     /**
-     * Extra top-level fields on a chat-completions request. Claude only:
-     * Anthropic's compatible layer turns thinking ON by default for Claude 5
-     * models, ignores `reasoning_effort`, and passes only a `thinking` field
-     * through, so switching thinking off is the one latency lever a live
-     * overlay has there. On the Thor (2026-09-06) Sonnet 5 took 4.9 s and
-     * 23.4 s for batches of 5 and 7 short strings, about 2,000 tokens of
-     * hidden reasoning across the pair, where Haiku 4.5 (no thinking by
-     * default) took 1.9 to 3.1 s on the same screens.
+     * Extra top-level fields on a chat-completions request: each provider's
+     * own switch for thinking, the one latency lever a live overlay has. The
+     * `when` is exhaustive so a new preset has to decide its switch rather
+     * than silently inherit none.
      *
-     * Fable and Mythos ids get no field: thinking is always on there and an
-     * explicit off is a 400, which the batch path would then hand to the
-     * per-text retry. Their latency is whatever the model decides.
+     * Claude: Anthropic's compatible layer turns thinking ON by default for
+     * Claude 5 models, ignores `reasoning_effort`, and passes only a
+     * `thinking` field through. On the Thor (2026-09-06) Sonnet 5 took 4.9 s
+     * and 23.4 s for batches of 5 and 7 short strings, about 2,000 tokens of
+     * hidden reasoning across the pair, where Haiku 4.5 (no thinking by
+     * default) took 1.9 to 3.1 s on the same screens. Fable and Mythos ids get
+     * no field: thinking is always on there and an explicit off is a 400,
+     * which the batch path would then hand to the per-text retry. Their
+     * latency is whatever the model decides.
+     *
+     * Index-Translate: hybrid-thinking models built on Qwen 3.5, switched off
+     * through the chat template exactly as Bilibili's own client sends it
+     * (its comment: with thinking on, the reasoning can replace the
+     * translation in the response).
      */
-    fun requestExtrasFor(preset: OpenAiPreset, model: String): Map<String, JsonElement> = when {
-        preset != OpenAiPreset.CLAUDE -> emptyMap()
-        CLAUDE_THINKING_ALWAYS_ON.any { model.startsWith(it) } -> emptyMap()
-        else -> mapOf("thinking" to buildJsonObject { put("type", "disabled") })
-    }
+    fun requestExtrasFor(preset: OpenAiPreset, model: String): Map<String, JsonElement> =
+        when (preset) {
+            OpenAiPreset.CLAUDE ->
+                if (CLAUDE_THINKING_ALWAYS_ON.any { model.startsWith(it) }) emptyMap()
+                else mapOf("thinking" to buildJsonObject { put("type", "disabled") })
+            OpenAiPreset.INDEX_TRANSLATE -> mapOf(
+                "chat_template_kwargs" to buildJsonObject { put("enable_thinking", false) },
+            )
+            OpenAiPreset.OPENAI, OpenAiPreset.DEEPSEEK, OpenAiPreset.MISTRAL,
+            OpenAiPreset.GROQ, OpenAiPreset.OPENROUTER, OpenAiPreset.CUSTOM -> emptyMap()
+        }
 
     /** Model-id prefixes that reject `thinking: disabled`. */
     private val CLAUDE_THINKING_ALWAYS_ON = listOf("claude-fable", "claude-mythos")
@@ -227,6 +245,7 @@ object OnlineBackendFactory {
         OpenAiPreset.GROQ -> context.getString(R.string.groq_display_name)
         OpenAiPreset.OPENROUTER -> context.getString(R.string.openrouter_display_name)
         OpenAiPreset.CLAUDE -> context.getString(R.string.claude_display_name)
+        OpenAiPreset.INDEX_TRANSLATE -> context.getString(R.string.index_translate_display_name)
         OpenAiPreset.CUSTOM -> context.getString(R.string.llm_backend_preset_custom)
     }
 

@@ -107,3 +107,15 @@ Clean areas: The four steps follow the English order and content, "Essa opção 
 ### Disposition (2026-10-08)
 
 Applied the 1 💬 ("a partir de um APK baixado").
+
+## Delta review 2026-10-14 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] pt-rBR -> readme/README.pt-BR.md`, no warnings; the same with `--require-header`). **No 🛑 issues.**
+
+No findings.
+
+Clean areas: The intro took the English change from "A real-time…" to "Real-time…". «App Android de tradução em tempo real e aprendizado de idiomas para jogos, …» reads as a native tagline, in the same fragment style as the «Compatível com 26 idiomas de jogo…» that follows. Nothing else in that line moved. The lead drops the API key as the English does: «você pode adicionar qualquer um dos serviços abaixo em **Configurações → Serviços de tradução**». «Adicione quantos quiser» still follows, and adicionar is the app's verb for this step (`tr_service_add_online` «Adicionar serviço de tradução online»). The path and its bold are unchanged. The bullet sits between Claude and Personalizado, as in English, with a parenthesis like its siblings' «(você escolhe o modelo no app)». «(gratuito, sem chave de API)» matches the app's own note «Gratuito, sem chave de API.». The brand stays in Latin script and the link is byte-identical (checker). você throughout, BR vocabulary.
+
+### Disposition (2026-10-14)
+
+No findings; nothing to apply.

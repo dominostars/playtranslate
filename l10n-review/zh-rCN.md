@@ -963,3 +963,17 @@ AOSP labels re-read in the cached android16-qpr2 zh-CN Settings strings: 应用�
 sentence (a range after 在…中, an alternative after 需要), so zh-rHK's change to 或以上 needs no zh-rCN counterpart.
 Labels left unverified, as recorded: Xiaomi's names, Samsung in 简体中文 on global firmware, and the OPPO and vivo
 China-ROM words (secondary).
+
+## Delta review 2026-10-14 (Bilibili Index-Translate: 3 keys)
+
+Mechanical layer: `python3 scripts/l10n_diff.py --locale app/src/main/res/values-zh-rCN/strings.xml` reports `values-zh-rCN missing=0 orphan=0 modified=0`, "in sync". The three new names are each present once and are the file's only change (`git diff`). The delta has no `<xliff:g>`, placeholders or markup, no unescaped `'`/`"`, and no dashes. A script checked it for GB2312-only Han, Pangu spacing (no missing space at a Han/Latin seam, none beside full-width punctuation), “ ” only, NFC, and no odd or double spaces. **No 🛑 build-breaking issues.**
+
+| key | severity | current | suggested | note |
+|---|---|---|---|---|
+| llm_backend_index_translate_note | 💬 | 免费，无需 API 密钥。由 Bilibili 运营，未公布使用限额。截取到的文字会发送给 Bilibili 进行翻译。 | 免费，无需 API 密钥。由 Bilibili 运营，未公布使用上限。截取到的文字会发送给 Bilibili 进行翻译。 | This file says 上限 for a usage limit: `translation_error_daily_quota` 已达到每日上限, the pill whose English comment calls it the service's "daily usage limit". Its word for quota is 额度 (`translation_error_monthly_quota`, `degraded_warning_quota`). 限额 is a third word and appears nowhere else in values-zh-rCN. zh-rHK already says 使用上限, so with this change it is a straight derivation again. Optional. |
+
+Clean areas: Render code read first. The note is `tvProviderNote` (13 sp, no line cap), shown where the key section would be. The picker and the remove alert switch to `_keyless` when `account.requiresKey` is false (Lingva, Index-Translate). **`llm_backend_index_translate_note`** has all four English facts. 未公布 keeps "publishes no usage limits" and does not say there are none. API 密钥 is `llm_backend_api_key_label`, and 「截取到的文字」 is `tr_service_order_footer`'s own phrase. 发送给 is the file's verb (`crash_dialog_message`, `llm_prompt_fatal_missing_text`), and 由 Bilibili 运营 is the natural "run by". **`llm_model_picker_fetch_failed_keyless`** matches its sibling except for the middle clause. 「请稍后重试」 is the file's existing phrase (`anki_models_unavailable`), and “自定义…” is `llm_backend_model_custom_entry` verbatim in the same quotes. **`tr_service_remove_message_keyless`** is its sibling without the key clause. Read with the title 「移除 Bilibili Index-Translate？」 and the 移除 button, the alert uses one verb, and remove (移除) stays distinct from delete (删除), as in the sibling. The register needs no pronoun.
+
+### Disposition (2026-10-14)
+
+Applied the 1 💬 (使用限额 → 使用上限, the file's word for a usage limit and zh-rHK's).

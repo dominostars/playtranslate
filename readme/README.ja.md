@@ -172,7 +172,7 @@ PlayTranslateは、**26種類のゲームの言語**（画面から読み取れ�
 
 ## オンライン翻訳サービス（任意）
 
-デフォルトでは、翻訳には[Lingva](https://github.com/thedaviddelta/lingva-translate)を使い、オンライン翻訳を利用できないときは、オフラインで動作するML Kitで代替します。より高品質な翻訳を使いたい場合は、**設定 → 翻訳サービス**で、次のいずれかのAPIキーを登録できます。サービスはいくつでも追加できます。各サービスはリスト内の個別の項目になるため、複数を設定しておき、並べ替えて最初に翻訳に使うサービスを選べます。
+デフォルトでは、翻訳には[Lingva](https://github.com/thedaviddelta/lingva-translate)を使い、オンライン翻訳を利用できないときは、オフラインで動作するML Kitで代替します。より高品質な翻訳を使いたい場合は、**設定 → 翻訳サービス**で、次のサービスをいくつでも追加できます。各サービスはリスト内の個別の項目になるため、複数を設定しておき、並べ替えて最初に翻訳に使うサービスを選べます。
 
 - **DeepL**：[deepl.com/en/pro#developer](https://www.deepl.com/en/pro#developer)（無料プランあり）
 - **OpenAI**：[platform.openai.com](https://platform.openai.com/api-keys)（モデルはアプリ内で選択）
@@ -182,6 +182,7 @@ PlayTranslateは、**26種類のゲームの言語**（画面から読み取れ�
 - **Groq**：[console.groq.com](https://console.groq.com/keys)（モデルはアプリ内で選択）
 - **OpenRouter**：[openrouter.ai](https://openrouter.ai/keys)（モデルはアプリ内で選択）
 - **Claude**：[platform.claude.com](https://platform.claude.com/settings/keys)（モデルはアプリ内で選択）
+- **Bilibili Index-Translate**：[index-translate.bilibili.com](https://index-translate.bilibili.com/)（無料、APIキー不要）
 - **カスタム**：その他のOpenAI互換エンドポイント（「カスタムURL」に独自のベースURLを入力）
 
 ## Ankiフラッシュカード（任意）

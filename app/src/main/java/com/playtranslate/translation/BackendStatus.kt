@@ -66,8 +66,10 @@ sealed class BackendStatus {
 
     /** What the service costs to get started with — shown while it holds no
      *  key, and permanently for one that never needs a key. Reads the
-     *  requirement off [ServiceType.account], so the add-service picker's
-     *  subtitle and this line always agree.
+     *  requirement the add-service picker's row reads ([ServiceType.account],
+     *  or the preset's for an OpenAI-family instance, through
+     *  [OnlineServiceInstance.account]), so that row's subtitle and this line
+     *  always agree.
      *
      *  Deliberately tone-less. The key-less state is configuration, not
      *  alarm — it was Tone.Warning historically, and it made a freshly-added

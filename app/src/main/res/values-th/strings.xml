@@ -702,6 +702,7 @@
     <!-- ═══ GENERIC LLM BACKEND SETTINGS ═══ -->
 
     <string name="llm_backend_api_key_label">คีย์ API</string>
+    <string name="llm_backend_index_translate_note">ใช้ได้ฟรีโดยไม่ต้องมีคีย์ API ให้บริการโดย Bilibili ซึ่งไม่ได้เผยแพร่ขีดจำกัดการใช้งานไว้ ข้อความที่จับภาพไว้จะถูกส่งไปยัง Bilibili เพื่อแปล</string>
 
     <string name="llm_backend_model_label">โมเดล</string>
 
@@ -720,6 +721,7 @@
     <string name="llm_model_picker_loading">กำลังโหลดโมเดล…</string>
 
     <string name="llm_model_picker_fetch_failed">ไม่สามารถดึงรายการโมเดลได้ ตรวจสอบคีย์ API หรือพิมพ์รหัสโมเดลผ่าน “กำหนดเอง…”</string>
+    <string name="llm_model_picker_fetch_failed_keyless">ไม่สามารถดึงรายการโมเดลได้ ลองอีกครั้งในภายหลัง หรือพิมพ์รหัสโมเดลผ่าน “กำหนดเอง…”</string>
 
     <string name="llm_backend_invalid_key_alert_title">ไม่สามารถยืนยันคีย์ API ได้</string>
 
@@ -817,6 +819,7 @@
     <string name="tr_service_remove_title_fmt">นำ <xliff:g id="service_name" example="OpenAI">%1$s</xliff:g> ออกหรือไม่</string>
 
     <string name="tr_service_remove_message">การดำเนินการนี้จะนำบริการออกจากรายการ และลบคีย์ API ที่บันทึกไว้</string>
+    <string name="tr_service_remove_message_keyless">การดำเนินการนี้จะนำบริการออกจากรายการ</string>
 
     <string name="tr_service_remove_confirm">นำออก</string>
 

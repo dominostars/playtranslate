@@ -90,6 +90,21 @@ class LingvaBackendCooldownTest {
         assertEquals(clock.get() + 60_000L, cooldown.unavailableUntil())
     }
 
+    /** 401 rides with 403 ([isKeylessRefusal]): the endpoint takes no key,
+     *  so neither can mean "fix your credentials". The same predicate
+     *  decides the keyless OpenAI-compatible presets' refusals. */
+    @Test fun `HTTP 401 is a block like 403 — cools down`() = runBlocking {
+        val clock = AtomicLong(1_000_000L)
+        val cooldown = newCooldown(clock)
+        val backend = lingvaWith(cooldown, cannedClient(401, "unauthorized"))
+
+        val thrown = runCatching { backend.translate("こんにちは", "ja", "en") }.exceptionOrNull()
+        assertTrue("expected LingvaRateLimitException, got $thrown",
+            thrown is LingvaRateLimitException)
+        assertEquals(401, (thrown as LingvaRateLimitException).httpCode)
+        assertEquals(clock.get() + 60_000L, cooldown.unavailableUntil())
+    }
+
     @Test fun `HTTP 500 engages the ladder as Server error`() = runBlocking {
         val clock = AtomicLong(1_000_000L)
         val cooldown = newCooldown(clock)

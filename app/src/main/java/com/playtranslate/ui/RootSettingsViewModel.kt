@@ -216,8 +216,9 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
     /** Wraps the pure [translationDigest] with the live registry + the same
      *  source/target the waterfall uses (CaptureService): the source's
      *  translationCode (not the raw stored code) + the target lang. So an
-     *  enabled-but-keyless online backend, or Bergamot with no installed model
-     *  for this pair, is correctly NOT advertised — `isUsable` is the gate. */
+     *  enabled online backend still missing the key it requires, or Bergamot
+     *  with no installed model for this pair, is correctly NOT advertised —
+     *  `isUsable` is the gate (a provider that takes no key is usable keyless). */
     private fun translationDigests(): Pair<String, String> =
         translationDigest(
             TranslationBackendRegistry.orderedBackends(),

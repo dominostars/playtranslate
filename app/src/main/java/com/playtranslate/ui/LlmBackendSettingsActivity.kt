@@ -47,14 +47,16 @@ import androidx.core.view.isGone
  *  - CREATE ([createIntent]): launched from the add-service picker with
  *    a freshly generated instance id. **No store record exists until
  *    the first successful save** — backing out creates nothing, and the
- *    picker detects the id's appearance to dismiss itself.
+ *    picker detects the id's appearance to dismiss itself. A picker row
+ *    that stands for one preset (Index-Translate) passes it, pinned.
  *
  * OPENAI-type pages carry a Provider value cell (OpenAI / DeepSeek /
- * Custom — a dropdown, sized to grow as presets are added) and the
- * base-URL field at the top of the main card. Pinned presets fill and
- * disable the URL field; Custom clears it for free entry behind a
- * "bring your own backend" hint. The preset names the instance's cell
- * on the services page.
+ * Custom — a dropdown of the presets the OpenAI row lists, sized to grow
+ * as presets are added) and the base-URL field at the top of the main
+ * card. Pinned presets fill and disable the URL field; Custom clears it
+ * for free entry behind a "bring your own backend" hint. The preset names
+ * the instance's cell on the services page. A preset with its own picker
+ * row shows neither: it is what the instance is.
  *
  * UX contract (unchanged from the legacy per-service screen):
  *  - The toolbar X discards in-progress edits.
@@ -64,8 +66,10 @@ import androidx.core.view.isGone
  *    the right endpoint. On Ok/Unreachable the instance is persisted
  *    (enabled) and the screen finishes; on Invalid an OverlayAlert
  *    explains and nothing is written.
- *  - Blank key: EDIT clears the key + disables the instance; CREATE
- *    just closes.
+ *  - No key to send: a provider that takes none (its page shows a note
+ *    instead of the key field) is saved enabled with no probe; a blank key
+ *    where one is required clears it and disables the instance in EDIT,
+ *    and creates nothing in CREATE.
  */
 class LlmBackendSettingsActivity : AppCompatActivity() {
 
@@ -105,7 +109,11 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
                 intent.getStringExtra(EXTRA_TYPE)
                     ?: error("CREATE launch without EXTRA_TYPE")
             )
-        preset = existing?.preset ?: OpenAiPreset.OPENAI
+        // The record's preset in EDIT; in CREATE the picker row's pinned
+        // preset, read from the intent so a recreation keeps it.
+        preset = existing?.preset
+            ?: intent.getStringExtra(EXTRA_PRESET)?.let { OpenAiPreset.valueOf(it) }
+            ?: OpenAiPreset.OPENAI
         savedCustomUrl = if (existing?.preset == OpenAiPreset.CUSTOM) existing.baseUrl else ""
         config = LlmBackendConfigs.forInstance(this, instanceId, type, preset)
 
@@ -120,6 +128,7 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
 
         wireGetKeyLink(findViewById(R.id.rowGetKeyLink))
         wireProviderSection()
+        applyKeyRequirement()
 
         btnSave = findViewById(R.id.btnSave)
         progressSave = findViewById(R.id.progressSave)
@@ -159,15 +168,28 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         applyPresetToUrlField()
     }
 
-    /** Anchored dropdown of presets — a menu rather than a segmented
-     *  control so the list can grow (more providers are planned). */
+    /** Key field + get-a-key link for a provider that takes a key; its
+     *  note in their place for one that doesn't. Both read the page
+     *  config, so the two can never show together for a keyless provider. */
+    private fun applyKeyRequirement() {
+        findViewById<View>(R.id.sectionApiKey).isVisible = config.account.requiresKey
+        findViewById<TextView>(R.id.tvProviderNote).apply {
+            val note = config.noteRes
+            isVisible = note != null
+            if (note != null) setText(note)
+        }
+    }
+
+    /** Anchored dropdown of the presets the OpenAI row lists — a menu
+     *  rather than a segmented control so the list can grow (more
+     *  providers are planned). */
     private fun showProviderDropdown(anchor: View) {
         val popup = PopupMenu(this, anchor, Gravity.END)
-        OpenAiPreset.values().forEachIndexed { idx, p ->
-            popup.menu.add(0, idx, idx, presetLabel(p))
+        providerMenuItems().forEachIndexed { idx, (itemId, p) ->
+            popup.menu.add(0, itemId, idx, presetLabel(p))
         }
         popup.setOnMenuItemClickListener { item ->
-            applyPreset(OpenAiPreset.values()[item.itemId])
+            applyPreset(providerMenuPreset(item.itemId))
             true
         }
         popup.show()
@@ -194,6 +216,7 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         wireGetKeyLink(findViewById(R.id.rowGetKeyLink))
         refreshProviderValue()
         applyPresetToUrlField()
+        applyKeyRequirement()
     }
 
     private fun applyPresetToUrlField() {
@@ -251,13 +274,18 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
 
         val existing = OnlineServiceStore.byId(instanceId)
 
-        // Blank key short-circuit. CREATE: nothing exists, create nothing
-        // (the picker stays open — no instance appeared). EDIT: clear the
-        // saved key + disable, keeping any preset/URL edits (they passed
-        // their format check and are independent settings).
-        if (key.isBlank()) {
-            if (existing != null) {
-                OnlineServiceMutations.saveConfig(this, pageInstance(existing, enabled = false), key = "")
+        // No key to send, so nothing to probe. A provider that takes none
+        // is saved enabled, CREATE or EDIT. Where one is required, a blank
+        // key in CREATE creates nothing (the picker stays open — no
+        // instance appeared), and in EDIT clears the saved key + disables,
+        // keeping any preset/URL edits (they passed their format check and
+        // are independent settings).
+        val requiresKey = config.account.requiresKey
+        if (key.isBlank() || !requiresKey) {
+            if (existing != null || !requiresKey) {
+                OnlineServiceMutations.saveConfig(
+                    this, pageInstance(existing, enabled = !requiresKey), key = "",
+                )
             }
             finish()
             return
@@ -374,6 +402,18 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_INSTANCE_ID = "instance_id"
         const val EXTRA_TYPE = "service_type"
+        const val EXTRA_PRESET = "openai_preset"
+
+        /** The provider dropdown's items as (menu item id, preset): the
+         *  presets the OpenAI row lists, each keyed by its ordinal, so an
+         *  item id resolves back to its own preset ([providerMenuPreset])
+         *  however the list is filtered. A position in the filtered list
+         *  would not: with Index-Translate filtered out, "Custom" sits at
+         *  the position that is Index-Translate's ordinal. */
+        internal fun providerMenuItems(): List<Pair<Int, OpenAiPreset>> =
+            OpenAiPreset.entries.filter { it.listedUnderOpenAi }.map { it.ordinal to it }
+
+        internal fun providerMenuPreset(itemId: Int): OpenAiPreset = OpenAiPreset.entries[itemId]
 
         /** Edit an existing instance — type/preset load from its record. */
         fun editIntent(context: Context, instanceId: String): Intent =
@@ -382,10 +422,18 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
 
         /** Create-mode launch from the add-service picker. [instanceId]
          *  is the picker-generated id whose appearance in the store
-         *  signals "saved". */
-        fun createIntent(context: Context, instanceId: String, type: ServiceType): Intent =
+         *  signals "saved". [preset] pins the provider for a picker row
+         *  that stands for one preset; null opens on OpenAI with the
+         *  provider dropdown free. */
+        fun createIntent(
+            context: Context,
+            instanceId: String,
+            type: ServiceType,
+            preset: OpenAiPreset? = null,
+        ): Intent =
             Intent(context, LlmBackendSettingsActivity::class.java)
                 .putExtra(EXTRA_INSTANCE_ID, instanceId)
                 .putExtra(EXTRA_TYPE, type.name)
+                .apply { preset?.let { putExtra(EXTRA_PRESET, it.name) } }
     }
 }
