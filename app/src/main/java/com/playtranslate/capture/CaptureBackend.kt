@@ -1,5 +1,6 @@
 package com.playtranslate.capture
 
+import android.content.Context
 import com.playtranslate.OverlayUiController
 import com.playtranslate.overlay.OverlayHost
 
@@ -66,52 +67,71 @@ interface CaptureBackend {
     val requiresAccessibilityService: Boolean
 
     /**
-     * True iff this backend can structurally mirror [displayId]. A capability
+     * True iff this backend can capture [displayId] now. A capability
      * question — what the backend's *type* can reach — not a permission
      * question (see [canCaptureWithoutPrompting] for that): the accessibility
-     * service can mirror any connected display; MediaProjection can only
-     * mirror the default display.
+     * service can mirror any connected, non-private display
+     * ([com.playtranslate.isReachableDisplay], read through [context]);
+     * MediaProjection can only mirror the default display. The display's
+     * power state is not part of the answer: a selected display that is off
+     * is still the selection, and the capture paths pause on it.
      *
-     * Stateless. Call sites do the intersection with the user's selection
-     * themselves — keeping that logic at the call site means an empty
-     * intersection (the `stopLive()` signal, or a stale selection that
+     * Call sites do the intersection with the user's selection through
+     * [capturableTargets] — keeping that logic out of the backend means an
+     * empty intersection (the `stopLive()` signal, or a stale selection that
      * doesn't overlap with this backend's reach) doesn't get accidentally
      * re-inflated into a non-empty set, which would silently override `stop`.
      */
-    fun canCapture(displayId: Int): Boolean
+    fun canCapture(context: Context, displayId: Int): Boolean
 
     /**
-     * A last-resort display this backend can always reach, used by start-path
-     * callers when a saved selection produces nothing capturable.
-     * MediaProjection provides the default display (the only thing it can
-     * mirror, so any selection that doesn't overlap with default is stale by
-     * definition — typically an accessibility-mode artifact). The
-     * accessibility backend returns null: it can capture any display, so an
-     * empty intersection there means every display is currently off /
-     * displaced, not stale — there's nothing sensible to fall back *to*.
+     * The display [capturableTargets] substitutes when a saved selection
+     * names nothing this backend can capture: the default display, on both
+     * backends. MediaProjection can mirror nothing else, so a selection that
+     * doesn't overlap with it is stale by definition (typically an
+     * accessibility-mode artifact). The accessibility backend had no
+     * fallback until 2026-10-14, on the reasoning that it can capture any
+     * display, so an empty intersection meant every display was off or
+     * displaced, not stale; that held only while [canCapture] was true for
+     * every id and the live callers skipped the off displays before
+     * resolving. Now [canCapture] asks whether the display is connected, an
+     * empty intersection means the selection names nothing that exists (a
+     * disconnected second screen, a display id that died with the session
+     * that created it), and the one display every device has is where the
+     * icon and the capture go until it comes back.
      */
-    val fallbackDisplay: Int? get() = null
+    val fallbackDisplay: Int
 
     /**
      * The capturable subset of [saved] — `saved.filter { canCapture(it) }` —
-     * with [fallbackDisplay] substituted when that filter yields nothing AND
-     * a fallback exists. Returns empty only when there is neither a
-     * capturable display in [saved] nor a fallback (the accessibility case
-     * when every saved display is currently unreachable).
+     * with [fallbackDisplay] substituted when that filter yields nothing. An
+     * empty [saved] resolves to nothing: there is no selection to fall back
+     * from, and a caller that has filtered a selection down to nothing
+     * (every selected display off) must not have it re-inflated to a display
+     * that was never selected; the live callers pass the selection
+     * unfiltered and `CaptureService.setLiveDisplays` skips the off
+     * displays after this.
      *
      * The standard "given the user's saved selection, what should we
-     * actually act on?" shim. Every UI surface that turns
+     * actually act on?" shim. Every surface that turns
      * `Prefs.captureDisplayIds` into the displays it operates on — live
-     * start, floating-icon placement, the region dropdown, the region
-     * picker, the first-seed — goes through this so a stale accessibility-
-     * mode selection on MediaProjection (e.g., `{1}` from before the
-     * backend switched) collapses to the backend's reachable display
-     * instead of silently no-op-ing the call site.
+     * start, the floating icons, the one-shot fan-out, the region dropdown,
+     * the region picker, the first-launch seed, the log export — goes through
+     * this, so a selection the backend cannot act on collapses to its
+     * fallback instead of silently no-op-ing the call site: a stale
+     * accessibility-mode selection on MediaProjection (`{1}` from before
+     * the backend switched), or, on the accessibility backend, a selection
+     * naming a display that no longer exists (a Galaxy S25 whose stored id
+     * had died with the projection that created it, 2026-10-14: the icon
+     * fell back on its own while live start and the fan-out one-shot kept
+     * the dead display and captured nothing). The selection itself is never
+     * rewritten: when its display reconnects it is captured again.
      */
-    fun capturableTargets(saved: Set<Int>): Set<Int> {
-        val filtered = saved.filterTo(linkedSetOf()) { canCapture(it) }
+    fun capturableTargets(context: Context, saved: Set<Int>): Set<Int> {
+        if (saved.isEmpty()) return emptySet()
+        val filtered = saved.filterTo(linkedSetOf()) { canCapture(context, it) }
         if (filtered.isNotEmpty()) return filtered
-        return fallbackDisplay?.let { setOf(it) } ?: emptySet()
+        return setOf(fallbackDisplay)
     }
 
     /**

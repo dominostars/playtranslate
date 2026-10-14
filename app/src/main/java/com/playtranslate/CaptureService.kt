@@ -67,6 +67,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import android.hardware.display.DisplayManager
+import com.playtranslate.capture.CaptureBackend
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.GameAudioGate
 import com.playtranslate.capture.CaptureLifecycle
@@ -182,12 +183,15 @@ class CaptureService : Service() {
      * is stable thanks to LinkedHashSet); finally [Display.DEFAULT_DISPLAY]
      * if the set is empty.
      *
-     * A display that no longer exists is passed over, as [shouldSkipDisplay]
-     * passes it over: with auto-translate off, a removed display (a monitor
-     * unplugged) stays in both fields, since the display listener that
-     * repairs them runs only while live, and the capture and game-language
-     * hotkeys, the in-app one-shot and the translation-error pill would
-     * otherwise target it.
+     * A display the backend cannot capture ([CaptureBackend.canCapture]: one
+     * that no longer exists, or this app's own private projection display)
+     * is passed over, as [shouldSkipDisplay] passes a missing one over: with
+     * auto-translate off, a removed display (a monitor unplugged) stays in
+     * both fields, since the display listener that repairs them runs only
+     * while live, and the capture and game-language hotkeys, the in-app
+     * one-shot and the translation-error pill would otherwise target it.
+     * Until 2026-10-14 the test was bare existence, which a private display
+     * passes.
      *
      * On the MediaProjection backend this is always [Display.DEFAULT_DISPLAY] —
      * MediaProjection can only mirror that display, so it is the only one the
@@ -197,10 +201,10 @@ class CaptureService : Service() {
         if (!CaptureBackendResolver.active().requiresAccessibilityService) {
             return android.view.Display.DEFAULT_DISPLAY
         }
-        val displays = getSystemService(DisplayManager::class.java)
-        val exists = { id: Int -> displays?.getDisplay(id) != null }
-        return lastInteractedDisplayId?.takeIf(exists)
-            ?: gameDisplayIds.firstOrNull(exists)
+        val backend = CaptureBackendResolver.active()
+        val capturable = { id: Int -> backend.canCapture(this, id) }
+        return lastInteractedDisplayId?.takeIf(capturable)
+            ?: gameDisplayIds.firstOrNull(capturable)
             ?: android.view.Display.DEFAULT_DISPLAY
     }
     /** Tracks whether [configureSaved] has populated capture-time state
@@ -768,7 +772,8 @@ class CaptureService : Service() {
         // refresh/flash to a display whose region map has no entry
         // (full-screen fallback, which the indicator silently skips) instead
         // of the display the picker wrote and live mode actually captures.
-        // Identity on the accessibility backend for any non-empty set.
+        // On the accessibility backend: the selection's connected displays,
+        // else the default display.
         //
         // gameDisplayIds deliberately keeps the RAW selection: its
         // cardinality is load-bearing. shouldSkipDisplay's foreground gate
@@ -778,7 +783,7 @@ class CaptureService : Service() {
         // to the MediaProjection fallback — storing the collapsed set would
         // disarm that guard and let a fan-out one-shot OCR the app's own
         // foregrounded UI (Codex review find).
-        val resolvedIds = CaptureBackendResolver.active().capturableTargets(displayIds)
+        val resolvedIds = CaptureBackendResolver.active().capturableTargets(this, displayIds)
 
         // Hide overlays for displays leaving the selection — the wasLive
         // path tears them down via setLiveDisplays(emptySet)→mode.stop, but
@@ -1568,7 +1573,15 @@ class CaptureService : Service() {
             reconcileLiveModes("displayAdded($displayId)")
         }
         override fun onDisplayChanged(displayId: Int) {
-            if (displayId !in gameDisplayIds) return
+            // A selected display, or one a live mode runs on: the two differ
+            // when the selection names nothing connected and the shim put
+            // live mode on the fallback display ([CaptureBackend.fallbackDisplay]),
+            // which [gameDisplayIds], the raw selection, never names. Gated on
+            // the selection alone until 2026-10-14, so a rotation of the
+            // fallback display reached neither the mode's rotation pass nor
+            // the reconcile, and its overlays came down only when the next
+            // capture tripped the dims guard (Codex adversarial review).
+            if (displayId !in gameDisplayIds && displayId !in liveModes) return
             val display = getSystemService(DisplayManager::class.java)
                 ?.getDisplay(displayId)
             val st = display?.state
@@ -1596,12 +1609,14 @@ class CaptureService : Service() {
             // setLiveDisplays() / stopLive() that follow see the pruned state.
             val pruned = gameDisplayIds - displayId
             gameDisplayIds = pruned
-            if (pruned.isEmpty()) {
-                Log.w(TAG, "All capture displays disconnected, stopping live mode")
-                // stopLive() routes through setLiveDisplays(emptySet()) and
-                // runs the full teardown (setDegraded, belt-and-suspenders
-                // cleanup). Toast fires AFTER the teardown so the user-visible
-                // message lines up with the actual stopped state.
+            val backend = CaptureBackendResolver.active()
+            val remainder = liveSelectionAfterUnplug(this@CaptureService, backend, pruned)
+            if (remainder == null) {
+                Log.w(TAG, "No capturable display left in the selection ($pruned), stopping live mode")
+                // stopLive() runs the full teardown (tearDownAllLiveModes,
+                // setDegraded, belt-and-suspenders cleanup). Toast fires
+                // AFTER the teardown so the user-visible message lines up
+                // with the actual stopped state.
                 stopLive()
                 Toast.makeText(
                     this@CaptureService,
@@ -1614,10 +1629,13 @@ class CaptureService : Service() {
                 // The display the user was focused on went away — pick
                 // a still-connected one as the new primary so the in-app
                 // panel UI and hotkey routing keep working.
-                Log.w(TAG, "Primary capture display $displayId disconnected; switching primary to ${pruned.first()}")
-                lastInteractedDisplayId = pruned.first()
+                val next = remainder.first { backend.canCapture(this@CaptureService, it) }
+                Log.w(TAG, "Primary capture display $displayId disconnected; switching primary to $next")
+                lastInteractedDisplayId = next
             }
-            setLiveDisplays(pruned.filterNot { shouldSkipDisplay(it) }.toSet())
+            // Unfiltered, like the other reconcile callers: setLiveDisplays
+            // applies the shim and the skip in the right order.
+            setLiveDisplays(remainder)
         }
     }
 
@@ -2151,17 +2169,23 @@ class CaptureService : Service() {
 
         // Resolve through the backend shim — capturable subset of [target]
         // with the backend's fallback display substituted when nothing in
-        // [target] is capturable (stale-selection collapse). Then drop
+        // [target] is capturable (stale-selection collapse). THEN drop
         // displays currently off / app-occluded. This is THE canonical
         // resolution: every non-stop caller (start, reconcile, multi-window,
-        // the display listener after a state change) gets the same result
-        // without needing to remember to apply the shim itself. Stop bypasses
-        // this path entirely via [tearDownAllLiveModes] — passing ∅ here
-        // would resolve to the backend's fallback (MediaProjection always
-        // reaches default), which is right for "selection filtered to
-        // nothing" but wrong for "user pressed stop."
+        // the display listener after a state change) passes the selection
+        // UNFILTERED and gets the same result. The order matters: the shim
+        // first, so a selection whose displays are all gone collapses to the
+        // fallback; the skip after, so a selected display that is merely off
+        // pauses capture instead of handing it to a display that was never
+        // selected. Until 2026-10-14 the reconcile callers skipped first and
+        // passed the remainder, and an empty remainder resolved to the
+        // fallback: harmless on MediaProjection, whose fallback is its only
+        // display, but on the accessibility backend, once it gained a
+        // fallback, a Thor whose chosen second screen went off would have
+        // moved live capture onto the app's own screen. Stop bypasses this
+        // path entirely via [tearDownAllLiveModes]; ∅ resolves to ∅ here.
         val backend = CaptureBackendResolver.active()
-        val capturable = backend.capturableTargets(target)
+        val capturable = backend.capturableTargets(this, target)
             .filterNot { shouldSkipDisplay(it) }
             .toSet()
         // IN_APP_ONLY is single-display by design — collapse to the primary
@@ -2367,9 +2391,12 @@ class CaptureService : Service() {
             Log.v(TAG, "reconcileLiveModes($reason): InAppOnly active, no-op")
             return
         }
-        val target = gameDisplayIds.filterNot { shouldSkipDisplay(it) }.toSet()
-        Log.d(TAG, "reconcileLiveModes($reason): gameDisplayIds=$gameDisplayIds liveModes=${liveModes.keys} → target=$target")
-        setLiveDisplays(target)
+        // The selection unfiltered: setLiveDisplays resolves it through the
+        // backend shim and then skips the displays that are off or
+        // app-occluded, in that order (its doc says why the order matters).
+        val activeIds = gameDisplayIds.ifEmpty { setOf(primaryGameDisplayId()) }
+        Log.d(TAG, "reconcileLiveModes($reason): gameDisplayIds=$gameDisplayIds liveModes=${liveModes.keys}")
+        setLiveDisplays(activeIds)
     }
 
     /** True when any active live mode is In-App Only. By design all modes
@@ -2445,14 +2472,15 @@ class CaptureService : Service() {
      */
     fun onMultiWindowChanged() {
         if (!isLive) return
+        // Unfiltered, like reconcileLiveModes: setLiveDisplays applies the
+        // shim and the skip in the right order.
         val activeIds = gameDisplayIds.ifEmpty { setOf(primaryGameDisplayId()) }
-        val target = activeIds.filterNot { shouldSkipDisplay(it) }.toSet()
-        val structuralChanged = setLiveDisplays(target)
+        val structuralChanged = setLiveDisplays(activeIds)
         if (!structuralChanged) {
             Log.d(TAG, "onMultiWindowChanged: no structural change, refreshing ${liveModes.size} mode(s)")
             liveModes.values.forEach { it.refresh() }
         } else {
-            Log.d(TAG, "onMultiWindowChanged: structural change applied (target=$target)")
+            Log.d(TAG, "onMultiWindowChanged: structural change applied (liveModes=${liveModes.keys})")
         }
     }
 
@@ -2469,10 +2497,11 @@ class CaptureService : Service() {
      */
     fun onHideGameOverlaysChanged() {
         if (!isLive) return
+        // Unfiltered, like reconcileLiveModes: setLiveDisplays applies the
+        // shim and the skip in the right order.
         val activeIds = gameDisplayIds.ifEmpty { setOf(primaryGameDisplayId()) }
-        val target = activeIds.filterNot { shouldSkipDisplay(it) }.toSet()
-        Log.d(TAG, "onHideGameOverlaysChanged: hideGameOverlays=${Prefs(this).hideGameOverlays} → target=$target")
-        setLiveDisplays(target)
+        Log.d(TAG, "onHideGameOverlaysChanged: hideGameOverlays=${Prefs(this).hideGameOverlays} activeIds=$activeIds")
+        setLiveDisplays(activeIds)
     }
 
     /** The game language [observeSourceLanguage] last saw. Main-confined. */
@@ -2694,12 +2723,15 @@ class CaptureService : Service() {
      *  Routed through [CaptureBackend.capturableTargets] — the same shim
      *  live start and icon placement use — so a stale non-default
      *  selection carried over from an accessibility session collapses to
-     *  the MediaProjection backend's only capturable display. Without it
-     *  a fan-out one-shot would request a display MediaProjection can't
-     *  mirror and silently get default-display pixels back. */
+     *  the MediaProjection backend's only capturable display (without it a
+     *  fan-out one-shot would request a display MediaProjection can't
+     *  mirror and silently get default-display pixels back), and a
+     *  selection naming a display that no longer exists collapses to the
+     *  default display on the accessibility backend too (until 2026-10-14
+     *  it requested the dead display and the capture returned nothing). */
     internal fun oneShotFanoutDisplayIds(): Set<Int> {
         val all = CaptureBackendResolver.active()
-            .capturableTargets(gameDisplayIds.ifEmpty { setOf(primaryGameDisplayId()) })
+            .capturableTargets(this, gameDisplayIds.ifEmpty { setOf(primaryGameDisplayId()) })
         val filtered = all.filter { !shouldSkipDisplay(it) }
         if (filtered.isNotEmpty()) return filtered.toSet()
         // Single-display exception is keyed on gameDisplayIds — the field
@@ -3227,6 +3259,29 @@ class CaptureService : Service() {
     }
 
     companion object {
+
+        /**
+         * What a live session keeps capturing after a display unplugged:
+         * [pruned] is the selection without that display. The remainder
+         * itself, unfiltered, for [setLiveDisplays] to resolve through the
+         * backend shim and the skip predicate like every other caller; or
+         * null when [backend] can capture nothing in it
+         * ([CaptureBackend.canCapture]: on accessibility a connected,
+         * non-private display; on MediaProjection the default display),
+         * which ends the session the way an empty remainder always did
+         * (stop, and the toast). The decision is made BEFORE the shim's
+         * fallback, which is right at a start (the user asked for live mode
+         * and nothing else can serve) and wrong after an unplug (the chosen
+         * screen is gone, and the fallback is the app's own screen on a
+         * dual-screen device). So an id the backend rejects, a dead one or
+         * this app's own private projection display, must neither keep the
+         * session alive on the fallback nor end it silently, which the
+         * skip-then-resolve order did until 2026-10-14 (Codex review); a
+         * first cut asked whether the id existed, which a private display
+         * does (second Codex review).
+         */
+        internal fun liveSelectionAfterUnplug(context: Context, backend: CaptureBackend, pruned: Set<Int>): Set<Int>? =
+            if (pruned.any { backend.canCapture(context, it) }) pruned else null
 
         /** Process-scoped reference for in-process callers (e.g. DragLookupController). */
         @Volatile

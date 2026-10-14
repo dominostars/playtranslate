@@ -279,6 +279,16 @@ class OverlayUiController(
 
     private val iconHandles: MutableMap<Int, FloatingIconHandle> = mutableMapOf()
 
+    /** The displays that hold a floating icon now, as a snapshot: what the
+     *  log export prints beside the resolved capture targets
+     *  ([com.playtranslate.diagnostics.DisplayDiag]), since the two differ
+     *  whenever [reconcileFloatingIcons] returns before installing (the
+     *  preference off, the boot or Hide-for-Now suppression, MediaProjection
+     *  not turned on). [iconHandles] is main-thread confined and the export
+     *  reads off it; a read that races a mutation fails, which the export
+     *  tolerates by leaving the block out (Codex review, 2026-10-14). */
+    val floatingIconDisplayIds: Set<Int> get() = iconHandles.keys.toSet()
+
     // ── Sonar-ping intro ─────────────────────────────────────────────────
     //
     // Attention animation that plays whenever a fresh floating icon lands in
@@ -618,7 +628,7 @@ class OverlayUiController(
     fun showTranslationErrorPill(error: TranslationError): Boolean {
         val displayId = errorPills.displayId
             ?: CaptureService.instance?.primaryGameDisplayId()
-            ?: CaptureBackendResolver.active().capturableTargets(Prefs(context).captureDisplayIds).firstOrNull()
+            ?: CaptureBackendResolver.active().capturableTargets(context, Prefs(context).captureDisplayIds).firstOrNull()
             ?: Display.DEFAULT_DISPLAY
         val display = (context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
             .getDisplay(displayId) ?: return false
@@ -1141,7 +1151,12 @@ class OverlayUiController(
     /**
      * Reconcile the floating icons against [Prefs.captureDisplayIds]: tear down
      * icons whose display is no longer selected or has been disconnected, and
-     * install icons for newly-selected, currently-connected displays.
+     * install icons for newly-selected, currently-connected displays. When
+     * the selection names no connected display at all, the one icon goes on
+     * the fallback display ([findIconDisplay]) and stays there. Idempotent:
+     * a reconcile that finds the icons where they belong touches nothing,
+     * which every caller relies on, since a display event, a resume, a
+     * service reconnect and a language change all reconcile.
      *
      * [freshAppearance] is false only for the projection-loss reinstall
      * ([com.playtranslate.capture.MediaProjectionController.onProjectionLost]):
@@ -1198,35 +1213,51 @@ class OverlayUiController(
             return
         }
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-        // Resolve the saved selection through the backend shim — MediaProjection
-        // collapses a stale non-default selection to its fallback display, so
-        // the icon never lands on a screen it can't drive. Empty only when
-        // the backend has no fallback either (accessibility with every saved
-        // display unreachable); the downstream "all unreachable" branch picks
-        // up in that case.
-        val target = CaptureBackendResolver.active().capturableTargets(prefs.captureDisplayIds)
+        // Resolve the saved selection through the backend shim: the
+        // selection's displays the backend can capture now, else its
+        // fallback display (MediaProjection: the default display, the only
+        // one it mirrors; accessibility: the selection's connected,
+        // non-private displays, else the default display). The resolution
+        // live start and the one-shot fan-out act on, so the icon is where
+        // the capture is.
+        val target = CaptureBackendResolver.active().capturableTargets(context, prefs.captureDisplayIds)
 
-        // Snapshot before mutating — tear down icons no longer needed.
-        val staleIds = iconHandles.keys.filter { id ->
-            id !in target || dm.getDisplay(id) == null
-        }
+        // The displays the icons belong on, decided ONCE and read by both the
+        // sweep below and the install after it. The shim answers with
+        // connected displays (or the fallback) since 2026-10-14; the
+        // connected filter and the legacy single-display fallback here are a
+        // belt for a backend that ever does not, so the sweep and the install
+        // can never disagree again. Until that date the accessibility shim
+        // passed a selection through as stored, the sweep removed the
+        // fallback's icon as "not selected" and the install put it back as a
+        // fresh appearance, intro and all, on every reconcile; a Galaxy S25
+        // reporting a display change every few seconds, each reconciled by
+        // MainActivity's display listener, showed the icon popping inboard
+        // and sliding back to the edge for as long as the app was open
+        // (field report, 3.4.0).
+        val connected = target.filterTo(linkedSetOf()) { dm.getDisplay(it) != null }
+        val wanted: Set<Int> =
+            if (connected.isNotEmpty()) connected
+            else setOfNotNull(findIconDisplay(prefs)?.displayId)
+
+        // Snapshot before mutating — tear down icons on displays not wanted
+        // (deselected, disconnected, or the fallback once a selected display
+        // is connected).
+        val staleIds = iconHandles.keys.filter { it !in wanted }
         for (id in staleIds) hideFloatingIconForDisplay(id, "reconcile_remove", endsCapture = false)
 
-        // If the user has nothing selected OR every selected display is
-        // unreachable, fall back to the legacy single-display heuristic so the
-        // app always has at least one icon while it's "configured."
         var installedAny = false
-        if (target.none { dm.getDisplay(it) != null }) {
-            val display = findIconDisplay(prefs) ?: return
-            if (display.displayId !in iconHandles) {
-                installedAny = installFloatingIconForDisplay(display, prefs, freshAppearance)
+        for (id in wanted) {
+            if (id in iconHandles) continue
+            val display = dm.getDisplay(id) ?: continue
+            if (connected.isEmpty()) {
+                Log.i(
+                    TAG,
+                    "reconcile: selection ${prefs.captureDisplayIds} names no connected display; " +
+                        "icon on fallback display $id",
+                )
             }
-        } else {
-            for (id in target) {
-                if (id in iconHandles) continue
-                val display = dm.getDisplay(id) ?: continue
-                if (installFloatingIconForDisplay(display, prefs, freshAppearance)) installedAny = true
-            }
+            if (installFloatingIconForDisplay(display, prefs, freshAppearance)) installedAny = true
         }
         // The translation-error pills live on a captured display: one that
         // left the capture set (deselected, or gone) takes them with it, and
@@ -2909,7 +2940,7 @@ class OverlayUiController(
         val displays = dm.displays
         if (displays.size <= 1) return displays.firstOrNull()
         val backend = CaptureBackendResolver.active()
-        val primaryId = backend.capturableTargets(prefs.captureDisplayIds).firstOrNull()
+        val primaryId = backend.capturableTargets(context, prefs.captureDisplayIds).firstOrNull()
             ?: Display.DEFAULT_DISPLAY
         return dm.getDisplay(primaryId) ?: displays.firstOrNull()
     }

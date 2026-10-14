@@ -1,5 +1,6 @@
 package com.playtranslate.capture
 
+import android.content.Context
 import android.view.Display
 import com.playtranslate.CaptureService
 import com.playtranslate.OverlayUiController
@@ -39,7 +40,7 @@ object MediaProjectionCaptureBackend : CaptureBackend {
 
     /** MediaProjection mirrors only the default display (see
      *  [MediaProjectionController.projectedDisplayId]). */
-    override fun canCapture(displayId: Int): Boolean =
+    override fun canCapture(context: Context, displayId: Int): Boolean =
         displayId == Display.DEFAULT_DISPLAY
 
     /** The default display is the universal capture target — if a saved

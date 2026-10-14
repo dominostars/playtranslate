@@ -106,6 +106,21 @@ class PrimaryGameDisplayTest {
         assertEquals(third, svc().primaryGameDisplayId())
     }
 
+    @Test fun `a private display is passed over like a missing one`() {
+        // This app's own projection display, still connected: takeScreenshot
+        // refuses it, and an existence test would have made it the primary.
+        val dm = ctx.getSystemService(android.hardware.display.DisplayManager::class.java)
+        val projection = addDisplay()
+        shadowOf(dm.getDisplay(projection)).setFlags(Display.FLAG_PRIVATE or Display.FLAG_PRESENTATION)
+        val second = addDisplay()
+        svc().gameDisplayIds = linkedSetOf(projection, second)
+        svc().lastInteractedDisplayId = projection
+        assertEquals(second, svc().primaryGameDisplayId())
+
+        svc().gameDisplayIds = setOf(projection)
+        assertEquals(Display.DEFAULT_DISPLAY, svc().primaryGameDisplayId())
+    }
+
     @Test fun `with every game display gone the primary is the default display`() {
         val second = addDisplay()
         svc().gameDisplayIds = setOf(second)

@@ -447,18 +447,21 @@ class Prefs internal constructor(
     }
 
     /**
-     * Persistent counterpart to [CaptureService.activeRegion]: resolves the
-     * region for the first id in [captureDisplayIds] from the per-display
-     * selection map, falling back to the first list entry (full screen).
-     * Use as the in-app UI fallback when [CaptureService] isn't bound yet
-     * (e.g., the initial render before onServiceConnected) — once the
-     * service is up, prefer its `activeRegion` so `lastInteractedDisplayId`
-     * can steer the answer.
+     * Persistent counterpart to [CaptureService.activeRegion]: the region
+     * selected for [primaryDisplayId] from the per-display selection map,
+     * falling back to the first list entry (full screen). Use as the in-app
+     * UI fallback when [CaptureService] isn't bound yet (e.g., the initial
+     * render before onServiceConnected) — once the service is up, prefer its
+     * `activeRegion` so `lastInteractedDisplayId` can steer the answer. The
+     * caller resolves the id through the backend shim
+     * (MainActivity.resolvedPrimaryDisplayId), so a selection naming a
+     * display the backend cannot capture reads the region of the display
+     * the service will actually capture, which the region picker also writes
+     * under; until 2026-10-14 this read the first saved id as stored.
      */
-    fun primaryDisplayRegion(): RegionEntry {
+    fun primaryDisplayRegion(primaryDisplayId: Int): RegionEntry {
         val list = getRegionList()
-        val primaryId = captureDisplayIds.firstOrNull() ?: android.view.Display.DEFAULT_DISPLAY
-        val id = selectedRegionIdForDisplay(primaryId)
+        val id = selectedRegionIdForDisplay(primaryDisplayId)
         return if (id.isNotEmpty()) list.find { it.id == id } ?: list.first() else list.first()
     }
 

@@ -32,7 +32,7 @@ object LogExporter {
         dir.listFiles()?.forEach { it.delete() }
 
         val file = File(dir, "logcat-${FILE_NAME_FORMAT.format(Date())}.txt")
-        val header = buildHeader()
+        val header = buildHeader(context)
         val body = runLogcat()
         file.writeText(header + body)
         return file
@@ -135,16 +135,25 @@ object LogExporter {
         }
     }
 
-    private fun buildHeader(): String = buildString {
+    private fun buildHeader(context: Context): String = buildString {
         appendLine("PlayTranslate log export")
         appendLine("Time: ${HEADER_FORMAT.format(Date())}")
         appendLine("App: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) ${BuildConfig.BUILD_TYPE}")
         appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE}, ${Build.HARDWARE})")
         appendLine("Android: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}, patch ${Build.VERSION.SECURITY_PATCH})")
+        appendCaptureDisplays(context)
         appendTranslationDiagnostics()
         appendProcessExits()
         appendLine("─".repeat(60))
         appendLine()
+    }
+
+    /** The saved display selection, what the backend makes of it and the
+     *  displays connected now ([DisplayDiag]): which screen the icons and
+     *  the capture are on, which logcat never says. Always printed when it
+     *  can be read; best-effort like the blocks below. */
+    private fun StringBuilder.appendCaptureDisplays(context: Context) {
+        runCatching { DisplayDiag.lines(context).forEach { appendLine(it) } }
     }
 
     /** Translation-waterfall forensics — so an export made AFTER logcat
