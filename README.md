@@ -182,7 +182,7 @@ By default, translation uses [Lingva](https://github.com/thedaviddelta/lingva-tr
 - **Groq**: [console.groq.com](https://console.groq.com/keys) — pick a model at runtime
 - **OpenRouter**: [openrouter.ai](https://openrouter.ai/keys) — pick a model at runtime
 - **Claude**: [platform.claude.com](https://platform.claude.com/settings/keys) — pick a model at runtime
-- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://index-translate.bilibili.com/) — free, no API key needed
+- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://github.com/bilibili/Index-Translate) — free, no API key needed. May be temporary
 - **Custom**: any other OpenAI-compatible endpoint — point it at your own base URL
 
 ## Optional: Anki Flashcards
