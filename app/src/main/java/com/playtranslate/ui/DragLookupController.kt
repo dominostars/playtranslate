@@ -37,9 +37,7 @@ import com.playtranslate.model.FrequencyTag
 import com.playtranslate.yomitan.YomitanDataStore
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.selectHeadword
-import com.playtranslate.ocr.FrameReader
-import com.playtranslate.ocr.FrameReading
-import com.playtranslate.ocr.ReadRequest
+import com.playtranslate.ocr.DeviceFrameReader
 import com.playtranslate.ocr.readLines
 import kotlinx.coroutines.*
 import java.io.File
@@ -96,19 +94,6 @@ class DragLookupController(
             CoroutineExceptionHandler { _, e -> Log.e(TAG, "Uncaught", e) }
     )
     private val ocrManager get() = com.playtranslate.OcrManager.instance
-
-    /** The drag's own device reader: [OcrManager.recognise] under the
-     *  request's source, on [Dispatchers.Default] as the lookup's read always
-     *  ran. No attribution: [readLines] takes only the lines. */
-    private val deviceReader = object : FrameReader {
-        override suspend fun read(bitmap: Bitmap, request: ReadRequest): FrameReading = FrameReading(
-            ocr = withContext(Dispatchers.Default) {
-                ocrManager.recognise(bitmap, request.sourceLangId, screenshotWidth = request.screenshotWidth)
-            },
-            attribution = null,
-            translations = null,
-        )
-    }
 
     /** Cached OCR lines from the initial screenshot. */
     private var ocrLines: List<OcrManager.OcrLine>? = null
@@ -1351,14 +1336,15 @@ class DragLookupController(
     }
 
     /** The drag's lines: through PlayTranslate Cloud when the router would
-     *  send a capture there (a frame it cannot read falls back to
-     *  [deviceReader]), else on the device, and on the device when no service
-     *  is running. Called directly in the OCR job, never inside a scoped
-     *  builder, since a cloud read's later work is a child of the calling job. */
+     *  send a capture there (a frame it cannot read falls back to the device),
+     *  else on the device, and on the device ([DeviceFrameReader], the same
+     *  read the service's own device reader makes) when no service is running.
+     *  Called directly in the OCR job, never inside a scoped builder, since a
+     *  cloud read's later work is a child of the calling job. */
     private suspend fun readDragLines(bitmap: Bitmap): List<OcrManager.OcrLine>? {
         val srcId = Prefs(context).sourceLangId
-        val reader = CaptureService.instance?.frameReaderFor(srcId, deviceOnly = false, device = deviceReader)
-            ?: deviceReader
+        val reader = CaptureService.instance?.frameReaderFor(srcId, deviceOnly = false)
+            ?: DeviceFrameReader(ocrManager, context)
         return reader.readLines(bitmap, srcId, CaptureService.frameIdFor(displayId))
     }
 

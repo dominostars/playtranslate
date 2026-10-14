@@ -12,6 +12,7 @@ import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.translation.BackendFailure
 import com.playtranslate.translation.ClassifiedFailure
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withContext
 import java.io.IOException
 
 private const val TAG = "FrameReader"
@@ -285,22 +287,31 @@ suspend fun FrameReader.readLines(bitmap: Bitmap, sourceLangId: SourceLangId, fr
 /**
  * The on-device reader: [OcrManager.recognise] with the engine selected for the
  * request's language. It only reads; translation is the caller's waterfall.
+ *
+ * The whole read runs on [Dispatchers.Default]. Every caller reads from a
+ * Main-dispatched scope (the service's capture and hold cycles, both live
+ * tiers, the drag lookup), and [OcrManager.recognise] hops only for the
+ * recognition itself: the result's projection into groups, lines and symbols
+ * resumes on the caller, and a no-text read's backend resolution
+ * ([noTextAttribution]) reads pack sentinels from disk. One hop here keeps
+ * both off the UI thread for every device read.
  */
 class DeviceFrameReader(
     private val ocrManager: OcrManager,
     private val context: Context,
 ) : FrameReader {
 
-    override suspend fun read(bitmap: Bitmap, request: ReadRequest): FrameReading {
-        val ocr = ocrManager.recognise(
-            bitmap, request.sourceLangId, screenshotWidth = request.screenshotWidth,
-        )
-        // Text found: the engine that produced it (null for the empty engine, which
-        // keeps today's null provenance). Nothing found: the engine that looked.
-        val attribution = if (ocr != null) attributionOf(ocr, context)
-            else noTextAttribution(context, request.sourceLangId)
-        return FrameReading(ocr, attribution, translations = null)
-    }
+    override suspend fun read(bitmap: Bitmap, request: ReadRequest): FrameReading =
+        withContext(Dispatchers.Default) {
+            val ocr = ocrManager.recognise(
+                bitmap, request.sourceLangId, screenshotWidth = request.screenshotWidth,
+            )
+            // Text found: the engine that produced it (null for the empty engine, which
+            // keeps today's null provenance). Nothing found: the engine that looked.
+            val attribution = if (ocr != null) attributionOf(ocr, context)
+                else noTextAttribution(context, request.sourceLangId)
+            FrameReading(ocr, attribution, translations = null)
+        }
 
     companion object {
         /** The attribution of a device OCR result: its [OcrManager.OcrResult.engineBackend]'s

@@ -208,25 +208,20 @@ class CaptureService : Service() {
      * which states device-only only once the service refused their session
      * ([PtCloudService.liveSessionBlocked]).
      *
-     * [device] is the reader the read stays on when the router refuses the
-     * cloud and falls back to when the cloud cannot read: this service's own
-     * device reader by default. A drag lookup passes its own
-     * ([com.playtranslate.ui.DragLookupController]'s, which reads under the
-     * stored source code), and reads a fresh frame, never device-only.
+     * A read the router keeps on the device, and a cloud read that cannot
+     * read, both go to this service's own device reader ([deviceFrameReader]).
+     * A drag lookup ([com.playtranslate.ui.DragLookupController]) reads a
+     * fresh frame through here too, never device-only.
      *
      * A read kept on the device logs why at debug level, except when the switch
      * is off, which is every read of every release build. [warmCloud] asks the
      * same [cloudRefusal] and logs nothing: the read that follows says why.
      */
-    internal fun frameReaderFor(
-        srcId: SourceLangId,
-        deviceOnly: Boolean,
-        device: FrameReader = deviceFrameReader,
-    ): FrameReader {
+    internal fun frameReaderFor(srcId: SourceLangId, deviceOnly: Boolean): FrameReader {
         val refusal = cloudRefusal(PtCloudConfig(Prefs(this)), srcId, deviceOnly)
-            ?: return FallbackFrameReader(cloudFrameReader, device)
+            ?: return FallbackFrameReader(cloudFrameReader, deviceFrameReader)
         refusal.logWord?.let { Log.d(TAG, "PlayTranslate Cloud not used for this read: $it") }
-        return device
+        return deviceFrameReader
     }
 
     /** Why a read stays on the device ([cloudRefusal]). [logWord] names it in
