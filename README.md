@@ -13,7 +13,7 @@ English | [简体中文](./readme/README.zh-CN.md) | [繁體中文](./readme/REA
 </div>
 <!-- /l10n-header -->
 
-A real-time translation and language learning Android app for games, visual novels, manga, and any other screen text. Supports 26 game languages and 59 user languages!
+Real-time translation and language learning Android app for games, visual novels, manga, and any other screen text. Supports 26 game languages and 59 user languages!
 
 [Download the latest release by clicking here](../../releases/latest)
 
