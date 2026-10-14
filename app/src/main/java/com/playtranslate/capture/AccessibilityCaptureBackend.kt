@@ -1,7 +1,11 @@
 package com.playtranslate.capture
 
+import android.content.Context
+import android.hardware.display.DisplayManager
+import android.view.Display
 import com.playtranslate.OverlayUiController
 import com.playtranslate.PlayTranslateAccessibilityService
+import com.playtranslate.isReachableDisplay
 import com.playtranslate.overlay.OverlayHost
 
 /**
@@ -30,8 +34,16 @@ object AccessibilityCaptureBackend : CaptureBackend {
     /** `takeScreenshot` never shows a prompt. */
     override val canCaptureWithoutPrompting: Boolean get() = true
 
-    /** `takeScreenshot` can target any display. */
-    override fun canCapture(displayId: Int): Boolean = true
+    /** `takeScreenshot` can target any connected, non-private display
+     *  ([isReachableDisplay]); a selection naming none resolves to
+     *  [fallbackDisplay]. Until 2026-10-14 this was true for every id, so a
+     *  saved display that no longer existed stayed the target of live start
+     *  and the one-shot fan-out, which then captured nothing, silently,
+     *  while the floating icon fell back to the default display on its own. */
+    override fun canCapture(context: Context, displayId: Int): Boolean =
+        context.getSystemService(DisplayManager::class.java)?.isReachableDisplay(displayId) == true
+
+    override val fallbackDisplay: Int get() = Display.DEFAULT_DISPLAY
 
     override fun startInputMonitoring(displayId: Int, onGameInput: () -> Unit) {
         PlayTranslateAccessibilityService.instance

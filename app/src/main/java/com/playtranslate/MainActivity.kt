@@ -1131,7 +1131,7 @@ class MainActivity :
     }
 
     private fun updateRegionButton() {
-        val region = captureService?.activeRegion ?: prefs.primaryDisplayRegion()
+        val region = captureService?.activeRegion ?: prefs.primaryDisplayRegion(resolvedPrimaryDisplayId())
         val label = region.displayName(this)
         val isInAppOnly = Prefs.shouldUseInAppOnlyMode(this)
         val overlayLive = isLiveMode && !isInAppOnly
@@ -1848,7 +1848,7 @@ class MainActivity :
         if (prefs.hasDisplaySelection) return false
         val backend = CaptureBackendResolver.active()
         if (!DisplaySelectionSeed.isBackendPermissionBacked(this, backend)) return false
-        prefs.captureDisplayIds = DisplaySelectionSeed.seedFor(backend, findGameDisplayId())
+        prefs.captureDisplayIds = DisplaySelectionSeed.seedFor(this, backend, findGameDisplayId())
         // Keep onResume's picker-change diff from re-applying the seed.
         lastSeenCaptureDisplayIds = prefs.captureDisplayIds
         return true
@@ -2595,8 +2595,22 @@ class MainActivity :
         tv.text = spannable
     }
 
+    /** The display the service will treat as primary before it is bound:
+     *  the first of the selection as the active backend resolves it
+     *  ([com.playtranslate.capture.CaptureBackend.capturableTargets]), so the
+     *  pre-bind region label agrees with [CaptureService.activeRegion] once
+     *  the service is up. */
+    private fun resolvedPrimaryDisplayId(): Int =
+        CaptureBackendResolver.active().capturableTargets(this, prefs.captureDisplayIds).firstOrNull()
+            ?: android.view.Display.DEFAULT_DISPLAY
+
     // ── Display detection ─────────────────────────────────────────────────
 
+    /** The display the first-launch seed guesses the game is on
+     *  ([DisplaySelectionSeed.detectGameDisplayId]: the other screen of a
+     *  dual-screen device, on or off, never a private display), else what
+     *  the selection already reads as (the default display until something
+     *  is stored). Read by [seedDisplaySelectionIfReady] only. */
     private fun findGameDisplayId(): Int {
         val myDisplayId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             display?.displayId ?: Display.DEFAULT_DISPLAY
@@ -2606,9 +2620,7 @@ class MainActivity :
         }
 
         val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-        return displayManager.displays
-            .firstOrNull { it.displayId != myDisplayId }
-            ?.displayId
+        return DisplaySelectionSeed.detectGameDisplayId(displayManager, myDisplayId)
             ?: (prefs.captureDisplayIds.firstOrNull() ?: android.view.Display.DEFAULT_DISPLAY)
     }
 
@@ -2642,7 +2654,7 @@ class MainActivity :
         // The service's active region already folds in the persisted selection,
         // so prefer it outright — an unnamed override (a drawn region) resolves
         // through displayName rather than falling back to the saved entry's name.
-        val region = captureService?.activeRegion ?: prefs.primaryDisplayRegion()
+        val region = captureService?.activeRegion ?: prefs.primaryDisplayRegion(resolvedPrimaryDisplayId())
         val label = region.displayName(this)
         return "Searching for $lang in the \"$label\" area"
     }
@@ -2806,7 +2818,7 @@ class MainActivity :
         // dropdown still has something to apply a region to. Matches live
         // start and floating-icon placement.
         val all = CaptureBackendResolver.active()
-            .capturableTargets(prefs.captureDisplayIds)
+            .capturableTargets(this, prefs.captureDisplayIds)
             .toList()
         val filtered = all.filter { it != MainActivity.foregroundDisplayId }
         return filtered.ifEmpty { all }

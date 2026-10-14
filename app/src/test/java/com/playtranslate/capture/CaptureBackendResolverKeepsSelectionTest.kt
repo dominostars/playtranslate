@@ -18,8 +18,9 @@ import org.robolectric.shadows.ShadowSettings
 /**
  * Pins that a backend swap never rewrites [Prefs.captureDisplayIds].
  * MediaProjection collapses a non-default selection at READ time only
- * ([CaptureBackend.capturableTargets]); the selection itself survives a
- * round trip through MediaProjection and comes back intact under
+ * ([CaptureBackend.capturableTargets]), and so does accessibility for a
+ * display that is not connected (2026-10-14); the selection itself survives
+ * a round trip through MediaProjection and comes back intact under
  * accessibility. This matters because an OEM switching the accessibility
  * service off arrives as exactly this swap, with some frequency on some
  * devices, and must not touch a display the user picked. A write-at-swap
@@ -59,9 +60,15 @@ class CaptureBackendResolverKeepsSelectionTest {
         assertEquals(
             "read-time collapse is what MediaProjection acts on",
             setOf(Display.DEFAULT_DISPLAY),
-            CaptureBackendResolver.active().capturableTargets(prefs.captureDisplayIds),
+            CaptureBackendResolver.active().capturableTargets(ctx, prefs.captureDisplayIds),
         )
         resolveIntoAccessibility()
+        assertEquals(setOf(4), prefs.captureDisplayIds)
+        assertEquals(
+            "accessibility collapses at read time too while display 4 is away (2026-10-14), and rewrites nothing",
+            setOf(Display.DEFAULT_DISPLAY),
+            CaptureBackendResolver.active().capturableTargets(ctx, prefs.captureDisplayIds),
+        )
         assertEquals(setOf(4), prefs.captureDisplayIds)
     }
 

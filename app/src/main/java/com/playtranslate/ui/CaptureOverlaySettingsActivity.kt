@@ -572,7 +572,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         val backend = CaptureBackendResolver.active()
         val mgr = backend.captureSource?.takeIf { backend.canCaptureWithoutPrompting }
         displays.forEach { display ->
-            if (mgr != null && backend.canCapture(display.displayId)) {
+            if (mgr != null && backend.canCapture(this, display.displayId)) {
                 lifecycleScope.launch {
                     // maskOwnWindows = false: these are thumbnails of what
                     // each display shows, and this page sits on one of them.
