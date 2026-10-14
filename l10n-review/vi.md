@@ -626,3 +626,15 @@ No new findings.
 **PASS.** Both round-1 fixes landed byte for byte and broke nothing around them. There are no new findings: 0 🛑, 0 ❌, 0 ⚠️, 0 💬. Carried over, not blocking (device checks under known issue 2):
 1. On a Xiaomi set to Vietnamese, check that a Settings search for “khởi động” finds the autostart switch. If the switch reads “Tự khởi chạy” (the unread CellphoneS lead, and VnReview's “Tự khởi chạy nền” in `oem-labels.md`), `keep_running_xiaomi_autostart_line` needs “khởi chạy” as well.
 2. On an OPPO, realme or OnePlus phone in Vietnamese, run the same check for “khởi chạy”. If the entry reads “Quản lý khởi động” (the unread FPT Shop lead, an old Phone Manager screen), the OPPO line needs “khởi động” as well. On a vivo phone, run the same check for “khởi động”.
+
+## Delta review 2026-10-14 (Bilibili Index-Translate: 3 keys)
+
+Mechanical layer: `python3 scripts/l10n_diff.py --locale app/src/main/res/values-vi/strings.xml` reports `values-vi missing=0 orphan=0 modified=0`, "in sync". The three new names are each present once and are the file's only change (`git diff`). The delta has no `<xliff:g>`, placeholders or markup, no unescaped `'`/`"`, no dashes, no odd or double spaces, and is NFC with full diacritics. **No 🛑 build-breaking issues.**
+
+No findings.
+
+Clean areas: Render code read first. The note is `tvProviderNote` (13 sp, no line cap), shown where the key section would be. The picker and the remove alert switch to `_keyless` when `account.requiresKey` is false (Lingva, Index-Translate). **`llm_backend_index_translate_note`** has all four English facts. 「không công bố giới hạn sử dụng」 keeps "publishes no usage limits" and does not say there are none. giới hạn is the error pill's word (`translation_error_daily_quota` đã đạt giới hạn hằng ngày), and khóa API is `llm_backend_api_key_label`. 「Văn bản đã chụp」 is `tr_service_order_footer`'s own phrase, and 「do Bilibili vận hành」 is the natural "run by". In 「Dịch vụ do Bilibili vận hành và không công bố…」 the service is the grammatical subject of không công bố, where the English makes Bilibili the publisher. The reader gets the same fact either way (no published limits), so it is not a finding. Register is neutral bạn-level with no pronoun needed. **`llm_model_picker_fetch_failed_keyless`** matches its sibling except for the middle clause: the same unquoted Tùy chỉnh…, lowercase id, closing "…." and Tùy spelling. 「Hãy thử lại sau」 renders "later" and differs, correctly, from `anki_models_unavailable`'s sau giây lát ("in a moment"). **`tr_service_remove_message_keyless`** is its sibling without the key clause. Read with the title 「Gỡ Bilibili Index-Translate?」 and the Gỡ button, the alert uses one verb, and remove (gỡ) stays distinct from delete (xóa), as in the sibling.
+
+### Disposition (2026-10-14)
+
+No findings; nothing to apply.

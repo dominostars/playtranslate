@@ -773,6 +773,7 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="llm_backend_api_key_label">APIキー</string>
+    <string name="llm_backend_index_translate_note">無料で、APIキーは不要です。Bilibiliが運営しており、利用上限は公開されていません。キャプチャしたテキストは翻訳のためBilibiliに送信されます。</string>
 
     <string name="llm_backend_model_label">モデル</string>
 
@@ -791,6 +792,7 @@
     <string name="llm_model_picker_loading">モデルを読み込み中…</string>
 
     <string name="llm_model_picker_fetch_failed">モデル一覧を取得できませんでした。APIキーを確認するか、「カスタム…」からモデルIDを入力してください。</string>
+    <string name="llm_model_picker_fetch_failed_keyless">モデル一覧を取得できませんでした。時間をおいて再度試すか、「カスタム…」からモデルIDを入力してください。</string>
 
     <string name="llm_backend_invalid_key_alert_title">APIキーを確認できませんでした</string>
 
@@ -893,6 +895,7 @@
     <string name="tr_service_remove_title_fmt"><xliff:g id="service_name" example="OpenAI">%1$s</xliff:g>を削除しますか？</string>
 
     <string name="tr_service_remove_message">保存済みのAPIキーとともに、サービスをリストから削除します。</string>
+    <string name="tr_service_remove_message_keyless">サービスをリストから削除します。</string>
 
     <string name="tr_service_remove_confirm">削除</string>
 

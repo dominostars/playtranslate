@@ -84,3 +84,15 @@ Clean areas: The four steps match the English in order, with nothing added or dr
 ### Disposition (2026-10-08)
 
 Applied the 1 💬 («при нажатии на переключатель»).
+
+## Delta review 2026-10-14 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] ru -> readme/README.ru.md`, no warnings; the same with `--require-header`). **No 🛑 issues.**
+
+No findings.
+
+Clean areas: The lead drops the API key as the English does: «можно добавить любой из сервисов ниже в разделе **Настройки → Сервисы перевода**». «Добавляйте сколько угодно» still follows, and добавить is the app's verb for this step (`tr_service_add_online` «Добавить онлайн-сервис перевода»). The path and its bold are unchanged. The bullet sits between Claude and «Свой», as in English, with an em dash like its siblings' «— модель выбирается прямо в приложении». «бесплатно, без API-ключа» uses the app's term, and «без» takes the genitive correctly. The brand stays in Latin script and the link is byte-identical (checker). The intro was correctly left alone: Russian has no article, so «Приложение для Android, которое …» had nothing to drop. вы throughout.
+
+### Disposition (2026-10-14)
+
+No findings; nothing to apply.

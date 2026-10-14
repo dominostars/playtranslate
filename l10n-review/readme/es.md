@@ -117,3 +117,15 @@ Clean areas: The intro and the four steps carry the English in order, with nothi
 ### Disposition (2026-10-08)
 
 Applied the 1 💬 ("el sistema muestra en gris").
+
+## Delta review 2026-10-14 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] es -> readme/README.es.md`, no warnings; the same with `--require-header`). **No 🛑 issues.**
+
+No findings.
+
+Clean areas: The lead drops the API key as the English does: «puedes añadir en **Ajustes → Servicios de traducción** cualquiera de los siguientes servicios». «Añade tantos como quieras» still follows, and añadir is the app's verb for this step (`tr_service_add_online` «Añadir servicio de traducción en línea»). The path and its bold are unchanged. The bullet sits between Claude and Personalizado, as in English, with a parenthesis like its siblings' «(eliges el modelo en la app)». «(gratis, sin clave de API)» matches the app's own note «Gratis, sin clave de API.» word for word. The brand stays in Latin script and the link is byte-identical (checker). The intro was correctly left alone: in «PlayTranslate es una app de Android que …» the article belongs to a full sentence with a verb, not to a tagline that mirrors the English "A". tú throughout, neutral vocabulary.
+
+### Disposition (2026-10-14)
+
+No findings; nothing to apply.

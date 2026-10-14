@@ -52,3 +52,15 @@ Clean areas: du throughout, no Sie. All six Android labels match AOSP Android 16
 ### Disposition (2026-10-08)
 
 Applied the 1 💬 („über eine heruntergeladene APK-Datei“).
+
+## Delta review 2026-10-14 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] de -> readme/README.de.md`, no warnings; the same with `--require-header`). **No 🛑 issues.**
+
+No findings.
+
+Clean areas: The lead drops the API key as the English does: «kannst du unter **Einstellungen → Übersetzungsdienste** einen der folgenden Dienste einrichten». Using «einrichten» for "add" avoids repeating the next sentence's «hinzufügen», which is the app's own verb for this step (`tr_service_add_online` «Online-Übersetzungsdienst hinzufügen»). The path and its bold are unchanged. The bullet sits between Claude and Benutzerdefiniert, as in English, with a spaced en dash like its siblings. «kostenlos, ohne API-Schlüssel» renders "free, no API key needed" in the app's term. The brand stays in Latin script and the link is byte-identical (checker). The intro was correctly left alone: in «PlayTranslate ist eine Android-App, die …» the article belongs to a full sentence with a verb, not to a tagline that mirrors the English "A". du throughout, typography unchanged.
+
+### Disposition (2026-10-14)
+
+No findings; nothing to apply.

@@ -778,6 +778,7 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="llm_backend_api_key_label">API-ключ</string>
+    <string name="llm_backend_index_translate_note">Бесплатно, API-ключ не нужен. Сервисом управляет Bilibili, лимиты использования не опубликованы. Захваченный текст отправляется в Bilibili для перевода.</string>
 
     <string name="llm_backend_model_label">Модель</string>
 
@@ -796,6 +797,7 @@
     <string name="llm_model_picker_loading">Загрузка моделей…</string>
 
     <string name="llm_model_picker_fetch_failed">Не удалось получить список моделей. Проверьте API-ключ или введите ID модели через «Вручную…».</string>
+    <string name="llm_model_picker_fetch_failed_keyless">Не удалось получить список моделей. Повторите попытку позже или введите ID модели через «Вручную…».</string>
 
     <string name="llm_backend_invalid_key_alert_title">Не удалось проверить API-ключ</string>
 
@@ -898,6 +900,7 @@
     <string name="tr_service_remove_title_fmt">Убрать <xliff:g id="service_name" example="OpenAI">%1$s</xliff:g>?</string>
 
     <string name="tr_service_remove_message">Сервис будет убран из списка, а сохранённый API-ключ удалён.</string>
+    <string name="tr_service_remove_message_keyless">Сервис будет убран из списка.</string>
 
     <string name="tr_service_remove_confirm">Убрать</string>
 

@@ -1,7 +1,10 @@
 package com.playtranslate.ui
 
 import android.content.Context
+import androidx.annotation.StringRes
 import com.playtranslate.Prefs
+import com.playtranslate.R
+import com.playtranslate.translation.AccountRequirement
 import com.playtranslate.translation.ModelLister
 import com.playtranslate.translation.OnlineBackendFactory
 import com.playtranslate.translation.OnlineServiceInstance
@@ -38,9 +41,17 @@ data class LlmBackendConfig(
      *  not [ModelLister]-capable. */
     val listModels: suspend () -> List<String>,
     val defaultModel: String,
-    /** True for OPENAI-type instances: the ADVANCED section (provider
-     *  preset + base URL) is shown. Hidden for Gemini. */
+    /** True for OPENAI-type instances whose preset the OpenAI row lists
+     *  ([OpenAiPreset.listedUnderOpenAi]): the ADVANCED section (provider
+     *  preset + base URL) is shown. Hidden for Gemini, and for a preset with
+     *  a picker row of its own, which is pinned: switching it would change
+     *  what the instance is. */
     val allowsBaseUrl: Boolean,
+    /** What the page's provider costs to start; [AccountRequirement.requiresKey]
+     *  false hides the key field, its get-a-key link and the key probe. */
+    val account: AccountRequirement,
+    /** A provider-specific note shown in place of the key field, or null. */
+    @StringRes val noteRes: Int?,
     /** The base URL the current preset resolves to — field text for
      *  pinned presets, hint for CUSTOM. */
     val presetBaseUrl: String,
@@ -78,11 +89,29 @@ object LlmBackendConfigs {
                     ?: emptyList()
             },
             defaultModel = OnlineBackendFactory.defaultModelFor(type, preset),
-            allowsBaseUrl = type == ServiceType.OPENAI,
+            allowsBaseUrl = type == ServiceType.OPENAI && preset.listedUnderOpenAi,
+            account = shell.account,
+            noteRes = noteFor(type, preset),
             presetBaseUrl = OnlineBackendFactory.resolveBaseUrl(shell)
                 .ifBlank { Prefs.DEFAULT_OPENAI_BASE_URL },
             getBaseUrl = { OnlineServiceStore.byId(instanceId)?.baseUrl ?: "" },
         )
+    }
+
+    /** The note a provider's page shows in place of the key field. Exhaustive
+     *  so a new preset has to decide, and a keyless one can't ship without
+     *  saying who runs it and where the captured text goes. */
+    @StringRes
+    private fun noteFor(type: ServiceType, preset: OpenAiPreset): Int? = when (type) {
+        ServiceType.OPENAI -> when (preset) {
+            OpenAiPreset.INDEX_TRANSLATE -> R.string.llm_backend_index_translate_note
+            OpenAiPreset.OPENAI, OpenAiPreset.DEEPSEEK, OpenAiPreset.MISTRAL,
+            OpenAiPreset.GROQ, OpenAiPreset.OPENROUTER, OpenAiPreset.CLAUDE,
+            OpenAiPreset.CUSTOM -> null
+        }
+        ServiceType.GEMINI -> null
+        // DeepL and Lingva don't route through this screen.
+        ServiceType.DEEPL, ServiceType.LINGVA -> null
     }
 
     /**
@@ -110,7 +139,8 @@ object LlmBackendConfigs {
             OpenAiPreset.GROQ -> "gsk_..."
             OpenAiPreset.OPENROUTER -> "sk-or-v1-..."
             OpenAiPreset.CLAUDE -> "sk-ant-..."
-            OpenAiPreset.MISTRAL, OpenAiPreset.CUSTOM -> ""
+            // Index-Translate takes no key; its page shows no key field.
+            OpenAiPreset.MISTRAL, OpenAiPreset.INDEX_TRANSLATE, OpenAiPreset.CUSTOM -> ""
         }
         // DeepL and Lingva don't route through this screen.
         ServiceType.DEEPL, ServiceType.LINGVA -> ""
@@ -119,7 +149,8 @@ object LlmBackendConfigs {
     /** Where to get a key for this provider. CUSTOM keeps OpenAI's page —
      *  the legacy custom-URL flow lived on the OpenAI screen with this
      *  same link, and most custom endpoints (OpenRouter, proxies) accept
-     *  an OpenAI-style key anyway. */
+     *  an OpenAI-style key anyway. Exhaustive so a new preset can't
+     *  silently send its users to OpenAI's key page. */
     private fun keyUrlFor(type: ServiceType, preset: OpenAiPreset): String = when (type) {
         ServiceType.GEMINI -> "https://aistudio.google.com/app/apikey"
         ServiceType.OPENAI -> when (preset) {
@@ -128,7 +159,9 @@ object LlmBackendConfigs {
             OpenAiPreset.GROQ -> "https://console.groq.com/keys"
             OpenAiPreset.OPENROUTER -> "https://openrouter.ai/keys"
             OpenAiPreset.CLAUDE -> "https://platform.claude.com/settings/keys"
-            else -> "https://platform.openai.com/api-keys"
+            OpenAiPreset.OPENAI, OpenAiPreset.CUSTOM -> "https://platform.openai.com/api-keys"
+            // No key to get; its page hides the link.
+            OpenAiPreset.INDEX_TRANSLATE -> ""
         }
         // DeepL and Lingva don't route through this screen.
         ServiceType.DEEPL, ServiceType.LINGVA -> ""

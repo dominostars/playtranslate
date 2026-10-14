@@ -949,3 +949,15 @@ names only as by-version examples.
 **PASS.** 0 ❌, 0 ⚠️, 0 💬. The one round-1 fix landed byte-exact and broke nothing around it; nothing is open in the ja
 translation. Outside it, three words stay unverified (packet known issue 2): Xiaomi's 「制限なし」, HyperOS 3's 「電力」,
 and vivo's search word 「自動起動」 (vivo does not sell in Japan, so there is no Japanese ROM to check).
+
+## Delta review 2026-10-14 (Bilibili Index-Translate: 3 keys)
+
+Mechanical layer: `python3 scripts/l10n_diff.py --locale app/src/main/res/values-ja/strings.xml` reports `values-ja missing=0 orphan=0 modified=0`, "in sync". The three new names are each present once and are the file's only change (`git diff`). The delta has no `<xliff:g>`, placeholders or markup, no unescaped `'`/`"`, no dashes, no odd or double spaces, and is NFC. **No 🛑 build-breaking issues.**
+
+No findings.
+
+Clean areas: Render code read first. The note is `tvProviderNote` (13 sp `Text.PT.RowSubtitle`, no line cap), shown on the service page where the key section would be. The model picker shows `_keyless` when `account.requiresKey` is false. `removeConfirmationMessage` makes the same choice for Lingva and Index-Translate. **`llm_backend_index_translate_note`** has all four English facts: 無料; APIキーは不要 (the `llm_backend_api_key_label` word); 運営 by Bilibili; and 「利用上限は公開されていません」, which keeps "publishes no usage limits" and does not turn it into "has no limits". The privacy sentence follows. 「キャプチャしたテキスト…送信されます」 is `tr_service_order_footer`'s own wording, and 上限 is the error pill's word (`translation_error_daily_quota` 「1日の上限」). Bilibili stays Latin with no spaces around it. です/ます, no あなた, full-width 、。. **`llm_model_picker_fetch_failed_keyless`** matches its sibling except for the middle clause, and 「カスタム…」 is `llm_backend_model_custom_entry` verbatim in the same 「」. 「時間をおいて再度試すか」 is the stock Japanese "try again later" (時間をおいて再度お試しください) in the plain form that 〜か、〜してください needs, as `update_error_incomplete` has 「もう一度試すか、」. 再度 is already in the file. **`tr_service_remove_message_keyless`** is its sibling without the key clause. Read with the title 「Lingvaを削除しますか？」 / 「Bilibili Index-Translateを削除しますか？」 and the 削除 button, the alert uses one verb throughout, as the existing title, sibling and button do (values-ja uses 削除 for both remove and delete).
+
+### Disposition (2026-10-14)
+
+No findings; nothing to apply.

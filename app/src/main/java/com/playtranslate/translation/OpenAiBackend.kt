@@ -91,7 +91,8 @@ class OpenAiBackend(
      *  probe and [listModels]). Bearer for every OpenAI-compatible provider;
      *  Claude's /models is Anthropic's native endpoint and wants `x-api-key`
      *  (see [OnlineBackendFactory.modelsAuthHeadersFor]). The chat endpoint
-     *  takes Bearer everywhere, so translate() never consults this. */
+     *  takes Bearer everywhere, so translate() never consults this. A
+     *  keyless provider ([account]) sends no auth header on either. */
     private val modelsAuthHeaders: (String) -> Map<String, String> = { mapOf("Authorization" to "Bearer $it") },
     /** True when the endpoint is a known provider (every preset but CUSTOM):
      *  its catalog endpoint exists and authenticates, so a 400 from the key
@@ -99,8 +100,15 @@ class OpenAiBackend(
      *  where a 400 may only mean "no such route" and the probe stays
      *  lenient ([validateKey]). */
     private val pinnedEndpoint: () -> Boolean = { false },
+    /** What the provider costs to start, and so whether it takes a key
+     *  ([AccountRequirement.requiresKey]). The factory passes the instance's
+     *  own ([OnlineServiceInstance.account]); the default is the OpenAI row's.
+     *  Read only through [credential]: a keyless provider (INDEX_TRANSLATE)
+     *  sends no Authorization at all, as its own client doesn't, and a blank
+     *  stored key does not make it unconfigured. */
+    private val account: () -> AccountRequirement = { ServiceType.OPENAI.account },
     /** Extra top-level fields for the chat-completions body, chosen per
-     *  model. Empty for every OpenAI-compatible provider; Claude switches
+     *  model. Empty for most providers; Claude and Index-Translate switch
      *  thinking off here ([OnlineBackendFactory.requestExtrasFor]). */
     private val requestExtras: (String) -> Map<String, JsonElement> = { emptyMap() },
     private val usageTracker: UsageTracker,
@@ -126,14 +134,56 @@ class OpenAiBackend(
     override val providesLlmContext: Boolean = true
     override val qualityStars: StarRating = 4.5f
 
+    /** What a call authenticates with: nothing for a keyless provider, the
+     *  stored key otherwise. */
+    private sealed interface Credential {
+        data object Keyless : Credential
+        data class Key(val value: String) : Credential
+    }
+
+    /** The one key gate. Read by [isUsable], [status], [translate],
+     *  [translateBatch] and [listModels]: [Credential.Keyless] when the
+     *  provider takes no key, the stored key when it does, null when it does
+     *  and none is stored. [validateKey] tests a key the user typed, and the
+     *  config page never runs it for a keyless provider. */
+    private fun credential(): Credential? =
+        if (!account().requiresKey) Credential.Keyless
+        else keyProvider()?.takeIf { it.isNotBlank() }?.let { Credential.Key(it) }
+
+    /** The chat-completions auth header: Bearer wherever a key exists. */
+    private fun Credential.chatAuthHeaders(): Map<String, String> = when (this) {
+        Credential.Keyless -> emptyMap()
+        is Credential.Key -> mapOf("Authorization" to "Bearer $value")
+    }
+
+    /** The catalog's auth headers, in the provider's dialect ([modelsAuthHeaders]). */
+    private fun Credential.catalogAuthHeaders(): Map<String, String> = when (this) {
+        Credential.Keyless -> emptyMap()
+        is Credential.Key -> modelsAuthHeaders(value)
+    }
+
+    /** A keyless provider's 401 or 403 can't mean "fix your credentials":
+     *  there are none ([isKeylessRefusal]). Cool down on its Retry-After the
+     *  way Lingva does and fail as a rate limit, never as a bad key. Runs
+     *  before the status `when` on both chat paths, so the keyed 401 branch
+     *  and the 403 REJECTED path below never see a keyless refusal. */
+    private fun throwIfKeylessRefusal(credential: Credential, response: Response) {
+        if (credential !is Credential.Keyless || !isKeylessRefusal(response.code)) return
+        val retryAfter = response.header("Retry-After")
+        Log.w(TAG, "keyless refusal code=${response.code} retryAfter=$retryAfter")
+        cooldownState?.recordRetryAfterFailure(retryAfter, "Rate limited")
+        throw OpenAiRateLimitException(BackendFailure(BackendFailureKind.RATE_LIMITED, response.code))
+    }
+
     override val status: BackendStatus
         get() {
-            val key = keyProvider()
-            if (key.isNullOrBlank()) {
-                // Every OpenAI preset (DeepSeek, Mistral, Groq, OpenRouter,
-                // Custom) is an OPENAI-type instance, and all of them want an
-                // account — so the type's requirement covers the whole family.
-                return BackendStatus.Account(ServiceType.OPENAI.account)
+            if (credential() !is Credential.Key) {
+                // No key to meter: either one is required and none is stored
+                // ("Account required" until the user adds one), or the
+                // provider takes none ("No account required", permanently,
+                // as Lingva's line reads). Both are the instance's own
+                // requirement, never the OpenAI row's blanket one.
+                return BackendStatus.Account(account())
             }
             val total = usageTracker.todayTotal()
             return if (total == 0L) {
@@ -179,12 +229,12 @@ class OpenAiBackend(
     override fun isUsable(source: String, target: String): Boolean =
         // A future client-side daily cap could gate here too, but v1 lets
         // the meter be informational only.
-        enabledProvider() && !keyProvider().isNullOrBlank()
+        enabledProvider() && credential() != null
 
     override suspend fun translate(text: String, source: String, target: String): String =
         withContext(Dispatchers.IO) {
             clearCooldownIfCredentialsChanged()
-            val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
+            val credential = credential()
                 ?: throw StructuralFailureException(
                     "OpenAI API key not configured", BackendFailure(BackendFailureKind.AUTH),
                 )
@@ -208,13 +258,14 @@ class OpenAiBackend(
 
             val request = Request.Builder()
                 .url("$baseUrl/chat/completions")
-                .addHeader("Authorization", "Bearer $apiKey")
+                .apply { credential.chatAuthHeaders().forEach { (name, value) -> addHeader(name, value) } }
                 .addHeader("Content-Type", "application/json")
                 .post(bodyJson.toRequestBody("application/json".toMediaType()))
                 .build()
 
             try {
                 client.newCall(request).execute().use { response ->
+                    throwIfKeylessRefusal(credential, response)
                     when (response.code) {
                         401 -> throw OpenAiAuthException()
                         429 -> {
@@ -273,7 +324,7 @@ class OpenAiBackend(
         target: String,
     ): List<String> = withContext(Dispatchers.IO) {
         clearCooldownIfCredentialsChanged()
-        val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
+        val credential = credential()
             ?: throw StructuralFailureException(
                 "OpenAI API key not configured", BackendFailure(BackendFailureKind.AUTH),
             )
@@ -322,13 +373,14 @@ class OpenAiBackend(
 
         val request = Request.Builder()
             .url("$baseUrl/chat/completions")
-            .addHeader("Authorization", "Bearer $apiKey")
+            .apply { credential.chatAuthHeaders().forEach { (name, value) -> addHeader(name, value) } }
             .addHeader("Content-Type", "application/json")
             .post(bodyJson.toRequestBody("application/json".toMediaType()))
             .build()
 
         try {
             client.newCall(request).execute().use { response ->
+                throwIfKeylessRefusal(credential, response)
                 when (response.code) {
                     401 -> throw OpenAiAuthException()
                     429 -> {
@@ -537,12 +589,12 @@ class OpenAiBackend(
      * Throws [IOException] on any network / parse / auth failure.
      */
     override suspend fun listModels(): List<String> = withContext(Dispatchers.IO) {
-        val apiKey = keyProvider()?.takeIf { it.isNotBlank() }
+        val credential = credential()
             ?: throw IOException("OpenAI API key not configured")
         val modelsUrl = modelsUrlProvider().trim().trimEnd('/')
         val request = Request.Builder()
             .url("$modelsUrl/models")
-            .apply { modelsAuthHeaders(apiKey).forEach { (name, value) -> addHeader(name, value) } }
+            .apply { credential.catalogAuthHeaders().forEach { (name, value) -> addHeader(name, value) } }
             .build()
         client.newCall(request).execute().use { response ->
             when (response.code) {

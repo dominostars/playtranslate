@@ -1195,3 +1195,15 @@ alternatives, leads to the entry under either name.
 
 No round-1 decision is disputed. Samsung은 and Xiaomi가 in Latin letters follow the file's spelling of brand
 names (Android, Google Play); 삼성 / 샤오미 would make these two the only transliterated brands.
+
+## Delta review 2026-10-14 (Bilibili Index-Translate: 3 keys)
+
+Mechanical layer: `python3 scripts/l10n_diff.py --locale app/src/main/res/values-ko/strings.xml` reports `values-ko missing=0 orphan=0 modified=0`, "in sync". The three new names are each present once and are the file's only change (`git diff`). The delta has no `<xliff:g>`, placeholders or markup, no unescaped `'`/`"`, no dashes, no odd or double spaces, and is NFC. **No 🛑 build-breaking issues.**
+
+No findings.
+
+Clean areas: Render code read first. The note is `tvProviderNote` (13 sp, no line cap), shown where the key section would be. The picker and the remove alert switch to `_keyless` when `account.requiresKey` is false (Lingva, Index-Translate). **`llm_backend_index_translate_note`** has all four English facts. 「사용 한도는 공개되어 있지 않습니다」 keeps "publishes no usage limits" and does not say there are none. 한도 is the error pill's word (`translation_error_daily_quota` 일일 한도), API 키 is `llm_backend_api_key_label`, and 「캡처된 텍스트」 is `tr_service_order_footer`'s own phrase. Particles after the fixed name are direct, per the rule: Bilibili에서 is the operator as subject, and Bilibili로 takes 로 because 빌리빌리 ends in a vowel. Every sentence is 합니다체, and 띄어쓰기 is right (사용 한도는, 번역을 위해). **`llm_model_picker_fetch_failed_keyless`** matches its sibling except for the middle clause. 「다시 시도하거나」 is `update_error_incomplete`'s construction. 나중에 renders "later" and differs, correctly, from `anki_models_unavailable`'s 잠시 후, whose English is "in a moment". “직접 입력…”으로 is `llm_backend_model_custom_entry` in the same quotes, with 으로 after the consonant-final 력, as in the sibling. **`tr_service_remove_message_keyless`** is its sibling without the key clause. Read with the title 「Bilibili Index-Translate을(를) 제거하시겠습니까?」 and the 제거 button, the alert uses one verb, and remove (제거) stays distinct from delete (삭제), as the sibling keeps it.
+
+### Disposition (2026-10-14)
+
+No findings; nothing to apply.

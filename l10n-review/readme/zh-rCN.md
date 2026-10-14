@@ -74,3 +74,15 @@ Clean areas: The four steps are in the English order with nothing added, dropped
 ### Disposition (2026-10-08)
 
 No findings; nothing to apply.
+
+## Delta review 2026-10-14 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] zh-rCN -> readme/README.zh-CN.md`, no warnings; also PASS with `--require-header`). **No 🛑 issues.**
+
+No findings.
+
+Clean areas: The intro without 一款 (「Android 实时翻译与语言学习应用，适用于…」) is a complete topic-comment sentence. It reads as the tagline the new English intro is, and the Latin opening word takes its Pangu space. Dropping 一款 mirrors the English dropping "A". The style call is sound, so it is not a finding. The lead's verb 添加 is the app's (`add_online_service_title` 添加翻译服务), and the API-key clause is gone, as in English. The next clause, 服务数量不限, follows without repeating the verb. The new bullet comes before 自定义 with the Latin brand in bold, and its link text and URL are byte-identical to the English. It follows the siblings' pattern (full-width ： and ，). 「免费，无需 API 密钥」 is the app note's first sentence, and 无需 is the form of `service_no_account_required` (无需账号). A script checked the three changed lines for Pangu spacing, GB2312-only Han and NFC. The bold count went up by one, as in English (38 each).
+
+### Disposition (2026-10-14)
+
+No findings; nothing to apply.

@@ -1182,3 +1182,19 @@ per-app page itself (`HiddenAppsConfigActivity`), so the line is read only when 
 #### Verdict (round 2)
 **PASS.** Both round-1 fixes landed exactly as suggested, nothing around them broke, and there are no new
 findings (0 ❌, 0 ⚠️, 0 💬). No 🛑.
+
+## Delta review 2026-10-14 (Bilibili Index-Translate: 3 keys)
+
+Mechanical layer: `python3 scripts/l10n_diff.py --locale app/src/main/res/values-ru/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync". The three keys are present once each, beside the same neighbours as in English, and the file parses as XML. This delta has no `<xliff:g>`, placeholder, plural, markup, apostrophe, ASCII quote or dash. "Bilibili" stays in Latin script, twice in the note. **No 🛑 build-breaking issues.**
+
+Render code read before reviewing: the note is `tvProviderNote` (RowSubtitle, wraps, no `maxLines`), shown in place of the API-key section under the untranslated title "Bilibili Index-Translate". The picker line is a 13 sp wrapping TextView, used when the account takes no key. The keyless body appears under `tr_service_remove_title_fmt` for Lingva and Bilibili Index-Translate.
+
+| key | severity | current | suggested | note |
+|---|---|---|---|---|
+| llm_backend_index_translate_note | 💬 | `Сервис предоставляет Bilibili, лимиты использования не опубликованы.` | `Сервис предоставляет компания Bilibili, лимиты использования не опубликованы.` | «Сервис» and the indeclinable «Bilibili» have the same form in nominative and accusative, and the present-tense verb agrees with either. So the first parse is the common SVO collocation «Сервис предоставляет …» ("the service provides Bilibili"), and only the sense restores "provided by Bilibili". «компания» can only be nominative, so it settles the order. «Сервисом управляет Bilibili» is the other clean form. Either avoids leaning on case, as the file's «от Tencent» does. |
+
+Clean areas: The note keeps all three English facts: free and keyless; run by Bilibili, with no published limits; the captured text goes to Bilibili. «Бесплатно, API-ключ не нужен.» is natural. «лимиты использования» is in line with «дневной лимит» (`translation_error_daily_quota`). «Захваченный текст» is the captured-text term of `tr_service_order_footer` and `history_hide_translations_toggle_subtitle`, and «API-ключ» is `llm_backend_api_key_label`. In «отправляется в Bilibili» the name follows a preposition, so no case ending is needed. The keyless picker line keeps the sibling's first sentence and its «или введите ID модели через «Вручную…».» byte for byte. «Вручную…» matches `llm_backend_model_custom_entry` and keeps the sibling's « » quotes. «Повторите попытку» is the file's retry phrase (`settings_ocr_download_failed`, `yomitan_update_busy_message`), in the вы form. Read as one screen, the delete alert is «Убрать Lingva?», then «Сервис будет убран из списка.», then the button «Убрать». The body is the sibling without its key clause, and it keeps убрать (remove) apart from удалить (delete), which the sibling uses only for the key.
+
+### Disposition (2026-10-14)
+
+Applied the 1 💬 («Сервисом управляет Bilibili»).

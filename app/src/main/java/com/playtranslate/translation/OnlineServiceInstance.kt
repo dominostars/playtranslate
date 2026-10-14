@@ -27,7 +27,13 @@ enum class AccountRequirement(@StringRes val labelRes: Int) {
     REQUIRED_FREE_TIER(R.string.service_account_required_free),
 
     /** Usable as-is, with no account at all. */
-    NONE(R.string.service_no_account_required),
+    NONE(R.string.service_no_account_required);
+
+    /** Whether the service takes an API key: every requirement but [NONE]
+     *  (a free tier is still an account with a key). The one answer to "is
+     *  a key needed" for every reader: a backend's credential gate, the
+     *  config page's key field, the delete confirmation's wording. */
+    val requiresKey: Boolean get() = this != NONE
 }
 
 /** Which online translation service an [OnlineServiceInstance] is an
@@ -48,7 +54,9 @@ enum class AccountRequirement(@StringRes val labelRes: Int) {
  *  - [account] — what it costs to start. Read by the picker's subtitle, and
  *    by each backend's key-less [BackendStatus.Account]; every backend class
  *    maps 1:1 onto a type here, so it reads its own entry rather than
- *    restating the requirement.
+ *    restating the requirement. OPENAI's entry is the default for its
+ *    presets; an OPENAI-type instance answers with its preset's
+ *    ([OnlineServiceInstance.account]), since one preset needs no key.
  */
 @Serializable
 enum class ServiceType(
@@ -66,18 +74,45 @@ enum class ServiceType(
  *  instance's stored [OnlineServiceInstance.baseUrl]. The preset also
  *  names the instance's cell on the services page.
  *
- *  Declaration order is display order: it drives the provider dropdown and
- *  the Add row's "OpenAI (DeepSeek, Mistral, Custom)" subtitle, both of
- *  which enumerate this enum rather than restating it — so a new provider
- *  surfaces in the UI from this line alone. Keep OPENAI first (the default)
- *  and CUSTOM last (the escape hatch). Serialization is by name, so
- *  inserting a value doesn't disturb stored instances.
+ *  [account] is what the provider costs to start. It defaults to the OpenAI
+ *  row's own requirement, and a preset that declares a different one is not
+ *  [listedUnderOpenAi]: it gets a row of its own in the add-service picker,
+ *  so the OpenAI row's "Account required" stays true of every provider that
+ *  row names. INDEX_TRANSLATE (Bilibili's free Index-Translate endpoint,
+ *  which takes no key) is that case today.
+ *
+ *  Declaration order is display order. For the listed presets it drives the
+ *  provider dropdown and the OpenAI row's provider line ("DeepSeek,
+ *  Mistral, …, Custom"); unlisted presets take their picker rows in the same
+ *  order. Every one of those surfaces enumerates this enum rather than
+ *  restating it, so a new provider surfaces in the UI from this line alone.
+ *  Keep OPENAI first (the default) and CUSTOM last (the escape hatch).
+ *  Serialization is by name, so inserting a value doesn't disturb stored
+ *  instances; an older build that lacks a name decodes it as OPENAI
+ *  (PtJson.lenient coerces unknown enum values to the field default), where
+ *  the keyless instance reads "Account required" and stays unused.
  *
  *  CLAUDE is Anthropic's OpenAI-compatible layer, which covers
  *  chat-completions only: its /models is the native endpoint with its own
  *  auth headers ([OnlineBackendFactory.modelsAuthHeadersFor]). */
 @Serializable
-enum class OpenAiPreset { OPENAI, DEEPSEEK, MISTRAL, GROQ, OPENROUTER, CLAUDE, CUSTOM }
+enum class OpenAiPreset(val account: AccountRequirement = ServiceType.OPENAI.account) {
+    OPENAI,
+    DEEPSEEK,
+    MISTRAL,
+    GROQ,
+    OPENROUTER,
+    CLAUDE,
+    INDEX_TRANSLATE(account = AccountRequirement.NONE),
+    CUSTOM;
+
+    /** Named under the OpenAI row (its provider line in the add-service
+     *  picker, the config page's provider dropdown) rather than given a
+     *  picker row of its own. Derived from the label that row carries, so a
+     *  provider the row's requirement would misdescribe can't be listed
+     *  there. */
+    val listedUnderOpenAi: Boolean get() = account == ServiceType.OPENAI.account
+}
 
 /**
  * One user-configured online translation service. Users can hold any
@@ -109,4 +144,11 @@ data class OnlineServiceInstance(
     val preset: OpenAiPreset = OpenAiPreset.OPENAI,
     /** User-entered base URL — consulted only when [preset] == CUSTOM. */
     val baseUrl: String = "",
-)
+) {
+    /** What this instance's service costs to start, and so whether it takes
+     *  a key ([AccountRequirement.requiresKey]): its preset's for an
+     *  OPENAI-type instance, its type's otherwise. The one per-instance
+     *  resolver; a getter with no backing field, so it is never serialized. */
+    val account: AccountRequirement
+        get() = if (type == ServiceType.OPENAI) preset.account else type.account
+}

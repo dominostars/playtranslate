@@ -172,7 +172,7 @@ PlayTranslate übersetzt aus **26 Spielsprachen** (in diesen Sprachen kann die A
 
 ## Online-Übersetzungsdienste (optional)
 
-Standardmäßig übersetzt die App mit [Lingva](https://github.com/thedaviddelta/lingva-translate). Ist die Online-Übersetzung nicht verfügbar, springt ML Kit als Offline-Ausweichlösung ein. Für hochwertigere Übersetzungen kannst du unter **Einstellungen → Übersetzungsdienste** einen API-Schlüssel für einen der folgenden Dienste hinterlegen. Du kannst beliebig viele hinzufügen. Jeder Dienst ist ein eigener Eintrag in der Liste, sodass du mehrere einrichten und über ihre Reihenfolge festlegen kannst, welcher zuerst übersetzt:
+Standardmäßig übersetzt die App mit [Lingva](https://github.com/thedaviddelta/lingva-translate). Ist die Online-Übersetzung nicht verfügbar, springt ML Kit als Offline-Ausweichlösung ein. Für hochwertigere Übersetzungen kannst du unter **Einstellungen → Übersetzungsdienste** einen der folgenden Dienste einrichten. Du kannst beliebig viele hinzufügen. Jeder Dienst ist ein eigener Eintrag in der Liste, sodass du mehrere einrichten und über ihre Reihenfolge festlegen kannst, welcher zuerst übersetzt:
 
 - **DeepL**: kostenloser Tarif unter [deepl.com/en/pro#developer](https://www.deepl.com/en/pro#developer)
 - **OpenAI**: [platform.openai.com](https://platform.openai.com/api-keys) – das Modell wählst du direkt in der App
@@ -182,6 +182,7 @@ Standardmäßig übersetzt die App mit [Lingva](https://github.com/thedaviddelta
 - **Groq**: [console.groq.com](https://console.groq.com/keys) – das Modell wählst du direkt in der App
 - **OpenRouter**: [openrouter.ai](https://openrouter.ai/keys) – das Modell wählst du direkt in der App
 - **Claude**: [platform.claude.com](https://platform.claude.com/settings/keys) – das Modell wählst du direkt in der App
+- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://index-translate.bilibili.com/) – kostenlos, ohne API-Schlüssel
 - **Benutzerdefiniert**: jeder andere OpenAI-kompatible Endpunkt – trage unter „Benutzerdefinierte URL“ einfach die URL deines Backends ein
 
 ## Anki-Karteikarten (optional)

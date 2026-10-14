@@ -13,7 +13,7 @@
 </div>
 <!-- /l10n-header -->
 
-Um app Android de tradução em tempo real e aprendizado de idiomas para jogos, visual novels, mangás e qualquer outro texto na tela. Compatível com 26 idiomas de jogo e 59 idiomas de tradução!
+App Android de tradução em tempo real e aprendizado de idiomas para jogos, visual novels, mangás e qualquer outro texto na tela. Compatível com 26 idiomas de jogo e 59 idiomas de tradução!
 
 [Clique aqui para baixar a versão mais recente](https://github.com/dominostars/playtranslate/releases/latest)
 
@@ -172,7 +172,7 @@ O PlayTranslate traduz de **26 idiomas de jogo** (os que ele consegue ler na tel
 
 ## Serviços de tradução online (opcional)
 
-Por padrão, a tradução usa o [Lingva](https://github.com/thedaviddelta/lingva-translate), e o ML Kit entra como alternativa offline sempre que a tradução online estiver indisponível. Para ter traduções de maior qualidade, você pode adicionar uma chave de API de qualquer um dos serviços abaixo em **Configurações → Serviços de tradução**. Adicione quantos quiser. Cada serviço é um item separado na lista, então você pode deixar vários configurados e reordená-los para escolher qual traduz primeiro:
+Por padrão, a tradução usa o [Lingva](https://github.com/thedaviddelta/lingva-translate), e o ML Kit entra como alternativa offline sempre que a tradução online estiver indisponível. Para ter traduções de maior qualidade, você pode adicionar qualquer um dos serviços abaixo em **Configurações → Serviços de tradução**. Adicione quantos quiser. Cada serviço é um item separado na lista, então você pode deixar vários configurados e reordená-los para escolher qual traduz primeiro:
 
 - **DeepL**: plano gratuito em [deepl.com/en/pro#developer](https://www.deepl.com/en/pro#developer)
 - **OpenAI**: [platform.openai.com](https://platform.openai.com/api-keys) (você escolhe o modelo no app)
@@ -182,6 +182,7 @@ Por padrão, a tradução usa o [Lingva](https://github.com/thedaviddelta/lingva
 - **Groq**: [console.groq.com](https://console.groq.com/keys) (você escolhe o modelo no app)
 - **OpenRouter**: [openrouter.ai](https://openrouter.ai/keys) (você escolhe o modelo no app)
 - **Claude**: [platform.claude.com](https://platform.claude.com/settings/keys) (você escolhe o modelo no app)
+- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://index-translate.bilibili.com/) (gratuito, sem chave de API)
 - **Personalizado**: qualquer outro servidor compatível com a API da OpenAI; insira a URL do seu servidor em “URL personalizada”
 
 ## Flashcards do Anki (opcional)

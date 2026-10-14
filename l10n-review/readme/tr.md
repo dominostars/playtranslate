@@ -99,3 +99,18 @@ Clean areas: The four steps match the English in order, with nothing added or dr
 ### Disposition (2026-10-08)
 
 Applied the 1 💬 («sürümlerde sistem,»).
+
+## Delta review 2026-10-14 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS with one standing warning, `warning 39 bold spans, English has 38` (the same with `--require-header`). Both counts rose by one with the new bullet (English 37 → 38, tr 38 → 39), so the extra span predates this delta. It is **Özel URL** in the Custom bullet, which the 2026-10-06 review added on purpose. **No 🛑 issues.**
+
+| section | severity | current | suggested | note |
+|---|---|---|---|---|
+| İsteğe bağlı: Çevrimiçi çeviri hizmetleri (lead paragraph) | 💬 | "İstediğiniz kadar hizmet ekleyebilirsiniz." | "İstediğiniz kadar hizmet ekleyin." | The new lead now ends in «… herhangi birini ekleyebilirsiniz.», so two sentences in a row end on the same verb form. Before this delta the first one ended in «girebilirsiniz». English's second sentence is an imperative ("Add as many as you like"), and so is it in ar, es, fr, pt-BR and ru (أضف, Añade, Ajoutez-en, Adicione, Добавляйте). The siz imperative removes the echo and matches the file's other imperatives, such as «(modeli uygulama içinden seçin)». Optional. |
+| Intro (first line under the header block) | 💬 | "dil öğrenmenize de yardımcı olan bir Android uygulaması." | "dil öğrenmenize de yardımcı olan Android uygulaması." | This is a style call, raised for parity only. English dropped its "A" ("Real-time translation … Android app"), and the change was carried over where a translation mirrors that article (pt-BR «Um app» → «App»). Here «bir» is that same indefinite article: the intro is a noun phrase headed by «bir Android uygulaması». In this set, de/es/fr have the article only inside a full "PlayTranslate is a…" sentence, and ar and ru have none. Without «bir», the line reads as a tagline, the way the English now does. Both versions read natively. |
+
+Clean areas: The lead drops the API key as the English does («**Ayarlar → Çeviri hizmetleri** bölümünde aşağıdakilerden herhangi birini ekleyebilirsiniz»), and «eklemek» is the app's verb for this step (`tr_service_add_online` «Çevrimiçi çeviri hizmeti ekle»). The path and its bold are unchanged. The bullet sits between Claude and Özel, as in English, with a parenthesis like its siblings. «(ücretsiz, API anahtarı gerekmez)» matches the app's own note («Ücretsizdir, API anahtarı gerekmez.»). The brand stays in Latin script with no suffix attached, and the link is byte-identical (checker). siz throughout, and the quotes are unchanged.
+
+### Disposition (2026-10-14)
+
+Applied the lead 💬 («İstediğiniz kadar hizmet ekleyin.», an imperative like the English). Declined the intro 💬: Turkish «bir» sits before the head noun at the end of the descriptive phrase, unlike the sentence-initial "A" / «Um» / 一款 that were dropped, so the intro stays as it was.

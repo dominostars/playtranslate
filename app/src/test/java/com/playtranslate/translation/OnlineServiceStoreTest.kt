@@ -191,6 +191,38 @@ class OnlineServiceStoreTest {
         assertEquals("chat-latest", OnlineServiceStore.byId("uuid-1")!!.model)
     }
 
+    @Test fun `a keyless Index-Translate instance round trips by its preset name`() {
+        suppressBakedDeeplKey()
+        initStore()
+        OnlineServiceStore.add(
+            OnlineServiceInstance(
+                id = "bili", type = ServiceType.OPENAI, enabled = true,
+                preset = OpenAiPreset.INDEX_TRANSLATE,
+            ),
+        )
+        assertTrue(sp().getString(OnlineServiceStore.KEY_INSTANCES, "")!!.contains("\"INDEX_TRANSLATE\""))
+
+        initStore()
+        val bili = OnlineServiceStore.byId("bili")!!
+        assertEquals(OpenAiPreset.INDEX_TRANSLATE, bili.preset)
+        assertEquals(AccountRequirement.NONE, bili.account)
+    }
+
+    /** A build that predates a preset (a downgrade) decodes its name as
+     *  OPENAI: the instance survives, reads "Account required" and stays
+     *  unused, and the rest of the list still loads. */
+    @Test fun `an unknown preset name decodes as OPENAI and the list still loads`() {
+        suppressBakedDeeplKey()
+        sp().edit().putString(
+            OnlineServiceStore.KEY_INSTANCES,
+            """[{"id":"future","type":"OPENAI","enabled":true,"preset":"SOME_FUTURE_PRESET"},""" +
+                """{"id":"lingva","type":"LINGVA","enabled":true}]""",
+        ).commit()
+        initStore()
+        assertEquals(listOf("future", "lingva"), OnlineServiceStore.all().map { it.id })
+        assertEquals(OpenAiPreset.OPENAI, OnlineServiceStore.byId("future")!!.preset)
+    }
+
     @Test fun `reorder round trips and appends ids missing from the request`() {
         suppressBakedDeeplKey()
         initStore()

@@ -15,6 +15,7 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.playtranslate.R
 import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.applyTheme
+import com.playtranslate.translation.AccountRequirement
 import com.playtranslate.translation.OnlineBackendFactory
 import com.playtranslate.translation.OnlineServiceInstance
 import com.playtranslate.translation.OnlineServiceMutations
@@ -26,11 +27,13 @@ import java.util.UUID
 /**
  * The add-service picker: every online service a user can add an
  * instance of (the same service any number of times, each with its own
- * key). DeepSeek is deliberately absent — it's reached through OpenAI's
- * provider preset.
+ * key). OpenAI-compatible providers are reached through OpenAI's provider
+ * preset, so DeepSeek and the rest have no row of their own, except a
+ * preset the OpenAI row's requirement would misdescribe: Bilibili
+ * Index-Translate takes no key, so it gets its own row ([CatalogEntry.Preset]).
  *
- * Dismiss-both-on-save mechanics: tapping a keyed service generates
- * [pendingNewId] up front and launches its config page in CREATE mode.
+ * Dismiss-both-on-save mechanics: tapping a service with a config page
+ * generates [pendingNewId] up front and launches that page in CREATE mode.
  * The config page writes the instance under that id only on a
  * successful save, so this screen's [onResume] watches for the id's
  * appearance in [OnlineServiceStore] — present → the save happened,
@@ -39,6 +42,8 @@ import java.util.UUID
  * specific id (not a list count) keeps back-out and repeat-add robust.
  *
  * Lingva has nothing to configure, so it's added enabled immediately.
+ * Index-Translate has nothing to configure either, but its page carries
+ * the disclosure the user reads before adding it.
  */
 class AddOnlineServiceActivity : AppCompatActivity() {
 
@@ -79,16 +84,17 @@ class AddOnlineServiceActivity : AppCompatActivity() {
         val card = PtGroupCard(this)
         val rowContainer: LinearLayout = card
 
-        val services = CATALOG.map { type ->
+        val services = CATALOG.map { entry ->
             ServiceRow(
-                title = OnlineBackendFactory.typeDisplayName(this, type),
+                title = entry.title(this),
                 // OpenAI's row names the providers it reaches on its own
-                // line; every other service's row is just its own name.
-                providers = if (type == ServiceType.OPENAI) openAiPresetList(this) else null,
+                // line; every other row is just its own name.
+                providers = if (entry.isOpenAiRow) openAiPresetList(this) else null,
                 // Same requirement, same words as the service's cell on the
-                // services page once it's added — both read ServiceType.account.
-                subtitle = getString(type.account.labelRes),
-                type = type,
+                // services page once it's added — both read the entry's
+                // account (the type's, or the preset's).
+                subtitle = getString(entry.account.labelRes),
+                entry = entry,
             )
         }
         services.forEachIndexed { idx, row ->
@@ -105,97 +111,140 @@ class AddOnlineServiceActivity : AppCompatActivity() {
     private data class ServiceRow(
         val title: String,
         /** The providers this row reaches beyond its own name (OpenAI's
-         *  presets); null for services that only stand for themselves. */
+         *  presets); null for rows that only stand for themselves. */
         val providers: String?,
         val subtitle: String,
-        val type: ServiceType,
+        val entry: CatalogEntry,
     )
 
     private fun buildServiceRow(container: ViewGroup, row: ServiceRow): View {
         val view = LayoutInflater.from(this)
             .inflate(R.layout.item_add_online_service, container, false)
         view.findViewById<TextView>(R.id.tvRowTitle).text = row.title
-        view.findViewById<TextView>(R.id.tvLlmBadge).isVisible = row.type.isLlm
+        view.findViewById<TextView>(R.id.tvLlmBadge).isVisible = row.entry.type.isLlm
         view.findViewById<TextView>(R.id.tvRowProviders).apply {
             text = row.providers.orEmpty()
             isVisible = row.providers != null
         }
         view.findViewById<TextView>(R.id.tvRowSubtitle).text = row.subtitle
-        view.setOnClickListener { onServicePicked(row.type) }
+        view.setOnClickListener { onServicePicked(row.entry) }
         return view
     }
 
-    private fun onServicePicked(type: ServiceType) {
-        when (type) {
-            ServiceType.LINGVA -> {
-                // No config page: add enabled immediately and dismiss.
-                OnlineServiceMutations.addInstance(
-                    this,
-                    OnlineServiceInstance(
-                        id = UUID.randomUUID().toString(),
-                        type = ServiceType.LINGVA,
-                        enabled = true,
-                    ),
+    private fun onServicePicked(entry: CatalogEntry) {
+        when (entry) {
+            is CatalogEntry.Preset -> {
+                val id = UUID.randomUUID().toString()
+                pendingNewId = id
+                startActivity(
+                    LlmBackendSettingsActivity.createIntent(this, id, entry.type, entry.preset)
                 )
-                finish()
             }
-            ServiceType.DEEPL -> {
-                val id = UUID.randomUUID().toString()
-                pendingNewId = id
-                startActivity(DeepLSettingsActivity.newIntent(this, id))
+            is CatalogEntry.Service -> when (entry.type) {
+                ServiceType.LINGVA -> {
+                    // No config page: add enabled immediately and dismiss.
+                    OnlineServiceMutations.addInstance(
+                        this,
+                        OnlineServiceInstance(
+                            id = UUID.randomUUID().toString(),
+                            type = ServiceType.LINGVA,
+                            enabled = true,
+                        ),
+                    )
+                    finish()
+                }
+                ServiceType.DEEPL -> {
+                    val id = UUID.randomUUID().toString()
+                    pendingNewId = id
+                    startActivity(DeepLSettingsActivity.newIntent(this, id))
+                }
+                ServiceType.GEMINI, ServiceType.OPENAI -> {
+                    val id = UUID.randomUUID().toString()
+                    pendingNewId = id
+                    startActivity(LlmBackendSettingsActivity.createIntent(this, id, entry.type))
+                }
             }
-            ServiceType.GEMINI, ServiceType.OPENAI -> {
-                val id = UUID.randomUUID().toString()
-                pendingNewId = id
-                startActivity(LlmBackendSettingsActivity.createIntent(this, id, type))
-            }
+        }
+    }
+
+    /**
+     * One row of the picker: a service type, or an OpenAI-compatible preset
+     * the OpenAI row can't truthfully name ([OpenAiPreset.listedUnderOpenAi]
+     * false). Each reads its name and requirement through the resolvers its
+     * configured instance's cell uses, so a row and the cell it creates
+     * always agree.
+     */
+    sealed interface CatalogEntry {
+        /** The service type an instance added from this row has. */
+        val type: ServiceType
+        val account: AccountRequirement
+        fun title(context: Context): String
+
+        /** The OpenAI row, which names its listed presets on a line of its own. */
+        val isOpenAiRow: Boolean get() = this is Service && type == ServiceType.OPENAI
+
+        data class Service(override val type: ServiceType) : CatalogEntry {
+            override val account: AccountRequirement get() = type.account
+            override fun title(context: Context): String =
+                OnlineBackendFactory.typeDisplayName(context, type)
+        }
+
+        data class Preset(val preset: OpenAiPreset) : CatalogEntry {
+            override val type: ServiceType get() = ServiceType.OPENAI
+            override val account: AccountRequirement get() = preset.account
+            override fun title(context: Context): String =
+                OnlineBackendFactory.presetDisplayName(context, preset)
         }
     }
 
     companion object {
         private const val KEY_PENDING_ID = "pending_new_id"
 
-        /** Every service this picker offers, in the order it offers them —
+        /** Every row this picker offers, in the order it offers them —
          *  OpenAI leads because its provider preset (DeepSeek / custom
-         *  endpoints) makes it the entry most users are here for. Also the
-         *  order the services page's Add row names them in
+         *  endpoints) makes it the entry most users are here for; the
+         *  presets with a row of their own (LLM providers that need no key)
+         *  come after Gemini and above DeepL. Derived from [OpenAiPreset],
+         *  so a preset gets its row from its own declaration. Also the order
+         *  the services page's Add row names them in
          *  ([OnlineServicesController]), so a new service surfaces in both
          *  places at once. */
-        val CATALOG = listOf(
-            ServiceType.OPENAI,
-            ServiceType.GEMINI,
-            ServiceType.DEEPL,
-            ServiceType.LINGVA,
-        )
+        val CATALOG: List<CatalogEntry> =
+            listOf(ServiceType.OPENAI, ServiceType.GEMINI).map { CatalogEntry.Service(it) } +
+                OpenAiPreset.entries.filterNot { it.listedUnderOpenAi }
+                    .map { CatalogEntry.Preset(it) } +
+                listOf(ServiceType.DEEPL, ServiceType.LINGVA).map { CatalogEntry.Service(it) }
 
         /** The providers OpenAI reaches beyond itself — "DeepSeek, Mistral,
-         *  Groq, OpenRouter, Custom". They have no catalog entry of their
-         *  own; they live behind its Provider setting, so without naming
-         *  them a user hunting for Mistral would find nothing. Read off
-         *  [OpenAiPreset] (minus OPENAI, which is the row's own name), so
-         *  adding a preset there surfaces it in the UI with no string to
-         *  remember.
+         *  Groq, OpenRouter, Claude, Custom". They have no catalog entry of
+         *  their own; they live behind its Provider setting, so without
+         *  naming them a user hunting for Mistral would find nothing. Read off
+         *  [OpenAiPreset]'s listed presets (minus OPENAI, which is the row's
+         *  own name), so adding a preset there surfaces it in the UI with no
+         *  string to remember.
          *
          *  This picker gives the list its own line under the OpenAI row's
          *  title; the services page folds it into [catalogTitle]. */
         fun openAiPresetList(context: Context): String =
             OpenAiPreset.entries
-                .filter { it != OpenAiPreset.OPENAI }
+                .filter { it != OpenAiPreset.OPENAI && it.listedUnderOpenAi }
                 .joinToString(", ") { OnlineBackendFactory.presetDisplayName(context, it) }
 
-        /** The name a catalog service goes by in the services page's Add-row
+        /** The name a catalog row goes by in the services page's Add-row
          *  subtitle, which names the whole catalog on one line and so has to
          *  carry OpenAI's providers inside its own entry: "OpenAI (DeepSeek,
-         *  Mistral, …), Gemini, DeepL, Lingva". This picker has room to give
-         *  that list a line of its own, so its rows title themselves with the
-         *  plain [OnlineBackendFactory.typeDisplayName] instead. */
-        fun catalogTitle(context: Context, type: ServiceType): String = when (type) {
-            ServiceType.OPENAI -> context.getString(
-                R.string.add_service_openai_providers_fmt,
-                OnlineBackendFactory.typeDisplayName(context, ServiceType.OPENAI),
-                openAiPresetList(context),
-            )
-            else -> OnlineBackendFactory.typeDisplayName(context, type)
-        }
+         *  Mistral, …), Gemini, Bilibili Index-Translate, DeepL, Lingva". This
+         *  picker has room to give that list a line of its own, so its rows
+         *  title themselves with the plain [CatalogEntry.title] instead. */
+        fun catalogTitle(context: Context, entry: CatalogEntry): String =
+            if (entry.isOpenAiRow) {
+                context.getString(
+                    R.string.add_service_openai_providers_fmt,
+                    entry.title(context),
+                    openAiPresetList(context),
+                )
+            } else {
+                entry.title(context)
+            }
     }
 }

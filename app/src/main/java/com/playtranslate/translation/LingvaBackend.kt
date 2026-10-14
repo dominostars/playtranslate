@@ -14,7 +14,7 @@ import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 /** Thrown when Google's endpoint rate-limits or blocks the caller
- *  (HTTP 429 / 403). The cooldown is recorded at the throw site; the
+ *  (HTTP 429, or a 401 / 403 [isKeylessRefusal]). The cooldown is recorded at the throw site; the
  *  registry treats the throw as "this backend failed", same as
  *  [GeminiRateLimitException]. [httpCode] rides along so the registry's
  *  diagnostics ring can record the status without touching the message. */
@@ -313,12 +313,12 @@ class LingvaBackend(
         val request = Request.Builder().url(url).build()
         client.newCall(request).execute().use { response ->
             when {
-                // 403 rides with 429: the endpoint is keyless, so an
+                // 401 and 403 ride with 429: the endpoint is keyless, so an
                 // auth-flavored status can't mean "fix your credentials"
-                // — Google's harder abuse blocks are the only thing it
-                // can be, and those want the same back-off, not a retry
-                // per cycle.
-                response.code == 429 || response.code == 403 -> {
+                // ([isKeylessRefusal]) — Google's harder abuse blocks are
+                // the only thing it can be, and those want the same
+                // back-off, not a retry per cycle.
+                response.code == 429 || isKeylessRefusal(response.code) -> {
                     val retryAfter = response.header("Retry-After")
                     logHttpFailure(response.code, retryAfter, response)
                     cooldownState?.recordRetryAfterFailure(retryAfter, "Rate limited")

@@ -172,7 +172,7 @@ PlayTranslate, **26 oyun dilinden** (ekrandan okuyabildiği metinlerin dili) **5
 
 ## İsteğe bağlı: Çevrimiçi çeviri hizmetleri
 
-Varsayılan olarak çeviri için [Lingva](https://github.com/thedaviddelta/lingva-translate) kullanılır; çevrimiçi çeviri kullanılamadığında ise çevrimdışı yedek olarak ML Kit devreye girer. Daha kaliteli çeviriler için **Ayarlar → Çeviri hizmetleri** bölümünde aşağıdakilerden herhangi birinin API anahtarını girebilirsiniz. İstediğiniz kadar hizmet ekleyebilirsiniz. Her hizmet listede ayrı bir satır olarak yer alır; böylece birkaçını birden yapılandırıp sıralarını değiştirerek önce hangisinin çevireceğini seçebilirsiniz:
+Varsayılan olarak çeviri için [Lingva](https://github.com/thedaviddelta/lingva-translate) kullanılır; çevrimiçi çeviri kullanılamadığında ise çevrimdışı yedek olarak ML Kit devreye girer. Daha kaliteli çeviriler için **Ayarlar → Çeviri hizmetleri** bölümünde aşağıdakilerden herhangi birini ekleyebilirsiniz. İstediğiniz kadar hizmet ekleyin. Her hizmet listede ayrı bir satır olarak yer alır; böylece birkaçını birden yapılandırıp sıralarını değiştirerek önce hangisinin çevireceğini seçebilirsiniz:
 
 - **DeepL**: ücretsiz plan için [deepl.com/en/pro#developer](https://www.deepl.com/en/pro#developer)
 - **OpenAI**: [platform.openai.com](https://platform.openai.com/api-keys) (modeli uygulama içinden seçin)
@@ -182,6 +182,7 @@ Varsayılan olarak çeviri için [Lingva](https://github.com/thedaviddelta/lingv
 - **Groq**: [console.groq.com](https://console.groq.com/keys) (modeli uygulama içinden seçin)
 - **OpenRouter**: [openrouter.ai](https://openrouter.ai/keys) (modeli uygulama içinden seçin)
 - **Claude**: [platform.claude.com](https://platform.claude.com/settings/keys) (modeli uygulama içinden seçin)
+- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://index-translate.bilibili.com/) (ücretsiz, API anahtarı gerekmez)
 - **Özel**: OpenAI uyumlu başka herhangi bir uç nokta (**Özel URL** alanına sunucunuzun URL'sini girin)
 
 ## İsteğe bağlı: Anki Bilgi Kartları

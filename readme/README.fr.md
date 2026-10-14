@@ -172,7 +172,7 @@ PlayTranslate traduit depuis **26 langues de jeu** (celles qu'il sait lire à l'
 
 ## Services de traduction en ligne (facultatif)
 
-Par défaut, la traduction passe par [Lingva](https://github.com/thedaviddelta/lingva-translate), et ML Kit sert de solution de secours hors ligne lorsque la traduction en ligne est indisponible. Pour des traductions de meilleure qualité, vous pouvez ajouter une clé d'API pour l'un des services suivants dans **Paramètres → Services de traduction**. Ajoutez-en autant que vous le souhaitez. Chaque service a sa propre entrée dans la liste, ce qui vous permet d'en configurer plusieurs et de les réorganiser pour choisir celui qui traduit en premier.
+Par défaut, la traduction passe par [Lingva](https://github.com/thedaviddelta/lingva-translate), et ML Kit sert de solution de secours hors ligne lorsque la traduction en ligne est indisponible. Pour des traductions de meilleure qualité, vous pouvez ajouter l'un des services suivants dans **Paramètres → Services de traduction**. Ajoutez-en autant que vous le souhaitez. Chaque service a sa propre entrée dans la liste, ce qui vous permet d'en configurer plusieurs et de les réorganiser pour choisir celui qui traduit en premier.
 
 - **DeepL** : offre gratuite sur [deepl.com/en/pro#developer](https://www.deepl.com/en/pro#developer)
 - **OpenAI** : [platform.openai.com](https://platform.openai.com/api-keys), avec choix du modèle dans l'application
@@ -182,6 +182,7 @@ Par défaut, la traduction passe par [Lingva](https://github.com/thedaviddelta/l
 - **Groq** : [console.groq.com](https://console.groq.com/keys), avec choix du modèle dans l'application
 - **OpenRouter** : [openrouter.ai](https://openrouter.ai/keys), avec choix du modèle dans l'application
 - **Claude** : [platform.claude.com](https://platform.claude.com/settings/keys), avec choix du modèle dans l'application
+- **Bilibili Index-Translate** : [index-translate.bilibili.com](https://index-translate.bilibili.com/), gratuit et sans clé d'API
 - **Personnalisé** : tout autre serveur compatible avec l'API d'OpenAI ; saisissez l'URL de votre serveur dans le champ « URL personnalisée »
 
 ## Cartes Anki (facultatif)

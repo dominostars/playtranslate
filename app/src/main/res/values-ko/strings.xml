@@ -759,6 +759,7 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="llm_backend_api_key_label">API 키</string>
+    <string name="llm_backend_index_translate_note">무료이며 API 키가 필요하지 않습니다. Bilibili에서 운영하며, 사용 한도는 공개되어 있지 않습니다. 캡처된 텍스트는 번역을 위해 Bilibili로 전송됩니다.</string>
 
     <string name="llm_backend_model_label">모델</string>
 
@@ -775,6 +776,7 @@
     <string name="llm_model_picker_loading">모델 불러오는 중…</string>
 
     <string name="llm_model_picker_fetch_failed">모델 목록을 가져올 수 없습니다. API 키를 확인하거나 “직접 입력…”으로 모델 ID를 입력하세요.</string>
+    <string name="llm_model_picker_fetch_failed_keyless">모델 목록을 가져올 수 없습니다. 나중에 다시 시도하거나 “직접 입력…”으로 모델 ID를 입력하세요.</string>
 
     <string name="llm_backend_invalid_key_alert_title">API 키를 확인할 수 없음</string>
 
@@ -843,6 +845,7 @@
     <string name="tr_service_key_tail_fmt">키 ••••<xliff:g id="key_tail" example="4f2a">%1$s</xliff:g></string>
     <string name="tr_service_remove_title_fmt"><xliff:g id="service_name" example="OpenAI">%1$s</xliff:g>을(를) 제거하시겠습니까?</string>
     <string name="tr_service_remove_message">목록에서 서비스를 제거하고 저장된 API 키를 삭제합니다.</string>
+    <string name="tr_service_remove_message_keyless">목록에서 서비스를 제거합니다.</string>
     <string name="tr_service_remove_confirm">제거</string>
     <string name="tr_service_delete_cd">서비스 제거</string>
 

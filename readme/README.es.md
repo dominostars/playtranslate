@@ -172,7 +172,7 @@ PlayTranslate traduce de **26 idiomas de juego** (los que puede leer en la panta
 
 ## Servicios de traducción en línea (opcional)
 
-De forma predeterminada, la traducción usa [Lingva](https://github.com/thedaviddelta/lingva-translate), y ML Kit traduce sin conexión como alternativa cuando la traducción en línea no está disponible. Para obtener traducciones de mayor calidad, puedes añadir en **Ajustes → Servicios de traducción** una clave de API de cualquiera de los siguientes servicios. Añade tantos como quieras. Cada servicio es una entrada independiente de la lista, así que puedes tener varios configurados y reordenarlos para elegir cuál traduce primero:
+De forma predeterminada, la traducción usa [Lingva](https://github.com/thedaviddelta/lingva-translate), y ML Kit traduce sin conexión como alternativa cuando la traducción en línea no está disponible. Para obtener traducciones de mayor calidad, puedes añadir en **Ajustes → Servicios de traducción** cualquiera de los siguientes servicios. Añade tantos como quieras. Cada servicio es una entrada independiente de la lista, así que puedes tener varios configurados y reordenarlos para elegir cuál traduce primero:
 
 - **DeepL**: plan gratuito en [deepl.com/en/pro#developer](https://www.deepl.com/en/pro#developer)
 - **OpenAI**: [platform.openai.com](https://platform.openai.com/api-keys) (eliges el modelo en la app)
@@ -182,6 +182,7 @@ De forma predeterminada, la traducción usa [Lingva](https://github.com/thedavid
 - **Groq**: [console.groq.com](https://console.groq.com/keys) (eliges el modelo en la app)
 - **OpenRouter**: [openrouter.ai](https://openrouter.ai/keys) (eliges el modelo en la app)
 - **Claude**: [platform.claude.com](https://platform.claude.com/settings/keys) (eliges el modelo en la app)
+- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://index-translate.bilibili.com/) (gratis, sin clave de API)
 - **Personalizado**: cualquier otro servidor compatible con OpenAI; introduce la URL de tu servidor en “URL personalizada”
 
 ## Tarjetas de Anki (opcional)

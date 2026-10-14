@@ -761,6 +761,7 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="llm_backend_api_key_label">Chave de API</string>
+    <string name="llm_backend_index_translate_note">Gratuito, sem chave de API. Operado pela Bilibili, que não publica limites de uso para este serviço. O texto capturado é enviado à Bilibili para tradução.</string>
 
     <string name="llm_backend_model_label">Modelo</string>
 
@@ -777,6 +778,7 @@
     <string name="llm_model_picker_loading">Carregando modelos…</string>
 
     <string name="llm_model_picker_fetch_failed">Não foi possível obter a lista de modelos. Verifique a chave de API ou digite um ID de modelo em Personalizado….</string>
+    <string name="llm_model_picker_fetch_failed_keyless">Não foi possível obter a lista de modelos. Tente novamente mais tarde ou digite um ID de modelo em Personalizado….</string>
 
     <string name="llm_backend_invalid_key_alert_title">Não foi possível verificar a chave de API</string>
 
@@ -844,6 +846,7 @@
     <string name="tr_service_key_tail_fmt">Chave ••••<xliff:g id="key_tail" example="4f2a">%1$s</xliff:g></string>
     <string name="tr_service_remove_title_fmt">Remover o <xliff:g id="service_name" example="OpenAI">%1$s</xliff:g>?</string>
     <string name="tr_service_remove_message">Isso remove o serviço da lista e exclui a chave de API salva.</string>
+    <string name="tr_service_remove_message_keyless">Isso remove o serviço da lista.</string>
     <string name="tr_service_remove_confirm">Remover</string>
     <string name="tr_service_delete_cd">Remover serviço</string>
 

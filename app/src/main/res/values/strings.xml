@@ -1686,6 +1686,7 @@
     <string name="groq_display_name" translatable="false">Groq</string>
     <string name="openrouter_display_name" translatable="false">OpenRouter</string>
     <string name="claude_display_name" translatable="false">Claude</string>
+    <string name="index_translate_display_name" translatable="false">Bilibili Index-Translate</string>
     <string name="deepl_display_name" translatable="false">DeepL</string>
     <!-- Cell title + provider-preset pill label for an OpenAI-compatible
          service pointed at a user-entered URL (LM Studio, OpenRouter, …). -->
@@ -1698,6 +1699,13 @@
 
     <!-- Row label for the API-key text field. -->
     <string name="llm_backend_api_key_label">API Key</string>
+    <!-- Note on the Bilibili Index-Translate settings page, shown in place
+         of the API-key field because the service takes no key. It says the
+         service is free, who runs it, that no usage limits are published
+         for it, and that the captured text goes to its operator. Keep
+         "Bilibili" in Latin script, as the untranslated service name above
+         it shows it. -->
+    <string name="llm_backend_index_translate_note">Free, no API key needed. Run by Bilibili, which publishes no usage limits for it. Captured text is sent to Bilibili for translation.</string>
 
     <!-- Row label for the model picker. -->
     <string name="llm_backend_model_label">Model</string>
@@ -1730,6 +1738,11 @@
 
     <!-- Error line shown if the model-list fetch failed. -->
     <string name="llm_model_picker_fetch_failed">Couldn\'t fetch the model list. Check the API key, or type a model id via Custom….</string>
+    <!-- Error line shown if the model-list fetch failed for a service that
+         takes no API key (Bilibili Index-Translate): the line above without
+         the advice to check a key. "Custom…" is the picker's last entry
+         (llm_backend_model_custom_entry). -->
+    <string name="llm_model_picker_fetch_failed_keyless">Couldn\'t fetch the model list. Try again later, or type a model id via Custom….</string>
 
     <!-- Title of the dialog shown when the API responded that the
          entered key is invalid. -->
@@ -1917,6 +1930,9 @@
     <string name="tr_service_remove_title_fmt">Remove <xliff:g id="service_name" example="OpenAI">%1$s</xliff:g>?</string>
     <!-- Body text of the same delete-confirmation alert. -->
     <string name="tr_service_remove_message">This removes the service from the list and deletes its saved API key.</string>
+    <!-- Body text of the same alert for a service that has no API key to
+         delete (Lingva, Bilibili Index-Translate). -->
+    <string name="tr_service_remove_message_keyless">This removes the service from the list.</string>
     <!-- Confirm (destructive, danger-tinted) button of the delete-
          confirmation alert. -->
     <string name="tr_service_remove_confirm">Remove</string>

@@ -728,6 +728,7 @@
     <!-- ═══ GENERIC LLM BACKEND SETTINGS ═══ -->
 
     <string name="llm_backend_api_key_label">مفتاح API</string>
+    <string name="llm_backend_index_translate_note">الخدمة مجانية ولا تتطلب مفتاح API. تديرها Bilibili، ولا تنشر أي حدود لاستخدامها. يُرسَل النص الملتقَط إلى Bilibili لترجمته.</string>
 
     <string name="llm_backend_model_label">النموذج</string>
 
@@ -744,6 +745,7 @@
     <string name="llm_model_picker_loading">جارٍ تحميل النماذج…</string>
 
     <string name="llm_model_picker_fetch_failed">تعذّر جلب قائمة النماذج. تحقق من مفتاح API، أو اكتب معرّف نموذج عبر «مخصص…».</string>
+    <string name="llm_model_picker_fetch_failed_keyless">تعذّر جلب قائمة النماذج. حاول مرة أخرى لاحقًا، أو اكتب معرّف نموذج عبر «مخصص…».</string>
 
     <string name="llm_backend_invalid_key_alert_title">تعذّر التحقق من مفتاح API</string>
 
@@ -816,6 +818,7 @@
     <string name="tr_service_remove_title_fmt">إزالة <xliff:g id="service_name" example="OpenAI">%1$s</xliff:g>؟</string>
 
     <string name="tr_service_remove_message">يؤدي هذا إلى إزالة الخدمة من القائمة وحذف مفتاح API المحفوظ الخاص بها.</string>
+    <string name="tr_service_remove_message_keyless">يؤدي هذا إلى إزالة الخدمة من القائمة.</string>
 
     <string name="tr_service_remove_confirm">إزالة</string>
 

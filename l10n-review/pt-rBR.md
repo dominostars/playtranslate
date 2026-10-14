@@ -874,3 +874,19 @@ No new findings.
 
 #### Verdict (round 2)
 **PASS.** 0 🛑, 0 ❌, 0 ⚠️, 0 💬; nothing open. I read the strings fresh as sets: the addendum after all six hosts, the stuck alert with and without the Xiaomi paragraph, each card's title and line, and the toast. I re-measured the toast: 2 lines at both 296 and 320 dp (267 and 278 dp). The AOSP labels match the local Android 16 QPR2 pt-BR Settings file (`application_info_label`, `app_restricted_settings_lockscreen_title`, `high_power_prompt_title`, `manager_battery_usage_unrestricted_title`). «Recentes», «janela de app» and «Inicialização automática» match the local MIUI 13 PT-BR guide. The web calls (4 of 4) found nothing newer. Kaspersky's pt-BR Huawei article (195525) redirects through support.kaspersky.com.br to the US English page, and no Huawei EMUI 10+ or vivo (jovi) source in pt-BR turned up. So the Huawei labels still rest on Huawei Brazil's EMUI 8/9 page, and OPPO and vivo stay unverified (known issue 2). The toast drops "your phone's", but App info opens behind it, and «nas Configurações do celular» measures 3 lines, so the current wording is the right trade.
+
+## Delta review 2026-10-14 (Bilibili Index-Translate: 3 keys)
+
+Mechanical layer: `python3 scripts/l10n_diff.py --locale app/src/main/res/values-pt-rBR/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync". The three keys are present once each, beside the same neighbours as in English, and the file parses as XML. This delta has no `<xliff:g>`, placeholder, plural, markup, apostrophe, ASCII quote or dash. "Bilibili" stays in Latin script, twice in the note. **No 🛑 build-breaking issues.**
+
+Render code read before reviewing: the note is `tvProviderNote` (RowSubtitle, wraps, no `maxLines`), shown in place of the API-key section under the untranslated title "Bilibili Index-Translate". The picker line is a 13 sp wrapping TextView, used when the account takes no key. The keyless body appears under `tr_service_remove_title_fmt` for Lingva and Bilibili Index-Translate.
+
+| key | severity | current | suggested | note |
+|---|---|---|---|---|
+| llm_backend_index_translate_note | 💬 | `Operado pela Bilibili, que não publica limites de uso para ele.` | `Operado pela Bilibili, que não publica limites de uso para este serviço.` | The string never names the service: «Gratuito» and «Operado» agree with an implied «serviço». So the closing «para ele» has no noun to point back to, and reads as English's "for it" carried over. Naming the service, as es does («para este servicio»), removes the dangling pronoun. Optional. |
+
+Clean areas: The note keeps all three English facts: free and keyless; run by Bilibili, with no published limits; the captured text goes to Bilibili. «pela Bilibili» and «à Bilibili» use the feminine article for the company, as the file does elsewhere («da Tencent», «A Samsung»). The title's masculine «Remover o …» names the service, so the two do not clash. «limites de uso» is in line with «limite diário» (`translation_error_daily_quota`) and the Samsung «Limites de uso em segundo plano». «O texto capturado» is the captured-text term of `tr_service_order_footer`, and «chave de API» is `llm_backend_api_key_label`. The keyless picker line keeps the sibling's first sentence and its «ou digite um ID de modelo em Personalizado….» byte for byte. «Personalizado…» matches `llm_backend_model_custom_entry`. «Tente novamente» is the file's retry phrase (`hidden_word_save_failed`, `settings_ocr_download_failed`), in the você form. Read as one screen, the delete alert is «Remover o Lingva?», then «Isso remove o serviço da lista.», then the button «Remover». The body is the sibling without its key clause, and it keeps remover (remove) apart from excluir (delete). BR vocabulary throughout.
+
+### Disposition (2026-10-14)
+
+Applied the 1 💬 («para este serviço»).

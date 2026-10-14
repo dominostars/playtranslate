@@ -114,3 +114,15 @@ Clean areas: The four steps follow the English order and content, "Mục này ch
 ### Disposition (2026-10-08)
 
 Applied the 1 💬 ("khi bạn nhấn vào nút này, thông báo … sẽ hiện ra").
+
+## Delta review 2026-10-14 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] vi -> readme/README.vi.md`, `warning 39 bold spans, English has 38`; same with `--require-header`). This is the warning the 2026-10-08 review explained: the extra span is install step 3's **Cài đặt**. This delta adds one bold span on each side (English 37 → 38, Vietnamese 38 → 39). **No 🛑 issues.**
+
+No findings.
+
+Clean areas: The lead's verb thêm is the app's (`add_online_service_title` Thêm dịch vụ dịch thuật), and the API-key clause is gone, as in English. The two sentences still open with "bạn có thể thêm … Bạn có thể thêm …", but that echo predates this delta (the old text had it too) and follows the English "add … Add", so it is left alone. The new bullet comes before Tùy chỉnh with the Latin brand in bold, and its link text and URL are byte-identical to the English. 「, miễn phí, không cần khóa API」 follows the OpenAI-style bullets' pattern (a comma after the link, lowercase after it) and says what the app's note says. Diacritics are complete. Leaving the intro alone was correct: 「PlayTranslate là ứng dụng Android…」 has no một to drop.
+
+### Disposition (2026-10-14)
+
+No findings; nothing to apply.
