@@ -34,7 +34,9 @@ import java.util.concurrent.TimeUnit
  *  two-part shape, a [Prefs] with a reversible codec, and canned HTTP. */
 internal object PtCloudTestSupport {
 
-    const val BASE_URL = "https://pt.example.test"
+    /** The service's root, written out here rather than read from the
+     *  client, so a request test fails if the client's address changes. */
+    const val BASE_URL = "https://api.playtranslate.com"
     const val KEY = "test-client-key"
 
     /** Reversible stand-in for the AndroidKeyStore codec (instrumented-only),
@@ -52,10 +54,9 @@ internal object PtCloudTestSupport {
 
     fun prefs(ctx: Context): Prefs = Prefs(ctx, FakeCodec())
 
-    /** A config pointing at [BASE_URL] with [KEY]. */
-    fun config(ctx: Context, baseUrl: String = BASE_URL, key: String = KEY): PtCloudConfig {
+    /** A config with [key] stored. */
+    fun config(ctx: Context, key: String = KEY): PtCloudConfig {
         val p = prefs(ctx)
-        p.ptCloudBaseUrl = baseUrl
         p.ptCloudClientKey = key
         return PtCloudConfig(p)
     }

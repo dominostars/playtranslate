@@ -27,19 +27,17 @@ object PtCloudRouting {
     /**
      * True only when every condition allows the cloud: the user switched it
      * on ([enabled] is already false outside debug builds), a usable client
-     * key is set ([PtCloudConfig.hasKey]), the stored URL is usable
-     * ([endpointValid]: [PtCloudConfig.endpoint] is not null), the source is
-     * one the server reads, the service is not cooling down, and the caller
-     * did not ask for the device reader ([deviceOnly]: re-OCR, the furigana
-     * hold, a hold while live mode runs, the furigana live tier, a live
-     * session the service refused ([PtCloudService.liveSessionBlocked])).
+     * key is set ([PtCloudConfig.hasKey]), the source is one the server
+     * reads, the service is not cooling down, and the caller did not ask for
+     * the device reader ([deviceOnly]: re-OCR, the furigana hold, a hold
+     * while live mode runs, the furigana live tier, a live session the
+     * service refused ([PtCloudService.liveSessionBlocked])).
      */
     fun eligible(
         enabled: Boolean,
         hasKey: Boolean,
-        endpointValid: Boolean,
         sourceSupported: Boolean,
         coolingDown: Boolean,
         deviceOnly: Boolean,
-    ): Boolean = enabled && hasKey && endpointValid && sourceSupported && !coolingDown && !deviceOnly
+    ): Boolean = enabled && hasKey && sourceSupported && !coolingDown && !deviceOnly
 }

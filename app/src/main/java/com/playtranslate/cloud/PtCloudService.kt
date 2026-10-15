@@ -136,7 +136,7 @@ object PtCloudService {
      *  thread. */
     fun onToggled() = resetForUserGesture()
 
-    /** A new key or URL was saved: the old cooldown and errors describe a
+    /** A new key was saved: the old cooldown and errors describe a
      *  configuration that is gone. Main thread. */
     fun onCredentialsSaved() = resetForUserGesture()
 

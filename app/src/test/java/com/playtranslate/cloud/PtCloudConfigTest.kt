@@ -7,7 +7,6 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -18,7 +17,7 @@ import org.robolectric.RobolectricTestRunner
  * PlayTranslate Cloud's settings through [Prefs]: the client key's
  * encrypted slot round-trips (AndroidKeyStore is instrumented-only, so a
  * reversible codec stands in), and [PtCloudConfig] serves the defaults and
- * the cleaned-up values the client sends, refusing a stored URL or key that
+ * the cleaned-up values the client sends, refusing a stored key that
  * request building would throw on, and reads the transport knobs (upload
  * format, item lines, warm call) at each use.
  */
@@ -45,7 +44,6 @@ class PtCloudConfigTest {
 
     @Test fun `defaults come from PtCloudConfig`() {
         val config = PtCloudConfig(PtCloudTestSupport.prefs(ctx))
-        assertEquals(PtCloudConfig.DEFAULT_BASE_URL, config.baseUrl)
         assertEquals(PtCloudConfig.DEFAULT_UPLOAD_LONG_SIDE_CAP, config.uploadLongSideCap)
         assertFalse(config.hasKey)
         assertFalse(config.enabled)
@@ -90,41 +88,20 @@ class PtCloudConfigTest {
 
     @Test fun `the config serves the stored values, cleaned for the wire`() {
         val prefs = PtCloudTestSupport.prefs(ctx)
-        prefs.ptCloudBaseUrl = " http://192.168.1.20:8080/ "
         prefs.ptCloudClientKey = "  key\n"
         prefs.ptCloudUploadLongSideCap = 2560
         val config = PtCloudConfig(prefs)
-        assertEquals("http://192.168.1.20:8080", config.baseUrl)
         assertEquals("key", config.clientKey)
         assertTrue(config.hasKey)
         assertEquals(2560, config.uploadLongSideCap)
     }
 
-    /** A config over freshly cleared prefs holding only what is given. */
-    private fun config(baseUrl: String? = null, key: String? = null): PtCloudConfig {
+    /** A config over freshly cleared prefs holding only [key]. */
+    private fun config(key: String): PtCloudConfig {
         clear()
         val prefs = PtCloudTestSupport.prefs(ctx)
-        if (baseUrl != null) prefs.ptCloudBaseUrl = baseUrl
-        if (key != null) prefs.ptCloudClientKey = key
+        prefs.ptCloudClientKey = key
         return PtCloudConfig(prefs)
-    }
-
-    @Test fun `the endpoint is https to any host, or http to a LAN host`() {
-        assertEquals("https://pt.example.test/", config("https://pt.example.test").endpoint.toString())
-        assertEquals("https://pt.example.test/", config(" https://pt.example.test/ ").endpoint.toString())
-        assertEquals("http://192.168.1.20:8080/", config("http://192.168.1.20:8080").endpoint.toString())
-        assertEquals("http://localhost:8080/", config("http://localhost:8080").endpoint.toString())
-        // The default is usable as it ships.
-        assertEquals("${PtCloudConfig.DEFAULT_BASE_URL}/", config().endpoint.toString())
-    }
-
-    @Test fun `cleartext to a public host or a malformed URL has no endpoint`() {
-        for (bad in listOf("http://pt.example.test", "http://8.8.8.8", "not a url", "ftp://pt.example.test", "", "https://")) {
-            val c = config(bad)
-            assertNull(bad, c.endpoint)
-            // The settings field still shows what was stored.
-            assertEquals(bad.trim().trimEnd('/'), c.baseUrl)
-        }
     }
 
     @Test fun `a key is usable only as a legal bearer value`() {

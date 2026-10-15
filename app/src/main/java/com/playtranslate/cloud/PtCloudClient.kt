@@ -23,6 +23,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -89,16 +91,12 @@ sealed interface HealthStatus {
     data object NotRunning : HealthStatus
     /** No answer (DNS, connect, TLS, timeout). */
     data object Unreachable : HealthStatus
-    /** Nothing was sent: the stored server address is not usable
-     *  ([PtCloudConfig.endpoint] is null: malformed, or cleartext http to a
-     *  public host). */
-    data object BadUrl : HealthStatus
     data class Other(val code: Int) : HealthStatus
 }
 
 /**
  * The HTTP client for PlayTranslate Cloud's `POST /v1/frame`, `GET /v1/warm`
- * and `GET /health` (the contract: docs/api.md and
+ * and `GET /health`, all under [BASE_URL] (the contract: docs/api.md and
  * docs/client-integration-brief.md in the playtranslate-cloud repository).
  *
  * Reporting is split at part 1. [postFrame] records the cooldown and
@@ -147,9 +145,7 @@ class PtCloudClient(
      * attempt through [PtCloudService.report] (the failure table:
      * [PtCloudErrors.classifyHttp], [PtCloudErrors.classifyTransport],
      * [PtCloudErrors.badPart1]). Throws [CancellationException], with nothing
-     * recorded or reported, when the calling coroutine was cancelled. Throws
-     * [IllegalStateException], with nothing sent, when the config has no
-     * usable [PtCloudConfig.endpoint], which the router never lets happen.
+     * recorded or reported, when the calling coroutine was cancelled.
      */
     suspend fun postFrame(frame: EncodedFrame, meta: FrameMeta): FrameResponse {
         // Captured here, outside any withContext: part 2's reader is a child
@@ -252,13 +248,11 @@ class PtCloudClient(
         return FrameResponse(part1.part, translation, items.asStateFlow(), sentAtMs, attemptStartedAtMs)
     }
 
-    /** `GET {endpoint}/health`, no auth. [HealthStatus.BadUrl], with nothing
-     *  sent, when the stored URL is unusable ([PtCloudConfig.endpoint] is
-     *  null); [HealthStatus.Unreachable] for a transport failure;
-     *  [CancellationException] when the caller was cancelled. */
+    /** `GET {BASE_URL}/health`, no auth. [HealthStatus.Unreachable] for a
+     *  transport failure; [CancellationException] when the caller was
+     *  cancelled. */
     suspend fun health(): HealthStatus = withContext(Dispatchers.IO) {
-        val endpoint = config.endpoint ?: return@withContext HealthStatus.BadUrl
-        val url = endpoint.newBuilder().addPathSegments("health").build()
+        val url = BASE_URL.newBuilder().addPathSegments("health").build()
         val call = client.newCall(Request.Builder().url(url).get().build())
         val code = try {
             blockingOn(call) { call.execute().use { it.code } }
@@ -281,7 +275,7 @@ class PtCloudClient(
     }
 
     /**
-     * `GET {endpoint}/v1/warm` ("Pre-warm" in docs/api.md): wakes the radio,
+     * `GET {BASE_URL}/v1/warm` ("Pre-warm" in docs/api.md): wakes the radio,
      * the pooled connection, the edge's path to the origin and the origin's
      * translator connection before a frame is uploaded. Fire and forget: it
      * returns at once, on the same client (and so the same connection pool)
@@ -290,18 +284,16 @@ class PtCloudClient(
      * and report no attempt: the frame that follows is what says how the
      * service is.
      *
-     * Sends nothing when [PtCloudConfig.warmEnabled] is off, when the stored
-     * URL is unusable ([PtCloudConfig.endpoint] is null) or when there is no
-     * usable key ([PtCloudConfig.hasKey]). Otherwise stamps when it went
+     * Sends nothing when [PtCloudConfig.warmEnabled] is off or when there is
+     * no usable key ([PtCloudConfig.hasKey]). Otherwise stamps when it went
      * out, so the next frame's clock line reports the head start. Reading
      * the key decrypts it, so call this off the main thread.
      */
     fun warm() {
         if (!config.warmEnabled) return
-        val endpoint = config.endpoint ?: return
         if (!config.hasKey) return
         val request = Request.Builder()
-            .url(endpoint.newBuilder().addPathSegments("v1/warm").build())
+            .url(BASE_URL.newBuilder().addPathSegments("v1/warm").build())
             .header("Authorization", "Bearer ${config.clientKey}")
             .get()
             .build()
@@ -324,12 +316,8 @@ class PtCloudClient(
      *  plain form field (a file part named `meta` is ignored and the server
      *  answers 422). Both parts are byte arrays of known length, so OkHttp
      *  sends the `Content-Length` the edge requires (411 without one).
-     *  [clock] rides along as the request's tag for the HTTP stack to fill.
-     *  Throws [IllegalStateException] when [PtCloudConfig.endpoint] is null:
-     *  the router never sends a frame here without one, so reaching this is
-     *  a programming error, not a service failure. */
+     *  [clock] rides along as the request's tag for the HTTP stack to fill. */
     private fun frameRequest(frame: EncodedFrame, meta: FrameMeta, clock: HttpCallClock): Request {
-        val endpoint = checkNotNull(config.endpoint) { "PlayTranslate Cloud frame with no usable endpoint" }
         val body = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart(
@@ -338,7 +326,7 @@ class PtCloudClient(
             .addFormDataPart("meta", PtJson.lenient.encodeToString(FrameMeta.serializer(), meta))
             .build()
         return Request.Builder()
-            .url(endpoint.newBuilder().addPathSegments("v1/frame").build())
+            .url(BASE_URL.newBuilder().addPathSegments("v1/frame").build())
             .header("Authorization", "Bearer ${config.clientKey}")
             .header("Accept", NDJSON)
             .tag(HttpCallClock::class.java, clock)
@@ -447,6 +435,11 @@ class PtCloudClient(
         private const val TAG = "PtCloud"
         private const val NDJSON = "application/x-ndjson"
 
+        /** The service's root: the Cloudflare Worker in front of it, at the
+         *  same address whether the service is running or not. Fixed: there
+         *  is no setting for it. */
+        private val BASE_URL: HttpUrl = "https://api.playtranslate.com".toHttpUrl()
+
         /** The edge's clocks (docs/api.md, "Clocks"): arrival to the last
          *  body byte handed to the origin, and arrival to the origin's
          *  response headers. */
@@ -458,11 +451,11 @@ class PtCloudClient(
         private const val ERROR_BODY_LIMIT = 4096L
 
         /** One client for the process, so consecutive captures reuse the
-         *  connection (its TLS handshake is most of a cold call). The custom
-         *  endpoint builder allows http to a loopback or LAN address, for a
-         *  local build of the service, and https anywhere. The server's
-         *  timings, from the brief: part 1 normally within 2 s, part 2 at
-         *  most about 5.5 s later (the server's own deadline). The 8 s read
+         *  connection (its TLS handshake is most of a cold call). https only
+         *  ([PtHttp.clientBuilder]), as every client but the OpenAI custom
+         *  endpoint: [BASE_URL] is https. The server's timings, from the
+         *  brief: part 1 normally within 2 s, part 2 at most about 5.5 s
+         *  later (the server's own deadline). The 8 s read
          *  is the longest any mode waits on a silent connection, the wait for
          *  the translations after part 1 included: the same bound the
          *  waterfall's services put on a translation ([com.playtranslate.translation.GeminiBackend]'s
@@ -471,7 +464,7 @@ class PtCloudClient(
          *  never a translation the server is still going to send. The 12 s
          *  whole-call budget covers the upload, part 1 and that wait. */
         private val shared: OkHttpClient by lazy {
-            PtHttp.customEndpointBuilder()
+            PtHttp.clientBuilder()
                 .connectTimeout(5, TimeUnit.SECONDS)
                 .readTimeout(8, TimeUnit.SECONDS)
                 .writeTimeout(10, TimeUnit.SECONDS)

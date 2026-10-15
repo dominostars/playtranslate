@@ -25,7 +25,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,10 +37,11 @@ import java.util.Collections
 
 /**
  * The request exactly as the brief specifies it, captured at the client's
- * boundary: `POST {base}/v1/frame`, the two headers, and a two-part
- * multipart body of known length whose `frame` is a file part named and
- * typed by its format and whose `meta` is a plain form field (a file part
- * named `meta` makes the server answer 422). Plus `GET /health`'s status
+ * boundary: `POST https://api.playtranslate.com/v1/frame` (the fixed root,
+ * [BASE_URL]), the two headers, and a two-part multipart body of known
+ * length whose `frame` is a file part named and typed by its format and
+ * whose `meta` is a plain form field (a file part named `meta` makes the
+ * server answer 422). Plus `GET /health`'s status
  * mapping and `GET /v1/warm`: what it sends, when it sends nothing, and the
  * head start it hands the next frame's clock line.
  */
@@ -66,12 +66,11 @@ class PtCloudRequestTest {
     private fun send(
         meta: FrameMeta = PtCloudTestSupport.meta(),
         frame: EncodedFrame = PtCloudTestSupport.frame(),
-        baseUrl: String = BASE_URL,
         key: String = KEY,
     ): Request {
         val seen = mutableListOf<Request>()
         val client = PtCloudClient(
-            PtCloudTestSupport.config(ctx, baseUrl, key),
+            PtCloudTestSupport.config(ctx, key),
             clientFactory = { PtCloudTestSupport.cannedClient(200, ndjson, seen = seen) },
         )
         runBlocking { client.postFrame(frame, meta).translation.await() }
@@ -82,35 +81,12 @@ class PtCloudRequestTest {
 
     private fun MultipartBody.Part.text() = Buffer().also { body.writeTo(it) }.readUtf8()
 
-    @Test fun `it posts to v1 frame under the base URL with the key and the NDJSON accept`() {
+    @Test fun `it posts to v1 frame on api playtranslate com with the key and the NDJSON accept`() {
         val request = send()
         assertEquals("POST", request.method)
         assertEquals("$BASE_URL/v1/frame", request.url.toString())
         assertEquals("Bearer $KEY", request.header("Authorization"))
         assertEquals("application/x-ndjson", request.header("Accept"))
-    }
-
-    @Test fun `a stored base URL with spaces and a trailing slash still makes one clean path`() {
-        assertEquals("$BASE_URL/v1/frame", send(baseUrl = "  $BASE_URL/ ").url.toString())
-    }
-
-    @Test fun `a base URL with a path keeps it`() {
-        assertEquals("$BASE_URL/pt/v1/frame", send(baseUrl = "$BASE_URL/pt/").url.toString())
-    }
-
-    @Test fun `a frame with no usable endpoint is a programming error, and nothing is sent`() {
-        val seen = mutableListOf<Request>()
-        val client = PtCloudClient(
-            PtCloudTestSupport.config(ctx, baseUrl = "http://pt.example.test"),
-            clientFactory = { PtCloudTestSupport.cannedClient(200, ndjson, seen = seen) },
-        )
-        try {
-            runBlocking { client.postFrame(PtCloudTestSupport.frame(), PtCloudTestSupport.meta()) }
-            fail("expected IllegalStateException")
-        } catch (e: IllegalStateException) {
-            // expected
-        }
-        assertTrue(seen.isEmpty())
     }
 
     @Test fun `a pasted key's trailing newline is not sent`() {
@@ -224,18 +200,6 @@ class PtCloudRequestTest {
         assertEquals(HealthStatus.Other(500), health(500))
     }
 
-    @Test fun `health with an unusable URL is BadUrl, and sends nothing`() {
-        for (bad in listOf("http://pt.example.test", "not a url")) {
-            val seen = mutableListOf<Request>()
-            val client = PtCloudClient(
-                PtCloudTestSupport.config(ctx, baseUrl = bad),
-                clientFactory = { PtCloudTestSupport.cannedClient(200, """{"ok":true}""", seen = seen) },
-            )
-            assertEquals(HealthStatus.BadUrl, runBlocking { client.health() })
-            assertTrue(seen.isEmpty())
-        }
-    }
-
     @Test fun `health with no connection is unreachable, and records nothing`() {
         val client = PtCloudClient(
             PtCloudTestSupport.config(ctx),
@@ -271,17 +235,14 @@ class PtCloudRequestTest {
         assertEquals(1, built)
     }
 
-    @Test fun `warm sends nothing with the switch off, an unusable URL, or no usable key`() {
+    @Test fun `warm sends nothing with the switch off or no usable key`() {
         val cases = listOf<Pair<String, (Prefs) -> Unit>>(
             "switch off" to { it.ptCloudWarm = false },
-            "cleartext to a public host" to { it.ptCloudBaseUrl = "http://pt.example.test" },
-            "malformed URL" to { it.ptCloudBaseUrl = "not a url" },
             "no key" to { it.ptCloudClientKey = "" },
             "a key that is not a legal header value" to { it.ptCloudClientKey = "abc\ndef" },
         )
         for ((name, edit) in cases) {
             val prefs = PtCloudTestSupport.prefs(ctx)
-            prefs.ptCloudBaseUrl = BASE_URL
             prefs.ptCloudClientKey = KEY
             prefs.ptCloudWarm = true
             edit(prefs)

@@ -1612,13 +1612,6 @@ class Prefs internal constructor(
         get() = debugBuild && sp.getBoolean(KEY_PT_CLOUD_ENABLED, false)
         set(v) = sp.edit { putBoolean(KEY_PT_CLOUD_ENABLED, v) }
 
-    /** PlayTranslate Cloud's root URL. Plaintext (not a secret), like
-     *  [openaiBaseUrl]; a field on the settings page, so a local build of the
-     *  service can be pointed at. */
-    var ptCloudBaseUrl: String
-        get() = sp.getString(KEY_PT_CLOUD_BASE_URL, PtCloudConfig.DEFAULT_BASE_URL) ?: PtCloudConfig.DEFAULT_BASE_URL
-        set(v) = sp.edit { putString(KEY_PT_CLOUD_BASE_URL, v) }
-
     /** Long side, in pixels, a frame is scaled down to before upload. No UI
      *  yet; a user setting later. */
     var ptCloudUploadLongSideCap: Int
@@ -1956,7 +1949,6 @@ class Prefs internal constructor(
          *  key for its summary. */
         const val KEY_PT_CLOUD_ENABLED                     = "pt_cloud_enabled"
         const val KEY_PT_CLOUD_CLIENT_KEY                  = "pt_cloud_client_key"
-        private const val KEY_PT_CLOUD_BASE_URL            = "pt_cloud_base_url"
         private const val KEY_PT_CLOUD_UPLOAD_CAP          = "pt_cloud_upload_long_side_cap"
         private const val KEY_PT_CLOUD_UPLOAD_FORMAT       = "pt_cloud_upload_format"
         private const val KEY_PT_CLOUD_STREAM_ITEMS        = "pt_cloud_stream_items"

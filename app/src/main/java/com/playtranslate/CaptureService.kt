@@ -189,15 +189,14 @@ class CaptureService : Service() {
      * else the device alone. The decision, from a fresh [PtCloudConfig] read at
      * this call:
      *
-     * | switch | deviceOnly | usable key | usable URL | source | cooling down | reader |
-     * |---|---|---|---|---|---|---|
-     * | off (always, outside debug builds) | any | any | any | any | any | device |
-     * | on | true | any | any | any | any | device |
-     * | on | false | no | any | any | any | device |
-     * | on | false | yes | no | any | any | device |
-     * | on | false | yes | yes | not one the server reads | any | device |
-     * | on | false | yes | yes | read | yes | device |
-     * | on | false | yes | yes | read | no | cloud, then device |
+     * | switch | deviceOnly | usable key | source | cooling down | reader |
+     * |---|---|---|---|---|---|
+     * | off (always, outside debug builds) | any | any | any | any | device |
+     * | on | true | any | any | any | device |
+     * | on | false | no | any | any | device |
+     * | on | false | yes | not one the server reads | any | device |
+     * | on | false | yes | read | yes | device |
+     * | on | false | yes | read | no | cloud, then device |
      *
      * [deviceOnly] is the caller's statement that this read must stay on the device
      * whatever the settings say: a re-OCR (the user picked a device engine for that
@@ -231,7 +230,6 @@ class CaptureService : Service() {
         SWITCH_OFF(null),
         DEVICE_ONLY("device-only"),
         NO_KEY("no key"),
-        BAD_URL("bad URL"),
         SOURCE("source"),
         COOLING_DOWN("cooling down"),
     }
@@ -249,8 +247,8 @@ class CaptureService : Service() {
      * included: the switch, off in every release build, then the caller's
      * device-only statement, which the furigana live passes, and a blocked
      * reconciler or pinhole session's, make about once a second. Only then are the
-     * key (whose read decrypts it), the URL, the source and the cooldown read,
-     * all four, and judged by [PtCloudRouting.eligible]; the first of them, in
+     * key (whose read decrypts it), the source and the cooldown read, all
+     * three, and judged by [PtCloudRouting.eligible]; the first of them, in
      * that order, that refuses is the reason.
      */
     private fun cloudRefusal(config: PtCloudConfig, srcId: SourceLangId, deviceOnly: Boolean): CloudRefusal? {
@@ -258,15 +256,13 @@ class CaptureService : Service() {
         if (!enabled) return CloudRefusal.SWITCH_OFF
         if (deviceOnly) return CloudRefusal.DEVICE_ONLY
         val hasKey = config.hasKey
-        val endpointValid = config.endpoint != null
         val sourceSupported = PtCloudRouting.isSupportedSource(srcId)
         val coolingDown = PtCloudService.isCoolingDown()
-        if (PtCloudRouting.eligible(enabled, hasKey, endpointValid, sourceSupported, coolingDown, deviceOnly)) {
+        if (PtCloudRouting.eligible(enabled, hasKey, sourceSupported, coolingDown, deviceOnly)) {
             return null
         }
         return when {
             !hasKey -> CloudRefusal.NO_KEY
-            !endpointValid -> CloudRefusal.BAD_URL
             !sourceSupported -> CloudRefusal.SOURCE
             else -> CloudRefusal.COOLING_DOWN
         }

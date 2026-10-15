@@ -8,9 +8,9 @@ import org.junit.Test
 
 /**
  * The eligibility table, one row per test: the cloud reads a frame only
- * when it is switched on, has a usable key and a usable URL, supports the
- * source, is not cooling down, and the caller did not ask for the device.
- * "any" columns are iterated, so a row holds whatever the others say.
+ * when it is switched on, has a usable key, supports the source, is not
+ * cooling down, and the caller did not ask for the device. "any" columns
+ * are iterated, so a row holds whatever the others say.
  */
 class PtCloudRoutingTest {
 
@@ -19,55 +19,47 @@ class PtCloudRoutingTest {
     private fun eligible(
         enabled: Boolean,
         key: Boolean,
-        url: Boolean,
         source: Boolean,
         cooling: Boolean,
         deviceOnly: Boolean,
     ) = PtCloudRouting.eligible(
-        enabled = enabled, hasKey = key, endpointValid = url, sourceSupported = source, coolingDown = cooling,
-        deviceOnly = deviceOnly,
+        enabled = enabled, hasKey = key, sourceSupported = source, coolingDown = cooling, deviceOnly = deviceOnly,
     )
 
     @Test fun `switched off, the device reads whatever else holds`() {
-        for (key in bools) for (url in bools) for (source in bools) for (cooling in bools) for (deviceOnly in bools) {
-            assertFalse(eligible(false, key, url, source, cooling, deviceOnly))
+        for (key in bools) for (source in bools) for (cooling in bools) for (deviceOnly in bools) {
+            assertFalse(eligible(false, key, source, cooling, deviceOnly))
         }
     }
 
     @Test fun `no usable key, the device reads`() {
-        for (url in bools) for (source in bools) for (cooling in bools) for (deviceOnly in bools) {
-            assertFalse(eligible(true, false, url, source, cooling, deviceOnly))
-        }
-    }
-
-    @Test fun `no usable URL, the device reads`() {
         for (source in bools) for (cooling in bools) for (deviceOnly in bools) {
-            assertFalse(eligible(true, true, false, source, cooling, deviceOnly))
+            assertFalse(eligible(true, false, source, cooling, deviceOnly))
         }
     }
 
     @Test fun `a source the server does not read goes to the device`() {
         for (cooling in bools) for (deviceOnly in bools) {
-            assertFalse(eligible(true, true, true, false, cooling, deviceOnly))
+            assertFalse(eligible(true, true, false, cooling, deviceOnly))
         }
     }
 
     @Test fun `cooling down, the device reads`() {
-        for (deviceOnly in bools) assertFalse(eligible(true, true, true, true, true, deviceOnly))
+        for (deviceOnly in bools) assertFalse(eligible(true, true, true, true, deviceOnly))
     }
 
     @Test fun `a device-only caller (re-OCR, furigana hold, hold while live) gets the device`() {
-        assertFalse(eligible(true, true, true, true, false, true))
+        assertFalse(eligible(true, true, true, false, true))
     }
 
     @Test fun `everything allowing it, the cloud reads`() {
-        assertTrue(eligible(true, true, true, true, false, false))
+        assertTrue(eligible(true, true, true, false, false))
     }
 
-    @Test fun `exactly one of the 64 cells routes to the cloud`() {
+    @Test fun `exactly one of the 32 cells routes to the cloud`() {
         var cloud = 0
-        for (a in bools) for (b in bools) for (c in bools) for (d in bools) for (e in bools) for (f in bools) {
-            if (eligible(a, b, c, d, e, f)) cloud++
+        for (a in bools) for (b in bools) for (c in bools) for (d in bools) for (e in bools) {
+            if (eligible(a, b, c, d, e)) cloud++
         }
         assertEquals(1, cloud)
     }

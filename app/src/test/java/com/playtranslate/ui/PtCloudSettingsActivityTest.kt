@@ -5,6 +5,7 @@ import android.os.Looper
 import android.view.View
 import android.widget.EditText
 import android.widget.TextView
+import androidx.core.view.allViews
 import androidx.core.view.isVisible
 import androidx.test.core.app.ApplicationProvider
 import com.google.android.material.button.MaterialButton
@@ -16,6 +17,7 @@ import com.playtranslate.cloud.HealthStatus
 import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.translation.CooldownCause
 import com.playtranslate.translation.CooldownState
+import kotlinx.coroutines.awaitCancellation
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -35,17 +37,16 @@ import org.robolectric.android.controller.ActivityController
  * resetting the service and keeps its own state across a recreate, a flip
  * writes the pref and resets the service's cooldown, the three transport
  * switches seed from their prefs and a flip of one writes its pref and
- * nothing else (no reset), Save refuses a URL the endpoint policy rejects
- * and persists one it accepts, and the status row words each health answer.
+ * nothing else (no reset), the client key is the page's only text field
+ * (the service's address is fixed), Save resets the service and starts a
+ * check, and the status row shows the check's answer in its wording for each.
  *
  * The client key is not asserted: the page's [Prefs] uses the AndroidKeyStore
  * codec, which a JVM test has none of (the key round trip is
- * PtCloudConfigTest's, on a fake codec). The health check is never awaited:
- * the stored URL is a public http one, which the client answers
- * [HealthStatus.BadUrl] to without sending anything, so the resume check
- * stays off the network; the one URL a test saves is on loopback, so its
- * check never leaves the machine; and a check a test starts is cancelled
- * with the page in [tearDown].
+ * PtCloudConfigTest's, on a fake codec). The health check never reaches the
+ * service: every test answers it through
+ * [PtCloudSettingsActivity.healthOverrideForTest], by default with a check
+ * that never ends, which [tearDown] cancels with the page.
  */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudSettingsActivityTest {
@@ -58,12 +59,13 @@ class PtCloudSettingsActivityTest {
     @Before fun setUp() {
         clearPrefs()
         cooldown = CooldownState(null, PtCloudService.ID).also { PtCloudService.installForTest(it) }
-        prefs.ptCloudBaseUrl = UNSENDABLE_URL
+        PtCloudSettingsActivity.healthOverrideForTest = { awaitCancellation() }
     }
 
     @After fun tearDown() {
         controller?.pause()?.stop()?.destroy()
         controller = null
+        PtCloudSettingsActivity.healthOverrideForTest = null
         PtCloudService.installForTest(null)
         clearPrefs()
     }
@@ -84,7 +86,6 @@ class PtCloudSettingsActivityTest {
 
     private fun PtCloudSettingsActivity.toggleRow() = findViewById<View>(R.id.rowCloudToggle)
     private fun PtCloudSettingsActivity.switch() = toggleRow().findViewById<MaterialSwitch>(R.id.switchRowToggle)
-    private fun PtCloudSettingsActivity.urlField() = findViewById<EditText>(R.id.etCloudUrl)
     private fun PtCloudSettingsActivity.saveButton() = findViewById<MaterialButton>(R.id.btnCloudSave)
     private fun PtCloudSettingsActivity.status() = findViewById<TextView>(R.id.tvCloudStatus).text.toString()
     private fun PtCloudSettingsActivity.cooldownLine() = findViewById<TextView>(R.id.tvCloudCooldown)
@@ -161,7 +162,6 @@ class PtCloudSettingsActivityTest {
      *  them (the key is left out: no AndroidKeyStore here). */
     private fun cloudPrefs() = mapOf(
         "enabled" to prefs.ptCloudEnabled,
-        "url" to prefs.ptCloudBaseUrl,
         "format" to prefs.ptCloudUploadFormat,
         "items" to prefs.ptCloudStreamItems,
         "warm" to prefs.ptCloudWarm,
@@ -253,30 +253,19 @@ class PtCloudSettingsActivityTest {
         }
     }
 
-    // ── Save ──────────────────────────────────────────────────────────────
+    // ── The key and Save ──────────────────────────────────────────────────
 
-    @Test fun `Save refuses a URL the endpoint policy rejects and writes nothing`() {
-        recordCooldown()
+    @Test fun `the client key is the page's only text field, with none for the server`() {
         val page = open()
-        for (bad in listOf("http://example.com", "not a url", "")) {
-            page.urlField().setText(bad)
-            page.saveButton().performClick()
-
-            assertEquals("$bad: the URL was not written", UNSENDABLE_URL, prefs.ptCloudBaseUrl)
-            assertEquals("$bad: the field says why", page.getString(R.string.llm_backend_base_url_invalid), page.urlField().error?.toString())
-            assertNotNull("$bad: the service was not reset", PtCloudService.unavailableUntil())
-            assertTrue("$bad: no check started", page.saveButton().isEnabled)
-        }
+        val fields = page.window.decorView.allViews.filterIsInstance<EditText>().map { it.id }.toList()
+        assertEquals(listOf(R.id.etCloudKey), fields)
     }
 
-    @Test fun `Save persists a loopback http URL, trimmed, resets the service and starts a check`() {
+    @Test fun `Save resets the service and starts a check`() {
         recordCooldown()
         val page = open()
-        page.urlField().setText("  http://127.0.0.1:9  ")
         page.saveButton().performClick()
 
-        assertEquals("http://127.0.0.1:9", prefs.ptCloudBaseUrl)
-        assertNull(page.urlField().error)
         assertNull(PtCloudService.unavailableUntil())
         assertFalse(page.cooldownLine().isVisible)
         assertEquals("Checking", page.status())
@@ -296,21 +285,21 @@ class PtCloudSettingsActivityTest {
         }
     }
 
+    @Test fun `the check on resume shows the service's answer`() {
+        PtCloudSettingsActivity.healthOverrideForTest = { HealthStatus.Running }
+        val page = open()
+        assertEquals("Running", page.status())
+        assertTrue("a resume check leaves Save alone", page.saveButton().isEnabled)
+    }
+
     @Test fun `each health answer has its status wording`() {
         val cells = mapOf(
             HealthStatus.Running to "Running",
             HealthStatus.Starting to "Starting",
             HealthStatus.NotRunning to "Not running",
             HealthStatus.Unreachable to "Can't connect",
-            HealthStatus.BadUrl to "Invalid server URL",
             HealthStatus.Other(500) to "Unexpected answer (500)",
         )
         cells.forEach { (status, text) -> assertEquals(status.toString(), text, healthStatusText(ctx, status)) }
-    }
-
-    private companion object {
-        /** Cleartext http to a public host: the endpoint policy rejects it,
-         *  so the client's health check answers BadUrl without sending. */
-        const val UNSENDABLE_URL = "http://pt.example.invalid"
     }
 }

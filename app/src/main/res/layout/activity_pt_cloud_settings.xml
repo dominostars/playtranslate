@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- PlayTranslate Cloud page (Settings → Configure, debug builds only):
-     the master switch, the client key and server URL with Save, the
-     service status, and the transport switches (upload format, early
-     translations, warm-up call). The page stays open after Save: it is
-     where the status shows. On the activity_translation_history.xml
-     template. -->
+     the master switch, the client key with Save, the service status, and
+     the transport switches (upload format, early translations, warm-up
+     call). The service's address is fixed in the client, with no field
+     here. The page stays open after Save: it is where the status shows.
+     On the activity_translation_history.xml template. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
@@ -55,7 +55,7 @@
                     android:id="@+id/rowCloudToggle" />
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Client key + server URL, persisted together by Save. -->
+            <!-- Client key, persisted by Save. -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -94,29 +94,6 @@
                         android:fontFamily="monospace"
                         android:singleLine="true"
                         android:inputType="textVisiblePassword"
-                        android:background="?attr/ptSurface"
-                        android:padding="10dp"
-                        android:importantForAutofill="no" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
-                        android:labelFor="@+id/etCloudUrl"
-                        android:text="@string/pt_cloud_url_label"
-                        style="@style/Text.PT.RowTitle" />
-
-                    <EditText
-                        android:id="@+id/etCloudUrl"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:textColorHint="?attr/ptTextHint"
-                        android:textColor="?attr/ptText"
-                        android:textSize="13sp"
-                        android:fontFamily="monospace"
-                        android:singleLine="true"
-                        android:inputType="textUri"
                         android:background="?attr/ptSurface"
                         android:padding="10dp"
                         android:importantForAutofill="no" />
