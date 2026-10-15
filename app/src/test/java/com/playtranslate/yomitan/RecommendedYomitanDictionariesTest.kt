@@ -19,11 +19,38 @@ class RecommendedYomitanDictionariesTest {
         importedAtMs = 0,
     )
 
-    private fun registry(vararg titles: String) =
-        YomitanRegistry(dictionaries = titles.map { dict(it) })
+    /** Display titles offered with [installed] imported, to a user translating
+     *  [source] into [target] (Japanese into English unless stated). */
+    private fun offered(
+        vararg installed: String,
+        source: String = "ja",
+        target: String = "en",
+    ): List<String> = RecommendedYomitanDictionaries.offered(
+        YomitanRegistry(dictionaries = installed.map { dict(it) }),
+        sourceLanguage = source,
+        targetLanguage = target,
+    ).map { it.displayTitle }
 
-    private val jmnedict = RecommendedYomitanDictionaries.all.first { it.displayTitle == "JMnedict" }
-    private val jiten = RecommendedYomitanDictionaries.all.first { it.displayTitle == "Jiten" }
+    private fun rec(displayTitle: String) =
+        RecommendedYomitanDictionaries.all.first { it.displayTitle == displayTitle }
+
+    private val jitendex = rec("Jitendex.org")
+    private val jmnedict = rec("JMnedict")
+    private val jiten = rec("Jiten")
+
+    @Test
+    fun `jitendex matches its dated and bare titles`() {
+        // Jitendex bakes its release date into the title.
+        assertTrue(jitendex.matchesInstalled("Jitendex.org [2026-10-03]"))
+        assertTrue(jitendex.matchesInstalled("Jitendex.org"))
+    }
+
+    @Test
+    fun `jitendex does not match unrelated dictionaries`() {
+        assertFalse(jitendex.matchesInstalled("Jiten"))
+        assertFalse(jitendex.matchesInstalled("JMnedict [2026-10-14]"))
+        assertFalse(jitendex.matchesInstalled("JMdict [2026-10-14]"))
+    }
 
     @Test
     fun `jmnedict matches its dated and bare titles`() {
@@ -34,42 +61,46 @@ class RecommendedYomitanDictionariesTest {
 
     @Test
     fun `jmnedict does not match unrelated dictionaries`() {
-        assertFalse(jmnedict.matchesInstalled("Jitendex"))
+        assertFalse(jmnedict.matchesInstalled("Jitendex.org [2026-10-03]"))
         assertFalse(jmnedict.matchesInstalled("Jiten"))
         assertFalse(jmnedict.matchesInstalled("JMdict"))
     }
 
     @Test
-    fun `jiten matches exactly and not the popular Jitendex`() {
+    fun `jiten matches exactly and not Jitendex`() {
         assertTrue(jiten.matchesInstalled("Jiten"))
-        // A prefix match would wrongly swallow Jitendex — the guard that forces exact match.
-        assertFalse(jiten.matchesInstalled("Jitendex"))
+        assertFalse(jiten.matchesInstalled("Jitendex.org [2026-10-03]"))
         assertFalse(jiten.matchesInstalled("JMnedict [2026-06-14]"))
     }
 
     @Test
-    fun `notInstalled hides only installed recommendations`() {
-        // Nothing installed → both recommended, in declared order.
+    fun `an English target is offered all three with Jitendex first`() {
+        assertEquals(listOf("Jitendex.org", "JMnedict", "Jiten"), offered())
+    }
+
+    @Test
+    fun `any other target is offered everything but Jitendex`() {
+        // Jitendex's definitions are English and show untranslated above the
+        // target-language ones; JMnedict and Jiten name no target.
+        assertEquals(listOf("JMnedict", "Jiten"), offered(target = "es"))
+        assertEquals(listOf("JMnedict", "Jiten"), offered(target = "zh"))
+    }
+
+    @Test
+    fun `a non-Japanese source is offered nothing`() {
+        assertEquals(emptyList<String>(), offered(source = "zh-Hant"))
+        assertEquals(emptyList<String>(), offered(source = "en"))
+    }
+
+    @Test
+    fun `installed dictionaries drop out`() {
+        assertEquals(listOf("JMnedict", "Jiten"), offered("Jitendex.org [2026-10-03]"))
+        assertEquals(listOf("Jitendex.org", "Jiten"), offered("JMnedict [2026-06-14]"))
+        // A near-miss title hides nothing.
+        assertEquals(listOf("Jitendex.org", "JMnedict", "Jiten"), offered("JMdict [2026-10-14]"))
         assertEquals(
-            listOf("JMnedict", "Jiten"),
-            RecommendedYomitanDictionaries.notInstalled(registry()).map { it.displayTitle },
-        )
-        // Dated JMnedict installed → only Jiten remains.
-        assertEquals(
-            listOf("Jiten"),
-            RecommendedYomitanDictionaries.notInstalled(registry("JMnedict [2026-06-14]"))
-                .map { it.displayTitle },
-        )
-        // Jitendex installed (a near-miss) → both still recommended.
-        assertEquals(
-            listOf("JMnedict", "Jiten"),
-            RecommendedYomitanDictionaries.notInstalled(registry("Jitendex")).map { it.displayTitle },
-        )
-        // Both installed → none.
-        assertTrue(
-            RecommendedYomitanDictionaries
-                .notInstalled(registry("JMnedict [2026-06-14]", "Jiten"))
-                .isEmpty(),
+            emptyList<String>(),
+            offered("Jitendex.org [2026-10-03]", "JMnedict [2026-06-14]", "Jiten"),
         )
     }
 }

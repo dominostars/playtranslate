@@ -24,7 +24,6 @@ import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.LanguagePackDownloader
-import com.playtranslate.language.SourceLangId
 import com.playtranslate.themeColor
 import com.playtranslate.yomitan.GroupedNames
 import com.playtranslate.yomitan.RecommendedYomitanDictionaries
@@ -413,17 +412,15 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
             sectionsContainer.addView(section)
         }
 
-        // Curated downloads last — below the user's installed dictionaries, and
-        // only for a Japanese source: the recommended dicts are all JA-source
-        // (matching the capability-cache gate), so they're irrelevant otherwise.
-        // Each entry drops out once it's installed (and then appears in its own
-        // category section above).
-        val recommended =
-            if (prefs.sourceLangId == SourceLangId.JA) {
-                RecommendedYomitanDictionaries.notInstalled(registry)
-            } else {
-                emptyList()
-            }
+        // Curated downloads last, below the user's installed dictionaries.
+        // RecommendedYomitanDictionaries decides which fit the current source
+        // and target languages; each drops out once it's installed (and then
+        // appears in its own category section above).
+        val recommended = RecommendedYomitanDictionaries.offered(
+            registry,
+            sourceLanguage = prefs.sourceLangId.code,
+            targetLanguage = prefs.targetLang,
+        )
         if (recommended.isNotEmpty()) {
             val section = inflater.inflate(R.layout.yomitan_section_card, sectionsContainer, false)
             section.findViewById<View>(R.id.yomitanSectionHeader)

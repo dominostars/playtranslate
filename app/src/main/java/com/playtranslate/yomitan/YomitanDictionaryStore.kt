@@ -103,10 +103,16 @@ data class YomitanDictionary(
  * language; a declared index.json language always takes precedence over it.
  */
 fun YomitanDictionary.matchesSourceLanguage(lang: String): Boolean {
-    val effective = sourceLanguage ?: sourceLanguageOverride
-    val declared = effective?.split('-', '_')?.first() ?: return true
-    return declared.equals(lang.split('-', '_').first(), ignoreCase = true)
+    val effective = sourceLanguage ?: sourceLanguageOverride ?: return true
+    return isSamePrimaryLanguage(effective, lang)
 }
+
+/** True when language tags [a] and [b] share a primary subtag, ignoring case:
+ *  "ja-JP" and "JA" are both "ja", "zh-Hant" and "zh-Hans" both "zh". The
+ *  comparison behind [matchesSourceLanguage] and the Recommended list's
+ *  language filter ([RecommendedYomitanDictionaries.offered]). */
+internal fun isSamePrimaryLanguage(a: String, b: String): Boolean =
+    a.split('-', '_').first().equals(b.split('-', '_').first(), ignoreCase = true)
 
 /**
  * On-disk registry of imported dictionaries. [sectionOrder] holds an
@@ -1049,12 +1055,20 @@ object YomitanDictionaryStore {
         installedSource: String?,
         installedTarget: String?,
     ): Boolean {
-        if (!titleIdentity(newTitle).equals(titleIdentity(installedTitle), ignoreCase = true)) {
+        if (!isSameTitleIdentity(newTitle, installedTitle)) {
             return false
         }
         return languageCompatible(newSource, installedSource) &&
             languageCompatible(newTarget, installedTarget)
     }
+
+    /** True when [a] and [b] title the same dictionary across releases: equal,
+     *  ignoring case, after [titleIdentity]. The one title rule for "is this
+     *  the same dictionary", shared by the update replacement check
+     *  ([isSameDictionaryIdentity]) and the Recommended list's installed check
+     *  ([RecommendedYomitanDictionary.matchesInstalled]). */
+    internal fun isSameTitleIdentity(a: String, b: String): Boolean =
+        titleIdentity(a).equals(titleIdentity(b), ignoreCase = true)
 
     /** Trailing release-date stamp in a deck title, e.g. " [2026-08-14]".
      *  Strictly date-shaped so non-date bracket suffixes keep distinguishing
