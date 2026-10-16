@@ -222,14 +222,30 @@ data class ReadRequest(
     val screenshotWidth: Int,
     val targetLang: String,
     val frameId: String,
-)
+) {
+    companion object {
+        /** The request of a consumer that wants the frame's text and no
+         *  translation (the drag lookup's [readLines], the furigana tier):
+         *  the source's own translationCode as the target, the
+         *  same-language pair, for which a translating reader asks its
+         *  service for none ([com.playtranslate.cloud.PtCloudFrameReader]
+         *  sends `target` equal to `source`, and the server skips
+         *  translation). */
+        fun sameLanguage(sourceLangId: SourceLangId, screenshotWidth: Int, frameId: String) = ReadRequest(
+            sourceLangId,
+            screenshotWidth = screenshotWidth,
+            targetLang = SourceLanguageProfiles[sourceLangId].translationCode,
+            frameId = frameId,
+        )
+    }
+}
 
 /**
  * The seam between a capture and whatever reads its pixels: the on-device OCR
  * engines today, a combined OCR and translation service behind the same call.
  * The capture-once paths, the press-and-hold overlay and the live tiers read
- * through it (the reconciler and pinhole tiers may read through the service,
- * the furigana tier always reads on the device), and so does the drag lookup,
+ * through it (every live tier may read through the service; the furigana
+ * tier asks for text alone), and so does the drag lookup,
  * which reads lines through [readLines] and takes no translations; the
  * attribution a reading carries is the one place a result's "Scanned by"
  * comes from. A reader that also translates hands its translations over
@@ -256,10 +272,9 @@ interface FrameReader {
  * (drag-to-lookup); null = no text found. [frameId] is the request's
  * [ReadRequest.frameId].
  *
- * The request names the source's own translationCode as its target, the
- * same-language pair, for which a translating reader asks its service for no
- * translation ([com.playtranslate.cloud.PtCloudFrameReader] sends `target`
- * equal to `source`), so a lookup never pays for one. Its screenshotWidth is
+ * The request is the same-language pair ([ReadRequest.sameLanguage]), for
+ * which a translating reader asks its service for no translation, so a
+ * lookup never pays for one. Its screenshotWidth is
  * 0, no menu split, as a lookup has always read on the device. The reader's
  * translations, if it hands any over, are cancelled, since nothing awaits
  * them (the seam's rule: whoever drops a reading without awaiting its
@@ -271,15 +286,7 @@ interface FrameReader {
  * and a scope waits for its children.
  */
 suspend fun FrameReader.readLines(bitmap: Bitmap, sourceLangId: SourceLangId, frameId: String): List<OcrManager.OcrLine>? {
-    val reading = read(
-        bitmap,
-        ReadRequest(
-            sourceLangId,
-            screenshotWidth = 0,
-            targetLang = SourceLanguageProfiles[sourceLangId].translationCode,
-            frameId = frameId,
-        ),
-    )
+    val reading = read(bitmap, ReadRequest.sameLanguage(sourceLangId, screenshotWidth = 0, frameId = frameId))
     reading.translations?.cancel()
     return reading.ocr?.lines()?.ifEmpty { null }
 }

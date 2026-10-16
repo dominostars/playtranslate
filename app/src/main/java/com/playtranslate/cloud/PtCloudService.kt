@@ -89,9 +89,8 @@ object PtCloudService {
      *
      * Capture-once and the press-and-hold overlay never read it: their own
      * rule is to try the cloud and fall back to the device for that capture.
-     * The floating menu's header reads it only while a tier that reads
-     * through [com.playtranslate.CaptureService.runLiveOcrRead] runs, as that
-     * tier's live read does ([wouldTakeNextCapture]).
+     * The floating menu's header reads it only while a live tier runs, as
+     * every tier's live read does ([wouldTakeNextCapture]).
      */
     @Volatile
     var liveSessionBlocked: Boolean = false
@@ -145,8 +144,8 @@ object PtCloudService {
      * when it keeps the read on the device, so a read that could never go to
      * the cloud reads nothing else, the key's AndroidKeyStore decryption
      * included: the switch, off in every release build, then the caller's
-     * device-only statement, which the furigana live passes, and a blocked
-     * reconciler or pinhole session's, make about once a second. Only then are the
+     * device-only statement, which a blocked live session makes about once a
+     * second. Only then are the
      * key (whose read decrypts it), the source and the cooldown read, all
      * three, and judged by [PtCloudRouting.eligible]; the first of them, in
      * that order, that refuses is the reason.
@@ -175,17 +174,16 @@ object PtCloudService {
      * internet" rule, [com.playtranslate.net.NetworkConnectivity.isAvailable])
      * and [refusal] finds nothing against that capture's read of [srcId].
      *
-     * While live mode runs, the next capture is its next read, and the tier
-     * running ([liveFlavor], [com.playtranslate.CaptureService.liveFlavor])
-     * decides what that read states: the furigana tier reads through
-     * [com.playtranslate.CaptureService.runOcr], device-only always; the
-     * reconciler and pinhole tiers, which serve the other flavors, read
-     * through [com.playtranslate.CaptureService.runLiveOcrRead], device-only
-     * once the service refused the session ([liveSessionBlocked]). Without
-     * live mode ([liveFlavor] null) the next capture is a one-shot, whose
-     * read states nothing (a re-OCR states device-only, but re-reads a
-     * capture already made). The network is read first, so a device with
-     * none decrypts no key.
+     * While live mode runs ([liveFlavor], [com.playtranslate.CaptureService.liveFlavor],
+     * not null), the next capture is its next read, which every tier makes
+     * through [com.playtranslate.CaptureService.runLiveOcrRead]: device-only
+     * once the service refused the session ([liveSessionBlocked]). The
+     * furigana tier's change gate may skip raw ticks, in which case the
+     * next capture is the first one it lets through, read the same way.
+     * Without live mode the next capture is a one-shot, whose read states
+     * nothing (a re-OCR states device-only, but re-reads a capture already
+     * made). The network is read first, so a device with none decrypts no
+     * key.
      */
     fun wouldTakeNextCapture(
         config: PtCloudConfig,
@@ -194,11 +192,7 @@ object PtCloudService {
         internet: InternetState,
     ): Boolean {
         if (internet == InternetState.NONE) return false
-        val deviceOnly = when (liveFlavor) {
-            null -> false
-            OverlayFlavor.FURIGANA -> true
-            OverlayFlavor.TRANSLATION, OverlayFlavor.IN_APP_ONLY -> liveSessionBlocked
-        }
+        val deviceOnly = liveFlavor != null && liveSessionBlocked
         return refusal(config, srcId, deviceOnly) == null
     }
 
@@ -225,12 +219,16 @@ object PtCloudService {
      *  forget the pill's errors so a failure after the gesture shows again,
      *  and clear the translation cache, which holds this service's
      *  translations under the old configuration. A running live session
-     *  tries the cloud again too ([liveSessionBlocked]). */
+     *  tries the cloud again too ([liveSessionBlocked]), and looks again
+     *  now: the gesture changes which reader the next read goes to, and the
+     *  furigana tier's change gate would otherwise keep the old reader's
+     *  result until the pixels move. */
     private fun resetForUserGesture() {
         liveSessionBlocked = false
         cooldown.resetCooldown()
         TranslationErrors.forget(ID)
         CaptureService.instance?.clearTranslationCache()
+        CaptureService.instance?.refreshLiveOverlay()
     }
 
     /** Reports one call's outcome to the translation-error tracker, through

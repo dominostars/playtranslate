@@ -112,6 +112,17 @@ class ReadLinesTest {
         assertNull(FakeReader { reading(lineless) }.readLines(bitmap, SourceLangId.JA, "d0-1"))
     }
 
+    @Test fun `the same-language request is one definition, which the furigana tier's read shares`() {
+        for (id in SourceLangId.entries) {
+            val request = ReadRequest.sameLanguage(id, screenshotWidth = 1920, frameId = "d0-7")
+            assertEquals(id, request.sourceLangId)
+            assertEquals(1920, request.screenshotWidth)
+            assertEquals("$id: the source's own translationCode", SourceLanguageProfiles[id].translationCode, request.targetLang)
+            assertEquals("d0-7", request.frameId)
+        }
+        assertEquals("zh", ReadRequest.sameLanguage(SourceLangId.ZH_HANT, 0, "d0-7").targetLang)
+    }
+
     @Test fun `a reader that cannot read propagates its failure`() = runBlocking {
         val reader = FakeReader { throw IOException("offline") }
         try {

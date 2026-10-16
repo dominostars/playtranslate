@@ -111,12 +111,18 @@ data class WireGroup(
 )
 
 /** One line of a group. The detector's `quad` is diagnostics only and is
- *  not read. */
+ *  not read. [textStart] is the offset of [text] in the group's text, the
+ *  address a group-level annotation needs to land on this line (the app's
+ *  own `joinLines` rule, run inside the server's copy of the grouping):
+ *  `group.text.substring(text_start, text_start + text.length) == text`.
+ *  Sent by the server from image p9c on; absent, and so 0 on every line,
+ *  from an older one, which [PtCloudResponseMapper] addresses itself. */
 @Serializable
 data class WireLine(
     val id: Int = 0,
     val text: String,
     val bounds: WireBox,
+    @SerialName("text_start") val textStart: Int = 0,
     val orientation: String = "h",
     /** Recognizer score 0..1; -1 means no signal, never "low". */
     val conf: Double = -1.0,

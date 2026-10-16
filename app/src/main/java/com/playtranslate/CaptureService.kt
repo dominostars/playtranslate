@@ -181,6 +181,12 @@ class CaptureService : Service() {
     /** The PlayTranslate Cloud [FrameReader], built once on [cloudClient]. */
     private val cloudFrameReader by lazy { PtCloudFrameReader(cloudClient, cloudConfig) }
 
+    /** Test seam: a reader every [runOcrRead] uses in place of the router's,
+     *  so a JVM test can drive a live tier's frame handling with scripted
+     *  readings ([FuriganaModeGateTest]). Production never sets it. */
+    @androidx.annotation.VisibleForTesting
+    internal var frameReaderOverrideForTest: FrameReader? = null
+
     /**
      * The [FrameReader] a read of [srcId] goes through: PlayTranslate Cloud,
      * falling back to the device for a frame it cannot read
@@ -200,11 +206,11 @@ class CaptureService : Service() {
      * [deviceOnly] is the caller's statement that this read must stay on the device
      * whatever the settings say: a re-OCR (the user picked a device engine for that
      * capture), the furigana hold (it needs no translation), a hold while live mode
-     * runs. Of the live tiers, the furigana mode reads through [runOcr], which
-     * is always device-only; the reconciler and pinhole tiers
-     * ([ReconcilerLiveMode], [PinholeOverlayMode]) read through [runLiveOcrRead],
-     * which states device-only only once the service refused their session
-     * ([PtCloudService.liveSessionBlocked]).
+     * runs. Every live tier ([FuriganaMode], [ReconcilerLiveMode],
+     * [PinholeOverlayMode]) reads through [runLiveOcrRead], which states
+     * device-only only once the service refused the session
+     * ([PtCloudService.liveSessionBlocked]); the furigana tier's read asks for
+     * no translation ([runOcrRead]'s `translate`).
      *
      * A read the router keeps on the device, and a cloud read that cannot
      * read, both go to this service's own device reader ([deviceFrameReader]).
@@ -232,9 +238,8 @@ class CaptureService : Service() {
      * screenshot, so the warm's head start covers the screenshot, the crop and
      * the encode. One caller per kind of read: [captureOnce]'s cycle, the
      * single-screen capture sheet, a press-and-hold, a drag lookup's capture,
-     * and a reconciler or pinhole live mode's start, through
-     * [warmCloudForLiveRead], for its first cycle's read only. A re-OCR reads
-     * on the device and never warms.
+     * and a live mode's start, through [warmCloudForLiveRead], for its first
+     * cycle's read only. A re-OCR reads on the device and never warms.
      *
      * Returns at once, on the caller's thread, when the switch is off, when
      * [deviceOnly] is true or when the warm knob ([PtCloudConfig.warmEnabled])
@@ -454,9 +459,8 @@ class CaptureService : Service() {
      * read our translations back as source text.
      *
      * [attribution] names who looked, when the caller's read knows it (the
-     * hold, the reconciler and pinhole tiers); null (the furigana tier, which
-     * reads on the device) attributes the look to the device engine selected
-     * for the current source language
+     * hold and every live tier); null attributes the look to the device
+     * engine selected for the current source language
      * ([DeviceFrameReader.noTextAttribution]).
      */
     internal fun emitLiveNoText(displayId: Int, attribution: ReaderAttribution? = null) {
@@ -2894,27 +2898,6 @@ class CaptureService : Service() {
         ui.showRegionIndicator(display, activeRegionForDisplay(displayId))
     }
 
-    /** [runOcrRead]'s result alone (null = no text to translate), read on the
-     *  device always: it states device-only itself, with no parameter to say
-     *  otherwise, so no caller of it can route a live read to the cloud around
-     *  [runLiveOcrRead]. For the furigana live tier, which never reads a
-     *  no-text look's attribution: its panel state derives its own from its
-     *  device engine. Same frame parameters, same pass bookkeeping. The
-     *  reconciler and pinhole tiers read through [runLiveOcrRead] instead: they
-     *  may read through the cloud, and their session's block keys on the
-     *  reading's [OverlayToolkit.OcrPipelineRead.fallbackFrom]. */
-    internal suspend fun runOcr(
-        raw: Bitmap,
-        displayId: Int,
-        frameIncludesSystemUi: Boolean = true,
-        frameIncludesOwnOverlays: Boolean,
-    ): OverlayToolkit.OcrPipelineResult? = runOcrRead(
-        raw, displayId,
-        frameIncludesSystemUi = frameIncludesSystemUi,
-        frameIncludesOwnOverlays = frameIncludesOwnOverlays,
-        deviceOnly = true,
-    ).result
-
     /** Run the shared OCR pipeline on a frame captured from [displayId], and
      *  return its result with who read the frame
      *  ([OverlayToolkit.OcrPipelineRead]), which a no-text read still names.
@@ -2943,10 +2926,17 @@ class CaptureService : Service() {
      *  frames after the blackout moved into one mode).
      *
      *  [deviceOnly]: passed to [frameReaderFor] as the caller's statement that
-     *  this read must stay on the device. The furigana live tier reads through
-     *  [runOcr], which always passes true; the reconciler and pinhole tiers
-     *  pass their session's block ([PtCloudService.liveSessionBlocked]) through
-     *  [runLiveOcrRead]; the press-and-hold overlay states it per hold.
+     *  this read must stay on the device. The live tiers pass their session's
+     *  block ([PtCloudService.liveSessionBlocked]) through [runLiveOcrRead];
+     *  the press-and-hold overlay states it per hold.
+     *
+     *  [translate]: false asks the reader for the frame's text alone, as the
+     *  furigana tier does (its readings need no translation, and the panel
+     *  translates its own offers): the request names the same-language pair
+     *  ([ReadRequest.sameLanguage]), for which PlayTranslate Cloud skips
+     *  translation and so never spends a model call or a permit on the
+     *  frame, and whatever translations the reader hands over are cancelled
+     *  here, since nothing awaits them, so the result carries none.
      *
      *  The slow-OCR prompt's pass timing ([LiveSessionFeedback.beginOcrPass])
      *  runs for a device read only: the prompt rescues a session from a slow
@@ -2961,6 +2951,7 @@ class CaptureService : Service() {
         frameIncludesSystemUi: Boolean = true,
         frameIncludesOwnOverlays: Boolean,
         deviceOnly: Boolean = true,
+        translate: Boolean = true,
     ): OverlayToolkit.OcrPipelineRead {
         val prefs = Prefs(this)
         val seedWriter: ((Bitmap, OcrManager.OcrResult?) -> Unit)? =
@@ -2968,13 +2959,13 @@ class CaptureService : Service() {
                 { bitmap, result -> OcrSeedWriter.writeSeed(this, bitmap, result) }
             } else null
         val srcId = prefs.sourceLangId
-        val reader = frameReaderFor(srcId, deviceOnly)
-        val request = ReadRequest(
-            srcId,
-            screenshotWidth = raw.width,
-            targetLang = prefs.targetLang,
-            frameId = frameIdFor(displayId),
-        )
+        val reader = frameReaderOverrideForTest ?: frameReaderFor(srcId, deviceOnly)
+        val frameId = frameIdFor(displayId)
+        val request = if (translate) {
+            ReadRequest(srcId, screenshotWidth = raw.width, targetLang = prefs.targetLang, frameId = frameId)
+        } else {
+            ReadRequest.sameLanguage(srcId, screenshotWidth = raw.width, frameId = frameId)
+        }
         val statusBarHeight = statusBarHeightForFrame(displayId, frameIncludesSystemUi)
         // Session captured at entry: a pass that outlives a stop (native
         // inference cancels lazily) finalizes into ITS session — disposed
@@ -3013,32 +3004,41 @@ class CaptureService : Service() {
                 displayId,
                 cardDisplayLive = liveModes.containsKey(Display.DEFAULT_DISPLAY),
             )
-            return read
+            if (translate) return read
+            // Text alone was asked for: nothing awaits what the reader
+            // handed over (the seam's rule: whoever drops them cancels them).
+            val result = read.result ?: return read
+            result.translations?.cancel()
+            return read.copy(result = result.copy(translations = null))
         } finally {
             if (feedback != null && passToken != null) feedback.endOcrPass(passToken)
         }
     }
 
-    /** The one read each cycle of a cloud-capable live tier makes (the
-     *  reconciler tier, [ReconcilerLiveMode], and the pinhole tier,
-     *  [PinholeOverlayMode]): [runOcrRead] with the session's block
-     *  ([PtCloudService.liveSessionBlocked]) as its device-only statement, then
-     *  the reading's [OverlayToolkit.OcrPipelineRead.fallbackFrom] handed to
+    /** The one read each cycle of a live tier makes (the furigana tier,
+     *  [FuriganaMode], the reconciler tier, [ReconcilerLiveMode], and the
+     *  pinhole tier, [PinholeOverlayMode]): [runOcrRead] with the session's
+     *  block ([PtCloudService.liveSessionBlocked]) as its device-only
+     *  statement, then the reading's
+     *  [OverlayToolkit.OcrPipelineRead.fallbackFrom] handed to
      *  [PtCloudService.recordLiveRead], which blocks the session when the
      *  service is stopped or refused the key. The one place a live read states
      *  the session's block, and the one place it is set. Same frame parameters
-     *  as [runOcrRead]; [warmCloudForLiveRead] warms for this read. */
+     *  as [runOcrRead], [translate] included (false for the furigana tier);
+     *  [warmCloudForLiveRead] warms for this read. */
     internal suspend fun runLiveOcrRead(
         raw: Bitmap,
         displayId: Int,
         frameIncludesSystemUi: Boolean = true,
         frameIncludesOwnOverlays: Boolean,
+        translate: Boolean = true,
     ): OverlayToolkit.OcrPipelineRead {
         val read = runOcrRead(
             raw, displayId,
             frameIncludesSystemUi = frameIncludesSystemUi,
             frameIncludesOwnOverlays = frameIncludesOwnOverlays,
             deviceOnly = PtCloudService.liveSessionBlocked,
+            translate = translate,
         )
         PtCloudService.recordLiveRead(read.fallbackFrom)
         return read
@@ -3056,7 +3056,7 @@ class CaptureService : Service() {
      * backend toggled) would translate the screen a second time, possibly by
      * another backend than the overlay's. [attribution] names who read
      * [ocrResult]; null derives it from the device result itself
-     * ([DeviceFrameReader.attributionOf]), which is every live caller.
+     * ([DeviceFrameReader.attributionOf]).
      */
     internal suspend fun translateAndSendToPanel(
         ocrResult: OcrManager.OcrResult,
@@ -3490,8 +3490,7 @@ class CaptureService : Service() {
      * reveals the source through [onOcrReady], translates per group, records
      * the capture, and returns a [PipelineOutcome] for the caller to surface.
      * The live modes and the press-and-hold overlay don't come here; they OCR
-     * through [runOcrRead] (the reconciler and pinhole tiers by way of
-     * [runLiveOcrRead], the furigana tier by way of [runOcr]).
+     * through [runOcrRead] (the live tiers by way of [runLiveOcrRead]).
      *
      * Owns [frame] from entry: its bitmap, the crop made from it and the
      * color reference are recycled in the `finally` on every exit, the

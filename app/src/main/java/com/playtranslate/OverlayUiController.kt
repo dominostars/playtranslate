@@ -2201,8 +2201,11 @@ class OverlayUiController(
     /** Open the "Choose OCR tool" OverlayAlert for [id] on [display], stacked
      *  over the still-open floating menu so its holdActive keeps live capture
      *  paused. There's no live result to re-OCR here, so a different-engine pick
-     *  just dismisses the menu (clearing holdActive so live resumes with the new
-     *  engine, persisted by OcrPicker); Cancel or re-picking the current engine
+     *  dismisses the menu (clearing holdActive) and refreshes live mode, as a
+     *  tap outside the menu does: the new engine is persisted by OcrPicker, and
+     *  a running tier must look again with it now rather than when its change
+     *  gate next sees the pixels move (the furigana tier reads only on pixel
+     *  change; Codex, 2026-10-16). Cancel or re-picking the current engine
      *  leaves the menu open underneath. */
     private fun showOcrPicker(display: Display, id: SourceLangId) {
         val displayCtx = context.createDisplayContext(display)
@@ -2213,7 +2216,10 @@ class OverlayUiController(
             themed,
             id,
             OcrModelManager.selectedBackend(context, id)?.selectionToken ?: "",
-            onReOcr = { dismissFloatingMenu() },
+            onReOcr = {
+                dismissFloatingMenu()
+                CaptureService.instance?.refreshLiveOverlay()
+            },
             onDownload = { backend ->
                 dismissFloatingMenu()
                 launchOnOverlayDisplay(

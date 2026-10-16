@@ -22,9 +22,8 @@ import org.robolectric.RobolectricTestRunner
  * The router's decision ([PtCloudService.refusal]), which the router, its
  * warm call and the floating menu's header all ask, and the header's
  * question built on it ([PtCloudService.wouldTakeNextCapture]): a network,
- * and a read the router would send to the cloud, stating device-only always
- * while the furigana tier runs, and while another tier runs only in a
- * session the service refused.
+ * and a read the router would send to the cloud, stating device-only while
+ * a live tier runs only in a session the service refused.
  *
  * The key is stored through the reversible test codec (the AndroidKeyStore
  * is instrumented-only); the cooldown runs on the wall clock, the one
@@ -112,21 +111,16 @@ class PtCloudNextCaptureTest {
         assertFalse(next())
     }
 
-    @Test fun `a refused session counts only while a reconciler or pinhole tier runs`() {
+    @Test fun `a refused session counts while any live tier runs, and not for a one-shot`() {
         PtCloudService.blockForLiveSession()
-        assertFalse("the live read states device-only", next(liveFlavor = OverlayFlavor.TRANSLATION))
-        assertFalse(next(liveFlavor = OverlayFlavor.IN_APP_ONLY))
+        for (flavor in OverlayFlavor.entries) {
+            assertFalse("$flavor: the live read states device-only", next(liveFlavor = flavor))
+        }
         assertTrue("a one-shot's read states nothing", next(liveFlavor = null))
 
         PtCloudService.onLiveSessionStarted()
-        assertTrue(next(liveFlavor = OverlayFlavor.TRANSLATION))
-        assertTrue(next(liveFlavor = OverlayFlavor.IN_APP_ONLY))
-    }
-
-    // Codex: the furigana tier reads through runOcr, on the device always.
-    @Test fun `while the furigana tier runs the next capture stays on the device`() {
-        assertFalse("in a session the service never refused", next(liveFlavor = OverlayFlavor.FURIGANA))
-        PtCloudService.blockForLiveSession()
-        assertFalse(next(liveFlavor = OverlayFlavor.FURIGANA))
+        for (flavor in OverlayFlavor.entries) {
+            assertTrue("$flavor: a session the service never refused", next(liveFlavor = flavor))
+        }
     }
 }

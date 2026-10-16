@@ -73,6 +73,58 @@ class PtCloudResponseTest {
         assertNull(r.debugBoxes)
     }
 
+    // ── text_start: each line's address in its group's text ────────────
+
+    /** The Japanese fixture's three lines with `text_start` as image p9c
+     *  sends it: the join's addresses, no separator for CJK. */
+    private fun jaWithAddresses(starts: List<Int?>): String {
+        val obj = PtJson.lenient.decodeFromString<JsonObject>(PtCloudTestSupport.part1(PtCloudTestSupport.JA))
+        val g = obj["groups"]!!.jsonArray[0].jsonObject
+        val lines = g["lines"]!!.jsonArray.mapIndexed { i, le ->
+            starts[i]?.let { le.jsonObject.with("text_start", JsonPrimitive(it)) } ?: le.jsonObject
+        }
+        return obj.with("groups", JsonArray(listOf(g.with("lines", JsonArray(lines))))).toString()
+    }
+
+    @Test fun `a line's address is the wire's text_start`() {
+        val g = map(jaWithAddresses(listOf(0, 11, 19)))!!.groups.single()
+        assertEquals(listOf(0, 11, 19), g.lines.map { it.textStart })
+        for (line in g.lines) {
+            assertEquals(line.text, g.text.substring(line.textStart, line.textStart + line.text.length))
+        }
+    }
+
+    @Test fun `with the field absent the lines are addressed by scanning the group's text`() {
+        // Today's pod (p9a) sends no text_start: every line decodes as 0.
+        val g = map(PtCloudTestSupport.part1(PtCloudTestSupport.JA))!!.groups.single()
+        assertEquals(listOf(0, 11, 19), g.lines.map { it.textStart })
+        for (line in g.lines) {
+            assertEquals(line.text, g.text.substring(line.textStart, line.textStart + line.text.length))
+        }
+    }
+
+    @Test fun `a single line, or a line the wire addressed, is left as it is`() {
+        val single = map(PtCloudTestSupport.part1(PtCloudTestSupport.LATIN))!!.groups
+            .first { it.lines.size == 1 }
+        assertEquals(0, single.lines.single().textStart)
+        // One address given (the second line's, a server that addressed the
+        // group) and the rest 0: the wire's word stands, nothing is scanned.
+        val g = map(jaWithAddresses(listOf(null, 11, null)))!!.groups.single()
+        assertEquals(listOf(0, 11, 0), g.lines.map { it.textStart })
+    }
+
+    @Test fun `the local addressing walks a moving cursor, so a repeated line gets its own address`() {
+        fun line(text: String) = com.playtranslate.OcrManager.LineBox(text = text, bounds = Rect(), groupIndex = 0)
+        val addressed = PtCloudResponseMapper.addressLines("はいはい", listOf(line("はい"), line("はい")))
+        assertEquals(listOf(0, 2), addressed.map { it.textStart })
+        // A spaced script: the join's separator sits between the addresses.
+        val latin = PtCloudResponseMapper.addressLines("one two", listOf(line("one"), line("two")))
+        assertEquals(listOf(0, 4), latin.map { it.textStart })
+        // A line the text does not hold from the cursor keeps 0 and moves nothing.
+        val odd = PtCloudResponseMapper.addressLines("one two", listOf(line("one"), line("xyz"), line("two")))
+        assertEquals(listOf(0, 0, 4), odd.map { it.textStart })
+    }
+
     @Test fun `the Latin frame keeps a slanted group's angle and oriented dims, and each line's group id`() {
         val r = map(PtCloudTestSupport.part1(PtCloudTestSupport.LATIN))!!
         assertEquals(2, r.groups.size)

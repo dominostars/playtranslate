@@ -25,6 +25,15 @@ object PtCloudResponseMapper {
      * oriented dims are divided. `fullText` and `segments` are assembled
      * exactly as the device path does, from the groups' texts.
      *
+     * Each line's address in its group's text ([OcrManager.LineBox.textStart],
+     * which the furigana builder slices the group's annotation with) is the
+     * wire's `text_start`. A server that predates the field sends none, so
+     * every line of a wrapped group reads 0, the first line's address; the
+     * lines are then addressed here ([addressLines]) by scanning the group's
+     * text for each line's text in order, which is the join's own result
+     * where the join's trim was a no-op, as the normalizer's edge strip
+     * makes it.
+     *
      * Throws the bad-response [PtCloudReadException] unless [part] is a
      * part 1 in schema [PT_CLOUD_SCHEMA_VERSION].
      */
@@ -37,7 +46,7 @@ object PtCloudResponseMapper {
                 bounds = g.bounds.toRect(scale),
                 orientation = orientationOf(g.orientation),
                 alignment = if (g.alignment == "center") TextAlignment.CENTER else TextAlignment.LEFT,
-                lines = g.lines.map { line -> line.toLineBox(groupIndex = g.id, scale = scale) },
+                lines = addressLines(g.text, g.lines.map { line -> line.toLineBox(groupIndex = g.id, scale = scale) }),
                 angleDeg = g.angle.toFloat(),
                 orientedWidth = scaleDim(g.ow, scale),
                 orientedHeight = scaleDim(g.oh, scale),
@@ -55,10 +64,32 @@ object PtCloudResponseMapper {
         )
     }
 
+    /**
+     * [lines] with their addresses in [groupText] filled in where the wire
+     * gave none: a group of more than one line whose lines all read 0. Each
+     * line's text is sought from where the previous one ended (a moving
+     * cursor), so a repeated line gets its own address; a line not found
+     * from there keeps 0 and leaves the cursor, which cannot happen with the
+     * server's grouping, whose group text is the lines' join. A group whose
+     * wire carried the addresses, or a single line (0 is right), is
+     * returned as it is.
+     */
+    internal fun addressLines(groupText: String, lines: List<OcrManager.LineBox>): List<OcrManager.LineBox> {
+        if (lines.size < 2 || lines.any { it.textStart != 0 }) return lines
+        var cursor = 0
+        return lines.map { line ->
+            val at = if (line.text.isEmpty()) -1 else groupText.indexOf(line.text, cursor)
+            if (at < 0) return@map line
+            cursor = at + line.text.length
+            if (at == 0) line else line.copy(textStart = at)
+        }
+    }
+
     private fun WireLine.toLineBox(groupIndex: Int, scale: Float) = OcrManager.LineBox(
         text = text,
         bounds = bounds.toRect(scale),
         groupIndex = groupIndex,
+        textStart = textStart,
         elements = elements.map { OcrManager.ElementBox(it.text, it.bounds.toRect(scale)) },
         symbols = chars.map { OcrManager.SymbolBox(it.ch, it.bounds.toRect(scale), charOffset = it.offset) },
         orientation = orientationOf(orientation),

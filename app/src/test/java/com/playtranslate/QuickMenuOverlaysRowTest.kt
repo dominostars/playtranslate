@@ -192,8 +192,7 @@ class QuickMenuOverlaysRowTest {
     }
 
     // Codex: the PlayTranslate Cloud strip follows the running session's
-    // tier (the furigana tier reads on the device), and the row switches it
-    // with the menu up. No key can be stored here, so every drawing reads
+    // tier, and the row switches it with the menu up. No key can be stored here, so every drawing reads
     // unavailable; a redraw is seen by setting the other value first.
     @Test fun `the row draws the cloud strip again from the session's new tier`() {
         prefs.ptCloudEnabled = true

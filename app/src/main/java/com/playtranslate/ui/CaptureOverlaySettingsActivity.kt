@@ -351,14 +351,15 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
 
         // -- Filter furigana toggle (Japanese source only) --
         // Drops furigana from Japanese OCR before grouping (RubyFilter). Read
-        // per OCR pass, so it takes effect on the next capture / live cycle
-        // without a live restart; an overlay already on screen keeps its
-        // persistence until its pixels change.
+        // per OCR pass, so it takes effect on the next capture; a running
+        // live session is refreshed so it looks again now (the furigana
+        // tier reads only when pixels change, and a toggle changes none).
         rowFilterFurigana.findViewById<TextView>(R.id.tvRowTitle).text =
             getString(R.string.settings_filter_furigana_title)
         switchFilterFurigana.setOnCheckedChangeListener { _, checked ->
             prefs.filterFurigana = checked
             OcrManager.instance.filterFuriganaEnabled = checked
+            refreshLiveForOcrChange()
         }
         rowFilterFurigana.setOnClickListener { switchFilterFurigana.toggle() }
         refreshFilterFuriganaRow()
@@ -854,8 +855,22 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
      *  ONLY that tool's own token — a tool-only action must not switch the
      *  over-game/live engine as a side effect. This screen's own rows always
      *  persist the global selection (GLOBAL). */
+    /** A setting that changes what a live read returns without changing a
+     *  pixel (the OCR engine, the furigana filter) must reach a running live
+     *  session as a refresh: the furigana tier's change gate reads only on
+     *  pixel change, and the other tiers' next cycle would read anyway. The
+     *  service answers with nothing when live mode is not running. */
+    private fun refreshLiveForOcrChange() {
+        CaptureService.instance?.refreshLiveOverlay()
+    }
+
     private fun selectOcr(id: SourceLangId, backend: OcrBackend, scope: OcrTokenScope = OcrTokenScope.GLOBAL) {
-        fun persist() = prefs.setOcrBackendToken(id, backend.selectionToken, scope)
+        // A tool's own token (the camera's, the import's) never drives the
+        // live engine, so only the global selection refreshes live mode.
+        fun persist() {
+            prefs.setOcrBackendToken(id, backend.selectionToken, scope)
+            if (scope == OcrTokenScope.GLOBAL) refreshLiveForOcrChange()
+        }
         val needsDownload = backend.packKeys.any { !OcrPackModelHelper(it).isInstalled(this) }
         if (!needsDownload) {
             persist()
