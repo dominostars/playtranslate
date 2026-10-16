@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Rect
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.language.ChineseScriptVariant
+import com.playtranslate.translation.GroupTranslation
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.ocr.ReaderTranslations
 import com.playtranslate.translation.FakeOnlineBackend
@@ -68,6 +69,9 @@ class TranslateWithReaderTest {
 
     @Before fun setUp() {
         ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+        // The cache is the process's one (TranslationCache.shared): every
+        // cell starts from the empty cache a fresh process has.
+        TranslationCache.shared.resetForTest()
         TranslationBackendRegistry.init(listOf(waterfall))
         built = Robolectric.buildService(CaptureService::class.java).create()
         service = built!!.get()
@@ -76,6 +80,7 @@ class TranslateWithReaderTest {
     @After fun tearDown() {
         built?.destroy()
         built = null
+        TranslationCache.shared.resetForTest()
         TranslationBackendRegistry.close()
         ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE).edit().clear().commit()
     }
@@ -86,7 +91,7 @@ class TranslateWithReaderTest {
     private fun settled(groupCount: Int, byGroup: Map<Int, String>, target: String = "en") =
         reader(groupCount, target = target).also { it.settle(byGroup) }
 
-    private fun List<CaptureService.GroupTranslation?>.pairs() = map { it?.text to it?.backendDisplayName }
+    private fun List<GroupTranslation?>.pairs() = map { it?.text to it?.backendDisplayName }
 
     private fun translate(texts: List<String>, reader: ReaderTranslations?) = runBlocking {
         service.translateGroupsSeparately(texts, reader = reader).pairs()
@@ -203,7 +208,7 @@ class TranslateWithReaderTest {
     @Test fun `translationsAtOnce under a same-language pair is all null`() {
         Prefs(ctx).setTarget("ja")
         val sameLanguage = ReaderTranslations("ja", "ja", "Cloud", 1, mapOf(0 to "一"), Job())
-        assertEquals(listOf<CaptureService.GroupTranslation?>(null), service.translationsAtOnce(listOf("一"), sameLanguage))
+        assertEquals(listOf<GroupTranslation?>(null), service.translationsAtOnce(listOf("一"), sameLanguage))
     }
 
     @Test fun `translationsAtOnce with a source override reads the cache under the overridden pair`() {
@@ -211,7 +216,7 @@ class TranslateWithReaderTest {
         runBlocking { service.translateGroupsSeparately(listOf("一"), sourceOverride = SourceLangId.ZH) }
         assertEquals(
             "the setting's pair (Japanese) has no entry",
-            listOf<CaptureService.GroupTranslation?>(null),
+            listOf<GroupTranslation?>(null),
             service.translationsAtOnce(listOf("一"), null),
         )
         assertEquals(
@@ -228,7 +233,7 @@ class TranslateWithReaderTest {
             // goes through the same localization as every other result.
             Prefs(ctx).setTarget("zh", ChineseScriptVariant.TRADITIONAL)
             val r = reader(3, ready = mapOf(0 to "软件"), target = "zh")
-            val progress = mutableListOf<List<CaptureService.GroupTranslation?>>()
+            val progress = mutableListOf<List<GroupTranslation?>>()
             val result = async(start = CoroutineStart.UNDISPATCHED) {
                 service.translateGroupsSeparately(listOf("一", "二", "三"), reader = r) { progress += it }.pairs()
             }
@@ -348,7 +353,7 @@ class TranslateWithReaderTest {
             val placeholders = texts.map { TextBox("", Rect(0, 0, 10, 10), sourceText = it) }
             val shown = placeholders.filledFrom(
                 listOf(
-                    CaptureService.GroupTranslation("one", null, "Cloud"),
+                    GroupTranslation("one", null, "Cloud"),
                     null,
                     service.getCachedTranslation("三"),
                 ),

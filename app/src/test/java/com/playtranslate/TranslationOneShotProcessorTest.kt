@@ -3,6 +3,7 @@ package com.playtranslate
 import android.graphics.Bitmap
 import android.graphics.Rect
 import com.playtranslate.ui.TextBox
+import com.playtranslate.translation.GroupTranslation
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -37,12 +38,12 @@ class TranslationOneShotProcessorTest {
         ),
     )
 
-    private fun tr(text: String, backend: String = "Cloud") = CaptureService.GroupTranslation(text, null, backend)
+    private fun tr(text: String, backend: String = "Cloud") = GroupTranslation(text, null, backend)
 
     private fun build(
-        atOnce: List<CaptureService.GroupTranslation?>,
-        deliveries: List<List<CaptureService.GroupTranslation?>>,
-        final: List<CaptureService.GroupTranslation>,
+        atOnce: List<GroupTranslation?>,
+        deliveries: List<List<GroupTranslation?>>,
+        final: List<GroupTranslation>,
     ): Pair<List<List<String>>, List<String>> = runBlocking {
         val paints = mutableListOf<List<String>>()
         var askedFor: List<String>? = null

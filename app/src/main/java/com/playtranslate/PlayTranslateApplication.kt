@@ -188,6 +188,11 @@ class PlayTranslateApplication : Application() {
         // PlayTranslate Cloud is not a registry backend, so it gets the
         // signal alongside, and its cooldown must exist before the replay.
         PtCloudService.init(this)
+        // The frame readers and their router, for every consumer of the
+        // FrameReader seam (the service, the drag lookup, the camera and
+        // import tools); after the cloud service, whose cooldown the router
+        // reads.
+        com.playtranslate.ocr.FrameReaders.init(this, appScope)
         com.playtranslate.net.NetworkConnectivity.install(this) {
             TranslationBackendRegistry.onConnectivityRestored()
             PtCloudService.onConnectivityRestored()

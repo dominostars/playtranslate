@@ -1485,7 +1485,7 @@ class SettingsRenderer(
         switchShortText.isChecked = prefs.debugShortTextRouting
         switchShortText.setOnCheckedChangeListener { _, checked ->
             prefs.debugShortTextRouting = checked
-            CaptureService.instance?.reconcileBackendPreference()
+            com.playtranslate.translation.GroupTranslator.reconcileShared(ctx)
         }
         rowShortText.setOnClickListener { switchShortText.toggle() }
 

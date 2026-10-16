@@ -125,7 +125,7 @@ class OnlineServicesController(
         dividerAdd.isVisible = true
         itemTouchHelper?.attachToRecyclerView(null)
         itemTouchHelper = null
-        OnlineServiceMutations.reorder(working.map { it.id })
+        OnlineServiceMutations.reorder(activity, working.map { it.id })
         adapter.notifyDataSetChanged()
     }
 
@@ -301,7 +301,7 @@ class OnlineServicesController(
         private fun onToggle(position: Int, checked: Boolean) {
             if (position == RecyclerView.NO_POSITION) return
             val instance = working[position]
-            OnlineServiceMutations.setEnabled(instance.id, checked)
+            OnlineServiceMutations.setEnabled(activity, instance.id, checked)
             working[position] = instance.copy(enabled = checked)
             // Rebind shows/hides the model sub-row with the new state.
             notifyItemChanged(position)

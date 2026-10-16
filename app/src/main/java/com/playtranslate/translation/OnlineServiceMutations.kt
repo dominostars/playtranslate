@@ -43,8 +43,8 @@ object OnlineServiceMutations {
         )
         applyStoreOrder()
         TranslationErrors.forget(instance.id)
-        CaptureService.instance?.clearTranslationCache()
-        CaptureService.instance?.reconcileBackendPreference()
+        GroupTranslator.clearShared()
+        GroupTranslator.reconcileShared(context)
     }
 
     /** Instant add with no config page (Lingva from the picker). */
@@ -54,7 +54,7 @@ object OnlineServiceMutations {
             OnlineBackendFactory.build(context, sharedPrefs(context), instance)
         )
         applyStoreOrder()
-        CaptureService.instance?.reconcileBackendPreference()
+        GroupTranslator.reconcileShared(context)
     }
 
     /** Switch toggle on the services page. Backend closures read the
@@ -64,20 +64,20 @@ object OnlineServiceMutations {
      *  and a cooldown on a disabled instance protects nothing. Reset
      *  before the reconcile so the preferred-backend identity is computed
      *  against the cleared state. */
-    fun setEnabled(id: String, enabled: Boolean) {
+    fun setEnabled(context: Context, id: String, enabled: Boolean) {
         OnlineServiceStore.setEnabled(id, enabled)
         TranslationBackendRegistry.resetCooldown(id)
         TranslationErrors.forget(id)
-        CaptureService.instance?.reconcileBackendPreference()
+        GroupTranslator.reconcileShared(context)
     }
 
     /** Model picked for an LLM instance. Output changes → cache clear. */
-    fun setModel(id: String, model: String) {
+    fun setModel(context: Context, id: String, model: String) {
         val instance = OnlineServiceStore.byId(id) ?: return
         OnlineServiceStore.update(instance.copy(model = model))
         TranslationErrors.forget(id)
-        CaptureService.instance?.clearTranslationCache()
-        CaptureService.instance?.reconcileBackendPreference()
+        GroupTranslator.clearShared()
+        GroupTranslator.reconcileShared(context)
     }
 
     /**
@@ -100,14 +100,14 @@ object OnlineServiceMutations {
         }
         TranslationErrors.forget(id)
         applyStoreOrder()
-        CaptureService.instance?.reconcileBackendPreference()
+        GroupTranslator.reconcileShared(context)
     }
 
     /** Persist the edit-mode drag order. List order = waterfall priority. */
-    fun reorder(orderedIds: List<String>) {
+    fun reorder(context: Context, orderedIds: List<String>) {
         OnlineServiceStore.reorder(orderedIds)
         applyStoreOrder()
-        CaptureService.instance?.reconcileBackendPreference()
+        GroupTranslator.reconcileShared(context)
     }
 
     private fun applyStoreOrder() =

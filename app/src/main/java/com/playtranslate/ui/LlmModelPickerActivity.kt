@@ -148,7 +148,7 @@ class LlmModelPickerActivity : AppCompatActivity() {
                     topRadius = topRadius,
                     bottomRadius = bottomRadius,
                     onTap = {
-                        OnlineServiceMutations.setModel(config.instanceId, model)
+                        OnlineServiceMutations.setModel(this@LlmModelPickerActivity, config.instanceId, model)
                         finish()
                     },
                 )
@@ -230,7 +230,7 @@ class LlmModelPickerActivity : AppCompatActivity() {
             .setPositiveButton(R.string.deepl_settings_save) { _, _ ->
                 val typed = input.text.toString().trim()
                 if (typed.isNotBlank()) {
-                    OnlineServiceMutations.setModel(config.instanceId, typed)
+                    OnlineServiceMutations.setModel(this@LlmModelPickerActivity, config.instanceId, typed)
                     finish()
                 }
             }

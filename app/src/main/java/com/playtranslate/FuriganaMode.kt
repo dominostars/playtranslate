@@ -1,5 +1,6 @@
 package com.playtranslate
 
+import com.playtranslate.ocr.FrameReaders
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.CapturedFrame
 import com.playtranslate.capture.LiveCaptureSource
@@ -339,7 +340,7 @@ class FuriganaMode(
         // Warm PlayTranslate Cloud for the first read, as the other live
         // tiers do: once per mode instance; the loop's restarts after game
         // input read on a connection the pool keeps.
-        service.warmCloudForLiveRead()
+        FrameReaders.warm(Prefs(service).sourceLangId, deviceOnly = false)
         startLoop(source)
     }
 

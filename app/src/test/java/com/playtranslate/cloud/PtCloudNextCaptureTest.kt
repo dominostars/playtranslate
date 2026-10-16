@@ -2,7 +2,6 @@ package com.playtranslate.cloud
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.playtranslate.OverlayFlavor
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.net.NetworkConnectivity.InternetState
 import com.playtranslate.translation.CooldownCause
@@ -22,8 +21,8 @@ import org.robolectric.RobolectricTestRunner
  * The router's decision ([PtCloudService.refusal]), which the router, its
  * warm call and the floating menu's header all ask, and the header's
  * question built on it ([PtCloudService.wouldTakeNextCapture]): a network,
- * and a read the router would send to the cloud, stating device-only while
- * a live tier runs only in a session the service refused.
+ * and a read the router would send to the cloud, the next capture never
+ * stating device-only (a stopped pod and a refused key are cooldowns).
  *
  * The key is stored through the reversible test codec (the AndroidKeyStore
  * is instrumented-only); the cooldown runs on the wall clock, the one
@@ -39,12 +38,10 @@ class PtCloudNextCaptureTest {
     @Before fun setUp() {
         PtCloudTestSupport.sharedPrefs(ctx).edit().clear().commit()
         cooldown = CooldownState(null, PtCloudService.ID).also { PtCloudService.installForTest(it) }
-        PtCloudService.onLiveSessionStarted()
     }
 
     @After fun tearDown() {
         PtCloudService.installForTest(null)
-        PtCloudService.onLiveSessionStarted()
         PtCloudTestSupport.sharedPrefs(ctx).edit().clear().commit()
     }
 
@@ -61,9 +58,8 @@ class PtCloudNextCaptureTest {
 
     private fun next(
         config: PtCloudConfig = config(),
-        liveFlavor: OverlayFlavor? = null,
         internet: InternetState = InternetState.VALIDATED,
-    ) = PtCloudService.wouldTakeNextCapture(config, ja, liveFlavor = liveFlavor, internet = internet)
+    ) = PtCloudService.wouldTakeNextCapture(config, ja, internet = internet)
 
     // ── The router's decision, one reason per cell, in its order ───────
 
@@ -111,16 +107,12 @@ class PtCloudNextCaptureTest {
         assertFalse(next())
     }
 
-    @Test fun `a refused session counts while any live tier runs, and not for a one-shot`() {
-        PtCloudService.blockForLiveSession()
-        for (flavor in OverlayFlavor.entries) {
-            assertFalse("$flavor: the live read states device-only", next(liveFlavor = flavor))
-        }
-        assertTrue("a one-shot's read states nothing", next(liveFlavor = null))
-
-        PtCloudService.onLiveSessionStarted()
-        for (flavor in OverlayFlavor.entries) {
-            assertTrue("$flavor: a session the service never refused", next(liveFlavor = flavor))
-        }
+    @Test fun `a stopped pod or a refused key is a cooldown, so the next capture stays on the device`() {
+        cooldown.recordLadderFailure(CooldownLadder.RateLimit, "Not running", CooldownCause.NOT_RUNNING)
+        assertFalse(next())
+        cooldown.resetCooldown()
+        assertTrue(next())
+        cooldown.recordLadderFailure(CooldownLadder.RateLimit, "Bad key", CooldownCause.AUTH)
+        assertFalse(next())
     }
 }

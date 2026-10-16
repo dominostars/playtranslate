@@ -167,6 +167,13 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
             val status = healthOverrideForTest?.invoke()
                 ?: PtCloudClient(PtCloudConfig(Prefs(this@PtCloudSettingsActivity))).health()
             tvStatus.text = healthStatusText(this@PtCloudSettingsActivity, status)
+            // A running service ends a cooldown recorded while it was
+            // stopped (a pod start is no gesture the app can see; this check
+            // is where the app learns of it).
+            if (status == HealthStatus.Running) {
+                PtCloudService.onHealthRunning()
+                renderCooldown()
+            }
             setSaving(false)
         }
     }

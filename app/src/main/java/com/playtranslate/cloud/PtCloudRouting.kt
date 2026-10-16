@@ -28,10 +28,10 @@ object PtCloudRouting {
      * True only when every condition allows the cloud: the user switched it
      * on ([enabled] is already false outside debug builds), a usable client
      * key is set ([PtCloudConfig.hasKey]), the source is one the server
-     * reads, the service is not cooling down, and the caller did not ask for
-     * the device reader ([deviceOnly]: re-OCR, the furigana hold, a hold
-     * while live mode runs, the furigana live tier, a live session the
-     * service refused ([PtCloudService.liveSessionBlocked])).
+     * reads, the service is not cooling down (a stopped pod and a refused
+     * key cool it down too), and the caller did not ask for the device reader
+     * ([deviceOnly]: a re-OCR, the furigana hold, a hold while live mode
+     * runs).
      */
     fun eligible(
         enabled: Boolean,

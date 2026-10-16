@@ -3,10 +3,12 @@ package com.playtranslate
 import android.graphics.Bitmap
 import android.util.Log
 import com.playtranslate.capture.CaptureBackendResolver
+import com.playtranslate.translation.GroupTranslation
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ocr.ReaderAttribution
 import com.playtranslate.ocr.ReaderTranslations
+import com.playtranslate.ocr.FrameReaders
 import com.playtranslate.ui.GrowthLimits
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -177,7 +179,7 @@ class OneShotManager(private val service: CaptureService) {
         // the read would state at this moment; the read decides again when it
         // runs, so the two differ only if live mode starts or stops during the
         // screenshot, which costs one wasted or one missed warm.
-        service.warmCloud(
+        FrameReaders.warm(
             Prefs(service).sourceLangId,
             deviceOnly = mode == OverlayMode.FURIGANA || service.isLive,
         )
@@ -239,7 +241,7 @@ class OneShotManager(private val service: CaptureService) {
             val recordSrc = recordPrefs.sourceLangId
             val recordTgt = recordPrefs.targetLang
             // What the translation processor produced, for the panel (step 7).
-            var perGroup: List<CaptureService.GroupTranslation>? = null
+            var perGroup: List<GroupTranslation>? = null
             // What can be shown at once goes into the first paint: the
             // reader's translations that arrived with its OCR, when it
             // produced any for the pair the service translates under
@@ -350,11 +352,11 @@ class OneShotManager(private val service: CaptureService) {
 
     private fun createProcessor(
         mode: OverlayMode,
-        atOnce: List<CaptureService.GroupTranslation?>,
+        atOnce: List<GroupTranslation?>,
         translate: suspend (
             List<String>,
-            suspend (List<CaptureService.GroupTranslation?>) -> Unit,
-        ) -> List<CaptureService.GroupTranslation>,
+            suspend (List<GroupTranslation?>) -> Unit,
+        ) -> List<GroupTranslation>,
     ): OneShotProcessor = when (mode) {
         OverlayMode.FURIGANA -> {
             val engine = SourceLanguageEngines.get(service, Prefs(service).sourceLangId)

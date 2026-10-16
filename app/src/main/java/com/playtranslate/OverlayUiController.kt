@@ -21,6 +21,7 @@ import com.playtranslate.capture.CaptureLifecycle
 import com.playtranslate.capture.GameAudioGate
 import com.playtranslate.cloud.PtCloudConfig
 import com.playtranslate.cloud.PtCloudService
+import com.playtranslate.ocr.FrameReaders
 import com.playtranslate.net.NetworkConnectivity
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.LanguagePackStore
@@ -2016,9 +2017,6 @@ class OverlayUiController(
             } else {
                 prefs.overlayMode = next
             }
-            // The cloud strip follows a running session's tier (the furigana
-            // tier reads on the device), so it is drawn again from the new one.
-            if (cloudStrip) drawCloudStatus(menu, NetworkConnectivity.state.value.internet)
             menu.setOverlayModeValue(overlayModeLabel(next, hintKind))
             // Keep the auto-translate button's hint label in sync (Auto Furigana
             // / Auto Pinyin / Auto Translate); it's hidden while the panel is
@@ -2147,10 +2145,9 @@ class OverlayUiController(
      * here ([NetworkConnectivity.state] is published after
      * [PtCloudService.onConnectivityRestored] has run), including on a
      * switch between two networks the OS has not validated, whose state does
-     * not change. Besides the network only the menu's Overlays row redraws
-     * the strip, since it can switch a running session's tier: a cooldown
-     * running out, or the switch or the key changed on the other screen,
-     * shows the next time the menu opens.
+     * not change. Nothing but the network redraws the strip while the menu
+     * is up: a cooldown running out, or the switch or the key changed on the
+     * other screen, shows the next time the menu opens.
      */
     private fun followCloudStatus(menu: FloatingIconMenu): Job =
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -2160,13 +2157,11 @@ class OverlayUiController(
     /** Shows on [menu]'s PlayTranslate Cloud strip whether the next capture
      *  would go to the cloud ([PtCloudService.wouldTakeNextCapture]) with the
      *  device's network in [internet], reading the switch, the key, the game
-     *  language, the cooldown and the running live session's tier afresh. */
+     *  language and the cooldown afresh. */
     private fun drawCloudStatus(menu: FloatingIconMenu, internet: NetworkConnectivity.InternetState) {
         val prefs = Prefs(context)
         menu.cloudAvailable = PtCloudService.wouldTakeNextCapture(
-            PtCloudConfig(prefs), prefs.sourceLangId,
-            liveFlavor = CaptureService.instance?.liveFlavor,
-            internet = internet,
+            PtCloudConfig(prefs), prefs.sourceLangId, internet = internet,
         )
     }
 
@@ -2718,7 +2713,7 @@ class OverlayUiController(
             // Warm PlayTranslate Cloud for processScreenshot's read below: a
             // fresh capture, so it reads in the source language from the same
             // pref and never device-only.
-            svc.warmCloud(Prefs(context).sourceLangId, deviceOnly = false)
+            FrameReaders.warm(Prefs(context).sourceLangId, deviceOnly = false)
             // The frame carries its capture-time facts (CapturedFrame).
             val frame = CaptureBackendResolver.active().captureSource?.requestClean(displayId)
             val bitmap = frame?.bitmap

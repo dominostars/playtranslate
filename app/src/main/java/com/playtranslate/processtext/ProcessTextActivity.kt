@@ -11,7 +11,8 @@ import androidx.lifecycle.lifecycleScope
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.applyEdgeToEdge
-import com.playtranslate.camera.CameraTranslator
+import com.playtranslate.TranslationCache
+import com.playtranslate.translation.GroupTranslator
 import com.playtranslate.isEffectivelyDark
 import com.playtranslate.model.TranslationLangContext
 import com.playtranslate.overlay.OverlayHost
@@ -40,7 +41,10 @@ class ProcessTextActivity : AppCompatActivity() {
 
     private lateinit var prefs: Prefs
     private lateinit var text: String
-    private val translator by lazy { CameraTranslator(this) }
+    /** This surface's translate handshake over the process's one cache: a
+     *  select-to-translate is a deliberate single text, translated as the
+     *  service's deliberate paths are ([GroupTranslator.translateOnce]). */
+    private val translator by lazy { GroupTranslator(this, TranslationCache.shared) }
     private var overlay: CaptureResultOverlay? = null
 
     /** The language triple the current session translated under — onResume
@@ -111,15 +115,15 @@ class ProcessTextActivity : AppCompatActivity() {
         // calling app.
         o.dismissOnGesture = true
         o.retranslate = { t ->
-            translator.translateDetailed(listOf(t)).firstOrNull()
-                ?.takeIf { it.text.isNotEmpty() }
+            translator.translateOnce(t)
+                .takeIf { it.text.isNotEmpty() }
                 ?.let { CaptureResultOverlay.PanelTranslation(it.text, it.note, it.backendDisplayName) }
         }
         // Deferred-translation completion stays on this surface's own
-        // translator stack (no CaptureService, no History — mirrors the
+        // translator (no CaptureService, no History — mirrors the
         // retranslate seam above). The panel's funnel invokes it on reveal.
         o.completeDeferred = { pending ->
-            translator.translateDetailed(pending.groupTexts)
+            translator.translateGroupsSeparately(pending.groupTexts)
                 .map { CaptureResultOverlay.PanelTranslation(it.text, it.note, it.backendDisplayName) }
         }
         // Keep the panel up across the picker round trip — the selected text
@@ -153,7 +157,7 @@ class ProcessTextActivity : AppCompatActivity() {
             text, langContext, lifecycleScope,
             getString(R.string.process_text_translation_failed),
             deferTranslation = deferTranslation,
-        ) { translator.translateDetailed(listOf(it)).firstOrNull() }
+        ) { translator.translateOnce(it) }
         sessionLangContext = langContext
         overlay?.observe(session)
     }

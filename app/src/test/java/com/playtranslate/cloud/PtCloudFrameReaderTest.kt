@@ -370,6 +370,27 @@ class PtCloudFrameReaderTest {
             assertTrue("the caller is not failed", coroutineContext.job.isActive)
         }
 
+    @Test fun `cancelling the translations the moment read returns cancels the call too, whether or not their job has started`() =
+        runBlocking {
+            val part2Gate = CountDownLatch(1)
+            val reading = reader(
+                streaming(listOf(twoGroups(mapOf(0 to "Hi")), item(1, "World"), PtCloudTestSupport.part2()), listOf(null, null, part2Gate)),
+            ).read(bitmap, request())
+            try {
+                // No wait for the job to reach its body: the completion
+                // handler cancels part 2 whichever side of the start the
+                // cancel lands on (a consumer's superseded cycle does this).
+                reading.translations!!.cancel()
+                coroutineContext.job.joinChildren()
+                assertTrue("the HTTP call is cancelled with the translations", calls.single().isCanceled())
+            } finally {
+                part2Gate.countDown()
+            }
+            assertEquals(ReaderProgress(mapOf(0 to "Hi"), settled = true), reading.translations.now)
+            assertTrue("no attempt reported: $attempts", attempts.isEmpty())
+            assertTrue("the caller is not failed", coroutineContext.job.isActive)
+        }
+
     @Test fun `a part 2 that never comes settles with nothing, a TIMEOUT attempt, and no cooldown`() = runBlocking {
         val reading = reader(streaming(listOf(part1))).read(bitmap, request())
         assertEquals(emptyMap<Int, String>(), reading.settled())

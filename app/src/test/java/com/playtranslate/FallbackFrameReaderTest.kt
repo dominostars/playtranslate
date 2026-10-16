@@ -47,8 +47,10 @@ class FallbackFrameReaderTest {
 
     private class FakeReader(private val body: suspend () -> FrameReading) : FrameReader {
         var calls = 0
+        var lastRequest: ReadRequest? = null
         override suspend fun read(bitmap: Bitmap, request: ReadRequest): FrameReading {
             calls++
+            lastRequest = request
             return body()
         }
     }
@@ -148,5 +150,18 @@ class FallbackFrameReaderTest {
             assertEquals("bug", e.message)
         }
         assertEquals(0, fallback.calls)
+    }
+
+    @Test fun `the fallback reads with the very request the primary got, its hooks included`() = runBlocking {
+        var hookCalls = 0
+        val hooked = request.copy(beforeDeviceOcr = { hookCalls++ })
+        val primary = FakeReader { throw IOException("offline") }
+        val fallback = FakeReader { reading("fallback") }
+
+        FallbackFrameReader(primary, fallback).read(bitmap, hooked)
+
+        assertSame(hooked, fallback.lastRequest)
+        fallback.lastRequest!!.beforeDeviceOcr!!.invoke()
+        assertEquals("the device reader on the fallback path calls the caller's hook", 1, hookCalls)
     }
 }

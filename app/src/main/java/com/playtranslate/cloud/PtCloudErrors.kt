@@ -61,6 +61,26 @@ sealed interface CooldownAction {
             cooldown.recordLadderFailure(CooldownLadder.RateLimit, SERVER_ERROR, CooldownCause.SERVER_ERROR)
     }
 
+    /** The service is switched off (its pod is stopped): the RateLimit
+     *  ladder, as not running. It does not start by itself, so every reader
+     *  (a capture, a live tier, the camera's acquires) stays on the device
+     *  until the ladder's step runs out, the user's gestures reset the
+     *  cooldown, or the cloud page's health check finds it running
+     *  ([PtCloudService.onHealthRunning]). */
+    data object NotRunningLadder : CooldownAction {
+        override fun applyTo(cooldown: CooldownState) =
+            cooldown.recordLadderFailure(CooldownLadder.RateLimit, NOT_RUNNING, CooldownCause.NOT_RUNNING)
+    }
+
+    /** The client key is wrong or missing: the RateLimit ladder, as a bad
+     *  key (the account class, shown without a retry time). A key does not
+     *  fix itself; saving one resets the cooldown
+     *  ([PtCloudService.onCredentialsSaved]). */
+    data object BadKeyLadder : CooldownAction {
+        override fun applyTo(cooldown: CooldownState) =
+            cooldown.recordLadderFailure(CooldownLadder.RateLimit, BAD_KEY, CooldownCause.AUTH)
+    }
+
     /** A retry time the server stated. */
     data class Until(val retryAtMs: Long, val description: String, val cause: CooldownCause) : CooldownAction {
         override fun applyTo(cooldown: CooldownState) =
@@ -76,6 +96,8 @@ sealed interface CooldownAction {
     private companion object {
         const val RATE_LIMITED = "Rate limited"
         const val SERVER_ERROR = "Server error"
+        const val NOT_RUNNING = "Not running"
+        const val BAD_KEY = "Bad key"
     }
 }
 
@@ -134,11 +156,15 @@ object PtCloudErrors {
     /**
      * A non-200 answer to `POST /v1/frame`. Keyed on the status code (the
      * edge's and the origin's `error` strings differ):
-     *  - 401: the client key is wrong or missing, a configuration error,
-     *    never a cooldown.
+     *  - 401: the client key is wrong or missing. The RateLimit ladder as a
+     *    bad key ([CooldownAction.BadKeyLadder]): a key does not fix itself,
+     *    and a read per capture or per camera scene while it holds would be
+     *    waste; saving a key resets the cooldown.
      *  - 404 with an empty body: the service is switched off (its pod is
-     *    stopped and the edge passes the pod host's bare 404 through). No
-     *    cooldown and no retry: it answers again the moment it is started.
+     *    stopped and the edge passes the pod host's bare 404 through). The
+     *    RateLimit ladder as not running ([CooldownAction.NotRunningLadder]):
+     *    the pod does not start by itself; the cloud page's health check
+     *    finding it running resets the cooldown.
      *  - 404 with a body, 413, 415, 422: the request is wrong (a bug; a 413
      *    is a frame over the server's cap, a 415 also a JPEG sent to an
      *    origin that predates JPEG uploads), shown with its code.
@@ -151,9 +177,9 @@ object PtCloudErrors {
      *    reads as REJECTED.
      */
     fun classifyHttp(code: Int, body: String, retryAfter: String?): Classified = when (code) {
-        401 -> Classified(BackendFailure(BackendFailureKind.AUTH, code), CooldownAction.None)
+        401 -> Classified(BackendFailure(BackendFailureKind.AUTH, code), CooldownAction.BadKeyLadder)
         404 -> if (body.isBlank()) {
-            Classified(BackendFailure(BackendFailureKind.NOT_RUNNING, code), CooldownAction.None)
+            Classified(BackendFailure(BackendFailureKind.NOT_RUNNING, code), CooldownAction.NotRunningLadder)
         } else {
             Classified(BackendFailure(BackendFailureKind.REJECTED, code), CooldownAction.None)
         }

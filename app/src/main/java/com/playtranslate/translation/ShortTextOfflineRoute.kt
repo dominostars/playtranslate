@@ -17,9 +17,9 @@ import kotlin.coroutines.cancellation.CancellationException
  * the caller's single online batch — online quality beats silently dropping to
  * the ML Kit floor while the outcome claims `kind = None`.
  *
- * `CameraTranslator` deliberately does NOT use this route: the camera/import
- * path is not where live-mode quota burns, and it keeps its own parallel
- * translation pipeline.
+ * Every surface translates through [GroupTranslator]'s one batched path, so
+ * the route (debug knob) applies to the camera and import tools as it does
+ * to capture; `translateOnce` (deliberate single texts) never takes it.
  */
 internal class ShortTextOfflineRoute private constructor(
     private val backend: TranslationBackend,

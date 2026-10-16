@@ -35,16 +35,15 @@ import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.PendingTranslation
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
-import com.playtranslate.cloud.PtCloudClient
-import com.playtranslate.cloud.PtCloudConfig
-import com.playtranslate.cloud.PtCloudFrameReader
 import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.ocr.DeviceFrameReader
-import com.playtranslate.ocr.FallbackFrameReader
 import com.playtranslate.ocr.FrameReader
+import com.playtranslate.ocr.FrameReaders
 import com.playtranslate.ocr.ReadRequest
 import com.playtranslate.ocr.ReaderAttribution
 import com.playtranslate.ocr.ReaderTranslations
+import com.playtranslate.translation.GroupTranslation
+import com.playtranslate.translation.GroupTranslator
 import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.ocr.registry.selectionToken
 import com.google.mlkit.nl.translate.TranslateLanguage
@@ -88,20 +87,12 @@ import com.playtranslate.capture.MediaProjectionController
 import com.playtranslate.capture.StreamKind
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.overlay.OverlayHost
-import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
-import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.translation.TranslationBackendRegistry
-import com.playtranslate.language.ShortTextTokenCounters
-import com.playtranslate.language.isShortText
-import com.playtranslate.translation.PartitionedResult
-import com.playtranslate.translation.ShortTextOfflineRoute
-import com.playtranslate.translation.dispatchPartitioned
-import com.playtranslate.translation.shouldBypassForLlm
 import com.playtranslate.ui.DegradedWarningKind
 import com.playtranslate.ui.FuriganaMetrics
 import com.playtranslate.ui.GrowthLimits
@@ -163,106 +154,6 @@ class CaptureService : Service() {
 
     internal val ocrManager get() = OcrManager.instance
 
-    /** The on-device [FrameReader], built once: it holds only the process-wide
-     *  [OcrManager] and this service's Context. */
-    private val deviceFrameReader by lazy { DeviceFrameReader(ocrManager, this) }
-
-    /** PlayTranslate Cloud's settings for the client and the reader below. It
-     *  reads [Prefs] at each use, so a settings change applies to the next
-     *  capture with nothing to rebuild. */
-    private val cloudConfig by lazy { PtCloudConfig(Prefs(this)) }
-
-    /** The one PlayTranslate Cloud client, built once and shared by
-     *  [cloudFrameReader] and [warmCloud]: a warm's send stamp then reaches the
-     *  next frame's clock line, and the warm opens the connection the frame
-     *  reuses (one connection pool). */
-    private val cloudClient by lazy { PtCloudClient(cloudConfig) }
-
-    /** The PlayTranslate Cloud [FrameReader], built once on [cloudClient]. */
-    private val cloudFrameReader by lazy { PtCloudFrameReader(cloudClient, cloudConfig) }
-
-    /** Test seam: a reader every [runOcrRead] uses in place of the router's,
-     *  so a JVM test can drive a live tier's frame handling with scripted
-     *  readings ([FuriganaModeGateTest]). Production never sets it. */
-    @androidx.annotation.VisibleForTesting
-    internal var frameReaderOverrideForTest: FrameReader? = null
-
-    /**
-     * The [FrameReader] a read of [srcId] goes through: PlayTranslate Cloud,
-     * falling back to the device for a frame it cannot read
-     * ([FallbackFrameReader]), when [PtCloudService.refusal] finds nothing
-     * against it, else the device alone. The decision, from a fresh
-     * [PtCloudConfig] read at this call:
-     *
-     * | switch | deviceOnly | usable key | source | cooling down | reader |
-     * |---|---|---|---|---|---|
-     * | off (always, outside debug builds) | any | any | any | any | device |
-     * | on | true | any | any | any | device |
-     * | on | false | no | any | any | device |
-     * | on | false | yes | not one the server reads | any | device |
-     * | on | false | yes | read | yes | device |
-     * | on | false | yes | read | no | cloud, then device |
-     *
-     * [deviceOnly] is the caller's statement that this read must stay on the device
-     * whatever the settings say: a re-OCR (the user picked a device engine for that
-     * capture), the furigana hold (it needs no translation), a hold while live mode
-     * runs. Every live tier ([FuriganaMode], [ReconcilerLiveMode],
-     * [PinholeOverlayMode]) reads through [runLiveOcrRead], which states
-     * device-only only once the service refused the session
-     * ([PtCloudService.liveSessionBlocked]); the furigana tier's read asks for
-     * no translation ([runOcrRead]'s `translate`).
-     *
-     * A read the router keeps on the device, and a cloud read that cannot
-     * read, both go to this service's own device reader ([deviceFrameReader]).
-     * A drag lookup ([com.playtranslate.ui.DragLookupController]) reads a
-     * fresh frame through here too, never device-only.
-     *
-     * A read kept on the device logs why at debug level, except when the switch
-     * is off, which is every read of every release build. [warmCloud] asks the
-     * same [PtCloudService.refusal] and logs nothing: the read that follows
-     * says why.
-     */
-    internal fun frameReaderFor(srcId: SourceLangId, deviceOnly: Boolean): FrameReader {
-        val refusal = PtCloudService.refusal(PtCloudConfig(Prefs(this)), srcId, deviceOnly)
-            ?: return FallbackFrameReader(cloudFrameReader, deviceFrameReader)
-        refusal.logWord?.let { Log.d(TAG, "PlayTranslate Cloud not used for this read: $it") }
-        return deviceFrameReader
-    }
-
-    /**
-     * Sends PlayTranslate Cloud's warm call ([PtCloudClient.warm]) when a read
-     * of [srcId] with [deviceOnly], which the caller is about to make, would go
-     * to the cloud: the same [PtCloudService.refusal] [frameReaderFor] routes
-     * that read by. A caller passes the source language and the device-only
-     * statement its read will pass, and calls this just before it requests the
-     * screenshot, so the warm's head start covers the screenshot, the crop and
-     * the encode. One caller per kind of read: [captureOnce]'s cycle, the
-     * single-screen capture sheet, a press-and-hold, a drag lookup's capture,
-     * and a live mode's start, through [warmCloudForLiveRead], for its first
-     * cycle's read only. A re-OCR reads on the device and never warms.
-     *
-     * Returns at once, on the caller's thread, when the switch is off, when
-     * [deviceOnly] is true or when the warm knob ([PtCloudConfig.warmEnabled])
-     * is off: plain pref reads, no key. Otherwise the decision, whose key read
-     * decrypts it, and the enqueue run on [Dispatchers.IO], off the capture's
-     * path. Fire and forget: nothing waits for it or reads its answer, and it
-     * logs nothing about why it did not go out (the read logs that).
-     */
-    internal fun warmCloud(srcId: SourceLangId, deviceOnly: Boolean) {
-        val config = PtCloudConfig(Prefs(this))
-        if (!config.enabled || deviceOnly || !config.warmEnabled) return
-        serviceScope.launch(Dispatchers.IO) {
-            if (PtCloudService.refusal(config, srcId, deviceOnly) == null) cloudClient.warm()
-        }
-    }
-
-    /** [warmCloud] for the read [runLiveOcrRead] is about to make, with the two
-     *  statements that read makes: the source language from the same pref
-     *  [runOcrRead] reads, and the session's block
-     *  ([PtCloudService.liveSessionBlocked]) as its device-only statement. */
-    internal fun warmCloudForLiveRead() {
-        warmCloud(Prefs(this).sourceLangId, deviceOnly = PtCloudService.liveSessionBlocked)
-    }
 
     /**
      * The set of displays the user has selected to translate. P1 introduces
@@ -940,7 +831,7 @@ class CaptureService : Service() {
         }
         overrideRegions.clear()
         hasCaptureStateConfigured = true
-        ensureLanguageManagersFor(snapshotTranslationTarget())
+        translator.reconcileBackendPreference()
         _statusUpdates.tryEmit(getString(R.string.status_idle))
         // The activity flips the panel to Idle on that signal: it leaves its
         // Result state, so both delivery records clear (identical text read
@@ -998,100 +889,12 @@ class CaptureService : Service() {
         for ((id, region) in pending) configureOverride(id, region)
     }
 
-    /** Immutable snapshot of the translation pair + DeepL key at the moment
-     *  a translation request enters the service. Threaded through every
-     *  downstream call so that a concurrent [Prefs] change mid-batch can't
-     *  poison a cache entry (translated under the new pair but keyed under
-     *  the old): both the key and the translator selection derive from the
-     *  *same* target value. */
-    private data class TranslationTarget(
-        val source: String,
-        val target: String,
-        val deeplKey: String,
-        /** Chinese script choice; meaningful only when [target] == "zh". */
-        val chineseVariant: ChineseScriptVariant,
-        /** True when the OCR'd source is already Traditional (ZH_HANT) — so a
-         *  same-language passthrough must NOT be re-run through a Simplified→
-         *  Traditional pass. Only [source]/[target] feed the cache key, so these
-         *  extra fields don't fragment the shared "zh" cache. */
-        val sourceIsTraditional: Boolean,
-        /** The resolved source-language id behind [source], for the short-text
-         *  classifier's per-language segmenter. Snapshotted with the pair so a
-         *  mid-batch source switch can't classify under one language and
-         *  translate under another. */
-        val sourceId: SourceLangId,
-    ) {
-        /** OpenCC converter for Traditional Chinese output, or null when no
-         *  conversion applies (non-Chinese target, Simplified, or an already-
-         *  Traditional source passthrough). */
-        private val chineseConverter: ChineseScriptConverter?
-            get() = ChineseScriptConverter.forTarget(target, chineseVariant, sourceIsTraditional)
-
-        /** Convert a finished target-language string to the chosen Traditional
-         *  variant. No-op for non-Chinese / Simplified targets. Applied strictly
-         *  at read/return time — never before a cache write (the cache stores
-         *  Simplified, shared across all variants). */
-        fun localize(text: String): String = chineseConverter?.convert(text) ?: text
-    }
-
-    /** Capture a [TranslationTarget] from current [Prefs]. Called once at
-     *  the outermost layer of each translation entry point; downstream calls
-     *  thread the captured value rather than re-reading Prefs, so mid-batch
-     *  changes can't create inconsistency between key-derivation and
-     *  translator selection. */
-    private fun snapshotTranslationTarget(sourceOverride: SourceLangId? = null): TranslationTarget {
-        val prefs = Prefs(this)
-        // [sourceOverride] lets a re-OCR translate in the language that actually
-        // produced the result (its provenance), not the current pref — the user may
-        // have switched source language since. Target/variant still come from prefs.
-        val srcId = sourceOverride ?: prefs.sourceLangId
-        return TranslationTarget(
-            source = SourceLanguageProfiles[srcId].translationCode,
-            target = prefs.targetLang,
-            deeplKey = prefs.deeplApiKey,
-            chineseVariant = prefs.targetChineseVariant,
-            sourceIsTraditional = srcId == SourceLangId.ZH_HANT,
-            sourceId = srcId,
-        )
-    }
-
-    /** Called at the top of every translation call to keep the cache's
-     *  ROUTING identity (preferred backend + short-text policy knobs, see
-     *  [TranslationCache.routingIdentity]) in sync with current
-     *  configuration. Backends themselves are owned by
-     *  [TranslationBackendRegistry] and are pair-agnostic singletons —
-     *  there is no per-pair instance churn to reconcile. Pair changes are
-     *  handled by the cache key itself — no explicit clear needed. */
-    private fun ensureLanguageManagersFor(target: TranslationTarget) {
-        val prefs = Prefs(this)
-        translationCache.reconcilePreferredBackend(
-            TranslationCache.routingIdentity(
-                preferredOnlineId =
-                    TranslationBackendRegistry.preferredOnlineId(target.source, target.target),
-                llmContextEnabled = prefs.llmContextEnabled,
-                bergamotEnabled = prefs.bergamotEnabled,
-                shortTextRoutingEnabled = prefs.debugShortTextRouting,
-            )
-        )
-    }
-
-    /** Public hook for callers (Settings UI today) to drive cache
-     *  reconciliation eagerly when they know the user just changed
-     *  backend preferences — e.g. flipped the DeepL toggle, saved a new
-     *  DeepL key. Without this, an all-cached translate batch can serve
-     *  stale entries because [translate] (where reconciliation lives) is
-     *  never invoked. Cheap: a Map-clear on transition, no-op otherwise. */
-    fun reconcileBackendPreference() {
-        ensureLanguageManagersFor(snapshotTranslationTarget())
-    }
-
-    /** Force-drop every cached translation. Used when the *configuration*
-     *  of an LLM backend changes without changing its id — switching the
-     *  OpenAI model, base URL, or API key. [reconcileBackendPreference]
-     *  can't catch those because the preferred backend id is unchanged. */
-    fun clearTranslationCache() {
-        translationCache.clear()
-    }
+    /** This service's translate handshake over the process's one cache
+     *  ([TranslationCache.shared]), with the floating icon's badge as its
+     *  degraded sink ([setDegraded]). Every translate entry point below
+     *  delegates to it; the camera tool, the import tool and
+     *  select-to-translate hold their own over the same cache. */
+    internal val translator by lazy { GroupTranslator(this, TranslationCache.shared, ::setDegraded) }
 
     /** Start a one-shot capture cycle on [displayId]. Caller observes the
      *  returned [CaptureSession]'s [CaptureSession.state] for
@@ -1602,9 +1405,6 @@ class CaptureService : Service() {
             Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
             return
         }
-        // A new session tries PlayTranslate Cloud again, whatever kept the
-        // last one on the device ([PtCloudService.liveSessionBlocked]).
-        PtCloudService.onLiveSessionStarted()
         oneShotCaptureJob?.cancel()
         // Live start claims the game surface, as it does for the app's
         // one-shot boxes (MainActivity.onLiveModeChanged): the over-game
@@ -2925,10 +2725,9 @@ class CaptureService : Service() {
      *  finding: the furigana raw path silently kept feeding icon-bearing
      *  frames after the blackout moved into one mode).
      *
-     *  [deviceOnly]: passed to [frameReaderFor] as the caller's statement that
-     *  this read must stay on the device. The live tiers pass their session's
-     *  block ([PtCloudService.liveSessionBlocked]) through [runLiveOcrRead];
-     *  the press-and-hold overlay states it per hold.
+     *  [deviceOnly]: passed to [FrameReaders.readerFor] as the caller's statement that
+     *  this read must stay on the device. The live tiers never state it
+     *  ([runLiveOcrRead]); the press-and-hold overlay states it per hold.
      *
      *  [translate]: false asks the reader for the frame's text alone, as the
      *  furigana tier does (its readings need no translation, and the panel
@@ -2939,12 +2738,13 @@ class CaptureService : Service() {
      *  here, since nothing awaits them, so the result carries none.
      *
      *  The slow-OCR prompt's pass timing ([LiveSessionFeedback.beginOcrPass])
-     *  runs for a device read only: the prompt rescues a session from a slow
-     *  device engine (it offers a faster one), and a read through any other
-     *  reader spends its time on the network, which no engine switch speeds
-     *  up. A cloud read that falls back to the device is untimed too. The
-     *  startup card's first-pass narration ends on every reader's completed
-     *  pass. */
+     *  starts when the device engine is about to run
+     *  ([ReadRequest.beforeDeviceOcr]), whether the device reader read the
+     *  frame outright or as a cloud read's fallback: the prompt rescues a
+     *  session from a slow device engine (it offers a faster one), and the
+     *  time a cloud attempt spent on the network, which no engine switch
+     *  speeds up, never counts. The startup card's first-pass narration ends
+     *  on every reader's completed pass. */
     internal suspend fun runOcrRead(
         raw: Bitmap,
         displayId: Int,
@@ -2959,19 +2759,21 @@ class CaptureService : Service() {
                 { bitmap, result -> OcrSeedWriter.writeSeed(this, bitmap, result) }
             } else null
         val srcId = prefs.sourceLangId
-        val reader = frameReaderOverrideForTest ?: frameReaderFor(srcId, deviceOnly)
+        val reader = FrameReaders.readerFor(srcId, deviceOnly)
         val frameId = frameIdFor(displayId)
-        val request = if (translate) {
-            ReadRequest(srcId, screenshotWidth = raw.width, targetLang = prefs.targetLang, frameId = frameId)
-        } else {
-            ReadRequest.sameLanguage(srcId, screenshotWidth = raw.width, frameId = frameId)
-        }
         val statusBarHeight = statusBarHeightForFrame(displayId, frameIncludesSystemUi)
         // Session captured at entry: a pass that outlives a stop (native
         // inference cancels lazily) finalizes into ITS session — disposed
         // and inert — never the next one's ([LiveSessionFeedback]).
         val feedback = if (isLive) liveFeedback else null
-        val passToken = if (reader is DeviceFrameReader) feedback?.beginOcrPass(displayId) else null
+        var passToken: LiveSessionFeedback.OcrPassToken? = null
+        val request = (
+            if (translate) {
+                ReadRequest(srcId, screenshotWidth = raw.width, targetLang = prefs.targetLang, frameId = frameId)
+            } else {
+                ReadRequest.sameLanguage(srcId, screenshotWidth = raw.width, frameId = frameId)
+            }
+        ).copy(beforeDeviceOcr = { passToken = feedback?.beginOcrPass(displayId) })
         try {
             val read = OverlayToolkit.runOcrPipeline(
                 raw,
@@ -3011,38 +2813,30 @@ class CaptureService : Service() {
             result.translations?.cancel()
             return read.copy(result = result.copy(translations = null))
         } finally {
-            if (feedback != null && passToken != null) feedback.endOcrPass(passToken)
+            passToken?.let { feedback?.endOcrPass(it) }
         }
     }
 
     /** The one read each cycle of a live tier makes (the furigana tier,
      *  [FuriganaMode], the reconciler tier, [ReconcilerLiveMode], and the
-     *  pinhole tier, [PinholeOverlayMode]): [runOcrRead] with the session's
-     *  block ([PtCloudService.liveSessionBlocked]) as its device-only
-     *  statement, then the reading's
-     *  [OverlayToolkit.OcrPipelineRead.fallbackFrom] handed to
-     *  [PtCloudService.recordLiveRead], which blocks the session when the
-     *  service is stopped or refused the key. The one place a live read states
-     *  the session's block, and the one place it is set. Same frame parameters
-     *  as [runOcrRead], [translate] included (false for the furigana tier);
-     *  [warmCloudForLiveRead] warms for this read. */
+     *  pinhole tier, [PinholeOverlayMode]): [runOcrRead], never device-only
+     *  (a stopped pod or a refused key is a cooldown the router reads,
+     *  [PtCloudService]), same frame parameters, [translate] included (false
+     *  for the furigana tier). Each tier warms for its first read at its
+     *  start ([FrameReaders.warm]). */
     internal suspend fun runLiveOcrRead(
         raw: Bitmap,
         displayId: Int,
         frameIncludesSystemUi: Boolean = true,
         frameIncludesOwnOverlays: Boolean,
         translate: Boolean = true,
-    ): OverlayToolkit.OcrPipelineRead {
-        val read = runOcrRead(
-            raw, displayId,
-            frameIncludesSystemUi = frameIncludesSystemUi,
-            frameIncludesOwnOverlays = frameIncludesOwnOverlays,
-            deviceOnly = PtCloudService.liveSessionBlocked,
-            translate = translate,
-        )
-        PtCloudService.recordLiveRead(read.fallbackFrom)
-        return read
-    }
+    ): OverlayToolkit.OcrPipelineRead = runOcrRead(
+        raw, displayId,
+        frameIncludesSystemUi = frameIncludesSystemUi,
+        frameIncludesOwnOverlays = frameIncludesOwnOverlays,
+        deviceOnly = false,
+        translate = translate,
+    )
 
     /**
      * Translate OCR groups and send the result to the in-app panel.
@@ -3332,8 +3126,7 @@ class CaptureService : Service() {
         /** A [ReadRequest.frameId] for a read of a frame from [displayId]: the
          *  display and the read's moment, which names the frame in a reader's logs
          *  without carrying anything of its content. */
-        internal fun frameIdFor(displayId: Int): String =
-            "d$displayId-${android.os.SystemClock.elapsedRealtime()}"
+        internal fun frameIdFor(displayId: Int): String = FrameReaders.frameId("d$displayId")
 
         /** The ONE write path for [Prefs.recordGameAudio]: pref write +
          *  recorder reconcile + the session's consent lifecycle at both
@@ -3578,7 +3371,7 @@ class CaptureService : Service() {
             onOcrStart?.invoke()
             // A re-OCR stays on the device: the user picked a device engine for
             // this capture from the result's OCR gear.
-            val reading = frameReaderFor(srcId, deviceOnly = isReOcr).read(
+            val reading = FrameReaders.readerFor(srcId, deviceOnly = isReOcr).read(
                 bitmap,
                 ReadRequest(
                     srcId,
@@ -3715,7 +3508,7 @@ class CaptureService : Service() {
             // would.
             val deferTranslation = mayDefer &&
                 !(reader != null && reader.isFor(recordSrc, recordTgt) &&
-                    readerTranslationsToTake(groupTexts, reader, snapshotTranslationTarget(srcId), onProgress = null)
+                    translator.readerTranslationsToTake(groupTexts, reader, srcId, onProgress = null)
                         .let { named -> groupTexts.indices.all { it in named } })
             // Each delivery fills on top of the first paint, so a box it does
             // not name keeps what the first paint gave it.
@@ -3820,7 +3613,7 @@ class CaptureService : Service() {
         // Warm PlayTranslate Cloud for the read below: runFrameCycle reads in
         // the source language from the same pref, and never device-only (this
         // is not a re-OCR).
-        warmCloud(Prefs(this@CaptureService).sourceLangId, deviceOnly = false)
+        FrameReaders.warm(Prefs(this@CaptureService).sourceLangId, deviceOnly = false)
         // The frame carries its own capture-time facts (CapturedFrame);
         // downstream reads them from the frame, never re-derives them from
         // mutable state.
@@ -3861,356 +3654,25 @@ class CaptureService : Service() {
             is PipelineOutcome.Failed -> CaptureState.Failed(outcome.message)
         }
 
-    /** Cache of past translations. Keyed by (text, source, target) so
-     *  cross-pair stale reads are impossible; cleared on backend toggle
-     *  via [TranslationCache.reconcilePreferredBackend] called from
-     *  [ensureLanguageManagersFor]. */
-    private val translationCache = TranslationCache()
-
-    private fun cacheKey(text: String, target: TranslationTarget): TranslationCache.Key =
-        TranslationCache.Key(text, target.source, target.target)
-
-    /** Synchronous cache lookup for previously translated text. Returns null
-     *  if not cached for the current pair; hits carry the producing backend's
-     *  display name so cache-filled boxes stay attributable. */
+    /** Synchronous cache lookup for previously translated text under the
+     *  current pair ([GroupTranslator.cachedTranslation]). */
     internal fun getCachedTranslation(sourceText: String): GroupTranslation? =
-        cachedTranslation(sourceText, snapshotTranslationTarget())
+        translator.cachedTranslation(sourceText)
 
-    /** The cache's entry for [sourceText] under [target], localized; null when
-     *  there is none. Shared by [getCachedTranslation], [translationsAtOnce] and
-     *  [readerTranslationsToTake]. */
-    private fun cachedTranslation(sourceText: String, target: TranslationTarget): GroupTranslation? =
-        translationCache[cacheKey(sourceText, target)]?.let { (text, backend) ->
-            GroupTranslation(target.localize(text), note = null, backendDisplayName = backend)
-        }
-
-    /**
-     * Translates each group in parallel, using cached results for groups
-     * whose original text hasn't changed. Only cache misses hit the network.
-     *
-     * The [TranslationTarget] is snapshotted once at entry and threaded to
-     * every downstream call so key-derivation and translator selection agree
-     * even if another code path mutates Prefs mid-batch.
-     *
-     * Cache write policy: online backend results (DeepL and Lingva) and
-     * fully-successful on-device LLM results (TG, Qwen) are cached. Two
-     * categories are skipped:
-     *   - ML Kit degraded fallback (signalled by a non-null note set in
-     *     [translate]) — so online services can reclaim the slot on recovery.
-     *   - On-device LLM displacement (signalled by a non-null
-     *     [TranslateOutcome.displacedLlmId]) — when TG or Qwen threw a
-     *     transient low-memory exception and the waterfall fell through to
-     *     a lower-priority backend, the fallback's output shouldn't outlast
-     *     the memory pressure window.
-     *
-     * [reader]: the translations the frame's reader produces with its OCR (a
-     * combined OCR and translation service), keyed by position in
-     * [groupTexts]. Used only when they are for this call's pair; under any
-     * other pair they are ignored and every position goes through the cache
-     * and the waterfall as if there were none. Otherwise this waits for them
-     * only when the reader can still name a position whose text the cache
-     * has no entry for ([ReaderTranslations.awaited]), reporting each
-     * delivery on the way through [onProgress] by position (null = nothing
-     * yet; the reader's texts, localized and named by its provider, not
-     * cached, since they are provisional). When the cache has an entry for
-     * every position the reader has yet to name, this takes what is final
-     * now ([ReaderTranslations.finalSoFar]: what arrived with the OCR, or
-     * everything once the reader settled) without waiting: the cache already
-     * answers those positions, so waiting would only hold the caller to
-     * reword text it can show at once. A position the reader names takes its
-     * text, cached as the provider's like any backend's result, over a cache
-     * entry: the reader's text is the fresher one, so a call that waits
-     * takes the reader's text at a position the cache filled too. Every
-     * position it does not name (it left the group untranslated, its final
-     * part failed, the consumer maps no group there, or the call did not
-     * wait for it) goes through the cache and the waterfall in this same
-     * call. [onProgress] is never called without a wait, nor for the settled
-     * state, which this returns.
-     *
-     * Runs on the Main-dispatched scope (the cache's thread-safety
-     * invariant); the reader's state is collected on the caller's
-     * dispatcher, so the cache writes stay there.
-     */
+    /** [GroupTranslator.translateGroupsSeparately] on this service's translator. */
     internal suspend fun translateGroupsSeparately(
         groupTexts: List<String>,
         sourceOverride: SourceLangId? = null,
         reader: ReaderTranslations? = null,
         onProgress: (suspend (List<GroupTranslation?>) -> Unit)? = null,
-    ): List<GroupTranslation> {
-        val target = snapshotTranslationTarget(sourceOverride)
+    ): List<GroupTranslation> = translator.translateGroupsSeparately(groupTexts, sourceOverride, reader, onProgress)
 
-        // OCR-only bypass: when source and target language are the same,
-        // skip translation entirely — OCR output is the final result.
-        // This handles all paths: one-shot hold, live mode, and in-app panel.
-        // Clear degraded state too — bypass means we aren't going through a
-        // backend, so any stale "Offline"/"degraded" badge from a prior
-        // fallback should drop.
-        if (target.source == target.target) {
-            setDegraded(false)
-            // Edge case: Chinese source → Chinese-Traditional target. The OCR
-            // text is the result, but a Simplified (ZH) source still needs
-            // s2t/s2tw/s2hk applied; an already-Traditional (ZH_HANT) source is
-            // a no-op (target.localize handles both via sourceIsTraditional).
-            return groupTexts.map { GroupTranslation(target.localize(it), null, null) }
-        }
-
-        val provided: Map<Int, String> = when {
-            reader == null -> emptyMap()
-            !reader.isFor(target.source, target.target) -> {
-                Log.i(TAG, "provided translations ignored: the language pair changed since the read")
-                emptyMap()
-            }
-            else -> readerTranslationsToTake(groupTexts, reader, target, onProgress)
-        }
-        if (reader == null || provided.isEmpty()) return translateThroughCache(groupTexts, target)
-
-        val taken = takeReaderTranslations(groupTexts, provided, reader.providerName, target)
-        val rest = groupTexts.indices.filter { taken[it] == null }
-        // In position order, as the nulls they fill.
-        val restTranslated =
-            if (rest.isEmpty()) emptyList() else translateThroughCache(rest.map { groupTexts[it] }, target)
-        val next = restTranslated.iterator()
-        return taken.map { it ?: next.next() }
-    }
-
-    /** What [reader], already checked to be for [target]'s pair, gives
-     *  [groupTexts] by position: its translations once it settles
-     *  ([ReaderTranslations.await], each delivery on the way reported through
-     *  [onProgress] as [translateGroupsSeparately] describes) when it can still
-     *  name a position whose text the cache has no entry for under [target],
-     *  else what is final now ([ReaderTranslations.finalSoFar]) without
-     *  waiting, since the cache already answers every position the reader has
-     *  yet to name. The one wait rule: [translateGroupsSeparately] and
-     *  [runFrameCycle]'s deferral decide by it, so a capture that may defer
-     *  waits for the reader exactly when its translate call would. */
-    private suspend fun readerTranslationsToTake(
-        groupTexts: List<String>,
-        reader: ReaderTranslations,
-        target: TranslationTarget,
-        onProgress: (suspend (List<GroupTranslation?>) -> Unit)?,
-    ): Map<Int, String> {
-        val cacheLacksOne = reader.awaited.any { cachedTranslation(groupTexts[it], target) == null }
-        if (!cacheLacksOne) return reader.finalSoFar
-        return reader.await(
-            onProgress?.let { report ->
-                { delivered ->
-                    report(
-                        List(groupTexts.size) { i ->
-                            delivered[i]?.let {
-                                GroupTranslation(target.localize(it), note = null, backendDisplayName = reader.providerName)
-                            }
-                        },
-                    )
-                }
-            },
-        )
-    }
-
-    /** What can be shown for [groupTexts] before any wait, by position: the reader's
-     *  translation that arrived with its OCR where there is one (final, so cached here
-     *  as the reader's, like any backend's result), else the cache's entry, else null.
-     *  The reader's are taken only for this call's pair; all null when source and
-     *  target are the same language (nothing is translated). */
+    /** [GroupTranslator.translationsAtOnce] on this service's translator. */
     internal fun translationsAtOnce(
         groupTexts: List<String>,
         reader: ReaderTranslations?,
         sourceOverride: SourceLangId? = null,
-    ): List<GroupTranslation?> {
-        val target = snapshotTranslationTarget(sourceOverride)
-        if (target.source == target.target) return List(groupTexts.size) { null }
-        val cached = groupTexts.map { cachedTranslation(it, target) }
-        if (reader == null || !reader.isFor(target.source, target.target)) return cached
-        // The reader's text wins over a cache entry: it is the fresher one.
-        return takeReaderTranslations(groupTexts, reader.ready, reader.providerName, target)
-            .zip(cached) { fromReader, fromCache -> fromReader ?: fromCache }
-    }
-
-    /** The reader's [byPosition] texts for [groupTexts] under [target]: each one
-     *  cached as [providerName]'s, so the live tiers and the next capture serve it
-     *  like any backend's entry, and returned localized and named by
-     *  [providerName]; null at a position it does not name. Shared by
-     *  [translationsAtOnce] and [translateGroupsSeparately]. */
-    private fun takeReaderTranslations(
-        groupTexts: List<String>,
-        byPosition: Map<Int, String>,
-        providerName: String,
-        target: TranslationTarget,
-    ): List<GroupTranslation?> {
-        if (byPosition.isEmpty()) return List(groupTexts.size) { null }
-        // The cache's routing identity is reconciled before these writes, the
-        // rule every cache write follows (see translateThroughCache), so a
-        // backend toggle since the last call clears the old entries first
-        // instead of these landing among them.
-        ensureLanguageManagersFor(target)
-        // The degraded state is left untouched: no waterfall ran for these,
-        // the same rule as a fully cached batch.
-        return groupTexts.mapIndexed { i, text ->
-            byPosition[i]?.let { translation ->
-                translationCache[cacheKey(text, target)] = translation to providerName
-                // Localized after the cache write, like the waterfall's results:
-                // the shared "zh" cache keeps Simplified for every variant.
-                GroupTranslation(target.localize(translation), note = null, backendDisplayName = providerName)
-            }
-        }
-    }
-
-    /** [groupTexts] translated under [target] cache-first, the misses in one
-     *  batched waterfall: [translateGroupsSeparately]'s path for every position
-     *  no reader names. */
-    private suspend fun translateThroughCache(
-        groupTexts: List<String>,
-        target: TranslationTarget,
-    ): List<GroupTranslation> {
-        // Reconcile the cache's preferred-backend identity BEFORE the
-        // cache lookup. If a fully-cached batch returns early, the
-        // identity check inside translateBatch never runs, so a backend
-        // toggle / cooldown enter-or-exit since the last call would
-        // leave stale entries serving forever. Cheap (one Map clear on
-        // transition, no-op otherwise).
-        ensureLanguageManagersFor(target)
-
-        val keys = groupTexts.map { cacheKey(it, target) }
-        val uncached = keys.withIndex()
-            .filter { (_, key) -> key !in translationCache }
-
-        val freshByKey: Map<TranslationCache.Key, GroupTranslation> = if (uncached.isNotEmpty()) {
-            // Single batched waterfall (one HTTP request per backend
-            // pass when the backend implements BatchTranslator —
-            // DeepL, Gemini, OpenAI, Lingva) instead of N parallel
-            // single-text calls. Eliminates the rate-limit thrashing
-            // we saw on free-tier Gemini where parallel pairs of
-            // requests would each lose ~half to 429s. Non-batching
-            // backends (ML Kit, on-device LLMs) keep their per-text
-            // parallel fan-out inside the registry, so today's
-            // structured-cancellation guarantee (children of the
-            // calling capture job) is preserved end-to-end.
-            val texts = uncached.map { it.value.text }
-
-            // Short-text offline routing — OFF BY DEFAULT, debug-row gated
-            // (Prefs.debugShortTextRouting; device-pass verdict 2026-09-02:
-            // 2★ output too poor even on ordinary short phrases). When on:
-            // texts with ≤2 content words (menu items, HUD labels, one-word
-            // lines) go to the fast offline tier instead of spending online
-            // quota; everything else still travels as ONE online batch.
-            // Bypassed entirely when the backend that
-            // would serve is a context-carrying batching LLM — shorts then
-            // ride its batch so dialogue-choice one-worders keep the context
-            // ring (user decision; the cost is one LLM request on all-short
-            // pages). NOTE: translateOnce (deliberate re-translate / edit /
-            // select) and CameraTranslator stay online-only by design. Short
-            // results — including deliberately-routed ML Kit ones (user
-            // decision: cached, no degraded note) — enter the cache as
-            // first-class entries. The cache's routing identity folds in
-            // llmContextEnabled + bergamotEnabled (TranslationCache
-            // .routingIdentity), so flipping either toggle clears cached
-            // shorts and routing changes apply immediately; the residual pin
-            // (a pack/model INSTALL mid-session, identity unchanged) is
-            // accepted — bounded by the 500-entry LRU and process restart.
-            // The whole routing decision runs off-main: this method runs on
-            // the Main-dispatched serviceScope (the cache's thread-safety
-            // invariant), while the bypass check and route resolve do
-            // filesystem probes (Bergamot's isUsable) and possibly a GMS
-            // round-trip (ML Kit model presence), and a first JA/ZH/TH
-            // classification pays lazy segmenter init (Sudachi mmap / HanLP
-            // models / Thai trie). Resolve happens only AFTER classification
-            // found shorts, so all-sentence pages pay nothing beyond the
-            // classifier. No cache access crosses the dispatcher — only the
-            // (route, shorts) pair comes back; null = today's single batch.
-            val routing: Pair<ShortTextOfflineRoute, List<Boolean>>? =
-                if (!Prefs(this).debugShortTextRouting) null
-                else withContext(Dispatchers.Default) {
-                    val llmBypass = shouldBypassForLlm(
-                        TranslationBackendRegistry.preferredBackend(target.source, target.target),
-                        Prefs(this@CaptureService).llmContextEnabled,
-                    )
-                    if (llmBypass) return@withContext null
-                    val profile = SourceLanguageProfiles[target.sourceId]
-                    val counter =
-                        ShortTextTokenCounters.forLanguage(this@CaptureService, target.sourceId)
-                    val shorts = texts.map { isShortText(it, profile, counter) }
-                    if (shorts.none { it }) return@withContext null
-                    ShortTextOfflineRoute.resolve(target.source, target.target)
-                        ?.let { it to shorts }
-                }
-
-            val dispatch = if (routing == null) {
-                translateBatch(texts, target).let { PartitionedResult(it, it) }
-            } else {
-                val (route, shorts) = routing
-                dispatchPartitioned(
-                    texts, shorts,
-                    offline = { t ->
-                        withContext(Dispatchers.Default) {
-                            route.translateOrNull(t, target.source, target.target)
-                        }?.let {
-                            TranslateOutcome(it, null, DegradedWarningKind.None, null, route.displayName)
-                        }
-                    },
-                    online = { batch -> translateBatch(batch, target) },
-                )
-            }
-            val outcomes = dispatch.all
-
-            // Set the icon/menu state ONCE from the worst outcome the ONLINE
-            // waterfall produced. Each child's `translate` no longer touches
-            // the global state, so a clean group that happens to finish after
-            // a displaced sibling can't clear the warning. Deliberately-offline
-            // short results are excluded: their kind is None by construction,
-            // and letting an all-short page aggregate to None would CLEAR the
-            // "Offline" badge while the online tier is still cooling down
-            // (flapping between all-short and mixed pages). When no online
-            // call ran at all (fully-cached batch, or an all-short page), the
-            // state is left untouched — the same rule the fully-cached early
-            // return has always followed.
-            dispatch.fromOnline.maxByOrNull { it.kind.severity() }?.let { setDegraded(it.kind) }
-
-            // Re-reconcile AFTER translate too. A higher-priority backend
-            // may have cooled down DURING translateBatch — preferredOnlineId
-            // would now return the fallback id, but the pre-call reconcile
-            // didn't see that change. Without this second pass, the new
-            // fallback entry below would be cached under the old
-            // (pre-cooldown) preferred-backend identity; if the user
-            // doesn't translate again before the cooldown expires, identity
-            // never flips and the lower-quality result pins forever. Cheap
-            // (one Map clear on transition, no-op when no cooldown change).
-            ensureLanguageManagersFor(target)
-
-            uncached.zip(outcomes).forEach { (indexedKey, outcome) ->
-                // Cache write policy: skip when an on-device LLM was displaced
-                // by transient low memory (outcome.displacedLlmId != null).
-                // Without this, a single low-memory moment freezes the
-                // fallback's output in the cache, so the next call returns
-                // the same lower-quality result even after memory recovers.
-                // The existing note-based skip (ML Kit degraded fallback)
-                // still applies in parallel.
-                //
-                // Online-backend cooldowns (rate-limit / quota / billing)
-                // are handled at the cache-identity layer (the
-                // ensureLanguageManagersFor call above ran twice — once
-                // before lookup, once after translate — so any cooldown
-                // entered during this batch is reflected in the identity
-                // before these writes land).
-                if (outcome.note == null && outcome.displacedLlmId == null) {
-                    translationCache[indexedKey.value] = outcome.text to outcome.backendDisplayName
-                }
-            }
-
-            uncached.map { it.value }.zip(
-                outcomes.map { GroupTranslation(it.text, it.note, it.backendDisplayName) }
-            ).toMap()
-        } else emptyMap()
-
-        return keys.map { key ->
-            translationCache[key]?.let { (text, backendDisplayName) ->
-                GroupTranslation(text, note = null, backendDisplayName = backendDisplayName)
-            }
-                ?: freshByKey[key]
-                ?: GroupTranslation("", null, null)
-        }
-            // Convert to the chosen Traditional variant AFTER the cache read, so
-            // the shared "zh" cache keeps storing Simplified for every variant.
-            .map { it.copy(text = target.localize(it.text)) }
-    }
+    ): List<GroupTranslation?> = translator.translationsAtOnce(groupTexts, reader, sourceOverride)
 
     /** Downscaled copy of [raw] for [OverlayToolkit.sampleGroupColors], at
      *  1/[ONE_SHOT_COLOR_SCALE]. Taken BEFORE [cropBitmap] — which recycles the
@@ -4271,27 +3733,16 @@ class CaptureService : Service() {
         )
     }
 
-    /** On-demand translation for a single text string (used by edit overlay, drag-sentence, etc.). */
-    internal suspend fun translateOnce(text: String): GroupTranslation =
-        translateOnce(text, snapshotTranslationTarget())
+    /** On-demand translation for a single text string (used by edit overlay,
+     *  drag-sentence, etc.): [GroupTranslator.translateOnce]. */
+    internal suspend fun translateOnce(text: String): GroupTranslation = translator.translateOnce(text)
 
-    /** [translateOnce] under an EXPLICIT pair — the caller's snapshot, not
-     *  the prefs at call time — so a deliberate sentence translated after a
-     *  language change (a deferred reveal, a call that outlived a switch)
-     *  runs, records and displays under the one pair its result claims.
-     *  The script variant and the DeepL key still come from prefs. */
+    /** [translateOnce] under an EXPLICIT pair ([GroupTranslator.translateOnce]). */
     internal suspend fun translateOnce(
         text: String,
         sourceLangId: SourceLangId,
         targetLang: String,
-    ): GroupTranslation =
-        translateOnce(text, snapshotTranslationTarget(sourceLangId).copy(target = targetLang))
-
-    private suspend fun translateOnce(text: String, target: TranslationTarget): GroupTranslation {
-        val outcome = translate(text, target)
-        setDegraded(outcome.kind)
-        return GroupTranslation(target.localize(outcome.text), outcome.note, outcome.backendDisplayName)
-    }
+    ): GroupTranslation = translator.translateOnce(text, sourceLangId, targetLang)
 
     /**
      * Run the machine translation a deferred capture skipped ([PendingTranslation])
@@ -4339,143 +3790,6 @@ class CaptureService : Service() {
         return perGroup
     }
 
-    /**
-     * Run the translation waterfall and synthesise an inline note when
-     * the chosen backend is the degraded fallback.
-     *
-     * The waterfall itself lives in [TranslationBackendRegistry.translate]
-     * so it is testable on the JVM without dragging this service in.
-     * This method is the single choke point that:
-     *   - reconciles the cache's preferred-backend identity (mid-batch
-     *     pref changes pick up here without a per-caller round trip),
-     *   - turns the [com.playtranslate.translation.WaterfallResult] into
-     *     the legacy `(text, note)` tuple consumed by callers,
-     *   - drives [setDegraded] / the floating-icon "⚠ Offline" badge,
-     *   - and propagates [CancellationException] so a cancelled capture
-     *     reaches its terminal Cancelled state instead of stuck-in-flight.
-     *
-     * Note discipline: a non-null note is the "don't cache" signal in
-     * [translateGroupsSeparately] — online backends can then reclaim the
-     * cache slot on recovery.
-     */
-    /** Internal translation outcome. Carries the user-visible (text, note)
-     *  pair plus the [WaterfallResult.displacedLlmId] cache-skip signal and
-     *  the per-call [kind] used to aggregate degradation state across the
-     *  groups in a batch. The signal is internal to this service — public
-     *  methods ([translateOnce], [translateGroupsSeparately]) flatten back
-     *  to `(text, note)` so callers outside the cache layer don't grow a
-     *  dependency on the registry's displacement type. */
-    private data class TranslateOutcome(
-        val text: String,
-        val note: String?,
-        val kind: DegradedWarningKind,
-        val displacedLlmId: com.playtranslate.translation.BackendId?,
-        val backendDisplayName: String?,
-    )
-
-    /** Per-group translation triple returned by the batch / single paths.
-     *  Carries the backend's display name so the results view can render
-     *  "Translated by …" alongside the existing warning [note]. */
-    internal data class GroupTranslation(
-        val text: String,
-        val note: String?,
-        val backendDisplayName: String?,
-    )
-
-    /** Order DegradedWarningKind by severity so a batch's worst outcome
-     *  drives the icon/menu state, regardless of completion order. */
-    private fun DegradedWarningKind.severity(): Int = when (this) {
-        DegradedWarningKind.None -> 0
-        DegradedWarningKind.Offline -> 1
-        DegradedWarningKind.LowMemory -> 2
-    }
-
-    private suspend fun translate(text: String, target: TranslationTarget): TranslateOutcome {
-        // OCR-only bypass: when source and target language are the same, skip
-        // translation entirely. This is the universal choke point — every
-        // single-text translation path (translateOnce callers: edit overlay,
-        // drag-sentence, sentence tab) flows through here. The earlier
-        // bypass in translateGroupsSeparately is a redundant early-return
-        // for the group/cache path.
-        if (target.source == target.target) {
-            return TranslateOutcome(text, null, DegradedWarningKind.None, null, null)
-        }
-
-        ensureLanguageManagersFor(target)
-        val result = TranslationBackendRegistry.translate(text, target.source, target.target)
-        return result.toOutcome(target.source, target.target)
-    }
-
-    /**
-     * Batched counterpart to [translate]. The fan-out used to live in
-     * [translateGroupsSeparately] as N parallel single-text [translate]
-     * calls; the batch waterfall in [TranslationBackendRegistry.translateBatch]
-     * replaces that fan-out with one HTTP request per backend pass
-     * where the backend implements [com.playtranslate.translation.BatchTranslator].
-     *
-     * Must call [ensureLanguageManagersFor] here once before dispatch —
-     * the per-text [translate] used to do that on every call, and the
-     * cache's preferred-backend reconciliation rides on it. Skipping it
-     * would let a backend toggled mid-session serve stale cache entries.
-     */
-    private suspend fun translateBatch(
-        texts: List<String>,
-        target: TranslationTarget,
-    ): List<TranslateOutcome> {
-        if (target.source == target.target) {
-            return texts.map { TranslateOutcome(it, null, DegradedWarningKind.None, null, null) }
-        }
-        ensureLanguageManagersFor(target)
-        val results = TranslationBackendRegistry.translateBatch(texts, target.source, target.target)
-        return results.map { it.toOutcome(target.source, target.target) }
-    }
-
-    /** Map a [WaterfallResult] to a [TranslateOutcome] with the per-result
-     *  kind + inline-note logic. Used by both the single-text [translate]
-     *  and the batched [translateBatch] paths so the degraded-state
-     *  semantics stay identical between them. */
-    private fun com.playtranslate.translation.WaterfallResult.toOutcome(
-        source: String,
-        target: String,
-    ): TranslateOutcome {
-        // Per-group kind. Displacement that bottomed out at ML Kit is the
-        // LowMemory kind; ML Kit chosen for network/service reasons is
-        // Offline. Displacement that stayed in the offline tier (Qwen
-        // picked up after TG) is None — the result is high-quality offline
-        // output, so we don't visually flag it; the Settings row's
-        // live availMem check carries that signal on its own.
-        //
-        // We do NOT call setDegraded here — that would let one group's
-        // outcome clobber a sibling group's worse outcome in a batched
-        // translation. Aggregation happens once per batch in
-        // [translateGroupsSeparately] / per call in [translateOnce].
-        val kind = when {
-            !this.isDegraded -> DegradedWarningKind.None
-            this.displacedLlmId != null -> DegradedWarningKind.LowMemory
-            else -> DegradedWarningKind.Offline
-        }
-        // The inline note adds more detail than the icon needs — when the
-        // cause is "Offline", distinguish network-not-present from the
-        // active-cooldown wordings (transient / quota / account, selected
-        // by the typed CooldownCause inside DegradedMessages) and the
-        // generic service-unavailable. The floating icon's pill makes the
-        // same cooldown query at render time via [currentDegradedCooldown].
-        // Network is checked FIRST: with no internet, a cooldown still
-        // ticking on some backend is not what the user needs to fix.
-        val note = when (kind) {
-            DegradedWarningKind.None -> null
-            DegradedWarningKind.LowMemory ->
-                getString(R.string.note_low_memory_fallback)
-            DegradedWarningKind.Offline ->
-                if (!com.playtranslate.net.NetworkConnectivity.isAvailable(this@CaptureService))
-                    getString(R.string.note_mlkit_no_internet)
-                else com.playtranslate.ui.DegradedMessages.onlineFailureNote(
-                    this@CaptureService,
-                    TranslationBackendRegistry.earliestCooldownEnd(source, target),
-                )
-        }
-        return TranslateOutcome(this.text, note, kind, this.displacedLlmId, this.backend.displayName)
-    }
 
     /**
      * Active cooldown for the floating-icon pill while the degradation
@@ -4485,11 +3799,8 @@ class CaptureService : Service() {
      * (genuinely offline, or a fresh failure nothing has cooled down
      * yet). Null with no network — same ordering rule as the note above.
      */
-    fun currentDegradedCooldown(): com.playtranslate.translation.ActiveCooldown? {
-        if (!com.playtranslate.net.NetworkConnectivity.isAvailable(this)) return null
-        val target = snapshotTranslationTarget()
-        return TranslationBackendRegistry.earliestCooldownEnd(target.source, target.target)
-    }
+    fun currentDegradedCooldown(): com.playtranslate.translation.ActiveCooldown? =
+        translator.currentDegradedCooldown()
 
     /**
      * Returns the status bar height in pixels for [displayId], or 0 if there is no
@@ -4787,7 +4098,7 @@ class CaptureService : Service() {
  *  Pure, so the contract is unit-tested without the Android-heavy service. */
 internal fun deferredAttachPlan(
     groupTexts: List<String>,
-    translations: List<CaptureService.GroupTranslation>,
+    translations: List<GroupTranslation>,
     recordSrc: String,
 ): List<Triple<String, String, String?>> {
     val attached = HashSet<String>()

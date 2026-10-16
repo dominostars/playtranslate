@@ -201,8 +201,8 @@ class CaptureResultOverlay(
      *  translation section was hidden ([TranslationResult.pendingTranslation])
      *  and a consumer now needs it. Default (null): the capture service's
      *  [CaptureService.completeDeferredTranslation], which also attaches the
-     *  capture's History rows. Hosts on the CameraTranslator stack (Process-
-     *  Text) substitute their own translator. Returning null means "no
+     *  capture's History rows. Hosts with their own GroupTranslator (Process-
+     *  Text) substitute it. Returning null means "no
      *  translator available" — the pending stays set and the next trigger
      *  retries; a non-null return is terminal for the pending. */
     var completeDeferred: (suspend (PendingTranslation) -> List<PanelTranslation>?)? = null

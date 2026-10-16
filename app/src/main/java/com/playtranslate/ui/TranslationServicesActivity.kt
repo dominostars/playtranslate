@@ -144,7 +144,7 @@ class TranslationServicesActivity : SettingsSubPageActivity() {
         binder.refreshHyMt2Switch()
         binder.refreshBergamotSwitch()
         binder.refreshAllBackendStatuses()
-        CaptureService.instance?.reconcileBackendPreference()
+        com.playtranslate.translation.GroupTranslator.reconcileShared(this@TranslationServicesActivity)
 
         // Offline-model toggles still flow through prefs (their install
         // flows flip *_enabled from dialogs + download completions), so
@@ -155,37 +155,37 @@ class TranslationServicesActivity : SettingsSubPageActivity() {
                 Prefs.KEY_QWEN_MNN_ENABLED -> {
                     binder.refreshQwenMnnSwitch()
                     binder.refreshAllBackendStatuses()
-                    CaptureService.instance?.reconcileBackendPreference()
+                    com.playtranslate.translation.GroupTranslator.reconcileShared(this@TranslationServicesActivity)
                     maybeUnloadIdleEngines()
                 }
                 Prefs.KEY_QWEN35_MNN_2B_ENABLED -> {
                     binder.refreshQwen35Mnn2bSwitch()
                     binder.refreshAllBackendStatuses()
-                    CaptureService.instance?.reconcileBackendPreference()
+                    com.playtranslate.translation.GroupTranslator.reconcileShared(this@TranslationServicesActivity)
                     maybeUnloadIdleEngines()
                 }
                 Prefs.KEY_GEMMA_E2B_ENABLED -> {
                     binder.refreshGemmaE2bSwitch()
                     binder.refreshAllBackendStatuses()
-                    CaptureService.instance?.reconcileBackendPreference()
+                    com.playtranslate.translation.GroupTranslator.reconcileShared(this@TranslationServicesActivity)
                     maybeUnloadIdleEngines()
                 }
                 Prefs.KEY_HYMT_ENABLED -> {
                     binder.refreshHyMtSwitch()
                     binder.refreshAllBackendStatuses()
-                    CaptureService.instance?.reconcileBackendPreference()
+                    com.playtranslate.translation.GroupTranslator.reconcileShared(this@TranslationServicesActivity)
                     maybeUnloadIdleEngines()
                 }
                 Prefs.KEY_HYMT2_ENABLED -> {
                     binder.refreshHyMt2Switch()
                     binder.refreshAllBackendStatuses()
-                    CaptureService.instance?.reconcileBackendPreference()
+                    com.playtranslate.translation.GroupTranslator.reconcileShared(this@TranslationServicesActivity)
                     maybeUnloadIdleEngines()
                 }
                 Prefs.KEY_BERGAMOT_ENABLED -> {
                     binder.refreshBergamotSwitch()
                     binder.refreshAllBackendStatuses()
-                    CaptureService.instance?.reconcileBackendPreference()
+                    com.playtranslate.translation.GroupTranslator.reconcileShared(this@TranslationServicesActivity)
                 }
             }
         }

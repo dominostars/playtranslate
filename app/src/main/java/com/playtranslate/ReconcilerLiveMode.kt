@@ -1,5 +1,6 @@
 package com.playtranslate
 
+import com.playtranslate.ocr.FrameReaders
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.SystemClock
@@ -194,11 +195,10 @@ class ReconcilerLiveMode(
         }
         // Warm PlayTranslate Cloud for the first cycle's read, which
         // runLiveOcrRead makes with the statements the warm states (the source
-        // language from the same pref, device-only when the session's block
-        // says so). Once per mode instance (setLiveDisplays starts each new one
-        // exactly once): later cycles read back to back on a connection
-        // already in use.
-        service.warmCloudForLiveRead()
+        // language from the same pref, never device-only). Once per mode
+        // instance (setLiveDisplays starts each new one exactly once): later
+        // cycles read back to back on a connection already in use.
+        FrameReaders.warm(Prefs(service).sourceLangId, deviceOnly = false)
         engine.scheduleNext()
     }
 
@@ -418,12 +418,11 @@ class ReconcilerLiveMode(
 
             // OCR the full crop. No status-bar exclusion: a task stream
             // contains no system UI — those top rows are game content.
-            // PlayTranslate Cloud reads it when the router allows it, unless
-            // the service already refused this session: a stopped service or
-            // a refused key keeps the rest of the session on the device, set
-            // from this read's outcome inside runLiveOcrRead
-            // (PtCloudService.recordLiveRead). A restart, the settings switch
-            // or a credentials save tries again.
+            // PlayTranslate Cloud reads it when the router allows it: a
+            // stopped service or a refused key is a cooldown (PtCloudService),
+            // which keeps every reader on the device until it ends, the
+            // settings switch or a credentials save resets it, or the cloud
+            // page's health check finds the service running.
             val ocrStartMs = SystemClock.uptimeMillis()
             val read = service.runLiveOcrRead(
                 raw, displayId, frame.includesSystemUi, frame.includesOwnOverlays,

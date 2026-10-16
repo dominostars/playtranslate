@@ -19,13 +19,11 @@ import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.shadows.ShadowLog
 import java.util.concurrent.atomic.AtomicLong
 
 /** The service object: one cooldown, built once, cleared by the user's
- *  gestures and by a regained network (connection failures only); and the
- *  live-session block, set by a not-running or bad-key answer to a live
- *  read and cleared by a new session or the user's gestures. */
+ *  gestures, by a regained network (connection failures only) and by the
+ *  cloud page's health check finding the service running. */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudServiceTest {
 
@@ -37,7 +35,6 @@ class PtCloudServiceTest {
 
     @After fun tearDown() {
         PtCloudService.installForTest(null)
-        PtCloudService.onLiveSessionStarted()
         TranslationBackendRegistry.onlineAttemptListener = null
     }
 
@@ -106,78 +103,37 @@ class PtCloudServiceTest {
         assertEquals(listOf(listOf(attempt)), seen)
     }
 
-    @Test fun `a refused live read blocks the session until the next one starts`() {
-        install()
-        PtCloudService.onLiveSessionStarted()
-        assertFalse(PtCloudService.liveSessionBlocked)
-
-        PtCloudService.blockForLiveSession()
-        assertTrue(PtCloudService.liveSessionBlocked)
-        // A second refusal in the same session changes nothing.
-        PtCloudService.blockForLiveSession()
-        assertTrue(PtCloudService.liveSessionBlocked)
-
-        PtCloudService.onLiveSessionStarted()
-        assertFalse(PtCloudService.liveSessionBlocked)
-    }
-
-    @Test fun `a live read that fell back on a not-running answer blocks the session`() {
-        install()
-        PtCloudService.onLiveSessionStarted()
-        PtCloudService.recordLiveRead(BackendFailure(BackendFailureKind.NOT_RUNNING, 404))
-        assertTrue(PtCloudService.liveSessionBlocked)
-    }
-
-    @Test fun `a live read that fell back on a refused key blocks the session`() {
-        install()
-        PtCloudService.onLiveSessionStarted()
-        PtCloudService.recordLiveRead(BackendFailure(BackendFailureKind.AUTH, 401))
-        assertTrue(PtCloudService.liveSessionBlocked)
-    }
-
-    @Test fun `a live read that fell back on any other failure leaves the session alone`() {
-        install()
-        PtCloudService.onLiveSessionStarted()
-        PtCloudService.recordLiveRead(BackendFailure(BackendFailureKind.SERVER_ERROR, 503))
-        assertFalse(PtCloudService.liveSessionBlocked)
-    }
-
-    @Test fun `a live read that did not fall back leaves the session alone`() {
-        install()
-        PtCloudService.onLiveSessionStarted()
-        PtCloudService.recordLiveRead(null)
-        assertFalse(PtCloudService.liveSessionBlocked)
-    }
-
-    @Test fun `the switch and a credentials save lift the live block`() {
-        install()
-        PtCloudService.blockForLiveSession()
-        PtCloudService.onToggled()
-        assertFalse(PtCloudService.liveSessionBlocked)
-
-        PtCloudService.blockForLiveSession()
-        PtCloudService.onCredentialsSaved()
-        assertFalse(PtCloudService.liveSessionBlocked)
-    }
-
-    @Test fun `the live block is not a cooldown and leaves the installed one alone`() {
+    @Test fun `a running service seen by the health check drops the cooldown and nothing else`() {
         val state = install()
-        PtCloudService.blockForLiveSession()
-        assertSame(state, PtCloudService.cooldown)
-        assertFalse(PtCloudService.isCoolingDown(clock.get()))
-        assertNull(PtCloudService.unavailableUntil())
+        state.recordLadderFailure(CooldownLadder.RateLimit, "Not running", CooldownCause.NOT_RUNNING)
+        assertTrue(PtCloudService.isCoolingDown(clock.get()))
+        val seen = mutableListOf<List<OnlineAttempt>>()
+        TranslationBackendRegistry.onlineAttemptListener = { seen += it }
 
-        PtCloudService.onLiveSessionStarted()
+        PtCloudService.onHealthRunning()
+
+        assertNull(PtCloudService.unavailableUntil())
+        assertFalse(PtCloudService.isCoolingDown(clock.get()))
         assertSame(state, PtCloudService.cooldown)
+        assertTrue("no attempt reported through the registry", seen.isEmpty())
     }
 
-    @Test fun `the block is logged once per session, with no detail`() {
-        install()
-        PtCloudService.onLiveSessionStarted()
-        ShadowLog.clear()
-        PtCloudService.blockForLiveSession()
-        PtCloudService.blockForLiveSession()
-        val lines = ShadowLog.getLogsForTag("PtCloud").map { it.msg }.filter { "live session" in it }
-        assertEquals(listOf("live session: cloud reads stay on the device"), lines)
+    @Test fun `a Running health check leaves a bad-key or quota cooldown alone, and does nothing with none`() {
+        val state = install()
+        // The check takes no key: Running says nothing about the key.
+        state.recordLadderFailure(CooldownLadder.RateLimit, "Bad key", CooldownCause.AUTH)
+        val until = PtCloudService.unavailableUntil()
+        PtCloudService.onHealthRunning()
+        assertEquals(until, PtCloudService.unavailableUntil())
+        assertEquals(CooldownCause.AUTH, PtCloudService.unavailableCause())
+
+        state.resetCooldown()
+        state.recordParsedFailure(clock.get() + 3_600_000, "Daily quota used", CooldownCause.DAILY_QUOTA)
+        PtCloudService.onHealthRunning()
+        assertEquals(CooldownCause.DAILY_QUOTA, PtCloudService.unavailableCause())
+
+        state.resetCooldown()
+        PtCloudService.onHealthRunning()
+        assertNull(PtCloudService.unavailableUntil())
     }
 }

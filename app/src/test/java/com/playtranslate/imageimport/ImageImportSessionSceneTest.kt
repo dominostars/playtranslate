@@ -7,7 +7,7 @@ import android.widget.FrameLayout
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.CaptureState
 import com.playtranslate.OcrManager
-import com.playtranslate.camera.CameraTranslator
+import com.playtranslate.translation.GroupTranslation
 import com.playtranslate.model.TextSegments
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,7 +50,7 @@ class ImageImportSessionSceneTest {
         return ImageImportSession.CachedScene(
             gatedOcr = ocr,
             groupColors = listOf(0xFF000000.toInt() to 0xFFFFFFFF.toInt()),
-            perGroup = listOf(CameraTranslator.Detailed("Hello", null, "TestBackend")),
+            perGroup = listOf(GroupTranslation("Hello", null, "TestBackend")),
             provenance = null,
             panelText = "こんにちは",
             segments = ocr.segments,

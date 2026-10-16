@@ -30,7 +30,13 @@ enum class CooldownLadder { RateLimit, Network }
  * timestamp let a billing-exhausted account render as "rate limited").
  */
 enum class CooldownCause {
-    RATE_LIMITED, SERVER_ERROR, CONNECTION_FAILED, DAILY_QUOTA, MONTHLY_QUOTA, BILLING;
+    RATE_LIMITED, SERVER_ERROR, CONNECTION_FAILED, DAILY_QUOTA, MONTHLY_QUOTA, BILLING,
+    /** The service is switched off (PlayTranslate Cloud's pod stopped):
+     *  transient, since starting it fixes it. */
+    NOT_RUNNING,
+    /** The service refused the stored key: the account class, since only a
+     *  new key fixes it. */
+    AUTH;
 
     /** Collapse to the user-facing message class. Users can't act
      *  differently on a 429 vs a 5xx vs a lingering network-ladder
@@ -39,9 +45,9 @@ enum class CooldownCause {
      *  user action differs (wait for the reset / fix the account). */
     val messageClass: CooldownMessageClass
         get() = when (this) {
-            RATE_LIMITED, SERVER_ERROR, CONNECTION_FAILED -> CooldownMessageClass.TRANSIENT
+            RATE_LIMITED, SERVER_ERROR, CONNECTION_FAILED, NOT_RUNNING -> CooldownMessageClass.TRANSIENT
             DAILY_QUOTA, MONTHLY_QUOTA -> CooldownMessageClass.QUOTA
-            BILLING -> CooldownMessageClass.ACCOUNT
+            BILLING, AUTH -> CooldownMessageClass.ACCOUNT
         }
 }
 

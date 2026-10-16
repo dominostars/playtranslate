@@ -174,10 +174,8 @@ class PtCloudFrameReader(
                 if (outcome is TranslationOutcome.Translated) translations.settle(outcome.byGroup)
                 else translations.settle()
             } catch (e: CancellationException) {
-                // Cancelling these translations (the core does on no text and
-                // on a same-language pair) must stop part 2's read too, or
-                // its socket stays open until the server answers.
-                response.translation.cancel()
+                // Part 2's read is stopped by the completion handler below,
+                // which runs whether or not this body started.
                 throw e
             } catch (t: Throwable) {
                 // A bug in this block: nothing recorded or reported, and never
@@ -195,7 +193,19 @@ class PtCloudFrameReader(
         // completion handler rather than a finally: a job cancelled before
         // its body runs never reaches the body's finally. A no-op when the
         // body already settled.
-        job.invokeOnCompletion { translations.settle() }
+        //
+        // Cancelled (a consumer dropped the reading: the core on no text and
+        // on a same-language pair, a tool's superseded cycle), part 2's read
+        // is cancelled with it, or its socket stays open until the server
+        // answers and, since that read is a child of the caller's job too,
+        // the caller's job stays alive until then (the camera's acquire
+        // gate waits on its job). Here and not in the body's catch, so a
+        // cancel that lands before the body starts stops it too. A frame
+        // the cache answered is left to end by itself, as above.
+        job.invokeOnCompletion { cause ->
+            if (cause is CancellationException && !answeredByCache) response.translation.cancel()
+            translations.settle()
+        }
         job.start()
 
         if (answeredByCache) {

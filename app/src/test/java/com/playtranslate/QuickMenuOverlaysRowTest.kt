@@ -191,10 +191,10 @@ class QuickMenuOverlaysRowTest {
         assertNull(svc.liveFlavor)
     }
 
-    // Codex: the PlayTranslate Cloud strip follows the running session's
-    // tier, and the row switches it with the menu up. No key can be stored here, so every drawing reads
-    // unavailable; a redraw is seen by setting the other value first.
-    @Test fun `the row draws the cloud strip again from the session's new tier`() {
+    // The PlayTranslate Cloud strip does not depend on the running session's
+    // tier (every tier reads through the same router), so the row leaves it
+    // as the network last drew it.
+    @Test fun `the row leaves the cloud strip alone`() {
         prefs.ptCloudEnabled = true
         val menu = openQuickMenu()
         assertEquals(OverlayFlavor.TRANSLATION, svc.liveFlavor)
@@ -203,6 +203,6 @@ class QuickMenuOverlaysRowTest {
         menu.onCycleOverlayMode!!.invoke()
 
         assertEquals(OverlayFlavor.FURIGANA, svc.liveFlavor)
-        assertFalse("drawn again", menu.cloudAvailable)
+        assertTrue("not drawn again", menu.cloudAvailable)
     }
 }

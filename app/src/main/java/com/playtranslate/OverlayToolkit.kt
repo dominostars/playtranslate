@@ -8,6 +8,7 @@ import android.graphics.Rect
 import android.text.TextPaint
 import android.util.Log
 import com.playtranslate.language.HintTextAnnotation
+import com.playtranslate.translation.GroupTranslation
 import com.playtranslate.language.SourceLanguageEngine
 import com.playtranslate.language.hintAnnotations
 import com.playtranslate.language.withFrontierHeld
@@ -999,7 +1000,7 @@ object OverlayToolkit {
 
 /** These boxes with [known]'s translations: box i takes `known[i]`'s text and
  *  backend name when it is not null, and stays as it is otherwise. */
-internal fun List<TextBox>.filledFrom(known: List<CaptureService.GroupTranslation?>): List<TextBox> =
+internal fun List<TextBox>.filledFrom(known: List<GroupTranslation?>): List<TextBox> =
     mapIndexed { i, box ->
         known.getOrNull(i)?.let { box.copy(translatedText = it.text, backendDisplayName = it.backendDisplayName) } ?: box
     }

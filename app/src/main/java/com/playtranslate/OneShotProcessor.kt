@@ -3,6 +3,7 @@ package com.playtranslate
 import android.graphics.Bitmap
 import android.text.TextPaint
 import com.playtranslate.language.SourceLanguageEngine
+import com.playtranslate.translation.GroupTranslation
 import com.playtranslate.ui.TextBox
 import androidx.core.graphics.scale
 
@@ -48,11 +49,11 @@ class FuriganaOneShotProcessor(
  *  the first paint (skeletons, and the cached groups translated) and then the
  *  final boxes. */
 internal class TranslationOneShotProcessor(
-    private val atOnce: List<CaptureService.GroupTranslation?>,
+    private val atOnce: List<GroupTranslation?>,
     private val translateFn: suspend (
         List<String>,
-        suspend (List<CaptureService.GroupTranslation?>) -> Unit,
-    ) -> List<CaptureService.GroupTranslation>,
+        suspend (List<GroupTranslation?>) -> Unit,
+    ) -> List<GroupTranslation>,
 ) : OneShotProcessor {
     override suspend fun buildBoxes(
         ocrResult: OcrManager.OcrResult,

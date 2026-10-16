@@ -295,11 +295,13 @@ class ImageReviewController(
     /** Read settings changed (source language, OCR engine — the gear menu
      *  or the slow-OCR rescue): re-read the SAME retained page under the
      *  new selections. Every cached page's text is stale under the new
-     *  settings — the page cache clears wholesale. */
-    fun refreshReview() {
+     *  settings — the page cache clears wholesale. [deviceOnly]: the change
+     *  was a device engine picked for this page, which then holds for the
+     *  page ([FrozenReviewPanel.refreshAfterSettings]). */
+    fun refreshReview(deviceOnly: Boolean = false) {
         if (!isReviewing) return
         pageResults.clear()
-        panel.refreshAfterSettings()
+        panel.refreshAfterSettings(deviceOnly)
     }
 
     /** X or system back: route through the panel's dismiss so every exit

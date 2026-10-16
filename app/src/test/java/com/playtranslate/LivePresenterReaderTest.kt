@@ -58,6 +58,9 @@ class LivePresenterReaderTest {
 
     @Before fun setUp() {
         ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+        // The cache is the process's one (TranslationCache.shared): every
+        // cell starts from the empty cache a fresh process has.
+        TranslationCache.shared.resetForTest()
         TranslationBackendRegistry.init(listOf(waterfall))
         built = Robolectric.buildService(CaptureService::class.java).create()
         service = built!!.get()
@@ -66,6 +69,7 @@ class LivePresenterReaderTest {
     @After fun tearDown() {
         built?.destroy()
         built = null
+        TranslationCache.shared.resetForTest()
         TranslationBackendRegistry.close()
         ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE).edit().clear().commit()
     }

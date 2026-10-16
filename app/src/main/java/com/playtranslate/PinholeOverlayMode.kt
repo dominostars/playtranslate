@@ -1,5 +1,6 @@
 package com.playtranslate
 
+import com.playtranslate.ocr.FrameReaders
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.LiveCaptureSource
 
@@ -191,7 +192,7 @@ class PinholeOverlayMode(
         // Warm PlayTranslate Cloud for the first cycle's read (step 6). This
         // tier's later reads go out without one, even one that follows a
         // stretch parked on a static screen.
-        service.warmCloudForLiveRead()
+        FrameReaders.warm(Prefs(service).sourceLangId, deviceOnly = false)
         engine.scheduleNext()
     }
 

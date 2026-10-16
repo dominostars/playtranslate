@@ -8,6 +8,7 @@ import com.playtranslate.cloud.PtCloudTestSupport.onExecutor
 import com.playtranslate.translation.BackendFailure
 import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.translation.CooldownCause
+import com.playtranslate.translation.CooldownMessageClass
 import com.playtranslate.translation.CooldownState
 import com.playtranslate.translation.OnlineAttempt
 import com.playtranslate.translation.TranslationBackendRegistry
@@ -102,18 +103,23 @@ class PtCloudFailureMappingTest {
         assertEquals(description, cooldown.unavailableDescription())
     }
 
-    @Test fun `401 is AUTH, never a cooldown`() {
+    @Test fun `401 is AUTH on the rate-limit ladder, as a bad key`() {
         assertRow(http(401, """{"error":"unauthorized"}"""), BackendFailureKind.AUTH, 401, reachedServer = true)
-        assertNoCooldown()
+        assertCooldown(now + 60_000, CooldownCause.AUTH, "Bad key")
+        assertEquals(CooldownMessageClass.ACCOUNT, CooldownCause.AUTH.messageClass)
     }
 
-    @Test fun `404 with an empty body is NOT_RUNNING, no cooldown`() {
+    @Test fun `404 with an empty body is NOT_RUNNING on the rate-limit ladder, as not running`() {
         assertRow(http(404, ""), BackendFailureKind.NOT_RUNNING, 404, reachedServer = true)
-        assertNoCooldown()
-        // Twice in a row still nothing: the stopped service is not a failure
-        // to back off from.
+        assertCooldown(now + 60_000, CooldownCause.NOT_RUNNING, "Not running")
+        assertEquals(CooldownMessageClass.TRANSIENT, CooldownCause.NOT_RUNNING.messageClass)
+        // A second answer while the cooldown runs is absorbed (the ladder's
+        // rule for a batch's siblings); once it expires the next one climbs.
         assertRow(http(404, ""), BackendFailureKind.NOT_RUNNING, 404, reachedServer = true)
-        assertNoCooldown()
+        assertCooldown(now + 60_000, CooldownCause.NOT_RUNNING, "Not running")
+        clock.addAndGet(61_000)
+        assertRow(http(404, ""), BackendFailureKind.NOT_RUNNING, 404, reachedServer = true)
+        assertCooldown(now + 10 * 60_000, CooldownCause.NOT_RUNNING, "Not running")
     }
 
     @Test fun `404 with a JSON body is a rejected request, no cooldown`() {

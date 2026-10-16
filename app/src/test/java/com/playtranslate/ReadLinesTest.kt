@@ -2,6 +2,7 @@ package com.playtranslate
 
 import android.graphics.Bitmap
 import android.graphics.Rect
+import com.playtranslate.camera.render.SnapshotCore
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ocr.FallbackFrameReader
@@ -121,6 +122,27 @@ class ReadLinesTest {
             assertEquals("d0-7", request.frameId)
         }
         assertEquals("zh", ReadRequest.sameLanguage(SourceLangId.ZH_HANT, 0, "d0-7").targetLang)
+    }
+
+    @Test fun `the engine's facts default and ride the same-language request when given`() {
+        val plain = ReadRequest(SourceLangId.JA, screenshotWidth = 10, targetLang = "en", frameId = "d0-1")
+        assertEquals(OcrTokenScope.GLOBAL, plain.scope)
+        assertNull(plain.regionPreFilter)
+        assertEquals(false, plain.documentLayoutBias)
+        assertNull("no device-OCR hook unless a consumer sets one", plain.beforeDeviceOcr)
+        val same = ReadRequest.sameLanguage(SourceLangId.JA, screenshotWidth = 10, frameId = "cam-1")
+        assertEquals(OcrTokenScope.GLOBAL, same.scope)
+        assertNull(same.regionPreFilter)
+        assertEquals(false, same.documentLayoutBias)
+        val filter = SnapshotCore.regionPreFilter(dropEdgeClipped = false, clipTo = null, clipFrameW = 10, clipFrameH = 10, tag = "t")
+        val tool = ReadRequest.sameLanguage(
+            SourceLangId.JA, screenshotWidth = 10, frameId = "cam-2",
+            scope = OcrTokenScope.CAMERA, regionPreFilter = filter, documentLayoutBias = true,
+        )
+        assertEquals(OcrTokenScope.CAMERA, tool.scope)
+        assertTrue(tool.regionPreFilter === filter)
+        assertEquals(true, tool.documentLayoutBias)
+        assertEquals("ja", tool.targetLang)
     }
 
     @Test fun `a reader that cannot read propagates its failure`() = runBlocking {

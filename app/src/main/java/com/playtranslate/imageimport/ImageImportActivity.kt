@@ -509,14 +509,20 @@ class ImageImportActivity : AppCompatActivity() {
                 OcrModelManager.selectedBackend(
                     this, prefs.sourceLangId, OcrTokenScope.IMPORT,
                 )?.selectionToken ?: ""
-            )
+            ) +
+            // The PlayTranslate Cloud switch picks the reader, as the engine
+            // does (see the camera's langKey).
+            "|cloud=${prefs.ptCloudEnabled}"
 
     /** The read settings changed (LanguageSetupActivity return, an OCR pick,
-     *  a completed download): re-read the retained image under them. langKey
-     *  is stamped here so onResume's diff doesn't double-fire. */
-    private fun refreshAfterReadSettingsChange() {
+     *  a completed download): re-read the retained image under them.
+     *  [deviceOnly]: the change was the user's pick of a device engine for
+     *  this page, which reads with it for the rest of its review (the
+     *  service's re-OCR rule). langKey is stamped here so onResume's diff
+     *  doesn't double-fire. */
+    private fun refreshAfterReadSettingsChange(deviceOnly: Boolean = false) {
         sessionLangKey = langKey()
-        controller.refreshReview()
+        controller.refreshReview(deviceOnly)
     }
 
     /** The pill gear menu's OCR row: the shared picker in its activity form.
@@ -533,7 +539,7 @@ class ImageImportActivity : AppCompatActivity() {
             this,
             srcId,
             token,
-            onReOcr = { refreshAfterReadSettingsChange() },
+            onReOcr = { refreshAfterReadSettingsChange(deviceOnly = true) },
             onDownload = { backend ->
                 // IMPORT scope: the download screen persists the import
                 // token, only on verified success — the global/live engine

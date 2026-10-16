@@ -4,8 +4,10 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
 import com.playtranslate.OcrManager
+import com.playtranslate.OcrTokenScope
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.ocr.core.RegionPreFilter
 import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.ocr.registry.ocrLabel
 import com.playtranslate.ocr.registry.selectionToken
@@ -214,28 +216,63 @@ class FrameReading(
     val fallbackFrom: BackendFailure? = null,
 )
 
-/** What a read needs besides the pixels. [screenshotWidth] is the full frame's width
- *  (the grouping's menu-split heuristic reads it); [frameId] names the read in a
- *  reader's own logs and requests. */
+/**
+ * What a read needs besides the pixels. [screenshotWidth] is the full frame's
+ * width (the grouping's menu-split heuristic reads it); [frameId] names the
+ * read in a reader's own logs and requests.
+ *
+ * The last three are the device engine's facts, which a device read passes
+ * to [OcrManager.recognise] and a reader with no engine of its own ignores
+ * ([com.playtranslate.cloud.PtCloudFrameReader]; the server has no option
+ * for any of them): [scope] names whose OCR selection runs, the global one
+ * or a tool's own (the camera's, the import tool's), and keys a no-text
+ * read's attribution to the same selection; [regionPreFilter] is a
+ * composite engine's recognition-cost saver for a crop region (the group
+ * gate stays the caller's); [documentLayoutBias] is the import tool's
+ * page-rhythm grouping prior for declared documents.
+ *
+ * [beforeDeviceOcr] is called by the device reader, whether it reads the
+ * frame outright or as a cloud read's fallback ([FallbackFrameReader] hands
+ * it the same request), just before its engine runs, on the caller's
+ * dispatcher and in the caller's job: where a consumer starts its slow-OCR
+ * timer (so the time a cloud attempt spent on the network never counts and
+ * a fallback's device read does) and where the camera waits for its engine
+ * prewarm. A reader with no device engine never calls it.
+ */
 data class ReadRequest(
     val sourceLangId: SourceLangId,
     val screenshotWidth: Int,
     val targetLang: String,
     val frameId: String,
+    val scope: OcrTokenScope = OcrTokenScope.GLOBAL,
+    val regionPreFilter: RegionPreFilter? = null,
+    val documentLayoutBias: Boolean = false,
+    val beforeDeviceOcr: (suspend () -> Unit)? = null,
 ) {
     companion object {
         /** The request of a consumer that wants the frame's text and no
-         *  translation (the drag lookup's [readLines], the furigana tier):
-         *  the source's own translationCode as the target, the
-         *  same-language pair, for which a translating reader asks its
-         *  service for none ([com.playtranslate.cloud.PtCloudFrameReader]
-         *  sends `target` equal to `source`, and the server skips
-         *  translation). */
-        fun sameLanguage(sourceLangId: SourceLangId, screenshotWidth: Int, frameId: String) = ReadRequest(
+         *  translation (the drag lookup's [readLines], the furigana tier,
+         *  the camera's furigana acquire): the source's own translationCode
+         *  as the target, the same-language pair, for which a translating
+         *  reader asks its service for none
+         *  ([com.playtranslate.cloud.PtCloudFrameReader] sends `target`
+         *  equal to `source`, and the server skips translation). The
+         *  engine's facts default as in the constructor. */
+        fun sameLanguage(
+            sourceLangId: SourceLangId,
+            screenshotWidth: Int,
+            frameId: String,
+            scope: OcrTokenScope = OcrTokenScope.GLOBAL,
+            regionPreFilter: RegionPreFilter? = null,
+            documentLayoutBias: Boolean = false,
+        ) = ReadRequest(
             sourceLangId,
             screenshotWidth = screenshotWidth,
             targetLang = SourceLanguageProfiles[sourceLangId].translationCode,
             frameId = frameId,
+            scope = scope,
+            regionPreFilter = regionPreFilter,
+            documentLayoutBias = documentLayoutBias,
         )
     }
 }
@@ -308,17 +345,25 @@ class DeviceFrameReader(
     private val context: Context,
 ) : FrameReader {
 
-    override suspend fun read(bitmap: Bitmap, request: ReadRequest): FrameReading =
-        withContext(Dispatchers.Default) {
+    override suspend fun read(bitmap: Bitmap, request: ReadRequest): FrameReading {
+        // On the caller's dispatcher, before the hop: the engine is about to
+        // run (the slow-OCR timers start here, the camera's prewarm is
+        // awaited here).
+        request.beforeDeviceOcr?.invoke()
+        return withContext(Dispatchers.Default) {
             val ocr = ocrManager.recognise(
                 bitmap, request.sourceLangId, screenshotWidth = request.screenshotWidth,
+                regionPreFilter = request.regionPreFilter,
+                scope = request.scope,
+                documentLayoutBias = request.documentLayoutBias,
             )
             // Text found: the engine that produced it (null for the empty engine, which
             // keeps today's null provenance). Nothing found: the engine that looked.
             val attribution = if (ocr != null) attributionOf(ocr, context)
-                else noTextAttribution(context, request.sourceLangId)
+                else noTextAttribution(context, request.sourceLangId, request.scope)
             FrameReading(ocr, attribution, translations = null)
         }
+    }
 
     companion object {
         /** The attribution of a device OCR result: its [OcrManager.OcrResult.engineBackend]'s
@@ -339,12 +384,16 @@ class DeviceFrameReader(
 
         /** The attribution of a device read that found NO text, where there is no
          *  [OcrManager.OcrResult] to read the engine from: the engine that WAS selected
-         *  (and ran, finding nothing) for [srcId], so the "switch OCR tool" gear can
-         *  re-OCR the capture with another one. Null when no OCR backend is available
-         *  (a no-floor language on a 32-bit device). Public because the live tiers'
-         *  no-text panel state derives from it. */
-        fun noTextAttribution(ctx: Context, srcId: SourceLangId): ReaderAttribution? {
-            val backend = OcrModelManager.selectedBackend(ctx, srcId) ?: return null
+         *  (and ran, finding nothing) for [srcId] under [scope], so the "switch OCR
+         *  tool" gear can re-OCR the capture with another one. Null when no OCR
+         *  backend is available (a no-floor language on a 32-bit device). Public
+         *  because the live tiers' no-text panel state derives from it. */
+        fun noTextAttribution(
+            ctx: Context,
+            srcId: SourceLangId,
+            scope: OcrTokenScope = OcrTokenScope.GLOBAL,
+        ): ReaderAttribution? {
+            val backend = OcrModelManager.selectedBackend(ctx, srcId, scope) ?: return null
             return ReaderAttribution(backend.ocrLabel(ctx), backend.selectionToken)
         }
     }

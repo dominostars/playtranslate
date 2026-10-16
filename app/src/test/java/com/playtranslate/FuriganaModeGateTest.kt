@@ -9,6 +9,7 @@ import android.view.Display
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.capture.CapturedFrame
 import com.playtranslate.capture.LiveCaptureSource
+import com.playtranslate.ocr.FrameReaders
 import com.playtranslate.ocr.FrameReader
 import com.playtranslate.ocr.FrameReading
 import com.playtranslate.ocr.ReadRequest
@@ -32,7 +33,7 @@ import java.time.Duration
  * follow-up after a moving skip, full cadence on a persistently animating
  * block, the page keys dropped by a read that found no text, and the panel's
  * confirming read, once. The read is a scripted [FrameReader] through
- * [CaptureService.frameReaderOverrideForTest]; frames are a CLEAN task
+ * [FrameReaders.overrideForTest]; frames are a CLEAN task
  * mirror's (stamped free of our overlays), so no patch and no clean capture
  * stand between the frame and the read. English source and target, so the
  * panel's offer takes the OCR-only bypass and commits without a backend.
@@ -109,7 +110,7 @@ class FuriganaModeGateTest {
         svc = built.get()
         // The clean path reads only on a configured service.
         svc.configureSaved(Display.DEFAULT_DISPLAY)
-        svc.frameReaderOverrideForTest = reader
+        FrameReaders.overrideForTest = reader
         mode = FuriganaMode(svc, Display.DEFAULT_DISPLAY, liveSource = { loop })
         mode.start()
         idle(50)
@@ -117,6 +118,7 @@ class FuriganaModeGateTest {
     }
 
     @After fun tearDown() {
+        FrameReaders.overrideForTest = null
         mode.stop()
         MainActivity.isInForeground = false
         MainActivity.isInMultiWindowMode = false

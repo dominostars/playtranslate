@@ -164,4 +164,57 @@ class TranslationCacheTest {
         cache.reconcilePreferredBackend(identity(str = false))
         assertNull(cache[key("装備")])
     }
+
+    // ── The process's one cache ─────────────────────────────────────────
+
+    @Test fun `shared is one instance, and resetForTest drops entries and the identity`() {
+        assertTrue(TranslationCache.shared === TranslationCache.shared)
+        val cache = TranslationCache()
+        cache[key("hello")] = "こんにちは" to null
+        cache.reconcilePreferredBackend("a")
+        cache.resetForTest()
+        assertNull("entries dropped", cache[key("hello")])
+        // The identity is dropped too: the next reconcile is a first call,
+        // which never clears.
+        cache[key("again")] = "また" to null
+        cache.reconcilePreferredBackend("b")
+        assertEquals("また" to null, cache[key("again")])
+    }
+
+    @Test fun `a configuration clear ends the generation a write was read under, an identity clear does not`() {
+        val cache = TranslationCache()
+        val gen = cache.configGeneration
+        assertTrue(cache.setIfConfigUnchanged(key("a"), "A" to null, gen))
+        assertEquals("A" to null, cache[key("a")])
+
+        cache.reconcilePreferredBackend("x")
+        cache.reconcilePreferredBackend("y") // clears the entries, the call's own routing change
+        assertNull(cache[key("a")])
+        assertEquals("the identity's clear is not a configuration clear", gen, cache.configGeneration)
+        assertTrue(cache.setIfConfigUnchanged(key("b"), "B" to null, gen))
+
+        cache.clear()
+        assertEquals(gen + 1, cache.configGeneration)
+        assertFalse("made under the configuration the clear ended", cache.setIfConfigUnchanged(key("c"), "C" to null, gen))
+        assertNull(cache[key("c")])
+        assertTrue(cache.setIfConfigUnchanged(key("c"), "C" to null, cache.configGeneration))
+    }
+
+    @Test fun `concurrent readers and writers see a consistent cache`() {
+        val cache = TranslationCache(capacity = 64)
+        val threads = (0 until 4).map { t ->
+            Thread {
+                repeat(2_000) { i ->
+                    val k = key("t$t-${i % 100}")
+                    cache[k] = "v" to null
+                    cache[k]
+                    cache.contains(k)
+                    if (i % 500 == 0) cache.reconcilePreferredBackend("id-${i / 500}")
+                }
+            }
+        }
+        threads.forEach { it.start() }
+        threads.forEach { it.join() }
+        assertTrue(cache.size() <= 64)
+    }
 }

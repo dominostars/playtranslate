@@ -13,14 +13,31 @@ package com.playtranslate
  * flipped) aren't shadowed into the new one. Pair changes are NOT handled
  * here — the key does that job.
  *
- * Not thread-safe. [com.playtranslate.CaptureService] mutates exclusively
- * from its `serviceScope` (Main-dispatched) with network calls dispatched
- * to IO via `withContext`, so read/write ordering on the cache is
- * implicitly serial.
+ * One instance serves the whole process ([shared]): the capture service's
+ * cycles, the live tiers, the camera tool, the import tool and
+ * select-to-translate all read and write it through
+ * [com.playtranslate.translation.GroupTranslator], so a translation made on
+ * one surface serves the next and a settings change that clears it clears
+ * it for every surface. Those consumers run on different dispatchers (the
+ * service on Main, the tools on Default), so every method is synchronized
+ * on the instance; [reconcilePreferredBackend] is one atomic step, and
+ * [get] too, since the access-ordered LRU moves an entry on every read.
+ *
+ * A translate call can be in flight when the settings page clears the cache
+ * ([clear]: a configuration changed under the same routing identity, an
+ * LLM's model, key or URL, the cloud's key or switch), and its result was
+ * made under the old configuration. [configGeneration] counts those clears;
+ * a call reads it at its lookup and writes through [setIfConfigUnchanged],
+ * so such a result is shown but never cached. The identity reconcile's own
+ * clear does not count: a result that arrives after it came from the new
+ * routing (the waterfall fell through to the backend now preferred).
  */
 class TranslationCache(private val capacity: Int = 500) {
 
     companion object {
+        /** The process's one cache. */
+        val shared = TranslationCache()
+
         /**
          * Composite routing identity for [reconcilePreferredBackend]. Beyond
          * the preferred online backend id, it folds in the two user-actionable
@@ -58,14 +75,34 @@ class TranslationCache(private val capacity: Int = 500) {
 
     private var lastPreferredBackend: String? = null
 
+    private var generation = 0
+
+    /** The number of configuration clears so far ([clear]); see the class doc. */
+    val configGeneration: Int
+        @Synchronized get() = generation
+
+    @Synchronized
     operator fun get(key: Key): Pair<String, String?>? = lru[key]
 
+    /** [set], unless a configuration clear ([clear]) happened since the
+     *  caller read [configGeneration] as [generation]: the value was made
+     *  under the configuration that clear ended. Returns whether it wrote. */
+    @Synchronized
+    fun setIfConfigUnchanged(key: Key, value: Pair<String, String?>, generation: Int): Boolean {
+        if (generation != this.generation) return false
+        lru[key] = value
+        return true
+    }
+
+    @Synchronized
     operator fun set(key: Key, value: Pair<String, String?>) {
         lru[key] = value
     }
 
+    @Synchronized
     operator fun contains(key: Key): Boolean = key in lru
 
+    @Synchronized
     fun size(): Int = lru.size
 
     /**
@@ -75,6 +112,7 @@ class TranslationCache(private val capacity: Int = 500) {
      * the previous backend. No-op on first call and when the preference
      * hasn't changed.
      */
+    @Synchronized
     fun reconcilePreferredBackend(preferredBackend: String) {
         if (lastPreferredBackend != null && lastPreferredBackend != preferredBackend) {
             lru.clear()
@@ -89,7 +127,19 @@ class TranslationCache(private val capacity: Int = 500) {
      * Without this, cached entries produced by the old config keep getting
      * served after the user explicitly switched to a different model.
      */
+    @Synchronized
     fun clear() {
         lru.clear()
+        generation++
+    }
+
+    /** For tests of the [shared] instance: every entry and the routing
+     *  identity dropped, so a test starts from the empty cache a fresh
+     *  process has. */
+    @Synchronized
+    fun resetForTest() {
+        lru.clear()
+        lastPreferredBackend = null
+        generation++
     }
 }

@@ -37,7 +37,7 @@ import com.playtranslate.model.FrequencyTag
 import com.playtranslate.yomitan.YomitanDataStore
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.selectHeadword
-import com.playtranslate.ocr.DeviceFrameReader
+import com.playtranslate.ocr.FrameReaders
 import com.playtranslate.ocr.readLines
 import kotlinx.coroutines.*
 import java.io.File
@@ -1277,7 +1277,7 @@ class DragLookupController(
         // Warm PlayTranslate Cloud for readDragLines' read below: a fresh
         // capture, so it reads in the source language from the same pref and
         // never device-only.
-        CaptureService.instance?.warmCloud(Prefs(context).sourceLangId, deviceOnly = false)
+        FrameReaders.warm(Prefs(context).sourceLangId, deviceOnly = false)
 
         // maskOwnWindows = false: the lens looks up words wherever the
         // finger is, our own pages included, so this frame must carry our
@@ -1335,17 +1335,16 @@ class DragLookupController(
         pretokenizeLines(lines)
     }
 
-    /** The drag's lines: through PlayTranslate Cloud when the router would
-     *  send a capture there (a frame it cannot read falls back to the device),
-     *  else on the device, and on the device ([DeviceFrameReader], the same
-     *  read the service's own device reader makes) when no service is running.
+    /** The drag's lines: through PlayTranslate Cloud when the router
+     *  ([FrameReaders.readerFor]) would send a capture there (a frame it
+     *  cannot read falls back to the device), else on the device; the same
+     *  read every other consumer makes, with or without a running service.
      *  Called directly in the OCR job, never inside a scoped builder, since a
      *  cloud read's later work is a child of the calling job. */
     private suspend fun readDragLines(bitmap: Bitmap): List<OcrManager.OcrLine>? {
         val srcId = Prefs(context).sourceLangId
-        val reader = CaptureService.instance?.frameReaderFor(srcId, deviceOnly = false)
-            ?: DeviceFrameReader(ocrManager, context)
-        return reader.readLines(bitmap, srcId, CaptureService.frameIdFor(displayId))
+        return FrameReaders.readerFor(srcId, deviceOnly = false)
+            .readLines(bitmap, srcId, FrameReaders.frameId("drag-d$displayId"))
     }
 
     /** Run on the main thread once the drag-start bitmap is in hand. The

@@ -4,11 +4,10 @@ import android.content.Context
 import android.util.Log
 import androidx.annotation.VisibleForTesting
 import com.playtranslate.CaptureService
-import com.playtranslate.OverlayFlavor
+import com.playtranslate.TranslationCache
+import com.playtranslate.translation.GroupTranslator
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.net.NetworkConnectivity.InternetState
-import com.playtranslate.translation.BackendFailure
-import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.translation.BackendId
 import com.playtranslate.translation.CooldownCause
 import com.playtranslate.translation.CooldownState
@@ -24,18 +23,20 @@ import com.playtranslate.translation.TranslationErrors
  * One [CooldownState] covers the whole service, OCR and translation alike: a
  * client key cannot ask the server to skip translation, so a translation-side
  * cooldown (the server's translator rate-limited) keeps the cloud out of
- * capture too until it expires. It is not in [TranslationBackendRegistry]
- * (it is a frame reader, not a waterfall backend), so the registry's
- * connectivity fan-out and cooldown resets don't reach it; the app wires
- * [onConnectivityRestored], and the settings page calls [onToggled] and
- * [onCredentialsSaved].
+ * capture too until it expires. A stopped pod and a refused key cool down
+ * too ([com.playtranslate.cloud.PtCloudErrors.classifyHttp]), so every
+ * reader that reads again and again (a live tier, the camera's acquires)
+ * and every capture stay on the device together until the cooldown ends or
+ * a gesture resets it. It is not in [TranslationBackendRegistry] (it is a
+ * frame reader, not a waterfall backend), so the registry's connectivity
+ * fan-out and cooldown resets don't reach it; the app wires
+ * [onConnectivityRestored], and the settings page calls [onToggled],
+ * [onCredentialsSaved] and [onHealthRunning].
  *
- * Beside the cooldown it keeps one live-session fact, [liveSessionBlocked]:
- * the service refused a live read in a way only the user can change.
- *
- * Both feed the router's decision, which lives here ([refusal]) so that
- * every reader asks the same question: the router, its warm call, and the
- * floating menu's header ([wouldTakeNextCapture]).
+ * The cooldown feeds the router's decision, which lives here ([refusal]) so
+ * that every reader asks the same question: the router
+ * ([com.playtranslate.ocr.FrameReaders]), its warm call, and the floating
+ * menu's header ([wouldTakeNextCapture]).
  */
 object PtCloudService {
 
@@ -79,63 +80,10 @@ object PtCloudService {
     fun unavailableCause(): CooldownCause? = cooldown.unavailableCause()
 
     /**
-     * True once the service answered a live read with "not running" (its pod
-     * is stopped) or "bad key" during the current live session: every later
-     * live read of that session stays on the device. Set by
-     * [blockForLiveSession], which [recordLiveRead] calls (that rule, and why,
-     * is its kdoc's); cleared when live mode starts ([onLiveSessionStarted])
-     * and by the user's gestures that make a retry worth it ([onToggled],
-     * [onCredentialsSaved]).
-     *
-     * Capture-once and the press-and-hold overlay never read it: their own
-     * rule is to try the cloud and fall back to the device for that capture.
-     * The floating menu's header reads it only while a live tier runs, as
-     * every tier's live read does ([wouldTakeNextCapture]).
-     */
-    @Volatile
-    var liveSessionBlocked: Boolean = false
-        private set
-
-    /**
-     * Acts on one live read's outcome ([com.playtranslate.CaptureService.runLiveOcrRead]):
-     * [fallbackFrom] is why the cloud could not read the frame, when the
-     * device read it instead ([com.playtranslate.ocr.FrameReading.fallbackFrom]).
-     * A not-running or bad-key answer ([BackendFailureKind.NOT_RUNNING],
-     * [BackendFailureKind.AUTH]) blocks the rest of the session
-     * ([blockForLiveSession]): the pod does not start by itself and a key does
-     * not fix itself, so a request per live cycle while either holds would be
-     * waste, and each would report the same failure again. Any other kind
-     * does nothing here (transport failures, server errors and rate limits
-     * keep the cooldown's rules, [isCoolingDown]), and neither does null: the
-     * cloud read the frame, the read never went to it, or its failure carried
-     * no classification.
-     */
-    fun recordLiveRead(fallbackFrom: BackendFailure?) {
-        val kind = fallbackFrom?.kind
-        if (kind == BackendFailureKind.NOT_RUNNING || kind == BackendFailureKind.AUTH) {
-            blockForLiveSession()
-        }
-    }
-
-    /** Keeps the rest of the current live session on the device
-     *  ([liveSessionBlocked]). Logs the first time per session only. */
-    fun blockForLiveSession() {
-        if (liveSessionBlocked) return
-        liveSessionBlocked = true
-        Log.i(TAG, "live session: cloud reads stay on the device")
-    }
-
-    /** A live session started ([com.playtranslate.CaptureService.startLive]):
-     *  its reads try the cloud again ([liveSessionBlocked]). */
-    fun onLiveSessionStarted() {
-        liveSessionBlocked = false
-    }
-
-    /**
      * The router's one decision: why a read of [srcId] with [deviceOnly] would
      * stay on the device, or null when it would go to PlayTranslate Cloud
-     * ([com.playtranslate.CaptureService.frameReaderFor]'s table). The router
-     * routes by it, [com.playtranslate.CaptureService.warmCloud] warms by it
+     * ([com.playtranslate.ocr.FrameReaders.readerFor]'s table). The router
+     * routes by it, [com.playtranslate.ocr.FrameReaders.warm] warms by it
      * (so a warm goes out exactly when the read that follows would go to the
      * cloud), and the floating menu's header shows it
      * ([wouldTakeNextCapture]).
@@ -144,8 +92,8 @@ object PtCloudService {
      * when it keeps the read on the device, so a read that could never go to
      * the cloud reads nothing else, the key's AndroidKeyStore decryption
      * included: the switch, off in every release build, then the caller's
-     * device-only statement, which a blocked live session makes about once a
-     * second. Only then are the
+     * device-only statement (a re-OCR, a hold that needs no translation or
+     * runs beside live mode). Only then are the
      * key (whose read decrypts it), the source and the cooldown read, all
      * three, and judged by [PtCloudRouting.eligible]; the first of them, in
      * that order, that refuses is the reason.
@@ -174,26 +122,20 @@ object PtCloudService {
      * internet" rule, [com.playtranslate.net.NetworkConnectivity.isAvailable])
      * and [refusal] finds nothing against that capture's read of [srcId].
      *
-     * While live mode runs ([liveFlavor], [com.playtranslate.CaptureService.liveFlavor],
-     * not null), the next capture is its next read, which every tier makes
-     * through [com.playtranslate.CaptureService.runLiveOcrRead]: device-only
-     * once the service refused the session ([liveSessionBlocked]). The
-     * furigana tier's change gate may skip raw ticks, in which case the
-     * next capture is the first one it lets through, read the same way.
-     * Without live mode the next capture is a one-shot, whose read states
-     * nothing (a re-OCR states device-only, but re-reads a capture already
-     * made). The network is read first, so a device with none decrypts no
-     * key.
+     * The next capture is a one-shot's read, or, while live mode runs, the
+     * running tier's next read ([com.playtranslate.CaptureService.runLiveOcrRead]);
+     * neither states device-only (a re-OCR does, but re-reads a capture
+     * already made; a hold beside live mode does, but is not the next
+     * capture), so the decision is the same for both. The network is read
+     * first, so a device with none decrypts no key.
      */
     fun wouldTakeNextCapture(
         config: PtCloudConfig,
         srcId: SourceLangId,
-        liveFlavor: OverlayFlavor?,
         internet: InternetState,
     ): Boolean {
         if (internet == InternetState.NONE) return false
-        val deviceOnly = liveFlavor != null && liveSessionBlocked
-        return refusal(config, srcId, deviceOnly) == null
+        return refusal(config, srcId, deviceOnly = false) == null
     }
 
     /** The device regained a network: drops a "Connection failed" cooldown
@@ -214,20 +156,33 @@ object PtCloudService {
      *  configuration that is gone. Main thread. */
     fun onCredentialsSaved() = resetForUserGesture()
 
+    /** The cloud page's health check found the service running: a cooldown
+     *  recorded while it was stopped ([CooldownCause.NOT_RUNNING]) describes
+     *  a state that is over, so it is dropped and a running live session
+     *  looks again now, as after a gesture. Nothing else is touched: the
+     *  check takes no key and asks for no translation, so Running says
+     *  nothing about a refused key or a spent quota, and the configuration
+     *  did not change, so the translation cache and the pill's errors stay.
+     *  Main thread. */
+    fun onHealthRunning() {
+        if (cooldown.unavailableCause() != CooldownCause.NOT_RUNNING) return
+        cooldown.resetCooldown()
+        CaptureService.instance?.refreshLiveOverlay()
+    }
+
     /** As [com.playtranslate.translation.OnlineServiceMutations.saveConfig]
      *  does for a waterfall service: drop the cooldown and both ladders,
      *  forget the pill's errors so a failure after the gesture shows again,
-     *  and clear the translation cache, which holds this service's
-     *  translations under the old configuration. A running live session
-     *  tries the cloud again too ([liveSessionBlocked]), and looks again
-     *  now: the gesture changes which reader the next read goes to, and the
-     *  furigana tier's change gate would otherwise keep the old reader's
-     *  result until the pixels move. */
+     *  and clear the translation cache (the process's one,
+     *  [TranslationCache.shared], so the camera's and the import tool's
+     *  translations under the old configuration go too). A running live
+     *  session looks again now: the gesture changes which reader the next
+     *  read goes to, and the furigana tier's change gate would otherwise
+     *  keep the old reader's result until the pixels move. */
     private fun resetForUserGesture() {
-        liveSessionBlocked = false
         cooldown.resetCooldown()
         TranslationErrors.forget(ID)
-        CaptureService.instance?.clearTranslationCache()
+        GroupTranslator.clearShared()
         CaptureService.instance?.refreshLiveOverlay()
     }
 
@@ -239,7 +194,7 @@ object PtCloudService {
 }
 
 /** Why a read stays on the device ([PtCloudService.refusal]). [logWord] names
- *  it in the router's log line ([com.playtranslate.CaptureService.frameReaderFor]);
+ *  it in the router's log line ([com.playtranslate.ocr.FrameReaders.readerFor]);
  *  the switch has none, so a release build, where it is always off, logs
  *  nothing per read. */
 enum class CloudRefusal(val logWord: String?) {

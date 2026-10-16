@@ -5,7 +5,10 @@ import com.playtranslate.OcrManager
 import com.playtranslate.language.OcrBackend
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.ocr.core.DetectedRegion
+import com.playtranslate.ocr.ReaderAttribution
 import com.playtranslate.ocr.core.OcrBox
+import com.playtranslate.language.SourceLangId
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -210,5 +213,32 @@ class SnapshotCoreTest {
         val (text, segments) = SnapshotCore.panelTextFor(ocr, listOf(kept))
         assertEquals("kept paragraph", text)
         assertTrue(segments.isNotEmpty())
+    }
+
+    // ── positionsOf ─────────────────────────────────────────────────────
+
+    @Test
+    fun positionsOfMapsKeptGroupsToTheirReaderIndexByIdentity() {
+        val a = group(text = "same")
+        val b = group(text = "same") // equal by value, another group
+        val c = group(text = "other")
+        val all = listOf(a, b, c)
+        assertEquals(listOf(2, 1), SnapshotCore.positionsOf(all, listOf(c, b)))
+        assertEquals(listOf(0, 1), SnapshotCore.positionsOf(all, listOf(a, b)))
+        assertEquals("a group not in the reading's maps to none", listOf<Int?>(null, 0), SnapshotCore.positionsOf(all, listOf(group(text = "new"), a)))
+        assertEquals(emptyList<Int?>(), SnapshotCore.positionsOf(all, emptyList()))
+    }
+
+    // ── snapshotProvenance ─────────────────────────────────────────────
+
+    @Test
+    fun provenanceComesFromTheReadingsAttribution() {
+        val prov = SnapshotCore.snapshotProvenance(ReaderAttribution("PlayTranslate Cloud", "ptcloud"), SourceLangId.ZH_HANT)!!
+        assertEquals("PlayTranslate Cloud", prov.engineLabel)
+        assertEquals("ptcloud", prov.engineToken)
+        assertEquals("the exact source, variant included", SourceLangId.ZH_HANT, prov.sourceLangId)
+        assertEquals(false, prov.frameIncludesSystemUi)
+        assertEquals(false, prov.frameIncludesOwnOverlays)
+        assertNull("no attribution, no provenance", SnapshotCore.snapshotProvenance(null, SourceLangId.JA))
     }
 }
