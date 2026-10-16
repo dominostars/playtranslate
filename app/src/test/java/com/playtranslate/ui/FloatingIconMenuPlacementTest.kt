@@ -31,7 +31,7 @@ import org.robolectric.Shadows.shadowOf
 class FloatingIconMenuPlacementTest {
 
     private val ctx: Context = ApplicationProvider.getApplicationContext()
-    private val menu = FloatingIconMenu(ctx).also { menu ->
+    private val menu = FloatingIconMenu(ctx, showCloudHeader = false).also { menu ->
         // Attached: the card's placement runs in a posted block, which a
         // view not in a window holds until it is attached.
         OwnWindows.manager(ctx)!!.addView(

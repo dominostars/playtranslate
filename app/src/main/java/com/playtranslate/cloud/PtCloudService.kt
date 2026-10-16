@@ -4,6 +4,9 @@ import android.content.Context
 import android.util.Log
 import androidx.annotation.VisibleForTesting
 import com.playtranslate.CaptureService
+import com.playtranslate.OverlayFlavor
+import com.playtranslate.language.SourceLangId
+import com.playtranslate.net.NetworkConnectivity.InternetState
 import com.playtranslate.translation.BackendFailure
 import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.translation.BackendId
@@ -29,6 +32,10 @@ import com.playtranslate.translation.TranslationErrors
  *
  * Beside the cooldown it keeps one live-session fact, [liveSessionBlocked]:
  * the service refused a live read in a way only the user can change.
+ *
+ * Both feed the router's decision, which lives here ([refusal]) so that
+ * every reader asks the same question: the router, its warm call, and the
+ * floating menu's header ([wouldTakeNextCapture]).
  */
 object PtCloudService {
 
@@ -82,6 +89,9 @@ object PtCloudService {
      *
      * Capture-once and the press-and-hold overlay never read it: their own
      * rule is to try the cloud and fall back to the device for that capture.
+     * The floating menu's header reads it only while a tier that reads
+     * through [com.playtranslate.CaptureService.runLiveOcrRead] runs, as that
+     * tier's live read does ([wouldTakeNextCapture]).
      */
     @Volatile
     var liveSessionBlocked: Boolean = false
@@ -122,6 +132,76 @@ object PtCloudService {
         liveSessionBlocked = false
     }
 
+    /**
+     * The router's one decision: why a read of [srcId] with [deviceOnly] would
+     * stay on the device, or null when it would go to PlayTranslate Cloud
+     * ([com.playtranslate.CaptureService.frameReaderFor]'s table). The router
+     * routes by it, [com.playtranslate.CaptureService.warmCloud] warms by it
+     * (so a warm goes out exactly when the read that follows would go to the
+     * cloud), and the floating menu's header shows it
+     * ([wouldTakeNextCapture]).
+     *
+     * The two facts that cost nothing decide first, each ending the decision
+     * when it keeps the read on the device, so a read that could never go to
+     * the cloud reads nothing else, the key's AndroidKeyStore decryption
+     * included: the switch, off in every release build, then the caller's
+     * device-only statement, which the furigana live passes, and a blocked
+     * reconciler or pinhole session's, make about once a second. Only then are the
+     * key (whose read decrypts it), the source and the cooldown read, all
+     * three, and judged by [PtCloudRouting.eligible]; the first of them, in
+     * that order, that refuses is the reason.
+     */
+    fun refusal(config: PtCloudConfig, srcId: SourceLangId, deviceOnly: Boolean): CloudRefusal? {
+        val enabled = config.enabled
+        if (!enabled) return CloudRefusal.SWITCH_OFF
+        if (deviceOnly) return CloudRefusal.DEVICE_ONLY
+        val hasKey = config.hasKey
+        val sourceSupported = PtCloudRouting.isSupportedSource(srcId)
+        val coolingDown = isCoolingDown()
+        if (PtCloudRouting.eligible(enabled, hasKey, sourceSupported, coolingDown, deviceOnly)) {
+            return null
+        }
+        return when {
+            !hasKey -> CloudRefusal.NO_KEY
+            !sourceSupported -> CloudRefusal.SOURCE
+            else -> CloudRefusal.COOLING_DOWN
+        }
+    }
+
+    /**
+     * Whether the next capture would go to PlayTranslate Cloud now, which the
+     * floating menu's header shows (wifi, or wifi_off): the device has a
+     * network ([internet] is not [InternetState.NONE], the app's one "no
+     * internet" rule, [com.playtranslate.net.NetworkConnectivity.isAvailable])
+     * and [refusal] finds nothing against that capture's read of [srcId].
+     *
+     * While live mode runs, the next capture is its next read, and the tier
+     * running ([liveFlavor], [com.playtranslate.CaptureService.liveFlavor])
+     * decides what that read states: the furigana tier reads through
+     * [com.playtranslate.CaptureService.runOcr], device-only always; the
+     * reconciler and pinhole tiers, which serve the other flavors, read
+     * through [com.playtranslate.CaptureService.runLiveOcrRead], device-only
+     * once the service refused the session ([liveSessionBlocked]). Without
+     * live mode ([liveFlavor] null) the next capture is a one-shot, whose
+     * read states nothing (a re-OCR states device-only, but re-reads a
+     * capture already made). The network is read first, so a device with
+     * none decrypts no key.
+     */
+    fun wouldTakeNextCapture(
+        config: PtCloudConfig,
+        srcId: SourceLangId,
+        liveFlavor: OverlayFlavor?,
+        internet: InternetState,
+    ): Boolean {
+        if (internet == InternetState.NONE) return false
+        val deviceOnly = when (liveFlavor) {
+            null -> false
+            OverlayFlavor.FURIGANA -> true
+            OverlayFlavor.TRANSLATION, OverlayFlavor.IN_APP_ONLY -> liveSessionBlocked
+        }
+        return refusal(config, srcId, deviceOnly) == null
+    }
+
     /** The device regained a network: drops a "Connection failed" cooldown
      *  and the network ladder ([CooldownState.onConnectivityRestored]).
      *  Called off the main thread, from the ConnectivityManager callback.
@@ -158,4 +238,16 @@ object PtCloudService {
     fun report(attempt: OnlineAttempt) {
         TranslationBackendRegistry.reportOnlineAttempts(listOf(attempt))
     }
+}
+
+/** Why a read stays on the device ([PtCloudService.refusal]). [logWord] names
+ *  it in the router's log line ([com.playtranslate.CaptureService.frameReaderFor]);
+ *  the switch has none, so a release build, where it is always off, logs
+ *  nothing per read. */
+enum class CloudRefusal(val logWord: String?) {
+    SWITCH_OFF(null),
+    DEVICE_ONLY("device-only"),
+    NO_KEY("no key"),
+    SOURCE("source"),
+    COOLING_DOWN("cooling down"),
 }

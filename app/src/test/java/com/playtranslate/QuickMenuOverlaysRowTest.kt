@@ -188,5 +188,22 @@ class QuickMenuOverlaysRowTest {
         menu.onCycleOverlayMode!!.invoke()
         assertEquals(OverlayMode.FURIGANA, prefs.overlayMode)
         assertFalse(svc.isLive)
+        assertNull(svc.liveFlavor)
+    }
+
+    // Codex: the PlayTranslate Cloud strip follows the running session's
+    // tier (the furigana tier reads on the device), and the row switches it
+    // with the menu up. No key can be stored here, so every drawing reads
+    // unavailable; a redraw is seen by setting the other value first.
+    @Test fun `the row draws the cloud strip again from the session's new tier`() {
+        prefs.ptCloudEnabled = true
+        val menu = openQuickMenu()
+        assertEquals(OverlayFlavor.TRANSLATION, svc.liveFlavor)
+        menu.cloudAvailable = true
+
+        menu.onCycleOverlayMode!!.invoke()
+
+        assertEquals(OverlayFlavor.FURIGANA, svc.liveFlavor)
+        assertFalse("drawn again", menu.cloudAvailable)
     }
 }

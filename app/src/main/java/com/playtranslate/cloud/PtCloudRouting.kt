@@ -4,8 +4,8 @@ import com.playtranslate.language.SourceLangId
 
 /**
  * Whether a capture may be read by PlayTranslate Cloud. Pure, so the whole
- * eligibility table is tested cell by cell; the router gathers the facts
- * and asks here.
+ * eligibility table is tested cell by cell; the router's decision
+ * ([PtCloudService.refusal]) gathers the facts and asks here.
  */
 object PtCloudRouting {
 

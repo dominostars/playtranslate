@@ -38,7 +38,6 @@ import com.playtranslate.model.TranslationResult
 import com.playtranslate.cloud.PtCloudClient
 import com.playtranslate.cloud.PtCloudConfig
 import com.playtranslate.cloud.PtCloudFrameReader
-import com.playtranslate.cloud.PtCloudRouting
 import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.ocr.DeviceFrameReader
 import com.playtranslate.ocr.FallbackFrameReader
@@ -185,9 +184,9 @@ class CaptureService : Service() {
     /**
      * The [FrameReader] a read of [srcId] goes through: PlayTranslate Cloud,
      * falling back to the device for a frame it cannot read
-     * ([FallbackFrameReader]), when [cloudRefusal] finds nothing against it,
-     * else the device alone. The decision, from a fresh [PtCloudConfig] read at
-     * this call:
+     * ([FallbackFrameReader]), when [PtCloudService.refusal] finds nothing
+     * against it, else the device alone. The decision, from a fresh
+     * [PtCloudConfig] read at this call:
      *
      * | switch | deviceOnly | usable key | source | cooling down | reader |
      * |---|---|---|---|---|---|
@@ -214,71 +213,28 @@ class CaptureService : Service() {
      *
      * A read kept on the device logs why at debug level, except when the switch
      * is off, which is every read of every release build. [warmCloud] asks the
-     * same [cloudRefusal] and logs nothing: the read that follows says why.
+     * same [PtCloudService.refusal] and logs nothing: the read that follows
+     * says why.
      */
     internal fun frameReaderFor(srcId: SourceLangId, deviceOnly: Boolean): FrameReader {
-        val refusal = cloudRefusal(PtCloudConfig(Prefs(this)), srcId, deviceOnly)
+        val refusal = PtCloudService.refusal(PtCloudConfig(Prefs(this)), srcId, deviceOnly)
             ?: return FallbackFrameReader(cloudFrameReader, deviceFrameReader)
         refusal.logWord?.let { Log.d(TAG, "PlayTranslate Cloud not used for this read: $it") }
         return deviceFrameReader
     }
 
-    /** Why a read stays on the device ([cloudRefusal]). [logWord] names it in
-     *  [frameReaderFor]'s log line; the switch has none, so a release build,
-     *  where it is always off, logs nothing per read. */
-    private enum class CloudRefusal(val logWord: String?) {
-        SWITCH_OFF(null),
-        DEVICE_ONLY("device-only"),
-        NO_KEY("no key"),
-        SOURCE("source"),
-        COOLING_DOWN("cooling down"),
-    }
-
-    /**
-     * The router's one decision: why a read of [srcId] with [deviceOnly] would
-     * stay on the device, or null when it would go to PlayTranslate Cloud
-     * ([frameReaderFor]'s table). [frameReaderFor] routes by it and [warmCloud]
-     * warms by it, so a warm goes out exactly when the read that follows would
-     * go to the cloud.
-     *
-     * The two facts that cost nothing decide first, each ending the decision
-     * when it keeps the read on the device, so a read that could never go to
-     * the cloud reads nothing else, the key's AndroidKeyStore decryption
-     * included: the switch, off in every release build, then the caller's
-     * device-only statement, which the furigana live passes, and a blocked
-     * reconciler or pinhole session's, make about once a second. Only then are the
-     * key (whose read decrypts it), the source and the cooldown read, all
-     * three, and judged by [PtCloudRouting.eligible]; the first of them, in
-     * that order, that refuses is the reason.
-     */
-    private fun cloudRefusal(config: PtCloudConfig, srcId: SourceLangId, deviceOnly: Boolean): CloudRefusal? {
-        val enabled = config.enabled
-        if (!enabled) return CloudRefusal.SWITCH_OFF
-        if (deviceOnly) return CloudRefusal.DEVICE_ONLY
-        val hasKey = config.hasKey
-        val sourceSupported = PtCloudRouting.isSupportedSource(srcId)
-        val coolingDown = PtCloudService.isCoolingDown()
-        if (PtCloudRouting.eligible(enabled, hasKey, sourceSupported, coolingDown, deviceOnly)) {
-            return null
-        }
-        return when {
-            !hasKey -> CloudRefusal.NO_KEY
-            !sourceSupported -> CloudRefusal.SOURCE
-            else -> CloudRefusal.COOLING_DOWN
-        }
-    }
-
     /**
      * Sends PlayTranslate Cloud's warm call ([PtCloudClient.warm]) when a read
      * of [srcId] with [deviceOnly], which the caller is about to make, would go
-     * to the cloud: the same [cloudRefusal] [frameReaderFor] routes that read
-     * by. A caller passes the source language and the device-only statement its
-     * read will pass, and calls this just before it requests the screenshot, so
-     * the warm's head start covers the screenshot, the crop and the encode. One
-     * caller per kind of read: [captureOnce]'s cycle, the single-screen capture
-     * sheet, a press-and-hold, a drag lookup's capture, and a reconciler or
-     * pinhole live mode's start, through [warmCloudForLiveRead], for its first
-     * cycle's read only. A re-OCR reads on the device and never warms.
+     * to the cloud: the same [PtCloudService.refusal] [frameReaderFor] routes
+     * that read by. A caller passes the source language and the device-only
+     * statement its read will pass, and calls this just before it requests the
+     * screenshot, so the warm's head start covers the screenshot, the crop and
+     * the encode. One caller per kind of read: [captureOnce]'s cycle, the
+     * single-screen capture sheet, a press-and-hold, a drag lookup's capture,
+     * and a reconciler or pinhole live mode's start, through
+     * [warmCloudForLiveRead], for its first cycle's read only. A re-OCR reads
+     * on the device and never warms.
      *
      * Returns at once, on the caller's thread, when the switch is off, when
      * [deviceOnly] is true or when the warm knob ([PtCloudConfig.warmEnabled])
@@ -291,7 +247,7 @@ class CaptureService : Service() {
         val config = PtCloudConfig(Prefs(this))
         if (!config.enabled || deviceOnly || !config.warmEnabled) return
         serviceScope.launch(Dispatchers.IO) {
-            if (cloudRefusal(config, srcId, deviceOnly) == null) cloudClient.warm()
+            if (PtCloudService.refusal(config, srcId, deviceOnly) == null) cloudClient.warm()
         }
     }
 
@@ -1311,6 +1267,14 @@ class CaptureService : Service() {
      *  happen on the main thread inside the mutator with no
      *  intervening yield points. */
     val isLive: Boolean get() = liveModes.isNotEmpty()
+
+    /** The running live session's [OverlayFlavor], or null when no live mode
+     *  runs. Every per-display mode has the session's flavor
+     *  ([setLiveDisplays] rebuilds, in one main-thread pass, each instance
+     *  whose flavor no longer matches), so any instance's is the session's.
+     *  Read by the floating menu's PlayTranslate Cloud strip
+     *  ([PtCloudService.wouldTakeNextCapture]). */
+    val liveFlavor: OverlayFlavor? get() = liveModes.values.firstOrNull()?.flavor
 
     /**
      * Per-display live-mode instances. All entries share the same

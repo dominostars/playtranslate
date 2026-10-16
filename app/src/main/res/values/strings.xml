@@ -3372,6 +3372,17 @@
     <string name="pt_cloud_warm_title">Warm-up call</string>
     <!-- Subtitle under the "Warm-up call" switch: what the small request does. -->
     <string name="pt_cloud_warm_subtitle">Wakes the connection just before a capture is uploaded.</string>
+    <!-- Screen-reader label of the strip at the top of the floating icon's quick
+         menu while PlayTranslate Cloud is switched on, when its wifi glyph shows:
+         the device is online and the next capture would be read and translated
+         on PlayTranslate's server. %1$s = pt_cloud_display_name, a product name. -->
+    <string name="floating_menu_pt_cloud_available"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: available</string>
+    <!-- Screen-reader label of the same strip when its wifi_off glyph shows: the
+         device is offline, or the next capture would stay on this device (no
+         key, a game language the server does not read, the service pausing
+         after errors, or the service refusing the running auto-translate
+         session). %1$s = pt_cloud_display_name, a product name. -->
+    <string name="floating_menu_pt_cloud_unavailable"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: unavailable</string>
 
     <!-- YOMITAN — dictionary import page (Settings → Configure → Yomitan). -->
     <!-- Explainer paragraph at the top of the Yomitan page; also the empty state. -->
