@@ -78,10 +78,11 @@ object TranslationBackendRegistry {
     @Volatile var onlineAttemptListener: ((List<OnlineAttempt>) -> Unit)? = null
 
     /** Hands [attempts] to [onlineAttemptListener]. Every waterfall pass
-     *  reports through here, and so does PlayTranslate Cloud
-     *  ([com.playtranslate.cloud.PtCloudService.report]), which reads frames
-     *  instead of joining the waterfall but whose failures show on the same
-     *  pill, judged by the same tracker. */
+     *  reports through here, the cloud backend's calls among them, and so
+     *  does PlayTranslate Cloud's frame reader
+     *  ([com.playtranslate.cloud.PtCloudService.report]), whose frames never
+     *  pass through the waterfall but whose failures show on the same pill,
+     *  judged by the same tracker. */
     fun reportOnlineAttempts(attempts: List<OnlineAttempt>) {
         if (attempts.isEmpty()) return
         onlineAttemptListener?.invoke(attempts.toList())
@@ -270,14 +271,22 @@ object TranslationBackendRegistry {
     }
 
     /** The report for an online backend's call that threw [e]: the server
-     *  was reached unless the failure is a transport one. */
+     *  was reached when it answered the failure ([serverAnswered]). */
     private fun failedAttempt(backend: TranslationBackend, e: Exception, sentAt: Long): OnlineAttempt {
         val failure = classifyBackendFailure(e)
         return OnlineAttempt(
             backend.id, backend.displayName, failure, sentAt,
-            reachedServer = !failure.kind.isTransport,
+            reachedServer = serverAnswered(e, failure),
         )
     }
+
+    /** Whether the server answered the failure [e] classified as [failure]:
+     *  what the exception says of itself when it is ours
+     *  ([ClassifiedFailure.serverAnswered], false for a refusal made before
+     *  any request), else not for a transport failure, which never heard
+     *  back. */
+    private fun serverAnswered(e: Throwable, failure: BackendFailure): Boolean =
+        (e as? ClassifiedFailure)?.serverAnswered ?: !failure.kind.isTransport
 
     /** Push one backend failure into [TranslationDiag]'s persisted ring.
      *  Content-free by construction: class name, HTTP code, and cooldown
@@ -478,7 +487,7 @@ object TranslationBackendRegistry {
                                     }
                                     firstFailure.compareAndSet(null, e)
                                     val failure = classifyBackendFailure(e)
-                                    if (!failure.kind.isTransport) firstServerFailure.compareAndSet(null, failure)
+                                    if (serverAnswered(e, failure)) firstServerFailure.compareAndSet(null, failure)
                                     Log.w(
                                         TAG,
                                         "Backend ${backend.id} failed (${e.javaClass.simpleName}: ${e.message}), falling back"

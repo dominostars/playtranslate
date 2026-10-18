@@ -4,9 +4,6 @@ import android.content.Context
 import android.util.Log
 import androidx.annotation.VisibleForTesting
 import com.playtranslate.OcrManager
-import com.playtranslate.Prefs
-import com.playtranslate.cloud.PtCloudClient
-import com.playtranslate.cloud.PtCloudConfig
 import com.playtranslate.cloud.PtCloudFrameReader
 import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.language.SourceLangId
@@ -18,18 +15,20 @@ private const val TAG = "FrameReaders"
 
 /**
  * The process's frame readers and the one router over them: the on-device
- * reader ([DeviceFrameReader]), the one PlayTranslate Cloud client and
- * reader ([PtCloudClient], [PtCloudFrameReader]), and the decision of which
- * one a read goes through ([readerFor]) with the warm call that precedes
- * such a read ([warm]). Every consumer of the [FrameReader] seam asks here:
- * the capture service's cycles, hold and live tiers, the drag lookup, the
- * camera tool and the import tool. Initialised once from
+ * reader ([DeviceFrameReader]), the PlayTranslate Cloud reader
+ * ([PtCloudFrameReader]), and the decision of which one a read goes through
+ * ([readerFor]) with the warm call that precedes such a read ([warm]). Every
+ * consumer of the [FrameReader] seam asks here: the capture service's
+ * cycles, hold and live tiers, the drag lookup, the camera tool and the
+ * import tool. Initialised once from
  * [com.playtranslate.PlayTranslateApplication.onCreate] ([init]), after
  * [PtCloudService.init], whose cooldown the router reads.
  *
- * One client instance for every warm and frame, so a warm's send stamp
- * reaches the next frame's clock line and the warm opens the connection the
- * frame reuses (one connection pool).
+ * The cloud's client and settings are [PtCloudService]'s ([PtCloudService.client],
+ * [PtCloudService.config]), the composition root the registry's cloud
+ * backend reads too: one client for every warm, frame and translate call, so
+ * a warm's send stamp reaches the next frame's clock line and the warm opens
+ * the connection both routes reuse (one connection pool).
  */
 object FrameReaders {
 
@@ -39,16 +38,11 @@ object FrameReaders {
     /** The on-device reader: the process-wide [OcrManager] and the app context. */
     val device: DeviceFrameReader by lazy { DeviceFrameReader(OcrManager.instance, appContext) }
 
-    /** PlayTranslate Cloud's settings for the client and the reader below. It
-     *  reads [Prefs] at each use, so a settings change applies to the next
-     *  read with nothing to rebuild. */
-    private val cloudConfig by lazy { PtCloudConfig(Prefs(appContext)) }
-
-    /** The one PlayTranslate Cloud client, shared by [cloud] and [warm]. */
-    private val cloudClient by lazy { PtCloudClient(cloudConfig) }
-
-    /** The PlayTranslate Cloud reader, built once on [cloudClient]. */
-    val cloud: PtCloudFrameReader by lazy { PtCloudFrameReader(cloudClient, cloudConfig) }
+    /** The PlayTranslate Cloud reader, built once on the service's one
+     *  client and its settings, which read [com.playtranslate.Prefs] at each
+     *  use, so a settings change applies to the next read with nothing to
+     *  rebuild. */
+    val cloud: PtCloudFrameReader by lazy { PtCloudFrameReader(PtCloudService.client, PtCloudService.config) }
 
     /** Test seam: a reader every [readerFor] returns in place of the router's,
      *  so a JVM test can drive a consumer's frame handling with scripted
@@ -71,8 +65,8 @@ object FrameReaders {
      * The [FrameReader] a read of [srcId] goes through: PlayTranslate Cloud,
      * falling back to the device for a frame it cannot read
      * ([FallbackFrameReader]), when [PtCloudService.refusal] finds nothing
-     * against it, else the device alone. The decision, from a fresh
-     * [PtCloudConfig] read at this call:
+     * against it, else the device alone. The decision, from
+     * [PtCloudService.config] read at this call:
      *
      * | switch | deviceOnly | usable key | source | cooling down | reader |
      * |---|---|---|---|---|---|
@@ -99,7 +93,7 @@ object FrameReaders {
      */
     fun readerFor(srcId: SourceLangId, deviceOnly: Boolean): FrameReader {
         overrideForTest?.let { return it }
-        val refusal = PtCloudService.refusal(PtCloudConfig(Prefs(appContext)), srcId, deviceOnly)
+        val refusal = PtCloudService.refusal(PtCloudService.config, srcId, deviceOnly)
             ?: return FallbackFrameReader(cloud, device)
         refusal.logWord?.let { Log.d(TAG, "PlayTranslate Cloud not used for this read: $it") }
         return device
@@ -120,17 +114,17 @@ object FrameReaders {
      * reads on the device and never warms.
      *
      * Returns at once, on the caller's thread, when the switch is off, when
-     * [deviceOnly] is true or when the warm knob ([PtCloudConfig.warmEnabled])
+     * [deviceOnly] is true or when the warm knob ([com.playtranslate.cloud.PtCloudConfig.warmEnabled])
      * is off: plain pref reads, no key. Otherwise the decision, whose key read
      * decrypts it, and the enqueue run on [Dispatchers.IO], off the read's
      * path. Fire and forget: nothing waits for it or reads its answer, and it
      * logs nothing about why it did not go out (the read logs that).
      */
     fun warm(srcId: SourceLangId, deviceOnly: Boolean) {
-        val config = PtCloudConfig(Prefs(appContext))
+        val config = PtCloudService.config
         if (!config.enabled || deviceOnly || !config.warmEnabled) return
         scope.launch(Dispatchers.IO) {
-            if (PtCloudService.refusal(config, srcId, deviceOnly) == null) cloudClient.warm()
+            if (PtCloudService.refusal(config, srcId, deviceOnly) == null) PtCloudService.client.warm()
         }
     }
 

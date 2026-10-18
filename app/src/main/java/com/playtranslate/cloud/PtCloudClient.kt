@@ -4,6 +4,7 @@ import android.os.SystemClock
 import android.util.Log
 import com.playtranslate.PtJson
 import com.playtranslate.net.PtHttp
+import com.playtranslate.translation.CooldownState
 import com.playtranslate.translation.HttpCallClock
 import com.playtranslate.translation.HttpTimingLogger
 import com.playtranslate.translation.OnlineAttempt
@@ -95,16 +96,20 @@ sealed interface HealthStatus {
 }
 
 /**
- * The HTTP client for PlayTranslate Cloud's `POST /v1/frame`, `GET /v1/warm`
- * and `GET /health`, all under [BASE_URL] (the contract: docs/api.md and
- * docs/client-integration-brief.md in the playtranslate-cloud repository).
+ * The HTTP client for PlayTranslate Cloud's `POST /v1/frame`,
+ * `POST /v1/translate`, `GET /v1/warm` and `GET /health`, all under
+ * [BASE_URL] (the contract: docs/api.md and docs/client-integration-brief.md
+ * in the playtranslate-cloud repository).
  *
- * Reporting is split at part 1. [postFrame] records the cooldown and
- * reports the [OnlineAttempt] of any failure before part 1 itself, then
- * throws [PtCloudReadException]. Once part 1 is back it reports nothing: the
- * reader decides how the frame went (part 2's outcome, or a caller that let
- * part 2 go), so recording the success and reporting the attempt are its job,
- * with [FrameResponse]'s stamps.
+ * On the frame route reporting is split at part 1. [postFrame] records the
+ * cooldown and reports the [OnlineAttempt] of any failure before part 1
+ * itself, then throws [PtCloudReadException]. Once part 1 is back it reports
+ * nothing: the reader decides how the frame went (part 2's outcome, or a
+ * caller that let part 2 go), so recording the success and reporting the
+ * attempt are its job, with [FrameResponse]'s stamps. On the translate route
+ * [postTranslate] records every failure and reports nothing: its caller is a
+ * registry backend ([PtCloudBackend]), and the registry reports an attempt
+ * for every online backend it calls and records the success.
  *
  * A cancelled call (the user released the hold, a newer capture superseded
  * this one) records nothing and reports nothing: it is not a fact about the
@@ -112,11 +117,12 @@ sealed interface HealthStatus {
  * `Call.isCanceled()`: OkHttp's own call timeout cancels the call too, and a
  * timeout is a failure (TIMEOUT), not the user's gesture.
  *
- * Logs carry the frame id the caller chose, status codes and names, byte
- * and group counts, sizes, timings and exception class names only; never
- * the key, the URL, a body, or recognized or translated text. Each frame
- * that reaches part 1 logs two clock lines ([PtCloudClocks]): one at part 1
- * and one when the read after it ends, unless that read was cancelled.
+ * Logs carry the frame id the caller chose, status codes and names, byte,
+ * text and group counts, sizes, timings and exception class names only;
+ * never the key, the URL, a body, or recognized or translated text. Each
+ * frame that reaches part 1 logs two clock lines ([PtCloudClocks]): one at
+ * part 1 and one when the read after it ends, unless that read was
+ * cancelled; each translate call that was not cancelled logs one.
  */
 class PtCloudClient(
     private val config: PtCloudConfig,
@@ -124,6 +130,24 @@ class PtCloudClient(
 ) {
 
     private val client: OkHttpClient by lazy(clientFactory)
+
+    /**
+     * The translate route's client: [client] rebuilt with the route's own
+     * deadlines, so it keeps the frame client's connection pool, dispatcher
+     * and timing listener (a translate call and a frame reuse one
+     * connection), and the frame client's timeouts stay as they are. The
+     * route's server deadline scales with the call's size up to 20 s
+     * ("Translation only" in docs/api.md), where the frame client's 8 s read
+     * would cut a long call off as a transport TIMEOUT and climb the network
+     * ladder for both routes: the 22 s read and the 25 s whole call sit
+     * above that cap.
+     */
+    private val translateClient: OkHttpClient by lazy {
+        client.newBuilder()
+            .readTimeout(TRANSLATE_READ_TIMEOUT_S, TimeUnit.SECONDS)
+            .callTimeout(TRANSLATE_CALL_TIMEOUT_S, TimeUnit.SECONDS)
+            .build()
+    }
 
     /** When the last [warm] call went out ([SystemClock.elapsedRealtime]), 0
      *  when none has since the previous frame. Each frame takes it and
@@ -248,6 +272,62 @@ class PtCloudClient(
         return FrameResponse(part1.part, translation, items.asStateFlow(), sentAtMs, attemptStartedAtMs)
     }
 
+    /**
+     * `POST {BASE_URL}/v1/translate` ("Translation only" in docs/api.md):
+     * [request]'s texts in, one [TranslationPart] out, its translations
+     * keyed by each text's position. Returns only
+     * [TranslationOutcome.Translated] (whether it names every position is
+     * the caller's check) or [TranslationOutcome.Skipped].
+     *
+     * The one recorder of this route's failures: a non-200
+     * ([PtCloudErrors.classifyHttp]), a transport failure
+     * ([PtCloudErrors.classifyTransport]), a 200 that does not decode
+     * ([PtCloudErrors.unreadableAnswer]) and a `deferred` or `failed` answer
+     * ([PtCloudErrors.classifyTranslation]) are each recorded on
+     * [PtCloudService.cooldown] here, the state the frame route records on
+     * (the server counts frames and translate calls against one budget and
+     * one rate bucket, and a refused key or a stopped pod is one fact for
+     * both), then thrown as [PtCloudReadException]. A success records
+     * nothing here: the registry's `recordSuccess` does, with its own
+     * attempt stamp. Unlike [postFrame], this reports no [OnlineAttempt]:
+     * the registry reports one for every online backend it calls, so a
+     * report here would count the call twice.
+     *
+     * The response is read and closed inside the call's blocking step, so
+     * none is ever left open. Throws [CancellationException], with nothing
+     * recorded, when the calling coroutine was cancelled. Logs one clock line
+     * per call that was not cancelled ([PtCloudClocks.translateLine]).
+     */
+    suspend fun postTranslate(request: TranslateRequest): TranslationOutcome {
+        val callerContext = currentCoroutineContext()
+        val cooldown = PtCloudService.cooldown
+        val clock = HttpCallClock()
+        val call = translateClient.newCall(translateRequest(request, clock))
+        val sentAtMs = SystemClock.elapsedRealtime()
+        val part: TranslationPart = try {
+            withContext(Dispatchers.IO) {
+                blockingOn(call) { call.execute().use(::readTranslation) }
+            }
+        } catch (e: CancellationException) {
+            call.cancel()
+            throw e
+        } catch (e: IOException) {
+            if (!callerContext.isActive) {
+                throw CancellationException("PlayTranslate Cloud translate cancelled").apply { initCause(e) }
+            }
+            val refused = e as? Refused
+            val classified = refused?.classified ?: PtCloudErrors.classifyTransport(e)
+            val status = refused?.let { r -> r.classified.failure.httpCode?.let { "http$it" } ?: UNREADABLE }
+                ?: e.javaClass.simpleName
+            logTranslate(request, sentAtMs, status, clock)
+            throw recordedFailure(classified, cooldown, e)
+        }
+        logTranslate(request, sentAtMs, part.translationStatus, clock)
+        val outcome = PtCloudErrors.classifyTranslation(part)
+        if (outcome is TranslationOutcome.Failed) throw recordedFailure(outcome.classified, cooldown, null)
+        return outcome
+    }
+
     /** `GET {BASE_URL}/health`, no auth. [HealthStatus.Unreachable] for a
      *  transport failure; [CancellationException] when the caller was
      *  cancelled. */
@@ -294,7 +374,7 @@ class PtCloudClient(
         if (!config.hasKey) return
         val request = Request.Builder()
             .url(BASE_URL.newBuilder().addPathSegments("v1/warm").build())
-            .header("Authorization", "Bearer ${config.clientKey}")
+            .bearer()
             .get()
             .build()
         val sentAtMs = SystemClock.elapsedRealtime()
@@ -327,11 +407,71 @@ class PtCloudClient(
             .build()
         return Request.Builder()
             .url(BASE_URL.newBuilder().addPathSegments("v1/frame").build())
-            .header("Authorization", "Bearer ${config.clientKey}")
+            .bearer()
             .header("Accept", NDJSON)
             .tag(HttpCallClock::class.java, clock)
             .post(body)
             .build()
+    }
+
+    /** The translate request: [translateBody] typed `application/json`
+     *  (any other type is a 415), a byte array, so its length is known. No
+     *  `Accept`: the route then answers one JSON object, never item lines.
+     *  [clock] rides along as the request's tag for the HTTP stack to fill,
+     *  as on a frame. */
+    private fun translateRequest(request: TranslateRequest, clock: HttpCallClock): Request {
+        val body = translateBody(request).toRequestBody(JSON.toMediaType())
+        return Request.Builder()
+            .url(BASE_URL.newBuilder().addPathSegments("v1/translate").build())
+            .bearer()
+            .tag(HttpCallClock::class.java, clock)
+            .post(body)
+            .build()
+    }
+
+    /** The client key as the bearer token, the one place every
+     *  authenticated request ([frameRequest], [translateRequest], [warm])
+     *  takes it from. Reading the key decrypts it. */
+    private fun Request.Builder.bearer(): Request.Builder =
+        header("Authorization", "Bearer ${config.clientKey}")
+
+    /** Reads a translate call's answer, blocking: the decoded body of a 200,
+     *  else [Refused] with its classification (a non-200 by its status, a
+     *  200 that is not a [TranslationPart] as [PtCloudErrors.unreadableAnswer]).
+     *  The caller closes [response]. */
+    private fun readTranslation(response: Response): TranslationPart {
+        if (response.code != 200) throw httpRefusal(response)
+        val body = response.body.string()
+        return try {
+            PtJson.lenient.decodeFromString<TranslationPart>(body)
+        } catch (e: IllegalArgumentException) {
+            // kotlinx's SerializationException is one.
+            throw Refused(PtCloudErrors.unreadableAnswer, "answer did not decode", e)
+        }
+    }
+
+    /** Records [classified] on [cooldown] and returns the exception the
+     *  translate route throws for it; its message names the kind and the
+     *  code only. */
+    private fun recordedFailure(classified: Classified, cooldown: CooldownState, cause: Throwable?): PtCloudReadException {
+        classified.record(cooldown)
+        val failure = classified.failure
+        val code = failure.httpCode?.let { " $it" }.orEmpty()
+        return PtCloudReadException(failure, "PlayTranslate Cloud translate ${failure.kind}$code", cause)
+    }
+
+    private fun logTranslate(request: TranslateRequest, sentAtMs: Long, status: String, clock: HttpCallClock) {
+        Log.i(
+            TAG,
+            PtCloudClocks.translateLine(
+                frameId = request.frameId,
+                texts = request.texts.size,
+                codePoints = request.texts.sumOf(PtCloudBatches::codePoints),
+                totalMs = SystemClock.elapsedRealtime() - sentAtMs,
+                status = status,
+                connectionReused = clock.connectionReused,
+            ),
+        )
     }
 
     /** Sends the request and reads part 1, blocking. A non-200 status or an
@@ -344,13 +484,7 @@ class PtCloudClient(
         val headersAtMs = SystemClock.elapsedRealtime()
         var handedOff = false
         try {
-            if (response.code != 200) {
-                val body = response.peekBody(ERROR_BODY_LIMIT).string()
-                throw Refused(
-                    PtCloudErrors.classifyHttp(response.code, body, response.header("Retry-After")),
-                    "HTTP ${response.code}",
-                )
-            }
+            if (response.code != 200) throw httpRefusal(response)
             val line = response.body.source().readUtf8LineStrict()
             val part = try {
                 PtJson.lenient.decodeFromString<OcrPart>(line)
@@ -424,7 +558,18 @@ class PtCloudClient(
         val edgeHeader: String?,
     )
 
-    /** The server answered, but not with a usable part 1. */
+    /** A non-200 answer as [Refused], classified by its status, its error
+     *  body (read up to [ERROR_BODY_LIMIT], never logged) and its
+     *  `Retry-After`. Both routes' one reading of an HTTP error. */
+    private fun httpRefusal(response: Response): Refused = Refused(
+        PtCloudErrors.classifyHttp(
+            response.code, response.peekBody(ERROR_BODY_LIMIT).string(), response.header("Retry-After"),
+        ),
+        "HTTP ${response.code}",
+    )
+
+    /** The server answered, but not with a usable part 1 or translate
+     *  answer. */
     private class Refused(
         val classified: Classified,
         message: String,
@@ -434,6 +579,16 @@ class PtCloudClient(
     companion object {
         private const val TAG = "PtCloud"
         private const val NDJSON = "application/x-ndjson"
+        private const val JSON = "application/json"
+
+        /** The clock line's status for a 200 that did not decode. */
+        private const val UNREADABLE = "unreadable"
+
+        /** The translate route's read and whole-call timeouts
+         *  ([translateClient]): above the server's 20 s cap on the route's
+         *  deadline, the 25 s call the brief sets for the backend. */
+        private const val TRANSLATE_READ_TIMEOUT_S = 22L
+        private const val TRANSLATE_CALL_TIMEOUT_S = 25L
 
         /** The service's root: the Cloudflare Worker in front of it, at the
          *  same address whether the service is running or not. Fixed: there
@@ -447,7 +602,8 @@ class PtCloudClient(
         private const val EDGE_HEADER = "x-pt-edge-ms"
 
         /** An error body is read only to tell the stopped service's empty
-         *  404 from a routing 404; its text is never logged. */
+         *  404 from a routing 404, and a 403 `no_entitlement` from any other
+         *  403; its text is never logged. */
         private const val ERROR_BODY_LIMIT = 4096L
 
         /** One client for the process, so consecutive captures reuse the
@@ -462,7 +618,9 @@ class PtCloudClient(
          *  call cap, [com.playtranslate.translation.LingvaBackend]'s read),
          *  and above the server's deadline, so it ends a dead connection and
          *  never a translation the server is still going to send. The 12 s
-         *  whole-call budget covers the upload, part 1 and that wait. */
+         *  whole-call budget covers the upload, part 1 and that wait. These
+         *  are the frame route's; the translate route's client is built from
+         *  this one with its own deadlines ([translateClient]). */
         private val shared: OkHttpClient by lazy {
             PtHttp.clientBuilder()
                 .connectTimeout(5, TimeUnit.SECONDS)
@@ -476,6 +634,14 @@ class PtCloudClient(
         }
 
         fun defaultClient(): OkHttpClient = shared
+
+        /** A translate call's body exactly as sent: [request] as one JSON
+         *  object in UTF-8, encoded by [PtJson.lenient] (a null persona or
+         *  context is left out, and non-ASCII is written as it is, never as
+         *  `\u` escapes). The one encoding, so the size [PtCloudBackend]
+         *  measures against the body cap is the size that goes out. */
+        internal fun translateBody(request: TranslateRequest): ByteArray =
+            PtJson.lenient.encodeToString(TranslateRequest.serializer(), request).toByteArray(Charsets.UTF_8)
 
         /**
          * Runs [read], a blocking step of [call], so that cancelling the

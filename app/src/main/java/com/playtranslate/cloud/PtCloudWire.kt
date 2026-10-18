@@ -54,6 +54,35 @@ data class FrameMeta(
     @SerialName("filter_furigana") val filterFurigana: Boolean,
 )
 
+/**
+ * The JSON body of `POST /v1/translate` ("Translation only" in docs/api.md):
+ * [texts] in, one [TranslationPart] out whose translations are keyed by each
+ * text's position in [texts]. [source] and [target] are the registry's
+ * translation codes as [PtCloudBackend] was handed them; the server keys its
+ * cache by the source's primary subtag, so a frame's `zh-Hant` and this
+ * route's `zh` share entries. [persona] and [context] are omitted when null
+ * (`explicitNulls = false`), which asks for the server's defaults, as
+ * [FrameMeta] does. `cache`, `stream_translations` and `debug` are left out:
+ * the server's defaults are what this route wants.
+ */
+@Serializable
+data class TranslateRequest(
+    val source: String,
+    val target: String,
+    val texts: List<String>,
+    @SerialName("frame_id") val frameId: String,
+    val persona: String?,
+    val context: String?,
+)
+
+// ── Response, errors ───────────────────────────────────────────────────
+
+/** The edge's JSON error body (`{"error":"..."}`), read only to tell a 403
+ *  `no_entitlement` (the key's account has no membership) from any other
+ *  403 ([PtCloudErrors.classifyHttp]). Lenient: every field optional. */
+@Serializable
+data class EdgeError(val error: String? = null)
+
 // ── Response, part 1 ───────────────────────────────────────────────────
 
 /** The first NDJSON line: the OCR groups, final, before translation. */
@@ -193,9 +222,11 @@ data class TranslationItem(
     @SerialName("t_ms") val tMs: Double? = null,
 )
 
-/** The final NDJSON line, after any item lines: translations keyed by part
- *  1's group ids, and how translation settled
- *  ([PtCloudErrors.classifyTranslation]). */
+/** The final NDJSON line of a frame, after any item lines: translations
+ *  keyed by part 1's group ids, and how translation settled
+ *  ([PtCloudErrors.classifyTranslation]). Also the whole body of
+ *  `POST /v1/translate` ([TranslateRequest]), keyed there by each text's
+ *  position in the request. */
 @Serializable
 data class TranslationPart(
     val part: String,

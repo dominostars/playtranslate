@@ -6,6 +6,7 @@ import android.content.ComponentCallbacks2
 import android.os.Build
 import android.os.Bundle
 import com.playtranslate.capture.CaptureBackendResolver
+import com.playtranslate.cloud.PtCloudBackend
 import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.diagnostics.CrashHandler
 import android.content.Context
@@ -17,6 +18,7 @@ import com.playtranslate.translation.HyMtBackend
 import com.playtranslate.translation.BergamotBackend
 import com.playtranslate.translation.MlKitBackend
 import com.playtranslate.translation.OnlineBackendFactory
+import com.playtranslate.translation.OnlineServiceMutations
 import com.playtranslate.translation.OnlineServiceStore
 import com.playtranslate.translation.QwenMnnBackend
 import com.playtranslate.translation.Qwen35Mnn2bBackend
@@ -113,8 +115,11 @@ class PlayTranslateApplication : Application() {
         //
         // Online backends are store-driven: OnlineServiceStore.init runs
         // the one-shot legacy→instance migration and loads the ordered
-        // instance list, which the factory maps to backends. The trailing
-        // setOrder makes the waterfall honor the store's list order for
+        // instance list, which the factory maps to backends. PlayTranslate
+        // Cloud is the one online backend that is not a store instance: a
+        // fixed id, its own page and switch, registered here like the
+        // offline tiers. The trailing applyOnlineOrder makes the waterfall
+        // put the cloud first and then honor the store's list order for
         // the online segment (offline tiers follow by priority). The
         // settings UI keeps membership + order in sync as instances are
         // added / removed / reordered.
@@ -133,6 +138,12 @@ class PlayTranslateApplication : Application() {
             CaptureService.instance?.translationLogRecorderIfInitialized
                 ?.contextBlockFor(source, target) ?: ""
         }
+        // PlayTranslate Cloud's composition root (its settings, its one
+        // client and its persisted cooldown): before the registry, whose
+        // cloud backend reads all three at each call, and before the
+        // connectivity install below, whose registration replays the
+        // current network at once and must find the cooldown.
+        PtCloudService.init(this)
         val sharedPrefs = getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
         OnlineServiceStore.init(this)
         val onlineBackends = OnlineServiceStore.all().map {
@@ -140,6 +151,7 @@ class PlayTranslateApplication : Application() {
         }
         TranslationBackendRegistry.init(
             onlineBackends + listOf(
+                PtCloudBackend(),
                 GemmaE2BMnnBackend(
                     context         = this,
                     enabledProvider = { Prefs(this).gemmaE2bEnabled },
@@ -178,24 +190,22 @@ class PlayTranslateApplication : Application() {
                 MlKitBackend(),
             )
         )
-        TranslationBackendRegistry.setOrder(OnlineServiceStore.all().map { it.id })
-        // A regained network (airplane mode off, wifi back) drops every
-        // "Connection failed" cooldown: those were recorded against the
-        // device being offline, not against the provider, and the user
-        // expects online services to work the moment connectivity is back.
-        // After the registry init on purpose — registration replays the
-        // current network at once, and the replay must find the backends.
-        // PlayTranslate Cloud is not a registry backend, so it gets the
-        // signal alongside, and its cooldown must exist before the replay.
-        PtCloudService.init(this)
+        OnlineServiceMutations.applyOnlineOrder()
         // The frame readers and their router, for every consumer of the
         // FrameReader seam (the service, the drag lookup, the camera and
         // import tools); after the cloud service, whose cooldown the router
         // reads.
         com.playtranslate.ocr.FrameReaders.init(this, appScope)
+        // A regained network (airplane mode off, wifi back) drops every
+        // "Connection failed" cooldown: those were recorded against the
+        // device being offline, not against the provider, and the user
+        // expects online services to work the moment connectivity is back.
+        // After the registry init on purpose: registration replays the
+        // current network at once, and the replay must find the backends.
+        // The fan-out reaches PlayTranslate Cloud's one cooldown, which its
+        // frame reader shares, through the cloud's registry backend.
         com.playtranslate.net.NetworkConnectivity.install(this) {
             TranslationBackendRegistry.onConnectivityRestored()
-            PtCloudService.onConnectivityRestored()
         }
         // Online translation failures surface as a pill on the game display
         // (the registry reports every pass; the tracker decides; the active

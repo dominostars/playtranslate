@@ -6,11 +6,14 @@ import android.os.Bundle
 import android.view.View
 import android.widget.TextView
 import androidx.core.view.isVisible
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.appbar.MaterialToolbar
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.translation.llm.PromptKind
 import kotlinx.coroutines.launch
 
@@ -21,10 +24,13 @@ import kotlinx.coroutines.launch
  * Qwen-MNN / Bergamot / ML Kit rows).
  *
  * The online card is owned by [OnlineServicesController] (RecyclerView +
- * add row + toolbar EDIT mode); every online mutation routes through
- * [com.playtranslate.translation.OnlineServiceMutations], which handles
- * the registry/order/cache/reconcile choreography at write time — so
- * this Activity's own lifecycle work reduces to an onResume rebind.
+ * add row + PlayTranslate Cloud's row + toolbar EDIT mode); every online
+ * mutation routes through
+ * [com.playtranslate.translation.OnlineServiceMutations], or for the
+ * cloud's switch [com.playtranslate.cloud.PtCloudService.setEnabled],
+ * which handles the registry/order/cache/reconcile choreography at write
+ * time, so this Activity's own lifecycle work reduces to an onResume
+ * rebind and render of the cloud's row.
  * Offline rows keep the legacy [TranslationServicesBinder] +
  * [OfflineModelInstallController] wiring, including the offline-pref
  * SharedPreferences listener (their install flows still communicate
@@ -113,6 +119,15 @@ class TranslationServicesActivity : SettingsSubPageActivity() {
             root = findViewById(android.R.id.content),
             lifecycleScope = lifecycleScope,
         )
+        // PlayTranslate Cloud's row repaints from the service's own change
+        // signal: each gesture on the service, here or on the cloud page, and
+        // each resume (the StateFlow replays to a new collector), outside
+        // rebind, which an edit skips.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                PtCloudService.changes.collect { onlineController.bindCloudRow() }
+            }
+        }
         wireEditAction()
     }
 

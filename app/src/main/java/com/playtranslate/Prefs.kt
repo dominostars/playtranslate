@@ -1599,9 +1599,13 @@ class Prefs internal constructor(
     // [com.playtranslate.cloud.PtCloudConfig] reads these per capture; the
     // defaults live there.
 
-    /** Debug-only: read capture-once frames through PlayTranslate Cloud
-     *  (OCR, grouping and translation in one server call) instead of the
-     *  device OCR and the translation waterfall.
+    /** Debug-only: PlayTranslate Cloud's switch. On, captures are read
+     *  through the cloud (OCR, grouping and translation in one server call)
+     *  instead of the device OCR, and every translation the app makes
+     *  without a frame goes to the cloud first in the translation waterfall
+     *  ([com.playtranslate.cloud.PtCloudBackend]), before the user's own
+     *  services; dictionary definitions never do. Written only through
+     *  [com.playtranslate.cloud.PtCloudService.setEnabled].
      *
      *  Reads as false outside debug builds even when the stored value is true
      *  (see [debugBuild]): the switch and its settings page exist only in

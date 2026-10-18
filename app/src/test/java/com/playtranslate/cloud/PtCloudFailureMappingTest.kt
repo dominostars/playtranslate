@@ -34,7 +34,9 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * The failure table, row by row. Before part 1 each row goes through
+ * The failure table, row by row, on the frame route (the translate route
+ * shares the table; its rows through [PtCloudClient.postTranslate] are in
+ * [PtCloudBackendTest]). Before part 1 each row goes through
  * [PtCloudClient.postFrame] against a canned answer and is checked three
  * ways: the thrown [PtCloudReadException]'s kind and code, the cooldown it
  * leaves, and the [OnlineAttempt] it reports. After part 1 each row goes
@@ -107,6 +109,21 @@ class PtCloudFailureMappingTest {
         assertRow(http(401, """{"error":"unauthorized"}"""), BackendFailureKind.AUTH, 401, reachedServer = true)
         assertCooldown(now + 60_000, CooldownCause.AUTH, "Bad key")
         assertEquals(CooldownMessageClass.ACCOUNT, CooldownCause.AUTH.messageClass)
+    }
+
+    @Test fun `403 no_entitlement is BILLING on the rate-limit ladder, as no membership`() {
+        // The key is good but its account has no membership: the account
+        // class, shown without a retry time, in the BILLING kind's wording.
+        assertRow(http(403, """{"error":"no_entitlement"}"""), BackendFailureKind.BILLING, 403, reachedServer = true)
+        assertCooldown(now + 60_000, CooldownCause.BILLING, "No membership")
+        assertEquals(CooldownMessageClass.ACCOUNT, CooldownCause.BILLING.messageClass)
+    }
+
+    @Test fun `any other 403 is a rejected request with its code, no cooldown`() {
+        for (body in listOf("""{"error":"forbidden"}""", """{"error":null}""", "{}", "", "<html>403 Forbidden</html>")) {
+            assertRow(http(403, body), BackendFailureKind.REJECTED, 403, reachedServer = true)
+            assertNoCooldown()
+        }
     }
 
     @Test fun `404 with an empty body is NOT_RUNNING on the rate-limit ladder, as not running`() {

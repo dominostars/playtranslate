@@ -1,5 +1,6 @@
 package com.playtranslate.cloud
 
+import com.playtranslate.PtJson
 import com.playtranslate.translation.BackendFailure
 import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.translation.ClassifiedFailure
@@ -9,16 +10,21 @@ import com.playtranslate.translation.CooldownState
 import com.playtranslate.translation.classifyBackendFailure
 import com.playtranslate.translation.httpStatusFailure
 import com.playtranslate.translation.nextMidnightPacific
+import kotlinx.serialization.decodeFromString
 import java.io.IOException
 import java.io.InterruptedIOException
 
 /**
- * A PlayTranslate Cloud call that failed before part 1 (the OCR groups)
- * arrived: an HTTP error, a transport failure, or a part 1 this client
- * cannot read. The capture falls back to the device reader; [failure] is
- * what the translation-error pill words. By the time this is thrown the
- * failure's cooldown is recorded and its attempt reported
- * ([PtCloudClient.postFrame]).
+ * A PlayTranslate Cloud call that failed before a usable answer arrived: an
+ * HTTP error, a transport failure, a part 1 this client cannot read
+ * ([PtCloudClient.postFrame]), or a translate call whose answer was not a
+ * translation ([PtCloudClient.postTranslate]). The capture falls back to the
+ * device reader, a waterfall pass to its next backend; [failure] is what the
+ * translation-error pill words. By the time this is thrown the failure's
+ * cooldown is recorded (and, on the frame route, its attempt reported; the
+ * registry reports the translate route's). The message names the kind and
+ * the code only, since the registry logs it: never a text, the key, the
+ * address or a body.
  */
 class PtCloudReadException(
     override val failure: BackendFailure,
@@ -81,6 +87,16 @@ sealed interface CooldownAction {
             cooldown.recordLadderFailure(CooldownLadder.RateLimit, BAD_KEY, CooldownCause.AUTH)
     }
 
+    /** The key is good but its account has no membership (the edge's 403
+     *  `no_entitlement`): the RateLimit ladder, as billing (the account
+     *  class, shown without a retry time, in the BILLING kind's existing
+     *  wording). Only the account fixes it; the switch and a key save reset
+     *  the cooldown, as for a bad key. */
+    data object NoMembershipLadder : CooldownAction {
+        override fun applyTo(cooldown: CooldownState) =
+            cooldown.recordLadderFailure(CooldownLadder.RateLimit, NO_MEMBERSHIP, CooldownCause.BILLING)
+    }
+
     /** A retry time the server stated. */
     data class Until(val retryAtMs: Long, val description: String, val cause: CooldownCause) : CooldownAction {
         override fun applyTo(cooldown: CooldownState) =
@@ -98,6 +114,7 @@ sealed interface CooldownAction {
         const val SERVER_ERROR = "Server error"
         const val NOT_RUNNING = "Not running"
         const val BAD_KEY = "Bad key"
+        const val NO_MEMBERSHIP = "No membership"
     }
 }
 
@@ -107,7 +124,8 @@ data class Classified(val failure: BackendFailure, val cooldown: CooldownAction)
     fun record(state: CooldownState) = cooldown.applyTo(state)
 }
 
-/** How part 2 settled, for the reader: [failure] is null on success. */
+/** How a frame's part 2, or a translate call's one answer, settled:
+ *  [failure] is null on success. */
 sealed interface TranslationOutcome {
     val failure: BackendFailure?
 
@@ -117,7 +135,8 @@ sealed interface TranslationOutcome {
     fun record(cooldown: CooldownState, attemptStartedAtMs: Long)
 
     /** Status `ok`: the translation of each group the server named, by
-     *  group id. A group it did not name has no translation. */
+     *  group id (on the translate route, by the text's position in the
+     *  request). A group it did not name has no translation. */
     data class Translated(val byGroup: Map<Int, String>) : TranslationOutcome {
         override val failure: BackendFailure? get() = null
         override fun record(cooldown: CooldownState, attemptStartedAtMs: Long) =
@@ -141,25 +160,35 @@ sealed interface TranslationOutcome {
 }
 
 /**
- * The one failure table for PlayTranslate Cloud. Every row of the plan's
- * table is one branch of one of these pure functions, so each is reachable
- * by a test that asserts the kind, the status code and the cooldown it
- * records; the future translation-only backend reuses them.
+ * The one failure table for PlayTranslate Cloud, for both of its routes:
+ * `POST /v1/frame` ([PtCloudClient.postFrame]) and `POST /v1/translate`
+ * ([PtCloudClient.postTranslate], the registry backend [PtCloudBackend]'s
+ * call). Every row of the plan's table is one branch of one of these pure
+ * functions, so each is reachable by a test that asserts the kind, the
+ * status code and the cooldown it records.
  *
- * Before part 1 ([classifyHttp], [classifyTransport], [badPart1]) the
- * capture falls back to the device reader. After part 1
+ * On the frame route, before part 1 ([classifyHttp], [classifyTransport],
+ * [badPart1]) the capture falls back to the device reader; after part 1
  * ([classifyTranslation], [classifyPart2]) the OCR is kept and only the
- * translation falls back.
+ * translation falls back. On the translate route [classifyHttp],
+ * [classifyTransport] and [classifyTranslation] classify the one answer,
+ * and the waterfall falls to its next backend on any failure.
  */
 object PtCloudErrors {
 
     /**
-     * A non-200 answer to `POST /v1/frame`. Keyed on the status code (the
-     * edge's and the origin's `error` strings differ):
+     * A non-200 answer to `POST /v1/frame` or `POST /v1/translate`. Keyed on
+     * the status code (the edge's and the origin's `error` strings differ),
+     * except 403, the one status two edge answers share:
      *  - 401: the client key is wrong or missing. The RateLimit ladder as a
      *    bad key ([CooldownAction.BadKeyLadder]): a key does not fix itself,
      *    and a read per capture or per camera scene while it holds would be
      *    waste; saving a key resets the cooldown.
+     *  - 403 whose body's `error` is `no_entitlement` ([EdgeError]): the key
+     *    is good but its account has no membership. BILLING on the RateLimit
+     *    ladder ([CooldownAction.NoMembershipLadder]), the account class. Any
+     *    other 403 (a body that is not that, or none) is [httpStatusFailure]
+     *    with no cooldown, as below.
      *  - 404 with an empty body: the service is switched off (its pod is
      *    stopped and the edge passes the pod host's bare 404 through). The
      *    RateLimit ladder as not running ([CooldownAction.NotRunningLadder]):
@@ -167,7 +196,10 @@ object PtCloudErrors {
      *    finding it running resets the cooldown.
      *  - 404 with a body, 413, 415, 422: the request is wrong (a bug; a 413
      *    is a frame over the server's cap, a 415 also a JPEG sent to an
-     *    origin that predates JPEG uploads), shown with its code.
+     *    origin that predates JPEG uploads, a 422 on the translate route a
+     *    blank or oversize text, which [PtCloudBackend] never sends; a 404
+     *    with a body is also the edge's answer for a route it does not serve
+     *    yet), shown with its code.
      *  - 429: the edge's per-key rate limit, with `Retry-After`.
      *  - 500, 502: the service or its OCR failed, the RateLimit ladder.
      *  - 503: the pod is starting; waiting fixes it, so no cooldown.
@@ -178,6 +210,11 @@ object PtCloudErrors {
      */
     fun classifyHttp(code: Int, body: String, retryAfter: String?): Classified = when (code) {
         401 -> Classified(BackendFailure(BackendFailureKind.AUTH, code), CooldownAction.BadKeyLadder)
+        403 -> if (edgeError(body) == NO_ENTITLEMENT) {
+            Classified(BackendFailure(BackendFailureKind.BILLING, code), CooldownAction.NoMembershipLadder)
+        } else {
+            Classified(httpStatusFailure(code), CooldownAction.None)
+        }
         404 -> if (body.isBlank()) {
             Classified(BackendFailure(BackendFailureKind.NOT_RUNNING, code), CooldownAction.NotRunningLadder)
         } else {
@@ -190,9 +227,19 @@ object PtCloudErrors {
         else -> Classified(httpStatusFailure(code), CooldownAction.None)
     }
 
-    /** The HTTP stack failed before part 1: a timeout is TIMEOUT, anything
-     *  else (DNS, connect, TLS, a dropped connection) UNREACHABLE. Both take
-     *  the forgiving network path. */
+    /** The edge's `error` string in [body], or null when [body] is not its
+     *  JSON error object. */
+    private fun edgeError(body: String): String? = try {
+        PtJson.lenient.decodeFromString<EdgeError>(body).error
+    } catch (e: IllegalArgumentException) {
+        // kotlinx's SerializationException is one.
+        null
+    }
+
+    /** The HTTP stack failed before an answer (on the frame route, before
+     *  part 1): a timeout is TIMEOUT, anything else (DNS, connect, TLS, a
+     *  dropped connection) UNREACHABLE. Both take the forgiving network
+     *  path. */
     fun classifyTransport(e: IOException): Classified {
         val failure = classifyBackendFailure(e)
         val description = if (e is InterruptedIOException) "Timed out" else "Connection failed"
@@ -203,6 +250,11 @@ object PtCloudErrors {
      *  other than [PT_CLOUD_SCHEMA_VERSION]): the server answered, with
      *  nothing usable. No cooldown. */
     val badPart1: Classified = Classified(BackendFailure.BAD_RESPONSE, CooldownAction.None)
+
+    /** A translate call's 200 whose body is not a [TranslationPart] (not
+     *  JSON, or missing a required field): the server answered, with
+     *  nothing usable. No cooldown. */
+    val unreadableAnswer: Classified = Classified(BackendFailure.BAD_RESPONSE, CooldownAction.None)
 
     /** True when [part] is a part 1 (`"part":"ocr"`) in the one schema this
      *  client reads. */
@@ -305,6 +357,9 @@ object PtCloudErrors {
     const val PART_OCR = "ocr"
     const val PART_TRANSLATION = "translation"
     const val PART_TRANSLATION_ITEM = "translation_item"
+
+    /** The edge's 403 `error` for a key whose account has no membership. */
+    private const val NO_ENTITLEMENT = "no_entitlement"
 
     private fun failed(failure: BackendFailure, action: CooldownAction) =
         TranslationOutcome.Failed(Classified(failure, action))

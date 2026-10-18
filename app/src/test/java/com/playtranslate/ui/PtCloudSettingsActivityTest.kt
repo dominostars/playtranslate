@@ -12,15 +12,20 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.TranslationCache
 import com.playtranslate.cloud.FrameFormat
 import com.playtranslate.cloud.HealthStatus
 import com.playtranslate.cloud.PtCloudService
+import com.playtranslate.cloud.PtCloudTestSupport
 import com.playtranslate.translation.CooldownCause
 import com.playtranslate.translation.CooldownState
+import com.playtranslate.translation.GroupTranslator
+import com.playtranslate.translation.TranslationBackendRegistry
 import kotlinx.coroutines.awaitCancellation
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -35,8 +40,10 @@ import org.robolectric.android.controller.ActivityController
 /**
  * The PlayTranslate Cloud page: its switch seeds from the pref without
  * resetting the service and keeps its own state across a recreate, a flip
- * writes the pref and resets the service's cooldown, the three transport
- * switches seed from their prefs and a flip of one writes its pref and
+ * writes the pref and resets the service's cooldown through the service's
+ * one mutation (the pref stored before the reset's reconcile of the shared
+ * cache), the three transport switches seed from their prefs and a flip of
+ * one writes its pref and
  * nothing else (no reset), the client key is the page's only text field
  * (the service's address is fixed), Save resets the service and starts a
  * check, and the status row shows the check's answer in its wording for each.
@@ -66,6 +73,8 @@ class PtCloudSettingsActivityTest {
         controller?.pause()?.stop()?.destroy()
         controller = null
         PtCloudSettingsActivity.healthOverrideForTest = null
+        // A flip reconciles the shared cache's routing identity.
+        TranslationCache.shared.resetForTest()
         PtCloudService.installForTest(null)
         clearPrefs()
     }
@@ -124,6 +133,7 @@ class PtCloudSettingsActivityTest {
         )
 
         page.toggleRow().performClick()
+        shadowOf(Looper.getMainLooper()).idle()
         assertTrue(page.switch().isChecked)
         assertTrue(prefs.ptCloudEnabled)
         assertNull(PtCloudService.unavailableUntil())
@@ -134,6 +144,47 @@ class PtCloudSettingsActivityTest {
         assertFalse(page.switch().isChecked)
         assertFalse(prefs.ptCloudEnabled)
         assertNull(PtCloudService.unavailableUntil())
+    }
+
+    /** The cooldown line repaints from the service's change signal: a
+     *  gesture made elsewhere (the services row's switch) while the page is
+     *  resumed reaches it with no call of the page's own. */
+    @Test fun `the cooldown line repaints from the service's change signal`() {
+        recordCooldown()
+        val page = open()
+        assertTrue(page.cooldownLine().isVisible)
+
+        PtCloudService.setEnabled(true)
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertFalse(page.cooldownLine().isVisible)
+    }
+
+    /** The switch goes through [PtCloudService.setEnabled], the mutation the
+     *  service's Translation services row shares: the pref is stored before
+     *  the reset, whose reconcile then reads it, so the shared cache's
+     *  routing identity is the cloud's once a flip turns it on with a key
+     *  stored. A page that reset first and stored after would leave the
+     *  identity on the old switch. */
+    @Test fun `the switch goes through the service's one mutation, the pref stored before the reset's reconcile`() {
+        PtCloudService.installForTest(cooldown, PtCloudTestSupport.config(ctx))
+        recordCooldown()
+        val page = open()
+        // Off and cooling down: the identity is not the cloud's.
+        GroupTranslator.reconcileShared(ctx)
+        assertNotEquals(PtCloudService.ID, TranslationBackendRegistry.preferredOnlineId("ja", "en"))
+
+        page.toggleRow().performClick()
+
+        assertTrue(prefs.ptCloudEnabled)
+        assertNull(PtCloudService.unavailableUntil())
+        assertEquals(PtCloudService.ID, TranslationBackendRegistry.preferredOnlineId("ja", "en"))
+        // The flip's reconcile already moved the identity onto the cloud, so
+        // a reconcile now finds nothing changed and keeps what the cache holds.
+        val key = TranslationCache.Key("一", "ja", "en")
+        TranslationCache.shared[key] = "one" to PtCloudService.DISPLAY_NAME
+        GroupTranslator.reconcileShared(ctx)
+        assertEquals("one" to PtCloudService.DISPLAY_NAME, TranslationCache.shared[key])
     }
 
     // ── The transport switches ────────────────────────────────────────────
@@ -265,6 +316,7 @@ class PtCloudSettingsActivityTest {
         recordCooldown()
         val page = open()
         page.saveButton().performClick()
+        shadowOf(Looper.getMainLooper()).idle()
 
         assertNull(PtCloudService.unavailableUntil())
         assertFalse(page.cooldownLine().isVisible)

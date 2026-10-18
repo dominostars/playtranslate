@@ -2142,8 +2142,10 @@ class OverlayUiController(
      * Started undispatched, so the first value is drawn before the menu's
      * window is added. When the network comes back, the "Connection failed"
      * cooldown it ended is already gone by the time the new value arrives
-     * here ([NetworkConnectivity.state] is published after
-     * [PtCloudService.onConnectivityRestored] has run), including on a
+     * here ([NetworkConnectivity.state] is published after the registry's
+     * fan-out, [com.playtranslate.translation.TranslationBackendRegistry.onConnectivityRestored],
+     * has reached the cloud's one cooldown through its registry backend),
+     * including on a
      * switch between two networks the OS has not validated, whose state does
      * not change. Nothing but the network redraws the strip while the menu
      * is up: a cooldown running out, or the switch or the key changed on the

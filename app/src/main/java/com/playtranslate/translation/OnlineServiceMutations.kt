@@ -4,15 +4,16 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.playtranslate.CaptureService
+import com.playtranslate.cloud.PtCloudService
 
 /**
  * The canonical mutation recipes for online service instances. Every UI
  * path (config-page save, services-page toggle/reorder/delete, picker
  * quick-add) goes through here so the four moving parts stay in sync:
  *
- *   store write → registry membership → setOrder → CaptureService
- *   reconcile (and a translation-cache clear when the change can alter
- *   what a given input translates to).
+ *   store write → registry membership → setOrder ([applyOnlineOrder]) →
+ *   CaptureService reconcile (and a translation-cache clear when the change
+ *   can alter what a given input translates to).
  *
  * Every mutation of one instance also forgets its translation errors
  * ([TranslationErrors.forget]): saving its config, toggling it, picking a
@@ -41,7 +42,7 @@ object OnlineServiceMutations {
         TranslationBackendRegistry.addOnlineBackend(
             OnlineBackendFactory.build(context, sharedPrefs(context), instance)
         )
-        applyStoreOrder()
+        applyOnlineOrder()
         TranslationErrors.forget(instance.id)
         GroupTranslator.clearShared()
         GroupTranslator.reconcileShared(context)
@@ -53,7 +54,7 @@ object OnlineServiceMutations {
         TranslationBackendRegistry.addOnlineBackend(
             OnlineBackendFactory.build(context, sharedPrefs(context), instance)
         )
-        applyStoreOrder()
+        applyOnlineOrder()
         GroupTranslator.reconcileShared(context)
     }
 
@@ -99,19 +100,33 @@ object OnlineServiceMutations {
             remove("usage_${id}_tokens")
         }
         TranslationErrors.forget(id)
-        applyStoreOrder()
+        applyOnlineOrder()
         GroupTranslator.reconcileShared(context)
     }
 
     /** Persist the edit-mode drag order. List order = waterfall priority. */
     fun reorder(context: Context, orderedIds: List<String>) {
         OnlineServiceStore.reorder(orderedIds)
-        applyStoreOrder()
+        applyOnlineOrder()
         GroupTranslator.reconcileShared(context)
     }
 
-    private fun applyStoreOrder() =
-        TranslationBackendRegistry.setOrder(OnlineServiceStore.all().map { it.id })
+    /**
+     * The waterfall's online order, the one writer of
+     * [TranslationBackendRegistry.setOrder]: PlayTranslate Cloud pinned
+     * first among the online services (2026-10-17), then the store's
+     * instances in the user's list order; offline tiers follow by priority.
+     * The cloud's place is its id at the head of the override, not its
+     * priority: [TranslationBackendRegistry.orderedBackends] puts every
+     * override id before any priority, and every store instance is in the
+     * override, so no priority could put the cloud ahead of them. The id
+     * stays in the list while the cloud is off or has no key; the waterfall
+     * skips a backend that is not usable. Called by every mutation here that
+     * changes membership or order (a save, an add, a delete, a reorder) and
+     * once from [com.playtranslate.PlayTranslateApplication.onCreate].
+     */
+    fun applyOnlineOrder() =
+        TranslationBackendRegistry.setOrder(listOf(PtCloudService.ID) + OnlineServiceStore.all().map { it.id })
 
     private fun sharedPrefs(context: Context): SharedPreferences =
         context.applicationContext.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)

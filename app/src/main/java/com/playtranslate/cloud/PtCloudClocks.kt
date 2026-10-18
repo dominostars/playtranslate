@@ -30,12 +30,12 @@ internal class ItemLines {
 /**
  * PlayTranslate Cloud's two clock lines per frame (docs/api.md, "Clocks";
  * docs/client-latency-handoff.md, item 5; docs/client-cache-handoff.md,
- * item 5), keyed by the frame id the client chose, which carries no content.
- * Numbers and status names only: never the key, the URL, a body, or any
- * recognized or translated text. A value the frame did not produce prints
- * as a dash.
+ * item 5) and one per translate call ([translateLine]), keyed by the frame
+ * id the client chose, which carries no content. Numbers and status names
+ * only: never the key, the URL, a body, or any recognized or translated
+ * text. A value the frame did not produce prints as a dash.
  *
- * Both functions are total: no input makes them throw. [finalLine] runs
+ * Every function is total: no input makes one throw. [finalLine] runs
  * inside the read of part 2, a child of the caller's job that must never
  * fail, so a server number that is not finite (or a header that is not a
  * number) prints as a dash instead of reaching [roundToLong], which throws
@@ -112,6 +112,27 @@ internal object PtCloudClocks {
             "final=$finalMs reworded=${reworded ?: DASH} " +
             "translate=${ms(part?.timings?.get("translate_ms"))} total=${ms(part?.timings?.get("total_ms"))}"
     }
+
+    /**
+     * The line of one `POST /v1/translate` call ([PtCloudClient.postTranslate]),
+     * however it ended. [texts] is how many texts it sent and [codePoints]
+     * their code points together (the server's size measure); [totalMs] is
+     * the send to the answer read, or to the failure. [status] is the
+     * answer's `translation_status`, `http<code>` for a non-200,
+     * `unreadable` for a 200 that did not decode, and the exception's class
+     * name for a transport failure. [connectionReused] is the HTTP stack's
+     * (null when it never reported it).
+     */
+    fun translateLine(
+        frameId: String,
+        texts: Int,
+        codePoints: Int,
+        totalMs: Long,
+        status: String,
+        connectionReused: Boolean?,
+    ): String =
+        "translate id=$frameId n=$texts chars=$codePoints ms=$totalMs status=$status " +
+            "reused=${connectionReused ?: DASH}"
 
     private fun reworded(itemTexts: Map<Int, String>, final: TranslationPart): Int {
         val finalById = final.translations.orEmpty().associate { it.id to it.translation }

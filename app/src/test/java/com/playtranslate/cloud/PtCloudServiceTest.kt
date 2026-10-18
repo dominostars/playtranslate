@@ -8,6 +8,8 @@ import com.playtranslate.translation.CooldownCause
 import com.playtranslate.translation.CooldownLadder
 import com.playtranslate.translation.CooldownState
 import com.playtranslate.translation.OnlineAttempt
+import com.playtranslate.TranslationCache
+import com.playtranslate.translation.GroupTranslator
 import com.playtranslate.translation.TranslationBackendRegistry
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -22,8 +24,11 @@ import org.robolectric.RobolectricTestRunner
 import java.util.concurrent.atomic.AtomicLong
 
 /** The service object: one cooldown, built once, cleared by the user's
- *  gestures, by a regained network (connection failures only) and by the
- *  cloud page's health check finding the service running. */
+ *  gestures, by a regained network (connection failures only, through the
+ *  registry's fan-out and the cloud's registry backend) and by the cloud
+ *  page's health check finding the service running; the settings a test
+ *  installs; and the gestures' reconcile of the shared cache's routing
+ *  identity. */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudServiceTest {
 
@@ -36,6 +41,8 @@ class PtCloudServiceTest {
     @After fun tearDown() {
         PtCloudService.installForTest(null)
         TranslationBackendRegistry.onlineAttemptListener = null
+        TranslationCache.shared.resetForTest()
+        PtCloudTestSupport.sharedPrefs(ctx).edit().clear().commit()
     }
 
     @Test fun `the cooldown says so when init was never called`() {
@@ -67,23 +74,77 @@ class PtCloudServiceTest {
         assertFalse(PtCloudService.isCoolingDown(clock.get()))
     }
 
-    @Test fun `a regained network clears a connection cooldown and keeps a server one`() {
+    @Test fun `the registry's connectivity fan-out clears a connection cooldown through the cloud's backend and keeps a server one`() {
+        // The Application registered the cloud's backend; nothing else
+        // passes the signal to the cloud.
+        assertTrue(TranslationBackendRegistry.byId(PtCloudService.ID) is PtCloudBackend)
         val state = install()
         state.recordNetworkFailure("Connection failed")
         state.recordNetworkFailure("Connection failed")
         assertTrue(PtCloudService.isCoolingDown(clock.get()))
-        assertTrue(PtCloudService.onConnectivityRestored())
+        TranslationBackendRegistry.onConnectivityRestored()
         assertNull(PtCloudService.unavailableUntil())
 
         state.recordLadderFailure(CooldownLadder.RateLimit, "Server error", CooldownCause.SERVER_ERROR)
-        assertFalse(PtCloudService.onConnectivityRestored())
+        TranslationBackendRegistry.onConnectivityRestored()
         assertTrue(PtCloudService.isCoolingDown(clock.get()))
+    }
+
+    @Test fun `config is the stored settings, or a test's while installed`() {
+        val stored = PtCloudService.config
+        val test = PtCloudTestSupport.config(ctx)
+        PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), test)
+        assertSame(test, PtCloudService.config)
+        PtCloudService.installForTest(CooldownState(null, PtCloudService.ID))
+        assertSame(stored, PtCloudService.config)
+    }
+
+    @Test fun `a gesture reconciles the shared cache's routing identity after the reset`() {
+        // The wall clock: the registry judges a cooldown against it.
+        val state = CooldownState(null, PtCloudService.ID)
+        PtCloudService.installForTest(state, PtCloudTestSupport.config(ctx))
+        PtCloudTestSupport.prefs(ctx).ptCloudEnabled = true
+        state.recordLadderFailure(CooldownLadder.RateLimit, "Bad key", CooldownCause.AUTH)
+        TranslationCache.shared.resetForTest()
+        // The cloud cools down: the identity is the next online service's.
+        GroupTranslator.reconcileShared(ctx)
+        assertTrue(TranslationBackendRegistry.preferredOnlineId("ja", "en") != PtCloudService.ID)
+
+        PtCloudService.setEnabled(true)
+
+        // The gesture moved the identity onto the cloud, so a reconcile
+        // after it finds nothing changed and keeps what the cache holds.
+        assertEquals(PtCloudService.ID, TranslationBackendRegistry.preferredOnlineId("ja", "en"))
+        val key = TranslationCache.Key("一", "ja", "en")
+        TranslationCache.shared[key] = "one" to PtCloudService.DISPLAY_NAME
+        GroupTranslator.reconcileShared(ctx)
+        assertEquals("one" to PtCloudService.DISPLAY_NAME, TranslationCache.shared[key])
+    }
+
+    @Test fun `every gesture and a health check that resets count a change, a recorded failure does not`() {
+        val state = install()
+        val before = PtCloudService.changes.value
+
+        PtCloudService.setEnabled(true)
+        assertEquals(before + 1, PtCloudService.changes.value)
+        PtCloudService.onCredentialsSaved()
+        assertEquals(before + 2, PtCloudService.changes.value)
+
+        state.recordLadderFailure(CooldownLadder.RateLimit, "Server error", CooldownCause.SERVER_ERROR)
+        assertEquals("a failure is no gesture", before + 2, PtCloudService.changes.value)
+        PtCloudService.onHealthRunning()
+        assertEquals("Running resets nothing but a stopped-pod cooldown", before + 2, PtCloudService.changes.value)
+
+        state.resetCooldown()
+        state.recordLadderFailure(CooldownLadder.RateLimit, "Not running", CooldownCause.NOT_RUNNING)
+        PtCloudService.onHealthRunning()
+        assertEquals(before + 3, PtCloudService.changes.value)
     }
 
     @Test fun `toggling the switch or saving credentials drops any cooldown`() {
         val state = install()
         state.recordParsedFailure(clock.get() + 3_600_000, "Daily quota used", CooldownCause.DAILY_QUOTA)
-        PtCloudService.onToggled()
+        PtCloudService.setEnabled(true)
         assertNull(PtCloudService.unavailableUntil())
 
         state.recordLadderFailure(CooldownLadder.RateLimit, "Rate limited")

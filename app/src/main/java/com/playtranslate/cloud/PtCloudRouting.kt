@@ -3,9 +3,11 @@ package com.playtranslate.cloud
 import com.playtranslate.language.SourceLangId
 
 /**
- * Whether a capture may be read by PlayTranslate Cloud. Pure, so the whole
- * eligibility table is tested cell by cell; the router's decision
- * ([PtCloudService.refusal]) gathers the facts and asks here.
+ * Whether a capture may be read by PlayTranslate Cloud, and whether the
+ * service is configured at all. Pure, so the whole eligibility table is
+ * tested cell by cell; the router's decision ([PtCloudService.refusal])
+ * gathers the facts and asks here, and the registry backend's
+ * [PtCloudBackend.isUsable] asks [configured].
  */
 object PtCloudRouting {
 
@@ -25,9 +27,19 @@ object PtCloudRouting {
     fun isSupportedSource(id: SourceLangId): Boolean = id.code in SUPPORTED_SOURCE_CODES
 
     /**
-     * True only when every condition allows the cloud: the user switched it
-     * on ([enabled] is already false outside debug builds), a usable client
-     * key is set ([PtCloudConfig.hasKey]), the source is one the server
+     * The one definition of "configured": the user switched the service on
+     * ([enabled] is already false outside debug builds) and a usable client
+     * key is stored ([PtCloudConfig.hasKey]). [hasKey] is asked only when
+     * the switch is on, since reading the key decrypts it through the
+     * AndroidKeyStore and the registry asks [PtCloudBackend.isUsable] several
+     * times per translation on the caller's thread. [eligible] builds on it,
+     * so the frame route and the translate route agree on it.
+     */
+    inline fun configured(enabled: Boolean, hasKey: () -> Boolean): Boolean = enabled && hasKey()
+
+    /**
+     * True only when every condition allows the cloud: it is [configured]
+     * (switched on, a usable client key set), the source is one the server
      * reads, the service is not cooling down (a stopped pod and a refused
      * key cool it down too), and the caller did not ask for the device reader
      * ([deviceOnly]: a re-OCR, the furigana hold, a hold while live mode
@@ -39,5 +51,5 @@ object PtCloudRouting {
         sourceSupported: Boolean,
         coolingDown: Boolean,
         deviceOnly: Boolean,
-    ): Boolean = enabled && hasKey && sourceSupported && !coolingDown && !deviceOnly
+    ): Boolean = configured(enabled) { hasKey } && sourceSupported && !coolingDown && !deviceOnly
 }

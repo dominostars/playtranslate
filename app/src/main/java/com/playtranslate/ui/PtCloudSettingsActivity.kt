@@ -10,7 +10,9 @@ import androidx.annotation.IdRes
 import androidx.annotation.StringRes
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.Prefs
@@ -30,11 +32,16 @@ import kotlinx.coroutines.launch
  * too, for a PlayTranslate Cloud error. The service's address is fixed
  * ([PtCloudClient]); the page has no field for it.
  *
- *  - The switch writes [Prefs.ptCloudEnabled] and resets the service
- *    ([PtCloudService.onToggled]: its cooldown and the pill's errors), since
+ *  - The switch goes through the service's one mutation
+ *    ([PtCloudService.setEnabled], which the service's row on the
+ *    Translation services page calls too): it stores [Prefs.ptCloudEnabled]
+ *    and resets the service (its cooldown and the pill's errors), since
  *    either direction means "try it again now". Seeded before its listener
  *    is attached, so building or restoring the page writes nothing and
- *    resets nothing.
+ *    resets nothing. The cooldown line below the status repaints from the
+ *    service's own change signal ([PtCloudService.changes]), on each
+ *    gesture and each resume, as the row does; the page repaints nothing
+ *    after a mutation itself.
  *  - Save persists the key, resets the service
  *    ([PtCloudService.onCredentialsSaved]) and checks health. Unlike the LLM
  *    page, the page stays open after Save: it is where the status shows.
@@ -81,11 +88,18 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         etKey.setText(Prefs(this).ptCloudClientKey)
         btnSave.setOnClickListener { onSave() }
         bindTransportSwitches()
+        // The cooldown line follows the service: each gesture (the switch,
+        // Save, a running health check) counts on PtCloudService.changes,
+        // and the StateFlow replays to this collector on each resume.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                PtCloudService.changes.collect { renderCooldown() }
+            }
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        renderCooldown()
         checkHealth(fromSave = false)
     }
 
@@ -102,11 +116,7 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         toggle.isChecked = Prefs(this).ptCloudEnabled
         // SINGLE persistence path, as on the History page: the row tap only
         // toggles, and every change funnels through this listener.
-        toggle.setOnCheckedChangeListener { _, checked ->
-            Prefs(this).ptCloudEnabled = checked
-            PtCloudService.onToggled()
-            renderCooldown()
-        }
+        toggle.setOnCheckedChangeListener { _, checked -> PtCloudService.setEnabled(checked) }
         row.setOnClickListener { toggle.toggle() }
     }
 
@@ -152,7 +162,6 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
     private fun onSave() {
         Prefs(this).ptCloudClientKey = etKey.text.toString().trim()
         PtCloudService.onCredentialsSaved()
-        renderCooldown()
         checkHealth(fromSave = true)
     }
 
@@ -170,10 +179,7 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
             // A running service ends a cooldown recorded while it was
             // stopped (a pod start is no gesture the app can see; this check
             // is where the app learns of it).
-            if (status == HealthStatus.Running) {
-                PtCloudService.onHealthRunning()
-                renderCooldown()
-            }
+            if (status == HealthStatus.Running) PtCloudService.onHealthRunning()
             setSaving(false)
         }
     }

@@ -85,6 +85,15 @@ fun isKeylessRefusal(code: Int): Boolean = code == 401 || code == 403
  */
 interface ClassifiedFailure {
     val failure: BackendFailure
+
+    /** Whether the service's server answered this failure, which is what
+     *  [OnlineAttempt.reachedServer] reports: true for every kind but the
+     *  two transport ones, which never heard back. A refusal the client
+     *  makes before any request (a cap it checks itself, such as
+     *  PlayTranslate Cloud's text and body caps or DeepL's batch cap) says
+     *  false: nothing was sent, so it is no proof that the connection works,
+     *  and the error tracker must not read it as one. */
+    val serverAnswered: Boolean get() = !failure.kind.isTransport
 }
 
 /**

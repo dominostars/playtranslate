@@ -160,7 +160,7 @@ interface BatchTranslator {
 class BatchParseException(
     message: String,
     cause: Throwable? = null,
-    val serverAnswered: Boolean = true,
+    override val serverAnswered: Boolean = true,
 ) : java.io.IOException(message, cause), ClassifiedFailure {
     override val failure = BackendFailure(BackendFailureKind.BAD_RESPONSE)
 }
@@ -186,6 +186,10 @@ class StructuralFailureException(
     message: String,
     override val failure: BackendFailure,
     cause: Throwable? = null,
+    /** False for a refusal made before any request went out
+     *  ([ClassifiedFailure.serverAnswered]); the default, true, is every
+     *  refusal a reply earned. */
+    override val serverAnswered: Boolean = true,
 ) : java.io.IOException(message, cause), ClassifiedFailure
 
 /**
