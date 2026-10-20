@@ -109,7 +109,8 @@ class OpenAiBackend(
     private val account: () -> AccountRequirement = { ServiceType.OPENAI.account },
     /** Extra top-level fields for the chat-completions body, chosen per
      *  model. Empty for most providers; Claude and Index-Translate switch
-     *  thinking off here ([OnlineBackendFactory.requestExtrasFor]). */
+     *  thinking off here, DeepSeek to its instance's Thinking switch
+     *  ([OnlineBackendFactory.requestExtrasFor]). */
     private val requestExtras: (String) -> Map<String, JsonElement> = { emptyMap() },
     private val usageTracker: UsageTracker,
     /** Returns true when [listModels] should apply OpenAI's first-party

@@ -52,6 +52,10 @@ data class LlmBackendConfig(
     val account: AccountRequirement,
     /** A provider-specific note shown in place of the key field, or null. */
     @StringRes val noteRes: Int?,
+    /** True where the provider lets each request choose thinking on or off
+     *  ([OpenAiPreset.thinkingSwitch]; DeepSeek): the page shows the
+     *  Thinking switch row, saved as [OnlineServiceInstance.thinking]. */
+    val thinkingSwitch: Boolean,
     /** The base URL the current preset resolves to — field text for
      *  pinned presets, hint for CUSTOM. */
     val presetBaseUrl: String,
@@ -92,6 +96,7 @@ object LlmBackendConfigs {
             allowsBaseUrl = type == ServiceType.OPENAI && preset.listedUnderOpenAi,
             account = shell.account,
             noteRes = noteFor(type, preset),
+            thinkingSwitch = type == ServiceType.OPENAI && preset.thinkingSwitch,
             presetBaseUrl = OnlineBackendFactory.resolveBaseUrl(shell)
                 .ifBlank { Prefs.DEFAULT_OPENAI_BASE_URL },
             getBaseUrl = { OnlineServiceStore.byId(instanceId)?.baseUrl ?: "" },

@@ -791,6 +791,8 @@
     <string name="llm_backend_base_url_invalid">Используйте https:// — http:// допустим только для локального адреса или адреса в сети LAN</string>
 
     <string name="llm_backend_get_key_title_fmt">Получить API-ключ <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g></string>
+    <string name="llm_backend_thinking_title">Режим рассуждений</string>
+    <string name="llm_backend_thinking_subtitle">Модель рассуждает перед ответом. Медленнее, а рассуждения оплачиваются как выходные токены.</string>
 
     <string name="llm_backend_model_custom_entry">Вручную…</string>
 

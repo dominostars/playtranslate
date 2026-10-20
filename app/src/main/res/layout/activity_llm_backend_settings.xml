@@ -7,7 +7,9 @@
      (Gemini) and for a pinned preset with its own picker row
      (Index-Translate) — gated on LlmBackendConfig.allowsBaseUrl. The key
      section is GONE'd for a provider that takes no key, which shows its
-     note instead. -->
+     note instead. The Thinking switch section is shown only for a
+     provider whose requests can choose thinking (DeepSeek), gated on
+     LlmBackendConfig.thinkingSwitch. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
@@ -150,6 +152,22 @@
 
                         <include layout="@layout/settings_row_link"
                             android:id="@+id/rowGetKeyLink" />
+                    </LinearLayout>
+
+                    <!-- Thinking switch (gated on LlmBackendConfig.thinkingSwitch):
+                         shown only for a provider whose requests can choose
+                         thinking on or off (DeepSeek). Saved as the
+                         instance's thinking flag, off by default. -->
+                    <LinearLayout
+                        android:id="@+id/sectionThinking"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <include layout="@layout/settings_row_divider" />
+
+                        <include layout="@layout/settings_row_switch"
+                            android:id="@+id/rowThinking" />
                     </LinearLayout>
 
                     <!-- A provider's note in place of the key field (gated on

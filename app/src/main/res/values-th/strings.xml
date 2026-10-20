@@ -715,6 +715,8 @@
     <string name="llm_backend_base_url_invalid">ใช้ https:// — http:// อนุญาตเฉพาะที่อยู่ในเครื่องหรือเครือข่าย LAN เท่านั้น</string>
 
     <string name="llm_backend_get_key_title_fmt">รับคีย์ API ของ <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g></string>
+    <string name="llm_backend_thinking_title">โหมดการคิด</string>
+    <string name="llm_backend_thinking_subtitle">โมเดลจะคิดก่อนตอบ ช้ากว่า และส่วนที่คิดจะถูกเรียกเก็บเงินเป็นโทเค็นเอาต์พุต</string>
 
     <string name="llm_backend_model_custom_entry">กำหนดเอง…</string>
 

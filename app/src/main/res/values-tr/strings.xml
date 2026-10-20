@@ -765,6 +765,8 @@
     <string name="llm_backend_base_url_invalid">https:// kullanın — http:// yalnızca yerel veya LAN adresi için izinlidir</string>
 
     <string name="llm_backend_get_key_title_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> API anahtarı edinin</string>
+    <string name="llm_backend_thinking_title">Düşünme modu</string>
+    <string name="llm_backend_thinking_subtitle">Model yanıtlamadan önce akıl yürütür. Daha yavaştır ve akıl yürütme de çıktı tokenleri olarak ücretlendirilir.</string>
 
     <string name="llm_backend_model_custom_entry">Özel…</string>
 

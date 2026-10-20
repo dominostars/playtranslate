@@ -94,11 +94,23 @@ enum class ServiceType(
  *
  *  CLAUDE is Anthropic's OpenAI-compatible layer, which covers
  *  chat-completions only: its /models is the native endpoint with its own
- *  auth headers ([OnlineBackendFactory.modelsAuthHeadersFor]). */
+ *  auth headers ([OnlineBackendFactory.modelsAuthHeadersFor]).
+ *
+ *  [thinkingSwitch] is true where the provider lets each request choose
+ *  thinking on or off and the app hands that choice to the user: the config
+ *  page shows its Thinking row, saved as [OnlineServiceInstance.thinking],
+ *  and [OnlineBackendFactory.requestExtrasFor] sends the chosen state on
+ *  every request. DeepSeek is that case today: its API thinks by default
+ *  when the request says nothing, at reasoning-token prices. The other
+ *  presets decide for the user (Claude and Index-Translate are switched
+ *  off there, the rest send nothing), so their pages show no row. */
 @Serializable
-enum class OpenAiPreset(val account: AccountRequirement = ServiceType.OPENAI.account) {
+enum class OpenAiPreset(
+    val account: AccountRequirement = ServiceType.OPENAI.account,
+    val thinkingSwitch: Boolean = false,
+) {
     OPENAI,
-    DEEPSEEK,
+    DEEPSEEK(thinkingSwitch = true),
     MISTRAL,
     GROQ,
     OPENROUTER,
@@ -144,6 +156,14 @@ data class OnlineServiceInstance(
     val preset: OpenAiPreset = OpenAiPreset.OPENAI,
     /** User-entered base URL — consulted only when [preset] == CUSTOM. */
     val baseUrl: String = "",
+    /** The Thinking switch on the config page: whether the model may reason
+     *  before answering. Off by default. Honored only by a preset with the
+     *  switch ([OpenAiPreset.thinkingSwitch]), whose every request carries
+     *  this state explicitly; the other presets ignore it. The flag stays
+     *  on the record across a preset change, so a user who returns to
+     *  DeepSeek finds the switch as they left it. A record written before
+     *  the field existed has no key and decodes as off. */
+    val thinking: Boolean = false,
 ) {
     /** What this instance's service costs to start, and so whether it takes
      *  a key ([AccountRequirement.requiresKey]): its preset's for an

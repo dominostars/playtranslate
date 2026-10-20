@@ -770,6 +770,8 @@
     <string name="llm_backend_base_url_invalid">https://를 사용하세요. http://는 로컬 또는 LAN 주소에만 허용됩니다</string>
 
     <string name="llm_backend_get_key_title_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> API 키 받기</string>
+    <string name="llm_backend_thinking_title">추론 모드</string>
+    <string name="llm_backend_thinking_subtitle">모델이 답하기 전에 추론합니다. 속도가 느려지고, 추론 내용도 출력 토큰으로 과금됩니다.</string>
 
     <string name="llm_backend_model_custom_entry">직접 입력…</string>
 

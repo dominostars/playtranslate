@@ -114,7 +114,7 @@ object OnlineBackendFactory {
             // Whether a key exists to send: the preset's requirement, read
             // through the one per-instance resolver (INDEX_TRANSLATE takes none).
             account = { current().account },
-            requestExtras = { model -> requestExtrasFor(current().preset, model) },
+            requestExtras = { model -> requestExtrasFor(current(), model) },
             usageTracker = UsageTracker(sharedPrefs, id),
             // owned_by filtering only makes sense against the canonical
             // first-party OpenAI catalog; every other provider tags models
@@ -189,18 +189,37 @@ object OnlineBackendFactory {
      * through the chat template exactly as Bilibili's own client sends it
      * (its comment: with thinking on, the reasoning can replace the
      * translation in the response).
+     *
+     * DeepSeek: since V4 one model serves both modes, and a request that
+     * says nothing runs in thinking mode at `reasoning_effort` high, with the
+     * hidden reasoning billed at the output rate; a user found every
+     * translation running that way (issue #41). The request always carries
+     * the instance's own choice, [thinking], which is the Thinking switch on
+     * its config page ([OnlineServiceInstance.thinking], off by default), so
+     * the provider's default never decides. DeepSeek is the one preset that
+     * reads [thinking]; the others choose for the user.
      */
-    fun requestExtrasFor(preset: OpenAiPreset, model: String): Map<String, JsonElement> =
+    fun requestExtrasFor(preset: OpenAiPreset, model: String, thinking: Boolean): Map<String, JsonElement> =
         when (preset) {
             OpenAiPreset.CLAUDE ->
                 if (CLAUDE_THINKING_ALWAYS_ON.any { model.startsWith(it) }) emptyMap()
                 else mapOf("thinking" to buildJsonObject { put("type", "disabled") })
+            OpenAiPreset.DEEPSEEK -> mapOf(
+                "thinking" to buildJsonObject { put("type", if (thinking) "enabled" else "disabled") },
+            )
             OpenAiPreset.INDEX_TRANSLATE -> mapOf(
                 "chat_template_kwargs" to buildJsonObject { put("enable_thinking", false) },
             )
-            OpenAiPreset.OPENAI, OpenAiPreset.DEEPSEEK, OpenAiPreset.MISTRAL,
+            OpenAiPreset.OPENAI, OpenAiPreset.MISTRAL,
             OpenAiPreset.GROQ, OpenAiPreset.OPENROUTER, OpenAiPreset.CUSTOM -> emptyMap()
         }
+
+    /** The extras for one instance: its preset's switch, read with the
+     *  instance's own Thinking choice. The live backend's hook reads this
+     *  off the store on every call, so a saved switch reaches the next
+     *  request without a rebuild. */
+    fun requestExtrasFor(instance: OnlineServiceInstance, model: String): Map<String, JsonElement> =
+        requestExtrasFor(instance.preset, model, instance.thinking)
 
     /** Model-id prefixes that reject `thinking: disabled`. */
     private val CLAUDE_THINKING_ALWAYS_ON = listOf("claude-fable", "claude-mythos")

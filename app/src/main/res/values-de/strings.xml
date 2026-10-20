@@ -773,6 +773,8 @@
     <string name="llm_backend_base_url_invalid">Verwende https:// – http:// ist nur für eine lokale oder LAN-Adresse zulässig</string>
 
     <string name="llm_backend_get_key_title_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g>-API-Schlüssel erhalten</string>
+    <string name="llm_backend_thinking_title">Denkmodus</string>
+    <string name="llm_backend_thinking_subtitle">Das Modell denkt nach, bevor es antwortet. Langsamer, und das Nachdenken wird als Ausgabe-Tokens abgerechnet.</string>
 
     <string name="llm_backend_model_custom_entry">Benutzerdefiniert…</string>
 

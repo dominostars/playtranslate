@@ -17,6 +17,7 @@ import androidx.appcompat.widget.PopupMenu
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.materialswitch.MaterialSwitch
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.playtranslate.R
@@ -58,14 +59,23 @@ import androidx.core.view.isGone
  * the instance's cell on the services page. A preset with its own picker
  * row shows neither: it is what the instance is.
  *
+ * A provider whose requests can choose thinking on or off (DeepSeek,
+ * [OpenAiPreset.thinkingSwitch]) gets a Thinking switch row under the key
+ * section, off by default, saved as the instance's thinking flag. The row
+ * follows the Provider dropdown like the rest of the preset chrome.
+ *
  * UX contract (unchanged from the legacy per-service screen):
- *  - The toolbar X discards in-progress edits.
+ *  - The toolbar X discards in-progress edits. A recreation (rotation,
+ *    theme change) keeps them: the typed key and URL through their own
+ *    view state, the Provider pick and the Thinking flip through
+ *    [onSaveInstanceState].
  *  - Save validates the typed key against the provider BEFORE
  *    persisting — against a shell backend built from the CURRENT page
  *    state, so a preset switched but not yet saved validates against
- *    the right endpoint. On Ok/Unreachable the instance is persisted
- *    (enabled) and the screen finishes; on Invalid an OverlayAlert
- *    explains and nothing is written.
+ *    the right endpoint. Every input is frozen until the probe answers,
+ *    so what the screen shows is what gets saved ([setLoading]). On
+ *    Ok/Unreachable the instance is persisted (enabled) and the screen
+ *    finishes; on Invalid an OverlayAlert explains and nothing is written.
  *  - No key to send: a provider that takes none (its page shows a note
  *    instead of the key field) is saved enabled with no probe; a blank key
  *    where one is required clears it and disables the instance in EDIT,
@@ -78,6 +88,7 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
     private lateinit var etApiKey: EditText
     private lateinit var btnSave: MaterialButton
     private lateinit var progressSave: ProgressBar
+    private lateinit var switchThinking: MaterialSwitch
 
     private lateinit var instanceId: String
     private lateinit var type: ServiceType
@@ -109,9 +120,12 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
                 intent.getStringExtra(EXTRA_TYPE)
                     ?: error("CREATE launch without EXTRA_TYPE")
             )
-        // The record's preset in EDIT; in CREATE the picker row's pinned
-        // preset, read from the intent so a recreation keeps it.
-        preset = existing?.preset
+        // The page's own unsaved pick first, on a recreation (a rotation
+        // mid-edit must not drop it); then the record's preset in EDIT;
+        // then, in CREATE, the picker row's pinned preset, read from the
+        // intent so a recreation keeps it.
+        preset = savedInstanceState?.getString(STATE_PRESET)?.let { OpenAiPreset.valueOf(it) }
+            ?: existing?.preset
             ?: intent.getStringExtra(EXTRA_PRESET)?.let { OpenAiPreset.valueOf(it) }
             ?: OpenAiPreset.OPENAI
         savedCustomUrl = if (existing?.preset == OpenAiPreset.CUSTOM) existing.baseUrl else ""
@@ -129,10 +143,21 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         wireGetKeyLink(findViewById(R.id.rowGetKeyLink))
         wireProviderSection()
         applyKeyRequirement()
+        wireThinkingRow(existing, savedInstanceState)
 
         btnSave = findViewById(R.id.btnSave)
         progressSave = findViewById(R.id.progressSave)
         btnSave.setOnClickListener { onSave() }
+    }
+
+    /** The page's unsaved state that no view saves for itself: the
+     *  Provider pick and the Thinking flip. The key and URL fields save
+     *  their own text by id; the switch row's layout turns that off
+     *  (every copy shares one id), so the host keeps it. */
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString(STATE_PRESET, preset.name)
+        outState.putBoolean(STATE_THINKING, switchThinking.isChecked)
     }
 
     private fun wireGetKeyLink(row: View) {
@@ -180,6 +205,31 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         }
     }
 
+    /** The Thinking switch row, set from the page's own unsaved flip on a
+     *  recreation, else from the saved record (off for a new instance),
+     *  and shown only where the page's provider offers the choice
+     *  ([applyThinkingRow]). Nothing persists until Save. */
+    private fun wireThinkingRow(existing: OnlineServiceInstance?, savedInstanceState: Bundle?) {
+        val row = findViewById<View>(R.id.rowThinking)
+        row.findViewById<TextView>(R.id.tvRowTitle).setText(R.string.llm_backend_thinking_title)
+        row.findViewById<TextView>(R.id.tvRowSubtitle).apply {
+            setText(R.string.llm_backend_thinking_subtitle)
+            isVisible = true
+        }
+        switchThinking = row.findViewById(R.id.switchRowToggle)
+        switchThinking.isChecked = savedInstanceState?.getBoolean(STATE_THINKING)
+            ?: existing?.thinking ?: false
+        row.setOnClickListener { switchThinking.toggle() }
+        applyThinkingRow()
+    }
+
+    /** The Thinking row shows exactly where the page's provider lets a
+     *  request choose; it reads the page config, so it moves with the
+     *  Provider dropdown. */
+    private fun applyThinkingRow() {
+        findViewById<View>(R.id.sectionThinking).isVisible = config.thinkingSwitch
+    }
+
     /** Anchored dropdown of the presets the OpenAI row lists — a menu
      *  rather than a segmented control so the list can grow (more
      *  providers are planned). */
@@ -217,6 +267,7 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         refreshProviderValue()
         applyPresetToUrlField()
         applyKeyRequirement()
+        applyThinkingRow()
     }
 
     private fun applyPresetToUrlField() {
@@ -240,20 +291,29 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
 
     /** Toggle the Save button's loading state. While loading, the
      *  button text is blanked + click suppressed and the centered
-     *  ProgressBar overlays it. The key field is disabled to prevent
-     *  edits racing with the in-flight validation request. */
+     *  ProgressBar overlays it, and every input on the page is disabled:
+     *  the key field, the Provider row, the Custom URL field and the
+     *  Thinking row. The instance under validation was read off the page
+     *  when Save was tapped and the probe then suspends, so an edit landing
+     *  during it would show on screen and not be the thing saved, and a
+     *  provider switched mid-probe would be saved with a key validated
+     *  against the old one. The URL field's enabled state belongs to the
+     *  preset rule ([applyPresetToUrlField]): it comes back only on Custom. */
     private fun setLoading(loading: Boolean) {
         if (loading) {
             btnSave.text = ""
-            btnSave.isEnabled = false
             progressSave.isVisible = true
-            etApiKey.isEnabled = false
         } else {
             btnSave.text = getString(R.string.deepl_settings_save)
-            btnSave.isEnabled = true
             progressSave.isGone = true
-            etApiKey.isEnabled = true
         }
+        val editable = !loading
+        btnSave.isEnabled = editable
+        etApiKey.isEnabled = editable
+        findViewById<View>(R.id.rowProvider).isEnabled = editable
+        findViewById<View>(R.id.etBaseUrl).isEnabled = editable && preset == OpenAiPreset.CUSTOM
+        findViewById<View>(R.id.rowThinking).isEnabled = editable
+        switchThinking.isEnabled = editable
     }
 
     private fun onSave() {
@@ -345,7 +405,10 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
     /** The instance this page would persist right now. Model carries
      *  over from the saved record unless the preset changed — a
      *  DeepSeek model id is meaningless against OpenAI and vice versa,
-     *  so a preset switch resets to the new preset's default. */
+     *  so a preset switch resets to the new preset's default. The
+     *  Thinking switch is saved as it stands, shown or not: a preset
+     *  without the switch ignores the flag, and the user's choice is
+     *  waiting when they switch back. */
     private fun pageInstance(existing: OnlineServiceInstance?, enabled: Boolean): OnlineServiceInstance {
         val model = when {
             existing == null -> config.defaultModel
@@ -359,6 +422,7 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
             model = model,
             preset = if (type == ServiceType.OPENAI) preset else OpenAiPreset.OPENAI,
             baseUrl = customUrlOrNull() ?: "",
+            thinking = switchThinking.isChecked,
         )
     }
 
@@ -403,6 +467,8 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         const val EXTRA_INSTANCE_ID = "instance_id"
         const val EXTRA_TYPE = "service_type"
         const val EXTRA_PRESET = "openai_preset"
+        private const val STATE_PRESET = "state_preset"
+        private const val STATE_THINKING = "state_thinking"
 
         /** The provider dropdown's items as (menu item id, preset): the
          *  presets the OpenAI row lists, each keyed by its ordinal, so an

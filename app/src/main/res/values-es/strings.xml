@@ -772,6 +772,8 @@
     <string name="llm_backend_base_url_invalid">Usa https:// — http:// solo se permite para una dirección local o de red local (LAN)</string>
 
     <string name="llm_backend_get_key_title_fmt">Obtener una clave de API de <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g></string>
+    <string name="llm_backend_thinking_title">Modo de razonamiento</string>
+    <string name="llm_backend_thinking_subtitle">El modelo razona antes de responder. Más lento, y el razonamiento se factura como tokens de salida.</string>
 
     <string name="llm_backend_model_custom_entry">Personalizado…</string>
 

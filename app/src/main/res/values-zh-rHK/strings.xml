@@ -773,6 +773,8 @@
     <string name="llm_backend_base_url_invalid">請使用 https://；只有本機或區域網絡位址才允許使用 http://</string>
 
     <string name="llm_backend_get_key_title_fmt">取得 <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> API 金鑰</string>
+    <string name="llm_backend_thinking_title">思考模式</string>
+    <string name="llm_backend_thinking_subtitle">模型會先推理再作答。速度較慢，而且推理內容也按輸出 token 收費。</string>
 
     <string name="llm_backend_model_custom_entry">自訂…</string>
 

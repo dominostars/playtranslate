@@ -769,6 +769,8 @@
     <string name="llm_backend_base_url_invalid">Hãy dùng https:// — http:// chỉ được phép cho địa chỉ cục bộ hoặc trong mạng LAN</string>
 
     <string name="llm_backend_get_key_title_fmt">Lấy khóa API <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g></string>
+    <string name="llm_backend_thinking_title">Chế độ suy luận</string>
+    <string name="llm_backend_thinking_subtitle">Mô hình suy luận trước khi trả lời. Chậm hơn, và phần suy luận được tính phí như token đầu ra.</string>
 
     <string name="llm_backend_model_custom_entry">Tùy chỉnh…</string>
 

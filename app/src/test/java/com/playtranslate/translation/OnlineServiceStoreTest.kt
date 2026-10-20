@@ -208,6 +208,30 @@ class OnlineServiceStoreTest {
         assertEquals(AccountRequirement.NONE, bili.account)
     }
 
+    /** The Thinking switch persists on the record, and a record written
+     *  before the field existed (no key in its JSON) decodes as off: the
+     *  default every DeepSeek instance now starts from. */
+    @Test fun `thinking round trips and an older record decodes with it off`() {
+        suppressBakedDeeplKey()
+        sp().edit().putString(
+            OnlineServiceStore.KEY_INSTANCES,
+            """[{"id":"deepseek","type":"OPENAI","enabled":true,"preset":"DEEPSEEK","model":"deepseek-v4-flash"},""" +
+                """{"id":"lingva","type":"LINGVA","enabled":true}]""",
+        ).commit()
+        initStore()
+        val older = OnlineServiceStore.byId("deepseek")!!
+        assertFalse(older.thinking)
+
+        OnlineServiceStore.update(older.copy(thinking = true))
+        assertTrue(sp().getString(OnlineServiceStore.KEY_INSTANCES, "")!!.contains("\"thinking\":true"))
+        initStore()
+        assertTrue(OnlineServiceStore.byId("deepseek")!!.thinking)
+        // The services-page toggle and the model picker copy the record, so
+        // neither drops the switch.
+        OnlineServiceStore.setEnabled("deepseek", false)
+        assertTrue(OnlineServiceStore.byId("deepseek")!!.thinking)
+    }
+
     /** A build that predates a preset (a downgrade) decodes its name as
      *  OPENAI: the instance survives, reads "Account required" and stays
      *  unused, and the rest of the list still loads. */

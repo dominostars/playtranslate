@@ -16,9 +16,10 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * Every [OpenAiPreset]'s per-provider facts in one table (endpoint, default
- * model, name, key page, requirement, where the picker lists it), pinned as
- * literals so a branch edited by mistake shows up here; and the requirement
- * as the factory hands it to a live backend.
+ * model, name, key page, requirement, where the picker lists it, whether its
+ * page shows the Thinking switch), pinned as literals so a branch edited by
+ * mistake shows up here; and the requirement as the factory hands it to a
+ * live backend.
  */
 @RunWith(RobolectricTestRunner::class)
 class OpenAiPresetTableTest {
@@ -32,6 +33,7 @@ class OpenAiPresetTableTest {
         val keyUrl: String,
         val account: AccountRequirement,
         val listedUnderOpenAi: Boolean,
+        val thinkingSwitch: Boolean = false,
     )
 
     private val table = mapOf(
@@ -42,6 +44,7 @@ class OpenAiPresetTableTest {
         OpenAiPreset.DEEPSEEK to Row(
             "https://api.deepseek.com/v1", "deepseek-v4-flash", "DeepSeek",
             "https://platform.deepseek.com/api_keys", AccountRequirement.REQUIRED, true,
+            thinkingSwitch = true,
         ),
         OpenAiPreset.MISTRAL to Row(
             "https://api.mistral.ai/v1", "mistral-small-2603", "Mistral",
@@ -106,6 +109,18 @@ class OpenAiPresetTableTest {
             assertEquals(preset.name, row.listedUnderOpenAi, config.allowsBaseUrl)
             // The note exists exactly where the key field doesn't.
             assertEquals(preset.name, !row.account.requiresKey, config.noteRes != null)
+            // The Thinking row shows exactly where the preset offers the switch.
+            assertEquals(preset.name, row.thinkingSwitch, preset.thinkingSwitch)
+            assertEquals(preset.name, row.thinkingSwitch, config.thinkingSwitch)
+        }
+    }
+
+    /** The switch is an OpenAI-type fact: a Gemini page never shows it,
+     *  whatever preset value its record carries by default. */
+    @Test fun `a Gemini page shows no Thinking switch`() {
+        OpenAiPreset.entries.forEach { preset ->
+            val config = LlmBackendConfigs.forInstance(ctx, "gemini-$preset", ServiceType.GEMINI, preset)
+            assertFalse(preset.name, config.thinkingSwitch)
         }
     }
 

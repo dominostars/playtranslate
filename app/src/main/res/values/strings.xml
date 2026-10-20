@@ -1728,6 +1728,17 @@
          (e.g. "OpenAI"). -->
     <string name="llm_backend_get_key_title_fmt">Get a <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> API key</string>
 
+    <!-- Title of the Thinking switch row on the DeepSeek config page, under
+         the "Get a DeepSeek API key" link. DeepSeek's models can reason in
+         hidden text before they answer; the app sends every request with
+         this off unless the switch is on. "Thinking mode" is DeepSeek's own
+         name for the feature. -->
+    <string name="llm_backend_thinking_title">Thinking mode</string>
+    <!-- Subtitle under that switch: what turning it on does and what it
+         costs. The reasoning is hidden text the model writes before its
+         answer, and DeepSeek bills it at its output-token rate. -->
+    <string name="llm_backend_thinking_subtitle">The model reasons before answering. Slower, and the reasoning is billed as output tokens.</string>
+
     <!-- Dropdown option in the model picker for entering a custom model
          id by hand. -->
     <string name="llm_backend_model_custom_entry">Custom…</string>
