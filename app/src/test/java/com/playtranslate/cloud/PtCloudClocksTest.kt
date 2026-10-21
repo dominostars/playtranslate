@@ -42,13 +42,13 @@ class PtCloudClocksTest {
 
     @Test fun `part 1 with every field present`() {
         val line = PtCloudClocks.part1Line(
-            frameId = "d0-123456", format = FrameFormat.JPEG, bytes = 217_000, width = 1920, height = 1080,
+            frameId = "d0-123456", bytes = 217_000, width = 1920, height = 1080,
             encodeMs = 31, headersMs = 402, part1Ms = 455, groups = 3, translated = 2, connectionReused = true,
             uploadMs = 120, warmLeadMs = 380, edgeUploadHeader = "118", edgeHeader = "430.6",
             timings = mapOf("recv_ms" to 110.4, "ocr_ms" to 250.0, "ocr_total_ms" to 300.5, "det_ms" to 90.0),
         )
         assertEquals(
-            "part1 id=d0-123456 fmt=jpeg bytes=217000 size=1920x1080 encode=31 hdr=402 part1=455 groups=3 tr1=2 " +
+            "part1 id=d0-123456 bytes=217000 size=1920x1080 encode=31 hdr=402 part1=455 groups=3 tr1=2 " +
                 "reused=true upload=120 warm=380 edge_upload=118 edge=431 recv=110 ocr=250 ocr_total=301",
             line,
         )
@@ -56,12 +56,12 @@ class PtCloudClocksTest {
 
     @Test fun `part 1 with nothing reported prints dashes, and no warm prints none`() {
         val line = PtCloudClocks.part1Line(
-            frameId = "d1-7", format = FrameFormat.WEBP, bytes = 145_000, width = 1280, height = 720,
+            frameId = "d1-7", bytes = 145_000, width = 1280, height = 720,
             encodeMs = 272, headersMs = 870, part1Ms = 872, groups = 0, translated = 0, connectionReused = null,
             uploadMs = null, warmLeadMs = null, edgeUploadHeader = null, edgeHeader = null, timings = emptyMap(),
         )
         assertEquals(
-            "part1 id=d1-7 fmt=webp bytes=145000 size=1280x720 encode=272 hdr=870 part1=872 groups=0 tr1=0 " +
+            "part1 id=d1-7 bytes=145000 size=1280x720 encode=272 hdr=870 part1=872 groups=0 tr1=0 " +
                 "reused=- upload=- warm=none edge_upload=- edge=- recv=- ocr=- ocr_total=-",
             line,
         )
@@ -69,7 +69,7 @@ class PtCloudClocksTest {
 
     @Test fun `a fresh connection prints reused false`() {
         val line = PtCloudClocks.part1Line(
-            "f", FrameFormat.JPEG, 1, 1, 1, 0, 0, 0, 0, 0, connectionReused = false, uploadMs = 0, warmLeadMs = 0,
+            "f", 1, 1, 1, 0, 0, 0, 0, 0, connectionReused = false, uploadMs = 0, warmLeadMs = 0,
             edgeUploadHeader = null, edgeHeader = null, timings = emptyMap(),
         )
         assertTrue(" reused=false upload=0 warm=0 " in line)
@@ -78,14 +78,14 @@ class PtCloudClocksTest {
     @Test fun `hostile part 1 inputs never throw and print a dash or the clamped number`() {
         for (bad in listOf("", "  ", "abc", "12ms", "NaN", "Infinity", "-Infinity", "1e400", "0x10")) {
             val line = PtCloudClocks.part1Line(
-                "", FrameFormat.JPEG, Int.MAX_VALUE, 0, 0, Long.MAX_VALUE, Long.MIN_VALUE, -5, -1, Int.MIN_VALUE,
+                "", Int.MAX_VALUE, 0, 0, Long.MAX_VALUE, Long.MIN_VALUE, -5, -1, Int.MIN_VALUE,
                 connectionReused = null, uploadMs = -1, warmLeadMs = Long.MAX_VALUE,
                 edgeUploadHeader = bad, edgeHeader = bad,
                 timings = mapOf("recv_ms" to Double.NaN, "ocr_ms" to Double.POSITIVE_INFINITY, "ocr_total_ms" to Double.NEGATIVE_INFINITY),
             )
             assertEquals(
                 bad,
-                "part1 id= fmt=jpeg bytes=${Int.MAX_VALUE} size=0x0 encode=${Long.MAX_VALUE} hdr=${Long.MIN_VALUE} " +
+                "part1 id= bytes=${Int.MAX_VALUE} size=0x0 encode=${Long.MAX_VALUE} hdr=${Long.MIN_VALUE} " +
                     "part1=-5 groups=-1 tr1=${Int.MIN_VALUE} reused=- upload=-1 warm=${Long.MAX_VALUE} edge_upload=- " +
                     "edge=- recv=- ocr=- ocr_total=-",
                 line,
@@ -94,7 +94,7 @@ class PtCloudClocksTest {
         // A finite number beyond a Long clamps instead of throwing; a header
         // with spaces around it still reads; negatives round as numbers.
         val line = PtCloudClocks.part1Line(
-            "f", FrameFormat.JPEG, 0, 0, 0, 0, 0, 0, 0, 0, null, null, null,
+            "f", 0, 0, 0, 0, 0, 0, 0, 0, null, null, null,
             edgeUploadHeader = " 12 ", edgeHeader = "-5.6",
             timings = mapOf("recv_ms" to 1e300, "ocr_ms" to -1e300, "ocr_total_ms" to 0.0),
         )

@@ -39,9 +39,9 @@ import java.util.Collections
  * The request exactly as the brief specifies it, captured at the client's
  * boundary: `POST https://api.playtranslate.com/v1/frame` (the fixed root,
  * [BASE_URL]), the two headers, and a two-part multipart body of known
- * length whose `frame` is a file part named and typed by its format and
- * whose `meta` is a plain form field (a file part named `meta` makes the
- * server answer 422). Plus `GET /health`'s status
+ * length whose `frame` is a JPEG file part and whose `meta` is a plain form
+ * field (a file part named `meta` makes the server answer 422). Plus
+ * `GET /health`'s status
  * mapping and `GET /v1/warm`: what it sends, when it sends nothing, and the
  * head start it hands the next frame's clock line.
  */
@@ -93,26 +93,21 @@ class PtCloudRequestTest {
         assertEquals("Bearer $KEY", send(key = "$KEY\n").header("Authorization"))
     }
 
-    @Test fun `the body is multipart form data with exactly the frame and meta parts, the frame named and typed by its format`() {
-        for ((format, filename, mediaType) in listOf(
-            Triple(FrameFormat.JPEG, "frame.jpg", "image/jpeg"),
-            Triple(FrameFormat.WEBP, "frame.webp", "image/webp"),
-        )) {
-            val bytes = ByteArray(300) { (it * 7).toByte() }
-            val body = send(frame = PtCloudTestSupport.frame(bytes, format = format)).body as MultipartBody
-            assertEquals(MultipartBody.FORM, body.type)
-            assertEquals(2, body.parts.size)
+    @Test fun `the body is multipart form data with exactly the frame and meta parts, the frame a JPEG named frame jpg`() {
+        val bytes = ByteArray(300) { (it * 7).toByte() }
+        val body = send(frame = PtCloudTestSupport.frame(bytes)).body as MultipartBody
+        assertEquals(MultipartBody.FORM, body.type)
+        assertEquals(2, body.parts.size)
 
-            val frame = body.parts[0]
-            assertEquals("""form-data; name="frame"; filename="$filename"""", frame.disposition())
-            assertEquals(mediaType, frame.body.contentType().toString())
-            assertArrayEquals(bytes, Buffer().also { frame.body.writeTo(it) }.readByteArray())
+        val frame = body.parts[0]
+        assertEquals("""form-data; name="frame"; filename="frame.jpg"""", frame.disposition())
+        assertEquals("image/jpeg", frame.body.contentType().toString())
+        assertArrayEquals(bytes, Buffer().also { frame.body.writeTo(it) }.readByteArray())
 
-            val meta = body.parts[1]
-            // A plain form field: no filename, no part media type.
-            assertEquals("""form-data; name="meta"""", meta.disposition())
-            assertNull(meta.body.contentType())
-        }
+        val meta = body.parts[1]
+        // A plain form field: no filename, no part media type.
+        assertEquals("""form-data; name="meta"""", meta.disposition())
+        assertNull(meta.body.contentType())
     }
 
     @Test fun `the frame body's length is known, so OkHttp sends the Content-Length the edge requires`() {
@@ -235,16 +230,14 @@ class PtCloudRequestTest {
         assertEquals(1, built)
     }
 
-    @Test fun `warm sends nothing with the switch off or no usable key`() {
+    @Test fun `warm sends nothing with no usable key`() {
         val cases = listOf<Pair<String, (Prefs) -> Unit>>(
-            "switch off" to { it.ptCloudWarm = false },
             "no key" to { it.ptCloudClientKey = "" },
             "a key that is not a legal header value" to { it.ptCloudClientKey = "abc\ndef" },
         )
         for ((name, edit) in cases) {
             val prefs = PtCloudTestSupport.prefs(ctx)
             prefs.ptCloudClientKey = KEY
-            prefs.ptCloudWarm = true
             edit(prefs)
             val seen = Collections.synchronizedList(mutableListOf<Request>())
             val dispatcher = CapturingExecutor()
@@ -280,14 +273,12 @@ class PtCloudRequestTest {
         assertTrue("taken by the first frame: ${lines[1]}", " warm=none " in lines[1])
     }
 
-    @Test fun `a warm the switch stopped leaves the next frame with no head start`() {
+    @Test fun `a warm that sent nothing leaves the next frame with no head start`() {
         ShadowLog.clear()
-        val prefs = PtCloudTestSupport.prefs(ctx)
         val client = PtCloudClient(
-            PtCloudTestSupport.config(ctx),
+            PtCloudTestSupport.config(ctx, key = ""),
             clientFactory = { PtCloudTestSupport.cannedClient(200, ndjson) },
         )
-        prefs.ptCloudWarm = false
         client.warm()
         runBlocking { client.postFrame(PtCloudTestSupport.frame(), PtCloudTestSupport.meta()).translation.await() }
         assertTrue(part1Lines().single(), " warm=none " in part1Lines().single())

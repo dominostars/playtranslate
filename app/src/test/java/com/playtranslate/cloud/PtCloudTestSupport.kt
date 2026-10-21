@@ -119,8 +119,8 @@ internal object PtCloudTestSupport {
             streamTranslations = streamTranslations, filterFurigana = filterFurigana,
         )
 
-    fun frame(bytes: ByteArray = ByteArray(64) { it.toByte() }, scale: Float = 1f, format: FrameFormat = FrameFormat.JPEG) =
-        EncodedFrame(bytes, format, scale, width = 1920, height = 1080, encodeMs = 0)
+    fun frame(bytes: ByteArray = ByteArray(64) { it.toByte() }, scale: Float = 1f) =
+        EncodedFrame(bytes, scale, width = 1920, height = 1080, encodeMs = 0)
 
     // ── Canned HTTP ────────────────────────────────────────────────────
 

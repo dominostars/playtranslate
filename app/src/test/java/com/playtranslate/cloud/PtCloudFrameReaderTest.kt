@@ -72,7 +72,6 @@ class PtCloudFrameReaderTest {
     private val attempts = Collections.synchronizedList(mutableListOf<OnlineAttempt>())
     private val calls = Collections.synchronizedList(mutableListOf<Call>())
     private val caps = Collections.synchronizedList(mutableListOf<Int>())
-    private val formats = Collections.synchronizedList(mutableListOf<FrameFormat>())
     private val bitmap: Bitmap = Bitmap.createBitmap(64, 36, Bitmap.Config.ARGB_8888)
 
     @Before fun setUp() {
@@ -102,10 +101,9 @@ class PtCloudFrameReaderTest {
         return PtCloudFrameReader(
             PtCloudClient(config, clientFactory = { client }),
             config,
-            encode = { _, cap, format ->
+            encode = { _, cap ->
                 caps += cap
-                formats += format
-                PtCloudTestSupport.frame(scale = scale, format = format)
+                PtCloudTestSupport.frame(scale = scale)
             },
         )
     }
@@ -168,9 +166,8 @@ class PtCloudFrameReaderTest {
             assertEquals(Rect(1124, 1530, 2576, 1924), group.bounds)
             assertEquals(Rect(1124, 1530, 2274, 1664), group.lines.first().bounds)
             assertEquals(ReaderAttribution("PlayTranslate Cloud", "ptcloud"), reading.attribution)
-            // The cap and the format are read from the config, per read.
+            // The cap is read from the config, per read.
             assertEquals(listOf(PtCloudConfig.DEFAULT_UPLOAD_LONG_SIDE_CAP), caps.toList())
-            assertEquals(listOf(FrameFormat.JPEG), formats.toList())
         } finally {
             part2Gate.countDown()
         }
@@ -274,33 +271,14 @@ class PtCloudFrameReaderTest {
             LlmPromptTemplates.contextProvider = { _, _ -> context }
             reader(streaming(listOf(part1, PtCloudTestSupport.part2()))).read(bitmap, request()).settled()
             val meta = sentMeta()
-            // stream_translations is the item-lines switch, on by default,
-            // and filter_furigana is always sent.
+            // stream_translations and filter_furigana are always sent.
             assertEquals(setOf("source", "target", "frame_id", "stream_translations", "filter_furigana"), meta.keys)
         }
     }
 
-    @Test fun `item lines are asked for while the switch is on and not mentioned while it is off`() = runBlocking {
-        val reader = reader(streaming(listOf(part1, PtCloudTestSupport.part2())))
-        reader.read(bitmap, request()).settled()
+    @Test fun `every frame asks for item lines`() = runBlocking {
+        reader(streaming(listOf(part1, PtCloudTestSupport.part2()))).read(bitmap, request()).settled()
         assertEquals("true", sentMeta().str("stream_translations"))
-
-        calls.clear()
-        PtCloudTestSupport.prefs(ctx).ptCloudStreamItems = false
-        reader.read(bitmap, request()).settled()
-        assertFalse("absent, not false: ${sentMeta()}", "stream_translations" in sentMeta())
-    }
-
-    @Test fun `the upload format is read from the config at each read`() = runBlocking {
-        // One reader for both reads: nothing is rebuilt between them.
-        val reader = reader(streaming(listOf(part1, PtCloudTestSupport.part2())))
-        reader.read(bitmap, request()).settled()
-        PtCloudTestSupport.prefs(ctx).ptCloudUploadFormat = FrameFormat.WEBP.wireName
-        reader.read(bitmap, request()).settled()
-        assertEquals(listOf(FrameFormat.JPEG, FrameFormat.WEBP), formats.toList())
-        // Each frame went out in the format it was encoded in.
-        val types = calls.map { (it.request().body as MultipartBody).parts[0].body.contentType().toString() }
-        assertEquals(listOf("image/jpeg", "image/webp"), types)
     }
 
     @Test fun `the furigana filter goes out as the device OCR reads it, at each read`() = runBlocking {

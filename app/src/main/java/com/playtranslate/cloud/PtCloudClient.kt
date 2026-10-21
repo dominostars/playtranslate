@@ -217,7 +217,6 @@ class PtCloudClient(
             TAG,
             PtCloudClocks.part1Line(
                 frameId = meta.frameId,
-                format = frame.format,
                 bytes = frame.bytes.size,
                 width = frame.width,
                 height = frame.height,
@@ -357,20 +356,19 @@ class PtCloudClient(
     /**
      * `GET {BASE_URL}/v1/warm` ("Pre-warm" in docs/api.md): wakes the radio,
      * the pooled connection, the edge's path to the origin and the origin's
-     * translator connection before a frame is uploaded. Fire and forget: it
-     * returns at once, on the same client (and so the same connection pool)
-     * as [postFrame], and its answer is only closed and logged. A 204, a 404
-     * (the service off), a 401 or a transport failure all record no cooldown
-     * and report no attempt: the frame that follows is what says how the
-     * service is.
+     * translator connection before a frame is uploaded (the head start not
+     * yet measured on a device). Fire and forget: it returns at once, on the
+     * same client (and so the same connection pool) as [postFrame], and its
+     * answer is only closed and logged. A 204, a 404 (the service off), a 401
+     * or a transport failure all record no cooldown and report no attempt:
+     * the frame that follows is what says how the service is.
      *
-     * Sends nothing when [PtCloudConfig.warmEnabled] is off or when there is
-     * no usable key ([PtCloudConfig.hasKey]). Otherwise stamps when it went
-     * out, so the next frame's clock line reports the head start. Reading
-     * the key decrypts it, so call this off the main thread.
+     * Sends nothing when there is no usable key ([PtCloudConfig.hasKey]).
+     * Otherwise stamps when it went out, so the next frame's clock line
+     * reports the head start. Reading the key decrypts it, so call this off
+     * the main thread.
      */
     fun warm() {
-        if (!config.warmEnabled) return
         if (!config.hasKey) return
         val request = Request.Builder()
             .url(BASE_URL.newBuilder().addPathSegments("v1/warm").build())
@@ -391,17 +389,17 @@ class PtCloudClient(
         })
     }
 
-    /** The multipart request exactly as the brief specifies it: `frame` a
-     *  file part named and typed by the frame's [FrameFormat], `meta` a
-     *  plain form field (a file part named `meta` is ignored and the server
-     *  answers 422). Both parts are byte arrays of known length, so OkHttp
-     *  sends the `Content-Length` the edge requires (411 without one).
+    /** The multipart request exactly as the brief specifies it: `frame` the
+     *  JPEG file part ([FrameEncoder.FILENAME], [FrameEncoder.MEDIA_TYPE]),
+     *  `meta` a plain form field (a file part named `meta` is ignored and the
+     *  server answers 422). Both parts are byte arrays of known length, so
+     *  OkHttp sends the `Content-Length` the edge requires (411 without one).
      *  [clock] rides along as the request's tag for the HTTP stack to fill. */
     private fun frameRequest(frame: EncodedFrame, meta: FrameMeta, clock: HttpCallClock): Request {
         val body = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart(
-                "frame", frame.format.filename, frame.bytes.toRequestBody(frame.format.mediaType.toMediaType()),
+                "frame", FrameEncoder.FILENAME, frame.bytes.toRequestBody(FrameEncoder.MEDIA_TYPE.toMediaType()),
             )
             .addFormDataPart("meta", PtJson.lenient.encodeToString(FrameMeta.serializer(), meta))
             .build()

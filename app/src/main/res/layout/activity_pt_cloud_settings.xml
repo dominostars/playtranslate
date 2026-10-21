@@ -1,10 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- PlayTranslate Cloud page (Settings → Configure, debug builds only):
-     the master switch, the client key with Save, the service status, and
-     the transport switches (upload format, early translations, warm-up
-     call). The service's address is fixed in the client, with no field
-     here. The page stays open after Save: it is where the status shows.
-     On the activity_translation_history.xml template. -->
+     the master switch, the client key with Save, and the service status.
+     The service's address is fixed in the client, with no field here. The
+     page stays open after Save: it is where the status shows. On the
+     activity_translation_history.xml template. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
@@ -178,47 +177,6 @@
                         android:textColor="?attr/ptWarning"
                         android:visibility="gone"
                         style="@style/Text.PT.RowSubtitle" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- Transport switches, read per capture: the upload format, the
-                 early translations and the warm-up call. Each writes its own
-                 setting and nothing else. As the History page's card. -->
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                app:cardBackgroundColor="?attr/ptCard"
-                app:cardCornerRadius="@dimen/pt_radius"
-                app:cardElevation="0dp"
-                app:strokeColor="?attr/ptDivider"
-                app:strokeWidth="1dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical">
-
-                    <include layout="@layout/settings_row_switch"
-                        android:id="@+id/rowCloudUploadJpeg" />
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:layout_marginStart="@dimen/pt_row_h_padding"
-                        android:background="?attr/ptDivider" />
-
-                    <include layout="@layout/settings_row_switch"
-                        android:id="@+id/rowCloudStreamItems" />
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:layout_marginStart="@dimen/pt_row_h_padding"
-                        android:background="?attr/ptDivider" />
-
-                    <include layout="@layout/settings_row_switch"
-                        android:id="@+id/rowCloudWarm" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

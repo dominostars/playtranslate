@@ -113,16 +113,16 @@ object FrameReaders {
      * camera's shutter and acquire, the import tool's page load. A re-OCR
      * reads on the device and never warms.
      *
-     * Returns at once, on the caller's thread, when the switch is off, when
-     * [deviceOnly] is true or when the warm knob ([com.playtranslate.cloud.PtCloudConfig.warmEnabled])
-     * is off: plain pref reads, no key. Otherwise the decision, whose key read
-     * decrypts it, and the enqueue run on [Dispatchers.IO], off the read's
-     * path. Fire and forget: nothing waits for it or reads its answer, and it
-     * logs nothing about why it did not go out (the read logs that).
+     * Returns at once, on the caller's thread, when the switch is off or when
+     * [deviceOnly] is true: a plain pref read, no key. Otherwise the decision,
+     * whose key read decrypts it, and the enqueue run on [Dispatchers.IO], off
+     * the read's path. Fire and forget: nothing waits for it or reads its
+     * answer, and it logs nothing about why it did not go out (the read logs
+     * that).
      */
     fun warm(srcId: SourceLangId, deviceOnly: Boolean) {
         val config = PtCloudService.config
-        if (!config.enabled || deviceOnly || !config.warmEnabled) return
+        if (!config.enabled || deviceOnly) return
         scope.launch(Dispatchers.IO) {
             if (PtCloudService.refusal(config, srcId, deviceOnly) == null) PtCloudService.client.warm()
         }

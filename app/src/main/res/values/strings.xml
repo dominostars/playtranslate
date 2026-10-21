@@ -3351,27 +3351,6 @@
     <string name="pt_cloud_status_checking">Checking</string>
     <!-- Status row value before any health check has run on this page. -->
     <string name="pt_cloud_status_unchecked">Not checked</string>
-    <!-- Title of a switch on the PlayTranslate Cloud page, in the card below the
-         status row: on, each capture is uploaded as a JPEG image; off, as a WebP
-         image. JPEG and WebP are image format names; keep them as they are. -->
-    <string name="pt_cloud_upload_jpeg_title">Upload as JPEG</string>
-    <!-- Subtitle under the "Upload as JPEG" switch: the phone makes a JPEG image
-         faster than a WebP one, and with the switch off captures upload as WebP. -->
-    <string name="pt_cloud_upload_jpeg_subtitle">Faster to encode. Off uploads WebP.</string>
-    <!-- Title of a switch on the PlayTranslate Cloud page: whether the server
-         sends each paragraph's translation as soon as it is ready, ahead of the
-         complete set of translations. -->
-    <string name="pt_cloud_stream_items_title">Early translations</string>
-    <!-- Subtitle under the "Early translations" switch: with it on, each box
-         on screen shows its translation as soon as the server has it, instead
-         of all boxes waiting for the complete set. -->
-    <string name="pt_cloud_stream_items_subtitle">Asks the server for each paragraph\'s translation as it completes, and fills each box as its translation arrives.</string>
-    <!-- Title of a switch on the PlayTranslate Cloud page: a small request sent to
-         the server just before a capture is uploaded, so the upload finds the
-         network connection already open. -->
-    <string name="pt_cloud_warm_title">Warm-up call</string>
-    <!-- Subtitle under the "Warm-up call" switch: what the small request does. -->
-    <string name="pt_cloud_warm_subtitle">Wakes the connection just before a capture is uploaded.</string>
     <!-- Screen-reader label of the strip at the top of the floating icon's quick
          menu while PlayTranslate Cloud is switched on, when its wifi glyph shows:
          the device is online and the next capture would be read and translated

@@ -294,7 +294,7 @@ class PtCloudItemLinesTest {
                 PtCloudTestSupport.streamingClient(calls) { call -> GatedSource(call, lines, emptyList()) }
             }),
             config,
-            encode = { _, _, format -> PtCloudTestSupport.frame(format = format) },
+            encode = { _, _ -> PtCloudTestSupport.frame() },
         )
     }
 
@@ -391,7 +391,7 @@ class PtCloudItemLinesTest {
         // stands still, so reuse and upload are dashes and the times are 0.
         assertEquals(
             listOf(
-                "part1 id=capture-0042 fmt=jpeg bytes=64 size=1920x1080 encode=0 hdr=0 part1=0 groups=1 tr1=0 " +
+                "part1 id=capture-0042 bytes=64 size=1920x1080 encode=0 hdr=0 part1=0 groups=1 tr1=0 " +
                     "reused=- upload=- warm=none edge_upload=118 edge=640 recv=- ocr=665 ocr_total=-",
             ),
             logLines("part1 "),

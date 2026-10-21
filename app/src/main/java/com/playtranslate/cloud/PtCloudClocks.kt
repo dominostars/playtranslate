@@ -58,7 +58,6 @@ internal object PtCloudClocks {
      */
     fun part1Line(
         frameId: String,
-        format: FrameFormat,
         bytes: Int,
         width: Int,
         height: Int,
@@ -74,7 +73,7 @@ internal object PtCloudClocks {
         edgeHeader: String?,
         timings: Map<String, Double>,
     ): String =
-        "part1 id=$frameId fmt=${format.wireName} bytes=$bytes size=${width}x$height encode=$encodeMs " +
+        "part1 id=$frameId bytes=$bytes size=${width}x$height encode=$encodeMs " +
             "hdr=$headersMs part1=$part1Ms groups=$groups tr1=$translated reused=${connectionReused ?: DASH} " +
             "upload=${uploadMs ?: DASH} warm=${warmLeadMs ?: "none"} " +
             "edge_upload=${header(edgeUploadHeader)} edge=${header(edgeHeader)} " +

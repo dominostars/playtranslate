@@ -18,8 +18,7 @@ import org.robolectric.RobolectricTestRunner
  * encrypted slot round-trips (AndroidKeyStore is instrumented-only, so a
  * reversible codec stands in), and [PtCloudConfig] serves the defaults and
  * the cleaned-up values the client sends, refusing a stored key that
- * request building would throw on, and reads the transport knobs (upload
- * format, item lines, warm call) at each use.
+ * request building would throw on.
  */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudConfigTest {
@@ -47,43 +46,6 @@ class PtCloudConfigTest {
         assertEquals(PtCloudConfig.DEFAULT_UPLOAD_LONG_SIDE_CAP, config.uploadLongSideCap)
         assertFalse(config.hasKey)
         assertFalse(config.enabled)
-    }
-
-    @Test fun `the transport knobs default to JPEG, item lines asked for, and the warm call on`() {
-        val config = PtCloudConfig(PtCloudTestSupport.prefs(ctx))
-        assertEquals(FrameFormat.JPEG, config.uploadFormat)
-        assertTrue(config.streamItems)
-        assertTrue(config.warmEnabled)
-        // And those are the companion's values, the only copy.
-        assertEquals(PtCloudConfig.DEFAULT_UPLOAD_FORMAT, config.uploadFormat)
-        assertEquals(PtCloudConfig.DEFAULT_STREAM_ITEMS, config.streamItems)
-        assertEquals(PtCloudConfig.DEFAULT_WARM, config.warmEnabled)
-    }
-
-    @Test fun `each transport knob is read at each use, so a change applies to the next capture`() {
-        val config = PtCloudConfig(PtCloudTestSupport.prefs(ctx))
-        val prefs = PtCloudTestSupport.prefs(ctx)
-        prefs.ptCloudUploadFormat = FrameFormat.WEBP.wireName
-        prefs.ptCloudStreamItems = false
-        prefs.ptCloudWarm = false
-        assertEquals(FrameFormat.WEBP, config.uploadFormat)
-        assertFalse(config.streamItems)
-        assertFalse(config.warmEnabled)
-        prefs.ptCloudUploadFormat = FrameFormat.JPEG.wireName
-        prefs.ptCloudStreamItems = true
-        prefs.ptCloudWarm = true
-        assertEquals(FrameFormat.JPEG, config.uploadFormat)
-        assertTrue(config.streamItems)
-        assertTrue(config.warmEnabled)
-    }
-
-    @Test fun `a stored format this build does not know reads as the default`() {
-        val prefs = PtCloudTestSupport.prefs(ctx)
-        val config = PtCloudConfig(prefs)
-        for (unknown in listOf("png", "", "WEBP", "image/webp")) {
-            prefs.ptCloudUploadFormat = unknown
-            assertEquals(unknown, FrameFormat.JPEG, config.uploadFormat)
-        }
     }
 
     @Test fun `the config serves the stored values, cleaned for the wire`() {

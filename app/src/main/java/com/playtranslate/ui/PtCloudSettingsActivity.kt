@@ -6,8 +6,6 @@ import android.view.View
 import android.widget.EditText
 import android.widget.ProgressBar
 import android.widget.TextView
-import androidx.annotation.IdRes
-import androidx.annotation.StringRes
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
@@ -17,7 +15,6 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.Prefs
 import com.playtranslate.R
-import com.playtranslate.cloud.FrameFormat
 import com.playtranslate.cloud.HealthStatus
 import com.playtranslate.cloud.PtCloudClient
 import com.playtranslate.cloud.PtCloudConfig
@@ -27,10 +24,10 @@ import kotlinx.coroutines.launch
 
 /**
  * Settings → Configure → PlayTranslate Cloud (debug builds only, like the
- * cell that opens it): the service's switch, its client key, its status,
- * and three transport switches. The translation-error pill's gear opens it
- * too, for a PlayTranslate Cloud error. The service's address is fixed
- * ([PtCloudClient]); the page has no field for it.
+ * cell that opens it): the service's switch, its client key and its status.
+ * The translation-error pill's gear opens it too, for a PlayTranslate Cloud
+ * error. The service's address is fixed ([PtCloudClient]); the page has no
+ * field for it.
  *
  *  - The switch goes through the service's one mutation
  *    ([PtCloudService.setEnabled], which the service's row on the
@@ -50,14 +47,6 @@ import kotlinx.coroutines.launch
  *    never asks it. Below it, while the service's cooldown runs, the line
  *    a Translation services row shows for its service's cooldown
  *    ([cooldownLine]).
- *  - The transport switches, which [PtCloudConfig] reads per capture so the
- *    arms can be compared from the device: upload as JPEG
- *    ([Prefs.ptCloudUploadFormat]; off uploads WebP), early translations
- *    ([Prefs.ptCloudStreamItems]) and the warm-up call ([Prefs.ptCloudWarm]).
- *    Each is seeded before its listener is attached, as the master switch
- *    is, and its listener writes its own pref and nothing else: they change
- *    how a capture travels, not whether the service may be tried, so there
- *    is no cooldown, error or cache to reset and no health to check.
  *
  * The key is not logged here.
  */
@@ -87,7 +76,6 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         // but not saved (EditText saves its text), as on the LLM page.
         etKey.setText(Prefs(this).ptCloudClientKey)
         btnSave.setOnClickListener { onSave() }
-        bindTransportSwitches()
         // The cooldown line follows the service: each gesture (the switch,
         // Save, a running health check) counts on PtCloudService.changes,
         // and the StateFlow replays to this collector on each resume.
@@ -117,45 +105,6 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         // SINGLE persistence path, as on the History page: the row tap only
         // toggles, and every change funnels through this listener.
         toggle.setOnCheckedChangeListener { _, checked -> PtCloudService.setEnabled(checked) }
-        row.setOnClickListener { toggle.toggle() }
-    }
-
-    private fun bindTransportSwitches() {
-        bindTransportSwitch(
-            R.id.rowCloudUploadJpeg, R.string.pt_cloud_upload_jpeg_title, R.string.pt_cloud_upload_jpeg_subtitle,
-            // As the capture reads it: a stored name this build does not know
-            // reads as the default format.
-            checked = PtCloudConfig(Prefs(this)).uploadFormat == FrameFormat.JPEG,
-        ) { jpeg -> Prefs(this).ptCloudUploadFormat = (if (jpeg) FrameFormat.JPEG else FrameFormat.WEBP).wireName }
-        bindTransportSwitch(
-            R.id.rowCloudStreamItems, R.string.pt_cloud_stream_items_title, R.string.pt_cloud_stream_items_subtitle,
-            checked = Prefs(this).ptCloudStreamItems,
-        ) { on -> Prefs(this).ptCloudStreamItems = on }
-        bindTransportSwitch(
-            R.id.rowCloudWarm, R.string.pt_cloud_warm_title, R.string.pt_cloud_warm_subtitle,
-            checked = Prefs(this).ptCloudWarm,
-        ) { on -> Prefs(this).ptCloudWarm = on }
-    }
-
-    /** One transport switch row. Seeded with [checked] BEFORE its listener is
-     *  attached, so building or restoring the page writes nothing; after that
-     *  every change, row tap or direct, goes through [write] alone. */
-    private fun bindTransportSwitch(
-        @IdRes rowId: Int,
-        @StringRes title: Int,
-        @StringRes subtitle: Int,
-        checked: Boolean,
-        write: (Boolean) -> Unit,
-    ) {
-        val row = findViewById<View>(rowId)
-        row.findViewById<TextView>(R.id.tvRowTitle).setText(title)
-        row.findViewById<TextView>(R.id.tvRowSubtitle).apply {
-            setText(subtitle)
-            isVisible = true
-        }
-        val toggle = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
-        toggle.isChecked = checked
-        toggle.setOnCheckedChangeListener { _, on -> write(on) }
         row.setOnClickListener { toggle.toggle() }
     }
 

@@ -52,7 +52,7 @@ class PtCloudFrameReader(
     private val client: PtCloudClient,
     private val config: PtCloudConfig,
     /** Test seam: [FrameEncoder.encode] needs native graphics. */
-    private val encode: suspend (Bitmap, Int, FrameFormat) -> EncodedFrame = FrameEncoder::encode,
+    private val encode: suspend (Bitmap, Int) -> EncodedFrame = FrameEncoder::encode,
 ) : FrameReader {
 
     /**
@@ -78,13 +78,12 @@ class PtCloudFrameReader(
      * user's System prompt override, absent without one (the server's
      * default is the app's default persona). `context` is the recent-dialogue
      * block the translation log keeps for the pair, absent when blank or
-     * same-language. `stream_translations` is true when
-     * [PtCloudConfig.streamItems] is on and absent when it is off.
-     * `filter_furigana` is the furigana filter as the device OCR reads it
-     * ([OcrManager.filterFuriganaEnabled]), sent for every source since the
-     * server applies it to a Japanese source only, as the device does, so a
-     * frame read here and the device's fallback read of the same capture
-     * follow the same setting. The upload cap and format are read from the
+     * same-language. `stream_translations` is always true: every frame asks
+     * for its item lines. `filter_furigana` is the furigana filter as the
+     * device OCR reads it ([OcrManager.filterFuriganaEnabled]), sent for every
+     * source since the server applies it to a Japanese source only, as the
+     * device does, so a frame read here and the device's fallback read of the
+     * same capture follow the same setting. The upload cap is read from the
      * config for this read.
      *
      * The attribution token "ptcloud" is unknown to the OCR picker: a result
@@ -98,7 +97,7 @@ class PtCloudFrameReader(
         // cancels it, as postFrame's own part-2 reader is.
         val callerContext = currentCoroutineContext()
 
-        val frame = encode(bitmap, config.uploadLongSideCap, config.uploadFormat)
+        val frame = encode(bitmap, config.uploadLongSideCap)
 
         val source = request.sourceLangId.code
         val translationCode = SourceLanguageProfiles[request.sourceLangId].translationCode
@@ -112,7 +111,7 @@ class PtCloudFrameReader(
             // backends ask for it; the wire's source is the OCR code.
             context = if (sameLanguage) null
                 else LlmPromptTemplates.contextProvider(translationCode, request.targetLang).takeIf { it.isNotBlank() },
-            streamTranslations = if (config.streamItems) true else null,
+            streamTranslations = true,
             filterFurigana = OcrManager.instance.filterFuriganaEnabled,
         )
 
