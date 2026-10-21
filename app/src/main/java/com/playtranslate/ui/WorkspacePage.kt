@@ -55,6 +55,12 @@ interface WorkspacePage {
      *  ([OverlayWorkspace.holdsCardEditor]). */
     val isCardEditor: Boolean get() = false
 
+    /** The page fills the card on its own, with no workspace header above
+     *  it (the screenshot crop editor: its bar and pill are its chrome, as
+     *  in the region editor over the game). Back and a controller's B still
+     *  pop it; the header returns with the page beneath. */
+    val hidesHeader: Boolean get() = false
+
     /** Close any in-page popover (the page is being hidden without being
      *  destroyed, e.g. a tab switch). */
     fun dismissPopovers() {}

@@ -24,6 +24,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.view.isVisible
 import com.playtranslate.R
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlayThemedContext
@@ -118,6 +119,7 @@ class OverlayWorkspace(
     private val leftIcon = ImageView(ctx)
     private val titleView = TextView(ctx)
     private val headerFrame = FrameLayout(ctx)
+    private val headerHairline = View(ctx)
     private val pageContainer = FrameLayout(ctx)
 
     /** The top page's custom header content (e.g. the Anki editor's
@@ -223,7 +225,7 @@ class OverlayWorkspace(
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(HEADER_H_DP)),
         )
         card.addView(
-            View(ctx).apply { setBackgroundColor(ctx.themeColor(R.attr.ptDivider)) },
+            headerHairline.apply { setBackgroundColor(ctx.themeColor(R.attr.ptDivider)) },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1f)),
         )
         card.addView(
@@ -391,6 +393,11 @@ class OverlayWorkspace(
 
     private fun updateHeader() {
         val top = stack.lastOrNull() ?: return
+        // A page that fills the card on its own takes the header and its
+        // hairline down with it; they return with the page beneath.
+        val headerShown = !top.page.hidesHeader
+        headerFrame.isVisible = headerShown
+        headerHairline.isVisible = headerShown
         // Swap the custom header slot for the top page's (the Anki editor's
         // mode toggle); the plain title stands in when a page has none.
         val custom = top.headerView

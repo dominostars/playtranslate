@@ -306,11 +306,12 @@ class AudioPickerPage(
 }
 
 /** The floating workspace's presentation of [ScreenshotCropEditor]: a page
- *  pushed over the card editor. The header's chevron and the bar's ✕ both
- *  pop (cancel); ✓ and 🗑 write the state, which the editor's groups
- *  follow, and pop. The page sits inside the inset card, so the chrome
- *  needs no inset of its own; the controller reaches the bar through the
- *  page's actions. */
+ *  pushed over the card editor that fills the card with no workspace
+ *  header, the way the region editor sits over the game. The bar's ✕,
+ *  back and a controller's B pop (cancel); ✓ and 🗑 write the state, which
+ *  the editor's groups follow, and pop. The page sits inside the inset
+ *  card, so the chrome needs no inset of its own; the controller reaches
+ *  the bar through the page's actions. */
 class ScreenshotCropPage(private val state: AnkiScreenshotState) : WorkspacePage {
 
     private var pageScope: CoroutineScope? = null
@@ -318,6 +319,8 @@ class ScreenshotCropPage(private val state: AnkiScreenshotState) : WorkspacePage
     private var pageView: View? = null
 
     override fun title(ctx: Context): CharSequence = ctx.getString(R.string.anki_screenshot_crop)
+
+    override val hidesHeader: Boolean get() = true
 
     override fun onCreateView(ctx: Context, parent: ViewGroup, host: WorkspaceHost): View {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
