@@ -84,13 +84,14 @@ class SentenceAnkiSnapshotLifecycleTest {
                 requireContext(),
                 viewLifecycleOwner.lifecycleScope,
                 arguments ?: SentenceAnkiContentView.buildArgs(
-                    "テスト文です。", "A test sentence.", emptyList(), screenshotPath = null,
+                    "テスト文です。", "A test sentence.", emptyList(),
                 ).also { arguments = it },
                 object : SentenceAnkiContentView.Host {
                     override val isAlive: Boolean get() = isAdded
                     override fun openAudioPicker(
                         intent: Intent, onPicked: (AudioSelection) -> Unit,
                     ) = Unit
+                    override fun openScreenshotCrop(state: AnkiScreenshotState) = Unit
                 },
             )
             content = c
@@ -178,7 +179,7 @@ class SentenceAnkiSnapshotLifecycleTest {
                         SentenceAnkiHtmlBuilder.WordEntry("食べる", "たべる", "to eat", 3),
                         SentenceAnkiHtmlBuilder.WordEntry("猫", "ねこ", "cat", 5),
                     ),
-                    screenshotPath = null, targetWord = "猫", sourceLangId = SourceLangId.JA,
+                    targetWord = "猫", sourceLangId = SourceLangId.JA,
                 ),
             )
             settle(ctx)

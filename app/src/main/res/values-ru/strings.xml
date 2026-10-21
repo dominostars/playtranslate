@@ -582,6 +582,8 @@
     <string name="hidden_word_save_failed">Не удалось сохранить. Попробуйте ещё раз</string>
 
     <string name="anki_screenshot_remove_content_description">Убрать снимок экрана</string>
+    <string name="anki_screenshot_crop">Обрезать снимок экрана</string>
+    <string name="anki_screenshot_crop_instruction">Перетащите края, чтобы обрезать снимок экрана</string>
 
     <string name="anki_group_audio">Аудио</string>
 

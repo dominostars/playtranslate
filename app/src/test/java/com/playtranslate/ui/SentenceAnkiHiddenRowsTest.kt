@@ -96,6 +96,7 @@ class SentenceAnkiHiddenRowsTest {
                     override fun openAudioPicker(
                         intent: Intent, onPicked: (AudioSelection) -> Unit,
                     ) = Unit
+                    override fun openScreenshotCrop(state: AnkiScreenshotState) = Unit
                 },
             )
             content = c
@@ -472,7 +473,7 @@ class SentenceAnkiHiddenRowsTest {
 
     private fun open(targetWord: String? = null): HostFragment {
         val args = SentenceAnkiContentView.buildArgs(
-            "猫が食べる。", "The cat eats.", words, screenshotPath = null,
+            "猫が食べる。", "The cat eats.", words,
             targetWord = targetWord, sourceLangId = SourceLangId.JA,
         )
         val controller = Robolectric.buildActivity(Host::class.java).setup()

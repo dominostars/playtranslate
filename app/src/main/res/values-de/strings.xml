@@ -566,6 +566,8 @@
     <string name="hidden_word_save_failed">Speichern fehlgeschlagen. Bitte erneut versuchen</string>
 
     <string name="anki_screenshot_remove_content_description">Screenshot entfernen</string>
+    <string name="anki_screenshot_crop">Screenshot zuschneiden</string>
+    <string name="anki_screenshot_crop_instruction">Ziehe die Kanten, um den Screenshot zuzuschneiden</string>
 
     <string name="anki_group_audio">Audio</string>
 

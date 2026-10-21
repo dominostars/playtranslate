@@ -1,6 +1,7 @@
 package com.playtranslate.ui
 
 import android.content.Context
+import android.graphics.RectF
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
@@ -205,6 +206,85 @@ class RegionDragViewSeedTest {
         v.assertOnScreen()
         assertEquals(0.55f, v.topFraction, EPS)
         assertEquals(0.8f, v.bottomFraction, EPS)
+    }
+
+    // ── The back gesture ────────────────────────────────────────────────
+
+    @Test fun `only the box's left and right handle bands are excluded from the back gesture`() {
+        val v = view()
+        v.setRegion(top = 0.4f, bottom = 0.6f, left = 0.2f, right = 0.8f)
+        val tz = (52f * density).toInt()
+        val l = (W * 0.2f).toInt()
+        val r = (W * 0.8f).toInt()
+        val t = (H * 0.4f).toInt() - tz
+        val b = (H * 0.6f).toInt() + tz
+        assertEquals(
+            listOf(android.graphics.Rect(l - tz, t, l + tz, b), android.graphics.Rect(r - tz, t, r + tz, b)),
+            v.systemGestureExclusionRects,
+        )
+        // A drag moves the bands with the box; a band at the screen edge is clipped.
+        v.drag(fromX = W * 0.2f, fromY = H * 0.5f, toX = 0f, toY = H * 0.5f)
+        assertEquals(0f, v.leftFraction, EPS)
+        assertEquals(android.graphics.Rect(0, t, tz, b), v.systemGestureExclusionRects[0])
+        // A framed box's bands follow the frame.
+        v.setContentBounds(RectF(300f, 0f, 780f, 2340f))
+        v.setRegion(top = 0.4f, bottom = 0.6f, left = 0f, right = 1f)
+        assertEquals(300 - tz, v.systemGestureExclusionRects[0].left)
+        assertEquals(780 + tz, v.systemGestureExclusionRects[1].right)
+    }
+
+    // ── A frame inside the view (the Anki crop's fitted screenshot) ──────
+
+    private fun framed(frame: RectF): RegionDragView = view().also { it.setContentBounds(frame) }
+
+    @Test fun `a framed box is in fractions of the frame, and its top edge stops at the frame's top`() {
+        // A 1080 x 540 image fitted mid-screen: letterbox above and below.
+        val v = framed(RectF(0f, 900f, 1080f, 1440f))
+        v.setRegion(top = 0.2f, bottom = 0.8f, left = 0.2f, right = 0.8f)
+        val box = RectF().also(v::boxInView)
+        assertEquals(900f + 0.2f * 540f, box.top, EPS)
+        assertEquals(900f + 0.8f * 540f, box.bottom, EPS)
+        assertEquals(0.2f * 1080f, box.left, EPS)
+        // The top edge dragged up into the letterbox stops at the frame's top.
+        v.drag(fromX = 540f, fromY = box.top, toX = 540f, toY = 100f)
+        v.assertOnScreen()
+        assertEquals(0f, v.topFraction, EPS)
+        v.boxInView(box)
+        assertEquals(900f, box.top, EPS)
+    }
+
+    @Test fun `a framed box moved into the letterbox stays inside the frame`() {
+        val v = framed(RectF(0f, 900f, 1080f, 1440f))
+        v.setRegion(top = 0.2f, bottom = 0.8f, left = 0.2f, right = 0.8f)
+        // From the box's middle (clear of every handle's reach) far past the
+        // frame's bottom.
+        v.drag(fromX = 540f, fromY = 1170f, toX = 540f, toY = 2200f)
+        v.assertOnScreen()
+        assertEquals(0.4f, v.topFraction, EPS)
+        assertEquals(1f, v.bottomFraction, EPS)
+    }
+
+    @Test fun `a framed handle reports fractions of the frame, and the minimum size is measured on it`() {
+        // A 480 px wide image fitted mid-screen: letterbox left and right.
+        val v = framed(RectF(300f, 0f, 780f, 2340f))
+        v.setRegion(top = 0.4f, bottom = 0.6f, left = 0.2f, right = 0.8f)
+        // The right edge sits at 300 + 0.8 x 480 = 684; to x = 540 is 0.5 of the frame.
+        v.drag(fromX = 684f, fromY = 1170f, toX = 540f, toY = 1170f)
+        assertEquals(0.5f, v.rightFraction, EPS)
+        // Onto its opposite: held 72 px (24 dp) from the left edge, 0.15 of the 480 px frame.
+        v.drag(fromX = 540f, fromY = 1170f, toX = 0f, toY = 1170f)
+        assertEquals(0.2f + 72f / 480f, v.rightFraction, EPS)
+    }
+
+    @Test fun `a new frame moves the box and keeps its fractions`() {
+        val v = framed(RectF(0f, 900f, 1080f, 1440f))
+        v.setRegion(top = 0.2f, bottom = 0.8f, left = 0.2f, right = 0.8f)
+        v.setContentBounds(RectF(300f, 0f, 780f, 2340f))
+        assertEquals(0.2f, v.topFraction, 0f)
+        assertEquals(0.8f, v.rightFraction, 0f)
+        val box = RectF().also(v::boxInView)
+        assertEquals(300f + 0.2f * 480f, box.left, EPS)
+        assertEquals(0.2f * 2340f, box.top, EPS)
     }
 
     private companion object {

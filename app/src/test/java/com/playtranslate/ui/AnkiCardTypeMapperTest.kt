@@ -342,7 +342,7 @@ class AnkiCardTypeMapperTest {
                 ),
             ),
             selectedWords = setOf("猫"),
-            screenshotPath = null,
+            screenshot = null,
             sourceLangId = com.playtranslate.language.SourceLangId.JA,
         )
         val outputs = AnkiCardOutputBuilder.forSentence(data, imageFilename = null)
@@ -626,7 +626,7 @@ class AnkiCardTypeMapperTest {
             target = "I like cats",
             words = emptyList(),
             selectedWords = setOf("猫"),
-            screenshotPath = null,
+            screenshot = null,
             sourceLangId = com.playtranslate.language.SourceLangId.JA,
         )
         val outputs = AnkiCardOutputBuilder.forSentence(data, imageFilename = null)
@@ -654,7 +654,7 @@ class AnkiCardTypeMapperTest {
             target = "I like cats",
             words = words,
             selectedWords = setOf("猫", "好き"),
-            screenshotPath = null,
+            screenshot = null,
             sourceLangId = com.playtranslate.language.SourceLangId.JA,
             targetWordAudioWords = setOf("猫", "好き"),
         )
@@ -678,7 +678,7 @@ class AnkiCardTypeMapperTest {
             target = "Nice weather today",
             words = emptyList(),
             selectedWords = setOf("天気"),
-            screenshotPath = null,
+            screenshot = null,
             sourceLangId = com.playtranslate.language.SourceLangId.JA,
         )
         val outputs = AnkiCardOutputBuilder.forSentence(data, imageFilename = null)
@@ -695,7 +695,7 @@ class AnkiCardTypeMapperTest {
             target = "Nice weather today",
             words = emptyList(),
             selectedWords = emptySet(),
-            screenshotPath = null,
+            screenshot = null,
             sourceLangId = com.playtranslate.language.SourceLangId.JA,
         )
         val outputs = AnkiCardOutputBuilder.forSentence(data, imageFilename = null)
@@ -734,7 +734,7 @@ class AnkiCardTypeMapperTest {
         target = "I like cats",
         words = listOf(SentenceAnkiHtmlBuilder.WordEntry("猫", "ねこ", meaning, senses = senses.toList())),
         selectedWords = setOf("猫"),
-        screenshotPath = null,
+        screenshot = null,
         sourceLangId = com.playtranslate.language.SourceLangId.JA,
     )
 

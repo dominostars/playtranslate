@@ -2,7 +2,9 @@ package com.playtranslate.ui
 
 import com.playtranslate.R
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -56,6 +58,18 @@ class AnkiMediaShortfallTest {
             R.string.anki_added_simplified,
             AnkiSendResult.Success(definitionsSimplified = true).shortfallRes(),
         )
+    }
+
+    @Test fun `the dropped-screenshot verdict needs a request, no upload, and a field to hold it`() {
+        // A crop the pin could not write arrives as a request with no file:
+        // the same verdict as a failed upload.
+        assertTrue(imageDroppedVerdict(requested = true, uploadedName = null, holdsPicture = true))
+        assertTrue(imageDroppedVerdict(requested = true, uploadedName = "", holdsPicture = true))
+        // A card type with no Picture field never reports a loss it could not show.
+        assertFalse(imageDroppedVerdict(requested = true, uploadedName = null, holdsPicture = false))
+        // Nothing attached, nothing lost; an upload that landed is no loss.
+        assertFalse(imageDroppedVerdict(requested = false, uploadedName = null, holdsPicture = true))
+        assertFalse(imageDroppedVerdict(requested = true, uploadedName = "shot.jpg", holdsPicture = true))
     }
 
     @Test fun `a media loss outranks the simplified note`() {

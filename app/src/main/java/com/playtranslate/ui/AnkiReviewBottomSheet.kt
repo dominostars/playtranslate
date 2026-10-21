@@ -75,9 +75,10 @@ class AnkiReviewBottomSheet : DialogFragment() {
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View = inflater.inflate(R.layout.bottom_sheet_anki_review, container, false)
 
-    /** Open-time screenshot pin (see onViewCreated) — released on
-     *  provably-final teardown, same contract as the word sheet. */
-    private var pinnedScreenshotPath: String? = null
+    /** The card's screenshot (the pin, the crop, the removal), opened from
+     *  the arguments at view creation and released with the teardown's
+     *  finality verdict. */
+    private var screenshot: AnkiScreenshotState? = null
 
     override fun onResume() {
         super.onResume()
@@ -94,10 +95,8 @@ class AnkiReviewBottomSheet : DialogFragment() {
         deckSubtitleView = null
         sendButton = null
         val finalTeardown = isFinalMediaTeardown()
-        if (finalTeardown) {
-            context?.let { AnkiScreenshotPin.release(it, pinnedScreenshotPath) }
-        }
-        pinnedScreenshotPath = null
+        context?.let { screenshot?.release(it, final = finalTeardown) }
+        screenshot = null
         contentView?.release(deleteSnapshotFile = finalTeardown)
         contentView = null
         super.onDestroyView()
@@ -125,26 +124,14 @@ class AnkiReviewBottomSheet : DialogFragment() {
         val args = arguments ?: return
         val original       = args.getString(ARG_ORIGINAL) ?: ""
         val translation    = args.getString(ARG_TRANSLATION) ?: ""
-        // Pin at open: the arg is a fixed cache filename
-        // (capture-d{id}.jpg) that any capture taken while this sheet
-        // is open overwrites — the card must keep the frame the user
-        // acted on. The pinned path is written back into args so a
-        // restored instance RE-OWNS the pin and releases it on final
-        // teardown instead of leaving it for the stale sweep.
+        // The screenshot from args: a fresh open pins the fixed cache
+        // filename (capture-d{id}.jpg) any capture taken while this sheet
+        // is open overwrites and writes the pin back into args, so a
+        // restored instance adopts the pin (and the crop written back with
+        // it, or the removal) and releases it on final teardown instead of
+        // leaving it for the stale sweep.
+        screenshot = AnkiScreenshotState.open(requireContext(), args)
         val restoredContentArgs = savedInstanceState?.getBundle(STATE_CONTENT_ARGS)
-        val screenshotPath = if (restoredContentArgs == null) {
-            AnkiScreenshotPin.pin(requireContext(), args.getString(ARG_SCREENSHOT_PATH))
-                .also {
-                    pinnedScreenshotPath = it
-                    args.putString(ARG_SCREENSHOT_PATH, it)
-                }
-        } else {
-            pinnedScreenshotPath = args.getString(ARG_SCREENSHOT_PATH)
-                ?.takeIf { AnkiScreenshotPin.isPin(requireContext(), it) }
-            // The restored content args already carry the pinned path (or
-            // its removal) — nothing new gets pinned.
-            null
-        }
 
         val words = mutableListOf<SentenceAnkiHtmlBuilder.WordEntry>()
         val wordArr    = args.getStringArray(ARG_WORDS) ?: emptyArray()
@@ -199,7 +186,7 @@ class AnkiReviewBottomSheet : DialogFragment() {
 
         // The card editor, hosted directly (the child-fragment hop is gone).
         val cArgs = restoredContentArgs ?: SentenceAnkiContentView.buildArgs(
-            original, translation, words, screenshotPath, sourceLangId = sourceLangId,
+            original, translation, words, sourceLangId = sourceLangId,
             // "Looking up words…" until applyWords, not a zero-word card.
             wordsLoading = fillWords,
             audioAnchorMs = args.takeIf { it.containsKey(ARG_AUDIO_ANCHOR_MS) }
@@ -217,6 +204,7 @@ class AnkiReviewBottomSheet : DialogFragment() {
             // have replaced these — so the build falls back to them plus the
             // sentence-gated cache read.
             initialWords = words.takeIf { restoredContentArgs == null },
+            screenshot = screenshot,
         )
         contentView = content
         host.addView(contentRoot)
@@ -315,7 +303,7 @@ class AnkiReviewBottomSheet : DialogFragment() {
             pendingPickerCallback = onPicked
             audioPickerLauncher.launch(intent)
         }
-        // No sibling tab to mirror screenshot removal into.
+        override fun openScreenshotCrop(state: AnkiScreenshotState) = showScreenshotCropDialog(state)
     }
 
     /** Updates the save button's "Deck: <name>" subtitle whenever the
@@ -346,7 +334,7 @@ class AnkiReviewBottomSheet : DialogFragment() {
             words = data.words,
             selectedWords = data.selectedWords,
             sourceLangId = data.sourceLangId,
-            screenshotPath = data.screenshotPath,
+            screenshot = data.screenshot,
             includeSentenceAudio = content.sentenceAudioEnabled,
             targetWordAudioWords = data.targetWordAudioWords,
             sentenceSelection = data.sentenceSelection,
@@ -388,7 +376,7 @@ class AnkiReviewBottomSheet : DialogFragment() {
         private const val ARG_FREQ_SCORES     = "freq_scores"
         private const val ARG_SURFACES        = "surfaces"
         private const val ARG_ENRICHMENT      = "enrichment"
-        private const val ARG_SCREENSHOT_PATH = "screenshot_path"
+        private const val ARG_SCREENSHOT_PATH = AnkiScreenshotState.ARG_SCREENSHOT_PATH
         private const val ARG_SOURCE_LANG     = "source_lang"
         private const val ARG_PENDING_TRANSLATION = "pending_translation"
         private const val ARG_AUDIO_ANCHOR_MS = "audio_anchor_ms"

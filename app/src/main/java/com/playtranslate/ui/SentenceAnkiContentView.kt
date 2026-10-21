@@ -101,6 +101,10 @@ class SentenceAnkiContentView(
      *  args were built from; null (a restore, or a host with no enrichment
      *  to give) falls back to a SENTENCE-GATED cache read. */
     private val initialWords: List<SentenceAnkiHtmlBuilder.WordEntry>? = null,
+    /** The card's screenshot (the pin, the crop, the removal), opened and
+     *  released by the host from its own args, and shared with a sibling
+     *  tab when the host has one ([WordAnkiReviewBinder]); null = none. */
+    private val screenshot: AnkiScreenshotState? = null,
 ) {
     /** The host seam. */
     interface Host {
@@ -112,9 +116,10 @@ class SentenceAnkiContentView(
          *  Never called back on cancel. */
         fun openAudioPicker(intent: Intent, onPicked: (AudioSelection) -> Unit)
 
-        /** The screenshot was removed on this card — mirror into a sibling
-         *  tab when one shares the media (the word/sentence tab pair). */
-        fun onScreenshotRemoved() {}
+        /** Present the screenshot crop editor for [state] (a dialog window
+         *  over the sheet, a workspace page); it writes to the state, which
+         *  the Screenshot group follows. */
+        fun openScreenshotCrop(state: AnkiScreenshotState)
 
         /** Hold point before the styled-payload apply — the workspace
          *  suspends until its enter animation settles so the word rows'
@@ -186,9 +191,6 @@ class SentenceAnkiContentView(
             if (hadOrHas) rebuildWordRows()
         }
     }
-    var includePhoto = true
-        private set
-
     /** Whether the sentence-audio switch is on. Read by the host sheet
      *  at send time; false when the toggle wasn't built. */
     val sentenceAudioEnabled: Boolean
@@ -199,9 +201,7 @@ class SentenceAnkiContentView(
     private lateinit var etTranslation: EditText
     private lateinit var wordsCard: LinearLayout
     private lateinit var wordsHeaderTitle: TextView
-    private var screenshotHeader: View? = null
-    private var screenshotGroup: View? = null
-    private var ivPhoto: ImageView? = null
+    private var screenshotGroup: AnkiScreenshotGroup? = null
     private var sentenceAudioHandle: AnkiAudioToggleHandle? = null
 
     // ── In-card game-audio panel (waveform; playback via the row chip) ───
@@ -542,7 +542,8 @@ class SentenceAnkiContentView(
         val target: String,
         val words: List<SentenceAnkiHtmlBuilder.WordEntry>,
         val selectedWords: Set<String>,
-        val screenshotPath: String?,
+        /** The screenshot to attach, with its crop; null = none. */
+        val screenshot: ScreenshotAttachment?,
         val sourceLangId: SourceLangId,
         /** Subset of [selectedWords] whose per-target-word audio toggle is
          *  on. Only enabled, currently-selected words are reported — the
@@ -564,7 +565,7 @@ class SentenceAnkiContentView(
             target = etTranslation.text.toString(),
             words = words.toList(),
             selectedWords = selectedWords.toSet(),
-            screenshotPath = if (includePhoto) args.getString(ARG_SCREENSHOT_PATH) else null,
+            screenshot = screenshot?.attachment,
             sourceLangId = SourceLangId.fromCode(args.getString(ARG_SOURCE_LANG)) ?: SourceLangId.JA,
             targetWordAudioWords = enabledTargets,
             // Only include selections for words whose audio is enabled — the
@@ -649,8 +650,8 @@ class SentenceAnkiContentView(
             if (deleteSnapshotFile) f.delete()
         }
         gameAudioSnapshotFile = null
-        ivPhoto?.setImageBitmap(null)
-        ivPhoto = null
+        screenshotGroup?.release()
+        screenshotGroup = null
         sentenceAudioHandle?.release()
         sentenceAudioHandle = null
         wordAudioHandles.values.forEach { it.release() }
@@ -719,8 +720,7 @@ class SentenceAnkiContentView(
         hiddenOrderApplied = false
 
         val translation = args.getString(ARG_TRANSLATION) ?: ""
-        val screenshotPath = args.getString(ARG_SCREENSHOT_PATH)
-        buildContent(original, translation, screenshotPath)
+        buildContent(original, translation)
 
         // Styled word definitions for whatever words exist right now. The
         // deferred-fill flows (ARG_WORDS_LOADING open, sentence re-commit)
@@ -1130,7 +1130,7 @@ class SentenceAnkiContentView(
 
     // ── Build ────────────────────────────────────────────────────────────
 
-    private fun buildContent(original: String, translation: String, screenshotPath: String?) {
+    private fun buildContent(original: String, translation: String) {
         root.removeAllViews()
 
         val prefs = Prefs(ctx)
@@ -1260,39 +1260,11 @@ class SentenceAnkiContentView(
         addWordsHelperRow(wordsCard)
         rebuildWordRows()
 
-        // Screenshot — built only when the file exists; collapses cleanly
-        // on remove tap so the user gets immediate feedback that the
-        // photo won't ship.
-        if (screenshotPath != null) {
-            val file = File(screenshotPath)
-            if (file.exists()) {
-                ankiGroupHeader(root, ctx.getString(R.string.anki_group_screenshot))
-                screenshotHeader = root.getChildAt(root.childCount - 1)
-                val screenshotCard = ankiGroupCard(root)
-                screenshotGroup = root.getChildAt(root.childCount - 1)
-                addScreenshotRow(screenshotCard, file) {
-                    removeScreenshotFromUi()
-                    // Mirror the removal into a sibling tab when one shares
-                    // the same source media (the word/sentence tab pair
-                    // would otherwise get out of sync).
-                    host.onScreenshotRemoved()
-                }
-            }
+        // Screenshot — the group follows the shared state: a removal in
+        // either tab takes it down, a crop set in either shows here.
+        screenshot?.let { s ->
+            screenshotGroup = addAnkiScreenshotGroup(root, ctx, scope, s) { host.openScreenshotCrop(s) }
         }
-    }
-
-    /** Tear down the screenshot group from the live view tree and flip
-     *  [includePhoto] off so [getCardData] no longer reports a photo
-     *  for this side. Public so the parent sheet can keep both tabs in
-     *  sync — when the user removes the photo in word-mode, the
-     *  sentence-tab screenshot needs to disappear too. */
-    fun removeScreenshotFromUi() {
-        if (!includePhoto) return
-        includePhoto = false
-        screenshotHeader?.let { root.removeView(it) }
-        screenshotGroup?.let { root.removeView(it) }
-        screenshotHeader = null
-        screenshotGroup = null
     }
 
     /** Wrap an [EditText] in a FrameLayout with a small pencil icon
@@ -1374,61 +1346,6 @@ class SentenceAnkiContentView(
             )
         })
         ankiInsetDivider(card, indentDp = 0)
-    }
-
-    private fun addScreenshotRow(card: LinearLayout, file: File, onRemove: () -> Unit) {
-        val density = ctx.resources.displayMetrics.density
-        val frame = FrameLayout(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-        val img = ImageView(ctx).apply {
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            adjustViewBounds = true
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-        // Decoded off the main thread — the word tab's rule
-        // ([decodeScreenshotForDisplay]): this build runs synchronously
-        // inside the workspace push, and a full-screen decode there stalls
-        // the window's enter animation. Display-only; the card gets the file.
-        scope.launch {
-            val bmp = withContext(Dispatchers.IO) {
-                decodeScreenshotForDisplay(file, ctx.resources.displayMetrics.widthPixels)
-            }
-            if (bmp != null) img.setImageBitmap(bmp)
-        }
-        ivPhoto = img
-        frame.addView(img)
-
-        // Semi-transparent black circle keeps the white "✕" legible
-        // against bright frames; size is fixed so the hit target stays
-        // consistent regardless of the glyph's intrinsic width.
-        val removeSize = (32 * density).toInt()
-        frame.addView(TextView(ctx).apply {
-            text = "✕"
-            textSize = 14f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(0xFFFFFFFF.toInt())
-            gravity = Gravity.CENTER
-            setBackgroundResource(R.drawable.bg_screenshot_remove)
-            isClickable = true
-            isFocusable = true
-            contentDescription = ctx.getString(R.string.anki_screenshot_remove_content_description)
-            layoutParams = FrameLayout.LayoutParams(
-                removeSize, removeSize,
-                Gravity.TOP or Gravity.END,
-            ).also {
-                it.topMargin = (8 * density).toInt()
-                it.marginEnd = (8 * density).toInt()
-            }
-            setOnClickListener { onRemove() }
-        })
-        card.addView(frame)
     }
 
     // ── Word rows ────────────────────────────────────────────────────────
@@ -2080,7 +1997,6 @@ class SentenceAnkiContentView(
         private const val ARG_READINGS        = "readings"
         private const val ARG_MEANINGS        = "meanings"
         private const val ARG_FREQ_SCORES     = "freq_scores"
-        private const val ARG_SCREENSHOT_PATH = "screenshot_path"
         private const val ARG_TARGET_WORD     = "target_word"
         private const val ARG_SOURCE_LANG     = "source_lang"
         private const val ARG_WORDS_LOADING   = "words_loading"
@@ -2098,7 +2014,6 @@ class SentenceAnkiContentView(
             japanese: String,
             translation: String,
             words: List<SentenceAnkiHtmlBuilder.WordEntry>,
-            screenshotPath: String?,
             targetWord: String? = null,
             sourceLangId: SourceLangId = SourceLangId.JA,
             wordsLoading: Boolean = false,
@@ -2110,7 +2025,6 @@ class SentenceAnkiContentView(
             putStringArray(ARG_READINGS, words.map { it.reading }.toTypedArray())
             putStringArray(ARG_MEANINGS, words.map { it.meaning }.toTypedArray())
             putIntArray(ARG_FREQ_SCORES, words.map { it.freqScore }.toIntArray())
-            if (screenshotPath != null) putString(ARG_SCREENSHOT_PATH, screenshotPath)
             if (targetWord != null) putString(ARG_TARGET_WORD, targetWord)
             putString(ARG_SOURCE_LANG, sourceLangId.code)
             putBoolean(ARG_WORDS_LOADING, wordsLoading)

@@ -577,6 +577,8 @@
     <string name="hidden_word_save_failed">Impossible d\'enregistrer. Réessayez</string>
 
     <string name="anki_screenshot_remove_content_description">Retirer la capture d\'écran</string>
+    <string name="anki_screenshot_crop">Rogner la capture d\'écran</string>
+    <string name="anki_screenshot_crop_instruction">Faites glisser les bords pour rogner la capture d\'écran</string>
 
     <string name="anki_group_audio">Audio</string>
 

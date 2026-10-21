@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
+import android.graphics.RectF
 import android.view.MotionEvent
 import android.view.View
 import com.playtranslate.R
@@ -51,9 +52,16 @@ internal fun drawScreenSpaceDashes(
 }
 
 /**
- * Full-screen view placed on the game display via TYPE_ACCESSIBILITY_OVERLAY.
- * All four edges and four corners are independently draggable.
- * System back/forward gestures are excluded from the entire view area.
+ * Full-screen view placed on the game display via TYPE_ACCESSIBILITY_OVERLAY
+ * (and, as a child view, under the camera / Import and Anki screenshot crop
+ * editors). All four edges and four corners are independently draggable.
+ * The box lives in a frame: the whole view, or a rect inside it
+ * ([setContentBounds], a fitted image). The system's back gesture is
+ * excluded only where it would steal a drag: the handle bands along the
+ * box's left and right edges ([updateGestureExclusion]); elsewhere a back
+ * swipe still reaches the host (the crop dialog, the camera). Excluding the
+ * whole view never protected more anyway: the system honours at most
+ * 200 dp of exclusion per edge, from the bottom up.
  */
 class RegionDragView(context: Context) : View(context) {
 
@@ -88,9 +96,44 @@ class RegionDragView(context: Context) : View(context) {
 
     private val density get() = resources.displayMetrics.density
 
-    /** [MIN_EXTENT_DP] as a fraction of each axis of this view. */
-    private val minExtentX: Float get() = if (width > 0) MIN_EXTENT_DP * density / width else 0f
-    private val minExtentY: Float get() = if (height > 0) MIN_EXTENT_DP * density / height else 0f
+    // The frame the box lives in, in this view's px: null, the default, is
+    // the whole view. The fractions are of it, a drag keeps the box inside
+    // it and MIN_EXTENT_DP is measured on it; the dim covers the whole view
+    // outside the box, and the handles and touch zones reach past the frame
+    // (into the letterbox around a fitted image).
+    private var contentBounds: RectF? = null
+
+    /** The box's frame: null for the whole view, else a non-empty rect in
+     *  this view's px (a fitted image's rect). The fractions keep their
+     *  values, so a box seeded against one frame lands in the same place of
+     *  the next (a host resize). */
+    fun setContentBounds(bounds: RectF?) {
+        require(bounds == null || (bounds.width() > 0f && bounds.height() > 0f)) {
+            "content bounds must be null or non-empty: $bounds"
+        }
+        contentBounds = bounds?.let { RectF(it) }
+        updateGestureExclusion()
+        invalidate()
+    }
+
+    private val frameLeft: Float get() = contentBounds?.left ?: 0f
+    private val frameTop: Float get() = contentBounds?.top ?: 0f
+    private val frameW: Float get() = contentBounds?.width() ?: width.toFloat()
+    private val frameH: Float get() = contentBounds?.height() ?: height.toFloat()
+
+    /** [MIN_EXTENT_DP] as a fraction of each axis of the frame. */
+    private val minExtentX: Float get() = if (frameW > 0f) MIN_EXTENT_DP * density / frameW else 0f
+    private val minExtentY: Float get() = if (frameH > 0f) MIN_EXTENT_DP * density / frameH else 0f
+
+    /** The box in this view's px. */
+    fun boxInView(out: RectF) {
+        out.set(
+            frameLeft + frameW * leftFraction,
+            frameTop + frameH * topFraction,
+            frameLeft + frameW * rightFraction,
+            frameTop + frameH * bottomFraction,
+        )
+    }
 
     // View(context) constructor stores the raw service context; theme
     // attrs aren't bound on it. Wrap it to resolve pt* tokens the same
@@ -124,9 +167,11 @@ class RegionDragView(context: Context) : View(context) {
     private val dashLen = REGION_DASH_DP
     private val gapLen = REGION_GAP_DP
 
-    // Scratch reused in onLayout — allocating per frame is lint DrawAllocation.
-    private val gestureRect = Rect()
-    private val gestureRectList = listOf(gestureRect)
+    // The two handle bands, reused on every box change (allocating per
+    // frame is lint DrawAllocation).
+    private val leftHandleBand = Rect()
+    private val rightHandleBand = Rect()
+    private val gestureRectList = listOf(leftHandleBand, rightHandleBand)
 
     private enum class DragTarget {
         NONE, MIDDLE,
@@ -155,6 +200,7 @@ class RegionDragView(context: Context) : View(context) {
         bottomFraction = maxOf(top, bottom).coerceIn(0f, 1f)
         leftFraction   = minOf(left, right).coerceIn(0f, 1f)
         rightFraction  = maxOf(left, right).coerceIn(0f, 1f)
+        updateGestureExclusion()
         invalidate()
     }
 
@@ -171,20 +217,33 @@ class RegionDragView(context: Context) : View(context) {
     fun getRegion() = Pair(topFraction, bottomFraction)
     fun getFullRegion() = arrayOf(topFraction, bottomFraction, leftFraction, rightFraction)
 
-    // Exclude the whole view from Android's system gesture areas (back/forward swipes)
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
-        gestureRect.set(0, 0, width, height)
+        updateGestureExclusion()
+    }
+
+    /** Keep the system's back gesture off the box's left and right handle
+     *  bands (the touch zone either side of each edge, the box's height
+     *  plus a zone at each end), clipped to the view; nowhere else. */
+    private fun updateGestureExclusion() {
+        if (width <= 0 || height <= 0) return
+        val tz = touchZone
+        val t = (frameTop + frameH * topFraction - tz).toInt().coerceIn(0, height)
+        val b = (frameTop + frameH * bottomFraction + tz).toInt().coerceIn(0, height)
+        val l = frameLeft + frameW * leftFraction
+        val r = frameLeft + frameW * rightFraction
+        leftHandleBand.set((l - tz).toInt().coerceIn(0, width), t, (l + tz).toInt().coerceIn(0, width), b)
+        rightHandleBand.set((r - tz).toInt().coerceIn(0, width), t, (r + tz).toInt().coerceIn(0, width), b)
         systemGestureExclusionRects = gestureRectList
     }
 
     override fun onDraw(canvas: Canvas) {
         val w = width.toFloat()
         val h = height.toFloat()
-        val t = h * topFraction
-        val b = h * bottomFraction
-        val l = w * leftFraction
-        val r = w * rightFraction
+        val t = frameTop + frameH * topFraction
+        val b = frameTop + frameH * bottomFraction
+        val l = frameLeft + frameW * leftFraction
+        val r = frameLeft + frameW * rightFraction
         val dp = density
 
         cardBorderPaint.strokeWidth = 2f * dp
@@ -246,14 +305,14 @@ class RegionDragView(context: Context) : View(context) {
     // outcome to route through performClick. See performClick comment.
     @android.annotation.SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        val w  = width.toFloat()
-        val h  = height.toFloat()
+        val w  = frameW
+        val h  = frameH
         val x  = event.x
         val y  = event.y
-        val t  = h * topFraction
-        val b  = h * bottomFraction
-        val l  = w * leftFraction
-        val r  = w * rightFraction
+        val t  = frameTop + h * topFraction
+        val b  = frameTop + h * bottomFraction
+        val l  = frameLeft + w * leftFraction
+        val r  = frameLeft + w * rightFraction
         val tz = touchZone
 
         when (event.action) {
@@ -333,6 +392,7 @@ class RegionDragView(context: Context) : View(context) {
                     }
                     DragTarget.NONE -> {}
                 }
+                updateGestureExclusion()
                 invalidate()
                 onRegionChanged?.invoke(com.playtranslate.RegionEntry("", topFraction, bottomFraction, leftFraction, rightFraction))
                 return true

@@ -122,16 +122,16 @@ class AnkiReviewSheetWordsFillTest {
     @Test
     fun wordsFillOwed_onlyWhileLoadingWithNoWords() {
         val owed = SentenceAnkiContentView.buildArgs(
-            SENTENCE, TRANSLATION, emptyList(), screenshotPath = null, wordsLoading = true,
+            SENTENCE, TRANSLATION, emptyList(), wordsLoading = true,
         )
         assertEquals(true, SentenceAnkiContentView.wordsFillOwed(owed))
         val landed = SentenceAnkiContentView.buildArgs(
             SENTENCE, TRANSLATION, listOf(SentenceAnkiHtmlBuilder.WordEntry("猫", "ねこ", "cat", 3)),
-            screenshotPath = null, wordsLoading = true,
+            wordsLoading = true,
         )
         assertEquals(false, SentenceAnkiContentView.wordsFillOwed(landed))
         val final = SentenceAnkiContentView.buildArgs(
-            SENTENCE, TRANSLATION, emptyList(), screenshotPath = null, wordsLoading = false,
+            SENTENCE, TRANSLATION, emptyList(), wordsLoading = false,
         )
         assertEquals(false, SentenceAnkiContentView.wordsFillOwed(final))
     }

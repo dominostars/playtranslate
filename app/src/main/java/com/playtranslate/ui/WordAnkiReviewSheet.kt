@@ -128,6 +128,8 @@ class WordAnkiReviewSheet : DialogFragment() {
             audioPickerLauncher.launch(intent)
         }
 
+        override fun openScreenshotCrop(state: AnkiScreenshotState) = showScreenshotCropDialog(state)
+
         override fun openDeckPicker(onPicked: (Long, String) -> Unit) {
             showAnkiDeckPicker(onPicked)
         }

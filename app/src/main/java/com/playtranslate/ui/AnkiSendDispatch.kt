@@ -216,6 +216,11 @@ suspend fun Context.dispatchSendToAnki(
     deckId: Long,
     mode: CardMode,
     screenshotPath: String?,
+    /** The user attached a screenshot. Normally [screenshotPath] says so;
+     *  the pipeline passes true with a null path when the crop could not
+     *  be written, so the one gated verdict ([imageDroppedVerdict]) covers
+     *  that local failure the way it covers a failed upload. */
+    screenshotRequested: Boolean = screenshotPath != null,
     audioPath: String?,
     ptNote: (imageFilename: String?, audioFilename: String?, wordAudioFilenames: Map<String, String>, simplified: Boolean) -> PtNote,
     structured: (imageFilename: String?, audioFilename: String?, wordAudioFilenames: Map<String, String>, simplified: Boolean) -> CardOutputs,
@@ -467,9 +472,17 @@ suspend fun Context.dispatchSendToAnki(
     return AnkiSendResult.Success(
         audioDropped = audioPath != null && audioFilename.isNullOrEmpty(),
         wordAudioDropped = wordAudioPaths.size > wordAudioFilenames.size,
-        imageDropped = screenshotPath != null && imageFilename.isNullOrEmpty() &&
-            target.holdsPicture,
+        imageDropped = imageDroppedVerdict(screenshotRequested, imageFilename, target.holdsPicture),
         definitionsSimplified = simplified,
     )
 }
 
+/**
+ * The one "added without screenshot" verdict: the user attached one
+ * ([requested]), nothing reached the media store ([uploadedName]: a failed
+ * upload, or a crop the send-time pin could not write), and the note had a
+ * field to hold it ([holdsPicture]): a card type with no Picture field never
+ * reports a loss it could not have shown.
+ */
+internal fun imageDroppedVerdict(requested: Boolean, uploadedName: String?, holdsPicture: Boolean): Boolean =
+    requested && uploadedName.isNullOrEmpty() && holdsPicture

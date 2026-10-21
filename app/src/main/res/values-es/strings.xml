@@ -565,6 +565,8 @@
     <string name="hidden_word_save_failed">No se pudo guardar. Inténtalo de nuevo</string>
 
     <string name="anki_screenshot_remove_content_description">Quitar captura de pantalla</string>
+    <string name="anki_screenshot_crop">Recortar captura de pantalla</string>
+    <string name="anki_screenshot_crop_instruction">Arrastra los bordes para recortar la captura de pantalla</string>
 
     <string name="anki_group_audio">Audio</string>
 

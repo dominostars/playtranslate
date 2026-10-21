@@ -31,7 +31,7 @@ class SentenceSendInputHiddenTest {
         words = words.map(::entry),
         selectedWords = selected,
         sourceLangId = SourceLangId.JA,
-        screenshotPath = null,
+        screenshot = null,
         includeSentenceAudio = false,
         targetWordAudioWords = audio,
         wordSelections = selections,

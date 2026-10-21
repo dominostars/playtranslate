@@ -562,6 +562,8 @@
     <string name="hidden_word_save_failed">Không lưu được. Hãy thử lại</string>
 
     <string name="anki_screenshot_remove_content_description">Xóa ảnh chụp màn hình</string>
+    <string name="anki_screenshot_crop">Cắt ảnh chụp màn hình</string>
+    <string name="anki_screenshot_crop_instruction">Kéo các cạnh để cắt ảnh chụp màn hình</string>
 
     <string name="anki_group_audio">Âm thanh</string>
 

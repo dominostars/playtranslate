@@ -57,7 +57,9 @@ data class SentenceSendInput(
     val words: List<SentenceAnkiHtmlBuilder.WordEntry>,
     val selectedWords: Set<String>,
     val sourceLangId: SourceLangId,
-    val screenshotPath: String?,
+    /** The screenshot to attach, with the crop the send applies to it;
+     *  null = none. */
+    val screenshot: ScreenshotAttachment?,
     val includeSentenceAudio: Boolean,
     /** Words whose per-target audio is enabled. Empty in one-tap (the
      *  sheet's per-word toggle isn't surfaced). */
@@ -93,7 +95,9 @@ data class WordSendInput(
     val pitch: List<Int>,
     val frequencies: List<FrequencyTag>,
     val sourceLangId: SourceLangId,
-    val screenshotPath: String?,
+    /** The screenshot to attach, with the crop the send applies to it;
+     *  null = none. */
+    val screenshot: ScreenshotAttachment?,
     val includeWordAudio: Boolean,
     /** Multi-source audio selection for the headword (Commons-first → TTS).
      *  [AudioSelection.Auto] (the default, and what one-tap sends) resolves
@@ -136,67 +140,75 @@ suspend fun Context.sendSentenceCard(
     oversizePrompt: (suspend () -> Boolean)? = null,
 ): AnkiSendResult {
     val ctx = this
-    // Hidden words never reach a sentence card unless highlighted. This is
-    // the ONE place every sentence send passes through (review sheet,
-    // workspace editor page, the word card's sentence tab, one-tap), so the
-    // filter lives here and nowhere else: the sheets hand over ALL their
-    // words, including the minimized ones. A highlighted target is exempt —
-    // the user is making a card FOR it — and is un-hidden below once the
-    // send lands. Above the audio synthesis so no TTS is paid for a word
-    // that is about to be dropped, and above toCardData so the card front's
-    // tooltips and highlights (derived from the word list) drop too.
-    val hidden = HiddenWordsStore.loaded(ctx, raw.sourceLangId)
-    val input = raw.withoutHidden(hidden)
-    // Pin the screenshot BEFORE the audio synthesis below: the capture
-    // surfaces overwrite fixed cache filenames, and the seconds this
-    // pipeline spends on audio + binder are exactly when a rapid re-capture
-    // would swap the frame under the upload. The card must attach what the
-    // user was looking at when they sent it.
-    val pinnedScreenshotPath = AnkiScreenshotPin.pin(ctx, input.screenshotPath)
-    // Sentence audio: multi-source resolution, Commons-first → TTS floor with
-    // the user's saved voice. Every caller — sheet and one-tap — goes through
-    // the registry; the TTS floor speaks SpokenText's kana pronunciation, so
-    // compound readings (初夏 → はつか) aren't re-guessed by the engine.
-    val sentenceResolved: ResolvedAudio? = if (input.includeSentenceAudio) {
-        AudioSelections.toFile(
-            ctx, input.sentenceSelection,
-            AudioRequest.sentence(input.original, input.sourceLangId),
-        )
-    } else null
-    val audioFile: File? = sentenceResolved?.file
-    // Per-target-word audio. Words whose synth/fetch returns null are skipped —
-    // the rest of the card still lands. Keyed by the same WordEntry.word the
-    // media files are stored under.
-    val readingByWord = input.words.associate { it.word to it.reading }
-    val wordResolved: Map<String, ResolvedAudio> = buildMap {
-        for (word in input.targetWordAudioWords) {
-            val resolved = AudioSelections.toFile(
-                ctx, input.wordSelections[word] ?: AudioSelection.Auto,
-                AudioRequest.word(word, readingByWord[word]?.ifBlank { null }, input.sourceLangId),
-            )
-            if (resolved != null) put(word, resolved)
-        }
-    }
-    val wordAudioFiles: Map<String, File> = wordResolved.mapValues { it.value.file }
-    // CC attribution for Commons clips, kept separate per audio field so the
-    // credit travels even when the card type maps only one of the audio fields.
-    // The legacy single-field back uses the aggregate.
-    val sentenceCredit: String? =
-        sentenceResolved?.attribution?.let { Attribution.creditBlock(listOf(it)) }
-    val wordCredit: String? = wordResolved.values.mapNotNull { it.attribution }
-        .takeIf { it.isNotEmpty() }?.let { Attribution.creditBlock(it) }
-    val audioCredit: String? = run {
-        val all = listOfNotNull(sentenceResolved?.attribution) +
-            wordResolved.values.mapNotNull { it.attribution }
-        if (all.isEmpty()) null else Attribution.creditBlock(all)
-    }
+    // Everything that makes a file sits INSIDE one cleanup scope: the
+    // screenshot pin, the audio synthesis, the annotation fetch and the
+    // dispatch are all suspend points that can throw or be cancelled (a
+    // sheet's send dies with its view), and the finally below releases the
+    // pin and deletes ephemeral audio on EVERY path once they exist.
+    var pinnedScreenshotPath: String? = null
+    var sentenceResolved: ResolvedAudio? = null
+    var wordResolved: Map<String, ResolvedAudio> = emptyMap()
+    var audioFile: File? = null
+    var wordAudioFiles: Map<String, File> = emptyMap()
+    var hidden: Set<String> = emptySet()
+    var input: SentenceSendInput = raw
     val result = try {
-        // Everything from here sits INSIDE the pin/audio cleanup scope: the
-        // annotation fetch is a suspend point that can throw or be
-        // cancelled, and the finally below must release the screenshot pin
-        // and delete ephemeral audio on EVERY post-pin failure path
-        // (adversarial-review finding — the fetch briefly lived above this
-        // try and could leak both).
+        // The freeze comes first, ahead of the hidden-word load, the send's
+        // first suspension: the capture surfaces overwrite fixed cache
+        // filenames (a one-tap send carries one), and the seconds spent on
+        // audio + binder are exactly when a rapid re-capture would swap the
+        // frame under the upload. The card must attach what the user was
+        // looking at when they sent it. The pin is where the card's crop
+        // becomes a file; null with a crop that could not be written.
+        pinnedScreenshotPath = AnkiScreenshotPin.pinForSend(ctx, raw.screenshot)
+        // Hidden words never reach a sentence card unless highlighted. This is
+        // the ONE place every sentence send passes through (review sheet,
+        // workspace editor page, the word card's sentence tab, one-tap), so the
+        // filter lives here and nowhere else: the sheets hand over ALL their
+        // words, including the minimized ones. A highlighted target is exempt —
+        // the user is making a card FOR it — and is un-hidden below once the
+        // send lands. Above the audio synthesis so no TTS is paid for a word
+        // that is about to be dropped, and above toCardData so the card front's
+        // tooltips and highlights (derived from the word list) drop too.
+        hidden = HiddenWordsStore.loaded(ctx, raw.sourceLangId)
+        input = raw.withoutHidden(hidden)
+        // Sentence audio: multi-source resolution, Commons-first → TTS floor with
+        // the user's saved voice. Every caller — sheet and one-tap — goes through
+        // the registry; the TTS floor speaks SpokenText's kana pronunciation, so
+        // compound readings (初夏 → はつか) aren't re-guessed by the engine.
+        sentenceResolved = if (input.includeSentenceAudio) {
+            AudioSelections.toFile(
+                ctx, input.sentenceSelection,
+                AudioRequest.sentence(input.original, input.sourceLangId),
+            )
+        } else null
+        audioFile = sentenceResolved?.file
+        // Per-target-word audio. Words whose synth/fetch returns null are skipped —
+        // the rest of the card still lands. Keyed by the same WordEntry.word the
+        // media files are stored under.
+        val readingByWord = input.words.associate { it.word to it.reading }
+        wordResolved = buildMap {
+            for (word in input.targetWordAudioWords) {
+                val resolved = AudioSelections.toFile(
+                    ctx, input.wordSelections[word] ?: AudioSelection.Auto,
+                    AudioRequest.word(word, readingByWord[word]?.ifBlank { null }, input.sourceLangId),
+                )
+                if (resolved != null) put(word, resolved)
+            }
+        }
+        wordAudioFiles = wordResolved.mapValues { it.value.file }
+        // CC attribution for Commons clips, kept separate per audio field so the
+        // credit travels even when the card type maps only one of the audio fields.
+        // The legacy single-field back uses the aggregate.
+        val sentenceCredit: String? =
+            sentenceResolved?.attribution?.let { Attribution.creditBlock(listOf(it)) }
+        val wordCredit: String? = wordResolved.values.mapNotNull { it.attribution }
+            .takeIf { it.isNotEmpty() }?.let { Attribution.creditBlock(it) }
+        val audioCredit: String? = run {
+            val all = listOfNotNull(sentenceResolved?.attribution) +
+                wordResolved.values.mapNotNull { it.attribution }
+            if (all.isEmpty()) null else Attribution.creditBlock(all)
+        }
         val cardData = input.toCardData()
         // ONE analysis for the card: reuse the cached annotation when it
         // still matches the (possibly edited) sentence text, else
@@ -247,6 +259,7 @@ suspend fun Context.sendSentenceCard(
             deckId = deckId,
             mode = CardMode.SENTENCE,
             screenshotPath = pinnedScreenshotPath,
+            screenshotRequested = input.screenshot != null,
             audioPath = audioFile?.absolutePath,
             wordAudioPaths = wordAudioFiles.mapValues { it.value.absolutePath },
             oversizePrompt = oversizePrompt,
@@ -301,7 +314,6 @@ suspend fun Context.sendSentenceCard(
         if (sentenceResolved?.ephemeral != false) audioFile?.delete()
         wordResolved.values.forEach { if (it.ephemeral) it.file.delete() }
         // The upload (or its failure) is behind us — the pin's job is done.
-        // A synthesis throw above skips this; the pin sweep collects it.
         AnkiScreenshotPin.release(ctx, pinnedScreenshotPath)
     }
     // The dispatcher only knows about UPLOAD failures (audioPath was
@@ -309,7 +321,9 @@ suspend fun Context.sendSentenceCard(
     // (AudioSelections.toFile returned null — synth error, dead pick,
     // blown budget) never reach it because we pass null audioPath in
     // that case. Fold them in here so callers can read a single
-    // "audio requested but missing" flag.
+    // "audio requested but missing" flag. A crop the pin could not write
+    // is the image's local failure, and it DOES reach the dispatcher
+    // (screenshotRequested), whose verdict carries the picture-field gate.
     // A highlighted word rode onto the card on purpose: it is not a hidden
     // word any more. Only on a landed send — never when an editor opens, so
     // cancelling one leaves the store alone. A failed un-hide is logged by
@@ -341,26 +355,29 @@ suspend fun Context.sendWordCard(
     oversizePrompt: (suspend () -> Boolean)? = null,
 ): AnkiSendResult {
     val ctx = this
-    // Pin before synthesis — see sendSentenceCard.
-    val pinnedScreenshotPath = AnkiScreenshotPin.pin(ctx, input.screenshotPath)
-    // Headword audio: multi-source resolution (Commons-first → TTS floor with
-    // the user's saved voice), same registry walk for sheet and one-tap.
-    val wordResolved: ResolvedAudio? = if (input.includeWordAudio) {
-        AudioSelections.toFile(
-            ctx, input.wordSelection,
-            AudioRequest.word(input.word, input.reading.ifBlank { null }, input.sourceLangId),
-        )
-    } else null
-    val audioFile: File? = wordResolved?.file
-    // CC credit for a Commons clip, co-located with the word audio field so the
-    // attribution travels with redistributed cards. Null for plain TTS audio.
-    val audioCredit: String? =
-        wordResolved?.attribution?.let { Attribution.creditBlock(listOf(it)) }
+    // One cleanup scope for everything that makes a file; the pin first —
+    // see sendSentenceCard.
+    var pinnedScreenshotPath: String? = null
+    var wordResolved: ResolvedAudio? = null
+    var audioFile: File? = null
     val result = try {
+        pinnedScreenshotPath = AnkiScreenshotPin.pinForSend(ctx, input.screenshot)
+        // Headword audio: multi-source resolution (Commons-first → TTS floor with
+        // the user's saved voice), same registry walk for sheet and one-tap.
+        wordResolved = if (input.includeWordAudio) {
+            AudioSelections.toFile(
+                ctx, input.wordSelection,
+                AudioRequest.word(input.word, input.reading.ifBlank { null }, input.sourceLangId),
+            )
+        } else null
+        audioFile = wordResolved?.file
+        // CC credit for a Commons clip, co-located with the word audio field so the
+        // attribution travels with redistributed cards. Null for plain TTS audio.
+        val audioCredit: String? =
+            wordResolved?.attribution?.let { Attribution.creditBlock(listOf(it)) }
         // The Definition field renders HERE, for every caller: structured
         // glossaries for the entry's imported groups (null = flat text
-        // throughout), then both stylers' HTML from one builder. Inside the
-        // try so a throw still releases the audio temp file and the pin.
+        // throughout), then both stylers' HTML from one builder.
         val definition = input.definition
         val styled = fetchYomitanStyledData(
             ctx.applicationContext,
@@ -417,6 +434,7 @@ suspend fun Context.sendWordCard(
             deckId = deckId,
             mode = CardMode.WORD,
             screenshotPath = pinnedScreenshotPath,
+            screenshotRequested = input.screenshot != null,
             audioPath = audioFile?.absolutePath,
             oversizePrompt = oversizePrompt,
             ptNote = { imageFilename, audioFilename, _, simplified ->
@@ -509,7 +527,10 @@ internal fun simplifiedGlossaryJson(
  * Merges local synthesis failures into the dispatcher's
  * [AnkiSendResult.Success.audioDropped] / [wordAudioDropped] flags so
  * callers see a unified "requested-but-missing" signal regardless of
- * whether synth or upload failed. Non-Success results pass through.
+ * whether synth or upload failed. Non-Success results pass through. The
+ * image has no local fold: its one local failure (a crop the pin could not
+ * write) goes to the dispatcher as a request with no file, where the
+ * picture-field gate applies ([imageDroppedVerdict]).
  */
 private fun AnkiSendResult.foldInLocalAudioMisses(
     sentenceMissing: Boolean,
@@ -591,7 +612,7 @@ private fun SentenceSendInput.toCardData(): SentenceAnkiContentView.CardData =
         target = translation,
         words = words,
         selectedWords = selectedWords,
-        screenshotPath = screenshotPath,
+        screenshot = screenshot,
         sourceLangId = sourceLangId,
         targetWordAudioWords = targetWordAudioWords,
     )

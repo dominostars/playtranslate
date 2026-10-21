@@ -522,6 +522,8 @@
     <string name="hidden_word_save_failed">บันทึกไม่ได้ กรุณาลองอีกครั้ง</string>
 
     <string name="anki_screenshot_remove_content_description">ลบภาพหน้าจอ</string>
+    <string name="anki_screenshot_crop">ครอบตัดภาพหน้าจอ</string>
+    <string name="anki_screenshot_crop_instruction">ลากขอบเพื่อครอบตัดภาพหน้าจอ</string>
 
     <string name="anki_group_audio">เสียง</string>
 

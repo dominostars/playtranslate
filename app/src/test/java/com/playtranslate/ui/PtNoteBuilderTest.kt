@@ -52,7 +52,7 @@ class PtNoteBuilderTest {
         lang: SourceLangId = SourceLangId.EN,
     ) = SentenceAnkiContentView.CardData(
         source = source, target = target, words = words,
-        selectedWords = selected, screenshotPath = null, sourceLangId = lang,
+        selectedWords = selected, screenshot = null, sourceLangId = lang,
     )
 
     // ── word note ────────────────────────────────────────────────────────

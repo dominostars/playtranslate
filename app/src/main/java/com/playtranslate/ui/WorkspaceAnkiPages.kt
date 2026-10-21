@@ -305,6 +305,40 @@ class AudioPickerPage(
     }
 }
 
+/** The floating workspace's presentation of [ScreenshotCropEditor]: a page
+ *  pushed over the card editor. The header's chevron and the bar's ✕ both
+ *  pop (cancel); ✓ and 🗑 write the state, which the editor's groups
+ *  follow, and pop. The page sits inside the inset card, so the chrome
+ *  needs no inset of its own; the controller reaches the bar through the
+ *  page's actions. */
+class ScreenshotCropPage(private val state: AnkiScreenshotState) : WorkspacePage {
+
+    private var pageScope: CoroutineScope? = null
+    private var editor: ScreenshotCropEditor? = null
+    private var pageView: View? = null
+
+    override fun title(ctx: Context): CharSequence = ctx.getString(R.string.anki_screenshot_crop)
+
+    override fun onCreateView(ctx: Context, parent: ViewGroup, host: WorkspaceHost): View {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        pageScope = scope
+        val e = ScreenshotCropEditor(ctx, scope, state) { host.pop() }
+        editor = e
+        pageView = e.view
+        return e.view
+    }
+
+    override fun navActions(): List<NavAction> = collectWorkspaceNavActions(pageView)
+
+    override fun onDestroy() {
+        editor?.release()
+        editor = null
+        pageScope?.cancel()
+        pageScope = null
+        pageView = null
+    }
+}
+
 // ── The word/sentence editor ─────────────────────────────────────────────
 
 /** The full review editor (Sentence/Word toggle, deck section, curatable
@@ -410,6 +444,8 @@ class AnkiEditorPage(private val args: Bundle) : WorkspacePage {
             )
         }
 
+        override fun openScreenshotCrop(state: AnkiScreenshotState) = host.push(ScreenshotCropPage(state))
+
         override fun openDeckPicker(onPicked: (Long, String) -> Unit) {
             host.push(AnkiDeckPickerPage { id, name ->
                 onPicked(id, name)
@@ -466,7 +502,7 @@ class AnkiSentenceEditorPage(
     private var wordsFillJob: kotlinx.coroutines.Job? = null
     private var sendButton: AnkiSendButton? = null
     private var deckSubtitleView: TextView? = null
-    private var pinnedScreenshotPath: String? = null
+    private var screenshot: AnkiScreenshotState? = null
     private var imeWatcher: ImeFocusWatcher? = null
 
     override fun title(ctx: Context): CharSequence =
@@ -490,10 +526,16 @@ class AnkiSentenceEditorPage(
         tintSaveIcon(view.findViewById(R.id.btnSendToAnki), ctx)
         pageView = view
 
-        // Pin at open — the incoming path is a fixed cache filename a
-        // capture during this editor's lifetime would overwrite. Released
-        // on destroy (workspace teardown is always final).
-        pinnedScreenshotPath = AnkiScreenshotPin.pin(ctx, screenshotPath)
+        // The screenshot, pinned at open (the incoming path is a fixed cache
+        // filename a capture during this editor's lifetime would overwrite)
+        // from a bundle no one re-reads: a page has no saved state, and its
+        // teardown is always final (released in onDestroy).
+        screenshot = AnkiScreenshotState.open(
+            ctx,
+            Bundle().apply {
+                if (screenshotPath != null) putString(AnkiScreenshotState.ARG_SCREENSHOT_PATH, screenshotPath)
+            },
+        )
 
         val words = wordResults.map { (w, triple) ->
             SentenceAnkiHtmlBuilder.WordEntry(
@@ -525,7 +567,7 @@ class AnkiSentenceEditorPage(
         // push and has no saved state.
         val fillWords = words.isEmpty() && original.isNotBlank()
         val cArgs = SentenceAnkiContentView.buildArgs(
-            original, translation, words, pinnedScreenshotPath,
+            original, translation, words,
             sourceLangId = sourceLangId,
             wordsLoading = fillWords,
             audioAnchorMs = audioAnchorMs,
@@ -539,6 +581,7 @@ class AnkiSentenceEditorPage(
         val content = SentenceAnkiContentView(
             ctx, scope, cArgs, ContentHost(host),
             initialWords = words,
+            screenshot = screenshot,
         )
         contentView = content
         contentHost.addView(contentRoot)
@@ -619,7 +662,7 @@ class AnkiSentenceEditorPage(
                 ),
             )
         }
-        // No sibling tab to mirror screenshot removal into.
+        override fun openScreenshotCrop(state: AnkiScreenshotState) = host.push(ScreenshotCropPage(state))
     }
 
     private fun refreshDeckSubtitle(ctx: Context) {
@@ -645,7 +688,7 @@ class AnkiSentenceEditorPage(
             words = data.words,
             selectedWords = data.selectedWords,
             sourceLangId = data.sourceLangId,
-            screenshotPath = data.screenshotPath,
+            screenshot = data.screenshot,
             includeSentenceAudio = content.sentenceAudioEnabled,
             targetWordAudioWords = data.targetWordAudioWords,
             sentenceSelection = data.sentenceSelection,
@@ -689,8 +732,8 @@ class AnkiSentenceEditorPage(
         imeWatcher?.detach()
         imeWatcher = null
         // Workspace teardown is always final — reclaim both media files.
-        hostRef?.ctx?.let { AnkiScreenshotPin.release(it, pinnedScreenshotPath) }
-        pinnedScreenshotPath = null
+        hostRef?.ctx?.let { screenshot?.release(it, final = true) }
+        screenshot = null
         contentView?.release(deleteSnapshotFile = true)
         contentView = null
         sendButton = null

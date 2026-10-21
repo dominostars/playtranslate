@@ -296,7 +296,7 @@ suspend fun Context.oneTapSendSentence(
         words = wordEntries,
         selectedWords = selectedWordsSet,
         sourceLangId = sourceLangId,
-        screenshotPath = screenshotPath,
+        screenshot = screenshotPath?.let { ScreenshotAttachment(it) },
         includeSentenceAudio = prefs.ankiSentenceAudioEnabled,
         // Audio selections stay at their Auto defaults — the registry's
         // Commons-first → TTS resolution with the user's saved voice,
@@ -346,7 +346,7 @@ suspend fun Context.oneTapSendWord(
         pitch = pitch,
         frequencies = frequencies,
         sourceLangId = sourceLangId,
-        screenshotPath = screenshotPath,
+        screenshot = screenshotPath?.let { ScreenshotAttachment(it) },
         includeWordAudio = prefs.ankiWordAudioEnabled,
         // wordSelection stays Auto — saved-voice TTS (Commons-first when
         // enabled), matching the sheet's default cell.

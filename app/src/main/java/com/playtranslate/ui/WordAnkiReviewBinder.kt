@@ -79,6 +79,11 @@ class WordAnkiReviewBinder(
          *  sentence content's cells. */
         fun openAudioPicker(intent: Intent, onPicked: (AudioSelection) -> Unit)
 
+        /** Present the screenshot crop editor for [state] (a dialog window
+         *  over the sheet, a workspace page); it writes to the state, which
+         *  both tabs' Screenshot groups follow. */
+        fun openScreenshotCrop(state: AnkiScreenshotState)
+
         /** Present the deck / card-type pickers (dialogs, or workspace
          *  pushes). Both no-op silently when AnkiDroid is absent or the
          *  permission is missing — the fragment helpers' contract. */
@@ -117,18 +122,11 @@ class WordAnkiReviewBinder(
      *  [bind], cleared in [release]. */
     private var sendButton: AnkiSendButton? = null
 
-    /** Mutable screenshot path. Initialised from [ARG_SCREENSHOT_PATH]
-     *  at bind — PINNED via [AnkiScreenshotPin], because the arg points
-     *  at a fixed cache filename that any capture taken while this
-     *  editor is open overwrites (field report 2026-07-29). Set to null
-     *  when the user removes the photo. The Send handler reads from this
-     *  field at click time so a deleted screenshot never gets uploaded. */
-    private var currentScreenshotPath: String? = null
-
-    /** The open-time pin backing [currentScreenshotPath], retained
-     *  separately so photo-removal (which nulls the field) can't leak
-     *  the file — released on provably-final teardown ([release]). */
-    private var pinnedScreenshotPath: String? = null
+    /** The editor's screenshot (the pin, the crop, the removal), opened
+     *  from [args] at bind and shared with the sentence content, so both
+     *  tabs render one truth and the Send handlers read it at click time.
+     *  Released with the host's finality verdict ([release]). */
+    private var screenshot: AnkiScreenshotState? = null
 
     private lateinit var sentenceContainer: FrameLayout
     private lateinit var wordContainer: LinearLayout
@@ -162,13 +160,11 @@ class WordAnkiReviewBinder(
         }
     }
 
-    /** First child of the Screenshot group inside [wordContainer] (its
-     *  header). Tracked so the lazy More examples group can be inserted
-     *  immediately above the Screenshot group rather than appended to
-     *  the bottom. Null when the entry has no screenshot. */
-    private var screenshotHeaderView: View? = null
-    /** Card-wrapper sibling of [screenshotHeaderView]. */
-    private var screenshotCardView: View? = null
+    /** The Screenshot group inside [wordContainer]. Tracked so the lazy
+     *  More examples group can be inserted immediately above it rather
+     *  than appended to the bottom. Null when the entry has no screenshot;
+     *  it leaves [wordContainer] on its own when the screenshot is removed. */
+    private var screenshotGroup: AnkiScreenshotGroup? = null
     /** Outer wrapper of the More examples group (header + card). */
     private var moreExamplesGroup: LinearLayout? = null
     /** Inner sentences container inside the More examples card. */
@@ -299,15 +295,12 @@ class WordAnkiReviewBinder(
         moreExamplesGroup = null
         moreExamplesBody = null
         wordReadingView = null
-        screenshotHeaderView = null
-        screenshotCardView = null
+        screenshotGroup?.release()
+        screenshotGroup = null
         deckSubtitleView = null
         sendButton = null
-        currentScreenshotPath = null
-        if (releasePin) {
-            AnkiScreenshotPin.release(ctx, pinnedScreenshotPath)
-        }
-        pinnedScreenshotPath = null
+        screenshot?.release(ctx, final = releasePin)
+        screenshot = null
         wordAudioHandle?.release()
         wordAudioHandle = null
         contentView?.release(deleteSnapshotFile = releasePin)
@@ -335,23 +328,11 @@ class WordAnkiReviewBinder(
         val fallbackDefinition = args.getString(ARG_DEFINITION) ?: ""
         val freqScore      = args.getInt(ARG_FREQ_SCORE, 0)
         val isCommon       = args.getBoolean(ARG_IS_COMMON, false)
-        // Re-seed from args every bind. If the user removed the screenshot
-        // in a previous instance we also cleared ARG_SCREENSHOT_PATH, so
-        // this returns null on subsequent restorations and the photo stays
-        // gone. Pinned immediately: the arg is a fixed cache filename a
-        // capture during this editor's lifetime would overwrite. The pinned
-        // path is written BACK into args so a saved-state recreation
-        // re-reads the immutable pin and ADOPTS it rather than pinning a
-        // copy — one owner, released on this instance's final teardown.
-        val argScreenshotPath = args.getString(ARG_SCREENSHOT_PATH)
-        pinnedScreenshotPath = if (AnkiScreenshotPin.isPin(ctx, argScreenshotPath)) {
-            argScreenshotPath
-        } else {
-            AnkiScreenshotPin.pin(ctx, argScreenshotPath).also {
-                args.putString(ARG_SCREENSHOT_PATH, it)
-            }
-        }
-        currentScreenshotPath = pinnedScreenshotPath
+        // The screenshot from args, every bind: a fresh open pins the fixed
+        // cache filename a capture during this editor's lifetime would
+        // overwrite and writes the pin back; a saved-state recreation adopts
+        // the pin and the crop written back with it, or finds the removal.
+        screenshot = AnkiScreenshotState.open(ctx, args)
 
         val sentenceOriginal    = args.getString(ARG_SENTENCE_ORIGINAL)
         val sentenceTranslation = args.getString(ARG_SENTENCE_TRANSLATION) ?: ""
@@ -412,7 +393,7 @@ class WordAnkiReviewBinder(
         refreshDeckSubtitle()
 
         buildWordContent(wordContainer, word, reading, pos, fallbackDefinition,
-            freqScore, isCommon, sourceLangId, currentScreenshotPath)
+            freqScore, isCommon, sourceLangId)
 
         if (hasSentenceData) {
             // The content's launch state: fresh at first bind, the persisted
@@ -423,7 +404,7 @@ class WordAnkiReviewBinder(
                 val sentenceWords = buildWordEntries(args)
                 SentenceAnkiContentView.buildArgs(
                     meaningfulSentence, sentenceTranslation, sentenceWords,
-                    currentScreenshotPath, targetWord = word, sourceLangId = sourceLangId,
+                    targetWord = word, sourceLangId = sourceLangId,
                     // wordsLoading = true tells the content "we'll call
                     // applyWords later" so the empty list renders as
                     // "Looking up words…" instead of zero rows.
@@ -436,7 +417,7 @@ class WordAnkiReviewBinder(
             val contentRoot = LayoutInflater.from(ctx)
                 .inflate(R.layout.fragment_sentence_anki_content, sentenceContainer, false)
                     as LinearLayout
-            val content = SentenceAnkiContentView(ctx, scope, cArgs, ContentHost())
+            val content = SentenceAnkiContentView(ctx, scope, cArgs, ContentHost(), screenshot = screenshot)
             contentView = content
             sentenceContainer.addView(contentRoot)
             content.buildInto(contentRoot, savedInstanceState)
@@ -496,12 +477,8 @@ class WordAnkiReviewBinder(
                 if (isSentenceMode) {
                     sendSentenceToAnki(deckId)
                 } else {
-                    // Read currentScreenshotPath at click time, not
-                    // capture it from the surrounding scope, so the
-                    // screenshot's removed state actually wins.
                     sendWordToAnki(word, reading, pos,
-                        fallbackDefinition, freqScore, deckId, currentScreenshotPath,
-                        sourceLangId)
+                        fallbackDefinition, freqScore, deckId, sourceLangId)
                 }
             }
         }
@@ -516,11 +493,8 @@ class WordAnkiReviewBinder(
         override fun openAudioPicker(intent: Intent, onPicked: (AudioSelection) -> Unit) =
             host.openAudioPicker(intent, onPicked)
 
-        override fun onScreenshotRemoved() {
-            // Keep the word tab in sync — the two tabs share the same
-            // source media.
-            removeWordScreenshotFromUi()
-        }
+        override fun openScreenshotCrop(state: AnkiScreenshotState) =
+            host.openScreenshotCrop(state)
     }
 
     private fun setMode(sentenceMode: Boolean) {
@@ -540,7 +514,6 @@ class WordAnkiReviewBinder(
         freqScore: Int,
         isCommon: Boolean,
         sourceLangId: SourceLangId,
-        screenshotPath: String?,
     ) {
         val density = ctx.resources.displayMetrics.density
 
@@ -677,22 +650,9 @@ class WordAnkiReviewBinder(
             defCard.addView(buildLoadingDefinitionsRow(fallbackDefinition))
         }
 
-        // ── Screenshot group (when present). ─────────────────────────
-        if (screenshotPath != null) {
-            val file = File(screenshotPath)
-            if (file.exists()) {
-                ankiGroupHeader(parent, ctx.getString(R.string.anki_group_screenshot))
-                val ssCard = ankiGroupCard(parent)
-                screenshotHeaderView = parent.getChildAt(parent.childCount - 2)
-                screenshotCardView = parent.getChildAt(parent.childCount - 1)
-                addWordScreenshotRow(ssCard, file) {
-                    removeWordScreenshotFromUi()
-                    // Keep the sentence tab in sync — the directly-hosted
-                    // content carries its own includePhoto flag and can leak
-                    // the photo into the sentence card otherwise.
-                    contentView?.removeScreenshotFromUi()
-                }
-            }
+        // ── Screenshot group (when present): follows the shared state. ──
+        screenshot?.let { s ->
+            screenshotGroup = addAnkiScreenshotGroup(parent, ctx, scope, s) { host.openScreenshotCrop(s) }
         }
     }
 
@@ -738,72 +698,6 @@ class WordAnkiReviewBinder(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             )
         }
-    }
-
-    /** Tear down the word-mode Screenshot group from the live view tree
-     *  and clear the related state. Called both by the user-initiated ×
-     *  on the word card and by the sentence content's removal mirror.
-     *  Idempotent. */
-    private fun removeWordScreenshotFromUi() {
-        if (currentScreenshotPath == null && screenshotHeaderView == null) return
-        screenshotHeaderView?.let { wordContainer.removeView(it) }
-        screenshotCardView?.let { wordContainer.removeView(it) }
-        screenshotHeaderView = null
-        screenshotCardView = null
-        // Clear both the live field (Send reads from here) and the
-        // persisted argument (so a recreate doesn't resurrect the photo).
-        currentScreenshotPath = null
-        args.remove(ARG_SCREENSHOT_PATH)
-    }
-
-    private fun addWordScreenshotRow(card: LinearLayout, file: File, onRemove: () -> Unit) {
-        val density = ctx.resources.displayMetrics.density
-        val frame = FrameLayout(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            )
-        }
-        val img = ImageView(ctx).apply {
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            adjustViewBounds = true
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-            )
-        }
-        // Decoded off the main thread: bind runs synchronously inside the
-        // workspace push, and a full-screen decode there stalls the window's
-        // enter animation. Display-only — the card gets the file itself
-        // (addMediaFromFile), never this bitmap.
-        scope.launch {
-            val bmp = withContext(Dispatchers.IO) {
-                decodeScreenshotForDisplay(file, ctx.resources.displayMetrics.widthPixels)
-            }
-            if (bmp != null) img.setImageBitmap(bmp)
-        }
-        frame.addView(img)
-        val removeSize = (32 * density).toInt()
-        frame.addView(TextView(ctx).apply {
-            text = "✕"
-            textSize = 14f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(0xFFFFFFFF.toInt())
-            gravity = Gravity.CENTER
-            setBackgroundResource(R.drawable.bg_screenshot_remove)
-            isClickable = true
-            isFocusable = true
-            contentDescription = ctx.getString(R.string.anki_screenshot_remove_content_description)
-            layoutParams = FrameLayout.LayoutParams(
-                removeSize, removeSize,
-                Gravity.TOP or Gravity.END,
-            ).also {
-                it.topMargin = (8 * density).toInt()
-                it.marginEnd = (8 * density).toInt()
-            }
-            setOnClickListener { onRemove() }
-        })
-        card.addView(frame)
     }
 
     // ── Dictionary lookup + per-sense rendering ─────────────────────────
@@ -1333,7 +1227,7 @@ class WordAnkiReviewBinder(
         // Park the group just above the Screenshot group when one's
         // present; otherwise append to the bottom — the natural reading
         // order: Definitions → More examples → Screenshot.
-        val anchor = screenshotHeaderView
+        val anchor = screenshotGroup?.view?.takeIf { it.parent === wordContainer }
         if (anchor != null) {
             val anchorIdx = wordContainer.indexOfChild(anchor).coerceAtLeast(0)
             wordContainer.addView(group, anchorIdx)
@@ -1562,8 +1456,7 @@ class WordAnkiReviewBinder(
 
     private suspend fun sendWordToAnki(
         word: String, reading: String, pos: String, fallbackDefinition: String,
-        freqScore: Int, deckId: Long, screenshotPath: String?,
-        sourceLangId: SourceLangId,
+        freqScore: Int, deckId: Long, sourceLangId: SourceLangId,
     ) {
         // The Definition field is described as data and rendered by the
         // pipeline (WordCardDefinition) — the same builder one-tap uses,
@@ -1601,7 +1494,9 @@ class WordAnkiReviewBinder(
             pitch = headword?.pitch.orEmpty(),
             frequencies = headword?.frequencies.orEmpty(),
             sourceLangId = sourceLangId,
-            screenshotPath = screenshotPath,
+            // Read at click time: a removal or a crop made since the editor
+            // opened is what ships.
+            screenshot = screenshot?.attachment,
             includeWordAudio = wordAudioHandle?.switch?.isChecked == true,
             // Multi-source selection (Commons-first → TTS) for the headword,
             // mirroring the sentence cell. Auto unless the user pinned a pick.
@@ -1699,7 +1594,7 @@ class WordAnkiReviewBinder(
             words = data.words,
             selectedWords = data.selectedWords,
             sourceLangId = data.sourceLangId,
-            screenshotPath = data.screenshotPath,
+            screenshot = data.screenshot,
             includeSentenceAudio = content.sentenceAudioEnabled,
             targetWordAudioWords = data.targetWordAudioWords,
             sentenceSelection = data.sentenceSelection,
@@ -1742,7 +1637,7 @@ class WordAnkiReviewBinder(
         internal const val ARG_READING         = "reading"
         internal const val ARG_POS             = "pos"
         internal const val ARG_DEFINITION      = "definition"
-        internal const val ARG_SCREENSHOT_PATH = "screenshot_path"
+        internal const val ARG_SCREENSHOT_PATH = AnkiScreenshotState.ARG_SCREENSHOT_PATH
         internal const val ARG_FREQ_SCORE      = "freq_score"
         internal const val ARG_IS_COMMON       = "is_common"
         internal const val ARG_SENTENCE_ORIGINAL     = "sentence_original"
@@ -1801,21 +1696,4 @@ class WordAnkiReviewBinder(
             if (audioAnchorMs != null) putLong(ARG_AUDIO_ANCHOR_MS, audioAnchorMs)
         }
     }
-}
-
-/** Decode [file] for an in-editor screenshot preview, sampled down
- *  (power-of-2) toward [targetW] instead of always inflating the full file.
- *  Conservative: the decoded width never drops below [targetW], so a
- *  same-display screenshot resolves to inSampleSize 1 and the cap only bites
- *  when the source is at least twice the width it will be displayed at. Call
- *  off the main thread; the bounds pass alone is a header parse. */
-internal fun decodeScreenshotForDisplay(file: File, targetW: Int): android.graphics.Bitmap? {
-    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    android.graphics.BitmapFactory.decodeFile(file.absolutePath, bounds)
-    var sample = 1
-    if (bounds.outWidth > 0 && targetW > 0) {
-        while (bounds.outWidth / (sample * 2) >= targetW) sample *= 2
-    }
-    val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
-    return android.graphics.BitmapFactory.decodeFile(file.absolutePath, opts)
 }

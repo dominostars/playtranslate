@@ -564,6 +564,8 @@
     <string name="hidden_word_save_failed">無法儲存，請重試</string>
 
     <string name="anki_screenshot_remove_content_description">移除截圖</string>
+    <string name="anki_screenshot_crop">裁剪截圖</string>
+    <string name="anki_screenshot_crop_instruction">拖曳邊緣以裁剪截圖</string>
 
     <string name="anki_group_audio">音訊</string>
 

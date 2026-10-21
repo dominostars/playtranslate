@@ -1345,6 +1345,16 @@
     <!-- contentDescription for the screenshot's remove button. -->
     <string name="anki_screenshot_remove_content_description">Remove screenshot</string>
 
+    <!-- contentDescription for the screenshot's crop button (top-left of the
+         preview, beside the remove button) and the title of the crop editor's
+         page in the floating workspace. -->
+    <string name="anki_screenshot_crop">Crop screenshot</string>
+
+    <!-- Instruction pill over the screenshot crop editor (the Anki card's
+         screenshot with a draggable box over it; the box is what the card
+         keeps). Same shape as region_overlay_drag_instruction; one line. -->
+    <string name="anki_screenshot_crop_instruction">Drag edges to crop the screenshot</string>
+
     <!-- Group header — TTS audio row. -->
     <string name="anki_group_audio">Audio</string>
 

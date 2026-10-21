@@ -546,6 +546,8 @@
     <string name="hidden_word_save_failed">تعذّر الحفظ. حاول مرة أخرى</string>
 
     <string name="anki_screenshot_remove_content_description">إزالة لقطة الشاشة</string>
+    <string name="anki_screenshot_crop">اقتصاص لقطة الشاشة</string>
+    <string name="anki_screenshot_crop_instruction">اسحب الحواف لاقتصاص لقطة الشاشة</string>
 
     <string name="anki_group_audio">الصوت</string>
 

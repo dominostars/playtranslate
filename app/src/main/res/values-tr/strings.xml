@@ -558,6 +558,8 @@
     <string name="hidden_word_save_failed">Kaydedilemedi. Tekrar deneyin</string>
 
     <string name="anki_screenshot_remove_content_description">Ekran görüntüsünü kaldır</string>
+    <string name="anki_screenshot_crop">Ekran görüntüsünü kırp</string>
+    <string name="anki_screenshot_crop_instruction">Ekran görüntüsünü kırpmak için kenarları sürükleyin</string>
 
     <string name="anki_group_audio">Ses</string>
 

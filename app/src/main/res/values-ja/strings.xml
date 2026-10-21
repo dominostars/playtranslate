@@ -573,6 +573,8 @@
     <string name="hidden_word_save_failed">保存できませんでした。もう一度お試しください</string>
 
     <string name="anki_screenshot_remove_content_description">スクリーンショットを削除</string>
+    <string name="anki_screenshot_crop">スクリーンショットをトリミング</string>
+    <string name="anki_screenshot_crop_instruction">端をドラッグして、スクリーンショットをトリミングします</string>
 
     <string name="anki_group_audio">音声</string>
 

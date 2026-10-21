@@ -27,7 +27,7 @@ class AnkiCardWordAudioCreditTest {
             target = "gato",
             words = listOf(SentenceAnkiHtmlBuilder.WordEntry("cat", "", "gato", 0)),
             selectedWords = setOf("cat"),
-            screenshotPath = null,
+            screenshot = null,
             sourceLangId = SourceLangId.EN,
             targetWordAudioWords = setOf("cat"),
         )
@@ -84,7 +84,7 @@ class AnkiCardWordAudioCreditTest {
             target = "gato",
             words = listOf(SentenceAnkiHtmlBuilder.WordEntry("cat", "", "gato", 0)),
             selectedWords = setOf("cat"),
-            screenshotPath = null,
+            screenshot = null,
             sourceLangId = SourceLangId.EN,
             targetWordAudioWords = setOf("cat"),
         )

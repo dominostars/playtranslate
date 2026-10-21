@@ -563,6 +563,8 @@
     <string name="hidden_word_save_failed">저장하지 못했습니다. 다시 시도해 주세요</string>
 
     <string name="anki_screenshot_remove_content_description">스크린샷 제거</string>
+    <string name="anki_screenshot_crop">스크린샷 자르기</string>
+    <string name="anki_screenshot_crop_instruction">가장자리를 드래그하여 스크린샷을 자르세요</string>
 
     <string name="anki_group_audio">오디오</string>
 
