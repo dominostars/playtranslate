@@ -6,7 +6,6 @@ import androidx.core.graphics.withSave
 import android.os.Handler
 import android.os.Looper
 import android.view.Display
-import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import com.playtranslate.overlay.OverlayEnvironment
@@ -14,6 +13,7 @@ import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlay.OverlayPlacement
 import com.playtranslate.ui.RegionDragView
 import com.playtranslate.ui.RegionEditorChrome
+import com.playtranslate.ui.RegionEditorControls
 import com.playtranslate.overlay.OwnWindows
 
 /**
@@ -342,91 +342,27 @@ class RegionOverlayController(
         val ctx = context.createDisplayContext(display)
         val wm = OwnWindows.manager(ctx) ?: return
         val dp = ctx.resources.displayMetrics.density
-        val btnSize = (48 * dp).toInt()
-        val barPad = (12 * dp).toInt()
-        val gap = (16 * dp).toInt()
-
+        // The views are built on the raw display context; the pt* tokens and
+        // the vector resolve on the themed wrapper (see RegionDragView).
         val themed = overlayThemedContext(ctx)
-        val surfaceColor = themed.themeColor(R.attr.ptSurface)
-        val cardColor = themed.themeColor(R.attr.ptCard)
-        val dividerColor = themed.themeColor(R.attr.ptDivider)
-        val accentColorBtn = themed.themeColor(R.attr.ptAccent)
-        val accentOnColor = themed.themeColor(R.attr.ptAccentOn)
-        val textColor = themed.themeColor(R.attr.ptText)
-        val surfaceAlpha = android.graphics.Color.argb(230,
-            android.graphics.Color.red(surfaceColor),
-            android.graphics.Color.green(surfaceColor),
-            android.graphics.Color.blue(surfaceColor))
-        val btnRadius = 16 * dp
 
-        val bar = android.widget.LinearLayout(ctx).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(barPad * 2 - (9 * dp).toInt(), barPad, barPad * 2 - (9 * dp).toInt(), barPad)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(surfaceAlpha)
-                setStroke((1 * dp).toInt(), dividerColor)
-                cornerRadius = 22 * dp
-            }
-        }
-
-        val cancelBtn = android.widget.TextView(ctx).apply {
-            text = "✕"
-            setTextColor(textColor)
-            textSize = 22f
-            gravity = Gravity.CENTER
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(cardColor)
-                cornerRadius = btnRadius
-            }
-            layoutParams = android.widget.LinearLayout.LayoutParams(btnSize, btnSize).apply {
-                marginEnd = gap
-            }
-            setOnClickListener {
+        val bar = RegionEditorControls.bar(
+            ctx, themed,
+            onCancel = {
                 hideRegionEditor()
                 if (CaptureService.instance?.isLive == true) {
                     CaptureService.instance?.refreshLiveOverlay()
                 }
-            }
-        }
-
-        val trashBtn = android.widget.ImageView(ctx).apply {
-            // Inflate on the themed context — the vector's ?attr tint doesn't
-            // resolve on the raw display context (see RegionDragView).
-            setImageDrawable(themed.getDrawable(R.drawable.ic_delete))
-            imageTintList = android.content.res.ColorStateList.valueOf(textColor)
-            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-            val iconPad = (12 * dp).toInt()
-            setPadding(iconPad, iconPad, iconPad, iconPad)
-            contentDescription = ctx.getString(R.string.btn_clear)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(cardColor)
-                cornerRadius = btnRadius
-            }
-            layoutParams = android.widget.LinearLayout.LayoutParams(btnSize, btnSize).apply {
-                marginEnd = gap
-            }
-            setOnClickListener {
+            },
+            onClear = {
                 hideRegionEditor()
                 onRegionCleared(display.displayId)
                 if (CaptureService.instance?.isLive == true) {
                     CaptureService.instance?.refreshLiveOverlay()
                 }
-            }
-        }
-
-        val useBtn = android.widget.TextView(ctx).apply {
-            text = "✓"
-            setTextColor(accentOnColor)
-            textSize = 22f
-            gravity = Gravity.CENTER
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(accentColorBtn)
-                cornerRadius = btnRadius
-            }
-            layoutParams = android.widget.LinearLayout.LayoutParams(btnSize, btnSize)
-            setOnClickListener {
-                val dv = dragView ?: return@setOnClickListener
+            },
+            onConfirm = {
+                val dv = dragView ?: return@bar
                 // Unnamed: RegionEntry.displayName resolves the empty label to
                 // the generic "Capture region".
                 val drawnRegion = RegionEntry("", dv.topFraction, dv.bottomFraction, dv.leftFraction, dv.rightFraction)
@@ -437,26 +373,9 @@ class RegionOverlayController(
                 } else {
                     onRegionSelected(display.displayId, drawnRegion)
                 }
-            }
-        }
-
-        bar.addView(cancelBtn)
-        bar.addView(trashBtn)
-        bar.addView(useBtn)
-
-        val label = android.widget.TextView(ctx).apply {
-            text = ctx.getString(R.string.region_overlay_drag_instruction)
-            setTextColor(textColor)
-            textSize = 14f
-            gravity = Gravity.CENTER
-            setPadding((16 * dp).toInt(), (12 * dp).toInt(), (16 * dp).toInt(), (12 * dp).toInt())
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(surfaceAlpha)
-                setStroke((1 * dp).toInt(), dividerColor)
-                cornerRadius = 100 * dp
-            }
-        }
-        label.setSingleLine(true)
+            },
+        )
+        val label = RegionEditorControls.pill(ctx, themed, R.string.region_overlay_drag_instruction)
 
         val barParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
