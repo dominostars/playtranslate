@@ -12,6 +12,7 @@ import kotlinx.coroutines.yield
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import java.io.IOException
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -52,6 +53,36 @@ class GroupTranslatorTest {
             return response
         }
         override fun close() = Unit
+    }
+
+    /** A waterfall backend with a cooldown of its own, as an online service
+     *  has, and a hook run as it translates: what the service's own failure,
+     *  or another backend's cooldown ending, does mid-batch. */
+    private class CoolingBackend(
+        override val id: BackendId,
+        override val priority: Int,
+        private val response: String,
+        private val onTranslate: () -> Unit = {},
+    ) : TranslationBackend, Cooldownable {
+        val cooldown = CooldownState(null, id)
+        override val displayName: String = id
+        override val status: BackendStatus = BackendStatus.Hidden
+        override val requiresInternet: Boolean = true
+        override val isDegradedFallback: Boolean = false
+        val translateCalls = AtomicInteger(0)
+        override fun isUsable(source: String, target: String): Boolean = true
+        override suspend fun translate(text: String, source: String, target: String): String {
+            translateCalls.incrementAndGet()
+            onTranslate()
+            return response
+        }
+        override fun close() = Unit
+        override fun unavailableUntil(): Long? = cooldown.unavailableUntil()
+        override fun unavailableDescription(): String? = cooldown.unavailableDescription()
+        override fun unavailableCause(): CooldownCause? = cooldown.unavailableCause()
+        override fun recordSuccess(attemptStartedAtMs: Long) = cooldown.recordSuccess(attemptStartedAtMs)
+        override fun onConnectivityRestored(): Boolean = cooldown.onConnectivityRestored()
+        override fun resetCooldown() = cooldown.resetCooldown()
     }
 
     private val waterfall = FakeOnlineBackend(id = "fake", priority = 10, displayName = "Fake", response = "waterfall")
@@ -100,6 +131,48 @@ class GroupTranslatorTest {
         // ended, was shown but not cached: it translates again.
         translator.translateGroupsSeparately(listOf("二"))
         assertEquals("not cached after the clear", 2, clearing.translateCalls.get())
+    }
+
+    // The routing identity moves while a call is out, in either direction
+    // (a cooldown entered, a cooldown ended): the result in flight is shown
+    // and not cached, and the next call goes to the backend now preferred.
+
+    @Test fun `a fallback's result made while the preferred backend cooled down is not cached once that cooldown ends mid-call`() = runBlocking {
+        val cloud = CoolingBackend("cloud", priority = 10, response = "cloud")
+        // The fallback's call outlives the cloud's cooldown.
+        val fallback = CoolingBackend("fallback", priority = 20, response = "fallback") { cloud.cooldown.resetCooldown() }
+        cloud.cooldown.recordRetryAfterFailure("60", "Rate limited")
+        TranslationBackendRegistry.init(listOf(cloud, fallback))
+        val translator = GroupTranslator(ctx, TranslationCache.shared)
+
+        assertEquals(listOf("fallback" to "fallback"), pairs(translator.translateGroupsSeparately(listOf("一"))))
+        assertEquals(0, cloud.translateCalls.get())
+        assertNull("not cached under the recovered cloud's identity", TranslationCache.shared[TranslationCache.Key("一", "ja", "en")])
+
+        assertEquals("the next call asks the cloud", listOf("cloud" to "cloud"), pairs(translator.translateGroupsSeparately(listOf("一"))))
+        assertEquals(1, cloud.translateCalls.get())
+        assertEquals(1, fallback.translateCalls.get())
+    }
+
+    @Test fun `a fallback's result made as the preferred backend entered a cooldown is not cached, and the next call translates once more`() = runBlocking {
+        // The cloud records its cooldown as it fails, as a real backend does.
+        lateinit var cloud: CoolingBackend
+        cloud = CoolingBackend("cloud", priority = 10, response = "cloud") {
+            cloud.cooldown.recordRetryAfterFailure("60", "Rate limited")
+            throw IOException("rate limited")
+        }
+        val fallback = CoolingBackend("fallback", priority = 20, response = "fallback")
+        TranslationBackendRegistry.init(listOf(cloud, fallback))
+        val translator = GroupTranslator(ctx, TranslationCache.shared)
+
+        assertEquals(listOf("fallback" to "fallback"), pairs(translator.translateGroupsSeparately(listOf("一"))))
+        assertNull("the one uncached batch per transition", TranslationCache.shared[TranslationCache.Key("一", "ja", "en")])
+
+        assertEquals(listOf("fallback" to "fallback"), pairs(translator.translateGroupsSeparately(listOf("一"))))
+        assertEquals("translated again, and cached now", 2, fallback.translateCalls.get())
+        assertEquals("fallback" to "fallback", TranslationCache.shared[TranslationCache.Key("一", "ja", "en")])
+        translator.translateGroupsSeparately(listOf("一"))
+        assertEquals(2, fallback.translateCalls.get())
     }
 
     @Test fun `a reader's text that settles after a configuration clear is shown but not cached`() = runBlocking {

@@ -23,18 +23,25 @@ package com.playtranslate
  * on the instance; [reconcilePreferredBackend] is one atomic step, and
  * [get] too, since the access-ordered LRU moves an entry on every read.
  *
- * A translate call can be in flight when the settings page clears the cache
- * ([clear]: a configuration changed under the same routing identity, an
- * LLM's model, key or URL, the cloud's key or switch), and its result was
- * made under the old configuration. [configGeneration] counts those clears;
- * whoever makes a result reads it before the request goes out (the
- * waterfall at its lookup, a frame reader as it sends its frame, carried to
- * the consumer on
+ * A translate call can be in flight when the cache is cleared, by a settings
+ * page ([clear]: a configuration changed under the same routing identity, an
+ * LLM's model, key or URL, the cloud's key or switch) or by the routing
+ * identity moving ([reconcilePreferredBackend]: a service toggled, a
+ * cooldown entered or ended), and its result was made under the
+ * configuration or the routing that clear ended. [configGeneration] counts
+ * every clear, of either kind; whoever makes a result reads it before the
+ * request goes out (the waterfall at its lookup, after its own reconcile; a
+ * frame reader as it sends its frame, carried to the consumer on
  * [com.playtranslate.ocr.ReaderTranslations.configGeneration]) and the write
  * goes through [setIfConfigUnchanged] with that value, so such a result is
- * shown but never cached. The identity reconcile's own
- * clear does not count: a result that arrives after it came from the new
- * routing (the waterfall fell through to the backend now preferred).
+ * shown but never cached. The identity's clear counts in both directions: a
+ * cooldown entered during a call moves the identity to the fallback whose
+ * result is in flight, which would have been right to cache, but a cooldown
+ * ending during a call moves it to the recovered backend, under whose
+ * identity the fallback's result would then sit until evicted, serving where
+ * the recovered backend should (Codex adversarial review, 2026-10-21). One
+ * rule for both costs one uncached batch per transition; telling them apart
+ * would need each result's backend at the write.
  */
 class TranslationCache(private val capacity: Int = 500) {
 
@@ -81,16 +88,18 @@ class TranslationCache(private val capacity: Int = 500) {
 
     private var generation = 0
 
-    /** The number of configuration clears so far ([clear]); see the class doc. */
+    /** The number of clears so far, configuration ([clear]) and identity
+     *  ([reconcilePreferredBackend]) alike; see the class doc. */
     val configGeneration: Int
         @Synchronized get() = generation
 
     @Synchronized
     operator fun get(key: Key): Pair<String, String?>? = lru[key]
 
-    /** [set], unless a configuration clear ([clear]) happened since the
-     *  caller read [configGeneration] as [generation]: the value was made
-     *  under the configuration that clear ended. Returns whether it wrote. */
+    /** [set], unless a clear happened since the caller read
+     *  [configGeneration] as [generation]: the value was made under the
+     *  configuration or the routing that clear ended. Returns whether it
+     *  wrote. */
     @Synchronized
     fun setIfConfigUnchanged(key: Key, value: Pair<String, String?>, generation: Int): Boolean {
         if (generation != this.generation) return false
@@ -114,12 +123,15 @@ class TranslationCache(private val capacity: Int = 500) {
      * differs from the last-seen value, the cache is cleared — a backend
      * toggle (adding or removing a DeepL key) shouldn't serve results from
      * the previous backend. No-op on first call and when the preference
-     * hasn't changed.
+     * hasn't changed. The clear counts a generation, as [clear]'s does, so
+     * a result in flight across the move is shown but never cached (the
+     * class doc).
      */
     @Synchronized
     fun reconcilePreferredBackend(preferredBackend: String) {
         if (lastPreferredBackend != null && lastPreferredBackend != preferredBackend) {
             lru.clear()
+            generation++
         }
         lastPreferredBackend = preferredBackend
     }

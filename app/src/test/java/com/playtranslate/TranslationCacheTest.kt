@@ -181,21 +181,28 @@ class TranslationCacheTest {
         assertEquals("また" to null, cache[key("again")])
     }
 
-    @Test fun `a configuration clear ends the generation a write was read under, an identity clear does not`() {
+    @Test fun `every clear ends the generation a write was read under, a configuration clear and an identity clear alike`() {
         val cache = TranslationCache()
         val gen = cache.configGeneration
         assertTrue(cache.setIfConfigUnchanged(key("a"), "A" to null, gen))
         assertEquals("A" to null, cache[key("a")])
 
+        // The first reconcile and an unchanged one clear nothing and count nothing.
         cache.reconcilePreferredBackend("x")
-        cache.reconcilePreferredBackend("y") // clears the entries, the call's own routing change
+        cache.reconcilePreferredBackend("x")
+        assertEquals(gen, cache.configGeneration)
+        assertEquals("A" to null, cache[key("a")])
+
+        cache.reconcilePreferredBackend("y") // the identity moved: clears the entries
         assertNull(cache[key("a")])
-        assertEquals("the identity's clear is not a configuration clear", gen, cache.configGeneration)
-        assertTrue(cache.setIfConfigUnchanged(key("b"), "B" to null, gen))
+        assertEquals("the identity's clear counts", gen + 1, cache.configGeneration)
+        assertFalse("made under the routing the move ended", cache.setIfConfigUnchanged(key("b"), "B" to null, gen))
+        assertNull(cache[key("b")])
+        assertTrue(cache.setIfConfigUnchanged(key("b"), "B" to null, cache.configGeneration))
 
         cache.clear()
-        assertEquals(gen + 1, cache.configGeneration)
-        assertFalse("made under the configuration the clear ended", cache.setIfConfigUnchanged(key("c"), "C" to null, gen))
+        assertEquals(gen + 2, cache.configGeneration)
+        assertFalse("made under the configuration the clear ended", cache.setIfConfigUnchanged(key("c"), "C" to null, gen + 1))
         assertNull(cache[key("c")])
         assertTrue(cache.setIfConfigUnchanged(key("c"), "C" to null, cache.configGeneration))
     }

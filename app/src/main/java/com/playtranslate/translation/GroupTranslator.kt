@@ -338,8 +338,9 @@ class GroupTranslator(
      *  Shared by [translationsAtOnce] and [translateGroupsSeparately]. Cached only
      *  while the configuration the reader's request went out under still stands
      *  ([ReaderTranslations.configGeneration], [TranslationCache.setIfConfigUnchanged]),
-     *  not the one this call found: the request came first, so a settings clear
-     *  between the two ended the configuration these texts were made under. */
+     *  not the one this call found: the request came first, so a clear between
+     *  the two, a settings change's or a routing move's, ended the
+     *  configuration these texts were made under. */
     private fun takeReaderTranslations(
         groupTexts: List<String>,
         byPosition: Map<Int, String>,
@@ -374,9 +375,10 @@ class GroupTranslator(
      *  surface's call (or this call's own identity reconcile after the
      *  waterfall) can clear or evict an entry, which a second read would then
      *  answer with a blank. The misses' results are cached only while the
-     *  configuration the lookup saw still stands ([TranslationCache.configGeneration]):
-     *  a settings clear during the waterfall ended the configuration they
-     *  were made under, so they are returned and not written. */
+     *  configuration and the routing the lookup saw still stand
+     *  ([TranslationCache.configGeneration]): a settings clear or an identity
+     *  move during the waterfall ended what they were made under, so they
+     *  are returned and not written. */
     private suspend fun translateThroughCache(
         groupTexts: List<String>,
         target: TranslationTarget,
@@ -386,7 +388,8 @@ class GroupTranslator(
         // identity check inside translateBatch never runs, so a backend
         // toggle / cooldown enter-or-exit since the last call would
         // leave stale entries serving forever. Cheap (one Map clear on
-        // transition, no-op otherwise).
+        // transition, no-op otherwise). The generation is read AFTER it: a
+        // move here is this call's own, not one its writes must yield to.
         reconcileCache(target)
         val configGeneration = cache.configGeneration
 
@@ -483,15 +486,18 @@ class GroupTranslator(
             // return has always followed.
             dispatch.fromOnline.maxByOrNull { it.kind.severity() }?.let { onDegraded(it.kind) }
 
-            // Re-reconcile AFTER translate too. A higher-priority backend
-            // may have cooled down DURING translateBatch — preferredOnlineId
-            // would now return the fallback id, but the pre-call reconcile
-            // didn't see that change. Without this second pass, the new
-            // fallback entry below would be cached under the old
-            // (pre-cooldown) preferred-backend identity; if the user
-            // doesn't translate again before the cooldown expires, identity
-            // never flips and the lower-quality result pins forever. Cheap
-            // (one Map clear on transition, no-op when no cooldown change).
+            // Re-reconcile AFTER translate too. A backend may have entered
+            // or left a cooldown DURING translateBatch, so preferredOnlineId
+            // differs from what the pre-lookup reconcile saw. The move
+            // clears the cache and ends the generation read above, so the
+            // writes below are refused (TranslationCache.setIfConfigUnchanged):
+            // a fallback's result made while the preferred backend cooled
+            // down is never cached under the identity of a backend that
+            // recovered meanwhile, and the next call asks the recovered one.
+            // Without this pass the identity would move only at the next
+            // call's reconcile, or never, when the cooldown ends before it,
+            // and the result would pin under the wrong identity. Cheap (one
+            // Map clear on a move, no-op otherwise).
             reconcileCache(target)
 
             uncached.zip(outcomes).forEach { (indexedKey, outcome) ->
@@ -504,11 +510,10 @@ class GroupTranslator(
                 // still applies in parallel.
                 //
                 // Online-backend cooldowns (rate-limit / quota / billing)
-                // are handled at the cache-identity layer (the
-                // reconcileCache call above ran twice — once before lookup,
-                // once after translate — so any cooldown entered during this
-                // batch is reflected in the identity before these writes
-                // land).
+                // are handled at the cache-identity layer: a cooldown
+                // entered or ended during this batch moved the identity in
+                // the reconcile above, which ended configGeneration, so
+                // these writes are refused and the results only shown.
                 if (outcome.note == null && outcome.displacedLlmId == null) {
                     cache.setIfConfigUnchanged(
                         indexedKey.value, outcome.text to outcome.backendDisplayName, configGeneration,

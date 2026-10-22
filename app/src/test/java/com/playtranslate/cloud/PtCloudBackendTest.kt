@@ -341,6 +341,29 @@ class PtCloudBackendTest {
         assertEquals(listOf("t64"), textsOf(seen[1]))
     }
 
+    @Test fun `the switch turned off while the first call is out sends no second, and the registry hands the whole list on`() {
+        val next = RecordingBackend()
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        val http = server { t, n ->
+            // The user switches the service off while this call is out.
+            if (n == 0) prefs.ptCloudEnabled = false
+            200 to echo(t)
+        }
+        TranslationBackendRegistry.init(listOf(backend(http), next))
+        val texts = List(65) { "t$it" }
+
+        val results = runBlocking { TranslationBackendRegistry.translateBatch(texts, "ja", "en") }
+
+        assertEquals("one call went out", listOf(texts.take(64)), seen.map(::textsOf))
+        assertEquals(listOf(texts), next.handed)
+        assertTrue(results.all { it.backend.id == "next" })
+        val attempt = attempts.single()
+        assertEquals(PtCloudService.ID, attempt.serviceId)
+        assertEquals(BackendFailure(BackendFailureKind.REJECTED), attempt.failure)
+        assertFalse("the refused call reached no server", attempt.reachedServer)
+        assertNoCooldown()
+    }
+
     @Test fun `a failed first call sends no second, and a partial one is asked again before the next call`() {
         val texts = List(65) { "t$it" }
         val e = thrownBy { backend(server { _, _ -> 500 to """{"error":"internal"}""" }).translateBatch(texts, "ja", "en") }
@@ -725,7 +748,10 @@ class PtCloudBackendTest {
         // after the second ask.
         collect(server { _, n -> 200 to if (n == 0) ok(mapOf(0 to text)) else ok(emptyMap()) })
         collect(server { _, _ -> 200 to ok(emptyMap()) }, batch = listOf(text.repeat(1_000)))
-        assertEquals(8, messages.size)
+        // The switch turned off between two calls.
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        collect(server { t, n -> if (n == 0) prefs.ptCloudEnabled = false; 200 to echo(t) }, batch = List(65) { "$text$it" })
+        assertEquals(9, messages.size)
         for (message in messages) {
             assertNotNull(message)
             assertFalse(message, message!!.contains(text))

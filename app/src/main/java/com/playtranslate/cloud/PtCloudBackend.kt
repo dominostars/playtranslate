@@ -140,6 +140,14 @@ class PtCloudBackend(
      *    and the first failure ([PtCloudReadException], already recorded by
      *    the client) ends the batch: calls in parallel would record one
      *    transport failure twice and spend the budget twice.
+     *  - Before EACH call the switch and the key are read again ([isUsable]):
+     *    the registry asks once per batch, and a user who switches the
+     *    service off, or clears its key, while a batch of several calls runs
+     *    has opted out of the calls not yet sent. Such a call is refused as
+     *    [StructuralFailureException] (REJECTED, no server answered) before
+     *    any request, and the registry hands the whole list to the next
+     *    backend; the pill drops the report, since the gesture forgot the
+     *    service's errors first (Codex adversarial review, 2026-10-21).
      *  - An `ok` answer that leaves a text of its call unnamed or blank is
      *    asked again ONCE, for those texts alone in one call: what the frame
      *    route gets through the waterfall for a group its answer left out. A
@@ -195,9 +203,11 @@ class PtCloudBackend(
         translated
     }
 
-    /** One call ([request]) for the texts at [positions]: fills [translated]
-     *  at each position the answer names with a non-blank text and returns
-     *  the positions it left unnamed. `skipped` is the server's answer for
+    /** One call ([request]) for the texts at [positions], refused before it
+     *  goes out when the service is no longer usable (the switch, the key;
+     *  [translateBatch]): fills [translated] at each position the answer
+     *  names with a non-blank text and returns the positions it left
+     *  unnamed. `skipped` is the server's answer for
      *  a source equal to the target: then each text stands as its own
      *  answer. For any other pair it is an answer with nothing usable in it
      *  (a server that mistook the pair, or another version of the contract),
@@ -211,6 +221,13 @@ class PtCloudBackend(
         positions: List<Int>,
         translated: MutableList<String>,
     ): List<Int> {
+        if (!isUsable(request.source, request.target)) {
+            throw StructuralFailureException(
+                "$displayName was switched off, or its key removed, during the batch",
+                BackendFailure(BackendFailureKind.REJECTED),
+                serverAnswered = false,
+            )
+        }
         val outcome = client.postTranslate(request)
         if (outcome == TranslationOutcome.Skipped) {
             if (request.source == request.target) return emptyList()
