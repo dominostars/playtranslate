@@ -150,6 +150,8 @@ class PtCloudBackend(
      *    service's errors first (Codex adversarial review, 2026-10-21). The
      *    frame route asks the router's question again the same way, once
      *    the frame is encoded and before its upload ([PtCloudFrameReader.read]).
+     *    The cooldown is not re-read: the registry skips a cooling backend
+     *    once per pass, and [ask] says why that is enough.
      *  - An `ok` answer that leaves a text of its call unnamed or blank is
      *    asked again ONCE, for those texts alone in one call: what the frame
      *    route gets through the waterfall for a group its answer left out. A
@@ -223,6 +225,16 @@ class PtCloudBackend(
         positions: List<Int>,
         translated: MutableList<String>,
     ): List<Int> {
+        // The switch and the key, the two the user controls, read again
+        // before each call. The cooldown is left to the registry's per-pass
+        // check on purpose: one the frame route enters while the batch runs
+        // costs at most this call, which fails as the frame did and records
+        // nothing (CooldownState ignores a failure recorded in a cooldown)
+        // before the batch ends and the registry hands the list on. A
+        // refusal here would report a REJECTED attempt for what is a
+        // cooldown, since only a gesture's forget drops such a report; the
+        // frame route can refuse silently because its fallback reads on the
+        // device (Codex review, 2026-10-22).
         if (!isUsable(request.source, request.target)) {
             throw StructuralFailureException(
                 "$displayName was switched off, or its key removed, during the batch",
