@@ -29,8 +29,8 @@ import java.util.concurrent.atomic.AtomicLong
  *  registry's fan-out and the cloud's registry backend) and by the cloud
  *  page's health check finding the service running (the causes that answer
  *  disproves: a stopped pod, a lost connection, a server error); the settings a test
- *  installs; and the gestures' reconcile of the shared cache's routing
- *  identity. */
+ *  installs; and the reconcile of the shared cache's routing identity that
+ *  follows every reset, a gesture's and the health check's. */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudServiceTest {
 
@@ -123,6 +123,29 @@ class PtCloudServiceTest {
         assertEquals("one" to PtCloudService.DISPLAY_NAME, TranslationCache.shared[key])
     }
 
+    @Test fun `a Running health check reconciles the shared cache's routing identity, as a gesture does`() {
+        // The wall clock: the registry judges a cooldown against it.
+        val state = CooldownState(null, PtCloudService.ID)
+        PtCloudService.installForTest(state, PtCloudTestSupport.config(ctx))
+        PtCloudTestSupport.prefs(ctx).ptCloudEnabled = true
+        state.recordLadderFailure(CooldownLadder.RateLimit, "Not running", CooldownCause.NOT_RUNNING)
+        TranslationCache.shared.resetForTest()
+        // The cloud cools down: the identity is the next online service's,
+        // and a translation of its is cached under that identity.
+        GroupTranslator.reconcileShared(ctx)
+        assertTrue(TranslationBackendRegistry.preferredOnlineId("ja", "en") != PtCloudService.ID)
+        val key = TranslationCache.Key("一", "ja", "en")
+        TranslationCache.shared[key] = "one" to "Fallback"
+
+        PtCloudService.onHealthRunning()
+
+        // The check moved the identity back onto the cloud, which clears
+        // what the fallback's routing made: a frame the cache answered in
+        // full would otherwise keep showing it.
+        assertEquals(PtCloudService.ID, TranslationBackendRegistry.preferredOnlineId("ja", "en"))
+        assertNull(TranslationCache.shared[key])
+    }
+
     @Test fun `every gesture and a health check that resets count a change, a recorded failure does not`() {
         val state = install()
         val before = PtCloudService.changes.value
@@ -166,7 +189,7 @@ class PtCloudServiceTest {
         assertEquals(listOf(listOf(attempt)), seen)
     }
 
-    @Test fun `a running service seen by the health check drops the cooldown and nothing else`() {
+    @Test fun `a running service seen by the health check drops the cooldown on the one state and reports nothing`() {
         val state = install()
         state.recordLadderFailure(CooldownLadder.RateLimit, "Not running", CooldownCause.NOT_RUNNING)
         assertTrue(PtCloudService.isCoolingDown(clock.get()))

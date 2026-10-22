@@ -241,18 +241,19 @@ object PtCloudService {
     /** The cloud page's health check found the service running (`GET /health`
      *  answered 200: the origin is up and its OCR ready). A cooldown whose
      *  cause that answer disproves ([disprovedByRunning]) describes a state
-     *  that is over, so it is dropped, its ladders with it, and a running live
-     *  session looks again now, as after a gesture. Nothing else is touched:
-     *  the check takes no key and asks for no translation, so Running says
-     *  nothing about a refused key, a rate limit or a spent quota, and the
-     *  configuration did not change, so the translation cache and the pill's
-     *  errors stay. Main thread. */
+     *  that is over, so it is dropped, its ladders with it, and what follows
+     *  every reset follows ([afterCooldownReset]): the shared cache's routing
+     *  identity is reconciled, since the service is the waterfall's first
+     *  backend again, and a running live session looks again now, as after a
+     *  gesture. Nothing else is touched: the check takes no key and asks for
+     *  no translation, so Running says nothing about a refused key, a rate
+     *  limit or a spent quota, and the configuration did not change, so the
+     *  translation cache's entries and the pill's errors stay. Main thread. */
     fun onHealthRunning() {
         val cause = cooldown.unavailableCause() ?: return
         if (!disprovedByRunning(cause)) return
         cooldown.resetCooldown()
-        CaptureService.instance?.refreshLiveOverlay()
-        changed.update { it + 1 }
+        afterCooldownReset()
     }
 
     /**
@@ -283,27 +284,43 @@ object PtCloudService {
     /** Drops the cooldown and both ladders, then does what
      *  [com.playtranslate.translation.OnlineServiceMutations.saveConfig]
      *  does for a waterfall service: forget the pill's errors so a failure
-     *  after the gesture shows again, clear the translation cache (the
+     *  after the gesture shows again and clear the translation cache (the
      *  process's one, [TranslationCache.shared], so the camera's and the
-     *  import tool's translations under the old configuration go too), and
-     *  reconcile the cache's routing identity, after the reset so that it is
-     *  computed against the cleared state (the order
+     *  import tool's translations under the old configuration go too), then
+     *  what follows every reset ([afterCooldownReset]), the routing identity
+     *  reconciled against the cleared state (the order
      *  [com.playtranslate.translation.OnlineServiceMutations.setEnabled]
-     *  uses): the switch and the key decide whether the waterfall's first
-     *  backend is this one. saveConfig itself resets no cooldown: a store
+     *  uses: the switch and the key decide whether the waterfall's first
+     *  backend is this one). saveConfig itself resets no cooldown: a store
      *  backend clears its own when one instance of it sees its credentials
      *  change ([com.playtranslate.translation.GeminiBackend],
      *  [com.playtranslate.translation.DeepLBackend]), while this service's
-     *  one cooldown, which both routes share, is reset here, by the gesture.
-     *  A running live session looks again now: the
-     *  gesture changes which reader the next read goes to, and the furigana
-     *  tier's change gate would otherwise keep the old reader's result until
-     *  the pixels move. Last, the gesture is counted on [changes], so the
-     *  surfaces that show the service repaint. */
+     *  one cooldown, which both routes share, is reset here, by the gesture. */
     private fun resetForUserGesture() {
         cooldown.resetCooldown()
         TranslationErrors.forget(ID)
         GroupTranslator.clearShared()
+        afterCooldownReset()
+    }
+
+    /** What follows every reset of the cooldown, a gesture's
+     *  ([resetForUserGesture]) or the health check's ([onHealthRunning]),
+     *  one tail for both so they cannot diverge. The shared cache's routing
+     *  identity is reconciled, after the reset so that it is computed
+     *  against the cleared state: the reset can make this service the
+     *  waterfall's first backend again, and the identity's move clears the
+     *  entries the fallback's routing made, which a frame the cache answers
+     *  in full would otherwise keep showing, its cloud translations never
+     *  awaited, until some text missed (the identity otherwise reconciles
+     *  at the next waterfall call, the rule a cooldown's natural expiry and
+     *  the registry's connectivity fan-out rely on). A running live session
+     *  looks again now: the reset changes which reader the next read goes
+     *  to, and the furigana tier's change gate would otherwise keep the old
+     *  reader's result until the pixels move. Last, the change is counted on
+     *  [changes], so the surfaces that show the service repaint. Codex
+     *  review, 2026-10-22: the health check reset the cooldown and
+     *  reconciled nothing. */
+    private fun afterCooldownReset() {
         GroupTranslator.reconcileShared(requireContext())
         CaptureService.instance?.refreshLiveOverlay()
         changed.update { it + 1 }

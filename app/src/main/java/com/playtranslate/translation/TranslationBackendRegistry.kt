@@ -627,6 +627,14 @@ object TranslationBackendRegistry {
      * mutations run here, none of the main-thread-only mutators above.
      * Logs under the forensics tag only when a cooldown was actually
      * cleared, so a healthy network flap stays quiet.
+     *
+     * The shared translation cache's routing identity is not reconciled
+     * here, for the same thread reason: it reconciles at the next waterfall
+     * call ([com.playtranslate.translation.GroupTranslator]), the rule a
+     * cooldown's natural expiry relies on too, so a frame the cache answers
+     * in full can show the entries made while offline until some text
+     * misses. A user gesture and the cloud page's health check reconcile at
+     * once ([com.playtranslate.cloud.PtCloudService]).
      */
     fun onConnectivityRestored() {
         val cleared = backends.filter { (it as? Cooldownable)?.onConnectivityRestored() == true }
