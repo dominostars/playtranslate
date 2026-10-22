@@ -11,6 +11,9 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * JVM tests for the at-rest API-key encryption wiring in [Prefs]: the one-shot
@@ -23,6 +26,8 @@ import org.robolectric.RobolectricTestRunner
  * marker, atomic re-encryption, per-slot binding — is covered on the fast JVM
  * path, the way every other `Prefs` migration in this module is. Raw values are
  * seeded directly to mimic exactly what a pre-encryption build persisted.
+ * The read helper's decryption memo is covered too, the fake counting its
+ * decryptions.
  */
 @RunWith(RobolectricTestRunner::class)
 class PrefsSecretMigrationTest {
@@ -41,15 +46,25 @@ class PrefsSecretMigrationTest {
      * binding: a value encrypted for one preference key won't decrypt under
      * another. [encrypt] returns null when [encryptWorks] is false (a broken
      * keystore); [decrypt] returns null when [decryptWorks] is false (key lost
-     * after a value was already encrypted).
+     * after a value was already encrypted). [decrypts] counts the decryptions
+     * asked of it, for the memo's cells.
      */
     private class FakeCodec(
         var encryptWorks: Boolean = true,
         var decryptWorks: Boolean = true,
     ) : SecretCodec {
+        val decrypts = AtomicInteger(0)
+        /** When set, [decrypt] counts [decryptStarted] down on entry and
+         *  waits on [holdDecrypt] before answering, so a cell can land a
+         *  write while a decryption is in flight. */
+        var decryptStarted: CountDownLatch? = null
+        var holdDecrypt: CountDownLatch? = null
         override fun encrypt(context: String, plaintext: String): String? =
             if (encryptWorks) enc(context, plaintext) else null
         override fun decrypt(context: String, stored: String): String? {
+            decrypts.incrementAndGet()
+            decryptStarted?.countDown()
+            holdDecrypt?.await(5, TimeUnit.SECONDS)
             val prefix = "$PREFIX$context|"
             return if (decryptWorks && stored.startsWith(prefix)) stored.removePrefix(prefix) else null
         }
@@ -194,6 +209,144 @@ class PrefsSecretMigrationTest {
         assertEquals("", prefs.openaiApiKey)
         // ...while gemini still reads correctly in its own slot.
         assertEquals("AIza-secret", prefs.geminiApiKey)
+    }
+
+    // ── The decryption memo ───────────────────────────────────────────────
+    // The fake's ciphertext is deterministic, where the real cipher's fresh
+    // IV makes every write a new one, so a rewrite here writes a new value.
+
+    @Test fun `two reads of an unchanged secret decrypt it once`() {
+        val codec = FakeCodec()
+        val prefs = Prefs(ctx, codec)
+        prefs.geminiApiKey = "AIza-1"
+
+        assertEquals("AIza-1", prefs.geminiApiKey)
+        assertEquals("AIza-1", prefs.geminiApiKey)
+        assertEquals(1, codec.decrypts.get())
+    }
+
+    @Test fun `two Prefs on the same codec share the memo`() {
+        val codec = FakeCodec()
+        Prefs(ctx, codec).geminiApiKey = "AIza-1"
+
+        assertEquals("AIza-1", Prefs(ctx, codec).geminiApiKey)
+        assertEquals("AIza-1", Prefs(ctx, codec).geminiApiKey)
+        assertEquals("Prefs is built at every use, the memo outlives it", 1, codec.decrypts.get())
+    }
+
+    @Test fun `a rewrite decrypts again`() {
+        val codec = FakeCodec()
+        val prefs = Prefs(ctx, codec)
+        prefs.geminiApiKey = "AIza-1"
+        assertEquals("AIza-1", prefs.geminiApiKey)
+
+        prefs.geminiApiKey = "AIza-2"
+        assertEquals("the new key, not the kept one", "AIza-2", prefs.geminiApiKey)
+        assertEquals(2, codec.decrypts.get())
+    }
+
+    @Test fun `a clear reads as no key without decrypting, never as the kept plaintext`() {
+        val codec = FakeCodec()
+        val prefs = Prefs(ctx, codec)
+        prefs.geminiApiKey = "AIza-1"
+        assertEquals("AIza-1", prefs.geminiApiKey)
+
+        prefs.geminiApiKey = ""
+        assertEquals("", prefs.geminiApiKey)
+        assertEquals(1, codec.decrypts.get())
+    }
+
+    @Test fun `a codec is never served what another codec decrypted`() {
+        val first = FakeCodec()
+        Prefs(ctx, first).geminiApiKey = "AIza-1"
+        assertEquals("AIza-1", Prefs(ctx, first).geminiApiKey)
+
+        // The same slot and the same ciphertext under a codec that cannot
+        // decrypt it (each test's own fake, here one whose key is lost).
+        val other = FakeCodec(decryptWorks = false)
+        assertEquals("", Prefs(ctx, other).geminiApiKey)
+        assertEquals("asked itself", 1, other.decrypts.get())
+    }
+
+    @Test fun `a failed decryption is not kept, so the next read asks again`() {
+        sp().edit().putString(gemini, enc(gemini, "AIza-1")).putBoolean(marker, true).commit()
+        val codec = FakeCodec(decryptWorks = false)
+        val prefs = Prefs(ctx, codec)
+        assertEquals("", prefs.geminiApiKey)
+
+        // The keystore answers again: the same ciphertext now reads.
+        codec.decryptWorks = true
+        assertEquals("AIza-1", prefs.geminiApiKey)
+        assertEquals(2, codec.decrypts.get())
+    }
+
+    // A dropped entry is seen through the fake's deterministic ciphertext:
+    // the one the memo decrypted, put back into the slot directly, is
+    // decrypted again only when the memo no longer holds it.
+
+    @Test fun `a clear drops the kept plaintext from the memo`() {
+        val codec = FakeCodec()
+        val prefs = Prefs(ctx, codec)
+        prefs.geminiApiKey = "AIza-1"
+        assertEquals("AIza-1", prefs.geminiApiKey)
+
+        prefs.geminiApiKey = ""
+        sp().edit().putString(gemini, enc(gemini, "AIza-1")).commit()
+        assertEquals("AIza-1", prefs.geminiApiKey)
+        assertEquals("decrypted again, not served from the memo", 2, codec.decrypts.get())
+    }
+
+    @Test fun `a rewrite drops the old plaintext from the memo at once`() {
+        val codec = FakeCodec()
+        val prefs = Prefs(ctx, codec)
+        prefs.geminiApiKey = "AIza-1"
+        assertEquals("AIza-1", prefs.geminiApiKey)
+
+        prefs.geminiApiKey = "AIza-2"
+        // Nothing read the new key: the old entry would still be there.
+        sp().edit().putString(gemini, enc(gemini, "AIza-1")).commit()
+        assertEquals("AIza-1", prefs.geminiApiKey)
+        assertEquals("decrypted again, not served from the memo", 2, codec.decrypts.get())
+    }
+
+    @Test fun `deleting an instance slot drops its plaintext from the memo`() {
+        val slot = "svc_key_test"
+        val codec = FakeCodec()
+        val prefs = Prefs(ctx, codec)
+        prefs.writeInstanceSecret(slot, "k-1")
+        assertEquals("k-1", prefs.readInstanceSecret(slot))
+
+        prefs.clearInstanceSecret(slot)
+        assertEquals("the slot is gone", "", prefs.readInstanceSecret(slot))
+        sp().edit().putString(slot, enc(slot, "k-1")).commit()
+        assertEquals("k-1", prefs.readInstanceSecret(slot))
+        assertEquals("decrypted again, not served from the memo", 2, codec.decrypts.get())
+    }
+
+    @Test fun `a clear during a decryption is not undone by the decryption`() {
+        // An IO read is decrypting the old ciphertext when the user clears
+        // the slot: the clear's eviction runs before the read's memo write,
+        // which would put the cleared plaintext back for the rest of the
+        // process. The memo write re-checks the slot, so it is not kept.
+        val codec = FakeCodec()
+        val prefs = Prefs(ctx, codec)
+        prefs.geminiApiKey = "AIza-1"
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        codec.decryptStarted = started
+        codec.holdDecrypt = release
+        val read = Thread { prefs.geminiApiKey }
+        read.start()
+        assertTrue("the read is decrypting", started.await(5, TimeUnit.SECONDS))
+
+        prefs.geminiApiKey = ""
+        release.countDown()
+        read.join(5_000)
+        assertFalse("the read ended", read.isAlive)
+
+        sp().edit().putString(gemini, enc(gemini, "AIza-1")).commit()
+        assertEquals("AIza-1", prefs.geminiApiKey)
+        assertEquals("decrypted again, not served from the memo", 2, codec.decrypts.get())
     }
 
     @Test fun `a deepl key migrated from plaintext auto-enables deepl`() {

@@ -5,14 +5,13 @@ import android.graphics.Bitmap
 import android.util.Log
 import com.playtranslate.OcrManager
 import com.playtranslate.OcrTokenScope
+import com.playtranslate.TranslationCache
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ocr.core.RegionPreFilter
 import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.ocr.registry.ocrLabel
 import com.playtranslate.ocr.registry.selectionToken
-import com.playtranslate.translation.BackendFailure
-import com.playtranslate.translation.ClassifiedFailure
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -67,12 +66,18 @@ class ReaderTranslations private constructor(
 
     /** The root's state, shared by every view: one writer (the reader), any
      *  number of readers on any thread. */
-    private class Shared(val readyByGroup: Map<Int, String>, val job: Job) {
+    private class Shared(val readyByGroup: Map<Int, String>, val job: Job, val configGeneration: Int) {
         val state = MutableStateFlow(ReaderProgress(readyByGroup, settled = false))
     }
 
     /** The root, for the reader that produced them: [groupCount] groups, of
-     *  which [ready] (by group index) arrived with the OCR. */
+     *  which [ready] (by group index) arrived with the OCR. [configGeneration]
+     *  is the shared cache's ([TranslationCache.configGeneration]) when the
+     *  reader's request went out. Its default, the generation at this call,
+     *  suits a reader that builds these as it reads (a scripted one); a
+     *  reader that builds them after its request returns stamps the
+     *  generation before sending it
+     *  ([com.playtranslate.cloud.PtCloudFrameReader]). */
     constructor(
         source: String,
         target: String,
@@ -80,11 +85,20 @@ class ReaderTranslations private constructor(
         groupCount: Int,
         ready: Map<Int, String>,
         job: Job,
+        configGeneration: Int = TranslationCache.shared.configGeneration,
     ) : this(
         source, target, providerName,
-        Shared(ready.filterValues { it.isNotBlank() }, job),
+        Shared(ready.filterValues { it.isNotBlank() }, job, configGeneration),
         List(groupCount) { it },
     )
+
+    /** The configuration these translations were made under: the translation
+     *  cache's configuration generation when the reader's request went out,
+     *  not when a consumer takes them. A consumer caches them only while it
+     *  still stands ([TranslationCache.setIfConfigUnchanged]), so a settings
+     *  clear between the request and the consumer's call (the cloud's switch
+     *  flipped while a capture reads) shows them but never caches them. */
+    val configGeneration: Int get() = shared.configGeneration
 
     /** Whether these translations are for the pair ([source], [target]) the
      *  consumer translates under. The pair can change between the read and the
@@ -210,10 +224,6 @@ class FrameReading(
      *  caller's job that never fails: whoever drops the reading without
      *  awaiting the translations cancels them. */
     val translations: ReaderTranslations?,
-    /** Why the primary could not read, when this reading came from the fallback
-     *  ([FallbackFrameReader]); null when the primary read it, or when the
-     *  primary's failure carried no classification. */
-    val fallbackFrom: BackendFailure? = null,
 )
 
 /**
@@ -405,10 +415,11 @@ class DeviceFrameReader(
  * failed while the caller was being cancelled does not start the fallback. Any
  * other exception is a bug in the primary and propagates too.
  *
- * A reading from the fallback carries the primary's failure
- * ([FrameReading.fallbackFrom]) when the exception classified itself
- * ([ClassifiedFailure], as [com.playtranslate.cloud.PtCloudReadException]
- * does), so a caller can act on why the primary could not read.
+ * The fallback's reading is returned as it is. Why the primary could not
+ * read is not carried on it: a cloud read's failure has already recorded its
+ * cooldown and reported its attempt
+ * ([com.playtranslate.cloud.PtCloudClient.postFrame]), which is how the
+ * router and the error pill learn of it.
  */
 class FallbackFrameReader(
     private val primary: FrameReader,
@@ -423,10 +434,6 @@ class FallbackFrameReader(
         currentCoroutineContext().ensureActive()
         // Class name only: an exception message can carry a URL.
         Log.i(TAG, "primary reader unavailable (${e.javaClass.simpleName}); reading on device")
-        val reading = fallback.read(bitmap, request)
-        FrameReading(
-            reading.ocr, reading.attribution, reading.translations,
-            fallbackFrom = (e as? ClassifiedFailure)?.failure,
-        )
+        fallback.read(bitmap, request)
     }
 }

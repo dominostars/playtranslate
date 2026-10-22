@@ -3,7 +3,6 @@ package com.playtranslate.translation
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
-import com.playtranslate.CaptureService
 import com.playtranslate.cloud.PtCloudService
 
 /**
@@ -12,8 +11,9 @@ import com.playtranslate.cloud.PtCloudService
  * quick-add) goes through here so the four moving parts stay in sync:
  *
  *   store write → registry membership → setOrder ([applyOnlineOrder]) →
- *   CaptureService reconcile (and a translation-cache clear when the change
- *   can alter what a given input translates to).
+ *   the shared translation cache's reconcile ([GroupTranslator.reconcileShared],
+ *   after a clear, [GroupTranslator.clearShared], when the change can alter
+ *   what a given input translates to).
  *
  * Every mutation of one instance also forgets its translation errors
  * ([TranslationErrors.forget]): saving its config, toggling it, picking a

@@ -257,6 +257,12 @@ object ChangeGateRules {
         revealInFlight -> GateReason.REVEAL
         panelWaiting -> GateReason.CONFIRM
         skipStreak >= NET_EVERY_SKIPS -> GateReason.NET
+        // Only moving blocks differ: the smear is held for one look, read at
+        // the floor-paced follow-up. Accepted as it is (2026-10-21):
+        // on both routes a read costs more than the floor interval (about
+        // 720 ms of device OCR on the Thor, 0.5 to 0.9 s to part 1 on the
+        // cloud), so reading the smear would delay the settled read more
+        // than the hold does. This is reasoned, not measured.
         verdict.pendingSettle -> GateReason.MOVING
         else -> GateReason.QUIET
     }

@@ -21,12 +21,14 @@ import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.net.ConnectException
 import java.util.concurrent.atomic.AtomicLong
 
 /** The service object: one cooldown, built once, cleared by the user's
  *  gestures, by a regained network (connection failures only, through the
  *  registry's fan-out and the cloud's registry backend) and by the cloud
- *  page's health check finding the service running; the settings a test
+ *  page's health check finding the service running (the causes that answer
+ *  disproves: a stopped pod, a lost connection, a server error); the settings a test
  *  installs; and the gestures' reconcile of the shared cache's routing
  *  identity. */
 @RunWith(RobolectricTestRunner::class)
@@ -130,10 +132,10 @@ class PtCloudServiceTest {
         PtCloudService.onCredentialsSaved()
         assertEquals(before + 2, PtCloudService.changes.value)
 
-        state.recordLadderFailure(CooldownLadder.RateLimit, "Server error", CooldownCause.SERVER_ERROR)
+        state.recordLadderFailure(CooldownLadder.RateLimit, "Bad key", CooldownCause.AUTH)
         assertEquals("a failure is no gesture", before + 2, PtCloudService.changes.value)
         PtCloudService.onHealthRunning()
-        assertEquals("Running resets nothing but a stopped-pod cooldown", before + 2, PtCloudService.changes.value)
+        assertEquals("Running resets nothing it does not disprove", before + 2, PtCloudService.changes.value)
 
         state.resetCooldown()
         state.recordLadderFailure(CooldownLadder.RateLimit, "Not running", CooldownCause.NOT_RUNNING)
@@ -196,5 +198,35 @@ class PtCloudServiceTest {
         state.resetCooldown()
         PtCloudService.onHealthRunning()
         assertNull(PtCloudService.unavailableUntil())
+    }
+
+    @Test fun `a Running health check drops a 502's or a lost connection's cooldown, ladders and all`() {
+        val state = install()
+        // The edge's 502 while the pod boots: a server error on the RateLimit ladder.
+        PtCloudErrors.classifyHttp(502, "", null).record(state)
+        assertEquals(CooldownCause.SERVER_ERROR, PtCloudService.unavailableCause())
+        PtCloudService.onHealthRunning()
+        assertNull(PtCloudService.unavailableUntil())
+        // Its rung went with it: the next server error costs the first step.
+        PtCloudErrors.classifyHttp(502, "", null).record(state)
+        assertEquals(clock.get() + 60_000, PtCloudService.unavailableUntil())
+
+        state.resetCooldown()
+        // Two transport failures in a row: the Network ladder.
+        repeat(2) { PtCloudErrors.classifyTransport(ConnectException("refused")).record(state) }
+        assertEquals(CooldownCause.CONNECTION_FAILED, PtCloudService.unavailableCause())
+        PtCloudService.onHealthRunning()
+        assertNull(PtCloudService.unavailableUntil())
+    }
+
+    @Test fun `a Running health check drops exactly the causes a reachable, answering server disproves`() {
+        val state = install()
+        val disproved = setOf(CooldownCause.NOT_RUNNING, CooldownCause.CONNECTION_FAILED, CooldownCause.SERVER_ERROR)
+        for (cause in CooldownCause.entries) {
+            state.resetCooldown()
+            state.recordParsedFailure(clock.get() + 3_600_000, cause.name, cause)
+            PtCloudService.onHealthRunning()
+            assertEquals("$cause still cooling down", cause !in disproved, PtCloudService.isCoolingDown(clock.get()))
+        }
     }
 }

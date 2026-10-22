@@ -11,6 +11,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -22,7 +23,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * camera tool, the import tool, select-to-translate): over the process's one
  * cache, so a translation made on one surface serves another; taking its
  * cache hits at the lookup, so another surface's clear between the lookup
- * and the return cannot blank them; and reporting each batch's degradation
+ * and the return cannot blank them; caching a reader's texts only under the
+ * configuration the reader's request went out under; and reporting each batch's degradation
  * to its sink, None on the same-language bypass. The reader handshake
  * itself is pinned through the service's delegators in
  * [com.playtranslate.TranslateWithReaderTest]. Japanese to English, the
@@ -113,6 +115,35 @@ class GroupTranslatorTest {
             "not cached: the next first paint has nothing for it",
             listOf<Pair<String?, String?>>(null to null), pairs(translator.translationsAtOnce(listOf("一"), reader = null)),
         )
+        assertEquals("the waterfall never ran", 0, waterfall.translateCalls.get())
+    }
+
+    // A reader's request goes out before the consumer's call: a settings
+    // clear between the two (the cloud's switch flipped while a capture
+    // reads) ended the configuration the reader's texts were made under, so
+    // the consumer shows them and caches none, whatever the generation is by
+    // the time it calls.
+
+    @Test fun `a reader's ready text made before a configuration clear shows at once but is not cached`() {
+        TranslationBackendRegistry.init(listOf(waterfall))
+        val translator = GroupTranslator(ctx, TranslationCache.shared)
+        // Built as the reader's request goes out, under the generation then.
+        val reader = ReaderTranslations("ja", "en", "Cloud", groupCount = 1, ready = mapOf(0 to "Cloud text"), job = Job())
+        GroupTranslator.clearShared()
+
+        assertEquals(listOf("Cloud text" to "Cloud"), pairs(translator.translationsAtOnce(listOf("一"), reader)))
+        assertNull("not cached", TranslationCache.shared[TranslationCache.Key("一", "ja", "en")])
+    }
+
+    @Test fun `a reader's settled text made before a configuration clear is taken but not cached`() = runBlocking {
+        TranslationBackendRegistry.init(listOf(waterfall))
+        val translator = GroupTranslator(ctx, TranslationCache.shared)
+        val reader = ReaderTranslations("ja", "en", "Cloud", groupCount = 1, ready = emptyMap(), job = Job())
+        reader.settle(mapOf(0 to "Cloud text"))
+        GroupTranslator.clearShared()
+
+        assertEquals(listOf("Cloud text" to "Cloud"), pairs(translator.translateGroupsSeparately(listOf("一"), reader = reader)))
+        assertNull("not cached", TranslationCache.shared[TranslationCache.Key("一", "ja", "en")])
         assertEquals("the waterfall never ran", 0, waterfall.translateCalls.get())
     }
 

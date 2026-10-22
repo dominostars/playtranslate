@@ -17,7 +17,6 @@ import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.cloud.HealthStatus
 import com.playtranslate.cloud.PtCloudClient
-import com.playtranslate.cloud.PtCloudConfig
 import com.playtranslate.cloud.PtCloudService
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -43,7 +42,8 @@ import kotlinx.coroutines.launch
  *    ([PtCloudService.onCredentialsSaved]) and checks health. Unlike the LLM
  *    page, the page stays open after Save: it is where the status shows.
  *  - The status row is the server's answer to `GET /health`
- *    ([PtCloudClient.health]), asked on resume and after Save; capture
+ *    ([PtCloudClient.health], on the service's one client,
+ *    [PtCloudService.client]), asked on resume and after Save; capture
  *    never asks it. Below it, while the service's cooldown runs, the line
  *    a Translation services row shows for its service's cooldown
  *    ([cooldownLine]).
@@ -122,8 +122,7 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         tvStatus.setText(R.string.pt_cloud_status_checking)
         setSaving(fromSave)
         healthJob = lifecycleScope.launch {
-            val status = healthOverrideForTest?.invoke()
-                ?: PtCloudClient(PtCloudConfig(Prefs(this@PtCloudSettingsActivity))).health()
+            val status = healthOverrideForTest?.invoke() ?: PtCloudService.client.health()
             tvStatus.text = healthStatusText(this@PtCloudSettingsActivity, status)
             // A running service ends a cooldown recorded while it was
             // stopped (a pod start is no gesture the app can see; this check

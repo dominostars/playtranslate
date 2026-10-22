@@ -22,7 +22,6 @@ import com.playtranslate.ocr.FrameReading
 import com.playtranslate.ocr.ReadRequest
 import com.playtranslate.ocr.ReaderAttribution
 import com.playtranslate.ocr.ReaderTranslations
-import com.playtranslate.translation.BackendFailure
 import com.playtranslate.ui.TextBox
 import androidx.core.graphics.get
 import androidx.core.graphics.createBitmap
@@ -658,13 +657,10 @@ object OverlayToolkit {
      *  ([FrameReading.attribution]; null when the reader has no engine identity).
      *  The one place the pipeline hands the attribution back, outside [result]
      *  so a read that found no text still names who looked, for the panel's
-     *  no-text state. [fallbackFrom] is [FrameReading.fallbackFrom]: why the
-     *  primary reader could not read, when a fallback reader read the frame,
-     *  carried whether or not text was found. */
+     *  no-text state. */
     data class OcrPipelineRead(
         val result: OcrPipelineResult?,
         val attribution: ReaderAttribution?,
-        val fallbackFrom: BackendFailure? = null,
     )
 
     /**
@@ -775,9 +771,9 @@ object OverlayToolkit {
             // Dropping groups re-indexes the rest, so translations keyed by the
             // reader's group ids no longer line up with them: the caller
             // translates locally instead. The live startup card is the only
-            // source of excludeRect, so this is a reconciler-tier or
-            // pinhole-tier cycle that read through the cloud while the card
-            // was up.
+            // source of excludeRect, so this is a read made through the cloud
+            // while the card was up: a reconciler-tier or pinhole-tier cycle,
+            // or a press-and-hold during a live session.
             if (kept !== ocrResult && translations != null) {
                 translations.cancel()
                 translations = null
@@ -791,7 +787,7 @@ object OverlayToolkit {
         if (ocrResult == null || dedupKey.isEmpty()) {
             // Nothing for the caller to translate: the translations have no taker.
             translations?.cancel()
-            return OcrPipelineRead(result = null, reading.attribution, reading.fallbackFrom)
+            return OcrPipelineRead(result = null, reading.attribution)
         }
 
         val result = OcrPipelineResult(
@@ -799,7 +795,7 @@ object OverlayToolkit {
             cropWidth = crop.width(), cropHeight = crop.height(),
             translations = translations,
         )
-        return OcrPipelineRead(result, reading.attribution, reading.fallbackFrom)
+        return OcrPipelineRead(result, reading.attribution)
     }
 
     /** Opaque fill for the floating icon's window rect in OCR input — a

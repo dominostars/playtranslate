@@ -7,7 +7,10 @@ import android.view.Display
 import android.view.View
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.capture.CaptureLifecycle
+import com.playtranslate.cloud.PtCloudService
+import com.playtranslate.cloud.PtCloudTestSupport
 import com.playtranslate.net.NetworkConnectivity
+import com.playtranslate.translation.CooldownState
 import com.playtranslate.ui.FloatingIconMenu
 import com.playtranslate.ui.FloatingOverlayIcon
 import kotlinx.coroutines.Job
@@ -30,15 +33,18 @@ import java.time.Duration
  * The quick menu's PlayTranslate Cloud strip as the overlay controller
  * drives it: built only while the cloud switch is on, redrawn at every
  * change of the device's network and every restore while the menu is up,
- * and left alone once the menu closes, whichever menu replaced it. The
- * Overlays row's redraw needs a live session, so it is
+ * and left alone once the menu closes, whichever menu replaced it. That the
+ * Overlays row leaves it alone needs a live session, so it is
  * [QuickMenuOverlaysRowTest]'s.
  *
- * A client key cannot be stored here (the AndroidKeyStore is
- * instrumented-only and [Prefs] stores no plaintext), so every value the
- * controller computes reads "unavailable"; a redraw is seen by setting the
- * glyph to the other value first. What the value is for each state of the
- * service is [com.playtranslate.cloud.PtCloudNextCaptureTest]'s.
+ * The controller reads the service's settings ([PtCloudService.config]), so
+ * a cell can store a key there through a reversible codec
+ * ([PtCloudService.installForTest]). Without one, as in most cells, no key
+ * is stored (the AndroidKeyStore is instrumented-only and [Prefs] stores no
+ * plaintext), every value the controller computes reads "unavailable", and
+ * a redraw is seen by setting the glyph to the other value first. What the
+ * value is for each state of the service is
+ * [com.playtranslate.cloud.PtCloudNextCaptureTest]'s.
  *
  * The network is driven through a callback this test installs; the
  * application's own, installed at startup, writes the same state and is
@@ -86,6 +92,7 @@ class QuickMenuCloudStripTest {
         CaptureLifecycle.setFloatingIconSuppressed(ctx, true)
         // Let the churn gate finish every removal inside this test.
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(5))
+        PtCloudService.installForTest(null)
         clearPrefs()
     }
 
@@ -118,6 +125,21 @@ class QuickMenuCloudStripTest {
         val menu = openQuickMenu()
         assertEquals(View.GONE, strip(menu).visibility)
         assertNull(cloudJob())
+    }
+
+    @Test fun `the first glyph is drawn with the window, before its first frame, wifi with a key and wifi_off without`() {
+        prefs.ptCloudEnabled = true
+        PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudTestSupport.config(ctx))
+        val keyed = openQuickMenu()
+        // Nothing has been idled since the tap: the window is added and no
+        // traversal has run, so this is what its first frame shows.
+        assertNotNull("the window is added", keyed.parent)
+        assertFalse("no frame yet", keyed.isAttachedToWindow)
+        assertTrue("a key and a network: wifi", keyed.cloudAvailable)
+
+        PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudTestSupport.config(ctx, key = ""))
+        val keyless = openQuickMenu()
+        assertFalse("no key: wifi_off", keyless.cloudAvailable)
     }
 
     @Test fun `with the switch on the menu has the strip and follows the network`() {

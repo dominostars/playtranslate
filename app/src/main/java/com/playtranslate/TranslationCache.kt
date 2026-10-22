@@ -27,8 +27,12 @@ package com.playtranslate
  * ([clear]: a configuration changed under the same routing identity, an
  * LLM's model, key or URL, the cloud's key or switch), and its result was
  * made under the old configuration. [configGeneration] counts those clears;
- * a call reads it at its lookup and writes through [setIfConfigUnchanged],
- * so such a result is shown but never cached. The identity reconcile's own
+ * whoever makes a result reads it before the request goes out (the
+ * waterfall at its lookup, a frame reader as it sends its frame, carried to
+ * the consumer on
+ * [com.playtranslate.ocr.ReaderTranslations.configGeneration]) and the write
+ * goes through [setIfConfigUnchanged] with that value, so such a result is
+ * shown but never cached. The identity reconcile's own
  * clear does not count: a result that arrives after it came from the new
  * routing (the waterfall fell through to the backend now preferred).
  */

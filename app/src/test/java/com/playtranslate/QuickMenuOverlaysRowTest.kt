@@ -188,7 +188,6 @@ class QuickMenuOverlaysRowTest {
         menu.onCycleOverlayMode!!.invoke()
         assertEquals(OverlayMode.FURIGANA, prefs.overlayMode)
         assertFalse(svc.isLive)
-        assertNull(svc.liveFlavor)
     }
 
     // The PlayTranslate Cloud strip does not depend on the running session's
@@ -197,12 +196,12 @@ class QuickMenuOverlaysRowTest {
     @Test fun `the row leaves the cloud strip alone`() {
         prefs.ptCloudEnabled = true
         val menu = openQuickMenu()
-        assertEquals(OverlayFlavor.TRANSLATION, svc.liveFlavor)
+        assertEquals(HoldBehavior.HIDE_TRANSLATIONS, svc.holdBehavior)
         menu.cloudAvailable = true
 
         menu.onCycleOverlayMode!!.invoke()
 
-        assertEquals(OverlayFlavor.FURIGANA, svc.liveFlavor)
+        assertEquals("the session switched to furigana", HoldBehavior.SHOW_TRANSLATIONS_OVER_FURIGANA, svc.holdBehavior)
         assertTrue("not drawn again", menu.cloudAvailable)
     }
 }

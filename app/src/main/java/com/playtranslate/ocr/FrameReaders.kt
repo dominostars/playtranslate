@@ -68,23 +68,28 @@ object FrameReaders {
      * against it, else the device alone. The decision, from
      * [PtCloudService.config] read at this call:
      *
-     * | switch | deviceOnly | usable key | source | cooling down | reader |
-     * |---|---|---|---|---|---|
-     * | off (always, outside debug builds) | any | any | any | any | device |
-     * | on | true | any | any | any | device |
-     * | on | false | no | any | any | device |
-     * | on | false | yes | not one the server reads | any | device |
-     * | on | false | yes | read | yes | device |
-     * | on | false | yes | read | no | cloud, then device |
+     * | switch | deviceOnly | network | usable key | source | cooling down | reader |
+     * |---|---|---|---|---|---|---|
+     * | off (always, outside debug builds) | any | any | any | any | any | device |
+     * | on | true | any | any | any | any | device |
+     * | on | false | none | any | any | any | device |
+     * | on | false | some | no | any | any | device |
+     * | on | false | some | yes | not one the server reads | any | device |
+     * | on | false | some | yes | read | yes | device |
+     * | on | false | some | yes | read | no | cloud, then device |
+     *
+     * "Network" is the default network as
+     * [com.playtranslate.net.NetworkConnectivity.state] last heard it, the one
+     * the floating menu's cloud strip follows: "some" is any, validated or
+     * not, and with none no key is read.
      *
      * [deviceOnly] is the caller's statement that this read must stay on the
-     * device whatever the settings say: a re-OCR (the user picked a device
-     * engine for that capture, or for the camera's frozen frame or the import
-     * tool's page, which then holds for that frame's review), the furigana
-     * hold (it needs no translation), a hold while live mode runs. A stopped
-     * pod and a refused key are cooldowns ([PtCloudService]), so a live tier
-     * or the camera's acquires read on the device while one runs without
-     * stating anything.
+     * device whatever the settings say, because the user picked a device
+     * engine for it: a re-OCR of a capture, and every re-read of the camera's
+     * frozen frame or the import tool's page after an engine pick there,
+     * which holds for that frame's review. A stopped pod and a refused key
+     * are cooldowns ([PtCloudService]), so a live tier or the camera's
+     * acquires read on the device while one runs without stating anything.
      *
      * A read kept on the device logs why at debug level, except when the switch
      * is off, which is every read of every release build. [warm] asks the same
@@ -116,7 +121,9 @@ object FrameReaders {
      * Returns at once, on the caller's thread, when the switch is off or when
      * [deviceOnly] is true: a plain pref read, no key. Otherwise the decision,
      * whose key read decrypts it, and the enqueue run on [Dispatchers.IO], off
-     * the read's path. Fire and forget: nothing waits for it or reads its
+     * the read's path; with no network the decision refuses before the key is
+     * read, so a warm sends nothing then, as the read that follows goes to
+     * the device. Fire and forget: nothing waits for it or reads its
      * answer, and it logs nothing about why it did not go out (the read logs
      * that).
      */

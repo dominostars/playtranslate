@@ -719,9 +719,9 @@ class PinholeOverlayMode(
             //    The frame's stamped fact (raw grab of a contaminated
             //    source ⇒ true) drives the floating-icon blackout inside.
             //    runLiveOcrRead reads through PlayTranslate Cloud when the
-            //    router allows it and the service has not refused this
-            //    session, else on the device; a cloud read may carry the
-            //    server's translations, which step 12 may take.
+            //    router allows it (a stopped pod or a refused key is a
+            //    cooldown it reads), else on the device; a cloud read may
+            //    carry the server's translations, which step 12 may take.
             val read = try {
                 service.runLiveOcrRead(
                     ocrImage, displayId,

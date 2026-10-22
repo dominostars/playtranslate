@@ -177,7 +177,6 @@ class PtCloudClient(
         val callerContext = currentCoroutineContext()
         val cooldown = PtCloudService.cooldown
         val clock = HttpCallClock()
-        val call = client.newCall(frameRequest(frame, meta, clock))
         // A response read to part 1 when the caller was cancelled on the way
         // back must still be closed; this holds it until it is handed off.
         var opened: Opened? = null
@@ -186,11 +185,16 @@ class PtCloudClient(
         val warmAtMs = warmSentAtMs.getAndSet(0L)
         val part1: Opened = try {
             withContext(Dispatchers.IO) {
+                // Built here, off the caller's thread and inside the failure
+                // path below: the build reads the key, and a key [bearer]
+                // refuses fails there as a transport failure.
+                val call = client.newCall(frameRequest(frame, meta, clock, config.clientKey))
                 blockingOn(call) { openPart1(call).also { opened = it } }
             }
         } catch (e: CancellationException) {
-            opened?.response?.close()
-            call.cancel()
+            // A call cancelled while it ran was cancelled by blockingOn; this
+            // is one whose part 1 came back to a caller cancelled meanwhile.
+            opened?.let { it.response.close(); it.call.cancel() }
             throw e
         } catch (e: IOException) {
             if (!callerContext.isActive) {
@@ -240,7 +244,7 @@ class PtCloudClient(
             val itemLines = ItemLines()
             try {
                 val result = try {
-                    blockingOn(call) { readFinalPart(response.body.source(), itemLines, items, sentAtMs) }
+                    blockingOn(part1.call) { readFinalPart(response.body.source(), itemLines, items, sentAtMs) }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (t: Throwable) {
@@ -301,14 +305,17 @@ class PtCloudClient(
         val callerContext = currentCoroutineContext()
         val cooldown = PtCloudService.cooldown
         val clock = HttpCallClock()
-        val call = translateClient.newCall(translateRequest(request, clock))
         val sentAtMs = SystemClock.elapsedRealtime()
         val part: TranslationPart = try {
             withContext(Dispatchers.IO) {
+                // Built here, as a frame is: off the caller's thread, and a
+                // key [bearer] refuses fails below as a transport failure.
+                val call = translateClient.newCall(translateRequest(request, clock, config.clientKey))
                 blockingOn(call) { call.execute().use(::readTranslation) }
             }
         } catch (e: CancellationException) {
-            call.cancel()
+            // A call cancelled while it ran was cancelled by blockingOn, and
+            // one that finished was read and closed inside it.
             throw e
         } catch (e: IOException) {
             if (!callerContext.isActive) {
@@ -363,16 +370,19 @@ class PtCloudClient(
      * or a transport failure all record no cooldown and report no attempt:
      * the frame that follows is what says how the service is.
      *
-     * Sends nothing when there is no usable key ([PtCloudConfig.hasKey]).
-     * Otherwise stamps when it went out, so the next frame's clock line
-     * reports the head start. Reading the key decrypts it, so call this off
-     * the main thread.
+     * Reads the key once and sends nothing when it is not usable
+     * ([PtCloudConfig.isUsableKey]), so it never throws. Otherwise stamps
+     * when it went out, so the next frame's clock line reports the head
+     * start. The process's first read of a stored key decrypts it
+     * ([com.playtranslate.Prefs.readSecret] keeps it after), so call this
+     * off the main thread.
      */
     fun warm() {
-        if (!config.hasKey) return
+        val key = config.clientKey
+        if (!PtCloudConfig.isUsableKey(key)) return
         val request = Request.Builder()
             .url(BASE_URL.newBuilder().addPathSegments("v1/warm").build())
-            .bearer()
+            .bearer(key)
             .get()
             .build()
         val sentAtMs = SystemClock.elapsedRealtime()
@@ -394,8 +404,9 @@ class PtCloudClient(
      *  `meta` a plain form field (a file part named `meta` is ignored and the
      *  server answers 422). Both parts are byte arrays of known length, so
      *  OkHttp sends the `Content-Length` the edge requires (411 without one).
-     *  [clock] rides along as the request's tag for the HTTP stack to fill. */
-    private fun frameRequest(frame: EncodedFrame, meta: FrameMeta, clock: HttpCallClock): Request {
+     *  [clock] rides along as the request's tag for the HTTP stack to fill;
+     *  [key] is the client key, read once for this request ([bearer]). */
+    private fun frameRequest(frame: EncodedFrame, meta: FrameMeta, clock: HttpCallClock, key: String): Request {
         val body = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart(
@@ -405,7 +416,7 @@ class PtCloudClient(
             .build()
         return Request.Builder()
             .url(BASE_URL.newBuilder().addPathSegments("v1/frame").build())
-            .bearer()
+            .bearer(key)
             .header("Accept", NDJSON)
             .tag(HttpCallClock::class.java, clock)
             .post(body)
@@ -416,22 +427,32 @@ class PtCloudClient(
      *  (any other type is a 415), a byte array, so its length is known. No
      *  `Accept`: the route then answers one JSON object, never item lines.
      *  [clock] rides along as the request's tag for the HTTP stack to fill,
-     *  as on a frame. */
-    private fun translateRequest(request: TranslateRequest, clock: HttpCallClock): Request {
+     *  and [key] is read once for the request, as on a frame. */
+    private fun translateRequest(request: TranslateRequest, clock: HttpCallClock, key: String): Request {
         val body = translateBody(request).toRequestBody(JSON.toMediaType())
         return Request.Builder()
             .url(BASE_URL.newBuilder().addPathSegments("v1/translate").build())
-            .bearer()
+            .bearer(key)
             .tag(HttpCallClock::class.java, clock)
             .post(body)
             .build()
     }
 
-    /** The client key as the bearer token, the one place every
-     *  authenticated request ([frameRequest], [translateRequest], [warm])
-     *  takes it from. Reading the key decrypts it. */
-    private fun Request.Builder.bearer(): Request.Builder =
-        header("Authorization", "Bearer ${config.clientKey}")
+    /**
+     * [key] as the bearer token, the one place every authenticated request
+     * ([frameRequest], [translateRequest], [warm]) sets it. Each request reads
+     * the key once ([PtCloudConfig.clientKey]) and hands it here, where it is
+     * checked with the router's own predicate ([PtCloudConfig.isUsableKey]):
+     * a key saved between the router's check and the build can fail it, and
+     * OkHttp's `header` would throw IllegalArgumentException for it, which
+     * nothing on a read's path or the warm's launch catches. It throws an
+     * IOException instead, which each route's failure path takes as a
+     * transport failure ([PtCloudErrors.classifyTransport]).
+     */
+    private fun Request.Builder.bearer(key: String): Request.Builder {
+        if (!PtCloudConfig.isUsableKey(key)) throw IOException("the stored client key is not a usable bearer value")
+        return header("Authorization", "Bearer $key")
+    }
 
     /** Reads a translate call's answer, blocking: the decoded body of a 200,
      *  else [Refused] with its classification (a non-200 by its status, a
@@ -494,7 +515,7 @@ class PtCloudClient(
             val part1AtMs = SystemClock.elapsedRealtime()
             handedOff = true
             return Opened(
-                response, part, headersAtMs, part1AtMs,
+                call, response, part, headersAtMs, part1AtMs,
                 edgeUploadHeader = response.header(EDGE_UPLOAD_HEADER),
                 edgeHeader = response.header(EDGE_HEADER),
             )
@@ -547,7 +568,10 @@ class PtCloudClient(
         return Part2Result.Ended
     }
 
+    /** A frame's [call] with its [response] read to part 1 and left open for
+     *  part 2. */
     private class Opened(
+        val call: Call,
         val response: Response,
         val part: OcrPart,
         val headersAtMs: Long,

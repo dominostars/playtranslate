@@ -7,6 +7,7 @@ import com.playtranslate.Prefs
 import com.playtranslate.TranslationCache
 import com.playtranslate.translation.GroupTranslator
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.net.NetworkConnectivity
 import com.playtranslate.net.NetworkConnectivity.InternetState
 import com.playtranslate.translation.BackendId
 import com.playtranslate.translation.CooldownCause
@@ -160,24 +161,36 @@ object PtCloudService {
      * cloud), and the floating menu's header shows it
      * ([wouldTakeNextCapture]).
      *
-     * The two facts that cost nothing decide first, each ending the decision
-     * when it keeps the read on the device, so a read that could never go to
-     * the cloud reads nothing else, the key's AndroidKeyStore decryption
-     * included: the switch, off in every release build, then the caller's
-     * device-only statement (a re-OCR, a hold that needs no translation or
-     * runs beside live mode). Only then are the
-     * key (whose read decrypts it), the source and the cooldown read, all
-     * three, and judged by [PtCloudRouting.eligible]; the first of them, in
-     * that order, that refuses is the reason.
+     * The three facts that cost nothing decide first, each ending the
+     * decision when it keeps the read on the device, so a read that could
+     * never go to the cloud reads nothing else, the key's AndroidKeyStore
+     * decryption included: the switch, off in every release build, then the
+     * caller's device-only statement (a re-OCR, and a re-read of the camera's
+     * frozen frame or the import tool's page after an engine pick), then the
+     * network: [internet], by default the default network as
+     * [com.playtranslate.net.NetworkConnectivity.state] last heard it (an
+     * in-memory read), where none ([InternetState.NONE], the app's one "no
+     * internet" rule) is [CloudRefusal.OFFLINE], since a read sent then would
+     * only fail its lookup and fall back. Only then are the key (whose read
+     * decrypts it), the source and the cooldown read, all three, and judged
+     * by [PtCloudRouting.eligible]; the first of them, in that order, that
+     * refuses is the reason.
      */
-    fun refusal(config: PtCloudConfig, srcId: SourceLangId, deviceOnly: Boolean): CloudRefusal? {
+    fun refusal(
+        config: PtCloudConfig,
+        srcId: SourceLangId,
+        deviceOnly: Boolean,
+        internet: InternetState = NetworkConnectivity.state.value.internet,
+    ): CloudRefusal? {
         val enabled = config.enabled
         if (!enabled) return CloudRefusal.SWITCH_OFF
         if (deviceOnly) return CloudRefusal.DEVICE_ONLY
+        val online = internet != InternetState.NONE
+        if (!online) return CloudRefusal.OFFLINE
         val hasKey = config.hasKey
         val sourceSupported = PtCloudRouting.isSupportedSource(srcId)
         val coolingDown = isCoolingDown()
-        if (PtCloudRouting.eligible(enabled, hasKey, sourceSupported, coolingDown, deviceOnly)) {
+        if (PtCloudRouting.eligible(enabled, hasKey, sourceSupported, coolingDown, deviceOnly, online)) {
             return null
         }
         return when {
@@ -189,26 +202,23 @@ object PtCloudService {
 
     /**
      * Whether the next capture would go to PlayTranslate Cloud now, which the
-     * floating menu's header shows (wifi, or wifi_off): the device has a
-     * network ([internet] is not [InternetState.NONE], the app's one "no
-     * internet" rule, [com.playtranslate.net.NetworkConnectivity.isAvailable])
-     * and [refusal] finds nothing against that capture's read of [srcId].
+     * floating menu's header shows (wifi, or wifi_off): [refusal] finds
+     * nothing against that capture's read of [srcId] on [internet], the
+     * network the header follows, so the header and the router answer one
+     * question, the network included (with none, [CloudRefusal.OFFLINE], and
+     * no key is decrypted).
      *
      * The next capture is a one-shot's read, or, while live mode runs, the
      * running tier's next read ([com.playtranslate.CaptureService.runLiveOcrRead]);
-     * neither states device-only (a re-OCR does, but re-reads a capture
-     * already made; a hold beside live mode does, but is not the next
-     * capture), so the decision is the same for both. The network is read
-     * first, so a device with none decrypts no key.
+     * neither states device-only (a re-OCR and a frozen camera or import
+     * frame's re-read after an engine pick do, but re-read a frame already
+     * taken), so the decision is the same for both.
      */
     fun wouldTakeNextCapture(
         config: PtCloudConfig,
         srcId: SourceLangId,
         internet: InternetState,
-    ): Boolean {
-        if (internet == InternetState.NONE) return false
-        return refusal(config, srcId, deviceOnly = false) == null
-    }
+    ): Boolean = refusal(config, srcId, deviceOnly = false, internet) == null
 
     /** The service's switch, the one mutation behind both of its faces:
      *  the cloud page's master switch and the service's row on the
@@ -225,32 +235,64 @@ object PtCloudService {
      *  configuration that is gone. Main thread. */
     fun onCredentialsSaved() = resetForUserGesture()
 
-    /** The cloud page's health check found the service running: a cooldown
-     *  recorded while it was stopped ([CooldownCause.NOT_RUNNING]) describes
-     *  a state that is over, so it is dropped and a running live session
-     *  looks again now, as after a gesture. Nothing else is touched: the
-     *  check takes no key and asks for no translation, so Running says
-     *  nothing about a refused key or a spent quota, and the configuration
-     *  did not change, so the translation cache and the pill's errors stay.
-     *  Main thread. */
+    /** The cloud page's health check found the service running (`GET /health`
+     *  answered 200: the origin is up and its OCR ready). A cooldown whose
+     *  cause that answer disproves ([disprovedByRunning]) describes a state
+     *  that is over, so it is dropped, its ladders with it, and a running live
+     *  session looks again now, as after a gesture. Nothing else is touched:
+     *  the check takes no key and asks for no translation, so Running says
+     *  nothing about a refused key, a rate limit or a spent quota, and the
+     *  configuration did not change, so the translation cache and the pill's
+     *  errors stay. Main thread. */
     fun onHealthRunning() {
-        if (cooldown.unavailableCause() != CooldownCause.NOT_RUNNING) return
+        val cause = cooldown.unavailableCause() ?: return
+        if (!disprovedByRunning(cause)) return
         cooldown.resetCooldown()
         CaptureService.instance?.refreshLiveOverlay()
         changed.update { it + 1 }
     }
 
-    /** As [com.playtranslate.translation.OnlineServiceMutations.saveConfig]
-     *  does for a waterfall service: drop the cooldown and both ladders,
-     *  forget the pill's errors so a failure after the gesture shows again,
-     *  clear the translation cache (the process's one,
-     *  [TranslationCache.shared], so the camera's and the import tool's
-     *  translations under the old configuration go too), and reconcile the
-     *  cache's routing identity, after the reset so that it is computed
-     *  against the cleared state (the order
+    /**
+     * Whether a health check answering Running disproves a cooldown recorded
+     * for [cause], each cause decided here (a new one fails to compile until
+     * it is):
+     *  - NOT_RUNNING, an empty 404 (the pod stopped): yes, it runs now.
+     *  - CONNECTION_FAILED, no connection or no answer in time: yes, the
+     *    check just reached the service and had its answer.
+     *  - SERVER_ERROR, a 500, or the edge's 502 while the origin was
+     *    unreachable (the pod booting): yes, the origin answers with its OCR
+     *    ready. The translator's own server_error in a final part shares the
+     *    cause and is not what the check asks; dropping it costs at most one
+     *    translating frame whose final part fails again and records it anew.
+     *  - RATE_LIMITED, the edge's per-key limit or the translator's: no, the
+     *    check takes no key and translates nothing.
+     *  - DAILY_QUOTA and MONTHLY_QUOTA, the account's quota: no, for the same
+     *    reason.
+     *  - BILLING, an account with no membership: no, only the account fixes it.
+     *  - AUTH, a refused key: no, the check takes no key.
+     */
+    private fun disprovedByRunning(cause: CooldownCause): Boolean = when (cause) {
+        CooldownCause.NOT_RUNNING, CooldownCause.CONNECTION_FAILED, CooldownCause.SERVER_ERROR -> true
+        CooldownCause.RATE_LIMITED, CooldownCause.DAILY_QUOTA, CooldownCause.MONTHLY_QUOTA,
+        CooldownCause.BILLING, CooldownCause.AUTH -> false
+    }
+
+    /** Drops the cooldown and both ladders, then does what
+     *  [com.playtranslate.translation.OnlineServiceMutations.saveConfig]
+     *  does for a waterfall service: forget the pill's errors so a failure
+     *  after the gesture shows again, clear the translation cache (the
+     *  process's one, [TranslationCache.shared], so the camera's and the
+     *  import tool's translations under the old configuration go too), and
+     *  reconcile the cache's routing identity, after the reset so that it is
+     *  computed against the cleared state (the order
      *  [com.playtranslate.translation.OnlineServiceMutations.setEnabled]
      *  uses): the switch and the key decide whether the waterfall's first
-     *  backend is this one. A running live session looks again now: the
+     *  backend is this one. saveConfig itself resets no cooldown: a store
+     *  backend clears its own when one instance of it sees its credentials
+     *  change ([com.playtranslate.translation.GeminiBackend],
+     *  [com.playtranslate.translation.DeepLBackend]), while this service's
+     *  one cooldown, which both routes share, is reset here, by the gesture.
+     *  A running live session looks again now: the
      *  gesture changes which reader the next read goes to, and the furigana
      *  tier's change gate would otherwise keep the old reader's result until
      *  the pixels move. Last, the gesture is counted on [changes], so the
@@ -280,6 +322,7 @@ object PtCloudService {
 enum class CloudRefusal(val logWord: String?) {
     SWITCH_OFF(null),
     DEVICE_ONLY("device-only"),
+    OFFLINE("no network"),
     NO_KEY("no key"),
     SOURCE("source"),
     COOLING_DOWN("cooling down"),

@@ -7,8 +7,10 @@ import com.playtranslate.cloud.PtCloudTestSupport.BASE_URL
 import com.playtranslate.cloud.PtCloudTestSupport.CapturingExecutor
 import com.playtranslate.cloud.PtCloudTestSupport.KEY
 import com.playtranslate.cloud.PtCloudTestSupport.onExecutor
+import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.translation.CooldownState
 import com.playtranslate.translation.HttpCallClock
+import com.playtranslate.translation.OnlineAttempt
 import com.playtranslate.translation.TranslationBackendRegistry
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -43,7 +45,8 @@ import java.util.Collections
  * field (a file part named `meta` makes the server answer 422). Plus
  * `GET /health`'s status
  * mapping and `GET /v1/warm`: what it sends, when it sends nothing, and the
- * head start it hands the next frame's clock line.
+ * head start it hands the next frame's clock line. And a stored key no
+ * request can carry, refused at the build on both routes.
  */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudRequestTest {
@@ -275,12 +278,63 @@ class PtCloudRequestTest {
 
     @Test fun `a warm that sent nothing leaves the next frame with no head start`() {
         ShadowLog.clear()
-        val client = PtCloudClient(
-            PtCloudTestSupport.config(ctx, key = ""),
-            clientFactory = { PtCloudTestSupport.cannedClient(200, ndjson) },
-        )
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        val client = PtCloudClient(PtCloudConfig(prefs), clientFactory = { PtCloudTestSupport.cannedClient(200, ndjson) })
         client.warm()
+        // A key saved after the warm, so the frame goes out.
+        prefs.ptCloudClientKey = KEY
         runBlocking { client.postFrame(PtCloudTestSupport.frame(), PtCloudTestSupport.meta()).translation.await() }
         assertTrue(part1Lines().single(), " warm=none " in part1Lines().single())
+    }
+
+    // ── A key the request cannot carry ─────────────────────────────────
+    // The router asked hasKey, then a key that fails it was saved before the
+    // request was built: each route reads the key once and refuses it there,
+    // as a transport failure, instead of OkHttp's IllegalArgumentException,
+    // which no caller catches. (The warm's case is "warm sends nothing with
+    // no usable key" above.)
+
+    /** A client whose stored key is not a legal header value, answering
+     *  [body] to every call it would make, recorded in [seen]. */
+    private fun unsendableKeyClient(seen: MutableList<Request>, body: String) = PtCloudClient(
+        PtCloudTestSupport.config(ctx, key = "abc\ndef"),
+        clientFactory = { PtCloudTestSupport.cannedClient(200, body, seen = seen) },
+    )
+
+    /** Runs [call] and returns what it threw. */
+    private fun thrownBy(call: suspend () -> Unit): Throwable? = runCatching { runBlocking { call() } }.exceptionOrNull()
+
+    /** [thrown] is the transport failure: the kind a lost connection has. */
+    private fun assertTransportFailure(thrown: Throwable?) {
+        assertTrue("$thrown", thrown is PtCloudReadException)
+        assertEquals(BackendFailureKind.UNREACHABLE, (thrown as PtCloudReadException).failure.kind)
+    }
+
+    @Test fun `a frame whose key cannot be sent fails as a transport failure and sends nothing`() {
+        val attempts = Collections.synchronizedList(mutableListOf<OnlineAttempt>())
+        TranslationBackendRegistry.onlineAttemptListener = { attempts += it }
+        val seen = mutableListOf<Request>()
+        val client = unsendableKeyClient(seen, ndjson)
+        val frame = suspend { client.postFrame(PtCloudTestSupport.frame(), PtCloudTestSupport.meta()); Unit }
+
+        assertTransportFailure(thrownBy(frame))
+        assertFalse("a first one is forgiven, as a lost connection is", PtCloudService.isCoolingDown())
+        assertTransportFailure(thrownBy(frame))
+        assertTrue("recorded: a second cools down", PtCloudService.isCoolingDown())
+        assertTrue(seen.isEmpty())
+        assertEquals(2, attempts.size)
+        assertTrue("no server answered: $attempts", attempts.none { it.reachedServer })
+    }
+
+    @Test fun `a translate call whose key cannot be sent fails as a transport failure and sends nothing`() {
+        val seen = mutableListOf<Request>()
+        val client = unsendableKeyClient(seen, PtCloudTestSupport.part2())
+        val translate = suspend { client.postTranslate(TranslateRequest("ja", "en", listOf("一"), "tr-1", null, null)); Unit }
+
+        assertTransportFailure(thrownBy(translate))
+        assertFalse(PtCloudService.isCoolingDown())
+        assertTransportFailure(thrownBy(translate))
+        assertTrue("recorded: a second cools down", PtCloudService.isCoolingDown())
+        assertTrue(seen.isEmpty())
     }
 }

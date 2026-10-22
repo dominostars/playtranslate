@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.OcrManager
+import com.playtranslate.TranslationCache
 import com.playtranslate.cloud.PtCloudTestSupport.GatedSource
 import com.playtranslate.cloud.PtCloudTestSupport.item
 import com.playtranslate.cloud.PtCloudTestSupport.with
@@ -24,11 +25,13 @@ import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.translation.llm.LlmPromptTemplates
 import com.playtranslate.translation.llm.PromptKind
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
@@ -58,7 +61,8 @@ import java.util.concurrent.atomic.AtomicLong
  * groups the server's cache answered), item lines arrive in the translations
  * provisionally, the final part settles them, and the final part's outcome
  * is recorded on the cooldown and reported once (at part 1 when part 1
- * translated every group). The request's `meta` is read back from the call
+ * decides it: every group translated, or nothing to translate, a
+ * same-language request or no groups). The request's `meta` is read back from the call
  * the reader made. The encoder is faked (real compression needs native
  * graphics, [FrameEncoderNativeTest]); the bitmap is only the argument.
  */
@@ -237,6 +241,9 @@ class PtCloudFrameReaderTest {
             assertEquals("target equals source, so the server skips translation", wire, meta.str("target"))
             assertFalse("no context for a pair that is not translated", "context" in meta)
             assertEquals(emptyMap<Int, String>(), reading.settled())
+            // Every child over, the skipped final part read: it adds nothing
+            // to the one attempt part 1 reported.
+            coroutineContext.job.joinChildren()
             assertOneAttempt(failure = null)
         }
     }
@@ -250,6 +257,9 @@ class PtCloudFrameReaderTest {
         assertEquals("target equals source, so the server skips translation", "zh-Hant", meta.str("target"))
         assertFalse("no context for a pair that is not translated", "context" in meta)
         assertTrue("part 1's lines", lines!!.isNotEmpty())
+        // The drag cancels the translations as it returns: the frame still
+        // counts, reported at part 1.
+        assertOneAttempt(failure = null)
     }
 
     @Test fun `persona and context go out when the user has them, keyed by the translation pair`() = runBlocking {
@@ -521,4 +531,77 @@ class PtCloudFrameReaderTest {
             assertFalse("the exchange ended by itself", calls.single().isCanceled())
             assertOneAttempt(failure = null)
         }
+
+    // ── Nothing to translate: the outcome is known at part 1 too ─────────
+
+    @Test fun `a same-language reading dropped the moment read returns still counts the frame, once, at part 1`() =
+        runBlocking {
+            // A server error, long expired, left the RateLimit rung at 1: the
+            // next one would cost 10 minutes unless a success resets it.
+            cooldown.recordLadderFailure(CooldownLadder.RateLimit, "Server error", CooldownCause.SERVER_ERROR)
+            clock.addAndGet(61_000)
+            assertNull(cooldown.unavailableUntil())
+            val part2Gate = CountDownLatch(1)
+            val reading = reader(streaming(listOf(part1, PtCloudTestSupport.part2("skipped", "[]")), listOf(null, part2Gate)))
+                .read(bitmap, request(SourceLangId.JA, "ja"))
+            try {
+                // What every consumer that wants text alone does (the furigana
+                // tier, the drag): nothing awaits the translations.
+                reading.translations!!.cancel()
+                assertOneAttempt(failure = null)
+            } finally {
+                part2Gate.countDown()
+            }
+            coroutineContext.job.joinChildren()
+            assertOneAttempt(failure = null)
+            assertFalse("the exchange ended by itself", calls.single().isCanceled())
+            // The success reset the rung: the next server error costs the first step.
+            cooldown.recordLadderFailure(CooldownLadder.RateLimit, "Server error", CooldownCause.SERVER_ERROR)
+            assertEquals(clock.get() + 60_000, cooldown.unavailableUntil())
+        }
+
+    @Test fun `a part 1 with no groups dropped the moment read returns still counts the frame, once, at part 1`() =
+        runBlocking {
+            cooldown.recordLadderFailure(CooldownLadder.RateLimit, "Server error", CooldownCause.SERVER_ERROR)
+            assertTrue(cooldown.unavailableUntil() != null)
+            val part2Gate = CountDownLatch(1)
+            val empty = PtCloudTestSupport.part1(PtCloudTestSupport.JA) { it.with("groups", JsonArray(emptyList())) }
+            // A translating pair, so the empty part 1 alone decides the outcome.
+            val reading = reader(streaming(listOf(empty, PtCloudTestSupport.part2("skipped", "[]")), listOf(null, part2Gate)))
+                .read(bitmap, request())
+            try {
+                assertNull("no text", reading.ocr)
+                // What the pipeline does with a reading that has no text.
+                reading.translations!!.cancel()
+                assertOneAttempt(failure = null)
+                assertNull("the success cleared the cooldown", cooldown.unavailableUntil())
+            } finally {
+                part2Gate.countDown()
+            }
+            coroutineContext.job.joinChildren()
+            assertOneAttempt(failure = null)
+            assertFalse("the exchange ended by itself", calls.single().isCanceled())
+        }
+
+    @Test fun `the translations carry the cache's configuration from before the request went out`() = runBlocking {
+        val part1Gate = CountDownLatch(1)
+        val waiting = CountDownLatch(1)
+        val before = TranslationCache.shared.configGeneration
+        val pending = async {
+            reader(streaming(listOf(part1, PtCloudTestSupport.part2()), listOf(part1Gate), waiting)).read(bitmap, request())
+        }
+        try {
+            until { waiting.count == 0L }
+            // A settings clear while the frame reads (the switch or the key
+            // changed): the frame's translations were made under the old one.
+            TranslationCache.shared.clear()
+        } finally {
+            part1Gate.countDown()
+        }
+        val reading = withTimeout(5_000) { pending.await() }
+        assertEquals(before, reading.translations!!.configGeneration)
+        assertTrue("the clear moved the cache on", TranslationCache.shared.configGeneration != before)
+        reading.settled()
+        Unit
+    }
 }

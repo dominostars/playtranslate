@@ -19,7 +19,6 @@ import android.view.WindowManager
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.CaptureLifecycle
 import com.playtranslate.capture.GameAudioGate
-import com.playtranslate.cloud.PtCloudConfig
 import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.ocr.FrameReaders
 import com.playtranslate.net.NetworkConnectivity
@@ -695,8 +694,8 @@ class OverlayUiController(
      * show the owner's next failure again, and open the owner's settings
      * page, where the user can fix the service or switch to another: the
      * Translation services page, or PlayTranslate Cloud's own page for its
-     * pill (the cloud is a frame reader, not a waterfall service, so it has
-     * no row on the services page).
+     * pill, where its switch, key and status are (its row on the services
+     * page, debug builds only, opens the same page).
      * Auto-translate stops, as the app's own pauseLiveMode stops it, rather
      * than pausing to resume by itself: the user starts it again back in the
      * game, and that start is the next try. It stops first, here and now,
@@ -1952,7 +1951,7 @@ class OverlayUiController(
         val prefs = Prefs(context)
         // PlayTranslate Cloud's strip, while its switch is on (never outside
         // debug builds).
-        val cloudStrip = PtCloudConfig(prefs).enabled
+        val cloudStrip = PtCloudService.config.enabled
         val menu = FloatingIconMenu(themedCtx, showCloudHeader = cloudStrip)
         menu.isSingleScreen = Prefs.isSingleScreen(context)
         menu.exitFlow = CaptureLifecycle.hasActivateControl(context)
@@ -2159,11 +2158,11 @@ class OverlayUiController(
     /** Shows on [menu]'s PlayTranslate Cloud strip whether the next capture
      *  would go to the cloud ([PtCloudService.wouldTakeNextCapture]) with the
      *  device's network in [internet], reading the switch, the key, the game
-     *  language and the cooldown afresh. */
+     *  language and the cooldown afresh: the service's settings
+     *  ([PtCloudService.config]), the ones the router reads. */
     private fun drawCloudStatus(menu: FloatingIconMenu, internet: NetworkConnectivity.InternetState) {
-        val prefs = Prefs(context)
         menu.cloudAvailable = PtCloudService.wouldTakeNextCapture(
-            PtCloudConfig(prefs), prefs.sourceLangId, internet = internet,
+            PtCloudService.config, Prefs(context).sourceLangId, internet = internet,
         )
     }
 

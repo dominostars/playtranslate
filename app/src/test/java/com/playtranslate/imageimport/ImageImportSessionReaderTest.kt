@@ -93,8 +93,10 @@ class ImageImportSessionReaderTest {
 
     private val cloud = ReaderAttribution("PlayTranslate Cloud", "ptcloud")
 
+    // Stamped against this test's own cache, the one the session's translator
+    // writes to (a reader stamps the process's shared one by default).
     private fun reader(groupCount: Int, ready: Map<Int, String>, target: String = "en", job: Job = Job()) =
-        ReaderTranslations("ja", target, "Cloud", groupCount, ready, job)
+        ReaderTranslations("ja", target, "Cloud", groupCount, ready, job, configGeneration = cache.configGeneration)
 
     private fun session(scripted: ScriptedReader, onSlowOcr: () -> Unit = {}) = ImageImportSession(
         context = ctx,

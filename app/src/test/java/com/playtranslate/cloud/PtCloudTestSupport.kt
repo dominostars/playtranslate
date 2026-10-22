@@ -1,7 +1,9 @@
 package com.playtranslate.cloud
 
 import android.content.Context
+import android.net.ConnectivityManager
 import com.playtranslate.Prefs
+import com.playtranslate.net.NetworkConnectivity
 import com.playtranslate.security.SecretCodec
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -23,12 +25,14 @@ import okio.Buffer
 import okio.Source
 import okio.Timeout
 import okio.buffer
+import org.robolectric.Shadows.shadowOf
 import java.io.IOException
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Shared pieces for the PlayTranslate Cloud tests: fixtures in the wire's
  *  two-part shape, a [Prefs] with a reversible codec, and canned HTTP. */
@@ -48,6 +52,34 @@ internal object PtCloudTestSupport {
             return if (stored.startsWith(prefix)) stored.removePrefix(prefix) else null
         }
         companion object { const val PREFIX = "enc:" }
+    }
+
+    /** [FakeCodec] counting its decryptions, so a test can say a key was
+     *  never read: [Prefs] decrypts a secret at the first read of it under a
+     *  codec (it serves the same ciphertext's later reads from its memo), so
+     *  a fresh codec counts 0 until the key is read. */
+    class CountingCodec : SecretCodec {
+        private val inner = FakeCodec()
+        val decrypts = AtomicInteger(0)
+        override fun encrypt(context: String, plaintext: String): String? = inner.encrypt(context, plaintext)
+        override fun decrypt(context: String, stored: String): String? {
+            decrypts.incrementAndGet()
+            return inner.decrypt(context, stored)
+        }
+    }
+
+    /** Puts [NetworkConnectivity.state] at no network, as airplane mode does:
+     *  installs a connectivity callback of the test's own over a device whose
+     *  default network is gone (the install seeds the state from that query)
+     *  and returns it, so the test can bring a network back (`onAvailable`).
+     *  The application's own callback is never driven; the next test's
+     *  application installs it again over a fresh shadow. */
+    fun offline(ctx: Context): ConnectivityManager.NetworkCallback {
+        val cm = ctx.getSystemService(ConnectivityManager::class.java)
+        val before = shadowOf(cm).networkCallbacks.toSet()
+        shadowOf(cm).setActiveNetworkInfo(null)
+        NetworkConnectivity.install(ctx) {}
+        return (shadowOf(cm).networkCallbacks - before).single()
     }
 
     fun sharedPrefs(ctx: Context) = ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)

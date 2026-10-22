@@ -12,7 +12,7 @@ import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.capturableDisplays
-import com.playtranslate.cloud.PtCloudConfig
+import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLangId
@@ -288,11 +288,12 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── PlayTranslate Cloud digest ────────────────────────────────────────
 
-    /** "Off", "On", or "On, no key": the switch as [PtCloudConfig] reads it
-     *  (already false outside debug builds), and whether a capture would
-     *  have a key to send. Both are prefs, so it is observed, not polled. */
+    /** "Off", "On", or "On, no key": the switch as the service's settings
+     *  read it ([PtCloudService.config], already false outside debug builds),
+     *  and whether a capture would have a key to send. Both are prefs, so it
+     *  is observed, not polled. */
     private fun cloudDigest(): String {
-        val config = PtCloudConfig(prefs)
+        val config = PtCloudService.config
         return str(
             when {
                 !config.enabled -> R.string.settings_pt_cloud_summary_off

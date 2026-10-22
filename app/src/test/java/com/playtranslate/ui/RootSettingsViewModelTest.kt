@@ -9,7 +9,11 @@ import com.playtranslate.AnkiManager
 import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.cloud.PtCloudConfig
+import com.playtranslate.cloud.PtCloudService
+import com.playtranslate.cloud.PtCloudTestSupport
 import com.playtranslate.language.HintTextKind
+import com.playtranslate.translation.CooldownState
 import com.playtranslate.translation.Cooldownable
 import com.playtranslate.translation.TranslationBackend
 import org.junit.After
@@ -44,6 +48,7 @@ class RootSettingsViewModelTest {
     }
 
     @After fun tearDown() {
+        PtCloudService.installForTest(null)
         ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
             .edit().clear().commit()
     }
@@ -337,12 +342,11 @@ class RootSettingsViewModelTest {
     }
 
     // ── PlayTranslate Cloud digest ────────────────────────────────────────
-    // The keyed "On" cell is device-verified: the VM builds its own Prefs on
-    // the AndroidKeyStore codec, which a JVM test has no keystore for, so a
-    // key written here stores nothing (the secret slot fails closed) and the
-    // VM could not read one anyway. The same holds for the client-key slot's
-    // observation. (Unit tests run the debug variant, so the switch's
-    // debug-build gate reads through.)
+    // The VM reads the service's settings (PtCloudService.config), so the
+    // keyed cell stores its key through a reversible codec installed there;
+    // a key written through the app's own Prefs stores nothing on the JVM
+    // (the AndroidKeyStore codec fails closed). (Unit tests run the debug
+    // variant, so the switch's debug-build gate reads through.)
 
     @Test fun `cloud summary reads Off while the switch is off`() {
         assertEquals("Off", RootSettingsViewModel(app).state.value.cloudSummary)
@@ -364,6 +368,18 @@ class RootSettingsViewModelTest {
         Prefs(ctx).ptCloudEnabled = false
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals("Off", vm.state.value.cloudSummary)
+    }
+
+    @Test fun `cloud summary reads On once a key is saved`() {
+        val cloudPrefs = PtCloudTestSupport.prefs(ctx)
+        PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(cloudPrefs))
+        Prefs(ctx).ptCloudEnabled = true
+        val vm = RootSettingsViewModel(app)
+        assertEquals("On, no key", vm.state.value.cloudSummary)
+
+        cloudPrefs.ptCloudClientKey = PtCloudTestSupport.KEY
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("the key slot is observed", "On", vm.state.value.cloudSummary)
     }
 
     @Test fun `appearance digest is theme mode + accent name`() {

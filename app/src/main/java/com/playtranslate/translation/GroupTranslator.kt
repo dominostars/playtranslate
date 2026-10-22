@@ -77,16 +77,16 @@ class GroupTranslator(
             GroupTranslator(context, TranslationCache.shared).reconcileBackendPreference()
     }
 
-    /** Immutable snapshot of the translation pair + DeepL key at the moment
-     *  a translation request enters. Threaded through every downstream call
+    /** Immutable snapshot of the translation pair at the moment a
+     *  translation request enters. Threaded through every downstream call
      *  so that a concurrent [Prefs] change mid-batch can't poison a cache
      *  entry (translated under the new pair but keyed under the old): both
-     *  the key and the translator selection derive from the *same* target
-     *  value. */
+     *  the cache key and the translator selection derive from the *same*
+     *  target value. No secret is read here: each backend reads its own key
+     *  when it is called. */
     private data class TranslationTarget(
         val source: String,
         val target: String,
-        val deeplKey: String,
         /** Chinese script choice; meaningful only when [target] == "zh". */
         val chineseVariant: ChineseScriptVariant,
         /** True when the OCR'd source is already Traditional (ZH_HANT) — so a
@@ -127,7 +127,6 @@ class GroupTranslator(
         return TranslationTarget(
             source = SourceLanguageProfiles[srcId].translationCode,
             target = prefs.targetLang,
-            deeplKey = prefs.deeplApiKey,
             chineseVariant = prefs.targetChineseVariant,
             sourceIsTraditional = srcId == SourceLangId.ZH_HANT,
             sourceId = srcId,
@@ -234,10 +233,6 @@ class GroupTranslator(
         onProgress: (suspend (List<GroupTranslation?>) -> Unit)? = null,
     ): List<GroupTranslation> {
         val target = snapshotTranslationTarget(sourceOverride)
-        // The configuration this call translates under: a settings clear
-        // while it waits for the reader or the waterfall makes its results
-        // display-only (TranslationCache.configGeneration).
-        val configGeneration = cache.configGeneration
 
         // OCR-only bypass: when source and target language are the same,
         // skip translation entirely — OCR output is the final result.
@@ -264,7 +259,7 @@ class GroupTranslator(
         }
         if (reader == null || provided.isEmpty()) return translateThroughCache(groupTexts, target)
 
-        val taken = takeReaderTranslations(groupTexts, provided, reader.providerName, target, configGeneration)
+        val taken = takeReaderTranslations(groupTexts, provided, reader, target)
         val rest = groupTexts.indices.filter { taken[it] == null }
         // In position order, as the nulls they fill.
         val restTranslated =
@@ -329,29 +324,30 @@ class GroupTranslator(
     ): List<GroupTranslation?> {
         val target = snapshotTranslationTarget(sourceOverride)
         if (target.source == target.target) return List(groupTexts.size) { null }
-        val configGeneration = cache.configGeneration
         val cached = groupTexts.map { cachedTranslation(it, target) }
         if (reader == null || !reader.isFor(target.source, target.target)) return cached
         // The reader's text wins over a cache entry: it is the fresher one.
-        return takeReaderTranslations(groupTexts, reader.ready, reader.providerName, target, configGeneration)
+        return takeReaderTranslations(groupTexts, reader.ready, reader, target)
             .zip(cached) { fromReader, fromCache -> fromReader ?: fromCache }
     }
 
-    /** The reader's [byPosition] texts for [groupTexts] under [target]: each one
-     *  cached as [providerName]'s, so the live tiers and the next capture serve it
-     *  like any backend's entry, and returned localized and named by
-     *  [providerName]; null at a position it does not name. Shared by
-     *  [translationsAtOnce] and [translateGroupsSeparately]. Cached only while
-     *  the configuration the call started under still stands
-     *  ([configGeneration], [TranslationCache.setIfConfigUnchanged]). */
+    /** [reader]'s [byPosition] texts for [groupTexts] under [target]: each one
+     *  cached as its provider's ([ReaderTranslations.providerName]), so the live
+     *  tiers and the next capture serve it like any backend's entry, and returned
+     *  localized and named by that provider; null at a position it does not name.
+     *  Shared by [translationsAtOnce] and [translateGroupsSeparately]. Cached only
+     *  while the configuration the reader's request went out under still stands
+     *  ([ReaderTranslations.configGeneration], [TranslationCache.setIfConfigUnchanged]),
+     *  not the one this call found: the request came first, so a settings clear
+     *  between the two ended the configuration these texts were made under. */
     private fun takeReaderTranslations(
         groupTexts: List<String>,
         byPosition: Map<Int, String>,
-        providerName: String,
+        reader: ReaderTranslations,
         target: TranslationTarget,
-        configGeneration: Int,
     ): List<GroupTranslation?> {
         if (byPosition.isEmpty()) return List(groupTexts.size) { null }
+        val providerName = reader.providerName
         // The cache's routing identity is reconciled before these writes, the
         // rule every cache write follows (see translateThroughCache), so a
         // backend toggle since the last call clears the old entries first
@@ -361,7 +357,7 @@ class GroupTranslator(
         // the same rule as a fully cached batch.
         return groupTexts.mapIndexed { i, text ->
             byPosition[i]?.let { translation ->
-                cache.setIfConfigUnchanged(cacheKey(text, target), translation to providerName, configGeneration)
+                cache.setIfConfigUnchanged(cacheKey(text, target), translation to providerName, reader.configGeneration)
                 // Localized after the cache write, like the waterfall's results:
                 // the shared "zh" cache keeps Simplified for every variant.
                 GroupTranslation(target.localize(translation), note = null, backendDisplayName = providerName)
@@ -545,7 +541,7 @@ class GroupTranslator(
      *  the prefs at call time — so a deliberate sentence translated after a
      *  language change (a deferred reveal, a call that outlived a switch)
      *  runs, records and displays under the one pair its result claims.
-     *  The script variant and the DeepL key still come from prefs. */
+     *  The script variant still comes from prefs. */
     suspend fun translateOnce(
         text: String,
         sourceLangId: SourceLangId,

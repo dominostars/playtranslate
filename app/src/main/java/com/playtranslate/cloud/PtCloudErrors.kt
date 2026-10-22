@@ -195,11 +195,12 @@ object PtCloudErrors {
      *    the pod does not start by itself; the cloud page's health check
      *    finding it running resets the cooldown.
      *  - 404 with a body, 413, 415, 422: the request is wrong (a bug; a 413
-     *    is a frame over the server's cap, a 415 also a JPEG sent to an
-     *    origin that predates JPEG uploads, a 422 on the translate route a
-     *    blank or oversize text, which [PtCloudBackend] never sends; a 404
-     *    with a body is also the edge's answer for a route it does not serve
-     *    yet), shown with its code.
+     *    is a frame over the server's cap, a 415 a refusal of the request's
+     *    content type, though a frame part is always a JPEG and a translate
+     *    body always JSON, a 422 on the translate route a blank or oversize
+     *    text, which [PtCloudBackend] never sends; a 404 with a body is also
+     *    the edge's answer for a route it does not serve yet), shown with
+     *    its code.
      *  - 429: the edge's per-key rate limit, with `Retry-After`.
      *  - 500, 502: the service or its OCR failed, the RateLimit ladder.
      *  - 503: the pod is starting; waiting fixes it, so no cooldown.

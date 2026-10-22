@@ -175,14 +175,9 @@ class OneShotManager(private val service: CaptureService) {
         val mode = cycle.forceMode ?: Prefs(service).overlayMode
 
         // Warm PlayTranslate Cloud for the stage 3 read, in the source language
-        // runOcrRead reads from the same pref. The device-only statement is what
-        // the read would state at this moment; the read decides again when it
-        // runs, so the two differ only if live mode starts or stops during the
-        // screenshot, which costs one wasted or one missed warm.
-        FrameReaders.warm(
-            Prefs(service).sourceLangId,
-            deviceOnly = mode == OverlayMode.FURIGANA || service.isLive,
-        )
+        // runOcrRead reads from the same pref, stating what that read states:
+        // never device-only.
+        FrameReaders.warm(Prefs(service).sourceLangId, deviceOnly = false)
 
         // 1. Capture clean screenshot. Null is a real, reachable outcome
         //    (consent loss, no qualifying delivery inside the freshness
@@ -209,16 +204,21 @@ class OneShotManager(private val service: CaptureService) {
             // backend's capture source — forward it so the status-bar crop
             // matches the frame's contents (a single-app stream has no bar,
             // and cropping would eat game content).
-            // Two holds read on the device whatever the reader settings say:
-            // the furigana hold needs no translation, and a hold while live
-            // mode runs goes through runOcrRead's live bookkeeping (the slow-OCR
-            // prompt's pass timing, the startup card's exclusion rect), which
-            // is tuned for device engines.
+            // The hold reads through the router as the live tiers do, never
+            // device-only (runOcrRead states it for every read it makes), so
+            // a hold while one runs reads where the tier it peeks at reads;
+            // a furigana hold asks for the text alone, as the
+            // furigana tier does. While live mode runs, runOcrRead's live
+            // bookkeeping holds for a cloud read too: the slow-OCR prompt's
+            // pass timing starts only when a device engine runs, and a group
+            // the startup card's exclusion drops takes the cloud reading's
+            // translations with it, so the groups left translate through the
+            // waterfall.
             val read = service.runOcrRead(
                 raw, displayId,
                 frameIncludesSystemUi = frameIncludesUi,
                 frameIncludesOwnOverlays = frame.includesOwnOverlays,
-                deviceOnly = mode == OverlayMode.FURIGANA || service.isLive,
+                translate = mode != OverlayMode.FURIGANA,
             )
             val pipeline = read.result
             translations = pipeline?.translations
@@ -253,8 +253,8 @@ class OneShotManager(private val service: CaptureService) {
             // the waterfall. A device read has no
             // reader: its cached groups paint at once and the rest are
             // skeletons until the final boxes (all skeletons when nothing is
-            // cached). A furigana hold reads on the device and builds no
-            // translation boxes.
+            // cached). A furigana hold's read carries no translations and it
+            // builds no translation boxes.
             val atOnce = service.translationsAtOnce(ocrResult.groups.map { it.text }, pipeline.translations)
             val processor = createProcessor(mode, atOnce) { texts, onProgress ->
                 service.translateGroupsSeparately(texts, reader = pipeline.translations, onProgress = onProgress)

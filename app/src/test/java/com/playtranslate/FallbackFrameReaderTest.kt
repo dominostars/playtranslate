@@ -19,7 +19,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -35,9 +34,8 @@ import java.io.IOException
  * read. Cancellation is never a failure to fall back from, and any other
  * exception is a bug that must surface rather than be papered over by a
  * second reader. The fallback's log line names the exception class only: a
- * message can carry a URL. A reading from the fallback carries the primary's
- * failure when the exception classified itself, and only then
- * ([FrameReading.fallbackFrom]): the live loop keys its session block on it.
+ * message can carry a URL. A reading from the fallback is the fallback's own,
+ * whatever the primary's failure was.
  *
  * Robolectric only for a [Bitmap] instance (legacy graphics: nothing is
  * drawn or read from it) and for [ShadowLog].
@@ -69,7 +67,6 @@ class FallbackFrameReaderTest {
         val result = FallbackFrameReader(primary, fallback).read(bitmap, request)
 
         assertSame(primaryReading, result)
-        assertNull("the primary read it: no failure", result.fallbackFrom)
         assertEquals(0, fallback.calls)
     }
 
@@ -81,32 +78,28 @@ class FallbackFrameReaderTest {
 
         val result = FallbackFrameReader(primary, fallback).read(bitmap, request)
 
-        assertSame(fallbackReading.attribution, result.attribution)
-        assertNull("an unclassified failure names no failure", result.fallbackFrom)
+        assertSame(fallbackReading, result)
         assertEquals(1, fallback.calls)
         val lines = ShadowLog.getLogsForTag("FrameReader").map { it.msg }
         assertTrue("the fallback is logged: $lines", lines.any { "IOException" in it })
         assertFalse("no message text in the log: $lines", lines.any { "secret-detail" in it || "https" in it })
     }
 
-    @Test fun `a fallback reading carries the primary's classified failure`() = runBlocking {
-        val failure = BackendFailure(BackendFailureKind.NOT_RUNNING, 404)
-        // Every field set, so each one is seen to come from the fallback.
+    @Test fun `the cloud's classified failure falls back too, to the fallback's own reading`() = runBlocking {
+        // Every field set, so the whole reading is seen to be the fallback's.
         val fallbackReading = FrameReading(
             ocr = OcrManager.OcrResult(fullText = "t", segments = emptyList()),
             attribution = ReaderAttribution("fallback", "fallback"),
             translations = ReaderTranslations("ja", "en", "fallback", groupCount = 1, ready = emptyMap(), job = Job()),
         )
-        val primary = FakeReader { throw PtCloudReadException(failure, "pod stopped") }
+        val primary = FakeReader {
+            throw PtCloudReadException(BackendFailure(BackendFailureKind.NOT_RUNNING, 404), "pod stopped")
+        }
         val fallback = FakeReader { fallbackReading }
 
         val result = FallbackFrameReader(primary, fallback).read(bitmap, request)
 
-        assertEquals(failure, result.fallbackFrom)
-        // Everything else is the fallback's reading.
-        assertSame(fallbackReading.ocr, result.ocr)
-        assertSame(fallbackReading.attribution, result.attribution)
-        assertSame(fallbackReading.translations, result.translations)
+        assertSame(fallbackReading, result)
         assertEquals(1, fallback.calls)
     }
 

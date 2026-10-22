@@ -2,8 +2,10 @@ package com.playtranslate.cloud
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.playtranslate.Prefs
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.net.NetworkConnectivity.InternetState
+import com.playtranslate.security.SecretCodec
 import com.playtranslate.translation.CooldownCause
 import com.playtranslate.translation.CooldownLadder
 import com.playtranslate.translation.CooldownState
@@ -16,12 +18,14 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowNetwork
 
 /**
  * The router's decision ([PtCloudService.refusal]), which the router, its
- * warm call and the floating menu's header all ask, and the header's
- * question built on it ([PtCloudService.wouldTakeNextCapture]): a network,
- * and a read the router would send to the cloud, the next capture never
+ * warm call and the floating menu's header all ask, the network among its
+ * reasons (read before the key, so a device with none decrypts nothing), and
+ * the header's question built on it ([PtCloudService.wouldTakeNextCapture]):
+ * a read the router would send to the cloud, the next capture never
  * stating device-only (a stopped pod and a refused key are cooldowns).
  *
  * The key is stored through the reversible test codec (the AndroidKeyStore
@@ -45,9 +49,14 @@ class PtCloudNextCaptureTest {
         PtCloudTestSupport.sharedPrefs(ctx).edit().clear().commit()
     }
 
-    /** The switch [on] and [key] stored, as [PtCloudConfig] reads them. */
-    private fun config(on: Boolean = true, key: String = PtCloudTestSupport.KEY): PtCloudConfig {
-        val prefs = PtCloudTestSupport.prefs(ctx)
+    /** The switch [on] and [key] stored, as [PtCloudConfig] reads them,
+     *  through [codec]. */
+    private fun config(
+        on: Boolean = true,
+        key: String = PtCloudTestSupport.KEY,
+        codec: SecretCodec = PtCloudTestSupport.FakeCodec(),
+    ): PtCloudConfig {
+        val prefs = Prefs(ctx, codec)
         prefs.ptCloudEnabled = on
         prefs.ptCloudClientKey = key
         return PtCloudConfig(prefs)
@@ -55,6 +64,13 @@ class PtCloudNextCaptureTest {
 
     private fun coolDown() =
         cooldown.recordLadderFailure(CooldownLadder.RateLimit, "Server error", CooldownCause.SERVER_ERROR)
+
+    /** The router's decision on [internet], a network unless a cell says otherwise. */
+    private fun refusal(
+        config: PtCloudConfig,
+        deviceOnly: Boolean = false,
+        internet: InternetState = InternetState.VALIDATED,
+    ) = PtCloudService.refusal(config, ja, deviceOnly, internet)
 
     private fun next(
         config: PtCloudConfig = config(),
@@ -65,28 +81,50 @@ class PtCloudNextCaptureTest {
 
     @Test fun `with the switch off, the switch is the reason whatever else holds`() {
         coolDown()
-        assertEquals(CloudRefusal.SWITCH_OFF, PtCloudService.refusal(config(on = false, key = ""), ja, deviceOnly = true))
+        assertEquals(
+            CloudRefusal.SWITCH_OFF,
+            refusal(config(on = false, key = ""), deviceOnly = true, internet = InternetState.NONE),
+        )
     }
 
     @Test fun `a device-only read is refused for that before anything else is read`() {
         coolDown()
-        assertEquals(CloudRefusal.DEVICE_ONLY, PtCloudService.refusal(config(key = ""), ja, deviceOnly = true))
+        assertEquals(CloudRefusal.DEVICE_ONLY, refusal(config(key = ""), deviceOnly = true, internet = InternetState.NONE))
+    }
+
+    @Test fun `with no network the read stays on the device, refused before its key is read`() {
+        val codec = PtCloudTestSupport.CountingCodec()
+        val config = config(codec = codec)
+        coolDown()
+        assertEquals(CloudRefusal.OFFLINE, refusal(config, internet = InternetState.NONE))
+        assertEquals("no key decrypted", 0, codec.decrypts.get())
+        // With a network, the same read is judged on: its key is read, and
+        // the cooldown is the reason.
+        assertEquals(CloudRefusal.COOLING_DOWN, refusal(config, internet = InternetState.UNVALIDATED))
+        assertTrue("the key was read", codec.decrypts.get() > 0)
+    }
+
+    @Test fun `the decision reads the network as the connectivity callback last heard it`() {
+        val callback = PtCloudTestSupport.offline(ctx)
+        assertEquals(CloudRefusal.OFFLINE, PtCloudService.refusal(config(), ja, deviceOnly = false))
+        callback.onAvailable(ShadowNetwork.newInstance(101))
+        assertNull("a network, validated or not, counts", PtCloudService.refusal(config(), ja, deviceOnly = false))
     }
 
     @Test fun `no usable key keeps the read on the device`() {
         coolDown()
-        assertEquals(CloudRefusal.NO_KEY, PtCloudService.refusal(config(key = ""), ja, deviceOnly = false))
+        assertEquals(CloudRefusal.NO_KEY, refusal(config(key = "")))
         // A character no header may carry reads as no key, as a capture reads it.
-        assertEquals(CloudRefusal.NO_KEY, PtCloudService.refusal(config(key = "k\u0001ey"), ja, deviceOnly = false))
+        assertEquals(CloudRefusal.NO_KEY, refusal(config(key = "k\u0001ey")))
     }
 
     @Test fun `a cooldown keeps the read on the device`() {
         coolDown()
-        assertEquals(CloudRefusal.COOLING_DOWN, PtCloudService.refusal(config(), ja, deviceOnly = false))
+        assertEquals(CloudRefusal.COOLING_DOWN, refusal(config()))
     }
 
     @Test fun `with nothing against it the read goes to the cloud`() {
-        assertNull(PtCloudService.refusal(config(), ja, deviceOnly = false))
+        assertNull(refusal(config()))
     }
 
     // ── The next capture, as the menu's header shows it ────────────────

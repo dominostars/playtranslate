@@ -1075,14 +1075,6 @@ class CaptureService : Service() {
      *  intervening yield points. */
     val isLive: Boolean get() = liveModes.isNotEmpty()
 
-    /** The running live session's [OverlayFlavor], or null when no live mode
-     *  runs. Every per-display mode has the session's flavor
-     *  ([setLiveDisplays] rebuilds, in one main-thread pass, each instance
-     *  whose flavor no longer matches), so any instance's is the session's.
-     *  Read by the floating menu's PlayTranslate Cloud strip
-     *  ([PtCloudService.wouldTakeNextCapture]). */
-    val liveFlavor: OverlayFlavor? get() = liveModes.values.firstOrNull()?.flavor
-
     /**
      * Per-display live-mode instances. All entries share the same
      * [Prefs.overlayMode] — multi-display doesn't expose per-display mode
@@ -2725,9 +2717,11 @@ class CaptureService : Service() {
      *  finding: the furigana raw path silently kept feeding icon-bearing
      *  frames after the blackout moved into one mode).
      *
-     *  [deviceOnly]: passed to [FrameReaders.readerFor] as the caller's statement that
-     *  this read must stay on the device. The live tiers never state it
-     *  ([runLiveOcrRead]); the press-and-hold overlay states it per hold.
+     *  The read goes through the router ([FrameReaders.readerFor]) stating
+     *  no device-only: the live tiers ([runLiveOcrRead]) and the
+     *  press-and-hold overlay read where it routes, and a re-OCR, the one
+     *  read of a capture the user's engine pick keeps on the device, runs
+     *  through [runFrameCycle], not here.
      *
      *  [translate]: false asks the reader for the frame's text alone, as the
      *  furigana tier does (its readings need no translation, and the panel
@@ -2750,7 +2744,6 @@ class CaptureService : Service() {
         displayId: Int,
         frameIncludesSystemUi: Boolean = true,
         frameIncludesOwnOverlays: Boolean,
-        deviceOnly: Boolean = true,
         translate: Boolean = true,
     ): OverlayToolkit.OcrPipelineRead {
         val prefs = Prefs(this)
@@ -2759,7 +2752,7 @@ class CaptureService : Service() {
                 { bitmap, result -> OcrSeedWriter.writeSeed(this, bitmap, result) }
             } else null
         val srcId = prefs.sourceLangId
-        val reader = FrameReaders.readerFor(srcId, deviceOnly)
+        val reader = FrameReaders.readerFor(srcId, deviceOnly = false)
         val frameId = frameIdFor(displayId)
         val statusBarHeight = statusBarHeightForFrame(displayId, frameIncludesSystemUi)
         // Session captured at entry: a pass that outlives a stop (native
@@ -2834,7 +2827,6 @@ class CaptureService : Service() {
         raw, displayId,
         frameIncludesSystemUi = frameIncludesSystemUi,
         frameIncludesOwnOverlays = frameIncludesOwnOverlays,
-        deviceOnly = false,
         translate = translate,
     )
 

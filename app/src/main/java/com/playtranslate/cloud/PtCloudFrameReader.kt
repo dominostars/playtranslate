@@ -2,6 +2,7 @@ package com.playtranslate.cloud
 
 import android.graphics.Bitmap
 import com.playtranslate.OcrManager
+import com.playtranslate.TranslationCache
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ocr.FrameReader
 import com.playtranslate.ocr.FrameReading
@@ -38,12 +39,17 @@ import kotlinx.coroutines.launch
  * and reports it through [PtCloudService.report], once per frame, and a
  * translation that failed settles with part 1's translations alone, the
  * items dropped, so the caller translates the rest locally. A frame whose
- * part 1 translated every group needs no final part: its success is recorded
- * and reported, and its translations settled, before [read] returns, and
- * the client reads the final part to its end whatever the caller does with
- * the reading. A
- * caller that cancels (a released hold, a superseded capture, a reading it
- * has no use for) records and reports nothing.
+ * outcome part 1 already decides needs no final part: one whose part 1
+ * translated every group, and one with nothing to translate (a
+ * same-language request, or no groups), whose final part the server sends at
+ * once as skipped. Its success is recorded and reported, and its
+ * translations settled, before [read] returns, and the client reads the
+ * final part to its end whatever the caller does with the reading, so a
+ * consumer that drops the translations at once (the furigana tier, the drag,
+ * a reading with no text) still counts the frame. A caller that cancels (a
+ * released hold, a superseded capture) records and reports nothing, and so
+ * does one that drops a translating frame's translations before its final
+ * part (a reading it has no more use for).
  *
  * This reader logs nothing of its own: the client's two clock lines per
  * frame and its failure line cover the request ([PtCloudClient]).
@@ -59,7 +65,8 @@ class PtCloudFrameReader(
      * Uploads [bitmap] and returns once part 1 has arrived and mapped back to
      * [bitmap]'s coordinates, with the reading's translations keyed by group
      * index: part 1's as [ReaderTranslations.ready], the rest still to come
-     * unless part 1 translated every group. Call it from the job meant to own
+     * unless part 1 decided the frame's outcome (it translated every group,
+     * or there is nothing to translate). Call it from the job meant to own
      * part 2, not inside a scoped builder: a scope waits for its children, so
      * it would return only after part 2 ([PtCloudClient.postFrame]).
      *
@@ -96,6 +103,11 @@ class PtCloudFrameReader(
         // is a child of the CALLER's job, so the caller waits for it and
         // cancels it, as postFrame's own part-2 reader is.
         val callerContext = currentCoroutineContext()
+        // The configuration the request goes out under, stamped before
+        // anything of it is read: a settings clear from here on (the switch
+        // or the key changed while this frame reads) leaves this frame's
+        // translations shown but uncached ([ReaderTranslations.configGeneration]).
+        val configGeneration = TranslationCache.shared.configGeneration
 
         val frame = encode(bitmap, config.uploadLongSideCap)
 
@@ -130,9 +142,19 @@ class PtCloudFrameReader(
         // whatever the final part says. A blank one is no translation.
         val groups = response.ocr.groups
         val ready = groups.mapNotNull { g -> g.translation?.takeIf { it.isNotBlank() }?.let { g.id to it } }.toMap()
-        // Every group answered: the contract makes no model call and sends
-        // the final part at once with ok, so the frame's outcome is known now.
-        val answeredByCache = groups.isNotEmpty() && groups.all { it.id in ready }
+        // The frame's outcome when part 1 already decides it, else null: every
+        // group answered by the cache (the contract makes no model call and
+        // sends the final part at once with ok), or nothing to translate, a
+        // same-language request or a part 1 with no groups (the final part
+        // follows at once as skipped). Recorded and reported here, since a
+        // consumer that wants no translation (the furigana tier, the drag, a
+        // reading with no text) drops the translations the moment this
+        // returns, and the frame would otherwise never count as a success.
+        val knownAtPart1: TranslationOutcome? = when {
+            groups.isNotEmpty() && groups.all { it.id in ready } -> TranslationOutcome.Translated(ready)
+            sameLanguage || groups.isEmpty() -> TranslationOutcome.Skipped
+            else -> null
+        }
 
         // Built lazily: the job needs the translations it fills and the
         // translations need the job they cancel. Started right after, before
@@ -146,7 +168,7 @@ class PtCloudFrameReader(
             // itself, the final part following at once: the exchange completes
             // and logs its clock line instead of being reset by every consumer
             // that drops a reading it has no more use for.
-            if (answeredByCache) return@launch
+            if (knownAtPart1 != null) return@launch
             try {
                 // Each item as it arrives: provisional, so the final part
                 // below replaces them all.
@@ -185,7 +207,7 @@ class PtCloudFrameReader(
         }
         translations = ReaderTranslations(
             translationCode, request.targetLang, PtCloudService.DISPLAY_NAME,
-            groupCount = groups.size, ready = ready, job = job,
+            groupCount = groups.size, ready = ready, job = job, configGeneration = configGeneration,
         )
         // However the job ends, the translations settle, so a consumer in
         // ReaderTranslations.await can never wait on a job that is over. A
@@ -193,28 +215,29 @@ class PtCloudFrameReader(
         // its body runs never reaches the body's finally. A no-op when the
         // body already settled.
         //
-        // Cancelled (a consumer dropped the reading: the core on no text and
-        // on a same-language pair, a tool's superseded cycle), part 2's read
-        // is cancelled with it, or its socket stays open until the server
-        // answers and, since that read is a child of the caller's job too,
-        // the caller's job stays alive until then (the camera's acquire
-        // gate waits on its job). Here and not in the body's catch, so a
-        // cancel that lands before the body starts stops it too. A frame
-        // the cache answered is left to end by itself, as above.
+        // Cancelled (a consumer dropped the reading: a result with no source
+        // text, the startup card's drop, a cycle the cache covers, a tool's
+        // superseded cycle), part 2's read is cancelled with it, or its
+        // socket stays open until the server answers and, since that read is
+        // a child of the caller's job too, the caller's job stays alive until
+        // then (the camera's acquire gate waits on its job). Here and not in
+        // the body's catch, so a cancel that lands before the body starts
+        // stops it too. A frame whose outcome part 1 decided is left to end
+        // by itself, as above.
         job.invokeOnCompletion { cause ->
-            if (cause is CancellationException && !answeredByCache) response.translation.cancel()
+            if (cause is CancellationException && knownAtPart1 == null) response.translation.cancel()
             translations.settle()
         }
         job.start()
 
-        if (answeredByCache) {
+        if (knownAtPart1 != null) {
             // A caller cancelled on the way back records nothing; its
             // cancellation reaches the job too.
             callerContext.ensureActive()
-            TranslationOutcome.Translated(ready).record(PtCloudService.cooldown, response.attemptStartedAtMs)
+            knownAtPart1.record(PtCloudService.cooldown, response.attemptStartedAtMs)
             PtCloudService.report(
                 OnlineAttempt(
-                    PtCloudService.ID, PtCloudService.DISPLAY_NAME, failure = null, response.sentAtMs,
+                    PtCloudService.ID, PtCloudService.DISPLAY_NAME, knownAtPart1.failure, response.sentAtMs,
                     reachedServer = true,
                 ),
             )

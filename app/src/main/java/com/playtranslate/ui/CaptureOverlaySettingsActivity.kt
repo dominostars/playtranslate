@@ -856,10 +856,11 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
      *  over-game/live engine as a side effect. This screen's own rows always
      *  persist the global selection (GLOBAL). */
     /** A setting that changes what a live read returns without changing a
-     *  pixel (the OCR engine, the furigana filter) must reach a running live
-     *  session as a refresh: the furigana tier's change gate reads only on
-     *  pixel change, and the other tiers' next cycle would read anyway. The
-     *  service answers with nothing when live mode is not running. */
+     *  pixel (the OCR engine, the furigana filter, MangaOCR on or off) must
+     *  reach a running live session as a refresh, called once the engine's
+     *  state follows the setting: the furigana tier's change gate reads only
+     *  on pixel change, and the other tiers' next cycle would read anyway.
+     *  The service answers with nothing when live mode is not running. */
     private fun refreshLiveForOcrChange() {
         CaptureService.instance?.refreshLiveOverlay()
     }
@@ -1026,6 +1027,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
 
     private fun setMangaOcrEnabled(on: Boolean) {
         MangaOcrProvisioning.setEnabled(this, on, lifecycleScope)
+        refreshLiveForOcrChange()
         setupOcrSection()
     }
 
@@ -1088,6 +1090,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
             if (installed) {
                 prefs.useMangaOcr = true
                 MangaOcrProvisioning.refresh(this@CaptureOverlaySettingsActivity)
+                refreshLiveForOcrChange()
             }
             overlay.dismiss()
             setupOcrSection()
@@ -1125,6 +1128,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
                 // in-flight decode — never closes it mid-frame) before unlinking files.
                 prefs.useMangaOcr = false
                 MangaOcrProvisioning.refresh(this)
+                refreshLiveForOcrChange()
                 setupOcrSection()
                 lifecycleScope.launch {
                     MangaOcrBridge.close() // suspend + locked: waits out any in-flight refine
