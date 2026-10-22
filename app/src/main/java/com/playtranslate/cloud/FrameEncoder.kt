@@ -10,9 +10,16 @@ import java.io.ByteArrayOutputStream
  * One frame ready to upload, its [bytes] a JPEG ([FrameEncoder]). [scale] is
  * uploaded pixels per bitmap pixel (1 when the bitmap was sent at its own
  * size); the server's boxes are in uploaded pixels, and
- * [PtCloudResponseMapper.toOcrResult] divides them by it. [width] and
- * [height] are the uploaded size. [encodeMs] is how long the scale and the
- * compress took, for the clock line.
+ * [PtCloudResponseMapper.toOcrResult] divides them by it. It is the LONG
+ * side's ratio, which the scaling makes exact (the long side becomes the
+ * cap, [FrameEncoder.scaledSize]); the short side is rounded to a whole
+ * pixel, so its own ratio differs from this one by under half an uploaded
+ * pixel at its far edge, within the truncation the mapper applies to every
+ * box. The width's ratio, taken before, carried that rounding along the
+ * long side of a portrait frame instead: twenty pixels at the bottom of a
+ * 201 by 4000 import, whose width rounds from 96.48 to 96 (Codex review,
+ * 2026-10-22). [width] and [height] are the uploaded size. [encodeMs] is
+ * how long the scale and the compress took, for the clock line.
  */
 class EncodedFrame(
     val bytes: ByteArray,
@@ -74,7 +81,8 @@ object FrameEncoder {
                 if (scaled !== bitmap) scaled.recycle()
             }
             EncodedFrame(
-                bytes, scale = sw.toFloat() / w, width = sw, height = sh,
+                // The long side's ratio: exact, where the short side rounds.
+                bytes, scale = maxOf(sw, sh).toFloat() / maxOf(w, h), width = sw, height = sh,
                 encodeMs = SystemClock.elapsedRealtime() - startMs,
             )
         }

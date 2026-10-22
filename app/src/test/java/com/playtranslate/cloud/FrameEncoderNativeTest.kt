@@ -53,6 +53,22 @@ class FrameEncoderNativeTest {
         assertFalse("the caller's bitmap is never recycled", input.isRecycled)
     }
 
+    @Test fun `the scale is the long side's ratio, exact where the short side rounds`() {
+        // 201 x 400 under a cap of 192: the height becomes the cap and the
+        // width shrinks to 96.48, rounded to 96. The width's ratio, 96 / 201,
+        // would carry that rounding down the whole height: the bottom edge
+        // maps to 192 / (96 / 201) = 402, two pixels below the frame.
+        val portrait = runBlocking { FrameEncoder.encode(frame(201, 400), longSideCap = 192) }
+        assertEquals(96, portrait.width)
+        assertEquals(192, portrait.height)
+        assertEquals(192f / 400, portrait.scale)
+        // Landscape, the same frame on its side: the width is the long side.
+        val landscape = runBlocking { FrameEncoder.encode(frame(400, 201), longSideCap = 192) }
+        assertEquals(192, landscape.width)
+        assertEquals(96, landscape.height)
+        assertEquals(192f / 400, landscape.scale)
+    }
+
     @Test fun `a frame within the cap is sent at its own size with scale 1, as JPEG`() {
         val input = frame(800, 450)
         val encoded = runBlocking { FrameEncoder.encode(input, longSideCap = 1920) }
