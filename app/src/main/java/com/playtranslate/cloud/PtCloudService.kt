@@ -50,8 +50,9 @@ import kotlinx.coroutines.flow.update
  *
  * The cooldown feeds the router's decision, which lives here ([refusal]) so
  * that every reader asks the same question: the router
- * ([com.playtranslate.ocr.FrameReaders]), its warm call, and the floating
- * menu's header ([wouldTakeNextCapture]).
+ * ([com.playtranslate.ocr.FrameReaders]), its warm call, the floating
+ * menu's header ([wouldTakeNextCapture]), and the cloud reader once more
+ * before each upload ([PtCloudFrameReader.read]).
  */
 object PtCloudService {
 
@@ -158,8 +159,10 @@ object PtCloudService {
      * ([com.playtranslate.ocr.FrameReaders.readerFor]'s table). The router
      * routes by it, [com.playtranslate.ocr.FrameReaders.warm] warms by it
      * (so a warm goes out exactly when the read that follows would go to the
-     * cloud), and the floating menu's header shows it
-     * ([wouldTakeNextCapture]).
+     * cloud), the floating menu's header shows it ([wouldTakeNextCapture]),
+     * and the cloud reader asks it again once the frame is encoded and
+     * before the upload ([PtCloudFrameReader.read]), so a change during the
+     * encode keeps that frame on the device.
      *
      * The three facts that cost nothing decide first, each ending the
      * decision when it keeps the read on the device, so a read that could

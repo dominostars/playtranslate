@@ -288,7 +288,7 @@ class PtCloudItemLinesTest {
     // ── Through the reader ─────────────────────────────────────────────
 
     private fun reader(lines: List<String>): PtCloudFrameReader {
-        val config = PtCloudTestSupport.config(ctx)
+        val config = PtCloudTestSupport.switchedOn(ctx)
         return PtCloudFrameReader(
             PtCloudClient(config, clientFactory = {
                 PtCloudTestSupport.streamingClient(calls) { call -> GatedSource(call, lines, emptyList()) }

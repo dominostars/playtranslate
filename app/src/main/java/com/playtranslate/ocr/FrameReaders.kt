@@ -83,6 +83,12 @@ object FrameReaders {
      * the floating menu's cloud strip follows: "some" is any, validated or
      * not, and with none no key is read.
      *
+     * The decision is made before the frame is encoded, and the cloud reader
+     * asks it once more just before its upload ([PtCloudFrameReader.read]):
+     * a refusal found then (the switch turned off or the key cleared during
+     * the encode, the network gone, a cooldown begun) reads the frame on the
+     * device through the fallback, with nothing recorded or reported.
+     *
      * [deviceOnly] is the caller's statement that this read must stay on the
      * device whatever the settings say, because the user picked a device
      * engine for it: a re-OCR of a capture, and every re-read of the camera's

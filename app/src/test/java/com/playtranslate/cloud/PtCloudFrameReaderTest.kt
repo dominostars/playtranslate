@@ -10,6 +10,8 @@ import com.playtranslate.cloud.PtCloudTestSupport.GatedSource
 import com.playtranslate.cloud.PtCloudTestSupport.item
 import com.playtranslate.cloud.PtCloudTestSupport.with
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.ocr.FallbackFrameReader
+import com.playtranslate.ocr.FrameReader
 import com.playtranslate.ocr.FrameReading
 import com.playtranslate.ocr.ReadRequest
 import com.playtranslate.ocr.ReaderProgress
@@ -24,6 +26,7 @@ import com.playtranslate.translation.OnlineAttempt
 import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.translation.llm.LlmPromptTemplates
 import com.playtranslate.translation.llm.PromptKind
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -43,6 +46,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
@@ -62,7 +66,9 @@ import java.util.concurrent.atomic.AtomicLong
  * provisionally, the final part settles them, and the final part's outcome
  * is recorded on the cooldown and reported once (at part 1 when part 1
  * decides it: every group translated, or nothing to translate, a
- * same-language request or no groups). The request's `meta` is read back from the call
+ * same-language request or no groups); the router's question is asked
+ * again once the frame is encoded, so a change landing during the encode
+ * refuses the read before any request. The request's `meta` is read back from the call
  * the reader made. The encoder is faked (real compression needs native
  * graphics, [FrameEncoderNativeTest]); the bitmap is only the argument.
  */
@@ -101,7 +107,7 @@ class PtCloudFrameReaderTest {
         ReadRequest(src, screenshotWidth = 1920, targetLang = target, frameId = "capture-0042")
 
     private fun reader(client: OkHttpClient, scale: Float = 1f): PtCloudFrameReader {
-        val config = PtCloudTestSupport.config(ctx)
+        val config = PtCloudTestSupport.switchedOn(ctx)
         return PtCloudFrameReader(
             PtCloudClient(config, clientFactory = { client }),
             config,
@@ -603,5 +609,89 @@ class PtCloudFrameReaderTest {
         assertTrue("the clear moved the cache on", TranslationCache.shared.configGeneration != before)
         reading.settled()
         Unit
+    }
+
+    // ── The router's question, asked again before the upload ──────────
+
+    /** A reader whose encode runs [duringEncode] first, as a change landing
+     *  while the frame encodes does. Switched on with a key stored, as every
+     *  reader the router routes to. */
+    private fun readerEncoding(client: OkHttpClient, duringEncode: () -> Unit): PtCloudFrameReader {
+        val config = PtCloudTestSupport.switchedOn(ctx)
+        return PtCloudFrameReader(
+            PtCloudClient(config, clientFactory = { client }),
+            config,
+            encode = { _, _ ->
+                duringEncode()
+                PtCloudTestSupport.frame()
+            },
+        )
+    }
+
+    /** Reads a frame whose encode runs [change] and asserts the read was
+     *  refused for [expected] before any request, with nothing reported and
+     *  nothing left running. */
+    private suspend fun CoroutineScope.assertRefusedDuringEncode(expected: CloudRefusal, change: () -> Unit) {
+        val cloud = readerEncoding(streaming(listOf(part1, PtCloudTestSupport.part2())), change)
+        try {
+            cloud.read(bitmap, request())
+            fail("expected PtCloudRefusedException")
+        } catch (e: PtCloudRefusedException) {
+            assertEquals(expected, e.refusal)
+        }
+        assertTrue("no request went out", calls.isEmpty())
+        assertTrue("a refusal is not a failure: nothing reported", attempts.isEmpty())
+        assertTrue(coroutineContext.job.children.none())
+    }
+
+    @Test fun `the switch turned off while the frame encodes keeps it off the wire, and the fallback reads it on the device`() =
+        runBlocking {
+            val deviceReading = FrameReading(null, ReaderAttribution("device", "device"), translations = null)
+            var deviceRequest: ReadRequest? = null
+            val device = object : FrameReader {
+                override suspend fun read(bitmap: Bitmap, request: ReadRequest): FrameReading {
+                    deviceRequest = request
+                    return deviceReading
+                }
+            }
+            val cloud = readerEncoding(streaming(listOf(part1, PtCloudTestSupport.part2()))) {
+                PtCloudTestSupport.prefs(ctx).ptCloudEnabled = false
+            }
+            val request = request()
+
+            val reading = FallbackFrameReader(cloud, device).read(bitmap, request)
+
+            assertSame(deviceReading, reading)
+            assertSame(request, deviceRequest)
+            assertTrue("no request went out", calls.isEmpty())
+            assertTrue("a refusal is not a failure: nothing reported", attempts.isEmpty())
+            assertNull("nothing recorded", cooldown.unavailableUntil())
+            assertTrue(coroutineContext.job.children.none())
+        }
+
+    @Test fun `the switch turned off during the encode is the router's refusal, asked again`() = runBlocking {
+        assertRefusedDuringEncode(CloudRefusal.SWITCH_OFF) { PtCloudTestSupport.prefs(ctx).ptCloudEnabled = false }
+        assertNull("nothing recorded", cooldown.unavailableUntil())
+    }
+
+    @Test fun `the key cleared during the encode refuses the read before it, not as the client's key failure`() = runBlocking {
+        assertRefusedDuringEncode(CloudRefusal.NO_KEY) { PtCloudTestSupport.prefs(ctx).ptCloudClientKey = "" }
+        assertNull("nothing recorded", cooldown.unavailableUntil())
+    }
+
+    @Test fun `the network gone during the encode refuses the read before it, not as a transport failure`() = runBlocking {
+        assertRefusedDuringEncode(CloudRefusal.OFFLINE) { PtCloudTestSupport.offline(ctx) }
+        assertNull("nothing recorded", cooldown.unavailableUntil())
+    }
+
+    @Test fun `a cooldown begun during the encode, from either route, refuses the read and climbs no rung`() = runBlocking {
+        // The service judges a cooldown against the wall clock.
+        clock.set(System.currentTimeMillis())
+        var until: Long? = null
+        assertRefusedDuringEncode(CloudRefusal.COOLING_DOWN) {
+            cooldown.recordLadderFailure(CooldownLadder.RateLimit, "Rate limited")
+            until = cooldown.unavailableUntil()
+        }
+        assertEquals("the one rung the other route recorded", until, cooldown.unavailableUntil())
     }
 }

@@ -147,7 +147,9 @@ class PtCloudBackend(
      *    [StructuralFailureException] (REJECTED, no server answered) before
      *    any request, and the registry hands the whole list to the next
      *    backend; the pill drops the report, since the gesture forgot the
-     *    service's errors first (Codex adversarial review, 2026-10-21).
+     *    service's errors first (Codex adversarial review, 2026-10-21). The
+     *    frame route asks the router's question again the same way, once
+     *    the frame is encoded and before its upload ([PtCloudFrameReader.read]).
      *  - An `ok` answer that leaves a text of its call unnamed or blank is
      *    asked again ONCE, for those texts alone in one call: what the frame
      *    route gets through the waterfall for a group its answer left out. A

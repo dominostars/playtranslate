@@ -30,6 +30,23 @@ import kotlinx.coroutines.launch
  * them as provisional deliveries and the final part settles them, in a job
  * that is a child of the caller's job.
  *
+ * The upload is the router's decision asked once more. The router
+ * ([com.playtranslate.ocr.FrameReaders.readerFor]) decides before the frame
+ * is encoded, and the encode takes tens of milliseconds on a frame of the
+ * upload cap's size; in that time the user may switch the service off or
+ * clear its key (the opt-out means no frame of theirs goes out after it),
+ * the network may go, or a cooldown may begin on the other route. So once
+ * the frame is encoded and before anything is sent, [read] asks
+ * [PtCloudService.refusal] again, the router's whole table, and a refusal
+ * found then throws [PtCloudRefusedException], an IOException the fallback
+ * reader answers by reading the frame on the device, with nothing recorded
+ * or reported: the service did not fail. The caller's device-only statement
+ * and the source are the request's own and cannot have changed, so a read
+ * the router sent here is refused only by what did. The translate route
+ * asks the same way before each of a batch's calls
+ * ([PtCloudBackend.translateBatch]); on both routes a request already sent
+ * completes under the configuration it left with.
+ *
  * Failures split at part 1, as in [PtCloudClient]. Before it, [read] throws
  * the client's [PtCloudReadException] (an IOException, which
  * [com.playtranslate.ocr.FallbackFrameReader] answers with the device reader),
@@ -97,6 +114,9 @@ class PtCloudFrameReader(
      * read here highlights no engine there, and a re-OCR the user starts from
      * it runs on the device engine they pick (the router keeps a re-OCR on the
      * device).
+     *
+     * Throws [PtCloudRefusedException] when the router's question, asked
+     * again once the frame is encoded, refuses the read (the class doc).
      */
     override suspend fun read(bitmap: Bitmap, request: ReadRequest): FrameReading {
         // Captured here, outside any withContext: the translations' job below
@@ -126,6 +146,13 @@ class PtCloudFrameReader(
             streamTranslations = true,
             filterFurigana = OcrManager.instance.filterFuriganaEnabled,
         )
+
+        // The router's question once more, the encode done and nothing sent
+        // yet (the class doc): a refusal here is not a failure, so nothing is
+        // recorded or reported, and the fallback reader reads the frame on
+        // the device. A device-only read never reaches this reader. Codex
+        // adversarial review, 2026-10-22.
+        PtCloudService.refusal(config, request.sourceLangId, deviceOnly = false)?.let { throw PtCloudRefusedException(it) }
 
         // Directly in this function, never in a scoped builder: part 2 must
         // be a child of the caller's job.

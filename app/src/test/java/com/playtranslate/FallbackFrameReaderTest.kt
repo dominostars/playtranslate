@@ -1,7 +1,9 @@
 package com.playtranslate
 
 import android.graphics.Bitmap
+import com.playtranslate.cloud.CloudRefusal
 import com.playtranslate.cloud.PtCloudReadException
+import com.playtranslate.cloud.PtCloudRefusedException
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.ocr.FallbackFrameReader
 import com.playtranslate.ocr.FrameReader
@@ -95,6 +97,17 @@ class FallbackFrameReaderTest {
         val primary = FakeReader {
             throw PtCloudReadException(BackendFailure(BackendFailureKind.NOT_RUNNING, 404), "pod stopped")
         }
+        val fallback = FakeReader { fallbackReading }
+
+        val result = FallbackFrameReader(primary, fallback).read(bitmap, request)
+
+        assertSame(fallbackReading, result)
+        assertEquals(1, fallback.calls)
+    }
+
+    @Test fun `the cloud's refusal before its upload falls back too, to the fallback's own reading`() = runBlocking {
+        val fallbackReading = reading("fallback")
+        val primary = FakeReader { throw PtCloudRefusedException(CloudRefusal.SWITCH_OFF) }
         val fallback = FakeReader { fallbackReading }
 
         val result = FallbackFrameReader(primary, fallback).read(bitmap, request)

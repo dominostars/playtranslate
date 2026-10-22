@@ -93,6 +93,15 @@ internal object PtCloudTestSupport {
         return PtCloudConfig(p)
     }
 
+    /** A config with the switch on and [key] stored: the state the router
+     *  routes a read to the cloud under, which the reader asks for again
+     *  before its upload, so a test that reads through the reader starts
+     *  here. */
+    fun switchedOn(ctx: Context, key: String = KEY): PtCloudConfig {
+        prefs(ctx).ptCloudEnabled = true
+        return config(ctx, key)
+    }
+
     // ── Fixtures ───────────────────────────────────────────────────────
 
     const val JA = "bof3_camping_01.json"

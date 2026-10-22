@@ -33,6 +33,18 @@ class PtCloudReadException(
 ) : IOException(message, cause), ClassifiedFailure
 
 /**
+ * A frame the router sent to PlayTranslate Cloud that the reader kept off the
+ * wire: the router's own question ([PtCloudService.refusal]), asked again by
+ * [PtCloudFrameReader.read] once the frame is encoded and before anything is
+ * sent, found [refusal] against it. Not a failure of the service, so no
+ * cooldown is recorded and no attempt reported; an IOException, so
+ * [com.playtranslate.ocr.FallbackFrameReader] reads the frame on the device.
+ * The message names the refusal and nothing else.
+ */
+class PtCloudRefusedException(val refusal: CloudRefusal) :
+    IOException("PlayTranslate Cloud not used for this read: $refusal")
+
+/**
  * What one outcome records on the service's [CooldownState]. The
  * descriptions are [com.playtranslate.translation.GeminiBackend]'s, word for
  * word ("Rate limited", "Server error", "Daily quota used"), since the

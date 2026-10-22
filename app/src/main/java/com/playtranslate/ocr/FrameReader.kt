@@ -419,7 +419,9 @@ class DeviceFrameReader(
  * read is not carried on it: a cloud read's failure has already recorded its
  * cooldown and reported its attempt
  * ([com.playtranslate.cloud.PtCloudClient.postFrame]), which is how the
- * router and the error pill learn of it.
+ * router and the error pill learn of it; a cloud read refused before its
+ * upload ([com.playtranslate.cloud.PtCloudRefusedException], the router's
+ * question asked again after the encode) has nothing to record.
  */
 class FallbackFrameReader(
     private val primary: FrameReader,
