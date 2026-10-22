@@ -482,6 +482,11 @@
                         android:layout_height="wrap_content"
                         android:orientation="vertical">
 
+                        <!-- PlayTranslate Cloud: debug builds only, GONE
+                             otherwise (SettingsRenderer.bindConfigureCells). -->
+                        <include layout="@layout/settings_row_hub"
+                            android:id="@+id/rowConfigCloud" />
+
                         <include layout="@layout/settings_row_hub"
                             android:id="@+id/rowConfigCaptureOverlay" />
 

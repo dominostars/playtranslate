@@ -8,9 +8,10 @@ import com.playtranslate.translation.CooldownMessageClass
 
 /**
  * The single cause-to-wording mapping for online-failure degradation,
- * shared by the results note (CaptureService), the camera panel's note
- * (CameraTranslator), and the floating-icon pill (FloatingIconMenu) so
- * the three surfaces can never drift apart.
+ * shared by every surface's results note (GroupTranslator, which the
+ * capture service, the camera and import tools and select-to-translate
+ * translate through) and the floating-icon pill (FloatingIconMenu) so the
+ * surfaces can never drift apart.
  *
  * Callers check for NO NETWORK first and use the no-internet strings —
  * a cooldown still ticking after connectivity died is not what the user

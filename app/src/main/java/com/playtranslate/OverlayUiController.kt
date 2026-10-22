@@ -19,6 +19,9 @@ import android.view.WindowManager
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.CaptureLifecycle
 import com.playtranslate.capture.GameAudioGate
+import com.playtranslate.cloud.PtCloudService
+import com.playtranslate.ocr.FrameReaders
+import com.playtranslate.net.NetworkConnectivity
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.SourceLangId
@@ -42,6 +45,7 @@ import com.playtranslate.ui.MagnifierLens
 import com.playtranslate.ui.OverlayAlert
 import com.playtranslate.ui.OverlayRenderConfig
 import com.playtranslate.ui.OverlayWorkspace
+import com.playtranslate.ui.PtCloudSettingsActivity
 import com.playtranslate.ui.SourceListPage
 import com.playtranslate.ui.WorkspaceHost
 import com.playtranslate.ui.WorkspacePage
@@ -56,6 +60,7 @@ import com.playtranslate.translation.TranslationError
 import com.playtranslate.translation.TranslationErrorKey
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -453,6 +458,11 @@ class OverlayUiController(
     private var floatingMenu: FloatingIconMenu? = null
     /** Display the open [floatingMenu] is on. */
     private var floatingMenuDisplayId: Int? = null
+    /** Keeps the open [floatingMenu]'s PlayTranslate Cloud strip current
+     *  ([followCloudStatus]); null while no menu is open or its strip is not
+     *  shown. Set beside [floatingMenu] and cancelled where that is cleared,
+     *  [dismissFloatingMenu], so it lives exactly as long as the menu. */
+    private var floatingMenuCloudJob: Job? = null
 
     private var pillView: View? = null
     /** Display the no-text pill is on. */
@@ -657,7 +667,7 @@ class OverlayUiController(
     private fun onPillSettingsTapped(owner: String, displayId: Int) {
         val ws = workspace
         if (ws == null || !ws.holdsCardEditor) {
-            openTranslationServicesFromPill(owner, displayId)
+            openServiceSettingsFromPill(owner, displayId)
             return
         }
         if (discardCardConfirm?.isShowing == true) return
@@ -672,7 +682,7 @@ class OverlayUiController(
                 themed.themeColor(R.attr.ptAccentOn),
             ) {
                 discardCardConfirm = null
-                openTranslationServicesFromPill(owner, displayId)
+                openServiceSettingsFromPill(owner, displayId)
             }
             addCancelButton(themed.getString(R.string.btn_cancel)) { discardCardConfirm = null }
         }
@@ -681,8 +691,11 @@ class OverlayUiController(
     /**
      * Go on from the gear on [owner]'s pill on [displayId]
      * (2026-09-28): take the pill down, stop auto-translate, have the tracker
-     * show the owner's next failure again, and open the Translation services
-     * page, where the user can fix the service or switch to another.
+     * show the owner's next failure again, and open the owner's settings
+     * page, where the user can fix the service or switch to another: the
+     * Translation services page, or PlayTranslate Cloud's own page for its
+     * pill, where its switch, key and status are (its row on the services
+     * page, debug builds only, opens the same page).
      * Auto-translate stops, as the app's own pauseLiveMode stops it, rather
      * than pausing to resume by itself: the user starts it again back in the
      * game, and that start is the next try. It stops first, here and now,
@@ -710,7 +723,7 @@ class OverlayUiController(
      * capture panel's and the workspace's own links to an activity close
      * them the same way.
      */
-    private fun openTranslationServicesFromPill(owner: String, displayId: Int) {
+    private fun openServiceSettingsFromPill(owner: String, displayId: Int) {
         errorPills.hide(listOf(owner))
         CaptureService.instance?.let { svc ->
             if (svc.isLive || svc.isLiveStartPending) svc.stopLive()
@@ -722,8 +735,10 @@ class OverlayUiController(
         dismissWorkspace()
         if (regionController.isRegionEditorActive) regionController.hideRegionEditor()
         dismissAllDragLookupPopups()
+        val page = if (owner == PtCloudService.ID) PtCloudSettingsActivity::class.java
+            else TranslationServicesActivity::class.java
         launchOnOverlayDisplay(
-            Intent(context.applicationContext, TranslationServicesActivity::class.java)
+            Intent(context.applicationContext, page)
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             displayId,
         )
@@ -1933,7 +1948,11 @@ class OverlayUiController(
         val themeRes = baseActivityTheme(context)
         val themedCtx = android.view.ContextThemeWrapper(context.createDisplayContext(display), themeRes)
         applyAccentOverlay(themedCtx.theme, context)
-        val menu = FloatingIconMenu(themedCtx)
+        val prefs = Prefs(context)
+        // PlayTranslate Cloud's strip, while its switch is on (never outside
+        // debug builds).
+        val cloudStrip = PtCloudService.config.enabled
+        val menu = FloatingIconMenu(themedCtx, showCloudHeader = cloudStrip)
         menu.isSingleScreen = Prefs.isSingleScreen(context)
         menu.exitFlow = CaptureLifecycle.hasActivateControl(context)
 
@@ -1946,7 +1965,6 @@ class OverlayUiController(
         // and the menu would sit over them anyway.
         hideAppBoxes()
 
-        val prefs = Prefs(context)
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
         menu.hintModeLabel = hintModeLabelFor(prefs.overlayMode, hintKind)
         menu.isLiveMode = CaptureService.instance?.isLive == true
@@ -2085,6 +2103,10 @@ class OverlayUiController(
             CaptureService.launchAudioCaptureConsent(context)
         }
 
+        // Its glyph is set before the window exists and follows the network
+        // while the menu is up.
+        if (cloudStrip) floatingMenuCloudJob = followCloudStatus(menu)
+
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -2108,6 +2130,40 @@ class OverlayUiController(
         )
         floatingMenu = menu
         floatingMenuDisplayId = displayId
+    }
+
+    /**
+     * Draws [menu]'s PlayTranslate Cloud strip ([drawCloudStatus]) now and
+     * again at every change of the device's network and every restore
+     * ([NetworkConnectivity.state]), until the returned job is cancelled
+     * ([dismissFloatingMenu]).
+     *
+     * Started undispatched, so the first value is drawn before the menu's
+     * window is added. When the network comes back, the "Connection failed"
+     * cooldown it ended is already gone by the time the new value arrives
+     * here ([NetworkConnectivity.state] is published after the registry's
+     * fan-out, [com.playtranslate.translation.TranslationBackendRegistry.onConnectivityRestored],
+     * has reached the cloud's one cooldown through its registry backend),
+     * including on a
+     * switch between two networks the OS has not validated, whose state does
+     * not change. Nothing but the network redraws the strip while the menu
+     * is up: a cooldown running out, or the switch or the key changed on the
+     * other screen, shows the next time the menu opens.
+     */
+    private fun followCloudStatus(menu: FloatingIconMenu): Job =
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            NetworkConnectivity.state.collect { drawCloudStatus(menu, it.internet) }
+        }
+
+    /** Shows on [menu]'s PlayTranslate Cloud strip whether the next capture
+     *  would go to the cloud ([PtCloudService.wouldTakeNextCapture]) with the
+     *  device's network in [internet], reading the switch, the key, the game
+     *  language and the cooldown afresh: the service's settings
+     *  ([PtCloudService.config]), the ones the router reads. */
+    private fun drawCloudStatus(menu: FloatingIconMenu, internet: NetworkConnectivity.InternetState) {
+        menu.cloudAvailable = PtCloudService.wouldTakeNextCapture(
+            PtCloudService.config, Prefs(context).sourceLangId, internet = internet,
+        )
     }
 
     /** Overlay modes selectable for [id]: just Translation, unless the language
@@ -2141,8 +2197,11 @@ class OverlayUiController(
     /** Open the "Choose OCR tool" OverlayAlert for [id] on [display], stacked
      *  over the still-open floating menu so its holdActive keeps live capture
      *  paused. There's no live result to re-OCR here, so a different-engine pick
-     *  just dismisses the menu (clearing holdActive so live resumes with the new
-     *  engine, persisted by OcrPicker); Cancel or re-picking the current engine
+     *  dismisses the menu (clearing holdActive) and refreshes live mode, as a
+     *  tap outside the menu does: the new engine is persisted by OcrPicker, and
+     *  a running tier must look again with it now rather than when its change
+     *  gate next sees the pixels move (the furigana tier reads only on pixel
+     *  change; Codex, 2026-10-16). Cancel or re-picking the current engine
      *  leaves the menu open underneath. */
     private fun showOcrPicker(display: Display, id: SourceLangId) {
         val displayCtx = context.createDisplayContext(display)
@@ -2153,7 +2212,10 @@ class OverlayUiController(
             themed,
             id,
             OcrModelManager.selectedBackend(context, id)?.selectionToken ?: "",
-            onReOcr = { dismissFloatingMenu() },
+            onReOcr = {
+                dismissFloatingMenu()
+                CaptureService.instance?.refreshLiveOverlay()
+            },
             onDownload = { backend ->
                 dismissFloatingMenu()
                 launchOnOverlayDisplay(
@@ -2193,6 +2255,8 @@ class OverlayUiController(
         floatingMenu?.let { overlayHost.removeOverlayWindow(it, immediate = true) }
         floatingMenu = null
         floatingMenuDisplayId = null
+        floatingMenuCloudJob?.cancel()
+        floatingMenuCloudJob = null
         if (wasShowing && clearHoldActive) {
             CaptureService.instance?.holdActive = false
         }
@@ -2647,6 +2711,10 @@ class OverlayUiController(
         val launchGeometry = DisplayGeometry(size.x, size.y, display.rotation)
         val gen = captureGeneration
         captureJob = scope.launch {
+            // Warm PlayTranslate Cloud for processScreenshot's read below: a
+            // fresh capture, so it reads in the source language from the same
+            // pref and never device-only.
+            FrameReaders.warm(Prefs(context).sourceLangId, deviceOnly = false)
             // The frame carries its capture-time facts (CapturedFrame).
             val frame = CaptureBackendResolver.active().captureSource?.requestClean(displayId)
             val bitmap = frame?.bitmap

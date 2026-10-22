@@ -32,7 +32,7 @@ import org.robolectric.RobolectricTestRunner
 class FloatingIconMenuDragGateTest {
 
     private class Harness {
-        val menu = FloatingIconMenu(ApplicationProvider.getApplicationContext<Context>())
+        val menu = FloatingIconMenu(ApplicationProvider.getApplicationContext<Context>(), showCloudHeader = false)
         var selected: RegionEntry? = null
         var dismissed = 0
         val card: View = menu.javaClass.getDeclaredField("menuCard")

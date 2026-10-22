@@ -35,6 +35,7 @@ import com.playtranslate.themeColor
 import com.playtranslate.overlay.Sides
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
+import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.toColorInt
 
 /** Reason the floating-icon menu's warning pill is shown. None hides the
@@ -52,12 +53,17 @@ enum class DegradedWarningKind { None, Offline, LowMemory }
  * labelled primary actions stacked vertically (Translate once, then the
  * Auto-translate toggle).
  *
+ * With [showCloudHeader] (PlayTranslate Cloud is switched on) the card
+ * grows a header strip above both lanes: the service's name, and a wifi or
+ * wifi_off glyph for [cloudAvailable]. Whether the strip is there is fixed
+ * for the menu's life, since the card's placement reads its height.
+ *
  * Also supports drag-to-select: dragging outside the menu draws a selection
  * rectangle and fires [onRegionSelected] with fractional coordinates. A drag
  * released within [MIN_DRAG_MS] is an accidental touch: nothing is selected
  * and the menu comes back.
  */
-class FloatingIconMenu(context: Context) : FrameLayout(context) {
+class FloatingIconMenu(context: Context, showCloudHeader: Boolean) : FrameLayout(context) {
 
     companion object {
         /** A drag-to-select released sooner than this is an accidental touch
@@ -264,6 +270,29 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
     private var degradedWarningLabel: TextView? = null
 
     private val menuCard: LinearLayout
+    /** The two lanes, side by side, below [cloudHeader]: [applyLaneOrder]
+     *  orders its children. */
+    private val lanesRow: LinearLayout
+    /** The PlayTranslate Cloud strip at the card's top, with its divider:
+     *  GONE unless the menu was built with showCloudHeader. */
+    private val cloudHeader: LinearLayout
+    /** The strip's row: name and glyph. Carries the strip's accessibility
+     *  label, which says what the glyph shows. */
+    private val cloudHeaderRow: LinearLayout
+    private val cloudStatusIcon: ImageView
+
+    /** Whether the next capture would go to PlayTranslate Cloud
+     *  ([com.playtranslate.cloud.PtCloudService.wouldTakeNextCapture]): the
+     *  header's wifi glyph in the accent when true, wifi_off in the muted
+     *  color when false. Drawn only while the header shows; the menu's
+     *  owner sets it when the menu opens and again on every network change
+     *  while it is up. */
+    var cloudAvailable: Boolean = false
+        set(value) {
+            field = value
+            updateCloudHeader()
+        }
+
     // Full-width "Record audio" accent bar, detached below (or above, when
     // the icon sits near the bottom edge) the menu card. Built hidden;
     // sized/placed against the card's collapsed footprint by
@@ -378,7 +407,12 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         expandedRightWidthPx = (300 * dp).toInt() - (pad * 2 + secondarySize + laneGap)
         // Collapsed card = padding + secondary lane + lane gap + collapsed right lane.
         collapsedCardWidthPx = pad * 2 + secondarySize + laneGap + collapsedRightWidthPx
-        collapsedCardHeightPx = laneHeight + 2 * pad
+        // The PlayTranslate Cloud strip, when there is one: its row and the
+        // divider under it stack above the padded lanes.
+        val cloudRowHeight = (26 * dp).toInt()
+        val cloudDividerHeight = (1 * dp).toInt()
+        collapsedCardHeightPx = laneHeight + 2 * pad +
+            if (showCloudHeader) cloudRowHeight + cloudDividerHeight else 0
 
         // ── Secondary lane (left): three icon-only square buttons ─────────
         val editIcon = ImageView(context).apply {
@@ -509,10 +543,11 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             )
         }
         rightStack = FrameLayout(context).apply {
-            // Span the full menu-card height — into the 11dp top/bottom padding via
-            // negative margins — so the expanded panel's scroll view matches the
-            // menu's top/bottom bounds. The margins cancel, so the card height is
-            // unchanged (menuCard's clipToPadding=false lets it draw to the edges).
+            // Span the lanes row's full height — into its 11dp top/bottom padding
+            // via negative margins — so the expanded panel's scroll view runs from
+            // the card's top (the cloud strip's divider, when there is one) to its
+            // bottom. The margins cancel, so the row's height is unchanged
+            // (lanesRow's clipToPadding=false lets it draw to the edges).
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, laneHeight + 2 * pad
             ).apply { topMargin = -pad; bottomMargin = -pad }
@@ -526,9 +561,64 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             ).apply { gravity = Gravity.CENTER_VERTICAL })
         }
 
-        // ── Container: both lanes side by side on one elevated surface ────
-        menuCard = LinearLayout(context).apply {
+        // ── PlayTranslate Cloud strip (top of the card) ───────────────────
+        // The service's name with its glyph at the end, inset like the lanes,
+        // and a divider under the row. The name is a brand, the same length
+        // in every locale, but a large font scale can still outgrow the
+        // collapsed card: it shrinks down to 9sp before it is cut short.
+        // Its color sits a fifth of the way from the muted text color to
+        // the card's background.
+        val cloudLabel = TextView(context).apply {
+            text = context.getString(R.string.pt_cloud_display_name)
+            setTextColor(ColorUtils.blendARGB(mutedColor, bgColor, 0.2f))
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            setAutoSizeTextTypeUniformWithConfiguration(9, 12, 1, TypedValue.COMPLEX_UNIT_SP)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        cloudStatusIcon = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        cloudHeaderRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPaddingRelative(pad, 0, pad, 0)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            addView(cloudLabel, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+            addView(cloudStatusIcon, LinearLayout.LayoutParams((14 * dp).toInt(), (14 * dp).toInt()).apply {
+                marginStart = (6 * dp).toInt()
+            })
+        }
+        cloudHeader = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = if (showCloudHeader) View.VISIBLE else View.GONE
+            addView(cloudHeaderRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, cloudRowHeight))
+            addView(
+                View(context).apply { setBackgroundColor(hairline) },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, cloudDividerHeight),
+            )
+        }
+        updateCloudHeader()
+
+        // ── Container: both lanes side by side on one elevated surface ────
+        lanesRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            clipChildren = false
+            clipToPadding = false
+            setPadding(pad, pad, pad, pad)
+            addView(secondaryLane)
+            addView(rightStack)
+        }
+        // The cloud strip spans the card without widening it: in a
+        // wrap-content column a MATCH_PARENT child adds only its margins to
+        // the column's width while another child wraps, so the lanes alone
+        // set the card's width ([collapsedCardWidthPx]) and the strip is
+        // then measured to it.
+        menuCard = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
                 setColor(bgColor)
                 cornerRadius = 14 * dp
@@ -537,10 +627,13 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
             elevation = 8 * dp
             clipChildren = false
             clipToPadding = false
-            setPadding(pad, pad, pad, pad)
             visibility = View.INVISIBLE
-            addView(secondaryLane)
-            addView(rightStack)
+            addView(cloudHeader, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
+            addView(lanesRow, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
         }
         addView(menuCard, LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -1002,6 +1095,18 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         }
     }
 
+    /** Draws [cloudAvailable] on the cloud strip: the glyph, its color, and
+     *  the label a screen reader says for the strip. */
+    private fun updateCloudHeader() {
+        cloudStatusIcon.setImageResource(if (cloudAvailable) R.drawable.ic_wifi else R.drawable.ic_wifi_off)
+        cloudStatusIcon.imageTintList = ColorStateList.valueOf(if (cloudAvailable) accentColor else mutedColor)
+        cloudHeaderRow.contentDescription = context.getString(
+            if (cloudAvailable) R.string.floating_menu_pt_cloud_available
+            else R.string.floating_menu_pt_cloud_unavailable,
+            context.getString(R.string.pt_cloud_display_name),
+        )
+    }
+
     private fun updateLiveButton() {
         if (isLiveMode) {
             // Running: pause glyph on the danger fill, light content for contrast.
@@ -1254,10 +1359,10 @@ class FloatingIconMenu(context: Context) : FrameLayout(context) {
         val second: View = if (bigLaneFirst) secondaryLane else rightStack
         (first.layoutParams as LinearLayout.LayoutParams).marginEnd = (11 * dp).toInt()
         (second.layoutParams as LinearLayout.LayoutParams).marginEnd = 0
-        if (menuCard.getChildAt(0) !== first) {
-            menuCard.removeAllViews()
-            menuCard.addView(first)
-            menuCard.addView(second)
+        if (lanesRow.getChildAt(0) !== first) {
+            lanesRow.removeAllViews()
+            lanesRow.addView(first)
+            lanesRow.addView(second)
         }
     }
 

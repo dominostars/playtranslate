@@ -16,8 +16,10 @@ import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.playtranslate.BuildConfig
 import com.playtranslate.R
 import com.playtranslate.blendColors
+import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.themeColor
 import com.playtranslate.translation.BackendStatus
 import com.playtranslate.translation.Cooldownable
@@ -40,9 +42,10 @@ import androidx.core.view.isVisible
 
 /**
  * Owns the Online card on the Translation services page: the fixed
- * "Add Online Translation Service" row, the RecyclerView of
- * [OnlineServiceInstance] cells (list order = waterfall priority), and
- * the toolbar-driven edit mode (drag-to-reorder + delete).
+ * "Add Online Translation Service" row, PlayTranslate Cloud's fixed row
+ * ([bindCloudRow]), the RecyclerView of [OnlineServiceInstance] cells
+ * (list order = waterfall priority), and the toolbar-driven edit mode
+ * (drag-to-reorder + delete).
  *
  * Cell behavior:
  *  - switch tap → enable/disable the instance directly (no config page)
@@ -52,8 +55,9 @@ import androidx.core.view.isVisible
  *
  * Status/cooldown rendering carried over from the legacy
  * TranslationServicesBinder verbatim, now bound per instance via
- * [TranslationBackendRegistry.byId]. The host activity calls [rebind]
- * on resume (persist-to-prefs + onResume-refresh navigation idiom).
+ * [TranslationBackendRegistry.byId]. The host activity calls [rebind],
+ * then [bindCloudRow], on resume (persist-to-prefs + onResume-refresh
+ * navigation idiom).
  */
 class OnlineServicesController(
     private val activity: Activity,
@@ -63,6 +67,20 @@ class OnlineServicesController(
     private val rowAdd: View = root.findViewById(R.id.rowAddOnlineService)
     private val dividerAdd: View = root.findViewById(R.id.dividerAddOnlineService)
     private val recycler: RecyclerView = root.findViewById(R.id.rvOnlineServices)
+
+    /** PlayTranslate Cloud's row ([bindCloudRow]), null outside debug
+     *  builds, where it is hidden once and never bound: the service's switch
+     *  reads false there ([com.playtranslate.Prefs.ptCloudEnabled]) and its
+     *  page, like the Settings cell that opens it, exists only in debug
+     *  builds. */
+    private val cloudRow: View? = root.findViewById<View>(R.id.rowPtCloud).let { row ->
+        if (BuildConfig.DEBUG) {
+            row
+        } else {
+            row.isGone = true
+            null
+        }
+    }
 
     private val working = mutableListOf<OnlineServiceInstance>()
     private val adapter = OnlineServiceAdapter()
@@ -85,6 +103,58 @@ class OnlineServicesController(
         rowAdd.setOnClickListener {
             activity.startActivity(Intent(activity, AddOnlineServiceActivity::class.java))
         }
+        cloudRow?.let { row ->
+            // What never changes: its name, the LLM chip (tier one is an
+            // LLM), no model sub-cell (the server picks the model), no drag
+            // handle or trash in edit mode either (it is pinned first and
+            // cannot be removed), and a tap opens its own page, in edit
+            // mode too, since an edit changes nothing on it.
+            row.findViewById<TextView>(R.id.tvRowTitle).setText(R.string.pt_cloud_display_name)
+            row.findViewById<View>(R.id.tvLlmBadge).isVisible = true
+            row.findViewById<View>(R.id.sectionModel).isGone = true
+            row.findViewById<View>(R.id.ivDragHandle).isGone = true
+            row.findViewById<View>(R.id.ivDelete).isGone = true
+            row.findViewById<View>(R.id.rowMain).setOnClickListener {
+                activity.startActivity(Intent(activity, PtCloudSettingsActivity::class.java))
+            }
+        }
+    }
+
+    /**
+     * Renders PlayTranslate Cloud's row, the first in the card as the cloud
+     * is first in the waterfall
+     * ([com.playtranslate.translation.OnlineServiceMutations.applyOnlineOrder]).
+     * It is no store instance: its id is fixed, its settings live on its own
+     * page, and nothing about it can be dragged or deleted, so edit mode
+     * leaves it as it is. The host calls this on every resume, after
+     * [rebind] and while editing too, where [rebind] returns early to keep
+     * the drag order: a return from the cloud page during an edit shows what
+     * changed there.
+     *
+     * Through the store rows' own renderers: the key's tail from the
+     * service's settings ([PtCloudService.config]); the status line ("Account
+     * required" with no key) and the cooldown line and tint from the
+     * registry's backend, whose cooldown is the service's at the moment of
+     * the read. The switch mirrors the service's switch and writes through
+     * its one mutation, [PtCloudService.setEnabled]; the mutation announces
+     * itself ([PtCloudService.changes]) and the host repaints the row from
+     * that, so nothing here repaints after it.
+     */
+    fun bindCloudRow() {
+        val row = cloudRow ?: return
+        val config = PtCloudService.config
+        bindKeyTail(row.findViewById(R.id.tvKeyTail), config.clientKey)
+        renderBackendLines(row, TranslationBackendRegistry.byId(PtCloudService.ID))
+        // Listener cleared before setChecked, as on the store rows, so a
+        // render never fires a toggle.
+        val switch = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        switch.setOnCheckedChangeListener(null)
+        switch.isChecked = config.enabled
+        switch.setOnCheckedChangeListener { _, checked -> PtCloudService.setEnabled(checked) }
+        // The card's rule for its last row (the adapter's, below): no
+        // divider above the footer. This row is the last one only when the
+        // store holds no instance.
+        row.findViewById<View>(R.id.rowDivider).isGone = working.isEmpty()
     }
 
     /** Reload the instance list from the store and re-render. Skipped in
@@ -125,7 +195,7 @@ class OnlineServicesController(
         dividerAdd.isVisible = true
         itemTouchHelper?.attachToRecyclerView(null)
         itemTouchHelper = null
-        OnlineServiceMutations.reorder(working.map { it.id })
+        OnlineServiceMutations.reorder(activity, working.map { it.id })
         adapter.notifyDataSetChanged()
     }
 
@@ -197,6 +267,8 @@ class OnlineServicesController(
                     working.removeAt(pos)
                     adapter.notifyItemRemoved(pos)
                     adapter.notifyItemRangeChanged(0, adapter.itemCount)
+                    // The cloud row may have become the card's last row.
+                    bindCloudRow()
                 }
             }
             .addCancelButton()
@@ -247,24 +319,8 @@ class OnlineServicesController(
             holder.title.text = OnlineBackendFactory.displayName(activity, instance)
             holder.llmBadge.isVisible = instance.type.isLlm
 
-            val key = OnlineServiceStore.readKey(instance.id)
-            if (key.isBlank()) {
-                holder.keyTail.isGone = true
-            } else {
-                holder.keyTail.text = activity.getString(
-                    R.string.tr_service_key_tail_fmt, key.takeLast(4),
-                )
-                holder.keyTail.isVisible = true
-            }
-
-            if (backend != null) {
-                renderBackendStatusLine(holder.itemView, backend.status)
-                renderBackendCooldownLine(holder.itemView, backend)
-            } else {
-                holder.itemView.findViewById<TextView>(R.id.tvRowSubtitle2).isGone = true
-                holder.itemView.findViewById<TextView>(R.id.tvRowSubtitle3).isGone = true
-                clearRowWarningTint(holder.rowMain)
-            }
+            bindKeyTail(holder.keyTail, OnlineServiceStore.readKey(instance.id))
+            renderBackendLines(holder.itemView, backend)
 
             // Switch ⇄ trash swap (edit mode). Listener is cleared before
             // setChecked so a recycled bind can't fire a phantom toggle.
@@ -301,7 +357,7 @@ class OnlineServicesController(
         private fun onToggle(position: Int, checked: Boolean) {
             if (position == RecyclerView.NO_POSITION) return
             val instance = working[position]
-            OnlineServiceMutations.setEnabled(instance.id, checked)
+            OnlineServiceMutations.setEnabled(activity, instance.id, checked)
             working[position] = instance.copy(enabled = checked)
             // Rebind shows/hides the model sub-row with the new state.
             notifyItemChanged(position)
@@ -347,6 +403,32 @@ class OnlineServicesController(
     }
 
     // ── Status + cooldown rendering (moved from TranslationServicesBinder) ──
+
+    /** The masked key tail beside the title ("Key ••••4f2a"), the last four
+     *  characters of [key]; hidden for a blank key. One rule for the store
+     *  rows and the cloud's row. */
+    private fun bindKeyTail(tv: TextView, key: String) {
+        if (key.isBlank()) {
+            tv.isGone = true
+            return
+        }
+        tv.text = activity.getString(R.string.tr_service_key_tail_fmt, key.takeLast(4))
+        tv.isVisible = true
+    }
+
+    /** The status and cooldown lines of an online service's row, with the
+     *  cooldown's tint, from its registered [backend]; with none registered
+     *  both lines hide and the tint clears. */
+    private fun renderBackendLines(row: View, backend: TranslationBackend?) {
+        if (backend != null) {
+            renderBackendStatusLine(row, backend.status)
+            renderBackendCooldownLine(row, backend)
+        } else {
+            row.findViewById<TextView>(R.id.tvRowSubtitle2).isGone = true
+            row.findViewById<TextView>(R.id.tvRowSubtitle3).isGone = true
+            clearRowWarningTint(row.findViewById(R.id.rowMain))
+        }
+    }
 
     /** Apply a [BackendStatus] to the row's secondary subtitle TextView,
      *  styling by tone and italic flag. The Loading state has its own
@@ -401,30 +483,11 @@ class OnlineServicesController(
             clearRowWarningTint(rowMain)
             return
         }
-        val description = cooldownable.unavailableDescription()
-            ?: activity.getString(R.string.backend_status_unavailable_default)
-        tv.text = formatCooldownLine(description, until)
+        tv.text = cooldownLine(activity, cooldownable.unavailableDescription(), until)
         applyTone(tv, Tone.Warning)
         applyItalic(tv, false)
         tv.isVisible = true
         applyRowWarningTint(rowMain)
-    }
-
-    /** "Rate limited · Retry at 3:42 PM" for short cooldowns;
-     *  "Monthly quota used · Retry on Jun 1" for ones more than ~24h
-     *  out. Time uses the user's locale TimeFormat; date uses a fixed
-     *  "MMM d" so the line stays readable. */
-    private fun formatCooldownLine(description: String, retryAt: Long): String {
-        val now = System.currentTimeMillis()
-        val withinDay = retryAt - now < 24L * 60 * 60 * 1000
-        val formatted = if (withinDay) {
-            android.text.format.DateFormat.getTimeFormat(activity).format(Date(retryAt))
-        } else {
-            SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(retryAt))
-        }
-        val word = if (withinDay) activity.getString(R.string.backend_cooldown_retry_at)
-                   else activity.getString(R.string.backend_cooldown_retry_on)
-        return activity.getString(R.string.backend_cooldown_status_fmt, description, word, formatted)
     }
 
     private fun applyRowWarningTint(row: View) {

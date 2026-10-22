@@ -1,5 +1,6 @@
 package com.playtranslate
 
+import com.playtranslate.translation.GroupTranslation
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -16,7 +17,7 @@ import org.robolectric.RobolectricTestRunner
 class DeferredAttachPlanTest {
 
     private fun gt(text: String, backend: String? = null) =
-        CaptureService.GroupTranslation(text, note = null, backendDisplayName = backend)
+        GroupTranslation(text, note = null, backendDisplayName = backend)
 
     @Test
     fun duplicateGroupTextsAttachOnce() {

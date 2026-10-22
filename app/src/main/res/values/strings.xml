@@ -1698,6 +1698,9 @@
     <string name="claude_display_name" translatable="false">Claude</string>
     <string name="index_translate_display_name" translatable="false">Bilibili Index-Translate</string>
     <string name="deepl_display_name" translatable="false">DeepL</string>
+    <!-- The app's own cloud service (OCR and translation on a server);
+         a product name, not translated. -->
+    <string name="pt_cloud_display_name" translatable="false">PlayTranslate Cloud</string>
     <!-- Cell title + provider-preset pill label for an OpenAI-compatible
          service pointed at a user-entered URL (LM Studio, OpenRouter, …). -->
     <string name="llm_backend_preset_custom">Custom</string>
@@ -2517,6 +2520,10 @@
          server, while the internet itself works (other services answer).
          %1$s = service name. -->
     <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>: Can\'t connect</string>
+    <!-- Translation error pill: the service is switched off (its server
+         is stopped), so it answered that nothing is running there; it
+         works again once it is started.  %1$s = service name. -->
+    <string name="translation_error_not_running"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: Not running</string>
     <!-- Title of the confirm shown when the user taps a translation error
          pill's gear while an Anki card they are building over the game is
          open: opening the settings closes that card, and it can't be
@@ -3303,6 +3310,58 @@
         <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> dictionary needs re-importing</item>
         <item quantity="other"><xliff:g id="count" example="3">%d</xliff:g> dictionaries need re-importing</item>
     </plurals>
+
+    <!-- PLAYTRANSLATE CLOUD — the CONFIGURE cell and its page (Settings →
+         Configure → PlayTranslate Cloud). Debug builds only for now. The
+         cell and the page title use pt_cloud_display_name, a product name. -->
+    <!-- Subtitle of the PlayTranslate Cloud CONFIGURE cell while its switch is off. -->
+    <string name="settings_pt_cloud_summary_off">Off</string>
+    <!-- Subtitle of the PlayTranslate Cloud CONFIGURE cell while its switch is on
+         and a client key is saved. -->
+    <string name="settings_pt_cloud_summary_on">On</string>
+    <!-- Subtitle of the PlayTranslate Cloud CONFIGURE cell while its switch is on
+         but no client key is saved, so captures stay on this device. -->
+    <string name="settings_pt_cloud_summary_no_key">On, no key</string>
+    <!-- Master switch title at the top of the PlayTranslate Cloud page.
+         "PlayTranslate Cloud" is a product name; keep it in English. -->
+    <string name="pt_cloud_toggle_title">Use PlayTranslate Cloud</string>
+    <!-- Subtitle under the PlayTranslate Cloud master switch: what turning it on
+         does. "Captures" are the screenshots the user asks to translate. -->
+    <string name="pt_cloud_toggle_subtitle">Reads and translates captures on PlayTranslate\'s server instead of on this device</string>
+    <!-- Label above the text field for the PlayTranslate Cloud client key, a
+         password-like token the user was given. -->
+    <string name="pt_cloud_key_label">Client key</string>
+    <!-- Placeholder inside the empty client-key field on the PlayTranslate Cloud page. -->
+    <string name="pt_cloud_key_hint">Paste the key you were given</string>
+    <!-- Title of the status row on the PlayTranslate Cloud page; its value is one
+         of the pt_cloud_status_* strings, the server's answer to a health check. -->
+    <string name="pt_cloud_status_title">Service</string>
+    <!-- Status row value: the server answered that it is ready. -->
+    <string name="pt_cloud_status_running">Running</string>
+    <!-- Status row value: the server is up but still warming up (a minute or two). -->
+    <string name="pt_cloud_status_starting">Starting</string>
+    <!-- Status row value: the service is switched off on the server side. -->
+    <string name="pt_cloud_status_not_running">Not running</string>
+    <!-- Status row value: no answer from the server (no network, DNS, timeout). -->
+    <string name="pt_cloud_status_unreachable">Can\'t connect</string>
+    <!-- Status row value: the server answered with an HTTP status the app does not
+         expect. %1$s is that numeric HTTP status code, e.g. "500". -->
+    <string name="pt_cloud_status_other">Unexpected answer (<xliff:g id="http_code" example="500">%1$s</xliff:g>)</string>
+    <!-- Status row value while the health check is in flight. -->
+    <string name="pt_cloud_status_checking">Checking</string>
+    <!-- Status row value before any health check has run on this page. -->
+    <string name="pt_cloud_status_unchecked">Not checked</string>
+    <!-- Screen-reader label of the strip at the top of the floating icon's quick
+         menu while PlayTranslate Cloud is switched on, when its wifi glyph shows:
+         the device is online and the next capture would be read and translated
+         on PlayTranslate's server. %1$s = pt_cloud_display_name, a product name. -->
+    <string name="floating_menu_pt_cloud_available"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: available</string>
+    <!-- Screen-reader label of the same strip when its wifi_off glyph shows: the
+         device is offline, or the next capture would stay on this device (no
+         key, a game language the server does not read, the service pausing
+         after errors, or the service refusing the running auto-translate
+         session). %1$s = pt_cloud_display_name, a product name. -->
+    <string name="floating_menu_pt_cloud_unavailable"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: unavailable</string>
 
     <!-- YOMITAN — dictionary import page (Settings → Configure → Yomitan). -->
     <!-- Explainer paragraph at the top of the Yomitan page; also the empty state. -->

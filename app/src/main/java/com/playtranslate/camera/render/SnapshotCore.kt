@@ -19,11 +19,9 @@ import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TextSegments
 import com.playtranslate.model.TranslationLangContext
 import com.playtranslate.model.TranslationResult
+import com.playtranslate.ocr.ReaderAttribution
 import com.playtranslate.ocr.core.RegionPreFilter
-import com.playtranslate.ocr.registry.OcrModelManager
-import com.playtranslate.ocr.registry.ocrLabel
-import com.playtranslate.camera.CameraTranslator
-import com.playtranslate.ocr.registry.selectionToken
+import com.playtranslate.translation.GroupTranslation
 import com.playtranslate.ui.TextBox
 
 /**
@@ -214,29 +212,35 @@ object SnapshotCore {
             regionAu.contains(it.bounds.centerX(), it.bounds.centerY())
         }
 
-    /** Mirror of the service's provenance builders: engine from the result
-     *  when OCR ran, else the backend the tool's [scope] resolves — the no-text
-     *  gear needs a token to key the picker. Full-frame region; frames are
-     *  clean images (no system UI, no own overlays). */
-    fun snapshotProvenance(
-        ctx: Context,
-        ocr: OcrManager.OcrResult?,
-        srcId: SourceLangId,
-        scope: com.playtranslate.OcrTokenScope,
-    ): OcrProvenance? {
-        val backend = ocr?.engineBackend
-            ?: OcrModelManager.selectedBackend(ctx, srcId, scope)
-            ?: return null
-        val label =
-            if (ocr?.mangaOcrUsed == true) "${backend.ocrLabel(ctx)} + MangaOCR"
-            else backend.ocrLabel(ctx)
+    /** The provenance of a tool's read, as the service builds every
+     *  result's: from who read the frame ([attribution], the reading's: the
+     *  cloud, or the device engine the tool's scope selected, which a no-text
+     *  read names too so the gear can key the picker). Null attribution,
+     *  null provenance, which suppresses the source OCR row and re-OCR.
+     *  Full-frame region; frames are clean images (no system UI, no own
+     *  overlays). */
+    fun snapshotProvenance(attribution: ReaderAttribution?, srcId: SourceLangId): OcrProvenance? {
+        attribution ?: return null
         return OcrProvenance(
-            label, backend.selectionToken,
+            attribution.label, attribution.token,
             android.view.Display.DEFAULT_DISPLAY, srcId,
             com.playtranslate.CaptureService.DEFAULT_REGION,
             frameIncludesSystemUi = false,
             frameIncludesOwnOverlays = false,
         )
+    }
+
+    /** For each group of [kept] (a gated, region-filtered subset of [all],
+     *  the reader's groups), its index in [all], or null for one that is not
+     *  there: the positions a reader's translations, keyed by its own group
+     *  index, are mapped through ([com.playtranslate.ocr.ReaderTranslations.forPositions])
+     *  once the tools have dropped and reordered groups. By identity, never
+     *  by value: two groups can read the same text in the same place and
+     *  must each take their own translation. */
+    fun positionsOf(all: List<OcrManager.OcrGroup>, kept: List<OcrManager.OcrGroup>): List<Int?> {
+        val index = java.util.IdentityHashMap<OcrManager.OcrGroup, Int>()
+        all.forEachIndexed { i, g -> index.putIfAbsent(g, i) }
+        return kept.map { index[it] }
     }
 
     /** Skeleton boxes for the groups awaiting their translations. */
@@ -357,7 +361,7 @@ object SnapshotCore {
     fun doneState(
         originalText: String,
         segments: List<TextSegment>,
-        perGroup: List<CameraTranslator.Detailed>,
+        perGroup: List<GroupTranslation>,
         screenshotPath: String?,
         provenance: OcrProvenance?,
         langContext: TranslationLangContext,

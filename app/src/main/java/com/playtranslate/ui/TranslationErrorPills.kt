@@ -32,8 +32,9 @@ import com.playtranslate.translation.TranslationErrorPresenter
 /**
  * The translation-error pills on a game display: a stack at the top centre,
  * one pill per owner (a service, or the connection), each the PlayTranslate
- * mark, the message, a gear for the Translation services page
- * ([onSettings]), and a × that closes it. [com.playtranslate.translation.TranslationErrorTracker]
+ * mark, the message, a gear for the owner's settings page ([onSettings]:
+ * the Translation services page, or PlayTranslate Cloud's own page for its
+ * pill), and a × that closes it. [com.playtranslate.translation.TranslationErrorTracker]
  * decides when an error shows and when its owner's recovery takes it down;
  * this class only draws. A newer error from an owner that already has a
  * pill replaces that pill's text ([show], [update]).
@@ -100,8 +101,8 @@ internal class TranslationErrorPills(private val overlayHost: OverlayHost) {
 
     /** Called with a pill's owner, and the display the stack is on, when
      *  the user taps the pill's gear. The pill stays up: the controller
-     *  takes it down if it goes on to open the Translation services page
-     *  (it may ask first), and the tracker then shows the owner's next
+     *  takes it down if it goes on to open the owner's settings page (it
+     *  may ask first), and the tracker then shows the owner's next
      *  failure again
      *  ([com.playtranslate.translation.TranslationErrorTracker.settingsOpened]). */
     var onSettings: ((owner: String, displayId: Int) -> Unit)? = null

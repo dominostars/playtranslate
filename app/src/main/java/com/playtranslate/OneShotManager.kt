@@ -3,7 +3,12 @@ package com.playtranslate
 import android.graphics.Bitmap
 import android.util.Log
 import com.playtranslate.capture.CaptureBackendResolver
+import com.playtranslate.translation.GroupTranslation
 import com.playtranslate.language.SourceLanguageEngines
+import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.ocr.ReaderAttribution
+import com.playtranslate.ocr.ReaderTranslations
+import com.playtranslate.ocr.FrameReaders
 import com.playtranslate.ui.GrowthLimits
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -117,12 +122,13 @@ class OneShotManager(private val service: CaptureService) {
      *  case: a newer gesture owns the screen. */
     private sealed interface HoldOutcome {
         object Success : HoldOutcome
-        object NoText : HoldOutcome
+        /** [attribution] names who looked, for the panel's no-text state. */
+        data class NoText(val attribution: ReaderAttribution?) : HoldOutcome
         data class Failed(val why: String) : HoldOutcome
         /** OCR found text and building its boxes threw: in practice the
          *  waterfall's all-backends-failed throw, since translating is the
          *  step that can fail there. Its own outcome, not [Failed]: the
-         *  placeholder boxes it painted must come down, and the pill must
+         *  provisional boxes it painted must come down, and the pill must
          *  not say the screenshot failed. An online service's own failure
          *  also reaches the translation-error pill through the registry. */
         data class TranslationFailed(val why: String) : HoldOutcome
@@ -140,7 +146,7 @@ class OneShotManager(private val service: CaptureService) {
             is HoldOutcome.NoText -> {
                 if (displayId == cycle.panelDisplayId) {
                     service.setHoldLoading(false)
-                    service.emitLiveNoText(displayId)
+                    service.emitLiveNoText(displayId, outcome.attribution)
                 }
                 showNoTextPill(displayId)
             }
@@ -164,6 +170,14 @@ class OneShotManager(private val service: CaptureService) {
         // reaches this outcome and its pill.
         if (!service.isConfigured) return HoldOutcome.Failed("service not configured")
         if (cycle.generation != currentGeneration) return HoldOutcome.Superseded
+        // The hold's mode, read once: it picks both the reader (stage 3) and
+        // the box builder (stage 5).
+        val mode = cycle.forceMode ?: Prefs(service).overlayMode
+
+        // Warm PlayTranslate Cloud for the stage 3 read, in the source language
+        // runOcrRead reads from the same pref, stating what that read states:
+        // never device-only.
+        FrameReaders.warm(Prefs(service).sourceLangId, deviceOnly = false)
 
         // 1. Capture clean screenshot. Null is a real, reachable outcome
         //    (consent loss, no qualifying delivery inside the freshness
@@ -173,6 +187,12 @@ class OneShotManager(private val service: CaptureService) {
             ?: return HoldOutcome.Failed("screenshot failed")
         val raw: Bitmap = frame.bitmap
         val frameIncludesUi = frame.includesSystemUi
+        // The reader's translations, when it produced any. Cancelled in the
+        // finally, as the capture-once core cancels its own: an exit that never
+        // awaits them (superseded, box building throwing before the translate
+        // step) must not keep this cycle's job alive until they settle. A no-op
+        // once they have settled.
+        var translations: ReaderTranslations? = null
 
         try {
             if (cycle.generation != currentGeneration) return HoldOutcome.Superseded
@@ -184,14 +204,29 @@ class OneShotManager(private val service: CaptureService) {
             // backend's capture source — forward it so the status-bar crop
             // matches the frame's contents (a single-app stream has no bar,
             // and cropping would eat game content).
-            val pipeline = service.runOcr(
+            // The hold reads through the router as the live tiers do, never
+            // device-only (runOcrRead states it for every read it makes), so
+            // a hold while one runs reads where the tier it peeks at reads;
+            // a furigana hold asks for the text alone, as the
+            // furigana tier does. While live mode runs, runOcrRead's live
+            // bookkeeping holds for a cloud read too: the slow-OCR prompt's
+            // pass timing starts only when a device engine runs, and a group
+            // the startup card's exclusion drops takes the cloud reading's
+            // translations with it, so the groups left translate through the
+            // waterfall.
+            val read = service.runOcrRead(
                 raw, displayId,
                 frameIncludesSystemUi = frameIncludesUi,
                 frameIncludesOwnOverlays = frame.includesOwnOverlays,
+                translate = mode != OverlayMode.FURIGANA,
             )
+            val pipeline = read.result
+            translations = pipeline?.translations
             if (cycle.generation != currentGeneration) return HoldOutcome.Superseded
 
-            if (pipeline == null) return HoldOutcome.NoText
+            // No text: the reader that looked names itself, the cloud or the
+            // device engine, for the panel's no-text state.
+            if (pipeline == null) return HoldOutcome.NoText(read.attribution)
 
             val (ocrResult, _, cropLeft, cropTop, screenshotW, screenshotH) = pipeline
 
@@ -205,14 +240,34 @@ class OneShotManager(private val service: CaptureService) {
             val recordPrefs = Prefs(service)
             val recordSrc = recordPrefs.sourceLangId
             val recordTgt = recordPrefs.targetLang
-            val processor = createProcessor(cycle.forceMode)
+            // What the translation processor produced, for the panel (step 7).
+            var perGroup: List<GroupTranslation>? = null
+            // What can be shown at once goes into the first paint: the
+            // reader's translations that arrived with its OCR, when it
+            // produced any for the pair the service translates under
+            // (translationsAtOnce and translateGroupsSeparately check), else
+            // the cache's entries. The translate call waits for the reader
+            // only while a group the cache has no entry for can still get its
+            // translation; while it waits, each one repaints as it arrives.
+            // Every group the reader does not name goes through the cache and
+            // the waterfall. A device read has no
+            // reader: its cached groups paint at once and the rest are
+            // skeletons until the final boxes (all skeletons when nothing is
+            // cached). A furigana hold's read carries no translations and it
+            // builds no translation boxes.
+            val atOnce = service.translationsAtOnce(ocrResult.groups.map { it.text }, pipeline.translations)
+            val processor = createProcessor(mode, atOnce) { texts, onProgress ->
+                service.translateGroupsSeparately(texts, reader = pipeline.translations, onProgress = onProgress)
+                    .also { perGroup = it }
+            }
             // The translation step. Every backend failing is an ordinary
             // outcome (offline with no usable offline model, say), and this
             // cycle runs in serviceScope, which has no exception handler: an
             // escaping throw would crash the app. It ends the cycle instead.
             val boxes = try {
                 processor.buildBoxes(ocrResult, raw, cropLeft, cropTop, screenshotW, screenshotH) { intermediate ->
-                    // Shimmer placeholder callback. Gen-check so a superseded
+                    // Provisional boxes (the first paint, the reader's
+                    // translations as they arrive). Gen-check so a superseded
                     // cycle can't paint over the new generation's overlay.
                     if (cycle.generation == currentGeneration) {
                         service.showLiveOverlay(
@@ -274,9 +329,13 @@ class OneShotManager(private val service: CaptureService) {
                 // the cache didn't keep, translated again, failing this
                 // time) costs only the panel update.
                 try {
+                    // The overlay's own translations when this hold made them
+                    // (null for a furigana hold, which translates here).
                     service.translateAndSendToPanel(
                         ocrResult, screenshotPath, displayId, frameIncludesUi,
                         frame.includesOwnOverlays,
+                        perGroup = perGroup,
+                        attribution = read.attribution,
                     )
                 } catch (e: CancellationException) {
                     throw e
@@ -286,21 +345,24 @@ class OneShotManager(private val service: CaptureService) {
             }
             return HoldOutcome.Success
         } finally {
+            translations?.cancel()
             if (!raw.isRecycled) raw.recycle()
         }
     }
 
-    private fun createProcessor(forceMode: OverlayMode?): OneShotProcessor {
-        val mode = forceMode ?: Prefs(service).overlayMode
-        return when (mode) {
-            OverlayMode.FURIGANA -> {
-                val engine = SourceLanguageEngines.get(service, Prefs(service).sourceLangId)
-                FuriganaOneShotProcessor(engine, service.furiganaPaint)
-            }
-            OverlayMode.TRANSLATION -> TranslationOneShotProcessor(
-                service::translateGroupsSeparately
-            )
+    private fun createProcessor(
+        mode: OverlayMode,
+        atOnce: List<GroupTranslation?>,
+        translate: suspend (
+            List<String>,
+            suspend (List<GroupTranslation?>) -> Unit,
+        ) -> List<GroupTranslation>,
+    ): OneShotProcessor = when (mode) {
+        OverlayMode.FURIGANA -> {
+            val engine = SourceLanguageEngines.get(service, Prefs(service).sourceLangId)
+            FuriganaOneShotProcessor(engine, service.furiganaPaint)
         }
+        OverlayMode.TRANSLATION -> TranslationOneShotProcessor(atOnce, translate)
     }
 
     private fun showNoTextPill(displayId: Int) {
@@ -314,8 +376,9 @@ class OneShotManager(private val service: CaptureService) {
 
     /** Failure pill for a [HoldOutcome.Failed] or
      *  [HoldOutcome.TranslationFailed] cycle — same surface as the no-text
-     *  pill. The screenshot failure's inline English mirrors the existing
-     *  runCaptureOcrTranslate failure string (l10n debt shared with it). */
+     *  pill. The screenshot failure's inline English mirrors the capture
+     *  sheet's screenshot failure string in [CaptureService]'s
+     *  runCaptureCycle (l10n debt shared with it). */
     private fun showFailurePill(displayId: Int, message: String) {
         val overlayUi = CaptureBackendResolver.activeOverlayUi
         val dm = service.getSystemService(android.hardware.display.DisplayManager::class.java)

@@ -333,6 +333,15 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- PlayTranslate Cloud sub-page (switch, client key, server URL, status), launched from
+             Settings → Configure in debug builds and from the error pill's gear for a cloud error. -->
+        <activity
+            android:name=".ui.PtCloudSettingsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:theme="@style/Theme.PlayTranslate" />
+
         <!-- Yomitan dictionary import sub-page, launched from Settings → Configure. -->
         <activity
             android:name=".ui.YomitanSettingsActivity"

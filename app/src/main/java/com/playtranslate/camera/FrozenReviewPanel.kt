@@ -37,8 +37,16 @@ interface FrozenReviewBackend {
     /** Run (or re-run) the review pipeline over [bitmap], optionally
      *  region-filtered. Each call supersedes the previous run.
      *  [preOcrDelayMs] is a cancellable dwell before any OCR spend — the
-     *  import tool's page-flip debounce; the camera never passes one. */
-    fun runReview(bitmap: Bitmap, regionAu: android.graphics.Rect?, preOcrDelayMs: Long = 0): CaptureSession
+     *  import tool's page-flip debounce; the camera never passes one.
+     *  [deviceOnly]: the read stays on the device whatever the reader
+     *  settings say (the user picked a device engine for this frame,
+     *  [FrozenReviewPanel.reOcrOnDevice]). */
+    fun runReview(
+        bitmap: Bitmap,
+        regionAu: android.graphics.Rect?,
+        preOcrDelayMs: Long = 0,
+        deviceOnly: Boolean = false,
+    ): CaptureSession
 
     /** The frozen scene currently owning the display, for word lookup. */
     fun lookupScene(): FrozenLookupScene?
@@ -119,6 +127,15 @@ class FrozenReviewPanel(
     /** User-drawn region (AU px of the reviewed frame), or null for the
      *  whole frame. Episode-scoped — see the class doc. */
     private var regionAu: android.graphics.Rect? = null
+
+    /** True once the user picked a device OCR engine for THIS frame
+     *  ([reOcrOnDevice], the panel gear or the pill gear while a frame is
+     *  retained): every read of the frame from then on stays on the device
+     *  whatever the reader settings say (the service's re-OCR rule), crop
+     *  and remove-region re-runs included. Episode-scoped like [regionAu]:
+     *  the next snapshot or page follows the router again. A language or
+     *  settings refresh keeps it: the frame is the same. */
+    private var deviceOnly = false
 
     /** True while the crop editor owns the screen (panel hidden, region
      *  drag box + confirm bar up). */
@@ -286,7 +303,7 @@ class FrozenReviewPanel(
                 activity,
                 prov.sourceLangId,
                 prov.engineToken,
-                onReOcr = { reRunReview() },
+                onReOcr = { reOcrOnDevice() },
                 onDownload = { chosen ->
                     // Scope-routed: the download screen persists THIS flow's
                     // token, only on verified success — an aborted download
@@ -339,7 +356,7 @@ class FrozenReviewPanel(
         val backdrop = renderViewSpaceBackdrop(frame, w, h)
         o.show(w, h, backdrop)
         backdrop?.recycle()
-        val s = backend.runReview(frame, regionAu)
+        val s = backend.runReview(frame, regionAu, deviceOnly = deviceOnly)
         reviewSession = s
         o.observe(s)
     }
@@ -350,25 +367,37 @@ class FrozenReviewPanel(
     /** Read settings changed (source language, OCR engine — the pill's gear
      *  menu): re-read the SAME retained frame under the new selections,
      *  restarting the panel flow from its loading indication — the boxes
-     *  and results on display describe the OLD settings. */
-    fun refreshAfterSettings() {
+     *  and results on display describe the OLD settings. [deviceOnly]: the
+     *  change was the user's pick of a device engine for this frame, which
+     *  holds for the rest of the episode ([reOcrOnDevice]). */
+    fun refreshAfterSettings(deviceOnly: Boolean = false) {
         if (overlay == null) return
+        if (deviceOnly) this.deviceOnly = true
         overlay?.prepareForSettingsRefresh()
+        reRunReview()
+    }
+
+    /** The user picked a device OCR engine for this frame (the panel's
+     *  gear): the frame reads on the device from here on ([deviceOnly]),
+     *  starting now. */
+    fun reOcrOnDevice() {
+        deviceOnly = true
         reRunReview()
     }
 
     /** Gear re-OCR and region changes: run a fresh backend session over the
      *  SAME retained frame (recognise picks up the engine selection the
-     *  picker just persisted; the current [regionAu] rides along) and drive
-     *  the same panel through the loading stages again — observe() cancels
-     *  the prior session. [preOcrDelayMs] = the page-flip dwell. */
+     *  picker just persisted; the current [regionAu] and the frame's
+     *  device-only statement ride along) and drive the same panel through
+     *  the loading stages again — observe() cancels the prior session.
+     *  [preOcrDelayMs] = the page-flip dwell. */
     fun reRunReview(preOcrDelayMs: Long = 0) {
         val o = overlay ?: return
         val frame = bitmap() ?: return
         // The lookup lens describes the outgoing scene (its lines/region
         // are about to be replaced) — take it down with the re-run.
         wordLookup.dismiss()
-        val s = backend.runReview(frame, regionAu, preOcrDelayMs)
+        val s = backend.runReview(frame, regionAu, preOcrDelayMs, deviceOnly)
         reviewSession = s
         o.observe(s)
     }
@@ -403,6 +432,7 @@ class FrozenReviewPanel(
             onControlsChanged()
         }
         regionAu = null
+        deviceOnly = false
         regionUi.hideIndicator()
         overlay?.persistPosture()
         overlay?.prepareForSettingsRefresh(preservePosture = !willShowLoading)
@@ -428,13 +458,15 @@ class FrozenReviewPanel(
         lastRasterBoost = 1f
         setRenderScaleBoost(1f)
         wordLookup.dismiss()
-        // Region + its UI die with the episode (see regionAu).
+        // Region + its UI die with the episode (see regionAu), and so does
+        // the frame's device-only statement.
         if (cropActive) {
             cropActive = false
             regionUi.hideEditor()
             panelHost.isVisible = true
         }
         regionAu = null
+        deviceOnly = false
         regionUi.hideIndicator()
         onDismissed()
     }

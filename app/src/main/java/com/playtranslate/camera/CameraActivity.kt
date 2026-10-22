@@ -262,7 +262,12 @@ class CameraActivity : AppCompatActivity() {
                 OcrModelManager.selectedBackend(
                     this, prefs.sourceLangId, com.playtranslate.OcrTokenScope.CAMERA,
                 )?.selectionToken ?: ""
-            )
+            ) +
+            // The PlayTranslate Cloud switch picks the reader, as the engine
+            // does: flipped on the cloud page, it re-reads a frozen frame on
+            // return (a key save resets the service, which no frozen frame
+            // can see; its next read follows the router).
+            "|cloud=${prefs.ptCloudEnabled}"
 
     override fun onPause() {
         super.onPause()
@@ -485,12 +490,16 @@ class CameraActivity : AppCompatActivity() {
      *  picker persisted a new selection): re-read under them. While FROZEN
      *  that means re-running the snapshot on the SAME retained frame; live
      *  and paused reset the session so the next settle acquires fresh.
+     *  [deviceOnly]: the change was the user's pick of a device engine,
+     *  which a frozen frame then reads with for the rest of its episode
+     *  (the service's re-OCR rule); live acquires keep following the reader
+     *  router, as live mode does after the floating menu's pick.
      *  langKey is stamped here so onResume's diff doesn't double-fire. */
-    private fun refreshAfterReadSettingsChange() {
+    private fun refreshAfterReadSettingsChange(deviceOnly: Boolean = false) {
         sessionLangKey = langKey()
         val controller = snapshotController
         if (controller?.isFrozen == true) {
-            controller.refreshSnapshot()
+            controller.refreshSnapshot(deviceOnly)
         } else {
             session?.reset()
         }
@@ -510,7 +519,7 @@ class CameraActivity : AppCompatActivity() {
             this,
             srcId,
             token,
-            onReOcr = { refreshAfterReadSettingsChange() },
+            onReOcr = { refreshAfterReadSettingsChange(deviceOnly = true) },
             onDownload = { backend ->
                 // CAMERA scope: the download screen persists the CAMERA
                 // token, only on verified success — an aborted download

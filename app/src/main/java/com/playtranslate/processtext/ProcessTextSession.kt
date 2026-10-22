@@ -2,7 +2,7 @@ package com.playtranslate.processtext
 
 import com.playtranslate.CaptureSession
 import com.playtranslate.CaptureState
-import com.playtranslate.camera.CameraTranslator
+import com.playtranslate.translation.GroupTranslation
 import com.playtranslate.cancelledStateOrNull
 import com.playtranslate.model.PendingTranslation
 import com.playtranslate.model.TextSegments
@@ -28,8 +28,9 @@ import kotlinx.coroutines.launch
  */
 object ProcessTextSession {
 
-    /** [translate] is injected (the activity passes the real
-     *  [CameraTranslator]) so the state machine tests against a fake.
+    /** [translate] is injected (the activity passes its
+     *  [com.playtranslate.translation.GroupTranslator]) so the state machine
+     *  tests against a fake.
      *  [deferTranslation] (translation section hidden, source ≠ target): the
      *  session skips [translate] entirely and lands a Done whose
      *  [PendingTranslation] marks the blank translatedText as "never ran" —
@@ -43,7 +44,7 @@ object ProcessTextSession {
         scope: CoroutineScope,
         failedMessage: String,
         deferTranslation: Boolean = false,
-        translate: suspend (String) -> CameraTranslator.Detailed?,
+        translate: suspend (String) -> GroupTranslation?,
     ): CaptureSession {
         val segments = TextSegments.ofText(text)
         val state = MutableStateFlow<CaptureState>(CaptureState.Translating(text, segments))

@@ -75,3 +75,6 @@ app/src/androidTest/assets/ocr_golden/**/*.notes.md
 # OS
 Thumbs.db
 **/.cxx/
+
+# Kotlin 2.x compiler daemon session data
+.kotlin/

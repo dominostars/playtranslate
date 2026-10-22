@@ -112,6 +112,21 @@ class TranslationBackendRegistryAttemptsTest {
 
     private val billing = BackendFailure(BackendFailureKind.BILLING, 400)
 
+    @Test fun `a refusal made before any request reports as not having reached a server`() = runBlocking {
+        val cloud = FakeThrowingBackend(
+            id = "ptcloud", priority = 10, displayName = "PlayTranslate Cloud",
+            exception = StructuralFailureException(
+                "a text over the cap", BackendFailure(BackendFailureKind.REJECTED), serverAnswered = false,
+            ),
+        )
+        TranslationBackendRegistry.init(listOf(cloud, FakeDegradedBackend()))
+
+        TranslationBackendRegistry.translate("hi", "ja", "en")
+
+        val rejected = BackendFailure(BackendFailureKind.REJECTED)
+        assertEquals(listOf(listOf(attempt("ptcloud", "PlayTranslate Cloud", rejected, reachedServer = false))), verdicts)
+    }
+
     @Test fun `a failed online service then an offline answer reports just the online failure`() = runBlocking {
         val claude = FakeThrowingBackend(
             id = "claude", priority = 10, displayName = "Claude",

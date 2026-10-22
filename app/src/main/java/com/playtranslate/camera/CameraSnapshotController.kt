@@ -106,9 +106,10 @@ class CameraSnapshotController(
                 bitmap: Bitmap,
                 regionAu: android.graphics.Rect?,
                 preOcrDelayMs: Long,
+                deviceOnly: Boolean,
             ): CaptureSession =
                 // The camera has no page flips — the dwell is unused here.
-                session.runSnapshot(bitmap, regionAu)
+                session.runSnapshot(bitmap, regionAu, deviceOnly)
 
             override fun lookupScene() = session.frozenLookupScene()
 
@@ -280,10 +281,12 @@ class CameraSnapshotController(
     }
 
     /** Read settings changed (source language, OCR engine — the pill's gear
-     *  menu): re-read the SAME frozen frame under the new selections. */
-    fun refreshSnapshot() {
+     *  menu): re-read the SAME frozen frame under the new selections.
+     *  [deviceOnly]: the change was a device engine picked for this frame
+     *  ([FrozenReviewPanel.refreshAfterSettings]). */
+    fun refreshSnapshot(deviceOnly: Boolean = false) {
         if (!isFrozen) return
-        panel.refreshAfterSettings()
+        panel.refreshAfterSettings(deviceOnly)
     }
 
     /** X or system back: route through the panel's dismiss so every exit

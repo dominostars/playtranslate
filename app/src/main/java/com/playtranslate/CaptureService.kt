@@ -35,8 +35,16 @@ import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.PendingTranslation
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
+import com.playtranslate.cloud.PtCloudService
+import com.playtranslate.ocr.DeviceFrameReader
+import com.playtranslate.ocr.FrameReader
+import com.playtranslate.ocr.FrameReaders
+import com.playtranslate.ocr.ReadRequest
+import com.playtranslate.ocr.ReaderAttribution
+import com.playtranslate.ocr.ReaderTranslations
+import com.playtranslate.translation.GroupTranslation
+import com.playtranslate.translation.GroupTranslator
 import com.playtranslate.ocr.registry.OcrModelManager
-import com.playtranslate.ocr.registry.ocrLabel
 import com.playtranslate.ocr.registry.selectionToken
 import com.google.mlkit.nl.translate.TranslateLanguage
 import kotlinx.coroutines.CancellationException
@@ -57,6 +65,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -78,20 +87,12 @@ import com.playtranslate.capture.MediaProjectionController
 import com.playtranslate.capture.StreamKind
 import com.playtranslate.dictionary.DictionaryManager
 import com.playtranslate.overlay.OverlayHost
-import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
-import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.translation.TranslationBackendRegistry
-import com.playtranslate.language.ShortTextTokenCounters
-import com.playtranslate.language.isShortText
-import com.playtranslate.translation.PartitionedResult
-import com.playtranslate.translation.ShortTextOfflineRoute
-import com.playtranslate.translation.dispatchPartitioned
-import com.playtranslate.translation.shouldBypassForLlm
 import com.playtranslate.ui.DegradedWarningKind
 import com.playtranslate.ui.FuriganaMetrics
 import com.playtranslate.ui.GrowthLimits
@@ -103,6 +104,12 @@ import com.playtranslate.overlay.OwnWindows
 private const val TAG = "CaptureService"
 private const val NOTIF_ID = 1001
 private const val CHANNEL_ID = "playtranslate_capture"
+
+/** A one-shot session's Failed message when [CaptureService.isConfigured] is
+ *  false. [CaptureService.runCaptureCycle] checks before it captures anything;
+ *  [CaptureService.runFrameCycle] checks on entry, so a frame handed to it is
+ *  still released. */
+private const val NOT_CONFIGURED_MESSAGE = "Not configured — tap Translate to set up"
 
 /**
  * Foreground service that owns the OCR + translation pipeline.
@@ -146,6 +153,7 @@ class CaptureService : Service() {
     internal val furiganaPaint by lazy { FuriganaMetrics.measuringPaint(resources.displayMetrics.density) }
 
     internal val ocrManager get() = OcrManager.instance
+
 
     /**
      * The set of displays the user has selected to translate. P1 introduces
@@ -340,12 +348,21 @@ class CaptureService : Service() {
      * pinhole tier those pixels carry our own overlay boxes (its OCR runs on
      * a filled COPY, never on the honest frame), so re-OCRing them would
      * read our translations back as source text.
+     *
+     * [attribution] names who looked, when the caller's read knows it (the
+     * hold and every live tier); null attributes the look to the device
+     * engine selected for the current source language
+     * ([DeviceFrameReader.noTextAttribution]).
      */
-    internal fun emitLiveNoText(displayId: Int) {
+    internal fun emitLiveNoText(displayId: Int, attribution: ReaderAttribution? = null) {
         val region = activeRegionForDisplay(displayId)
+        val srcId = Prefs(this).sourceLangId
         _panelState.value = PanelState.NoText(
             noTextMessage(displayId, region),
-            noTextProvenanceFor(displayId, region, Prefs(this).sourceLangId),
+            ocrProvenanceFor(
+                attribution ?: DeviceFrameReader.noTextAttribution(this, srcId),
+                displayId, region, srcId,
+            ),
         )
         // The recorded text is no longer what the panel shows — identical
         // text REAPPEARING after a no-text gap must deliver again.
@@ -814,7 +831,7 @@ class CaptureService : Service() {
         }
         overrideRegions.clear()
         hasCaptureStateConfigured = true
-        ensureLanguageManagersFor(snapshotTranslationTarget())
+        translator.reconcileBackendPreference()
         _statusUpdates.tryEmit(getString(R.string.status_idle))
         // The activity flips the panel to Idle on that signal: it leaves its
         // Result state, so both delivery records clear (identical text read
@@ -872,100 +889,12 @@ class CaptureService : Service() {
         for ((id, region) in pending) configureOverride(id, region)
     }
 
-    /** Immutable snapshot of the translation pair + DeepL key at the moment
-     *  a translation request enters the service. Threaded through every
-     *  downstream call so that a concurrent [Prefs] change mid-batch can't
-     *  poison a cache entry (translated under the new pair but keyed under
-     *  the old): both the key and the translator selection derive from the
-     *  *same* target value. */
-    private data class TranslationTarget(
-        val source: String,
-        val target: String,
-        val deeplKey: String,
-        /** Chinese script choice; meaningful only when [target] == "zh". */
-        val chineseVariant: ChineseScriptVariant,
-        /** True when the OCR'd source is already Traditional (ZH_HANT) — so a
-         *  same-language passthrough must NOT be re-run through a Simplified→
-         *  Traditional pass. Only [source]/[target] feed the cache key, so these
-         *  extra fields don't fragment the shared "zh" cache. */
-        val sourceIsTraditional: Boolean,
-        /** The resolved source-language id behind [source], for the short-text
-         *  classifier's per-language segmenter. Snapshotted with the pair so a
-         *  mid-batch source switch can't classify under one language and
-         *  translate under another. */
-        val sourceId: SourceLangId,
-    ) {
-        /** OpenCC converter for Traditional Chinese output, or null when no
-         *  conversion applies (non-Chinese target, Simplified, or an already-
-         *  Traditional source passthrough). */
-        private val chineseConverter: ChineseScriptConverter?
-            get() = ChineseScriptConverter.forTarget(target, chineseVariant, sourceIsTraditional)
-
-        /** Convert a finished target-language string to the chosen Traditional
-         *  variant. No-op for non-Chinese / Simplified targets. Applied strictly
-         *  at read/return time — never before a cache write (the cache stores
-         *  Simplified, shared across all variants). */
-        fun localize(text: String): String = chineseConverter?.convert(text) ?: text
-    }
-
-    /** Capture a [TranslationTarget] from current [Prefs]. Called once at
-     *  the outermost layer of each translation entry point; downstream calls
-     *  thread the captured value rather than re-reading Prefs, so mid-batch
-     *  changes can't create inconsistency between key-derivation and
-     *  translator selection. */
-    private fun snapshotTranslationTarget(sourceOverride: SourceLangId? = null): TranslationTarget {
-        val prefs = Prefs(this)
-        // [sourceOverride] lets a re-OCR translate in the language that actually
-        // produced the result (its provenance), not the current pref — the user may
-        // have switched source language since. Target/variant still come from prefs.
-        val srcId = sourceOverride ?: prefs.sourceLangId
-        return TranslationTarget(
-            source = SourceLanguageProfiles[srcId].translationCode,
-            target = prefs.targetLang,
-            deeplKey = prefs.deeplApiKey,
-            chineseVariant = prefs.targetChineseVariant,
-            sourceIsTraditional = srcId == SourceLangId.ZH_HANT,
-            sourceId = srcId,
-        )
-    }
-
-    /** Called at the top of every translation call to keep the cache's
-     *  ROUTING identity (preferred backend + short-text policy knobs, see
-     *  [TranslationCache.routingIdentity]) in sync with current
-     *  configuration. Backends themselves are owned by
-     *  [TranslationBackendRegistry] and are pair-agnostic singletons —
-     *  there is no per-pair instance churn to reconcile. Pair changes are
-     *  handled by the cache key itself — no explicit clear needed. */
-    private fun ensureLanguageManagersFor(target: TranslationTarget) {
-        val prefs = Prefs(this)
-        translationCache.reconcilePreferredBackend(
-            TranslationCache.routingIdentity(
-                preferredOnlineId =
-                    TranslationBackendRegistry.preferredOnlineId(target.source, target.target),
-                llmContextEnabled = prefs.llmContextEnabled,
-                bergamotEnabled = prefs.bergamotEnabled,
-                shortTextRoutingEnabled = prefs.debugShortTextRouting,
-            )
-        )
-    }
-
-    /** Public hook for callers (Settings UI today) to drive cache
-     *  reconciliation eagerly when they know the user just changed
-     *  backend preferences — e.g. flipped the DeepL toggle, saved a new
-     *  DeepL key. Without this, an all-cached translate batch can serve
-     *  stale entries because [translate] (where reconciliation lives) is
-     *  never invoked. Cheap: a Map-clear on transition, no-op otherwise. */
-    fun reconcileBackendPreference() {
-        ensureLanguageManagersFor(snapshotTranslationTarget())
-    }
-
-    /** Force-drop every cached translation. Used when the *configuration*
-     *  of an LLM backend changes without changing its id — switching the
-     *  OpenAI model, base URL, or API key. [reconcileBackendPreference]
-     *  can't catch those because the preferred backend id is unchanged. */
-    fun clearTranslationCache() {
-        translationCache.clear()
-    }
+    /** This service's translate handshake over the process's one cache
+     *  ([TranslationCache.shared]), with the floating icon's badge as its
+     *  degraded sink ([setDegraded]). Every translate entry point below
+     *  delegates to it; the camera tool, the import tool and
+     *  select-to-translate hold their own over the same cache. */
+    internal val translator by lazy { GroupTranslator(this, TranslationCache.shared, ::setDegraded) }
 
     /** Start a one-shot capture cycle on [displayId]. Caller observes the
      *  returned [CaptureSession]'s [CaptureSession.state] for
@@ -995,7 +924,7 @@ class CaptureService : Service() {
      *
      * Re-OCR callers (override-carrying calls) keep [allowDeferTranslation]
      * false — deliberately: a re-OCR records no History rows (see the gate in
-     * [runProcessCycle]), so a deferred re-OCR would have nothing to attach
+     * [runFrameCycle]), so a deferred re-OCR would have nothing to attach
      * its late translation to.
      */
     fun processScreenshot(
@@ -1027,8 +956,8 @@ class CaptureService : Service() {
     // any one of them silently re-introduces a class of regression.
     //
     //   A. Pipeline-level CancellationException re-throw
-    //      ([runCaptureOcrTranslate], [runProcessCycle]).
-    //      Their broad `catch (Exception)` blocks would otherwise swallow
+    //      ([runFrameCycle], the capture-once core behind both sessions).
+    //      Its broad `catch (Exception)` block would otherwise swallow
     //      cancellation and convert it to [PipelineOutcome.Failed] /
     //      [CaptureState.Failed] with a runtime message like
     //      "StandaloneCoroutine was cancelled". A leading
@@ -1086,9 +1015,11 @@ class CaptureService : Service() {
         }
     }
 
-    /** One-shot capture from a pre-captured bitmap: walks [state]
-     *  through Capturing → OCR → Translating → final Done/NoText/Failed.
-     *  Owned by the [CaptureSession] returned from [processScreenshot]. */
+    /** Body of [processScreenshot]'s session: runs [runFrameCycle] on the
+     *  caller's pre-captured [frame] and walks [state] through Capturing →
+     *  OCR → Translating → final Done/NoText/Failed. Unlike [runCaptureCycle]
+     *  it shows the OCR status (the capture sheet's sliver renders it) and
+     *  flashes no region indicator. */
     private suspend fun runProcessCycle(
         frame: com.playtranslate.capture.CapturedFrame,
         displayId: Int,
@@ -1097,210 +1028,29 @@ class CaptureService : Service() {
         sourceLangIdOverride: SourceLangId? = null,
         allowDeferTranslation: Boolean = false,
     ) {
-        val raw = frame.bitmap
-        val frameIncludesSystemUi = frame.includesSystemUi
-        // The frame's capture moment as epoch ms (capturedAtMs is uptime;
-        // one conversion at the same instant). Passed as the result's
-        // createdAtMs so the game-audio anchor names the SHUTTER, not the
-        // post-translation construction — MT latency (seconds to tens on
-        // the slow tier) must not drift the trim seed.
-        val capturedAtWallMs = System.currentTimeMillis() -
-            (android.os.SystemClock.uptimeMillis() - frame.capturedAtMs)
-        if (!isConfigured) {
-            state.value = CaptureState.Failed("Not configured — tap Translate to set up")
-            raw.recycle()
-            return
-        }
-        var bitmap: Bitmap = raw
-        var colorRef: Bitmap? = null
-        try {
-            state.value = CaptureState.InProgress(getString(R.string.status_capturing))
-            val screenshotPath = captureSaveToCache(raw, displayId)
-
-            // Source language + region come from current settings for a fresh capture,
-            // or from the pinned overrides when re-OCR'ing an existing capture (so the
-            // re-scan reads the SAME region/language that produced the result — only the
-            // OCR engine changes). Snapshotted once, before OCR, so OCR + provenance
-            // can't disagree even if settings change mid-cycle.
-            val srcId = sourceLangIdOverride ?: Prefs(this@CaptureService).sourceLangId
-            val region = regionOverride ?: activeRegionForDisplay(displayId)
-            val statusBarHeight = statusBarHeightForFrame(displayId, frameIncludesSystemUi)
-            val top    = maxOf((raw.height * region.top).toInt(), statusBarHeight)
-            val left   = (raw.width  * region.left).toInt()
-            val bottom = (raw.height * region.bottom).toInt()
-            val right  = (raw.width  * region.right).toInt()
-            val rawW = raw.width
-            val rawH = raw.height
-            // Snapshot the color-sampling reference now — cropBitmap recycles raw.
-            colorRef = oneShotColorRef(raw)
-            bitmap = cropBitmap(raw, top, bottom, left, right)
-
-            // The frame is stamped as possibly containing our own overlay
-            // windows (a re-OCR of a cached live raw frame) — black our
-            // chrome (floating icon, pills) out before OCR reads it as
-            // text. In-place only when cropBitmap produced a fresh copy; a
-            // no-op crop leaves `bitmap === raw`, and the frame must never be
-            // drawn into (uniform rule — here the cache write and colorRef
-            // snapshot already happened, but the safety must not depend on
-            // that ordering). Cleanup of `bitmap` is the outer finally's job.
-            if (frame.includesOwnOverlays) {
-                val chrome =
-                    CaptureBackendResolver.activeOverlayUi?.ownChromeRects(displayId).orEmpty()
-                val blacked = OverlayToolkit.blackoutRects(
-                    bitmap, left, top, chrome,
-                    allowInPlace = bitmap !== raw,
-                )
-                if (blacked !== bitmap) {
-                    bitmap.recycle()
-                    bitmap = blacked
-                }
-            }
-            state.value = CaptureState.InProgress(getString(R.string.status_ocr))
-            val ocrResult = ocrManager.recognise(bitmap, srcId, screenshotWidth = raw.width)
-            if (BuildConfig.DEBUG && Prefs(this@CaptureService).debugSaveOcrSeed) {
-                OcrSeedWriter.writeSeed(this@CaptureService, bitmap, ocrResult)
-            }
-
-            if (ocrResult == null) {
-                state.value = CaptureState.NoText(
-                    noTextMessage(displayId),
-                    noTextProvenanceFor(
-                        displayId, region, srcId, frameIncludesSystemUi,
-                        frame.includesOwnOverlays,
-                    ),
-                    screenshotPath,
-                )
-                return
-            }
-
-            // Reveal the page on OCR: show the source now, translate in the section.
-            // The skeleton boxes ride along so a chips-preferred panel can collapse
-            // NOW and show pulsing placeholders over the game while we translate.
-            val skeletonData = buildOneShotOverlayData(
-                ocrResult, colorRef, left, top, rawW, rawH,
-                cropWidth = right - left, cropHeight = bottom - top,
-            )
-            state.value = CaptureState.Translating(
-                ocrResult.fullText, ocrResult.segments,
-                ocrProvenanceFor(
-                    ocrResult, displayId, region, srcId, frameIncludesSystemUi,
-                    frame.includesOwnOverlays,
-                ),
-                overlayData = skeletonData,
-            )
-            // Pin translation to the SAME source language OCR used (srcId), not current
-            // Prefs — for a re-OCR after a source-language change they'd otherwise disagree,
-            // sending the recognized text through the wrong source/target cache key and
-            // translator. No-op for a fresh capture, where srcId == Prefs.sourceLangId.
-            // Per-group (same batch [translateGroups] wraps) so the on-screen overlay
-            // boxes get their per-group texts; the panel text is the same join.
-            // Recording target captured BEFORE the translate call — a
-            // mid-flight language change must not relabel these rows
-            // (srcId is already pinned above).
-            val recordSrc = SourceLanguageProfiles[srcId].translationCode
-            val recordTgt = Prefs(this@CaptureService).targetLang
-            // Deferred path — same contract as runCaptureOcrTranslate. Re-OCR
-            // callers never opt in (allowDeferTranslation stays false at their
-            // call sites): their recording is gated off below, so a deferred
-            // re-OCR would have nothing to attach its late translation to.
-            val deferTranslation = allowDeferTranslation &&
-                Prefs(this@CaptureService).hideTranslationSection &&
-                recordSrc != recordTgt
-            val perGroup = if (deferTranslation) null
-                else translateGroupsSeparately(ocrResult.groups.map { it.text }, srcId)
-
-            // Deliberate capture → recording backend, FRESH captures only:
-            // override-carrying calls are re-OCRs of an already-recorded
-            // capture (engine change from the results surface), and a
-            // refinement must not mint a second session's worth of rows.
-            // Deferred rows record with a null translation; the normal path
-            // keeps skipping rows whose translation came back blank.
-            // Logging eligibility snapshotted WITH the recording (see
-            // runCaptureOcrTranslate) — a deferred completion may only write
-            // what the user had opted into at THIS moment.
-            val historyEligible = Prefs(this@CaptureService).translationHistoryEnabled
-            val contextEligible = Prefs(this@CaptureService).llmContextEnabled
-            var captureSessionId: String? = null
-            if (regionOverride == null && sourceLangIdOverride == null) {
-                val token = translationLogRecorder.beginCaptureSession()
-                captureSessionId = token.sessionId.takeIf { historyEligible }
-                ocrResult.groups.forEachIndexed { i, g ->
-                    val tr = perGroup?.getOrNull(i)?.text.orEmpty()
-                    if (deferTranslation || tr.isNotEmpty()) translationLogRecorder.onCaptureShown(
-                        token, g.text, tr.takeIf { it.isNotEmpty() }, g.bounds, srcId, recordTgt,
-                        com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_ONE_SHOT,
-                        perGroup?.getOrNull(i)?.backendDisplayName,
-                        captureImage = screenshotPath?.let {
-                            com.playtranslate.translationlog.HistoryImageStore.Source.FromPath(it)
-                        },
-                    )
-                }
-            }
-
-            val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-            state.value = CaptureState.Done(
-                TranslationResult(
-                    originalText        = ocrResult.fullText,
-                    segments            = ocrResult.segments,
-                    translatedText      = perGroup?.joinToString("\n\n") { it.text }.orEmpty(),
-                    timestamp           = timestamp,
-                    screenshotPath      = screenshotPath,
-                    note                = perGroup?.mapNotNull { it.note }?.firstOrNull(),
-                    backendDisplayName  = perGroup?.mapNotNull { it.backendDisplayName }?.firstOrNull(),
-                    ocrProvenance       = ocrProvenanceFor(
-                        ocrResult, displayId, region, srcId, frameIncludesSystemUi,
-                        frame.includesOwnOverlays,
-                    ),
-                    pendingTranslation  = if (deferTranslation) PendingTranslation(
-                        groupTexts = ocrResult.groups.map { it.text },
-                        sourceLangId = srcId,
-                        targetLang = recordTgt,
-                        isCapture = true,
-                        historySessionId = captureSessionId,
-                        historyEligible = historyEligible,
-                        contextEligible = contextEligible,
-                    ) else null,
-                    langContext         = Prefs(this@CaptureService).langContext(srcId),
-                    createdAtMs         = capturedAtWallMs,
-                ),
-                // Deferred: keep the SKELETONS — the deferred completion fills
-                // them when the translation finally runs.
-                overlayData = if (perGroup != null)
-                    fillOneShotOverlayData(skeletonData, perGroup.map { it.text })
-                else skeletonData,
-            )
-        } catch (e: CancellationException) {
-            // Let cancellation propagate; invokeOnCompletion writes Cancelled.
-            throw e
-        } catch (e: Exception) {
-            Log.e(TAG, "Process cycle failed: ${e.message}", e)
-            state.value = CaptureState.Failed(e.message ?: "Unknown error")
-        } finally {
-            colorRef?.recycle()
-            if (!bitmap.isRecycled) bitmap.recycle()
-        }
-    }
-
-    /** Build the [OcrProvenance] for a NO-TEXT result, where there is no [OcrResult]
-     *  to read the engine from — attribute it to the engine that WAS selected (and
-     *  ran, finding nothing) for [srcId]. Pins the engine, language, [region], and
-     *  [displayId] so the "switch OCR tool" gear can re-OCR THIS exact capture. Null
-     *  when no OCR backend is available (e.g. a no-floor language on a 32-bit device).
-     *  The two frame facts are nullable for the live tiers, which pin no screenshot at
-     *  all ([emitLiveNoText]) — with nothing to re-crop, there is nothing to describe. */
-    private fun noTextProvenanceFor(
-        displayId: Int,
-        region: RegionEntry,
-        srcId: SourceLangId,
-        frameIncludesSystemUi: Boolean? = null,
-        frameIncludesOwnOverlays: Boolean? = null,
-    ): OcrProvenance? {
-        val backend = OcrModelManager.selectedBackend(this, srcId) ?: return null
-        return OcrProvenance(
-            backend.ocrLabel(this), backend.selectionToken, displayId, srcId, region,
-            frameIncludesSystemUi = frameIncludesSystemUi,
-            frameIncludesOwnOverlays = frameIncludesOwnOverlays,
+        state.value = CaptureState.InProgress(getString(R.string.status_capturing))
+        // Source language + region come from current settings for a fresh capture,
+        // or from the pinned overrides when re-OCR'ing an existing capture (so the
+        // re-scan reads the SAME region/language that produced the result — only the
+        // OCR engine changes). Override-carrying calls are exactly the re-OCRs, so
+        // they are what [runFrameCycle]'s recording gate keys on.
+        val outcome = runFrameCycle(
+            frame, displayId,
+            region = regionOverride ?: activeRegionForDisplay(displayId),
+            srcId = sourceLangIdOverride ?: Prefs(this@CaptureService).sourceLangId,
+            isReOcr = regionOverride != null || sourceLangIdOverride != null,
+            allowDeferTranslation = allowDeferTranslation,
+            onOcrStart = { state.value = CaptureState.InProgress(getString(R.string.status_ocr)) },
+            onOcrReady = { originalText, segments, ocrProvenance, overlayData ->
+                state.value =
+                    CaptureState.Translating(originalText, segments, ocrProvenance, overlayData)
+            },
+            // More boxes translated before Done: the same Translating with
+            // only its boxes changed, which the collectors take as a box fill
+            // (CaptureState.Translating.fillsBoxesOf).
+            onBoxesFilled = { data -> state.update { (it as? CaptureState.Translating)?.copy(overlayData = data) ?: it } },
         )
+        state.value = terminalStateFor(outcome, displayId)
     }
 
     // ── Live mode ─────────────────────────────────────────────────────────
@@ -2921,8 +2671,7 @@ class CaptureService : Service() {
      *  contain no system UI (a task-scoped single-app stream, where cropping
      *  would eat game content), else the per-display height. Null source =
      *  the full-display assumption, the safe default. The SINGLE owner of
-     *  this decision: [runOcr], [runProcessCycle], and
-     *  [runCaptureOcrTranslate] all route here — a manual
+     *  this decision: [runOcrRead] and [runFrameCycle] both route here — a manual
      *  getStatusBarHeightForDisplay in an OCR crop is a defect
      *  (review round 6 found two). */
     internal fun statusBarHeightForFrame(
@@ -2941,7 +2690,9 @@ class CaptureService : Service() {
         ui.showRegionIndicator(display, activeRegionForDisplay(displayId))
     }
 
-    /** Run the shared OCR pipeline on a frame captured from [displayId].
+    /** Run the shared OCR pipeline on a frame captured from [displayId], and
+     *  return its result with who read the frame
+     *  ([OverlayToolkit.OcrPipelineRead]), which a no-text read still names.
      *  Every per-display parameter (active region, status bar height, icon
      *  rect to black out) is resolved for [displayId] — the pipeline has no
      *  notion of a "primary" display. Caller still owns [raw].
@@ -2964,31 +2715,65 @@ class CaptureService : Service() {
      *  direction is safe to assume, so every caller — present and future —
      *  must state its frame's provenance (2026-07-16 adversarial-review
      *  finding: the furigana raw path silently kept feeding icon-bearing
-     *  frames after the blackout moved into one mode). */
-    internal suspend fun runOcr(
+     *  frames after the blackout moved into one mode).
+     *
+     *  The read goes through the router ([FrameReaders.readerFor]) stating
+     *  no device-only: the live tiers ([runLiveOcrRead]) and the
+     *  press-and-hold overlay read where it routes, and a re-OCR, the one
+     *  read of a capture the user's engine pick keeps on the device, runs
+     *  through [runFrameCycle], not here.
+     *
+     *  [translate]: false asks the reader for the frame's text alone, as the
+     *  furigana tier does (its readings need no translation, and the panel
+     *  translates its own offers): the request names the same-language pair
+     *  ([ReadRequest.sameLanguage]), for which PlayTranslate Cloud skips
+     *  translation and so never spends a model call or a permit on the
+     *  frame, and whatever translations the reader hands over are cancelled
+     *  here, since nothing awaits them, so the result carries none.
+     *
+     *  The slow-OCR prompt's pass timing ([LiveSessionFeedback.beginOcrPass])
+     *  starts when the device engine is about to run
+     *  ([ReadRequest.beforeDeviceOcr]), whether the device reader read the
+     *  frame outright or as a cloud read's fallback: the prompt rescues a
+     *  session from a slow device engine (it offers a faster one), and the
+     *  time a cloud attempt spent on the network, which no engine switch
+     *  speeds up, never counts. The startup card's first-pass narration ends
+     *  on every reader's completed pass. */
+    internal suspend fun runOcrRead(
         raw: Bitmap,
         displayId: Int,
         frameIncludesSystemUi: Boolean = true,
         frameIncludesOwnOverlays: Boolean,
-    ): OverlayToolkit.OcrPipelineResult? {
+        translate: Boolean = true,
+    ): OverlayToolkit.OcrPipelineRead {
         val prefs = Prefs(this)
         val seedWriter: ((Bitmap, OcrManager.OcrResult?) -> Unit)? =
             if (BuildConfig.DEBUG && prefs.debugSaveOcrSeed) {
                 { bitmap, result -> OcrSeedWriter.writeSeed(this, bitmap, result) }
             } else null
+        val srcId = prefs.sourceLangId
+        val reader = FrameReaders.readerFor(srcId, deviceOnly = false)
+        val frameId = frameIdFor(displayId)
         val statusBarHeight = statusBarHeightForFrame(displayId, frameIncludesSystemUi)
         // Session captured at entry: a pass that outlives a stop (native
         // inference cancels lazily) finalizes into ITS session — disposed
         // and inert — never the next one's ([LiveSessionFeedback]).
         val feedback = if (isLive) liveFeedback else null
-        val passToken = feedback?.beginOcrPass(displayId)
+        var passToken: LiveSessionFeedback.OcrPassToken? = null
+        val request = (
+            if (translate) {
+                ReadRequest(srcId, screenshotWidth = raw.width, targetLang = prefs.targetLang, frameId = frameId)
+            } else {
+                ReadRequest.sameLanguage(srcId, screenshotWidth = raw.width, frameId = frameId)
+            }
+        ).copy(beforeDeviceOcr = { passToken = feedback?.beginOcrPass(displayId) })
         try {
-            val result = OverlayToolkit.runOcrPipeline(
+            val read = OverlayToolkit.runOcrPipeline(
                 raw,
                 activeRegionForDisplay(displayId),
-                prefs.sourceLangId,
-                ocrManager,
                 statusBarHeight,
+                reader,
+                request,
                 seedWriter = seedWriter,
                 // The startup card may be inside this frame (whole-display
                 // mirrors, a11y screenshots) — never OCR our own chrome.
@@ -3014,16 +2799,50 @@ class CaptureService : Service() {
                 displayId,
                 cardDisplayLive = liveModes.containsKey(Display.DEFAULT_DISPLAY),
             )
-            return result
+            if (translate) return read
+            // Text alone was asked for: nothing awaits what the reader
+            // handed over (the seam's rule: whoever drops them cancels them).
+            val result = read.result ?: return read
+            result.translations?.cancel()
+            return read.copy(result = result.copy(translations = null))
         } finally {
-            if (feedback != null && passToken != null) feedback.endOcrPass(passToken)
+            passToken?.let { feedback?.endOcrPass(it) }
         }
     }
+
+    /** The one read each cycle of a live tier makes (the furigana tier,
+     *  [FuriganaMode], the reconciler tier, [ReconcilerLiveMode], and the
+     *  pinhole tier, [PinholeOverlayMode]): [runOcrRead], never device-only
+     *  (a stopped pod or a refused key is a cooldown the router reads,
+     *  [PtCloudService]), same frame parameters, [translate] included (false
+     *  for the furigana tier). Each tier warms for its first read at its
+     *  start ([FrameReaders.warm]). */
+    internal suspend fun runLiveOcrRead(
+        raw: Bitmap,
+        displayId: Int,
+        frameIncludesSystemUi: Boolean = true,
+        frameIncludesOwnOverlays: Boolean,
+        translate: Boolean = true,
+    ): OverlayToolkit.OcrPipelineRead = runOcrRead(
+        raw, displayId,
+        frameIncludesSystemUi = frameIncludesSystemUi,
+        frameIncludesOwnOverlays = frameIncludesOwnOverlays,
+        translate = translate,
+    )
 
     /**
      * Translate OCR groups and send the result to the in-app panel.
      * Returns per-group translations (for callers that also need them for overlay building).
      * Returns null if skipped (panel not visible and forceShow=false).
+     *
+     * [perGroup], when given, is the translation of [ocrResult]'s groups the
+     * caller already made (the press-and-hold overlay translated them for its
+     * boxes), and is sent as is. Translating again would go through the cache,
+     * and a cache identity flip between the two calls (a cooldown expiring, a
+     * backend toggled) would translate the screen a second time, possibly by
+     * another backend than the overlay's. [attribution] names who read
+     * [ocrResult]; null derives it from the device result itself
+     * ([DeviceFrameReader.attributionOf]).
      */
     internal suspend fun translateAndSendToPanel(
         ocrResult: OcrManager.OcrResult,
@@ -3037,6 +2856,8 @@ class CaptureService : Service() {
          *  idempotent. Deliberate captures (one-shot) never dedup — the
          *  user asked, the panel refreshes. */
         liveDedup: Boolean = false,
+        perGroup: List<GroupTranslation>? = null,
+        attribution: ReaderAttribution? = null,
     ): List<GroupTranslation>? {
         if (!forceShow) {
             val appPanelVisible = !Prefs.isSingleScreen(this) && MainActivity.isInForeground
@@ -3049,10 +2870,10 @@ class CaptureService : Service() {
         // capture-boundary stamp available, and it keeps MT latency out of
         // the result's game-audio anchor.
         val capturedAtWallMs = System.currentTimeMillis()
-        val perGroup = translateGroupsSeparately(ocrResult.groups.map { it.text })
-        val translated = perGroup.joinToString("\n\n") { it.text }
-        val note = perGroup.mapNotNull { it.note }.firstOrNull()
-        val backendDisplayName = perGroup.mapNotNull { it.backendDisplayName }.firstOrNull()
+        val groups = perGroup ?: translateGroupsSeparately(ocrResult.groups.map { it.text })
+        val translated = groups.joinToString("\n\n") { it.text }
+        val note = groups.mapNotNull { it.note }.firstOrNull()
+        val backendDisplayName = groups.mapNotNull { it.backendDisplayName }.firstOrNull()
         val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
         emitResult(
             com.playtranslate.model.TranslationResult(
@@ -3064,7 +2885,8 @@ class CaptureService : Service() {
                 note               = note,
                 backendDisplayName = backendDisplayName,
                 ocrProvenance      = ocrProvenanceFor(
-                    ocrResult, displayId, activeRegionForDisplay(displayId),
+                    attribution ?: DeviceFrameReader.attributionOf(ocrResult, this),
+                    displayId, activeRegionForDisplay(displayId),
                     Prefs(this).sourceLangId, frameIncludesSystemUi,
                     frameIncludesOwnOverlays,
                 ),
@@ -3079,7 +2901,7 @@ class CaptureService : Service() {
         // identical emission new again.
         livePanelRecord.committed(displayId, ocrResult.fullText, livePanelStamp())
         panelEmissions.committed(displayId, ocrResult.fullText, translated, backendDisplayName)
-        return perGroup
+        return groups
     }
 
     /** Whether the in-app panel is on screen to receive live results —
@@ -3147,10 +2969,13 @@ class CaptureService : Service() {
      *  and notifies the in-app panel. The panel emit is intentionally
      *  global — there's a single panel and a single result/no-text state
      *  for it. The overlay teardown is per-display so a no-text outcome
-     *  on display B doesn't take display A's still-valid overlay with it. */
-    internal fun handleNoTextDetected(displayId: Int) {
+     *  on display B doesn't take display A's still-valid overlay with it.
+     *  [attribution] names who looked, forwarded to [emitLiveNoText]: the
+     *  reconciler or pinhole tier's reading's; null (the furigana tier) is
+     *  the device engine. */
+    internal fun handleNoTextDetected(displayId: Int, attribution: ReaderAttribution? = null) {
         CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
-        emitLiveNoText(displayId)
+        emitLiveNoText(displayId, attribution)
     }
 
     /** Remove specific overlay boxes without rebuilding the entire view.
@@ -3208,51 +3033,53 @@ class CaptureService : Service() {
     internal fun captureSaveToCache(raw: Bitmap, displayId: Int): String? =
         CaptureBackendResolver.active().captureSource?.saveToCache(raw, displayId)
 
-    /** Build the [OcrProvenance] for a freshly-OCR'd result. [sourceLangId] is the
-     *  EXACT source language (variant included) the caller snapshotted at capture
-     *  time — passed in, NOT derived from the OCR code, because OCR is variant-
-     *  agnostic (ZH and ZH_HANT both OCR as "zh"), so reconstructing from the code
-     *  would collapse Traditional → Simplified and break the picker's backend key +
-     *  `sourceIsTraditional` on re-OCR. [engineBackend] supplies the label + selection
-     *  token; [displayId] + [region] re-crop the identical rectangle on a re-OCR.
-     *  Null when the result carries no engine identity (the empty engine) — callers
-     *  then leave [TranslationResult.ocrProvenance] null, suppressing the source OCR
-     *  row and re-OCR. */
     /** Provenance for a panel-emitted live result — the panel presenter's
      *  path to the re-OCR gear (region + source language resolved the same
-     *  way the one-shot pipeline resolves them). */
+     *  way the one-shot pipeline resolves them). [attribution] is who read
+     *  the frame: the reconciler or pinhole tier's reading's, or one derived
+     *  from a device result ([DeviceFrameReader.attributionOf]); null gives a
+     *  null provenance, as [ocrProvenanceFor] does. */
     internal fun panelOcrProvenance(
-        ocrResult: OcrManager.OcrResult,
+        attribution: ReaderAttribution?,
         displayId: Int,
         frameIncludesSystemUi: Boolean,
         frameIncludesOwnOverlays: Boolean,
     ): OcrProvenance? = ocrProvenanceFor(
-        ocrResult, displayId, activeRegionForDisplay(displayId),
+        attribution,
+        displayId, activeRegionForDisplay(displayId),
         Prefs(this).sourceLangId, frameIncludesSystemUi, frameIncludesOwnOverlays,
     )
 
+    /** Build the [OcrProvenance] of a read, the one place every result's and
+     *  every no-text state's provenance is made. [attribution] is who read
+     *  the frame (a [com.playtranslate.ocr.FrameReading]'s, or derived from a
+     *  device result by [DeviceFrameReader]); null means no engine identity
+     *  (the empty engine, or no OCR backend available for a no-text look),
+     *  and the provenance is then null too, which suppresses the source OCR
+     *  row and re-OCR. [sourceLangId] is the EXACT source language (variant
+     *  included) the caller snapshotted at capture time — passed in, NOT
+     *  derived from the OCR code, because OCR is variant-agnostic (ZH and
+     *  ZH_HANT both OCR as "zh"), so reconstructing from the code would
+     *  collapse Traditional → Simplified and break the picker's backend key +
+     *  `sourceIsTraditional` on re-OCR. [displayId] + [region] re-crop the
+     *  identical rectangle on a re-OCR. */
     private fun ocrProvenanceFor(
-        ocrResult: OcrManager.OcrResult,
+        attribution: ReaderAttribution?,
         displayId: Int,
         region: RegionEntry,
         sourceLangId: SourceLangId,
         // The captured frame's stamped facts, when the caller has the frame
         // in hand — they persist with the result so a re-OCR re-crops the
         // same pixels and re-blacks our own chrome out of raw frames. Null
-        // (panel-emit paths without a frame) reads as legacy — full-display,
+        // (panel-emit paths without a frame, and the live tiers' no-text
+        // state, which pins no screenshot) reads as legacy — full-display,
         // clean — downstream.
         frameIncludesSystemUi: Boolean? = null,
         frameIncludesOwnOverlays: Boolean? = null,
     ): OcrProvenance? {
-        val backend = ocrResult.engineBackend ?: return null
-        // MangaOCR is a refinement layer over the base engine, not a selectable
-        // backend: extend the display label only ("Scanned by ML Kit + MangaOCR",
-        // proper nouns untranslated like ocrLabel) and keep the selection token on
-        // the base engine so the re-OCR gear still keys the picker correctly.
-        val label =
-            if (ocrResult.mangaOcrUsed) "${backend.ocrLabel(this)} + MangaOCR" else backend.ocrLabel(this)
+        attribution ?: return null
         return OcrProvenance(
-            label, backend.selectionToken, displayId, sourceLangId, region,
+            attribution.label, attribution.token, displayId, sourceLangId, region,
             frameIncludesSystemUi = frameIncludesSystemUi,
             frameIncludesOwnOverlays = frameIncludesOwnOverlays,
         )
@@ -3287,6 +3114,11 @@ class CaptureService : Service() {
         @Volatile
         var instance: CaptureService? = null
             private set
+
+        /** A [ReadRequest.frameId] for a read of a frame from [displayId]: the
+         *  display and the read's moment, which names the frame in a reader's logs
+         *  without carrying anything of its content. */
+        internal fun frameIdFor(displayId: Int): String = FrameReaders.frameId("d$displayId")
 
         /** The ONE write path for [Prefs.recordGameAudio]: pref write +
          *  recorder reconcile + the session's consent lifecycle at both
@@ -3421,65 +3253,81 @@ class CaptureService : Service() {
 
     // ── Capture cycle ─────────────────────────────────────────────────────
 
-    /** Full output from the shared capture pipeline, including overlay-ready data. */
-    internal class PipelineResult(
-        val result: TranslationResult,
-        val groupBounds: List<android.graphics.Rect>,
-        val groupTranslations: List<String>,
-        val cropLeft: Int, val cropTop: Int,
-        val screenshotW: Int, val screenshotH: Int,
-        val ocrResult: OcrManager.OcrResult? = null,
-        /** In-place overlay boxes for the capture panel's "show on screen"
-         *  presentation; null when nothing paintable. */
-        val overlayData: OneShotOverlayData? = null,
-    )
-
-    /** Outcome of [runCaptureOcrTranslate]. Callers translate to their
-     *  own surface (one-shot writes a [CaptureState] on the session;
-     *  live mode emits to its own flows). The pipeline doesn't
-     *  side-effect any service-global flow on its own anymore. */
-    internal sealed class PipelineOutcome {
-        data class Success(val pipeline: PipelineResult) : PipelineOutcome()
+    /** Outcome of [runFrameCycle]. The core writes no session state itself:
+     *  its two callers, [runProcessCycle] and [runCaptureCycle], turn this
+     *  into their session's terminal [CaptureState] via [terminalStateFor]. */
+    private sealed class PipelineOutcome {
+        /** [overlayData]: in-place overlay boxes for the capture panel's
+         *  "show on screen" presentation; null when nothing paintable. */
+        data class Success(
+            val result: TranslationResult,
+            val overlayData: OneShotOverlayData?,
+        ) : PipelineOutcome()
         data class NoText(val ocrProvenance: OcrProvenance?, val screenshotPath: String?) : PipelineOutcome()
         data class Failed(val message: String) : PipelineOutcome()
     }
 
     /**
-     * Core capture → crop → OCR → translate pipeline shared by one-shot
-     * and all live modes. Returns a [PipelineOutcome]; callers decide
-     * how to surface success/no-text/failure on their own channel.
+     * The capture-once core, the one implementation behind both one-shot
+     * entry points: [processScreenshot] (a frame the caller already took)
+     * and [captureOnce] (a frame [runCaptureCycle] takes now). Crops [frame]
+     * to [region], blacks our own chrome out of it, OCRs it in [srcId],
+     * reveals the source through [onOcrReady], translates per group, records
+     * the capture, and returns a [PipelineOutcome] for the caller to surface.
+     * The live modes and the press-and-hold overlay don't come here; they OCR
+     * through [runOcrRead] (the live tiers by way of [runLiveOcrRead]).
+     *
+     * Owns [frame] from entry: its bitmap, the crop made from it and the
+     * color reference are recycled in the `finally` on every exit, the
+     * not-configured early return included, so no caller releases anything.
+     *
+     * [region] and [srcId] are the caller's one snapshot, taken before OCR,
+     * so OCR, translation, recording and provenance can't disagree even if
+     * settings change mid-cycle. [isReOcr] marks a re-OCR of an existing
+     * capture, which records nothing (see the gate below). [onOcrStart] runs
+     * just before OCR; [onOcrReady] once OCR found text, before the (slower)
+     * translation, with the boxes as they stand then (some may already be
+     * translated, by the reader with its OCR or from the cache); [onBoxesFilled]
+     * each time more of those boxes are translated before the cycle ends (a
+     * reader's translations arriving group by group).
      */
-    internal suspend fun runCaptureOcrTranslate(
+    private suspend fun runFrameCycle(
+        frame: com.playtranslate.capture.CapturedFrame,
         displayId: Int,
-        onScreenshotTaken: (() -> Unit)? = null,
+        region: RegionEntry,
+        srcId: SourceLangId,
+        isReOcr: Boolean,
+        allowDeferTranslation: Boolean,
+        onOcrStart: (() -> Unit)?,
         onOcrReady: ((
             originalText: String,
             segments: List<TextSegment>,
             ocrProvenance: OcrProvenance?,
             overlayData: OneShotOverlayData?,
-        ) -> Unit)? = null,
-        allowDeferTranslation: Boolean = false,
+        ) -> Unit)?,
+        onBoxesFilled: ((OneShotOverlayData) -> Unit)?,
     ): PipelineOutcome {
-        // The frame carries its own capture-time facts (CapturedFrame) —
-        // nothing is re-derived from mutable state downstream.
-        val frame = captureScreen(displayId)
-            ?: return PipelineOutcome.Failed(
-                "Screenshot failed for display $displayId. Try a different display in Settings."
-            )
-        val raw: Bitmap = frame.bitmap
-        val frameIncludesUi = frame.includesSystemUi
-        // Shutter moment in epoch ms — see runProcessCycle's twin: the
-        // result's createdAtMs anchors game audio and must predate MT.
+        val raw = frame.bitmap
+        val frameIncludesSystemUi = frame.includesSystemUi
+        // The frame's capture moment as epoch ms (capturedAtMs is uptime;
+        // one conversion at the same instant). Passed as the result's
+        // createdAtMs so the game-audio anchor names the SHUTTER, not the
+        // post-translation construction — MT latency (seconds to tens on
+        // the slow tier) must not drift the trim seed.
         val capturedAtWallMs = System.currentTimeMillis() -
             (android.os.SystemClock.uptimeMillis() - frame.capturedAtMs)
-        onScreenshotTaken?.invoke()
-        var bitmap: Bitmap? = raw
+        var bitmap: Bitmap = raw
         var colorRef: Bitmap? = null
+        // The reader's translations, when it produces any. Cancelled in the
+        // finally, so an exit that never awaits them (no text, a same-language
+        // pair, a deferral, a failure) leaves nothing running in the caller's
+        // job; a no-op once they have settled.
+        var readerTranslations: ReaderTranslations? = null
         try {
+            if (!isConfigured) return PipelineOutcome.Failed(NOT_CONFIGURED_MESSAGE)
             val screenshotPath = captureSaveToCache(raw, displayId)
 
-            val region = activeRegionForDisplay(displayId)
-            val statusBarHeight = statusBarHeightForFrame(displayId, frameIncludesUi)
+            val statusBarHeight = statusBarHeightForFrame(displayId, frameIncludesSystemUi)
             val top    = maxOf((raw.height * region.top).toInt(), statusBarHeight)
             val left   = (raw.width  * region.left).toInt()
             val bottom = (raw.height * region.bottom).toInt()
@@ -3490,13 +3338,16 @@ class CaptureService : Service() {
             colorRef = oneShotColorRef(raw)
             bitmap = cropBitmap(raw, top, bottom, left, right)
 
-            // Black our chrome (floating icon, error pills) out of frames
-            // stamped as possibly containing our own overlays. This path's
-            // frames come from requestClean (stamp false, no-op today) —
-            // keyed on the stamp, not the path, so a routing change can't
-            // silently reopen it. In-place only when cropBitmap produced a
-            // fresh copy; a no-op crop leaves `bitmap === raw`, and the frame
-            // must never be drawn into.
+            // Black our chrome (floating icon, pills) out of a frame stamped as
+            // possibly containing our own overlay windows before OCR reads it
+            // as text. A re-OCR of a cached live raw frame carries the stamp;
+            // captureOnce's requestClean frames don't (a no-op today), and
+            // keying on the stamp rather than the path means a routing change
+            // can't silently reopen it. In-place only when cropBitmap produced
+            // a fresh copy; a no-op crop leaves `bitmap === raw`, and the frame
+            // must never be drawn into (uniform rule — here the cache write and
+            // colorRef snapshot already happened, but the safety must not
+            // depend on that ordering). Cleanup of `bitmap` is the finally's job.
             if (frame.includesOwnOverlays) {
                 val chrome =
                     CaptureBackendResolver.activeOverlayUi?.ownChromeRects(displayId).orEmpty()
@@ -3509,59 +3360,163 @@ class CaptureService : Service() {
                     bitmap = blacked
                 }
             }
-            // Snapshot the exact source language (variant included) once: it keys
-            // the engine selection and the provenance alike.
-            val srcId = Prefs(this@CaptureService).sourceLangId
-            val ocrResult = ocrManager.recognise(bitmap, srcId, screenshotWidth = raw.width)
+            onOcrStart?.invoke()
+            // A re-OCR stays on the device: the user picked a device engine for
+            // this capture from the result's OCR gear.
+            val reading = FrameReaders.readerFor(srcId, deviceOnly = isReOcr).read(
+                bitmap,
+                ReadRequest(
+                    srcId,
+                    screenshotWidth = rawW,
+                    targetLang = Prefs(this@CaptureService).targetLang,
+                    frameId = frameIdFor(displayId),
+                ),
+            )
+            readerTranslations = reading.translations
+            val ocrResult = reading.ocr
             if (BuildConfig.DEBUG && Prefs(this@CaptureService).debugSaveOcrSeed) {
                 OcrSeedWriter.writeSeed(this@CaptureService, bitmap, ocrResult)
             }
-
-            if (ocrResult == null) {
-                return PipelineOutcome.NoText(
-                    noTextProvenanceFor(
-                        displayId, region, srcId, frameIncludesUi, frame.includesOwnOverlays,
-                    ),
-                    screenshotPath,
-                )
-            }
-
-            // OCR is in — surface the source now so the page can reveal before the
-            // (slower) translation runs. The skeleton boxes ride along for the
-            // chips-preferred collapse-with-placeholders flow.
-            val skeletonData = buildOneShotOverlayData(
-                ocrResult, colorRef, left, top, rawW, rawH,
-                cropWidth = right - left, cropHeight = bottom - top,
-            )
-            onOcrReady?.invoke(
-                ocrResult.fullText, ocrResult.segments,
-                ocrProvenanceFor(
-                    ocrResult, displayId, region, srcId, frameIncludesUi,
-                    frame.includesOwnOverlays,
-                ),
-                skeletonData,
+            // Who read the frame, text or not: the reader decides, so a no-text
+            // look names the engine that looked and a result the engine that
+            // produced it.
+            val ocrProvenance = ocrProvenanceFor(
+                reading.attribution, displayId, region, srcId, frameIncludesSystemUi,
+                frame.includesOwnOverlays,
             )
 
-            // Recording pair captured BEFORE the translate call — a
-            // mid-flight language change must not relabel these rows.
+            // No text, nothing to translate: the finally cancels the reader's
+            // translations, if it started any.
+            if (ocrResult == null) return PipelineOutcome.NoText(ocrProvenance, screenshotPath)
+
+            // Pin translation to the SAME source language OCR used (srcId), not current
+            // Prefs — for a re-OCR after a source-language change they'd otherwise disagree,
+            // sending the recognized text through the wrong source/target cache key and
+            // translator. For a fresh capture it keeps translation on the language OCR
+            // ran in even if the setting changes mid-cycle.
+            // Per-group (same batch [translateGroups] wraps) so the on-screen overlay
+            // boxes get their per-group texts; the panel text is the same join.
+            // Recording target captured BEFORE the translate call — a
+            // mid-flight language change must not relabel these rows
+            // (srcId is already pinned above).
+            val groupTexts = ocrResult.groups.map { it.text }
             val recordSrc = SourceLanguageProfiles[srcId].translationCode
             val recordTgt = Prefs(this@CaptureService).targetLang
+            // A same-language pair takes nothing from the reader: its
+            // translations are never awaited (the finally cancels them).
+            val reader = readerTranslations.takeIf { recordSrc != recordTgt }
             // Deferred path: the translation section is hidden and the caller
             // opted in, so no consumer needs MT right now — skip the backend
             // batch entirely. Rows record translation-less (they attach later
             // via onCaptureTranslated) and Done carries a PendingTranslation
             // with everything the completion needs. The free source==target
-            // bypass never defers.
-            val deferTranslation = allowDeferTranslation &&
+            // bypass never defers. Re-OCR callers never opt in
+            // (allowDeferTranslation stays false at their call sites): their
+            // recording is gated off below, so a deferred re-OCR would have
+            // nothing to attach its late translation to.
+            val mayDefer = allowDeferTranslation &&
                 Prefs(this@CaptureService).hideTranslationSection &&
                 recordSrc != recordTgt
+            // What can be shown at once, by group, under the pair OCR ran in:
+            // the reader's translations that came with its OCR (final, and
+            // cached here, so a deferred completion serves them from the
+            // cache), else the cache's entries.
+            val atOnce = translationsAtOnce(groupTexts, reader, srcId)
+
+            // Reveal the page on OCR: show the source now, translate in the section.
+            // The boxes ride along so a chips-preferred panel can collapse NOW and
+            // show them over the game while we translate: pulsing placeholders,
+            // except where a translation can be shown at once. A capture that
+            // may defer shows only placeholders until it decides, since a
+            // deferred Done keeps them.
+            val skeletonData = buildOneShotOverlayData(
+                ocrResult, colorRef, left, top, rawW, rawH,
+                cropWidth = right - left, cropHeight = bottom - top,
+            )
+            val firstPaint =
+                if (mayDefer) skeletonData else partlyFillOneShotOverlayData(skeletonData, atOnce.map { it?.text })
+            onOcrReady?.invoke(ocrResult.fullText, ocrResult.segments, ocrProvenance, firstPaint)
+            // Who translates, by (source == target; the reader's translations;
+            // the section hidden and the caller allowing deferral), the same
+            // comparison translateGroupsSeparately's same-language shortcut uses.
+            // The final part is waited for only when a group the reader has
+            // yet to name has no cache entry (readerTranslationsToTake), and
+            // "the rest" below are the groups that did not arrive with the OCR:
+            //  - same language; any; any: no translation at all. The reader's
+            //    translations are never awaited (the finally cancels them), and
+            //    the shortcut passes the OCR text through.
+            //  - different; none (a reader that only reads, as the device
+            //    reader); not deferring: the first paint fills the groups the
+            //    cache has and leaves the rest placeholders, then the cache
+            //    and the waterfall translate every group at Done, as always.
+            //  - different; none; deferring: placeholders only (cached groups
+            //    included), deferred, a PendingTranslation.
+            //  - different; every group translated with the OCR; not
+            //    deferring: every box translated in the first paint, nothing
+            //    waited for, no waterfall, the degraded state untouched.
+            //  - different; every group translated with the OCR; deferring:
+            //    placeholders only, then not deferred (nothing is left to pay
+            //    for, and the later reveal would only read the cache), every
+            //    box filled at Done.
+            //  - different; some groups (or none) with the OCR, the cache
+            //    having every one of the rest; not deferring: the first paint
+            //    is final (the OCR's translations and the cache's entries),
+            //    nothing waited for, no waterfall, and Done follows at once
+            //    with the same text (the final part's wording instead, if it
+            //    has already arrived); the item lines and the final part are
+            //    otherwise dropped (the finally cancels them).
+            //  - the same; deferring: placeholders only, then deferred at
+            //    once, nothing waited for, the OCR's translations already in
+            //    the cache. Not deferred only when the reader has already
+            //    settled naming every group (its final word is then taken
+            //    without a wait).
+            //  - different; some groups with the OCR, the rest in item lines
+            //    and an ok final part, the cache lacking one of the rest; not
+            //    deferring: the first paint fills the first ones and the
+            //    cache's entries for the others, each item fills its box in
+            //    place on top of that (onBoxesFilled), and the final part's
+            //    wording wins at Done, both over a cache fill too. A group the
+            //    final part leaves blank goes through the cache and the
+            //    waterfall.
+            //  - different; some groups with the OCR, the rest by the final
+            //    part, the cache lacking one of the rest; deferring:
+            //    placeholders only while the final part is awaited (no fills),
+            //    then not deferred when it named every group, deferred as
+            //    always when it did not.
+            //  - different; some groups with the OCR, then a final part that
+            //    fails (deferred, failed, the read ended), the cache lacking
+            //    one of the rest; not deferring: the first paint fills the
+            //    first ones and the cache's entries for the others, any item
+            //    drawn stays until Done, and Done keeps the OCR's translations
+            //    and has the cache and the waterfall translate the rest.
+            //    Deferring: deferred once the final part fails, the OCR's
+            //    translations already in the cache.
+            //  - different; translations for another pair (the target changed
+            //    during the read): as no reader, nothing taken or cached from
+            //    them.
+            // Deferred unless the reader, for this pair, named every group,
+            // by the translate call's own wait rule, so a capture that may
+            // defer waits for the final part exactly when its translate call
+            // would.
+            val deferTranslation = mayDefer &&
+                !(reader != null && reader.isFor(recordSrc, recordTgt) &&
+                    translator.readerTranslationsToTake(groupTexts, reader, srcId, onProgress = null)
+                        .let { named -> groupTexts.indices.all { it in named } })
+            // Each delivery fills on top of the first paint, so a box it does
+            // not name keeps what the first paint gave it.
             val perGroup = if (deferTranslation) null
-                else translateGroupsSeparately(ocrResult.groups.map { it.text })
-            // Deliberate capture → recording backend, one capture session
-            // per invocation (per-group pairs with rects; the recorder
-            // no-ops unless a log feature is enabled). Deferred rows record
-            // with a null translation; the normal path keeps skipping rows
-            // whose translation came back blank.
+                else translateGroupsSeparately(groupTexts, srcId, reader) { delivered ->
+                    partlyFillOneShotOverlayData(firstPaint, delivered.map { it?.text })
+                        ?.let { onBoxesFilled?.invoke(it) }
+                }
+
+            // Deliberate capture → recording backend, FRESH captures only, one
+            // capture session per invocation (per-group pairs with rects; the
+            // recorder no-ops unless a log feature is enabled): a re-OCR
+            // refines an already-recorded capture (engine change from the
+            // results surface) and must not mint a second session's worth of
+            // rows. Deferred rows record with a null translation; the normal
+            // path keeps skipping rows whose translation came back blank.
             // Logging eligibility snapshotted WITH the recording — deferral
             // splits translate+record across time, and what the completion
             // may write later is what the user had opted into NOW, not at
@@ -3569,60 +3524,51 @@ class CaptureService : Service() {
             // the pref is enabled before the reveal).
             val historyEligible = Prefs(this@CaptureService).translationHistoryEnabled
             val contextEligible = Prefs(this@CaptureService).llmContextEnabled
-            val token = translationLogRecorder.beginCaptureSession()
-            ocrResult.groups.forEachIndexed { i, g ->
-                val tr = perGroup?.getOrNull(i)?.text.orEmpty()
-                if (deferTranslation || tr.isNotEmpty()) translationLogRecorder.onCaptureShown(
-                    token, g.text, tr.takeIf { it.isNotEmpty() }, g.bounds, srcId, recordTgt,
-                    com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_ONE_SHOT,
-                    perGroup?.getOrNull(i)?.backendDisplayName,
-                    captureImage = screenshotPath?.let {
-                        com.playtranslate.translationlog.HistoryImageStore.Source.FromPath(it)
-                    },
-                )
+            var captureSessionId: String? = null
+            if (!isReOcr) {
+                val token = translationLogRecorder.beginCaptureSession()
+                captureSessionId = token.sessionId.takeIf { historyEligible }
+                ocrResult.groups.forEachIndexed { i, g ->
+                    val tr = perGroup?.getOrNull(i)?.text.orEmpty()
+                    if (deferTranslation || tr.isNotEmpty()) translationLogRecorder.onCaptureShown(
+                        token, g.text, tr.takeIf { it.isNotEmpty() }, g.bounds, srcId, recordTgt,
+                        com.playtranslate.translationlog.TranslationHistoryStore.PROVENANCE_ONE_SHOT,
+                        perGroup?.getOrNull(i)?.backendDisplayName,
+                        captureImage = screenshotPath?.let {
+                            com.playtranslate.translationlog.HistoryImageStore.Source.FromPath(it)
+                        },
+                    )
+                }
             }
-            val translated = perGroup?.joinToString("\n\n") { it.text }.orEmpty()
-            val note = perGroup?.mapNotNull { it.note }?.firstOrNull()
-            val backendDisplayName = perGroup?.mapNotNull { it.backendDisplayName }?.firstOrNull()
-            val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
 
+            val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
             return PipelineOutcome.Success(
-                PipelineResult(
-                    result = TranslationResult(
-                        originalText       = ocrResult.fullText,
-                        segments           = ocrResult.segments,
-                        translatedText     = translated,
-                        timestamp          = timestamp,
-                        screenshotPath     = screenshotPath,
-                        note               = note,
-                        backendDisplayName = backendDisplayName,
-                        ocrProvenance      = ocrProvenanceFor(
-                            ocrResult, displayId, region, srcId, frameIncludesUi,
-                            frame.includesOwnOverlays,
-                        ),
-                        pendingTranslation = if (deferTranslation) PendingTranslation(
-                            groupTexts = ocrResult.groups.map { it.text },
-                            sourceLangId = srcId,
-                            targetLang = recordTgt,
-                            isCapture = true,
-                            historySessionId = token.sessionId.takeIf { historyEligible },
-                            historyEligible = historyEligible,
-                            contextEligible = contextEligible,
-                        ) else null,
-                        langContext        = Prefs(this@CaptureService).langContext(srcId),
-                        createdAtMs        = capturedAtWallMs,
-                    ),
-                    groupBounds = ocrResult.groups.map { it.bounds },
-                    groupTranslations = perGroup?.map { it.text } ?: List(ocrResult.groups.size) { "" },
-                    cropLeft = left, cropTop = top,
-                    screenshotW = rawW, screenshotH = rawH,
-                    ocrResult = ocrResult,
-                    // Deferred: keep the SKELETONS — the deferred completion
-                    // fills them when the translation finally runs.
-                    overlayData = if (perGroup != null)
-                        fillOneShotOverlayData(skeletonData, perGroup.map { it.text })
-                    else skeletonData,
-                )
+                TranslationResult(
+                    originalText        = ocrResult.fullText,
+                    segments            = ocrResult.segments,
+                    translatedText      = perGroup?.joinToString("\n\n") { it.text }.orEmpty(),
+                    timestamp           = timestamp,
+                    screenshotPath      = screenshotPath,
+                    note                = perGroup?.mapNotNull { it.note }?.firstOrNull(),
+                    backendDisplayName  = perGroup?.mapNotNull { it.backendDisplayName }?.firstOrNull(),
+                    ocrProvenance       = ocrProvenance,
+                    pendingTranslation  = if (deferTranslation) PendingTranslation(
+                        groupTexts = groupTexts,
+                        sourceLangId = srcId,
+                        targetLang = recordTgt,
+                        isCapture = true,
+                        historySessionId = captureSessionId,
+                        historyEligible = historyEligible,
+                        contextEligible = contextEligible,
+                    ) else null,
+                    langContext         = Prefs(this@CaptureService).langContext(srcId),
+                    createdAtMs         = capturedAtWallMs,
+                ),
+                // Deferred: keep the SKELETONS — the deferred completion fills
+                // them when the translation finally runs.
+                overlayData = if (perGroup != null)
+                    fillOneShotOverlayData(skeletonData, perGroup.map { it.text })
+                else skeletonData,
             )
         } catch (e: CancellationException) {
             // Don't swallow cancellation — let it propagate so the
@@ -3634,259 +3580,98 @@ class CaptureService : Service() {
             Log.e(TAG, "Capture cycle failed: ${e.message}", e)
             return PipelineOutcome.Failed(e.message ?: "Unknown error")
         } finally {
+            readerTranslations?.cancel()
             colorRef?.recycle()
-            bitmap?.let { if (!it.isRecycled) it.recycle() }
+            if (!bitmap.isRecycled) bitmap.recycle()
         }
     }
 
-    /** One-shot capture: walks [state] through Capturing → final
-     *  Done/NoText/Failed. Activities own the [state] flow via the
-     *  [CaptureSession] returned from [captureOnce]. */
+    /** Body of [captureOnce]'s session: takes a clean screenshot of
+     *  [displayId], flashes its region indicator, and runs [runFrameCycle]
+     *  on the frame with the display's current region and source language,
+     *  walking [state] through Capturing → Translating → final
+     *  Done/NoText/Failed. [isConfigured] is checked before anything is
+     *  captured. Shows no OCR status. */
     private suspend fun runCaptureCycle(
         displayId: Int,
         state: MutableStateFlow<CaptureState>,
         allowDeferTranslation: Boolean = false,
     ) {
         if (!isConfigured) {
-            state.value = CaptureState.Failed("Not configured — tap Translate to set up")
+            state.value = CaptureState.Failed(NOT_CONFIGURED_MESSAGE)
             return
         }
         state.value = CaptureState.InProgress(getString(R.string.status_capturing))
-        val outcome = runCaptureOcrTranslate(
-            displayId = displayId,
-            onScreenshotTaken = { flashRegionIndicator(displayId) },
+        // Warm PlayTranslate Cloud for the read below: runFrameCycle reads in
+        // the source language from the same pref, and never device-only (this
+        // is not a re-OCR).
+        FrameReaders.warm(Prefs(this@CaptureService).sourceLangId, deviceOnly = false)
+        // The frame carries its own capture-time facts (CapturedFrame);
+        // downstream reads them from the frame, never re-derives them from
+        // mutable state.
+        val frame = captureScreen(displayId) ?: run {
+            state.value = CaptureState.Failed(
+                "Screenshot failed for display $displayId. Try a different display in Settings."
+            )
+            return
+        }
+        flashRegionIndicator(displayId)
+        val outcome = runFrameCycle(
+            frame, displayId,
+            region = activeRegionForDisplay(displayId),
+            srcId = Prefs(this@CaptureService).sourceLangId,
+            isReOcr = false,
+            allowDeferTranslation = allowDeferTranslation,
+            onOcrStart = null,
             // Reveal the source as soon as OCR finishes; translation lands on Done.
             onOcrReady = { originalText, segments, ocrProvenance, overlayData ->
                 state.value =
                     CaptureState.Translating(originalText, segments, ocrProvenance, overlayData)
             },
-            allowDeferTranslation = allowDeferTranslation,
+            // More boxes translated before Done: the same Translating with
+            // only its boxes changed, which the collectors take as a box fill
+            // (CaptureState.Translating.fillsBoxesOf).
+            onBoxesFilled = { data -> state.update { (it as? CaptureState.Translating)?.copy(overlayData = data) ?: it } },
         )
-        state.value = when (outcome) {
-            is PipelineOutcome.Success ->
-                CaptureState.Done(outcome.pipeline.result, outcome.pipeline.overlayData)
+        state.value = terminalStateFor(outcome, displayId)
+    }
+
+    /** The terminal [CaptureState] a one-shot session on [displayId] ends
+     *  on for [outcome]; shared by [runProcessCycle] and [runCaptureCycle]. */
+    private fun terminalStateFor(outcome: PipelineOutcome, displayId: Int): CaptureState =
+        when (outcome) {
+            is PipelineOutcome.Success -> CaptureState.Done(outcome.result, outcome.overlayData)
             is PipelineOutcome.NoText ->
                 CaptureState.NoText(noTextMessage(displayId), outcome.ocrProvenance, outcome.screenshotPath)
             is PipelineOutcome.Failed -> CaptureState.Failed(outcome.message)
         }
-    }
 
-    /** Cache of past translations. Keyed by (text, source, target) so
-     *  cross-pair stale reads are impossible; cleared on backend toggle
-     *  via [TranslationCache.reconcilePreferredBackend] called from
-     *  [ensureLanguageManagersFor]. */
-    private val translationCache = TranslationCache()
+    /** Synchronous cache lookup for previously translated text under the
+     *  current pair ([GroupTranslator.cachedTranslation]). */
+    internal fun getCachedTranslation(sourceText: String): GroupTranslation? =
+        translator.cachedTranslation(sourceText)
 
-    private fun cacheKey(text: String, target: TranslationTarget): TranslationCache.Key =
-        TranslationCache.Key(text, target.source, target.target)
-
-    /** Synchronous cache lookup for previously translated text. Returns null
-     *  if not cached for the current pair; hits carry the producing backend's
-     *  display name so cache-filled boxes stay attributable. */
-    internal fun getCachedTranslation(sourceText: String): GroupTranslation? {
-        val target = snapshotTranslationTarget()
-        return translationCache[cacheKey(sourceText, target)]?.let { (text, backend) ->
-            GroupTranslation(target.localize(text), note = null, backendDisplayName = backend)
-        }
-    }
-
-    /**
-     * Translates each group in parallel, using cached results for groups
-     * whose original text hasn't changed. Only cache misses hit the network.
-     *
-     * The [TranslationTarget] is snapshotted once at entry and threaded to
-     * every downstream call so key-derivation and translator selection agree
-     * even if another code path mutates Prefs mid-batch.
-     *
-     * Cache write policy: online backend results (DeepL and Lingva) and
-     * fully-successful on-device LLM results (TG, Qwen) are cached. Two
-     * categories are skipped:
-     *   - ML Kit degraded fallback (signalled by a non-null note set in
-     *     [translate]) — so online services can reclaim the slot on recovery.
-     *   - On-device LLM displacement (signalled by a non-null
-     *     [TranslateOutcome.displacedLlmId]) — when TG or Qwen threw a
-     *     transient low-memory exception and the waterfall fell through to
-     *     a lower-priority backend, the fallback's output shouldn't outlast
-     *     the memory pressure window.
-     */
+    /** [GroupTranslator.translateGroupsSeparately] on this service's translator. */
     internal suspend fun translateGroupsSeparately(
         groupTexts: List<String>,
         sourceOverride: SourceLangId? = null,
-    ): List<GroupTranslation> {
-        val target = snapshotTranslationTarget(sourceOverride)
+        reader: ReaderTranslations? = null,
+        onProgress: (suspend (List<GroupTranslation?>) -> Unit)? = null,
+    ): List<GroupTranslation> = translator.translateGroupsSeparately(groupTexts, sourceOverride, reader, onProgress)
 
-        // OCR-only bypass: when source and target language are the same,
-        // skip translation entirely — OCR output is the final result.
-        // This handles all paths: one-shot hold, live mode, and in-app panel.
-        // Clear degraded state too — bypass means we aren't going through a
-        // backend, so any stale "Offline"/"degraded" badge from a prior
-        // fallback should drop.
-        if (target.source == target.target) {
-            setDegraded(false)
-            // Edge case: Chinese source → Chinese-Traditional target. The OCR
-            // text is the result, but a Simplified (ZH) source still needs
-            // s2t/s2tw/s2hk applied; an already-Traditional (ZH_HANT) source is
-            // a no-op (target.localize handles both via sourceIsTraditional).
-            return groupTexts.map { GroupTranslation(target.localize(it), null, null) }
-        }
-
-        // Reconcile the cache's preferred-backend identity BEFORE the
-        // cache lookup. If a fully-cached batch returns early, the
-        // identity check inside translateBatch never runs, so a backend
-        // toggle / cooldown enter-or-exit since the last call would
-        // leave stale entries serving forever. Cheap (one Map clear on
-        // transition, no-op otherwise).
-        ensureLanguageManagersFor(target)
-
-        val keys = groupTexts.map { cacheKey(it, target) }
-        val uncached = keys.withIndex()
-            .filter { (_, key) -> key !in translationCache }
-
-        val freshByKey: Map<TranslationCache.Key, GroupTranslation> = if (uncached.isNotEmpty()) {
-            // Single batched waterfall (one HTTP request per backend
-            // pass when the backend implements BatchTranslator —
-            // DeepL, Gemini, OpenAI, Lingva) instead of N parallel
-            // single-text calls. Eliminates the rate-limit thrashing
-            // we saw on free-tier Gemini where parallel pairs of
-            // requests would each lose ~half to 429s. Non-batching
-            // backends (ML Kit, on-device LLMs) keep their per-text
-            // parallel fan-out inside the registry, so today's
-            // structured-cancellation guarantee (children of the
-            // calling capture job) is preserved end-to-end.
-            val texts = uncached.map { it.value.text }
-
-            // Short-text offline routing — OFF BY DEFAULT, debug-row gated
-            // (Prefs.debugShortTextRouting; device-pass verdict 2026-09-02:
-            // 2★ output too poor even on ordinary short phrases). When on:
-            // texts with ≤2 content words (menu items, HUD labels, one-word
-            // lines) go to the fast offline tier instead of spending online
-            // quota; everything else still travels as ONE online batch.
-            // Bypassed entirely when the backend that
-            // would serve is a context-carrying batching LLM — shorts then
-            // ride its batch so dialogue-choice one-worders keep the context
-            // ring (user decision; the cost is one LLM request on all-short
-            // pages). NOTE: translateOnce (deliberate re-translate / edit /
-            // select) and CameraTranslator stay online-only by design. Short
-            // results — including deliberately-routed ML Kit ones (user
-            // decision: cached, no degraded note) — enter the cache as
-            // first-class entries. The cache's routing identity folds in
-            // llmContextEnabled + bergamotEnabled (TranslationCache
-            // .routingIdentity), so flipping either toggle clears cached
-            // shorts and routing changes apply immediately; the residual pin
-            // (a pack/model INSTALL mid-session, identity unchanged) is
-            // accepted — bounded by the 500-entry LRU and process restart.
-            // The whole routing decision runs off-main: this method runs on
-            // the Main-dispatched serviceScope (the cache's thread-safety
-            // invariant), while the bypass check and route resolve do
-            // filesystem probes (Bergamot's isUsable) and possibly a GMS
-            // round-trip (ML Kit model presence), and a first JA/ZH/TH
-            // classification pays lazy segmenter init (Sudachi mmap / HanLP
-            // models / Thai trie). Resolve happens only AFTER classification
-            // found shorts, so all-sentence pages pay nothing beyond the
-            // classifier. No cache access crosses the dispatcher — only the
-            // (route, shorts) pair comes back; null = today's single batch.
-            val routing: Pair<ShortTextOfflineRoute, List<Boolean>>? =
-                if (!Prefs(this).debugShortTextRouting) null
-                else withContext(Dispatchers.Default) {
-                    val llmBypass = shouldBypassForLlm(
-                        TranslationBackendRegistry.preferredBackend(target.source, target.target),
-                        Prefs(this@CaptureService).llmContextEnabled,
-                    )
-                    if (llmBypass) return@withContext null
-                    val profile = SourceLanguageProfiles[target.sourceId]
-                    val counter =
-                        ShortTextTokenCounters.forLanguage(this@CaptureService, target.sourceId)
-                    val shorts = texts.map { isShortText(it, profile, counter) }
-                    if (shorts.none { it }) return@withContext null
-                    ShortTextOfflineRoute.resolve(target.source, target.target)
-                        ?.let { it to shorts }
-                }
-
-            val dispatch = if (routing == null) {
-                translateBatch(texts, target).let { PartitionedResult(it, it) }
-            } else {
-                val (route, shorts) = routing
-                dispatchPartitioned(
-                    texts, shorts,
-                    offline = { t ->
-                        withContext(Dispatchers.Default) {
-                            route.translateOrNull(t, target.source, target.target)
-                        }?.let {
-                            TranslateOutcome(it, null, DegradedWarningKind.None, null, route.displayName)
-                        }
-                    },
-                    online = { batch -> translateBatch(batch, target) },
-                )
-            }
-            val outcomes = dispatch.all
-
-            // Set the icon/menu state ONCE from the worst outcome the ONLINE
-            // waterfall produced. Each child's `translate` no longer touches
-            // the global state, so a clean group that happens to finish after
-            // a displaced sibling can't clear the warning. Deliberately-offline
-            // short results are excluded: their kind is None by construction,
-            // and letting an all-short page aggregate to None would CLEAR the
-            // "Offline" badge while the online tier is still cooling down
-            // (flapping between all-short and mixed pages). When no online
-            // call ran at all (fully-cached batch, or an all-short page), the
-            // state is left untouched — the same rule the fully-cached early
-            // return has always followed.
-            dispatch.fromOnline.maxByOrNull { it.kind.severity() }?.let { setDegraded(it.kind) }
-
-            // Re-reconcile AFTER translate too. A higher-priority backend
-            // may have cooled down DURING translateBatch — preferredOnlineId
-            // would now return the fallback id, but the pre-call reconcile
-            // didn't see that change. Without this second pass, the new
-            // fallback entry below would be cached under the old
-            // (pre-cooldown) preferred-backend identity; if the user
-            // doesn't translate again before the cooldown expires, identity
-            // never flips and the lower-quality result pins forever. Cheap
-            // (one Map clear on transition, no-op when no cooldown change).
-            ensureLanguageManagersFor(target)
-
-            uncached.zip(outcomes).forEach { (indexedKey, outcome) ->
-                // Cache write policy: skip when an on-device LLM was displaced
-                // by transient low memory (outcome.displacedLlmId != null).
-                // Without this, a single low-memory moment freezes the
-                // fallback's output in the cache, so the next call returns
-                // the same lower-quality result even after memory recovers.
-                // The existing note-based skip (ML Kit degraded fallback)
-                // still applies in parallel.
-                //
-                // Online-backend cooldowns (rate-limit / quota / billing)
-                // are handled at the cache-identity layer (the
-                // ensureLanguageManagersFor call above ran twice — once
-                // before lookup, once after translate — so any cooldown
-                // entered during this batch is reflected in the identity
-                // before these writes land).
-                if (outcome.note == null && outcome.displacedLlmId == null) {
-                    translationCache[indexedKey.value] = outcome.text to outcome.backendDisplayName
-                }
-            }
-
-            uncached.map { it.value }.zip(
-                outcomes.map { GroupTranslation(it.text, it.note, it.backendDisplayName) }
-            ).toMap()
-        } else emptyMap()
-
-        return keys.map { key ->
-            translationCache[key]?.let { (text, backendDisplayName) ->
-                GroupTranslation(text, note = null, backendDisplayName = backendDisplayName)
-            }
-                ?: freshByKey[key]
-                ?: GroupTranslation("", null, null)
-        }
-            // Convert to the chosen Traditional variant AFTER the cache read, so
-            // the shared "zh" cache keeps storing Simplified for every variant.
-            .map { it.copy(text = target.localize(it.text)) }
-    }
+    /** [GroupTranslator.translationsAtOnce] on this service's translator. */
+    internal fun translationsAtOnce(
+        groupTexts: List<String>,
+        reader: ReaderTranslations?,
+        sourceOverride: SourceLangId? = null,
+    ): List<GroupTranslation?> = translator.translationsAtOnce(groupTexts, reader, sourceOverride)
 
     /** Downscaled copy of [raw] for [OverlayToolkit.sampleGroupColors], at
      *  1/[ONE_SHOT_COLOR_SCALE]. Taken BEFORE [cropBitmap] — which recycles the
-     *  raw frame when it crops — so the one-shot cycles can still color-sample
+     *  raw frame when it crops — so [runFrameCycle] can still color-sample
      *  overlay boxes after OCR + translation. Best-effort: null on ANY
      *  allocation failure, including [OutOfMemoryError] (an Error, which the
-     *  cycles' `catch (Exception)` arms would NOT contain) — the on-screen
+     *  core's `catch (Exception)` would NOT contain) — the on-screen
      *  presentation is optional and must never fail a capture that OCR +
      *  translation could complete. Caller recycles. */
     private fun oneShotColorRef(raw: Bitmap): Bitmap? = try {
@@ -3904,12 +3689,13 @@ class CaptureService : Service() {
         null
     }
 
-    /** Build the SKELETON in-place overlay boxes for a one-shot capture — the same
-     *  color-matched placeholders the press-and-hold preview paints while its
-     *  translation runs ([TranslationOneShotProcessor]): empty text (the overlay
+    /** Build the SKELETON in-place overlay boxes for a one-shot capture, the same
+     *  color-matched placeholders the press-and-hold preview starts from
+     *  ([TranslationOneShotProcessor]): empty text (the overlay
      *  view renders pulsing skeleton lines for those), sampled colors, OCR bounds.
-     *  One box per OCR group, index-aligned, so [fillOneShotOverlayData] can zip
-     *  the per-group translations in later. Null when there are no groups or no
+     *  One box per OCR group, index-aligned, so [partlyFillOneShotOverlayData]
+     *  (as translations arrive) and [fillOneShotOverlayData] (once they are
+     *  final) can zip the per-group translations in later. Null when there are no groups or no
      *  color reference (its allocation is best-effort — see [oneShotColorRef]). */
     private fun buildOneShotOverlayData(
         ocrResult: OcrManager.OcrResult,
@@ -3939,27 +3725,16 @@ class CaptureService : Service() {
         )
     }
 
-    /** On-demand translation for a single text string (used by edit overlay, drag-sentence, etc.). */
-    internal suspend fun translateOnce(text: String): GroupTranslation =
-        translateOnce(text, snapshotTranslationTarget())
+    /** On-demand translation for a single text string (used by edit overlay,
+     *  drag-sentence, etc.): [GroupTranslator.translateOnce]. */
+    internal suspend fun translateOnce(text: String): GroupTranslation = translator.translateOnce(text)
 
-    /** [translateOnce] under an EXPLICIT pair — the caller's snapshot, not
-     *  the prefs at call time — so a deliberate sentence translated after a
-     *  language change (a deferred reveal, a call that outlived a switch)
-     *  runs, records and displays under the one pair its result claims.
-     *  The script variant and the DeepL key still come from prefs. */
+    /** [translateOnce] under an EXPLICIT pair ([GroupTranslator.translateOnce]). */
     internal suspend fun translateOnce(
         text: String,
         sourceLangId: SourceLangId,
         targetLang: String,
-    ): GroupTranslation =
-        translateOnce(text, snapshotTranslationTarget(sourceLangId).copy(target = targetLang))
-
-    private suspend fun translateOnce(text: String, target: TranslationTarget): GroupTranslation {
-        val outcome = translate(text, target)
-        setDegraded(outcome.kind)
-        return GroupTranslation(target.localize(outcome.text), outcome.note, outcome.backendDisplayName)
-    }
+    ): GroupTranslation = translator.translateOnce(text, sourceLangId, targetLang)
 
     /**
      * Run the machine translation a deferred capture skipped ([PendingTranslation])
@@ -4007,143 +3782,6 @@ class CaptureService : Service() {
         return perGroup
     }
 
-    /**
-     * Run the translation waterfall and synthesise an inline note when
-     * the chosen backend is the degraded fallback.
-     *
-     * The waterfall itself lives in [TranslationBackendRegistry.translate]
-     * so it is testable on the JVM without dragging this service in.
-     * This method is the single choke point that:
-     *   - reconciles the cache's preferred-backend identity (mid-batch
-     *     pref changes pick up here without a per-caller round trip),
-     *   - turns the [com.playtranslate.translation.WaterfallResult] into
-     *     the legacy `(text, note)` tuple consumed by callers,
-     *   - drives [setDegraded] / the floating-icon "⚠ Offline" badge,
-     *   - and propagates [CancellationException] so a cancelled capture
-     *     reaches its terminal Cancelled state instead of stuck-in-flight.
-     *
-     * Note discipline: a non-null note is the "don't cache" signal in
-     * [translateGroupsSeparately] — online backends can then reclaim the
-     * cache slot on recovery.
-     */
-    /** Internal translation outcome. Carries the user-visible (text, note)
-     *  pair plus the [WaterfallResult.displacedLlmId] cache-skip signal and
-     *  the per-call [kind] used to aggregate degradation state across the
-     *  groups in a batch. The signal is internal to this service — public
-     *  methods ([translateOnce], [translateGroupsSeparately]) flatten back
-     *  to `(text, note)` so callers outside the cache layer don't grow a
-     *  dependency on the registry's displacement type. */
-    private data class TranslateOutcome(
-        val text: String,
-        val note: String?,
-        val kind: DegradedWarningKind,
-        val displacedLlmId: com.playtranslate.translation.BackendId?,
-        val backendDisplayName: String?,
-    )
-
-    /** Per-group translation triple returned by the batch / single paths.
-     *  Carries the backend's display name so the results view can render
-     *  "Translated by …" alongside the existing warning [note]. */
-    internal data class GroupTranslation(
-        val text: String,
-        val note: String?,
-        val backendDisplayName: String?,
-    )
-
-    /** Order DegradedWarningKind by severity so a batch's worst outcome
-     *  drives the icon/menu state, regardless of completion order. */
-    private fun DegradedWarningKind.severity(): Int = when (this) {
-        DegradedWarningKind.None -> 0
-        DegradedWarningKind.Offline -> 1
-        DegradedWarningKind.LowMemory -> 2
-    }
-
-    private suspend fun translate(text: String, target: TranslationTarget): TranslateOutcome {
-        // OCR-only bypass: when source and target language are the same, skip
-        // translation entirely. This is the universal choke point — every
-        // single-text translation path (translateOnce callers: edit overlay,
-        // drag-sentence, sentence tab) flows through here. The earlier
-        // bypass in translateGroupsSeparately is a redundant early-return
-        // for the group/cache path.
-        if (target.source == target.target) {
-            return TranslateOutcome(text, null, DegradedWarningKind.None, null, null)
-        }
-
-        ensureLanguageManagersFor(target)
-        val result = TranslationBackendRegistry.translate(text, target.source, target.target)
-        return result.toOutcome(target.source, target.target)
-    }
-
-    /**
-     * Batched counterpart to [translate]. The fan-out used to live in
-     * [translateGroupsSeparately] as N parallel single-text [translate]
-     * calls; the batch waterfall in [TranslationBackendRegistry.translateBatch]
-     * replaces that fan-out with one HTTP request per backend pass
-     * where the backend implements [com.playtranslate.translation.BatchTranslator].
-     *
-     * Must call [ensureLanguageManagersFor] here once before dispatch —
-     * the per-text [translate] used to do that on every call, and the
-     * cache's preferred-backend reconciliation rides on it. Skipping it
-     * would let a backend toggled mid-session serve stale cache entries.
-     */
-    private suspend fun translateBatch(
-        texts: List<String>,
-        target: TranslationTarget,
-    ): List<TranslateOutcome> {
-        if (target.source == target.target) {
-            return texts.map { TranslateOutcome(it, null, DegradedWarningKind.None, null, null) }
-        }
-        ensureLanguageManagersFor(target)
-        val results = TranslationBackendRegistry.translateBatch(texts, target.source, target.target)
-        return results.map { it.toOutcome(target.source, target.target) }
-    }
-
-    /** Map a [WaterfallResult] to a [TranslateOutcome] with the per-result
-     *  kind + inline-note logic. Used by both the single-text [translate]
-     *  and the batched [translateBatch] paths so the degraded-state
-     *  semantics stay identical between them. */
-    private fun com.playtranslate.translation.WaterfallResult.toOutcome(
-        source: String,
-        target: String,
-    ): TranslateOutcome {
-        // Per-group kind. Displacement that bottomed out at ML Kit is the
-        // LowMemory kind; ML Kit chosen for network/service reasons is
-        // Offline. Displacement that stayed in the offline tier (Qwen
-        // picked up after TG) is None — the result is high-quality offline
-        // output, so we don't visually flag it; the Settings row's
-        // live availMem check carries that signal on its own.
-        //
-        // We do NOT call setDegraded here — that would let one group's
-        // outcome clobber a sibling group's worse outcome in a batched
-        // translation. Aggregation happens once per batch in
-        // [translateGroupsSeparately] / per call in [translateOnce].
-        val kind = when {
-            !this.isDegraded -> DegradedWarningKind.None
-            this.displacedLlmId != null -> DegradedWarningKind.LowMemory
-            else -> DegradedWarningKind.Offline
-        }
-        // The inline note adds more detail than the icon needs — when the
-        // cause is "Offline", distinguish network-not-present from the
-        // active-cooldown wordings (transient / quota / account, selected
-        // by the typed CooldownCause inside DegradedMessages) and the
-        // generic service-unavailable. The floating icon's pill makes the
-        // same cooldown query at render time via [currentDegradedCooldown].
-        // Network is checked FIRST: with no internet, a cooldown still
-        // ticking on some backend is not what the user needs to fix.
-        val note = when (kind) {
-            DegradedWarningKind.None -> null
-            DegradedWarningKind.LowMemory ->
-                getString(R.string.note_low_memory_fallback)
-            DegradedWarningKind.Offline ->
-                if (!com.playtranslate.net.NetworkConnectivity.isAvailable(this@CaptureService))
-                    getString(R.string.note_mlkit_no_internet)
-                else com.playtranslate.ui.DegradedMessages.onlineFailureNote(
-                    this@CaptureService,
-                    TranslationBackendRegistry.earliestCooldownEnd(source, target),
-                )
-        }
-        return TranslateOutcome(this.text, note, kind, this.displacedLlmId, this.backend.displayName)
-    }
 
     /**
      * Active cooldown for the floating-icon pill while the degradation
@@ -4153,11 +3791,8 @@ class CaptureService : Service() {
      * (genuinely offline, or a fresh failure nothing has cooled down
      * yet). Null with no network — same ordering rule as the note above.
      */
-    fun currentDegradedCooldown(): com.playtranslate.translation.ActiveCooldown? {
-        if (!com.playtranslate.net.NetworkConnectivity.isAvailable(this)) return null
-        val target = snapshotTranslationTarget()
-        return TranslationBackendRegistry.earliestCooldownEnd(target.source, target.target)
-    }
+    fun currentDegradedCooldown(): com.playtranslate.translation.ActiveCooldown? =
+        translator.currentDegradedCooldown()
 
     /**
      * Returns the status bar height in pixels for [displayId], or 0 if there is no
@@ -4455,7 +4090,7 @@ class CaptureService : Service() {
  *  Pure, so the contract is unit-tested without the Android-heavy service. */
 internal fun deferredAttachPlan(
     groupTexts: List<String>,
-    translations: List<CaptureService.GroupTranslation>,
+    translations: List<GroupTranslation>,
     recordSrc: String,
 ): List<Triple<String, String, String?>> {
     val attached = HashSet<String>()

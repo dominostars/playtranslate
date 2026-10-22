@@ -178,6 +178,11 @@ class TranslationResultContent(
      *  preservation key (class doc). Null after status/idle/error. */
     private var lastRenderedSourceText: String? = null
 
+    /** The state the last [render] bound, so a box fill (a Translating that
+     *  differs from it only in its on-screen boxes) is told from a freshly
+     *  started translation. */
+    private var lastRendered: ResultState? = null
+
     /** Reified so the funnel's own resets can detach + reattach it — the
      *  framework's onScrollChanged for our scrollTo would otherwise read as
      *  user intent and pause live mode the instant a fresh result lands. */
@@ -281,6 +286,20 @@ class TranslationResultContent(
 
     fun render(state: ResultState) {
         if (!host.isAlive) return
+        // A box fill of the placeholder already bound
+        // ([TranslationResultViewModel.applyTranslatingBoxes]): only the
+        // host's boxes change. Binding again would hide the results, refit
+        // them and scroll back to the top under the user as each translation
+        // arrives, and bumping the generation would drop a reveal still
+        // pending from the placeholder's own render.
+        val boxFill = state is ResultState.Translating &&
+            (lastRendered as? ResultState.Translating)?.copy(onScreenBoxes = null) ==
+            state.copy(onScreenBoxes = null)
+        lastRendered = state
+        if (boxFill) {
+            host.onRender(state)
+            return
+        }
         val generation = ++renderGeneration
         host.onRender(state)
         when (state) {

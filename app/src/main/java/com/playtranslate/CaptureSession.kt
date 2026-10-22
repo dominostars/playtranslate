@@ -6,7 +6,9 @@ import com.playtranslate.model.TranslationResult
 import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flow
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  RESULT-SURFACE CHANNELS — orientation
@@ -72,6 +74,21 @@ class CaptureSession internal constructor(
     val state: StateFlow<CaptureState>,
     private val job: Job,
 ) {
+    /** [state] with each value paired with the one the same collection received
+     *  just before it, null for a collection's first. The previous value lives
+     *  inside each collection, so a new collector, the same collector after a
+     *  lifecycle STOP/START, and another session all start without one: what a
+     *  collector compares a state against ([CaptureState.Translating.fillsBoxesOf])
+     *  is always this session's last state as that collector handled it, never
+     *  an earlier capture's. */
+    val stateWithPrevious: Flow<Pair<CaptureState?, CaptureState>> = flow {
+        var previous: CaptureState? = null
+        state.collect { current ->
+            emit(previous to current)
+            previous = current
+        }
+    }
+
     /** Cancel the underlying capture pipeline. The state flow stops
      *  receiving updates; whatever terminal state has already been
      *  written remains observable. */
@@ -82,11 +99,13 @@ class CaptureSession internal constructor(
  * Everything needed to paint a one-shot result as in-place overlay boxes over
  * the game (the capture panel's collapsed "show on screen" state): color-sampled
  * [boxes] plus the crop/screen geometry [com.playtranslate.ui.TranslationOverlayView]
- * maps them with. Built at pipeline time — the raw frame the colors come from is
- * recycled before any state lands. On [CaptureState.Translating] the boxes are
- * SKELETONS (empty [TextBox.translatedText] → the overlay view renders pulsing
- * placeholder lines); on [CaptureState.Done] they carry the translations —
- * EXCEPT a deferred Done ([com.playtranslate.model.TranslationResult.pendingTranslation]
+ * maps them with. Built at pipeline time, since the raw frame the colors come from
+ * is recycled before any state lands. On [CaptureState.Translating] a box whose
+ * translation has not arrived yet is a SKELETON (empty [TextBox.translatedText],
+ * which the overlay view renders as pulsing placeholder lines); each later
+ * Translating of the same session carries the same boxes with more of them
+ * translated. On [CaptureState.Done] they carry the translations, except on a
+ * deferred Done ([com.playtranslate.model.TranslationResult.pendingTranslation]
  * non-null), which keeps the skeletons until the deferred completion fills them
  * via [fillOneShotOverlayData].
  */
@@ -132,25 +151,52 @@ internal fun fillOneShotOverlayData(
     return skeleton.copy(boxes = filled)
 }
 
+/** [skeleton] with a translation filled in progress: box i takes `known[i]` as
+ *  its text where that is known and not blank, and every other box stays as it
+ *  is, a skeleton until its translation arrives or whatever an earlier fill gave
+ *  it (unlike [fillOneShotOverlayData], which drops what is still blank once the
+ *  translations are final). [skeleton] unchanged when it is null, when the sizes
+ *  differ, or when nothing is known. Feeds [CaptureState.Translating]'s boxes:
+ *  the first paint, over the bare skeletons, and each fill before Done, over the
+ *  first paint, so what the first paint showed stays where a fill names nothing. */
+internal fun partlyFillOneShotOverlayData(
+    skeleton: OneShotOverlayData?,
+    known: List<String?>,
+): OneShotOverlayData? {
+    if (skeleton == null || skeleton.boxes.size != known.size) return skeleton
+    if (known.none { !it.isNullOrBlank() }) return skeleton
+    return skeleton.copy(
+        boxes = skeleton.boxes.mapIndexed { i, box ->
+            val text = known[i]
+            if (text.isNullOrBlank()) box else box.copy(translatedText = text)
+        },
+    )
+}
+
 sealed class CaptureState {
     /** Pipeline is in flight. [message] is the user-facing status
      *  text for this stage (Capturing / OCR). */
     data class InProgress(val message: String) : CaptureState()
 
-    /** OCR finished — the source ([originalText] / [segments]) is ready and shown
+    /** OCR finished: the source ([originalText] / [segments]) is ready and shown
      *  while the translation runs; followed by [Done] (or [Cancelled] / [Failed]).
-     *  Lets the UI reveal the page on OCR rather than waiting for the translation. */
+     *  Lets the UI reveal the page on OCR rather than waiting for the translation.
+     *  A session can emit it more than once as translations arrive group by
+     *  group: every later one repeats the source and provenance and only fills
+     *  more of [overlayData]'s boxes ([fillsBoxesOf]), so a collector updates
+     *  the boxes alone. */
     data class Translating(
         val originalText: String,
         val segments: List<TextSegment>,
         /** Provenance of the OCR that produced [originalText], so the source
-         *  "Scanned by …" attribution can show as soon as OCR finishes — before the
+         *  "Scanned by …" attribution can show as soon as OCR finishes, before the
          *  translation lands. Null for non-OCR placeholders (drag/sentence/edit). */
         val ocrProvenance: OcrProvenance? = null,
-        /** SKELETON overlay boxes (empty text, colors + bounds sampled) for the
-         *  capture panel's on-screen presentation, so an auto-collapse can show
-         *  pulsing placeholders over the game while the translation runs. Null
-         *  when there's nothing paintable. */
+        /** Overlay boxes (colors + bounds sampled) for the capture panel's
+         *  on-screen presentation, so an auto-collapse can show the capture over
+         *  the game while the translation runs: a box is a pulsing skeleton until
+         *  its translation arrives, and even the first Translating may carry some
+         *  translated. Null when there's nothing paintable. */
         val overlayData: OneShotOverlayData? = null,
     ) : CaptureState()
 
@@ -195,6 +241,16 @@ sealed class CaptureState {
     val isTerminal: Boolean
         get() = this is Done || this is NoText || this is Failed || this is Cancelled
 }
+
+/** Whether this state differs from [previous], the state the same collection
+ *  handled just before it, only in its boxes: the same capture, with more of
+ *  them filled. A collector then updates the boxes and leaves everything else as
+ *  the first Translating set it. [previous] must come from
+ *  [CaptureSession.stateWithPrevious], which makes it null for a collection's
+ *  first state: a second capture of an identical screen compares equal here, so
+ *  only that scoping keeps it from passing for a box fill of the first. */
+internal fun CaptureState.Translating.fillsBoxesOf(previous: CaptureState?): Boolean =
+    previous is CaptureState.Translating && previous.copy(overlayData = null) == copy(overlayData = null)
 
 /** Layer D of the cancellation contract (see [CaptureService]): the state to
  *  write when a one-shot job completes with [completionCause] while [current] is

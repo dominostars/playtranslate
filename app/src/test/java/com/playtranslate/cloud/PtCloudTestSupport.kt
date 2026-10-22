@@ -1,0 +1,274 @@
+package com.playtranslate.cloud
+
+import android.content.Context
+import android.net.ConnectivityManager
+import com.playtranslate.Prefs
+import com.playtranslate.net.NetworkConnectivity
+import com.playtranslate.security.SecretCodec
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.Call
+import okhttp3.Dispatcher
+import okhttp3.Interceptor
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.asResponseBody
+import okhttp3.ResponseBody.Companion.toResponseBody
+import okio.Buffer
+import okio.Source
+import okio.Timeout
+import okio.buffer
+import org.robolectric.Shadows.shadowOf
+import java.io.IOException
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+
+/** Shared pieces for the PlayTranslate Cloud tests: fixtures in the wire's
+ *  two-part shape, a [Prefs] with a reversible codec, and canned HTTP. */
+internal object PtCloudTestSupport {
+
+    /** The service's root, written out here rather than read from the
+     *  client, so a request test fails if the client's address changes. */
+    const val BASE_URL = "https://api.playtranslate.com"
+    const val KEY = "test-client-key"
+
+    /** Reversible stand-in for the AndroidKeyStore codec (instrumented-only),
+     *  as in OnlineServiceStoreTest. */
+    class FakeCodec : SecretCodec {
+        override fun encrypt(context: String, plaintext: String): String? = "$PREFIX$context|$plaintext"
+        override fun decrypt(context: String, stored: String): String? {
+            val prefix = "$PREFIX$context|"
+            return if (stored.startsWith(prefix)) stored.removePrefix(prefix) else null
+        }
+        companion object { const val PREFIX = "enc:" }
+    }
+
+    /** [FakeCodec] counting its decryptions, so a test can say a key was
+     *  never read: [Prefs] decrypts a secret at the first read of it under a
+     *  codec (it serves the same ciphertext's later reads from its memo), so
+     *  a fresh codec counts 0 until the key is read. */
+    class CountingCodec : SecretCodec {
+        private val inner = FakeCodec()
+        val decrypts = AtomicInteger(0)
+        override fun encrypt(context: String, plaintext: String): String? = inner.encrypt(context, plaintext)
+        override fun decrypt(context: String, stored: String): String? {
+            decrypts.incrementAndGet()
+            return inner.decrypt(context, stored)
+        }
+    }
+
+    /** Puts [NetworkConnectivity.state] at no network, as airplane mode does:
+     *  installs a connectivity callback of the test's own over a device whose
+     *  default network is gone (the install seeds the state from that query)
+     *  and returns it, so the test can bring a network back (`onAvailable`).
+     *  The application's own callback is never driven; the next test's
+     *  application installs it again over a fresh shadow. */
+    fun offline(ctx: Context): ConnectivityManager.NetworkCallback {
+        val cm = ctx.getSystemService(ConnectivityManager::class.java)
+        val before = shadowOf(cm).networkCallbacks.toSet()
+        shadowOf(cm).setActiveNetworkInfo(null)
+        NetworkConnectivity.install(ctx) {}
+        return (shadowOf(cm).networkCallbacks - before).single()
+    }
+
+    fun sharedPrefs(ctx: Context) = ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
+
+    fun prefs(ctx: Context): Prefs = Prefs(ctx, FakeCodec())
+
+    /** A config with [key] stored. */
+    fun config(ctx: Context, key: String = KEY): PtCloudConfig {
+        val p = prefs(ctx)
+        p.ptCloudClientKey = key
+        return PtCloudConfig(p)
+    }
+
+    /** A config with the switch on and [key] stored: the state the router
+     *  routes a read to the cloud under, which the reader asks for again
+     *  before its upload, so a test that reads through the reader starts
+     *  here. */
+    fun switchedOn(ctx: Context, key: String = KEY): PtCloudConfig {
+        prefs(ctx).ptCloudEnabled = true
+        return config(ctx, key)
+    }
+
+    // ── Fixtures ───────────────────────────────────────────────────────
+
+    const val JA = "bof3_camping_01.json"
+    const val LATIN = "persona-5-ichiko-ohya-hangout-leblanc.json"
+    const val AR = "arabic_wikipedia.json"
+
+    private val json = Json { ignoreUnknownKeys = true }
+
+    fun fixture(name: String): JsonObject {
+        val text = PtCloudTestSupport::class.java.getResourceAsStream("/ptcloud/$name")!!
+            .bufferedReader(Charsets.UTF_8).use { it.readText() }
+        return json.parseToJsonElement(text) as JsonObject
+    }
+
+    /** A fixture (the single-JSON shape) as the part-1 line the two-part
+     *  response sends: `"part":"ocr"`, status `pending`, no translation
+     *  error, and a per-group translation only for the groups [translated]
+     *  names by id (the ones the server's cache answered). [edit] may change
+     *  it first. */
+    fun part1(
+        name: String,
+        translated: Map<Int, String> = emptyMap(),
+        edit: (JsonObject) -> JsonObject = { it },
+    ): String {
+        val single = fixture(name)
+        val groups = (single["groups"] as JsonArray).map { g ->
+            val group = JsonObject((g as JsonObject) - "translation")
+            translated[group["id"]!!.jsonPrimitive.int]?.let { group.with("translation", JsonPrimitive(it)) } ?: group
+        }
+        val obj = JsonObject(
+            single - "translation_error" + mapOf(
+                "part" to JsonPrimitive("ocr"),
+                "translation_status" to JsonPrimitive("pending"),
+                "groups" to JsonArray(groups),
+            ),
+        )
+        return edit(obj).toString()
+    }
+
+    fun part2(status: String = "ok", translations: String = """[{"id":0,"translation":"Hello"}]""", extra: String = ""): String =
+        """{"part":"translation","schema_version":1,"frame_id":"f","translation_status":"$status",""" +
+            """"translations":$translations$extra,"timings":{"translate_ms":988.0,"total_ms":1210.0}}"""
+
+    /** An item line ("Incremental translations"): one group's translation,
+     *  sent between part 1 and the final part. */
+    fun item(id: Int, translation: String, tMs: Double = 900.0): String =
+        """{"part":"translation_item","schema_version":1,"frame_id":"f","id":$id,""" +
+            """"translation":"$translation","t_ms":$tMs}"""
+
+    /** [obj] with [key] replaced. */
+    fun JsonObject.with(key: String, value: JsonElement) = JsonObject(this + (key to value))
+
+    fun meta(persona: String? = null, context: String? = null, streamTranslations: Boolean? = null, filterFurigana: Boolean = true) =
+        FrameMeta(
+            source = "ja", target = "en", frameId = "capture-0042", persona = persona, context = context,
+            streamTranslations = streamTranslations, filterFurigana = filterFurigana,
+        )
+
+    fun frame(bytes: ByteArray = ByteArray(64) { it.toByte() }, scale: Float = 1f) =
+        EncodedFrame(bytes, scale, width = 1920, height = 1080, encodeMs = 0)
+
+    // ── Canned HTTP ────────────────────────────────────────────────────
+
+    /** A client whose every call answers [code] with [body] (and
+     *  [retryAfter] as `Retry-After`), recording each request it sees. */
+    fun cannedClient(
+        code: Int,
+        body: String,
+        retryAfter: String? = null,
+        seen: MutableList<okhttp3.Request> = mutableListOf(),
+    ): OkHttpClient = OkHttpClient.Builder().addInterceptor { chain ->
+        seen += chain.request()
+        Response.Builder()
+            .request(chain.request())
+            .protocol(Protocol.HTTP_1_1)
+            .code(code)
+            .message(if (code == 200) "OK" else "Error")
+            .apply { if (retryAfter != null) header("Retry-After", retryAfter) }
+            .body(body.toResponseBody("application/json".toMediaType()))
+            .build()
+    }.build()
+
+    /** A client whose every call fails on the transport with [e]. */
+    fun failingClient(e: IOException): OkHttpClient =
+        OkHttpClient.Builder().addInterceptor(Interceptor { throw e }).build()
+
+    /** A client answering 200 with an NDJSON body built by [body] for the
+     *  call, and [headers] as response headers, so a test can gate its lines
+     *  ([GatedSource]). */
+    fun streamingClient(
+        seen: MutableList<Call> = mutableListOf(),
+        headers: Map<String, String> = emptyMap(),
+        body: (Call) -> Source,
+    ): OkHttpClient = OkHttpClient.Builder().addInterceptor { chain ->
+        seen += chain.call()
+        Response.Builder()
+            .request(chain.request())
+            .protocol(Protocol.HTTP_1_1)
+            .code(200)
+            .message("OK")
+            .apply { headers.forEach { (name, value) -> header(name, value) } }
+            .body(body(chain.call()).buffer().asResponseBody("application/x-ndjson".toMediaType()))
+            .build()
+    }.build()
+
+    /** [this] client with its enqueued calls run on [executor], so a test can
+     *  wait for a fire-and-forget call's callback ([CapturingExecutor.await]). */
+    fun OkHttpClient.onExecutor(executor: ExecutorService): OkHttpClient =
+        newBuilder().dispatcher(Dispatcher(executor)).build()
+
+    /**
+     * One thread for OkHttp's enqueued calls that keeps whatever escapes a
+     * task (OkHttp rethrows onto its thread anything but an IOException a
+     * callback throws), so a test can assert a callback threw nothing. [await] shuts it down and waits,
+     * after which every enqueued callback has run.
+     */
+    class CapturingExecutor {
+        val thrown: MutableList<Throwable> = Collections.synchronizedList(mutableListOf())
+        val executor: ExecutorService = Executors.newSingleThreadExecutor { r ->
+            Thread(r, "pt-cloud-test-dispatcher").apply { setUncaughtExceptionHandler { _, t -> thrown += t } }
+        }
+
+        fun await() {
+            executor.shutdown()
+            check(executor.awaitTermination(5, TimeUnit.SECONDS)) { "enqueued calls never finished" }
+        }
+    }
+
+    /**
+     * A response body that yields [lines] one at a time, each followed by a
+     * newline and each held back until its gate (null = none) is released,
+     * then ends. While it waits it watches [call]: a cancelled call fails the
+     * read the way OkHttp's closed socket does. [waiting] counts down each
+     * time a read starts waiting on a gate, so a test knows the reader is
+     * blocked there. A gate never released within [MAX_WAIT_MS] fails the
+     * read, so a broken cancellation path fails its test instead of hanging
+     * the run.
+     */
+    class GatedSource(
+        private val call: Call,
+        private val lines: List<String>,
+        private val gates: List<CountDownLatch?>,
+        private val waiting: CountDownLatch = CountDownLatch(0),
+    ) : Source {
+        private var next = 0
+        private val pending = Buffer()
+
+        override fun read(sink: Buffer, byteCount: Long): Long {
+            while (pending.size == 0L) {
+                if (next >= lines.size) return -1
+                gates.getOrNull(next)?.let { gate ->
+                    waiting.countDown()
+                    val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(MAX_WAIT_MS)
+                    while (!gate.await(5, TimeUnit.MILLISECONDS)) {
+                        if (call.isCanceled()) throw IOException("Canceled")
+                        if (System.nanoTime() > deadline) throw IOException("gate never released")
+                    }
+                }
+                pending.writeUtf8(lines[next] + "\n")
+                next++
+            }
+            return pending.read(sink, byteCount)
+        }
+
+        override fun timeout(): Timeout = Timeout.NONE
+        override fun close() = Unit
+
+        companion object { const val MAX_WAIT_MS = 8_000L }
+    }
+}

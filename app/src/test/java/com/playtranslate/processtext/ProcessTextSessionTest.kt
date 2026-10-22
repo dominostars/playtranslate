@@ -1,7 +1,7 @@
 package com.playtranslate.processtext
 
 import com.playtranslate.CaptureState
-import com.playtranslate.camera.CameraTranslator
+import com.playtranslate.translation.GroupTranslation
 import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.model.TextSegments
@@ -37,7 +37,7 @@ class ProcessTextSessionTest {
      *  (single-threaded, so the launch hasn't run yet), and awaits terminal. */
     private fun run(
         text: String = "こんにちは\n世界",
-        translate: suspend (String) -> CameraTranslator.Detailed?,
+        translate: suspend (String) -> GroupTranslation?,
     ): Pair<CaptureState, CaptureState> = runBlocking {
         val session = ProcessTextSession.build(text, langContext, this, failedMessage, translate = translate)
         val initial = session.state.value
@@ -47,7 +47,7 @@ class ProcessTextSessionTest {
 
     @Test
     fun `starts Translating with no overlay data, lands Done with no image fields`() {
-        val (initial, terminal) = run { CameraTranslator.Detailed("hola", null, "Fake") }
+        val (initial, terminal) = run { GroupTranslation("hola", null, "Fake") }
 
         val translating = initial as CaptureState.Translating
         assertEquals("こんにちは\n世界", translating.originalText)
@@ -73,7 +73,7 @@ class ProcessTextSessionTest {
 
     @Test
     fun `empty translation fails instead of binding a blank Done`() {
-        val (_, terminal) = run { CameraTranslator.Detailed("", null, null) }
+        val (_, terminal) = run { GroupTranslation("", null, null) }
         assertEquals(CaptureState.Failed(failedMessage), terminal)
     }
 
@@ -106,7 +106,7 @@ class ProcessTextSessionTest {
             val session = ProcessTextSession.build(
                 "こんにちは", langContext, this, failedMessage,
                 deferTranslation = true,
-            ) { translateCalled = true; CameraTranslator.Detailed("hola", null, "Fake") }
+            ) { translateCalled = true; GroupTranslation("hola", null, "Fake") }
             val initial = session.state.value
             val terminal = withTimeout(5_000) { session.state.first { it.isTerminal } }
             initial to terminal

@@ -3,6 +3,7 @@ package com.playtranslate
 import android.graphics.Bitmap
 import android.text.TextPaint
 import com.playtranslate.language.SourceLanguageEngine
+import com.playtranslate.translation.GroupTranslation
 import com.playtranslate.ui.TextBox
 import androidx.core.graphics.scale
 
@@ -37,9 +38,22 @@ class FuriganaOneShotProcessor(
     }
 }
 
-/** Builds color-matched translation overlay boxes. Shows shimmer while translating. */
+/** Builds color-matched translation overlay boxes. The first paint is the
+ *  shimmer placeholders with [atOnce] (what can be shown before any wait, by
+ *  group: the reader's translations that arrived with its OCR, else the
+ *  cache's entries; null where neither) already filled in. [translateFn]
+ *  translates the groups' texts and reports each translation a reader
+ *  delivers on the way (by group, null = not yet), which repaints on top of
+ *  the first paint, so a box a delivery does not name keeps what the first
+ *  paint gave it. Without a reader it reports nothing: a device read paints
+ *  the first paint (skeletons, and the cached groups translated) and then the
+ *  final boxes. */
 internal class TranslationOneShotProcessor(
-    private val translateFn: suspend (List<String>) -> List<CaptureService.GroupTranslation>
+    private val atOnce: List<GroupTranslation?>,
+    private val translateFn: suspend (
+        List<String>,
+        suspend (List<GroupTranslation?>) -> Unit,
+    ) -> List<GroupTranslation>,
 ) : OneShotProcessor {
     override suspend fun buildBoxes(
         ocrResult: OcrManager.OcrResult,
@@ -60,7 +74,8 @@ internal class TranslationOneShotProcessor(
             colorRef.recycle()
         }
 
-        // Show shimmer placeholders while translating
+        // Show shimmer placeholders while translating, what can be shown at
+        // once already in place
         val placeholders = ocrResult.groups.mapIndexed { idx, g ->
             val (bgColor, textColor) = colors.getOrElse(idx) {
                 Pair(android.graphics.Color.argb(200, 0, 0, 0), android.graphics.Color.WHITE)
@@ -72,10 +87,13 @@ internal class TranslationOneShotProcessor(
                 drawBounds = g.drawBounds,
             )
         }
-        showOverlay(placeholders)
+        val firstPaint = placeholders.filledFrom(atOnce)
+        showOverlay(firstPaint)
 
-        // Translate
-        val perGroup = translateFn(ocrResult.groups.map { it.text })
+        // Translate, repainting on top of the first paint as the reader delivers
+        val perGroup = translateFn(ocrResult.groups.map { it.text }) { delivered ->
+            showOverlay(firstPaint.filledFrom(delivered))
+        }
 
         // Build final boxes with translated text
         return if (ocrResult.groups.size == perGroup.size) {

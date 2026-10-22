@@ -13,14 +13,42 @@ package com.playtranslate
  * flipped) aren't shadowed into the new one. Pair changes are NOT handled
  * here — the key does that job.
  *
- * Not thread-safe. [com.playtranslate.CaptureService] mutates exclusively
- * from its `serviceScope` (Main-dispatched) with network calls dispatched
- * to IO via `withContext`, so read/write ordering on the cache is
- * implicitly serial.
+ * One instance serves the whole process ([shared]): the capture service's
+ * cycles, the live tiers, the camera tool, the import tool and
+ * select-to-translate all read and write it through
+ * [com.playtranslate.translation.GroupTranslator], so a translation made on
+ * one surface serves the next and a settings change that clears it clears
+ * it for every surface. Those consumers run on different dispatchers (the
+ * service on Main, the tools on Default), so every method is synchronized
+ * on the instance; [reconcilePreferredBackend] is one atomic step, and
+ * [get] too, since the access-ordered LRU moves an entry on every read.
+ *
+ * A translate call can be in flight when the cache is cleared, by a settings
+ * page ([clear]: a configuration changed under the same routing identity, an
+ * LLM's model, key or URL, the cloud's key or switch) or by the routing
+ * identity moving ([reconcilePreferredBackend]: a service toggled, a
+ * cooldown entered or ended), and its result was made under the
+ * configuration or the routing that clear ended. [configGeneration] counts
+ * every clear, of either kind; whoever makes a result reads it before the
+ * request goes out (the waterfall at its lookup, after its own reconcile; a
+ * frame reader as it sends its frame, carried to the consumer on
+ * [com.playtranslate.ocr.ReaderTranslations.configGeneration]) and the write
+ * goes through [setIfConfigUnchanged] with that value, so such a result is
+ * shown but never cached. The identity's clear counts in both directions: a
+ * cooldown entered during a call moves the identity to the fallback whose
+ * result is in flight, which would have been right to cache, but a cooldown
+ * ending during a call moves it to the recovered backend, under whose
+ * identity the fallback's result would then sit until evicted, serving where
+ * the recovered backend should (Codex adversarial review, 2026-10-21). One
+ * rule for both costs one uncached batch per transition; telling them apart
+ * would need each result's backend at the write.
  */
 class TranslationCache(private val capacity: Int = 500) {
 
     companion object {
+        /** The process's one cache. */
+        val shared = TranslationCache()
+
         /**
          * Composite routing identity for [reconcilePreferredBackend]. Beyond
          * the preferred online backend id, it folds in the two user-actionable
@@ -58,14 +86,36 @@ class TranslationCache(private val capacity: Int = 500) {
 
     private var lastPreferredBackend: String? = null
 
+    private var generation = 0
+
+    /** The number of clears so far, configuration ([clear]) and identity
+     *  ([reconcilePreferredBackend]) alike; see the class doc. */
+    val configGeneration: Int
+        @Synchronized get() = generation
+
+    @Synchronized
     operator fun get(key: Key): Pair<String, String?>? = lru[key]
 
+    /** [set], unless a clear happened since the caller read
+     *  [configGeneration] as [generation]: the value was made under the
+     *  configuration or the routing that clear ended. Returns whether it
+     *  wrote. */
+    @Synchronized
+    fun setIfConfigUnchanged(key: Key, value: Pair<String, String?>, generation: Int): Boolean {
+        if (generation != this.generation) return false
+        lru[key] = value
+        return true
+    }
+
+    @Synchronized
     operator fun set(key: Key, value: Pair<String, String?>) {
         lru[key] = value
     }
 
+    @Synchronized
     operator fun contains(key: Key): Boolean = key in lru
 
+    @Synchronized
     fun size(): Int = lru.size
 
     /**
@@ -73,11 +123,15 @@ class TranslationCache(private val capacity: Int = 500) {
      * differs from the last-seen value, the cache is cleared — a backend
      * toggle (adding or removing a DeepL key) shouldn't serve results from
      * the previous backend. No-op on first call and when the preference
-     * hasn't changed.
+     * hasn't changed. The clear counts a generation, as [clear]'s does, so
+     * a result in flight across the move is shown but never cached (the
+     * class doc).
      */
+    @Synchronized
     fun reconcilePreferredBackend(preferredBackend: String) {
         if (lastPreferredBackend != null && lastPreferredBackend != preferredBackend) {
             lru.clear()
+            generation++
         }
         lastPreferredBackend = preferredBackend
     }
@@ -89,7 +143,19 @@ class TranslationCache(private val capacity: Int = 500) {
      * Without this, cached entries produced by the old config keep getting
      * served after the user explicitly switched to a different model.
      */
+    @Synchronized
     fun clear() {
         lru.clear()
+        generation++
+    }
+
+    /** For tests of the [shared] instance: every entry and the routing
+     *  identity dropped, so a test starts from the empty cache a fresh
+     *  process has. */
+    @Synchronized
+    fun resetForTest() {
+        lru.clear()
+        lastPreferredBackend = null
+        generation++
     }
 }

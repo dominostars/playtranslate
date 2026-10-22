@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.hardware.display.DisplayManager
 import com.playtranslate.BuildConfig
 import com.google.mlkit.nl.translate.TranslateLanguage
+import com.playtranslate.cloud.PtCloudConfig
 import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.language.SourceLangId
@@ -25,6 +26,7 @@ import androidx.core.content.edit
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Which overlay the live-mode loop and hold-to-preview gesture should render
@@ -110,7 +112,7 @@ class Prefs internal constructor(
      *  over a debug one inherits every pref the debug build wrote. An override
      *  that changes production behaviour must therefore read as OFF outside
      *  debug builds regardless of what is stored; see [debugForceMmapWeights],
-     *  [debugShortTextRouting] and [debugLogTrace].
+     *  [debugShortTextRouting], [debugLogTrace] and [ptCloudEnabled].
      *  Seam for JVM tests; production always passes [BuildConfig.DEBUG]. */
     private val debugBuild: Boolean = BuildConfig.DEBUG,
 ) {
@@ -476,19 +478,56 @@ class Prefs internal constructor(
     // undecryptable key reads as "" (fail-closed) — so a lost/rotated keystore
     // key, or a blob shuffled between slots, can never silently substitute the
     // baked DeepL key for the one the user stored.
+    //
+    // A decryption is kept ([DECRYPTED_SECRETS]) and served again while the
+    // slot holds the same ciphertext under the same codec, so a key read on
+    // every capture or every translation call costs the AndroidKeyStore once
+    // per process, not once per read. Every write is a new ciphertext (the
+    // cipher draws a fresh IV per encryption), so a rewrite misses by
+    // construction; an explicit clear reads "" before the memo is asked; and
+    // a failed decryption is not kept, so a keystore that fails once is
+    // asked again at the next read. Every write of a slot (a new key, a
+    // clear) and a slot's removal drop its entry, so a plaintext the user
+    // replaced or deleted does not outlive the gesture in the memo, and a
+    // decryption in flight across the write is not kept either (the memo
+    // write re-checks the slot under the writers' lock, the map's monitor),
+    // so a read that began before a clear cannot put the cleared plaintext
+    // back. The threat model does not change: the plaintext was already in
+    // memory at every read.
 
     @VisibleForTesting
     internal fun readSecret(key: String, default: String): String {
         val stored = sp.getString(key, null) ?: return default   // absent → bootstrap default
         if (stored.isEmpty()) return ""                           // explicitly cleared → no key
-        return codec.decrypt(key, stored) ?: ""                   // unreadable/wrong-slot → no key, NOT default
+        DECRYPTED_SECRETS[key]?.let { if (it.codec === codec && it.stored == stored) return it.plaintext }
+        val plaintext = codec.decrypt(key, stored) ?: return ""   // unreadable/wrong-slot → no key, NOT default
+        synchronized(DECRYPTED_SECRETS) {
+            // Kept only while the slot still holds what was decrypted, under
+            // the writers' lock: a clear or rewrite that landed during the
+            // decryption has already dropped the entry and must not see the
+            // old plaintext put back.
+            if (sp.getString(key, null) == stored) DECRYPTED_SECRETS[key] = DecryptedSecret(codec, stored, plaintext)
+        }
+        return plaintext
     }
 
-    private fun writeSecret(key: String, value: String) = sp.edit {
-        if (value.isEmpty()) putString(key, "")
+    /** A slot's [plaintext] as [codec] decrypted it from [stored]. */
+    private class DecryptedSecret(val codec: SecretCodec, val stored: String, val plaintext: String)
+
+    private fun writeSecret(key: String, value: String) {
         // Fail-closed: if encryption is unavailable, persist nothing rather
-        // than fall back to plaintext (and leave any existing value intact).
-        else putString(key, codec.encrypt(key, value) ?: return@edit)
+        // than fall back to plaintext (and leave any existing value intact,
+        // with its memo entry, which still decrypts what stays stored).
+        val stored = if (value.isEmpty()) "" else codec.encrypt(key, value) ?: return
+        synchronized(DECRYPTED_SECRETS) {
+            sp.edit { putString(key, stored) }
+            // The old plaintext leaves with the ciphertext it decrypted; the
+            // next read decrypts the new one. After the write, so a read
+            // between the two sees the new value and not a memo entry for the
+            // old; under the lock, so a decryption of the old ciphertext that
+            // ends after this cannot put it back ([readSecret] re-checks).
+            DECRYPTED_SECRETS.remove(key)
+        }
     }
 
     // ── Per-instance key slots (multi-instance online services) ──────────
@@ -504,8 +543,14 @@ class Prefs internal constructor(
     internal fun writeInstanceSecret(slot: String, value: String) = writeSecret(slot, value)
 
     /** Removes the slot outright (instance deleted) — distinct from
-     *  writing "", which means "key explicitly cleared but slot alive". */
-    internal fun clearInstanceSecret(slot: String) = sp.edit { remove(slot) }
+     *  writing "", which means "key explicitly cleared but slot alive". Its
+     *  memo entry goes with it, as on a write. */
+    internal fun clearInstanceSecret(slot: String) {
+        synchronized(DECRYPTED_SECRETS) {
+            sp.edit { remove(slot) }
+            DECRYPTED_SECRETS.remove(slot)
+        }
+    }
 
     /**
      * Re-encrypt any pre-existing plaintext API keys in place, exactly once.
@@ -1594,6 +1639,39 @@ class Prefs internal constructor(
         get() = debugBuild && sp.getBoolean(KEY_DEBUG_LOG_TRACE, false)
         set(v) = sp.edit { putBoolean(KEY_DEBUG_LOG_TRACE, v) }
 
+    // ── PlayTranslate Cloud (debug builds only) ──────────────────────────
+    // [com.playtranslate.cloud.PtCloudConfig] reads these per capture; the
+    // defaults live there.
+
+    /** Debug-only: PlayTranslate Cloud's switch. On, captures are read
+     *  through the cloud (OCR, grouping and translation in one server call)
+     *  instead of the device OCR, and every translation the app makes
+     *  without a frame goes to the cloud first in the translation waterfall
+     *  ([com.playtranslate.cloud.PtCloudBackend]), before the user's own
+     *  services; dictionary definitions never do. Written only through
+     *  [com.playtranslate.cloud.PtCloudService.setEnabled].
+     *
+     *  Reads as false outside debug builds even when the stored value is true
+     *  (see [debugBuild]): the switch and its settings page exist only in
+     *  debug builds, so a stale `true` carried into a release install would
+     *  otherwise upload every capture to a service that release users have
+     *  no key for and no row to turn off. */
+    var ptCloudEnabled: Boolean
+        get() = debugBuild && sp.getBoolean(KEY_PT_CLOUD_ENABLED, false)
+        set(v) = sp.edit { putBoolean(KEY_PT_CLOUD_ENABLED, v) }
+
+    /** Long side, in pixels, a frame is scaled down to before upload. No UI
+     *  yet; a user setting later. */
+    var ptCloudUploadLongSideCap: Int
+        get() = sp.getInt(KEY_PT_CLOUD_UPLOAD_CAP, PtCloudConfig.DEFAULT_UPLOAD_LONG_SIDE_CAP)
+        set(v) = sp.edit { putInt(KEY_PT_CLOUD_UPLOAD_CAP, v) }
+
+    /** PlayTranslate Cloud's client key, the bearer token. Encrypted at rest
+     *  like [deeplApiKey], with no bootstrap default. */
+    var ptCloudClientKey: String
+        get() = readSecret(KEY_PT_CLOUD_CLIENT_KEY, "")
+        set(v) = writeSecret(KEY_PT_CLOUD_CLIENT_KEY, v)
+
     /** Set to true after the user dismisses the target-pack migration dialog. */
     var targetPackMigrationDismissed: Boolean
         get() = sp.getBoolean(KEY_TARGET_PACK_MIGRATION_DISMISSED, false)
@@ -1775,6 +1853,23 @@ class Prefs internal constructor(
          *  once even if two threads construct [Prefs] concurrently on the first
          *  launch after upgrade (see [migrateSecretsToEncrypted]). */
         private val SECRET_MIGRATION_LOCK = Any()
+
+        /** [readSecret]'s memo: each slot's last decryption, with the
+         *  ciphertext and the codec it came from. Process-wide, since [Prefs]
+         *  is built at every use; one entry per slot at most, dropped by every
+         *  write of the slot ([writeSecret]) and by its removal
+         *  ([clearInstanceSecret]), so a replaced, cleared or deleted key's
+         *  plaintext does not outlive the gesture here.
+         *  The codec is part of the entry because JVM tests give each test its
+         *  own fake codec, all of them deterministic, so two tests store the
+         *  same ciphertext: a codec is served only what it decrypted itself.
+         *  Read from the main thread and from IO, hence the concurrent map;
+         *  two threads racing on one slot each decrypt, and either entry is
+         *  right for its ciphertext. Its monitor is the writers' lock: every
+         *  write and removal of a slot, and the memo write after a
+         *  decryption, hold it, so a decryption that ran across a write of
+         *  its slot is not kept. */
+        private val DECRYPTED_SECRETS = ConcurrentHashMap<String, DecryptedSecret>()
         const val KEY_DEEPL_ENABLED          = "deepl_enabled"
         const val KEY_LINGVA_ENABLED         = "lingva_enabled"
         const val KEY_BERGAMOT_ENABLED       = "bergamot_enabled"
@@ -1890,6 +1985,11 @@ class Prefs internal constructor(
         private const val KEY_DEBUG_LOG_GROUPING             = "debug_log_grouping"
         private const val KEY_DEBUG_ANGLE_GATE_TARGET        = "debug_angle_gate_target"
         private const val KEY_DEBUG_LOG_TRACE                = "debug_log_trace"
+        /** Public so the settings sheet can [observe] the cloud's switch and
+         *  key for its summary. */
+        const val KEY_PT_CLOUD_ENABLED                     = "pt_cloud_enabled"
+        const val KEY_PT_CLOUD_CLIENT_KEY                  = "pt_cloud_client_key"
+        private const val KEY_PT_CLOUD_UPLOAD_CAP          = "pt_cloud_upload_long_side_cap"
         const val KEY_HOTKEY_TRANSLATION                   = "hotkey_translation"
         const val KEY_HOTKEY_FURIGANA                      = "hotkey_furigana"
         const val KEY_HOTKEY_TRANSLATION_TAP               = "hotkey_translation_tap"

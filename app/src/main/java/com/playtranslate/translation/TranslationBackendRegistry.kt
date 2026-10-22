@@ -77,7 +77,13 @@ object TranslationBackendRegistry {
      */
     @Volatile var onlineAttemptListener: ((List<OnlineAttempt>) -> Unit)? = null
 
-    private fun reportAttempts(attempts: List<OnlineAttempt>) {
+    /** Hands [attempts] to [onlineAttemptListener]. Every waterfall pass
+     *  reports through here, the cloud backend's calls among them, and so
+     *  does PlayTranslate Cloud's frame reader
+     *  ([com.playtranslate.cloud.PtCloudService.report]), whose frames never
+     *  pass through the waterfall but whose failures show on the same pill,
+     *  judged by the same tracker. */
+    fun reportOnlineAttempts(attempts: List<OnlineAttempt>) {
         if (attempts.isEmpty()) return
         onlineAttemptListener?.invoke(attempts.toList())
     }
@@ -260,19 +266,27 @@ object TranslationBackendRegistry {
             logWaterfall("single ALL FAILED", trail)
             throw IllegalStateException("All translation backends failed")
         } finally {
-            reportAttempts(attempts)
+            reportOnlineAttempts(attempts)
         }
     }
 
     /** The report for an online backend's call that threw [e]: the server
-     *  was reached unless the failure is a transport one. */
+     *  was reached when it answered the failure ([serverAnswered]). */
     private fun failedAttempt(backend: TranslationBackend, e: Exception, sentAt: Long): OnlineAttempt {
         val failure = classifyBackendFailure(e)
         return OnlineAttempt(
             backend.id, backend.displayName, failure, sentAt,
-            reachedServer = !failure.kind.isTransport,
+            reachedServer = serverAnswered(e, failure),
         )
     }
+
+    /** Whether the server answered the failure [e] classified as [failure]:
+     *  what the exception says of itself when it is ours
+     *  ([ClassifiedFailure.serverAnswered], false for a refusal made before
+     *  any request), else not for a transport failure, which never heard
+     *  back. */
+    private fun serverAnswered(e: Throwable, failure: BackendFailure): Boolean =
+        (e as? ClassifiedFailure)?.serverAnswered ?: !failure.kind.isTransport
 
     /** Push one backend failure into [TranslationDiag]'s persisted ring.
      *  Content-free by construction: class name, HTTP code, and cooldown
@@ -334,7 +348,7 @@ object TranslationBackendRegistry {
         try {
             return batchWaterfall(texts, source, target, ordered, attempts)
         } finally {
-            reportAttempts(attempts)
+            reportOnlineAttempts(attempts)
         }
     }
 
@@ -473,7 +487,7 @@ object TranslationBackendRegistry {
                                     }
                                     firstFailure.compareAndSet(null, e)
                                     val failure = classifyBackendFailure(e)
-                                    if (!failure.kind.isTransport) firstServerFailure.compareAndSet(null, failure)
+                                    if (serverAnswered(e, failure)) firstServerFailure.compareAndSet(null, failure)
                                     Log.w(
                                         TAG,
                                         "Backend ${backend.id} failed (${e.javaClass.simpleName}: ${e.message}), falling back"
@@ -613,6 +627,14 @@ object TranslationBackendRegistry {
      * mutations run here, none of the main-thread-only mutators above.
      * Logs under the forensics tag only when a cooldown was actually
      * cleared, so a healthy network flap stays quiet.
+     *
+     * The shared translation cache's routing identity is not reconciled
+     * here, for the same thread reason: it reconciles at the next waterfall
+     * call ([com.playtranslate.translation.GroupTranslator]), the rule a
+     * cooldown's natural expiry relies on too, so a frame the cache answers
+     * in full can show the entries made while offline until some text
+     * misses. A user gesture and the cloud page's health check reconcile at
+     * once ([com.playtranslate.cloud.PtCloudService]).
      */
     fun onConnectivityRestored() {
         val cleared = backends.filter { (it as? Cooldownable)?.onConnectivityRestored() == true }

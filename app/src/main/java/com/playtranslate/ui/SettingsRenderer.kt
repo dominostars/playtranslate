@@ -148,6 +148,9 @@ class SettingsRenderer(
         fun openYomitanSettings()
         /** Tap on the Translation services CONFIGURE cell — open [TranslationServicesActivity]. */
         fun openTranslationServicesSettings()
+        /** Tap on the PlayTranslate Cloud CONFIGURE cell (debug builds
+         *  only) — open [PtCloudSettingsActivity]. */
+        fun openCloudSettings()
         fun onSourceLangChanged()
         fun onScreenModeChanged()
         fun requestAnkiPermission()
@@ -955,6 +958,24 @@ class SettingsRenderer(
      *  trailing) from the VM state. Re-run on each emission — the digests are
      *  the dynamic part; icons / titles / clicks are constant. */
     private fun bindConfigureCells(state: RootSettingsViewModel.UiState) {
+        // PlayTranslate Cloud exists only in debug builds (its switch reads
+        // false in release, Prefs.ptCloudEnabled). Each row owns the divider
+        // below it and Appearance stays the last, so hiding this first row
+        // leaves the card intact.
+        val cloudRow = root.findViewById<View>(R.id.rowConfigCloud)
+        if (BuildConfig.DEBUG) {
+            bindHubCell(
+                cloudRow,
+                HubCell(
+                    iconRes = R.drawable.ic_cloud,
+                    title = ctx.getString(R.string.pt_cloud_display_name),
+                    summary = state.cloudSummary,
+                    onClick = { callbacks.openCloudSettings() },
+                ),
+            )
+        } else {
+            cloudRow.isGone = true
+        }
         bindHubCell(
             root.findViewById(R.id.rowConfigCaptureOverlay),
             HubCell(
@@ -1464,7 +1485,7 @@ class SettingsRenderer(
         switchShortText.isChecked = prefs.debugShortTextRouting
         switchShortText.setOnCheckedChangeListener { _, checked ->
             prefs.debugShortTextRouting = checked
-            CaptureService.instance?.reconcileBackendPreference()
+            com.playtranslate.translation.GroupTranslator.reconcileShared(ctx)
         }
         rowShortText.setOnClickListener { switchShortText.toggle() }
 

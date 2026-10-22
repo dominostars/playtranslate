@@ -41,6 +41,7 @@ class TranslationErrorMessagesTest {
             BackendFailureKind.BAD_RESPONSE to "Gemini: Unexpected response",
             BackendFailureKind.TIMEOUT to "Gemini: Not responding",
             BackendFailureKind.UNREACHABLE to "Gemini: Can't connect",
+            BackendFailureKind.NOT_RUNNING to "Gemini: Not running",
         )
         // Exhaustive: a new kind without a message fails here.
         assertEquals(BackendFailureKind.entries.toSet(), expected.keys)
@@ -53,5 +54,12 @@ class TranslationErrorMessagesTest {
 
     @Test fun `only a rejection shows the code`() {
         assertEquals("Gemini: Server error", service(BackendFailureKind.SERVER_ERROR, 503))
+    }
+
+    @Test fun `the stopped cloud service reads as not running, without its 404`() {
+        assertEquals(
+            "PlayTranslate Cloud: Not running",
+            service(BackendFailureKind.NOT_RUNNING, 404, "PlayTranslate Cloud"),
+        )
     }
 }

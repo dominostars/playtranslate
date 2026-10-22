@@ -8,6 +8,7 @@ import android.graphics.Rect
 import android.text.TextPaint
 import android.util.Log
 import com.playtranslate.language.HintTextAnnotation
+import com.playtranslate.translation.GroupTranslation
 import com.playtranslate.language.SourceLanguageEngine
 import com.playtranslate.language.hintAnnotations
 import com.playtranslate.language.withFrontierHeld
@@ -15,6 +16,12 @@ import com.playtranslate.language.TextAlignment
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.model.TextSegments
 import com.playtranslate.ui.FuriganaMetrics
+import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.ocr.FrameReader
+import com.playtranslate.ocr.FrameReading
+import com.playtranslate.ocr.ReadRequest
+import com.playtranslate.ocr.ReaderAttribution
+import com.playtranslate.ocr.ReaderTranslations
 import com.playtranslate.ui.TextBox
 import androidx.core.graphics.get
 import androidx.core.graphics.createBitmap
@@ -635,10 +642,26 @@ object OverlayToolkit {
          *  boxes' growth inside the region that was read. Appended after the
          *  fields callers destructure positionally. */
         val cropWidth: Int, val cropHeight: Int,
+        /** The reader's translations of [ocrResult]'s groups, keyed by group
+         *  index ([FrameReading.translations]); null when the reader only
+         *  reads, as the device reader does. Whoever drops a non-null one
+         *  without awaiting it cancels it. */
+        val translations: ReaderTranslations? = null,
     ) {
         /** The capture region in the boxes' own (crop) coordinates. */
         val cropBounds: android.graphics.Rect get() = android.graphics.Rect(0, 0, cropWidth, cropHeight)
     }
+
+    /** What [runOcrPipeline] made of one read: the [result] (null = no text for the
+     *  caller to translate) and who read the frame, as the reader reported it
+     *  ([FrameReading.attribution]; null when the reader has no engine identity).
+     *  The one place the pipeline hands the attribution back, outside [result]
+     *  so a read that found no text still names who looked, for the panel's
+     *  no-text state. */
+    data class OcrPipelineRead(
+        val result: OcrPipelineResult?,
+        val attribution: ReaderAttribution?,
+    )
 
     /**
      * Compute the OCR input crop bounds for a raw screenshot. Single source of
@@ -661,8 +684,12 @@ object OverlayToolkit {
     }
 
     /**
-     * Crop to active region, run OCR, filter source-lang chars. Returns null
-     * if no text detected. Does NOT do dedup, translation, or display.
+     * Crop to active region, read it with [reader], filter source-lang chars.
+     * The returned [OcrPipelineRead]'s result is null if no text detected; its
+     * attribution names who read the frame either way. Does NOT do dedup,
+     * translation, or display; a reader's translations ride along in the
+     * result for the caller, and are cancelled here whenever no result
+     * carries them.
      *
      * [blackoutRects] (screen coordinates) are filled black in the OCR
      * input after the crop — this app's own chrome on the display (the
@@ -678,7 +705,7 @@ object OverlayToolkit {
      * the chrome can never merge into an adjacent real text line and take
      * it down with it.
      *
-     * [seedWriter], when non-null, is invoked after [OcrManager.recognise]
+     * [seedWriter], when non-null, is invoked after [FrameReader.read]
      * with the bitmap that was actually fed to OCR and the result (possibly
      * null) — before the bitmap is recycled. Used to wire [OcrSeedWriter]
      * into the pinhole / live OCR path so we can capture the exact filled
@@ -698,13 +725,13 @@ object OverlayToolkit {
     suspend fun runOcrPipeline(
         raw: Bitmap,
         activeRegion: RegionEntry,
-        source: com.playtranslate.language.SourceLangId,
-        ocrManager: OcrManager,
         statusBarHeight: Int,
+        reader: FrameReader,
+        request: ReadRequest,
         seedWriter: ((Bitmap, OcrManager.OcrResult?) -> Unit)? = null,
         excludeRect: Rect? = null,
         blackoutRects: List<Rect> = emptyList(),
-    ): OcrPipelineResult? {
+    ): OcrPipelineRead {
         val crop = computeOcrCrop(raw.width, raw.height, activeRegion, statusBarHeight)
         val needsCrop = crop.top > 0 || crop.left > 0 || crop.bottom < raw.height || crop.right < raw.width
         var bitmap = if (needsCrop)
@@ -727,29 +754,48 @@ object OverlayToolkit {
             }
         }
 
-        var ocrResult: OcrManager.OcrResult?
+        val reading: FrameReading
         try {
-            ocrResult = ocrManager.recognise(bitmap, source, screenshotWidth = raw.width)
-            seedWriter?.invoke(bitmap, ocrResult)
+            reading = reader.read(bitmap, request)
+            seedWriter?.invoke(bitmap, reading.ocr)
         } finally {
             // Always clean up the crop (NOT raw — caller manages that)
             if (bitmap !== raw && !bitmap.isRecycled) bitmap.recycle()
         }
 
+        var ocrResult = reading.ocr
+        var translations = reading.translations
         if (excludeRect != null && ocrResult != null) {
             val exCropped = Rect(excludeRect).apply { offset(-crop.left, -crop.top) }
-            ocrResult = dropGroupsIntersecting(ocrResult, exCropped)
+            val kept = dropGroupsIntersecting(ocrResult, exCropped)
+            // Dropping groups re-indexes the rest, so translations keyed by the
+            // reader's group ids no longer line up with them: the caller
+            // translates locally instead. The live startup card is the only
+            // source of excludeRect, so this is a read made through the cloud
+            // while the card was up: a reconciler-tier or pinhole-tier cycle,
+            // or a press-and-hold during a live session.
+            if (kept !== ocrResult && translations != null) {
+                translations.cancel()
+                translations = null
+            }
+            ocrResult = kept
         }
-        if (ocrResult == null) return null
+        val sourceLang = SourceLanguageProfiles[request.sourceLangId].translationCode
+        val dedupKey = ocrResult?.fullText
+            ?.filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
+            .orEmpty()
+        if (ocrResult == null || dedupKey.isEmpty()) {
+            // Nothing for the caller to translate: the translations have no taker.
+            translations?.cancel()
+            return OcrPipelineRead(result = null, reading.attribution)
+        }
 
-        val sourceLang = com.playtranslate.language.SourceLanguageProfiles[source].translationCode
-        val dedupKey = ocrResult.fullText.filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
-        if (dedupKey.isEmpty()) return null
-
-        return OcrPipelineResult(
+        val result = OcrPipelineResult(
             ocrResult, dedupKey, crop.left, crop.top, raw.width, raw.height,
             cropWidth = crop.width(), cropHeight = crop.height(),
+            translations = translations,
         )
+        return OcrPipelineRead(result, reading.attribution)
     }
 
     /** Opaque fill for the floating icon's window rect in OCR input — a
@@ -908,40 +954,49 @@ object OverlayToolkit {
     /**
      * Translate [texts] (cache-first) and return [placeholders] with filled
      * [TextBox.translatedText]. Only cache misses hit [service]'s translator.
+     *
+     * [reader]: a reader's translations keyed by position in [texts]
+     * ([readerForRegions] on the reconciler tier, [readerForFarGroups] on the
+     * pinhole tier), handed to one [CaptureService.translateGroupsSeparately]
+     * call, which waits for them only when a position the cache has no entry
+     * for can still take one: a position the reader names takes its text
+     * over a cache entry, and every position it does not name (a typewriter
+     * prefix, a pinhole far group coalesced from two groups, a group the
+     * reader left untranslated, one the call did not wait for) goes through
+     * the cache and the waterfall in the same call.
+     *
+     * [onProgress] gets each delivery the reader makes while it is awaited:
+     * [shown] (what the caller has on screen for these positions, the bare
+     * [placeholders] by default) with each position the delivery names
+     * replaced by its placeholder filled with the reader's text, a cache fill
+     * included. Never called without a wait, nor for the final boxes, which
+     * this returns.
      */
     internal suspend fun translatePlaceholders(
         service: CaptureService, placeholders: List<TextBox>, texts: List<String>,
+        reader: ReaderTranslations? = null,
+        shown: List<TextBox> = placeholders,
+        onProgress: (suspend (List<TextBox>) -> Unit)? = null,
     ): List<TextBox> {
-        val uncachedIndices = mutableListOf<Int>()
-        val uncachedTexts = mutableListOf<String>()
-        val translations = arrayOfNulls<CaptureService.GroupTranslation>(texts.size)
-
-        for ((idx, text) in texts.withIndex()) {
-            val cached = service.getCachedTranslation(text)
-            if (cached != null) {
-                translations[idx] = cached
-            } else {
-                uncachedIndices.add(idx)
-                uncachedTexts.add(text)
-            }
-        }
-
-        if (uncachedTexts.isNotEmpty()) {
-            val results = service.translateGroupsSeparately(uncachedTexts)
-            for ((i, idx) in uncachedIndices.withIndex()) {
-                translations[idx] = results.getOrNull(i)
-            }
-        }
-
-        return placeholders.mapIndexed { idx, ph ->
-            val t = translations.getOrNull(idx)
-            ph.copy(
-                translatedText = t?.text ?: "",
-                backendDisplayName = t?.backendDisplayName,
-            )
-        }
+        val translations = service.translateGroupsSeparately(
+            texts, reader = reader,
+            onProgress = onProgress?.let { report ->
+                { delivered ->
+                    val filled = placeholders.filledFrom(delivered)
+                    report(shown.mapIndexed { i, box -> if (delivered.getOrNull(i) != null) filled[i] else box })
+                }
+            },
+        )
+        return placeholders.filledFrom(translations)
     }
 
     // ── Factory ───────────────────────────────────────────────────────────
 
 }
+
+/** These boxes with [known]'s translations: box i takes `known[i]`'s text and
+ *  backend name when it is not null, and stays as it is otherwise. */
+internal fun List<TextBox>.filledFrom(known: List<GroupTranslation?>): List<TextBox> =
+    mapIndexed { i, box ->
+        known.getOrNull(i)?.let { box.copy(translatedText = it.text, backendDisplayName = it.backendDisplayName) } ?: box
+    }

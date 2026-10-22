@@ -49,7 +49,10 @@ class OcrManager private constructor() {
      *  Pushed from [PlayTranslateApplication] on start and from the Capture
      *  and overlay screen's toggle; read per recognise() call, so a toggle
      *  takes effect on the next OCR pass. Applied only to Japanese sources at
-     *  the call sites — the filter's script test is kana-based. */
+     *  the call sites — the filter's script test is kana-based.
+     *  PlayTranslate Cloud's reader also sends it with each frame
+     *  ([com.playtranslate.cloud.PtCloudFrameReader]), and the server applies
+     *  its copy of the rule under the same Japanese-only gate. */
     @Volatile var filterFuriganaEnabled: Boolean = true
 
     /** Mirrors [debugLogGroupingEnabled]'s wiring (boot + settings toggle).
@@ -244,7 +247,22 @@ class OcrManager private constructor() {
          *  the display label to "… + MangaOCR". Attribution-only: [engineBackend]
          *  stays the base engine, so the re-OCR picker key is unaffected. */
         val mangaOcrUsed: Boolean = false,
-    )
+    ) {
+        /** Every group's lines as [OcrLine]s, in reading order: the one
+         *  projection drag-to-lookup hit-tests against, for a device result
+         *  and a cloud result alike. A line's [OcrLine.groupIndex] is its
+         *  group's position in [groups] (not [LineBox.groupIndex]) and its
+         *  [OcrLine.groupText] that group's text. */
+        fun lines(): List<OcrLine> = groups.flatMapIndexed { gi, group ->
+            group.lines.map { line ->
+                OcrLine(
+                    text = line.text, bounds = line.bounds, groupIndex = gi, groupText = group.text,
+                    symbols = line.symbols, orientation = line.orientation, angleDeg = line.angleDeg,
+                    orientedWidth = line.orientedWidth, orientedHeight = line.orientedHeight,
+                )
+            }
+        }
+    }
 
     /**
      * Run OCR and return a grouped, translation-ready [OcrResult] in original
@@ -287,6 +305,9 @@ class OcrManager private constructor() {
             documentLayoutBias = documentLayoutBias,
             angleNoiseGateDeg = debugAngleGateDeg
                 ?: com.playtranslate.ocr.core.OcrBox.ANGLE_NOISE_GATE_DEG,
+            // A drag lookup reads through here too: over furigana pixels it
+            // then resolves to nothing (or the base line if inside its box)
+            // rather than to the kana reading.
             filterRuby = filterFuriganaEnabled && source == SourceLangId.JA,
         ) ?: return null
 
@@ -308,37 +329,6 @@ class OcrManager private constructor() {
             }
         }
         return result
-    }
-
-    /**
-     * Run OCR and return lines with bounding boxes in original bitmap coordinates.
-     * Used by drag-to-lookup to hit-test finger position against text lines. Does
-     * NOT split menu groups (screenshotWidth = 0), matching the prior behavior.
-     */
-    suspend fun recogniseWithPositions(
-        bitmap: Bitmap,
-        source: SourceLangId = SourceLangId.JA,
-        recipe: OcrPreprocessingRecipe = selectOcrRecipe(SourceLanguageProfiles[source].translationCode),
-    ): List<OcrLine>? {
-        val sourceLang = SourceLanguageProfiles[source].translationCode
-        val output = OcrPipeline.run(
-            engineProvider = { registry.engineFor(source) },
-            bitmap = bitmap,
-            sourceLang = sourceLang,
-            screenshotWidth = 0,
-            recipe = recipe,
-            darkBackgroundProvider = { sampleIsDarkBackground(bitmap) },
-            logGrouping = debugLogGroupingEnabled,
-            refineWithMangaOcr = shouldRefineMangaOcr(source),
-            angleNoiseGateDeg = debugAngleGateDeg
-                ?: com.playtranslate.ocr.core.OcrBox.ANGLE_NOISE_GATE_DEG,
-            // Same gate as recognise(): a drag over furigana pixels then
-            // resolves to nothing (or the base line if inside its box)
-            // rather than to the kana reading.
-            filterRuby = filterFuriganaEnabled && source == SourceLangId.JA,
-        ) ?: return null
-
-        return buildOcrLines(output.groups, output.scaleFactor).ifEmpty { null }
     }
 
     // ── Projection: LayoutGroup (engine-input coords) → app result types ─────
@@ -419,28 +409,6 @@ class OcrManager private constructor() {
             engineBackend = engineBackend,
             mangaOcrUsed = mangaOcrUsed,
         )
-    }
-
-    private fun buildOcrLines(groups: List<LayoutGroup>, scaleFactor: Float): List<OcrLine> {
-        val out = mutableListOf<OcrLine>()
-        groups.forEachIndexed { gi, group ->
-            for (line in group.lines) {
-                out += OcrLine(
-                    text = line.text,
-                    bounds = scaleRect(line.box.bounds, scaleFactor),
-                    groupIndex = gi,
-                    groupText = group.text,
-                    symbols = line.chars.map { SymbolBox(it.text, scaleRect(it.box.bounds, scaleFactor), it.charOffset) },
-                    orientation = line.orientation,
-                    // Angle survives scaling; the dims are lengths and divide
-                    // like the box.
-                    angleDeg = line.box.angleDeg,
-                    orientedWidth = if (line.box.angleDeg != 0f) line.box.orientedWidth / scaleFactor else 0f,
-                    orientedHeight = if (line.box.angleDeg != 0f) line.box.orientedHeight / scaleFactor else 0f,
-                )
-            }
-        }
-        return out
     }
 
     /**

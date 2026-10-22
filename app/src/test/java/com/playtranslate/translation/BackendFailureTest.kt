@@ -80,6 +80,8 @@ class BackendFailureTest {
         val transport = BackendFailureKind.entries.filter { it.isTransport }
         assertEquals(setOf(BackendFailureKind.TIMEOUT, BackendFailureKind.UNREACHABLE), transport.toSet())
         assertFalse(BackendFailureKind.SERVER_ERROR.isTransport)
+        // A stopped service's edge answered: never the connection's fault.
+        assertFalse(BackendFailureKind.NOT_RUNNING.isTransport)
     }
 
     @Test fun `DeepL's batch cap is refused before anything is sent, so it is no server answer`() {

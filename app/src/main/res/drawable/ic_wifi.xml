@@ -1,0 +1,15 @@
+<!-- Material Symbols Outlined "wifi" (FILL 0, wght 400, GRAD 0, opsz 24): the
+     floating menu's PlayTranslate Cloud header while captures would go to the
+     cloud. Tinted in code (FloatingIconMenu), so no android:tint here. 960
+     viewBox per the repo convention. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960">
+    <group android:translateY="960">
+        <path
+            android:fillColor="#FF000000"
+            android:pathData="M409-149q-29-29-29-71t29-71q29-29 71-29t71 29q29 29 29 71t-29 71q-29 29-71 29t-71-29ZM254-346l-84-86q59-59 138.5-93.5T480-560q92 0 171.5 35T790-430l-84 84q-44-44-102-69t-124-25q-66 0-124 25t-102 69ZM84-516 0-600q92-94 215-147t265-53q142 0 265 53t215 147l-84 84q-77-77-178.5-120.5T480-680q-116 0-217.5 43.5T84-516Z" />
+    </group>
+</vector>

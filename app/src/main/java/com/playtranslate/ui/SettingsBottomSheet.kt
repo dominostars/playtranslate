@@ -339,6 +339,11 @@ class SettingsBottomSheet : DialogFragment() {
                         android.content.Intent(requireContext(), TranslationServicesActivity::class.java)
                     )
                 }
+                override fun openCloudSettings() {
+                    startActivity(
+                        android.content.Intent(requireContext(), PtCloudSettingsActivity::class.java)
+                    )
+                }
                 override fun onSourceLangChanged() { this@SettingsBottomSheet.onSourceLangChanged?.invoke() }
                 override fun onScreenModeChanged() { this@SettingsBottomSheet.onScreenModeChanged?.invoke() }
                 override fun requestAnkiPermission() {

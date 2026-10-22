@@ -1,6 +1,8 @@
 package com.playtranslate
 
+import com.playtranslate.ocr.FrameReaders
 import com.playtranslate.capture.CaptureBackendResolver
+import com.playtranslate.capture.CapturedFrame
 import com.playtranslate.capture.LiveCaptureSource
 
 import android.graphics.Bitmap
@@ -10,6 +12,7 @@ import android.graphics.RectF
 import android.util.Log
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
+import com.playtranslate.ocr.ReaderAttribution
 import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,9 +30,10 @@ private const val TAG = "FuriganaMode"
 private const val STALL_RECOVERY_FRAMES = 3
 
 /** Safety net: after this many consecutive raw frames without a detected change,
- *  force a clean capture to refresh the ref. Prevents stale ref content from
- *  silently masking real scene changes via overlay-region bleed-through.
- *  At ~500ms per frame, 20 frames ≈ 10 seconds max stall before self-heal. */
+ *  read or skipped by the change gate, force a clean capture to refresh the
+ *  ref. Prevents stale ref content from silently masking real scene changes
+ *  via overlay-region bleed-through. At ~500ms per frame, 20 frames ≈ 10
+ *  seconds max stall before self-heal. */
 private const val STALE_REF_REFRESH_FRAMES = 20
 
 /** Fast-poll window pushed to the capture loop while a typewriter reveal is
@@ -82,6 +86,19 @@ internal fun panelOfferEligible(prevText: String?, frameText: String, langCode: 
  * task mirror stamps overlay-free skip all of that and process directly —
  * patching them would overwrite real pixels with stale ref strips.
  *
+ * Reads through [CaptureService.runLiveOcrRead] without translation (the
+ * same-language pair, for which PlayTranslate Cloud skips translation and
+ * the device reader never translated): the cloud when the router allows it,
+ * the device otherwise. In front of every read sits the change gate
+ * ([FuriganaChangeGate]): a raw tick whose pixels say nothing changed is
+ * neither uploaded nor OCR'd, unless a typewriter hold awaits its release
+ * or the panel awaits the confirming read that offers it the page; a
+ * requested clean frame always is read. A skipped tick still counts toward
+ * the clean reference's refresh ([STALE_REF_REFRESH_FRAMES]), since the
+ * patch hides what changes under the ruby from the gate too, and a tick
+ * skipped as moving claims one floor-paced follow-up, so a transition that
+ * settles is read one floor interval later rather than a user interval.
+ *
  * Owns ALL its mutable state. When stopped, scope is cancelled and all
  * state (including cleanRefBitmap) is released.
  */
@@ -113,6 +130,16 @@ class FuriganaMode(
 
     private var lastOcrText: String? = null
 
+    /** The last build's full text ([OcrManager.OcrResult.fullText]), the key
+     *  the panel's record holds ([CaptureService.translateAndSendToPanel]),
+     *  so the pre-flight that asks whether the panel would take the page
+     *  ([CaptureService.livePanelWouldAccept]) compares like with like:
+     *  against [lastOcrText], the source-only key, a page with four or more
+     *  punctuation marks reads as new forever. Set on every read that
+     *  carries text, the settled fast path included; nulled with
+     *  [lastOcrText]. */
+    private var lastFullText: String? = null
+
     /** A group was built under the frontier hold last cycle
      *  ([OverlayToolkit.FuriganaGroup.held]): the display is deliberately
      *  incomplete, so the dedup-skip fast path must not re-show it — the
@@ -125,6 +152,13 @@ class FuriganaMode(
      *  held group whose build had no boxes drop out of tracking and come
      *  back unheld (Codex, 2026-10-08). */
     private val revealInFlight: Boolean get() = furiganaGroups.any { it.held }
+
+    /** Test seam: whether a frame's read is still running ([handleRawFrame]
+     *  drops frames while one is), so a JVM test driving frames by hand
+     *  ([FuriganaModeGateTest]) can wait for each read to land. */
+    @androidx.annotation.VisibleForTesting
+    internal val isReadingForTest: Boolean
+        get() = cleanProcessingJob?.isActive == true || rawOcrJob?.isActive == true
     private var cropLeft = 0
     private var cropTop = 0
     private var screenshotW = 0
@@ -138,6 +172,10 @@ class FuriganaMode(
      *  net to periodically refresh the clean ref so stale ref content can't silently
      *  mask real scene changes (especially via bleed-through in overlay regions). */
     private var noChangeRawFrameCount = 0
+
+    /** The change gate ([FuriganaChangeGate]) that decides each raw tick's
+     *  read; built on first use ([gate]), released at [stop]. */
+    private var gate: FuriganaChangeGate? = null
 
     /** Receipt-time pacing poke. Frame callbacks run SYNCHRONOUSLY inside
      *  the capture loop's iteration, before it computes the next inter-frame
@@ -156,15 +194,137 @@ class FuriganaMode(
         }
     }
 
-    /** Reset all mode-owned state. Does NOT hide overlays or notify UI. */
-    private fun clearState() {
+    /** Reset all mode-owned state. Does NOT hide overlays or notify UI.
+     *  [keepGate] keeps the change gate's anchor: the no-text read passes
+     *  it, since the textless screen it just read is exactly what the gate
+     *  should compare the next tick against; every geometry reset and
+     *  restart drops it, so the gate seeds again. */
+    private fun clearState(keepGate: Boolean = false) {
         furiganaGroups = emptyList()
         cachedFuriganaBoxes = null
         lastOcrText = null
+        lastFullText = null
         cleanRefBitmap?.recycle()
         cleanRefBitmap = null
         emptyRectsStallCount = 0
         noChangeRawFrameCount = 0
+        if (!keepGate) gate?.reset()
+    }
+
+    // ── The change gate in front of the read ──────────────────────────────
+
+    /** The gate, built on first use; per-tick log lines under debug live
+     *  mode, the summary at [stop] always. */
+    private fun gate(): FuriganaChangeGate =
+        gate ?: FuriganaChangeGate(displayId, verbose = { Prefs(service).debugLiveMode }).also { gate = it }
+
+    /** The gate's verdict for a raw tick about to be read: [bitmap] is the
+     *  OCR input (the patched frame, or the raw frame where no patch
+     *  applies), [frame] the tick's stamped facts. */
+    private fun gateTick(bitmap: Bitmap, frame: CapturedFrame): GateTick =
+        gate().tick(
+            bitmap,
+            crop = gateCrop(bitmap, frame.includesSystemUi),
+            exclude = gateExclusions(bitmap, frame.includesOwnOverlays),
+            includesOwnOverlays = frame.includesOwnOverlays,
+            revealInFlight = revealInFlight,
+            panelWaiting = panelWaiting(),
+            servedSeq = liveSource()?.deliverySignal?.lastServedSeq,
+        )
+
+    /** Whether the in-app panel would take the text on screen now
+     *  ([CaptureService.livePanelWouldAccept] with the last build's full
+     *  text, the pre-flight the settled path asks): a page's first build never offers
+     *  (see [panelOfferEligible]), the settled repeat does, so the gate must
+     *  let that repeat through while the panel waits for it, and again when
+     *  the panel comes to the front mid-page. False once the offer is
+     *  delivered, and while the panel is hidden. */
+    private fun panelWaiting(): Boolean =
+        lastFullText?.let { service.livePanelWouldAccept(displayId, it) } == true
+
+    /** A tick the gate skipped: nothing is read, the frame is dropped. A
+     *  tick skipped as moving claims one floor-paced follow-up, as the
+     *  pinhole tier's gate does for the same verdict: a one-frame change
+     *  reads as moving exactly once, and its settled frame should be read
+     *  one floor interval later, not a full user interval. */
+    private fun skipTick(tick: GateTick, bitmap: Bitmap) {
+        gate().report(tick, null)
+        bitmap.recycle()
+        if (tick.reason == GateReason.MOVING) {
+            liveSource()?.let { it.pokeFastPoll(displayId, it.minCaptureIntervalMs) }
+        }
+    }
+
+    /** The one transition for a read that found no text, from either path
+     *  (a requested clean frame, a raw tick): the gate's verdict reported,
+     *  every page state dropped ([clearState]: the groups, the boxes, the
+     *  clean reference, both text keys, the counters) and the panel told.
+     *  The gate keeps its anchor: the textless screen it just read is what
+     *  the next tick should compare against. Both keys must go: the panel's
+     *  record is cleared by [CaptureService.handleNoTextDetected], so a key
+     *  left standing reads as waiting ([panelWaiting]) on every textless
+     *  tick and defeats the gate (Codex, 2026-10-16: the clean path kept
+     *  them). */
+    private fun noTextFound(tick: GateTick?, attribution: ReaderAttribution?) {
+        tick?.let {
+            gate?.report(it, if (lastOcrText != null) OcrVerdict.TEXT_GONE else OcrVerdict.NO_TEXT)
+        }
+        clearState(keepGate = true)
+        service.handleNoTextDetected(displayId, attribution)
+    }
+
+    /** The clean reference's safety net: after [STALE_REF_REFRESH_FRAMES]
+     *  raw ticks without a detected change, read or skipped, a clean capture
+     *  rebuilds from fresh pixels. Stale ref content in the overlay regions
+     *  can mask real scene changes via bleed-through, and the gate samples
+     *  the patched frame, so a skipped tick is as blind there as a read
+     *  without change. Forces the rebuild path in processCleanFrame; does
+     *  not clear cleanRefBitmap (see the race comment in [handleRawFrame]). */
+    private fun refreshStaleRef() {
+        noChangeRawFrameCount = 0
+        DetectionLog.log("Furigana: safety-net clean capture (stale ref refresh)")
+        lastOcrText = null
+        lastFullText = null
+        liveSource()?.requestCleanCapture(displayId)
+    }
+
+    /** The gate's read of a requested clean frame, which the tier reads
+     *  whatever the pixels say. */
+    private fun gateCleanRead(raw: Bitmap, frameIncludesSystemUi: Boolean): GateTick {
+        val gate = gate()
+        return gate.cleanRead(raw, gateCrop(raw, frameIncludesSystemUi), gateExclusions(raw, gate.contaminated))
+    }
+
+    /** The OCR crop of this display for a frame of [bitmap]'s size: what the
+     *  pipeline reads, so the gate samples the same pixels. */
+    private fun gateCrop(bitmap: Bitmap, frameIncludesSystemUi: Boolean): Rect =
+        OverlayToolkit.computeOcrCrop(
+            bitmap.width, bitmap.height,
+            service.activeRegionForDisplay(displayId),
+            service.statusBarHeightForFrame(displayId, frameIncludesSystemUi),
+        )
+
+    /** This app's own chrome (the floating icon, the pills) in bitmap
+     *  coordinates, excluded from the gate's samples on a contaminated
+     *  stream, as the pinhole tier's gate excludes it: its burn-in orbit
+     *  and the pills coming and going are not screen change. Nothing on a
+     *  stream whose frames never carry it. The ruby rects need no
+     *  exclusion: the patch holds them equal between frames. */
+    private fun gateExclusions(bitmap: Bitmap, contaminated: Boolean): List<Rect> {
+        if (!contaminated) return emptyList()
+        val ui = CaptureBackendResolver.activeOverlayUi ?: return emptyList()
+        val chrome = ui.ownChromeRects(displayId)
+        if (chrome.isEmpty()) return chrome
+        val view = ui.translationOverlayForDisplay(displayId)
+        val coords = FrameCoordinates(
+            bitmapWidth = bitmap.width,
+            bitmapHeight = bitmap.height,
+            viewWidth = view?.width ?: 0,
+            viewHeight = view?.height ?: 0,
+            cropLeft = cropLeft,
+            cropTop = cropTop,
+        )
+        return coords.viewListToBitmap(chrome)
     }
 
     // ── LiveMode interface ────────────────────────────────────────────────
@@ -177,10 +337,22 @@ class FuriganaMode(
         }
         CaptureBackendResolver.active().startInputMonitoring(displayId) { dismiss() }
         DetectionLog.log("Starting furigana loop on display $displayId")
+        // Warm PlayTranslate Cloud for the first read, as the other live
+        // tiers do: once per mode instance; the loop's restarts after game
+        // input read on a connection the pool keeps.
+        FrameReaders.warm(Prefs(service).sourceLangId, deviceOnly = false)
         startLoop(source)
     }
 
     override fun stop() {
+        // The gate's tally, before the reset below drops it.
+        gate?.let {
+            val summary = "D$displayId ${it.summary()}"
+            Log.i(TAG, summary)
+            DetectionLog.log(summary)
+            it.release()
+            gate = null
+        }
         cleanProcessingJob?.cancel()
         rawOcrJob?.cancel()
         restartJob?.cancel()
@@ -231,7 +403,7 @@ class FuriganaMode(
                 while (service.livePaused) delay(PAUSE_POLL_MS)
             }
             source.startLoop(displayId, service.serviceScope,
-                onCleanFrame = ::handleCleanFrame,
+                onCleanFrame = { handleCleanFrame(it) },
                 onRawFrame = ::handleRawFrame
             )
         }
@@ -275,17 +447,22 @@ class FuriganaMode(
 
     // ── Clean frame handling ──────────────────────────────────────────────
 
-    private fun handleCleanFrame(frame: com.playtranslate.capture.CapturedFrame) {
+    /** [tick] is the gate's verdict for a raw tick [handleRawFrame]
+     *  delegates here, one that reads; a frame the loop delivered as a
+     *  requested clean capture arrives without one and is the gate's
+     *  always-read. */
+    private fun handleCleanFrame(frame: CapturedFrame, tick: GateTick? = null) {
         val raw = frame.bitmap
         // Skip frames while a capture hold is active (floating menu / hold-to-
         // preview), so the loop stops requesting overlay-blanking clean captures
         // behind it. Processing resumes once the hold clears.
         if (service.livePaused) { raw.recycle(); return }
         pokeIfRevealInFlight()
+        val gateTick = tick ?: gateCleanRead(raw, frame.includesSystemUi)
         cleanProcessingJob?.cancel()
         cleanProcessingJob = scope.launch {
             try {
-                processCleanFrame(raw, frame.includesSystemUi, frame.includesOwnOverlays)
+                processCleanFrame(raw, frame.includesSystemUi, frame.includesOwnOverlays, gateTick)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 if (service.isLive) {
                     liveSource()?.requestCleanCapture(displayId)
@@ -305,25 +482,26 @@ class FuriganaMode(
         raw: Bitmap,
         frameIncludesSystemUi: Boolean,
         frameIncludesOwnOverlays: Boolean,
+        tick: GateTick? = null,
     ) {
         if (!service.isConfigured) { raw.recycle(); return }
 
         try {
             // Shared OCR pipeline: crop → icon blackout (stamped raw frames
-            // only) → OCR → filter source chars. The status-bar crop and
-            // blackout decisions come from the frame's own stamped facts
-            // (CapturedFrame).
-            val pipeline = service.runOcr(
-                raw, displayId, frameIncludesSystemUi, frameIncludesOwnOverlays,
+            // only) → read, without translation → filter source chars. The
+            // status-bar crop and blackout decisions come from the frame's
+            // own stamped facts (CapturedFrame).
+            val read = service.runLiveOcrRead(
+                raw, displayId, frameIncludesSystemUi, frameIncludesOwnOverlays, translate = false,
             )
+            val pipeline = read.result
 
             if (pipeline == null) {
-                cachedFuriganaBoxes = null
-                service.handleNoTextDetected(displayId)
+                noTextFound(tick, read.attribution)
                 return
             }
 
-            processPipeline(pipeline, raw, frameIncludesSystemUi, frameIncludesOwnOverlays)
+            processPipeline(pipeline, raw, frameIncludesSystemUi, frameIncludesOwnOverlays, read.attribution, tick)
         } finally {
             if (!raw.isRecycled) raw.recycle()
         }
@@ -337,12 +515,17 @@ class FuriganaMode(
      *  capture — the per-reveal furigana blink the device pass caught.
      *  (Frames STAMPED overlay-free — a CLEAN task mirror — skip the raw
      *  path entirely and arrive here via [handleCleanFrame] unpatched.)
-     *  Does NOT recycle [raw]; callers own their bitmap. */
+     *  Does NOT recycle [raw]; callers own their bitmap. [attribution] names
+     *  who read the frame, for the panel. [tick] is the gate's verdict for
+     *  this tick when this call decides what the OCR found (the clean path);
+     *  the raw path reports before calling. */
     private suspend fun processPipeline(
         pipeline: OverlayToolkit.OcrPipelineResult,
         raw: Bitmap,
         frameIncludesSystemUi: Boolean,
         frameIncludesOwnOverlays: Boolean,
+        attribution: ReaderAttribution?,
+        tick: GateTick? = null,
     ) {
         val (ocrResult, dedupKey, left, top, _, _) = pipeline
 
@@ -394,26 +577,49 @@ class FuriganaMode(
         // A held group disqualifies the fast path: the cache is missing
         // ruby by design, and this settled frame is the confirmation that
         // releases it (see [revealInFlight]).
-        if (prevText != null && !frameEvolving && !revealInFlight &&
-            !OverlayToolkit.isSignificantChange(prevText, dedupKey)) {
+        val textUnchanged = prevText != null && !OverlayToolkit.isSignificantChange(prevText, dedupKey)
+        if (textUnchanged && !frameEvolving && !revealInFlight) {
             val boxes = cachedFuriganaBoxes
             if (boxes != null) {
+                tick?.let { gate?.report(it, OcrVerdict.SETTLED) }
                 service.showLiveOverlay(boxes, cropLeft, cropTop, screenshotW, screenshotH, displayId = displayId)
                 if (cleanRefBitmap == null) {
                     cleanRefBitmap = raw.copy(raw.config ?: Bitmap.Config.ARGB_8888, true)
                 }
+                // The panel key follows every read, this one included: the
+                // offer below may deliver THIS frame's full text, and the
+                // gate's confirming read compares the key against what the
+                // panel holds. A key left at the build's text would read as
+                // new whenever the two differ by more than the record's
+                // tolerance in characters the source-only key drops (Codex,
+                // 2026-10-16), and force a read every tick. The source-only
+                // key stays the build's on purpose: it anchors the change
+                // comparison.
+                lastFullText = ocrResult.fullText
                 // Quiet cycles re-offer settled text; the pre-flight skips
                 // the screenshot JPEG when the record would drop the offer
                 // anyway (hidden panel, already-delivered content).
-                if (panelEligible && service.livePanelWouldAccept(displayId, dedupKey)) {
+                if (panelEligible && service.livePanelWouldAccept(displayId, ocrResult.fullText)) {
                     val screenshotPath = service.captureSaveToCache(raw, displayId)
-                    offerToPanel(ocrResult, screenshotPath, frameIncludesSystemUi, frameIncludesOwnOverlays)
+                    offerToPanel(ocrResult, screenshotPath, frameIncludesSystemUi, frameIncludesOwnOverlays, attribution)
                 }
                 return
             }
         }
 
+        tick?.let {
+            gate?.report(
+                it,
+                when {
+                    prevText == null -> OcrVerdict.FIRST
+                    frameEvolving -> OcrVerdict.EVOLVING
+                    textUnchanged -> if (revealInFlight) OcrVerdict.RELEASE else OcrVerdict.SETTLED
+                    else -> OcrVerdict.CHANGED
+                },
+            )
+        }
         lastOcrText = dedupKey
+        lastFullText = ocrResult.fullText
 
         // Build and show furigana (grouped for selective invalidation).
         //
@@ -479,7 +685,7 @@ class FuriganaMode(
         // deduped at the delivery layer.
         val screenshotPath = service.captureSaveToCache(raw, displayId)
         if (panelEligible) {
-            offerToPanel(ocrResult, screenshotPath, frameIncludesSystemUi, frameIncludesOwnOverlays)
+            offerToPanel(ocrResult, screenshotPath, frameIncludesSystemUi, frameIncludesOwnOverlays, attribution)
         }
     }
 
@@ -490,18 +696,20 @@ class FuriganaMode(
      * handler, so an escaping throw would crash the app. A failed offer is
      * dropped instead: nothing is recorded as delivered, so the next settled
      * frame offers again. An online service's own failure reaches the
-     * translation-error pill through the registry.
+     * translation-error pill through the registry. [attribution] names who
+     * read the frame (the panel's "Scanned by").
      */
     private suspend fun offerToPanel(
         ocrResult: OcrManager.OcrResult,
         screenshotPath: String?,
         frameIncludesSystemUi: Boolean,
         frameIncludesOwnOverlays: Boolean,
+        attribution: ReaderAttribution?,
     ) {
         try {
             service.translateAndSendToPanel(
                 ocrResult, screenshotPath, displayId, frameIncludesSystemUi,
-                frameIncludesOwnOverlays, liveDedup = true,
+                frameIncludesOwnOverlays, liveDedup = true, attribution = attribution,
             )
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -519,7 +727,7 @@ class FuriganaMode(
     // case), the conversion is a no-op via reference short-circuit; see
     // FrameCoordinates KDoc for details on the coordinate spaces.
 
-    private fun handleRawFrame(frame: com.playtranslate.capture.CapturedFrame) {
+    private fun handleRawFrame(frame: CapturedFrame) {
         val bitmap = frame.bitmap
         val frameIncludesSystemUi = frame.includesSystemUi
         val frameIncludesOwnOverlays = frame.includesOwnOverlays
@@ -542,7 +750,9 @@ class FuriganaMode(
         // what it is.
         if (!frameIncludesOwnOverlays) {
             emptyRectsStallCount = 0
-            handleCleanFrame(frame)
+            val tick = gateTick(bitmap, frame)
+            if (tick.skips) { skipTick(tick, bitmap); return }
+            handleCleanFrame(frame, tick)
             return
         }
 
@@ -552,9 +762,12 @@ class FuriganaMode(
         val screenRects = overlayView?.getChildScreenRects() ?: emptyList()
 
         if (ref == null || boxes.isNullOrEmpty()) {
-            // No overlay exists — raw frame is inherently clean, process it directly
+            // No overlay exists — raw frame is inherently clean, process it
+            // directly, when the gate lets it through.
             emptyRectsStallCount = 0
-            handleCleanFrame(frame)
+            val tick = gateTick(bitmap, frame)
+            if (tick.skips) { skipTick(tick, bitmap); return }
+            handleCleanFrame(frame, tick)
             return
         }
 
@@ -637,15 +850,29 @@ class FuriganaMode(
             return
         }
 
-        // OCR the patched frame asynchronously. The patch replaced only the
+        // The gate's verdict for the bitmap the OCR reads, taken before the
+        // job so it never races the next tick's patch. A skip drops the
+        // frame here: nothing is uploaded.
+        val tick = gateTick(patched, frame)
+        if (tick.skips) {
+            // No change under the gate's eye is no change for the safety
+            // net either: it counts the tick as the raw read below would.
+            noChangeRawFrameCount++
+            if (noChangeRawFrameCount >= STALE_REF_REFRESH_FRAMES) refreshStaleRef()
+            skipTick(tick, patched)
+            return
+        }
+
+        // Read the patched frame asynchronously. The patch replaced only the
         // furigana overlay rects with cleanRef pixels — the floating icon
         // survives in every other region of this raw frame, so the stamped
-        // fact must ride into runOcr's blackout (2026-07-16 finding).
+        // fact must ride into the read's blackout (2026-07-16 finding).
         rawOcrJob = scope.launch {
             try {
-                val pipeline = service.runOcr(
-                    patched, displayId, frameIncludesSystemUi, frameIncludesOwnOverlays,
+                val read = service.runLiveOcrRead(
+                    patched, displayId, frameIncludesSystemUi, frameIncludesOwnOverlays, translate = false,
                 )
+                val pipeline = read.result
                 if (pipeline != null) {
                     val prevText = lastOcrText
                     val prevKanji = if (prevText != null) kanjiOnly(prevText) else ""
@@ -672,10 +899,22 @@ class FuriganaMode(
                         OverlayToolkit.isEvolvingText(prevText, pipeline.dedupKey)
                     val settledRepeat = prevText != null &&
                         !OverlayToolkit.isSignificantChange(prevText, pipeline.dedupKey)
+                    tick?.let {
+                        gate?.report(
+                            it,
+                            when {
+                                prevText == null -> OcrVerdict.AWAITING_CLEAN
+                                frameEvolving -> OcrVerdict.EVOLVING
+                                kanjiChanged -> OcrVerdict.KANJI_CHANGED
+                                settledRepeat -> if (revealInFlight) OcrVerdict.RELEASE else OcrVerdict.SETTLED
+                                else -> OcrVerdict.KANA_SHIFT
+                            },
+                        )
+                    }
                     if (frameEvolving) {
                         noChangeRawFrameCount = 0
                         processPipeline(
-                            pipeline, patched, frameIncludesSystemUi, frameIncludesOwnOverlays,
+                            pipeline, patched, frameIncludesSystemUi, frameIncludesOwnOverlays, read.attribution,
                         )
                     } else if (kanjiChanged) {
                         noChangeRawFrameCount = 0
@@ -706,6 +945,7 @@ class FuriganaMode(
                         // ref in place keeps raw-frame patching working until processCleanFrame
                         // replaces the ref on the next clean frame.
                         lastOcrText = null
+                        lastFullText = null
 
                         if (cachedFuriganaBoxes == null) {
                             CaptureBackendResolver.activeOverlayUi?.hideTranslationOverlayForDisplay(displayId)
@@ -720,25 +960,16 @@ class FuriganaMode(
                         // with nothing pending it's the dedup fast path.
                         if (settledRepeat) {
                             processPipeline(
-                                pipeline, patched, frameIncludesSystemUi, frameIncludesOwnOverlays,
+                                pipeline, patched, frameIncludesSystemUi, frameIncludesOwnOverlays, read.attribution,
                             )
                         }
                         // Periodically force a clean capture to refresh
-                        // the ref — stale ref content in overlay regions can mask real scene
-                        // changes via bleed-through, creating a self-reinforcing stall.
+                        // the ref ([refreshStaleRef]).
                         noChangeRawFrameCount++
-                        if (noChangeRawFrameCount >= STALE_REF_REFRESH_FRAMES) {
-                            noChangeRawFrameCount = 0
-                            DetectionLog.log("Furigana: safety-net clean capture (stale ref refresh)")
-                            // Force rebuild path in processCleanFrame. Don't clear cleanRefBitmap
-                            // here — see race comment above.
-                            lastOcrText = null
-                            liveSource()?.requestCleanCapture(displayId)
-                        }
+                        if (noChangeRawFrameCount >= STALE_REF_REFRESH_FRAMES) refreshStaleRef()
                     }
                 } else {
-                    clearState()
-                    service.handleNoTextDetected(displayId)
+                    noTextFound(tick, read.attribution)
                 }
             } finally {
                 if (!patched.isRecycled) patched.recycle()

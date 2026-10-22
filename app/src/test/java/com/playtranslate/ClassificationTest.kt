@@ -5,6 +5,7 @@ import com.playtranslate.language.TextOrientation
 import com.playtranslate.ui.TextBox
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -19,6 +20,8 @@ import org.robolectric.RobolectricTestRunner
  *    exclusion; first-match-wins; index guards for mid-cycle size drift.
  *  - Relocation tombstones: minting (distant vs in-place), duplicate
  *    blocking, mover pass-through, one-bounce oscillation convergence.
+ *  - [FarGroup.sourceGroupIndex]: the group's index in the read for a fresh
+ *    far and a paired replacement, null for a coalesced merge.
  *  - [cascadeStaleRemovals]: empty seed, isolated seed, adjacent chain,
  *    disconnected multi-seed, dirty skip, ocrBitmapRects overflow.
  *
@@ -862,6 +865,74 @@ class ClassificationTest {
         assertEquals(2, result.farOcrGroups.size)
         assertTrue("content-match replacement is paired", result.farOcrGroups[0].paired)
         assertFalse("fresh far is not paired", result.farOcrGroups[1].paired)
+    }
+
+    // ── classifyOcrResults: sourceGroupIndex ─────────────────────────────
+
+    @Test
+    fun sourceGroupIndex_freshFar_isItsGroupsIndexInTheRead_notItsFarPosition() {
+        // Group 0 stales the box (overlap, different text) and queues
+        // nothing, so the fresh far from group 1 sits at far position 0. The
+        // index must name group 1: it keys the reader's translation of that
+        // group (readerForFarGroups).
+        val boxBounds = Rect(0, 0, 100, 100)
+        val result = classifyOcrResults(
+            ocrResult = ocrResult(
+                "xxxxx" to Rect(0, 0, 100, 100),
+                "brand new" to Rect(5_000, 5_000, 5_100, 5_100),
+            ),
+            boxes = listOf(box(boxBounds, sourceText = "old")),
+            ocrBitmapRects = listOf(boxBounds),
+            coords = identityCoords,
+        )
+        assertEquals(setOf(0), result.staleOverlayIndices)
+        val far = result.farOcrGroups.single()
+        assertEquals("brand new", far.text)
+        assertEquals(1, far.sourceGroupIndex)
+    }
+
+    @Test
+    fun sourceGroupIndex_pairedContentMatch_isItsGroupsIndexInTheRead() {
+        // Group 0 stales box 1 and queues nothing; group 1 content-matches
+        // box 0 at a new position, queued at far position 0.
+        val box0 = Rect(0, 0, 100, 100)
+        val box1 = Rect(1_000, 1_000, 1_100, 1_100)
+        val result = classifyOcrResults(
+            ocrResult = ocrResult(
+                "xxxxx" to Rect(1_000, 1_000, 1_100, 1_100),
+                "hello" to Rect(500, 500, 600, 600),
+            ),
+            boxes = listOf(box(box0, sourceText = "hello"), box(box1, sourceText = "old")),
+            ocrBitmapRects = listOf(box0, box1),
+            coords = identityCoords,
+        )
+        assertEquals(setOf(0), result.contentMatchRemovals)
+        assertEquals(setOf(1), result.staleOverlayIndices)
+        val far = result.farOcrGroups.single()
+        assertTrue(far.paired)
+        assertEquals("hello", far.text)
+        assertEquals(1, far.sourceGroupIndex)
+    }
+
+    @Test
+    fun sourceGroupIndex_coalescedMerge_isNull() {
+        // Same fixture as the inline-then-block coalesce test: three groups
+        // merge into one paired FAR whose text ("A B C") is no single group's,
+        // so no group's translation may be taken for it.
+        val cachedBox = box(Rect(0, 0, 100, 50), sourceText = "A")
+        val result = classifyOcrResults(
+            ocrResult = ocrResult(
+                "A" to Rect(0, 0, 100, 50),
+                "B" to Rect(110, 0, 200, 50),
+                "C" to Rect(0, 60, 200, 110),
+            ),
+            boxes = listOf(cachedBox),
+            ocrBitmapRects = listOf(cachedBox.bounds),
+            coords = identityCoords,
+        )
+        val merged = result.farOcrGroups.single()
+        assertEquals("A B C", merged.text)
+        assertNull(merged.sourceGroupIndex)
     }
 
     // ── classifyOcrResults: shrink-direction last-line continuation ──────

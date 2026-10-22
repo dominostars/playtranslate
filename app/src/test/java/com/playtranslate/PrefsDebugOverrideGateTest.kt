@@ -39,6 +39,10 @@ class PrefsDebugOverrideGateTest {
             "debugLogTrace", "debug_log_trace",
             { debugLogTrace }, { debugLogTrace = it },
         ),
+        GatedOverride(
+            "ptCloudEnabled", "pt_cloud_enabled",
+            { ptCloudEnabled }, { ptCloudEnabled = it },
+        ),
     )
 
     private val ctx: Context = ApplicationProvider.getApplicationContext()

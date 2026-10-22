@@ -21,7 +21,15 @@ import com.playtranslate.OneShotOverlayData
 import com.playtranslate.OverlayMode
 import com.playtranslate.OverlayToolkit
 import com.playtranslate.Prefs
+import com.playtranslate.TranslationCache
 import com.playtranslate.cancelledStateOrNull
+import com.playtranslate.language.SourceLangId
+import com.playtranslate.ocr.FrameReader
+import com.playtranslate.ocr.FrameReaders
+import com.playtranslate.ocr.FrameReading
+import com.playtranslate.ocr.ReadRequest
+import com.playtranslate.ocr.ReaderTranslations
+import com.playtranslate.translation.GroupTranslator
 import com.playtranslate.ocr.registry.ocrLabel
 import com.playtranslate.ocr.registry.selectionToken
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,10 +79,15 @@ internal const val CAMERA_FRAME_PREFIX = "camera-snapshot-"
  * rastered overlay regions through it.
  *
  * On acquire (engine-triggered, settled scenes only): snapshot an upright
- * RGB keyframe + its CN gray, then off the frame path run
- * [OcrManager.recognise] → flavor boxes (translation skeleton→filled, or
- * furigana/pinyin) → [OverlayRasterizer] → install regions + a fresh ORB
- * anchor. Tracker mutations are serialized onto the analysis executor.
+ * RGB keyframe + its CN gray, then off the frame path read it through the
+ * reader router ([FrameReaders.readerFor]: PlayTranslate Cloud when the
+ * settings route there, the device engine the camera's scope selects
+ * otherwise, and as the fallback) → flavor boxes (translation
+ * skeleton→filled, or furigana/pinyin) → [OverlayRasterizer] → install
+ * regions + a fresh ORB anchor. Tracker mutations are serialized onto the
+ * analysis executor. Translation goes through the shared handshake
+ * ([GroupTranslator]): a reading's own translations first, the process's
+ * cache and the waterfall for the rest.
  */
 class CameraSession(
     private val context: Context,
@@ -86,6 +99,14 @@ class CameraSession(
      *  once per session ([slowOcrFired]); the receiver owns every further
      *  gate (answered latch, rescue availability, frozen state). */
     private val onSlowOcr: () -> Unit = {},
+    /** The reader a read goes through ([FrameReaders.readerFor]); a test
+     *  passes a scripted [FrameReader]. */
+    private val readerFor: (SourceLangId, Boolean) -> FrameReader = FrameReaders::readerFor,
+    /** This session's translate handshake over the process's one cache
+     *  ([TranslationCache.shared]); no degraded sink: the camera's note is
+     *  inline in its panel, and a camera outcome must not change the
+     *  floating icon over the game. */
+    private val translator: GroupTranslator = GroupTranslator(context, TranslationCache.shared),
 ) {
     private companion object {
 
@@ -119,7 +140,6 @@ class CameraSession(
     }
 
     private val prefs = Prefs(context)
-    private val translator = CameraTranslator(context)
 
     private val analysisExecutor = Executors.newSingleThreadExecutor()
 
@@ -203,11 +223,14 @@ class CameraSession(
     private var cachedAuH = 0
 
     /** Snapshot-only: the pipeline's per-group translations, index-aligned
-     *  with [cachedOcr]'s groups. [showFrozenOverlays] renders skeletons
-     *  while null and filled boxes once set — it must never translate on its
-     *  own, or the overlays-first presentation would duplicate the
+     *  with [cachedOcr]'s groups: first what can be shown at once (the
+     *  reading's own translations and the cache's entries, null at a group
+     *  still being translated), then every group once the translate call
+     *  settles. [showFrozenOverlays] renders a skeleton for a null list or a
+     *  null entry and filled boxes elsewhere — it must never translate on
+     *  its own, or the overlays-first presentation would duplicate the
      *  pipeline's backend call (both fire before either could cache). */
-    private var cachedSnapshotTranslations: List<String>? = null
+    private var cachedSnapshotTranslations: List<String?>? = null
 
     /** The display payload of the currently anchored scene once its final
      *  (filled) boxes exist — what the anchor LRU stores alongside the
@@ -314,8 +337,10 @@ class CameraSession(
      *  which used to land inside the FIRST acquire's OCR timing (~4.5 s fresh
      *  process vs ~1.3 s steady on the Moto G). Running a stamp-sized digit
      *  strip through the real pipeline while the user is still aiming hides
-     *  that cost. [runAcquire] joins this job so the two never race the
-     *  engine's internal caches. */
+     *  that cost. Every device read of an acquire joins this job first
+     *  ([ReadRequest.beforeDeviceOcr]) so the two never race the engine's
+     *  internal caches; a read PlayTranslate Cloud makes does not wait for
+     *  it, and its fallback to the device joins it like any device read. */
     private val prewarmJob = scope.launch(Dispatchers.Default) {
         try {
             val t0 = System.currentTimeMillis()
@@ -683,32 +708,69 @@ class CameraSession(
         // this job's liveness so a cancellation that lands mid-await can't
         // have its anchor installed after the fact.
         val selfJob = kotlin.coroutines.coroutineContext[kotlinx.coroutines.Job]
+        // The frame's reading, for the finally: a reader that translates
+        // hands its translations over in a job that is a child of THIS job,
+        // and [canAcquire] gates on this job's liveness, so every exit that
+        // does not await them (a stale epoch, no usable text, a failed
+        // install, the furigana flavor) must cancel them, or the next acquire
+        // waits on the service's final part.
+        var reading: FrameReading? = null
+        // Slow-pass rescue timer, live mode's threshold: fires MID-pass,
+        // while the user is staring at a viewfinder that shows nothing for
+        // their pointing. Armed when the device engine is about to run
+        // (beforeDeviceOcr: a device read, or a cloud read's fallback) and
+        // after the prewarm join, so neither engine warm-up nor the time a
+        // cloud attempt spent on the network counts as slowness; cancelled
+        // with the pass (finally), so a fast pass or a cancelled acquire
+        // never fires. [scope] is the activity's lifecycleScope — the
+        // callback lands on the main thread.
+        var slowTimer: kotlinx.coroutines.Job? = null
         try {
-            prewarmJob.join() // never race the engine's lazy construction
+            val srcId = prefs.sourceLangId
+            val flavor = prefs.cameraOverlayMode
+            // Warm PlayTranslate Cloud for the read below: never device-only
+            // (a stopped pod or a refused key is a cooldown the router reads).
+            FrameReaders.warm(srcId, deviceOnly = false)
+            val reader = readerFor(srcId, false)
             val t0 = System.currentTimeMillis()
-            // Slow-pass rescue timer, live mode's threshold: fires MID-pass,
-            // while the user is staring at a viewfinder that shows nothing
-            // for their pointing. Started after the prewarm join so engine
-            // warm-up never counts as slowness; cancelled with the pass
-            // (finally), so a fast pass or a cancelled acquire never fires.
-            // [scope] is the activity's lifecycleScope — the callback lands
-            // on the main thread.
-            val slowTimer = if (!slowOcrFired) scope.launch {
-                kotlinx.coroutines.delay(com.playtranslate.LiveSessionFeedback.OCR_SLOW_PROMPT_MS)
-                slowOcrFired = true
-                onSlowOcr()
-            } else null
-            val ocr = try {
-                OcrManager.instance.recognise(
-                    buffers.keyframe,
-                    prefs.sourceLangId,
-                    screenshotWidth = auW,
-                    regionPreFilter = cameraRegionPreFilter(),
+            // Runs in this job, on this dispatcher, just before a device
+            // engine reads the keyframe (never for a cloud read): the engine
+            // prewarm is joined first, so the two never race the engine's
+            // lazy construction and internal caches.
+            val beforeDeviceOcr: suspend () -> Unit = {
+                prewarmJob.join()
+                if (!slowOcrFired) slowTimer = scope.launch {
+                    kotlinx.coroutines.delay(com.playtranslate.LiveSessionFeedback.OCR_SLOW_PROMPT_MS)
+                    slowOcrFired = true
+                    onSlowOcr()
+                }
+            }
+            // The furigana flavor needs no translation: the same-language
+            // request, for which the cloud reader asks its service for none.
+            val frameId = FrameReaders.frameId("cam")
+            val request = if (flavor == OverlayMode.FURIGANA) {
+                ReadRequest.sameLanguage(
+                    srcId, screenshotWidth = auW, frameId = frameId,
                     scope = com.playtranslate.OcrTokenScope.CAMERA,
+                    regionPreFilter = cameraRegionPreFilter(),
+                ).copy(beforeDeviceOcr = beforeDeviceOcr)
+            } else {
+                ReadRequest(
+                    srcId, screenshotWidth = auW, targetLang = prefs.targetLang, frameId = frameId,
+                    scope = com.playtranslate.OcrTokenScope.CAMERA,
+                    regionPreFilter = cameraRegionPreFilter(),
+                    beforeDeviceOcr = beforeDeviceOcr,
                 )
+            }
+            // Directly in this job, never in a scoped builder: the reading's
+            // translations are a child of the calling job.
+            val read = try {
+                reader.read(buffers.keyframe, request)
             } finally {
                 slowTimer?.cancel()
             }
+            reading = read
+            val ocr = read.ocr
             // A newer publication source appeared while the OCR ran (mode
             // toggle / reset — cancellation-first usually got here earlier;
             // this is the structural backstop).
@@ -718,7 +780,7 @@ class CameraSession(
             Log.d(
                 TAG,
                 "acquire: OCR $rawCount groups (${groups.size} usable) in ${System.currentTimeMillis() - t0}ms " +
-                    "(engine=${ocr?.engineBackend ?: "ml-kit-floor/none"})",
+                    "(read by ${read.attribution?.label ?: "none"})",
             )
 
             val colorRef = buffers.deriveColorRef()
@@ -799,11 +861,17 @@ class CameraSession(
             } ?: 0
 
             if (installEpoch == 0) return
-            buildAndShow(gated!!, groupColors, auW, auH, installEpoch)
+            // The reading's translations are keyed by its own group index;
+            // the gate above dropped groups, so map them onto the kept ones.
+            val readerForGroups = read.translations?.forPositions(SnapshotCore.positionsOf(ocr!!.groups, groups))
+            buildAndShow(gated!!, groupColors, auW, auH, installEpoch, readerForGroups)
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             Log.w(TAG, "acquire failed", e)
         } finally {
+            // Whoever drops a reading without awaiting its translations
+            // cancels them (the seam's rule); a no-op once they settled.
+            reading?.translations?.cancel()
             // TOTAL completion + single buffer close path, on every exit —
             // early returns, exceptions, and coroutine cancellation alike.
             // Both are fire-and-forget (suspend calls throw immediately in a
@@ -891,33 +959,44 @@ class CameraSession(
     /** Build boxes for the camera's current [Prefs.cameraOverlayMode],
      *  register the flavor's tracked regions (groups for translation, lines
      *  for reading — the per-region homography units), rasterize, and hand
-     *  the raster regions to the warp view. Two-phase skeleton→filled for
-     *  the translation flavor. */
+     *  the raster regions to the warp view. Two-phase for the translation
+     *  flavor: first what can be shown at once (the reading's own
+     *  translations, [reader], keyed by [ocr]'s group index, and the cache's
+     *  entries; skeletons elsewhere), then every box once the translate call
+     *  settles. [reader] is null on a re-flavor from the cached OCR, whose
+     *  translations the cache holds. */
     private suspend fun buildAndShow(
         ocr: OcrManager.OcrResult,
         groupColors: List<Pair<Int, Int>>,
         auW: Int,
         auH: Int,
         epoch: Int,
+        reader: ReaderTranslations? = null,
     ) {
         val mode = prefs.cameraOverlayMode
         when (mode) {
             OverlayMode.TRANSLATION -> {
                 // usableGroups already dropped blank groups, so this filter is
                 // a no-op that KEEPS the index alignment with [groupColors]
-                // (sampled per gated group at acquire).
+                // (sampled per gated group at acquire); the reader's positions
+                // follow the kept groups by identity in any case.
                 val groups = ocr.groups.filter { it.text.isNotBlank() }
                 val texts = groups.map { it.text }
+                val readerForGroups = reader?.forPositions(SnapshotCore.positionsOf(ocr.groups, groups))
                 // One tracked region per group: key = group index.
                 val trackKeys = groups.indices.toList()
                 val regions = groups.mapIndexed { idx, g -> idx to g.bounds }
                 installTrackRegions(regions, epoch)
 
                 val placeholders = buildPlaceholderBoxes(groups, groupColors)
-                showRegions(placeholders, trackKeys, auW, auH, epoch)
+                val atOnce = translator.translationsAtOnce(texts, readerForGroups)
+                showRegions(
+                    placeholders.mapIndexed { idx, ph -> ph.copy(translatedText = atOnce.getOrNull(idx)?.text ?: "") },
+                    trackKeys, auW, auH, epoch,
+                )
 
                 val t0 = System.currentTimeMillis()
-                val translations = translator.translate(texts)
+                val translations = translator.translateGroupsSeparately(texts, reader = readerForGroups).map { it.text }
                 Log.d(TAG, "acquire: translated ${texts.size} groups in ${System.currentTimeMillis() - t0}ms")
                 // Quality forensics: the OCR text and its translation, so
                 // "bad output" can be attributed to reading vs translating.
@@ -1424,21 +1503,7 @@ class CameraSession(
         if (mode != Mode.FROZEN) return null
         synchronized(stateLock) {
             val ocr = cachedOcr ?: return null
-            val lines = ocr.groups.flatMapIndexed { gi, g ->
-                g.lines.map { line ->
-                    OcrManager.OcrLine(
-                        text = line.text,
-                        bounds = line.bounds,
-                        groupIndex = gi,
-                        groupText = g.text,
-                        symbols = line.symbols,
-                        orientation = line.orientation,
-                        angleDeg = line.angleDeg,
-                        orientedWidth = line.orientedWidth,
-                        orientedHeight = line.orientedHeight,
-                    )
-                }
-            }
+            val lines = ocr.lines()
             if (lines.isEmpty()) return null
             return com.playtranslate.camera.render.FrozenLookupScene(
                 lines, cachedAuW, cachedAuH, cachedScreenshotPath,
@@ -1468,18 +1533,27 @@ class CameraSession(
      * snapshot is a publication source), so [showFrozenOverlays] and mode
      * re-flavors read a coherent scene.
      */
-    fun runSnapshot(frozen: Bitmap, regionAu: android.graphics.Rect? = null): CaptureSession {
+    fun runSnapshot(
+        frozen: Bitmap,
+        regionAu: android.graphics.Rect? = null,
+        /** The read stays on the device whatever the reader settings say: the
+         *  user picked a device engine for this frame ([FrozenReviewBackend.runReview]). */
+        deviceOnly: Boolean = false,
+    ): CaptureSession {
         if (frozen !== captureTokenFrame) {
             captureToken = snapshotLogRecorder.beginCaptureSession()
             captureTokenFrame = frozen
         }
+        // Warm PlayTranslate Cloud for the cycle's read, with the statement
+        // that read makes; the head start covers the frame's save and encode.
+        FrameReaders.warm(prefs.sourceLangId, deviceOnly)
         val state = MutableStateFlow<CaptureState>(
             CaptureState.InProgress(context.getString(com.playtranslate.R.string.status_ocr))
         )
         val gen = snapshotGeneration.incrementAndGet()
         val job = scope.launch(Dispatchers.Default) {
             try {
-                runSnapshotCycle(frozen, state, regionAu, gen)
+                runSnapshotCycle(frozen, state, regionAu, gen, deviceOnly)
             } catch (e: CancellationException) {
                 // Let cancellation propagate; invokeOnCompletion writes Cancelled.
                 throw e
@@ -1507,22 +1581,51 @@ class CameraSession(
         regionAu: android.graphics.Rect? = null,
         /** This cycle's [snapshotGeneration] stamp — see the field. */
         gen: Long = snapshotGeneration.get(),
+        deviceOnly: Boolean = false,
     ) {
         val srcId = prefs.sourceLangId
         val auW = frozen.width
         val auH = frozen.height
         val screenshotPath = saveSnapshotToCache(frozen)
 
-        val ocr = OcrManager.instance.recognise(
+        // Directly in this job, never in a scoped builder: a reading's
+        // translations are a child of the calling job, cancelled in the
+        // finally below by every exit that does not await them.
+        val reading = readerFor(srcId, deviceOnly).read(
             frozen,
-            srcId,
-            screenshotWidth = auW,
-            regionPreFilter = cameraRegionPreFilter(
-                dropEdgeClipped = false, clipTo = regionAu,
-                clipFrameW = auW, clipFrameH = auH,
+            ReadRequest(
+                srcId,
+                screenshotWidth = auW,
+                targetLang = prefs.targetLang,
+                frameId = FrameReaders.frameId("cam"),
+                scope = com.playtranslate.OcrTokenScope.CAMERA,
+                regionPreFilter = cameraRegionPreFilter(
+                    dropEdgeClipped = false, clipTo = regionAu,
+                    clipFrameW = auW, clipFrameH = auH,
+                ),
             ),
-            scope = com.playtranslate.OcrTokenScope.CAMERA,
         )
+        try {
+            runSnapshotTail(reading, frozen, state, regionAu, gen, srcId, auW, auH, screenshotPath)
+        } finally {
+            reading.translations?.cancel()
+        }
+    }
+
+    /** [runSnapshotCycle] after its read: the gate, the publish, the first
+     *  paint, the translate call and Done. */
+    private suspend fun runSnapshotTail(
+        reading: FrameReading,
+        frozen: Bitmap,
+        state: MutableStateFlow<CaptureState>,
+        regionAu: android.graphics.Rect?,
+        gen: Long,
+        srcId: SourceLangId,
+        auW: Int,
+        auH: Int,
+        screenshotPath: String?,
+    ) {
+        val ocr = reading.ocr
         // The region gate proper lives HERE, at group level, not in the
         // pre-filter: single-model engines (ML Kit) never see the
         // detect/recognize seam, and a group is the translation/Anki unit —
@@ -1538,7 +1641,7 @@ class CameraSession(
         }
         val gatedGroups = ocr?.let { usableGroups(it, auW, auH, skipEdgeGate = true) }.orEmpty()
         val groups = SnapshotCore.regionCenterFilter(gatedGroups, regionAu)
-        val provenance = snapshotProvenance(ocr, srcId)
+        val provenance = SnapshotCore.snapshotProvenance(reading.attribution, srcId)
         if (ocr == null || groups.isEmpty()) {
             // A no-text verdict OWNS the display exactly like a successful
             // run: a re-run (empty region, gear re-OCR) must not leave the
@@ -1573,12 +1676,20 @@ class CameraSession(
         }
 
         val gated = ocr.copy(groups = groups)
+        val texts = groups.map { it.text }
+        // The reading's translations are keyed by its own group index; the
+        // gates dropped and reordered groups, so map them onto the kept ones.
+        val readerForGroups = reading.translations?.forPositions(SnapshotCore.positionsOf(ocr.groups, groups))
+        // What can be shown before any wait: the reading's own translations
+        // and the cache's entries; null where the translate call below has
+        // work to do (a skeleton).
+        val atOnce = translator.translationsAtOnce(texts, readerForGroups, srcId)
         // Color sampling matches the acquire path: sample a transient ×4
         // reference, never retain a bitmap.
         val groupColors = SnapshotCore.sampleGroupColors(frozen, groups.map { it.bounds })
         // The snapshot owns the display: epoch and caches move together,
-        // same protocol as the acquire install. Translations are not in yet
-        // — showFrozenOverlays renders skeletons until they land below.
+        // same protocol as the acquire install. showFrozenOverlays renders
+        // the first paint until the settled translations land below.
         // Generation re-checked INSIDE the lock: a newer run bumps the
         // counter before its own cycle can reach this block, so a stale
         // cycle can never publish after (or over) a newer one. The
@@ -1593,7 +1704,7 @@ class CameraSession(
                 cachedGroupColors = groupColors
                 cachedAuW = auW
                 cachedAuH = auH
-                cachedSnapshotTranslations = null
+                cachedSnapshotTranslations = atOnce.map { it?.text }
                 replacedFrame = cachedScreenshotPath
                 cachedScreenshotPath = screenshotPath
                 displayEpoch.advance()
@@ -1623,7 +1734,7 @@ class CameraSession(
         // language change must not relabel these rows.
         val recordSrc = srcId
         val recordTgt = prefs.targetLang
-        val perGroup = translator.translateDetailed(groups.map { it.text })
+        val perGroup = translator.translateGroupsSeparately(texts, srcId, readerForGroups)
         // Superseded while translating: mirror the post-recognise check for
         // the remaining side effects (History rows, Done). Today the
         // withContext below would refuse the cancelled job anyway — every
@@ -1664,17 +1775,6 @@ class CameraSession(
         )
     }
 
-    /** Mirror of the service's provenance builders: engine from the result
-     *  when OCR ran, else the currently-selected backend — the no-text
-     *  gear needs a token to key the picker. Full-frame region; frames are
-     *  camera keyframes (no system UI, no own overlays). */
-    private fun snapshotProvenance(
-        ocr: OcrManager.OcrResult?,
-        srcId: com.playtranslate.language.SourceLangId,
-    ): com.playtranslate.model.OcrProvenance? = SnapshotCore.snapshotProvenance(
-        context, ocr, srcId, com.playtranslate.OcrTokenScope.CAMERA,
-    )
-
     /** Save the frozen frame under a unique per-cycle name — see
      *  [SnapshotCore.saveFrame] for why fixed per-tool names were an
      *  aliasing bug class (stacked activity instances share no generation
@@ -1701,7 +1801,7 @@ class CameraSession(
     fun showFrozenOverlays() {
         val ocr: OcrManager.OcrResult?
         val colors: List<Pair<Int, Int>>?
-        val translations: List<String>?
+        val translations: List<String?>?
         val auW: Int
         val auH: Int
         val epoch: Int
@@ -1730,12 +1830,13 @@ class CameraSession(
     }
 
     /** The translation-flavor frozen render: placeholder boxes, filled from
-     *  the pipeline's [translations] when available. No tracker regions —
-     *  the frame is static and everything rides the IDENTITY transform. */
+     *  the pipeline's [translations] where it has one (a null list or entry
+     *  is a skeleton). No tracker regions — the frame is static and
+     *  everything rides the IDENTITY transform. */
     private suspend fun showFrozenTranslationBoxes(
         ocr: OcrManager.OcrResult,
         colors: List<Pair<Int, Int>>,
-        translations: List<String>?,
+        translations: List<String?>?,
         auW: Int,
         auH: Int,
         epoch: Int,
@@ -1745,7 +1846,7 @@ class CameraSession(
         val placeholders = buildPlaceholderBoxes(groups, colors)
         val boxes = if (translations == null) placeholders
         else placeholders.mapIndexed { idx, ph ->
-            ph.copy(translatedText = translations.getOrElse(idx) { "" })
+            ph.copy(translatedText = translations.getOrNull(idx) ?: "")
         }
         showRegions(boxes, trackKeys, auW, auH, epoch)
     }
@@ -1754,11 +1855,12 @@ class CameraSession(
         overlayHost.post { warpView?.clearRegions() }
     }
 
-    /** The panel's in-place-edit re-translation, on the camera's translator.
-     *  Null when the whole waterfall failed — the panel binds its "—"
+    /** The panel's in-place-edit re-translation: deliberate, so uncached
+     *  ([GroupTranslator.translateOnce], as the service's panel edit). Null
+     *  when the whole waterfall failed — the panel binds its "—"
      *  placeholder. */
     suspend fun translateForPanel(text: String): com.playtranslate.ui.CaptureResultOverlay.PanelTranslation? {
-        val d = translator.translateDetailed(listOf(text)).firstOrNull() ?: return null
+        val d = translator.translateOnce(text)
         if (d.text.isEmpty()) return null
         return com.playtranslate.ui.CaptureResultOverlay.PanelTranslation(
             d.text, d.note, d.backendDisplayName,

@@ -1,5 +1,6 @@
 package com.playtranslate
 
+import com.playtranslate.ocr.FrameReaders
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.SystemClock
@@ -9,6 +10,7 @@ import com.playtranslate.capture.LiveCaptureSource
 import com.playtranslate.capture.StreamKind
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextDirection
+import com.playtranslate.ocr.ReaderTranslations
 import com.playtranslate.ui.GrowthLimits
 import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CoroutineScope
@@ -191,6 +193,12 @@ class ReconcilerLiveMode(
                 }
             }
         }
+        // Warm PlayTranslate Cloud for the first cycle's read, which
+        // runLiveOcrRead makes with the statements the warm states (the source
+        // language from the same pref, never device-only). Once per mode
+        // instance (setLiveDisplays starts each new one exactly once): later
+        // cycles read back to back on a connection already in use.
+        FrameReaders.warm(Prefs(service).sourceLangId, deviceOnly = false)
         engine.scheduleNext()
     }
 
@@ -364,6 +372,15 @@ class ReconcilerLiveMode(
         // The hold's cap anchor: stamped by the source at serve time
         // (CapturedFrame) — not a caller-side clock read.
         val captureAtMs = frame.capturedAtMs
+        // The reader's translations, when it produced any (PlayTranslate
+        // Cloud), awaited inside the presenter's present when a region that
+        // can take one has no cache entry. Cancelled in the finally, as the
+        // capture-once core and the hold cancel their own: an exit that never
+        // awaits them (paused, dims or crop changed, nothing to translate, no
+        // region that can take one, every such region already in the cache,
+        // present failing before it waited) must not keep the loop's job
+        // alive until they settle. A no-op once they have settled.
+        var translations: ReaderTranslations? = null
 
         try {
             // Rotation / display reconfig: crop-space bounds are void.
@@ -401,10 +418,17 @@ class ReconcilerLiveMode(
 
             // OCR the full crop. No status-bar exclusion: a task stream
             // contains no system UI — those top rows are game content.
+            // PlayTranslate Cloud reads it when the router allows it: a
+            // stopped service or a refused key is a cooldown (PtCloudService),
+            // which keeps every reader on the device until it ends, the
+            // settings switch or a credentials save resets it, or the cloud
+            // page's health check finds the service running.
             val ocrStartMs = SystemClock.uptimeMillis()
-            val pipeline = service.runOcr(
+            val read = service.runLiveOcrRead(
                 raw, displayId, frame.includesSystemUi, frame.includesOwnOverlays,
             )
+            val pipeline = read.result
+            translations = pipeline?.translations
             val ocrMs = SystemClock.uptimeMillis() - ocrStartMs
 
             // A hold gesture (or the rescue alert) may have started during
@@ -417,7 +441,7 @@ class ReconcilerLiveMode(
                 // contract applies, or a stale hold deadline pins pacing()
                 // at the floor forever on a textless screen.
                 holdDeadlineMs = typewriterGate.sweepEmptyBatch(SystemClock.uptimeMillis())
-                presenter.emitNoText()
+                presenter.emitNoText(read.attribution)
                 return pacing(prefs)
             }
 
@@ -527,16 +551,16 @@ class ReconcilerLiveMode(
                         CaptureBackendResolver.activeOverlayUi
                             ?.hideTranslationOverlayForDisplay(displayId)
                     } else {
-                        presenter.emitNoText()
+                        presenter.emitNoText(read.attribution)
                     }
                 } else {
                     showBoxes(kept, groups)
                     presenter.emitApplied(
                         kept, pipeline?.ocrResult,
                         frame.includesSystemUi, frame.includesOwnOverlays,
-                    ) {
-                        mgr.saveToCache(raw, displayId)
-                    }
+                        screenshotPath = { mgr.saveToCache(raw, displayId) },
+                        attribution = read.attribution,
+                    )
                 }
                 return pacing(prefs)
             }
@@ -544,21 +568,34 @@ class ReconcilerLiveMode(
             // Recording pair snapshot BEFORE the translate call: present()
             // can suspend for seconds in MT, and a mid-flight language
             // change must not relabel rows produced under the old pair
-            // (the ms gap to the service's own snapshot is accepted).
+            // (the gap to the service's own snapshot is accepted: a few ms,
+            // or on a cloud cycle that waits the wait for the reader's
+            // translations, which the translate call makes before its
+            // waterfall).
             val recordPrefs = Prefs(service)
             val recordSrc = recordPrefs.sourceLangId
             val recordTgt = recordPrefs.targetLang
 
             // The presenter turns regions into anchors — serially, in-cycle,
             // so at most one OCR and one present pass (MT / tokenizer) are
-            // ever in flight (the loop's backpressure). A provisional render
-            // (skeletons, cache fills) may land first via onPartial.
+            // ever in flight (the loop's backpressure). Provisional renders
+            // (skeletons, cache fills, the reader's translations as they
+            // arrive) may land first via onPartial.
             val finalAnchors = presenter.present(
                 toTranslate, frame, cropLeft, cropTop,
                 onPartial = { partial ->
                     cachedBoxes = kept + partial
                     showBoxes(kept + partial, groups)
                 },
+                // The reader's translations, for the regions it would
+                // translate anyway, and only where a region's text is its
+                // whole group's (a typewriter prefix is not what the server
+                // translated). The presenter paints what arrived with the OCR
+                // and the cache fills before it waits, so live mode's first
+                // paint never waits on a server, and it waits only when such
+                // a region has no cache entry. The rest go through the cache
+                // and the waterfall.
+                reader = readerForRegions(toTranslate, groups, pipeline?.translations),
             )
             // Recording backend (Text History / LLM context): the presenter
             // return is the one seam where source, translation, and rect
@@ -579,11 +616,12 @@ class ReconcilerLiveMode(
             presenter.emitApplied(
                 kept + finalAnchors, pipeline?.ocrResult,
                 frame.includesSystemUi, frame.includesOwnOverlays,
-            ) {
-                mgr.saveToCache(raw, displayId)
-            }
+                screenshotPath = { mgr.saveToCache(raw, displayId) },
+                attribution = read.attribution,
+            )
             return pacing(prefs)
         } finally {
+            translations?.cancel()
             if (!raw.isRecycled) raw.recycle()
         }
     }
@@ -671,4 +709,37 @@ class ReconcilerLiveMode(
         /** Per-channel level at or below which a sample counts as black. */
         const val BLACK_LEVEL_MAX = 12
     }
+}
+
+/**
+ * A reader's translations (keyed by the index of a group in [groups]) for
+ * [work], the regions a reconciler cycle translates, by position
+ * ([ReaderTranslations.forPositions]). Position i takes the group
+ * `work[i].group` when that is one of [groups] (by identity: two groups can
+ * be equal in value, and the index is the reader's id for the instance it
+ * returned) and the region's text is the whole group's. A typewriter partial
+ * prefix, which the TRANSLATION flavor dispatches with its group attached, is
+ * not the text the reader translated and must never take that group's
+ * translation. Null when [reader] is null or no position takes a group: a
+ * cycle whose regions can take none (typewriter prefixes only) holds no
+ * reader, so its waterfall starts without waiting for the server.
+ *
+ * A region is mapped whether or not the cache has its text, as on the
+ * pinhole tier ([readerForFarGroups]): the translate call decides whether
+ * to wait ([CaptureService.translateGroupsSeparately] waits only when a
+ * mapped position the reader can still name has no cache entry).
+ */
+internal fun readerForRegions(
+    work: List<ScanlineReconciler.Region>,
+    groups: List<OcrManager.OcrGroup>,
+    reader: ReaderTranslations?,
+): ReaderTranslations? {
+    if (reader == null) return null
+    return reader.forPositions(
+        work.map { region ->
+            val group = region.group ?: return@map null
+            if (region.text != group.text) return@map null
+            groups.indexOfFirst { it === group }.takeIf { it >= 0 }
+        },
+    )
 }

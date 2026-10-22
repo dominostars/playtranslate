@@ -68,6 +68,14 @@
                         android:layout_marginStart="@dimen/pt_row_h_padding"
                         android:background="?attr/ptDivider" />
 
+                    <!-- PlayTranslate Cloud: first in the card as it is first
+                         in the waterfall, outside the RecyclerView so it can't
+                         be dragged or deleted, debug builds only. Bound by
+                         OnlineServicesController.bindCloudRow; carries its
+                         own rowDivider. -->
+                    <include layout="@layout/item_online_service"
+                        android:id="@+id/rowPtCloud" />
+
                     <!-- The user's online service instances, in waterfall
                          priority order. Recycler-in-card recipe from
                          yomitan_section_card.xml — measures full height
