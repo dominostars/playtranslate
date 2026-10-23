@@ -12,6 +12,7 @@ import com.playtranslate.language.PhraseOccurrence
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TokenSpan
+import com.playtranslate.language.memberWordsFor
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.DictionaryResponse
 import com.playtranslate.model.FrequencyTag
@@ -222,9 +223,11 @@ object SourceWordLookup {
      * and ADDITIONALLY probes the engine in both directions —
      * [com.playtranslate.language.SourceLanguageEngine.longestPhraseAt] for
      * a multi-word expression containing the tap ("door" in "open the
-     * door"), and, when none, [com.playtranslate.language.SourceLanguageEngine.memberWordsOf]
+     * door"), and, when none, [com.playtranslate.language.memberWordsFor]
      * for the member words of an engine-fused expression (気になった →
-     * 気). ALL qualifying members resolve — tap position inside the fused
+     * 気), whether or not the fused unit has an entry of its own: a phrase
+     * no dictionary defines still descends to its parts under the lens's
+     * "No definitions found." ALL qualifying members resolve — tap position inside the fused
      * span deliberately doesn't matter: position-dependent members proved
      * undiscoverable on device, and one unresolvable member (手当たり has
      * no JMdict entry) must not blank the whole feature. Member strictness
@@ -266,20 +269,16 @@ object SourceWordLookup {
         val engine = SourceLanguageEngines.get(appCtx, prefs.sourceLangId)
         val phraseKey = withContext(Dispatchers.IO) { engine.longestPhraseAt(displayedText, spanStart) }
         val word = resolve(appCtx, lookupForm, reading, surface = token.surface, tokenTags = token.inflections)
-        // Members for any entry-backed fused unit; the engine's policy
-        // decides how strictly (phrases — exp-tagged or glue-bearing —
-        // loose: 気になる → 気, 瞬く間に → 瞬く and 間; transparent
-        // compounds need every unit accounted for: kanji words render,
-        // katakana words and particles are excused — 放送番組/国内向け/
-        // ペース配分 decompose, 図書館 stays whole). The headword's reading
-        // rides along so the members' hints align with it.
-        val wordEntry = word.entry
-        val memberSpans = if (phraseKey == null && wordEntry != null) {
-            withContext(Dispatchers.IO) {
-                engine.memberWordsOf(
-                    word.word, expressionClass = wordEntry.isExpression, headwordReading = word.reading,
-                )
-            }
+        // Members for any fused unit, entry-backed or not; the engine's
+        // policy decides how strictly ([memberWordsFor]: phrases, exp-tagged
+        // or glue-bearing, are loose: 気になる → 気, 瞬く間に → 瞬く and 間,
+        // an unlisted 星と深淵を目指せ → 星, 深淵 and 目指す; compounds need
+        // every unit accounted for, listed or not: kanji words render,
+        // katakana words and particles are excused; 放送番組/国内向け/
+        // ペース配分 decompose, 図書館 and an unlisted 璃月港 stay whole). The
+        // headword's reading rides along so the members' hints align with it.
+        val memberSpans = if (phraseKey == null) {
+            withContext(Dispatchers.IO) { engine.memberWordsFor(word.word, word.reading, word.entry) }
         } else {
             emptyList()
         }

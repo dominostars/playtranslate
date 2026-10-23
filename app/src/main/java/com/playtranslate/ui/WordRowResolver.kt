@@ -12,6 +12,7 @@ import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.SourceLanguageEngine
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TokenSpan
+import com.playtranslate.language.memberWordsFor
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.orderedReadingRows
 import com.playtranslate.model.selectHeadword
@@ -111,6 +112,21 @@ suspend fun phraseAwareRowTokens(
     return PhraseAwareTokens(wordTokens, rowTokens, phrases)
 }
 
+/** One row [resolveWordRows] built: its state and the displayWord → surface
+ *  mapping it adds when the two differ. */
+private data class ResolvedRow(val rowState: RowState, val surfaceMapping: Pair<String, String>?)
+
+/** One token's outcome in [resolveWordRows]. Only a [Miss] says the word is
+ *  unlisted, and only a miss may be split into member rows: a [Skipped]
+ *  token resolved to an entry nothing could render, or its lookup or render
+ *  threw, and neither is evidence about the word, so it gets no row and no
+ *  split (splitting a failure would put a listed word's parts in its place). */
+private sealed interface RowOutcome {
+    class Found(val row: ResolvedRow) : RowOutcome
+    object Miss : RowOutcome
+    object Skipped : RowOutcome
+}
+
 /**
  * Resolve a list of already-tokenized [tokens] into renderable word [rows],
  * against the caller-owned [context] snapshot.
@@ -125,6 +141,19 @@ suspend fun phraseAwareRowTokens(
  * Per-token dictionary lookups fan out in parallel on IO; per-row failures
  * drop to null and are filtered out. Honors coroutine cancellation so a newer
  * query can cancel an in-flight resolve.
+ *
+ * A token no dictionary lists (a confirmed miss, [RowOutcome.Miss]) is
+ * replaced, in its place, by the rows of its member words
+ * ([com.playtranslate.language.memberWordsFor] with no entry): an unlisted
+ * fused phrase such as 星と深淵を目指せ lists 星, 深淵 and 目指す where it
+ * listed nothing, while an unlisted compound keeps the engine's completeness
+ * check. A single-unit token has no members and still yields no row; a
+ * member that is already a token, or an earlier token's member, is not
+ * repeated; a lookup that threw, or an entry nothing could render, is not a
+ * miss and is never split; a failure inside one token's split drops that
+ * token's member rows alone. Every words-table producer
+ * builds through here, so the words panel, the Anki words tables, the
+ * search cells and the detail page's sections agree on it by construction.
  */
 suspend fun resolveWordRows(
     appCtx: Context,
@@ -143,11 +172,12 @@ suspend fun resolveWordRows(
 
     val allTokens = tokens
 
+    // Row order follows the dedup order of the tokens. The set carries on
+    // into the member pass below, so a member that is already a token, or
+    // an earlier token's member, is never a second row.
     val seen = mutableSetOf<String>()
     val uniqueTokens = allTokens.filter { seen.add(it.lookupForm) }
-    val resolveTokens = uniqueTokens.map { it.lookupForm }
-
-    if (resolveTokens.isEmpty()) {
+    if (uniqueTokens.isEmpty()) {
         return LookupData(
             rows = emptyList(),
             tokenSpans = allTokens,
@@ -155,154 +185,172 @@ suspend fun resolveWordRows(
             surfaces = emptyMap(),
         )
     }
-
-    val surfaceByToken = uniqueTokens.associate { it.lookupForm to it.surface }
-    val readingByToken = uniqueTokens.associate { it.lookupForm to it.reading }
     // Every occurrence per lemma, grouped over ALL tokens, not the deduped
     // first one, so a lemma seen in several forms keeps them all.
     val occurrencesByLemma = allTokens.groupBy { it.lookupForm }
 
-    // Fan out per-token lookups in parallel on IO. Per-row failures produce
-    // nulls that we filter out below.
-    data class Row(
-        val rowState: RowState,
-        val surfaceMapping: Pair<String, String>?,  // displayWord → surface, when they differ
-    )
+    /** One token's [RowOutcome]. [occurrences] are the tokens sharing its
+     *  lemma, for the row's conjugation lines; a member word has only itself. */
+    suspend fun resolveOne(token: TokenSpan, occurrences: List<TokenSpan>): RowOutcome {
+        val word = token.lookupForm
+        try {
+            val defResult = resolver.lookup(word, token.reading)
+            val response = defResult?.response
+            if (response == null || response.entries.isEmpty()) return RowOutcome.Miss
+            val entry = response.entries.first()
+            val flatSenses = response.entries.flatMap { it.senses }
+            val primary = entry.selectHeadword(token.surface, word, token.reading)
+            // headwordDisplay swaps the kanji for the kana on JMdict
+            // uk-tagged entries (e.g. なぜ over 何故), suppressing the
+            // reading column since it would just duplicate the
+            // headword — UNLESS the source text actually showed the
+            // kanji (the token's surface matches a written form), in
+            // which case we honor what the user saw.
+            val display = entry.headwordDisplay(primary, token.surface)
+            val displayWord = display.written
+            val reading = display.reading ?: ""
+            val freqScore = entry.freqScore
 
-    val results: List<Row?> = withContext(Dispatchers.IO) {
-        coroutineScope {
-            resolveTokens.map { word ->
-                async {
-                    try {
-                        val defResult = resolver.lookup(word, readingByToken[word])
-                        val response = defResult?.response
-                        if (response == null || response.entries.isEmpty()) return@async null
-                        val entry = response.entries.first()
-                        val flatSenses = response.entries.flatMap { it.senses }
-                        val primary = entry.selectHeadword(
-                            surfaceByToken[word], word, readingByToken[word],
-                        )
-                        // headwordDisplay swaps the kanji for the kana on JMdict
-                        // uk-tagged entries (e.g. なぜ over 何故), suppressing the
-                        // reading column since it would just duplicate the
-                        // headword — UNLESS the source text actually showed the
-                        // kanji (surfaceByToken[word] matches a written form), in
-                        // which case we honor what the user saw.
-                        val display = entry.headwordDisplay(
-                            primary,
-                            surfaceByToken[word],
-                        )
-                        val displayWord = display.written
-                        val reading = display.reading ?: ""
-                        val freqScore = entry.freqScore
-
-                        // Imported term-dictionary lines lead the flat
-                        // definition string (one per line, source in parens),
-                        // numbered continuously with the pack's lines below.
-                        // Built BEFORE the empty-check so an imported-only
-                        // word (pack-miss synthesis) still gets a row.
-                        val importedLines = importedFlatLines(entry.importedSenses)
-                        var headerLine: String? = null
-                        val packLines: List<String> = when (defResult) {
-                            is DefinitionResult.Native -> {
-                                val targetSensesSorted = defResult.targetSenses.sortedBy { it.senseOrd }
-                                val isTargetDriven = targetLang != "en" && targetSensesSorted.isNotEmpty()
-                                if (isTargetDriven) {
-                                    targetSensesSorted.map { it.glosses.joinToString("; ") }
-                                } else {
-                                    val targetByOrd = targetSensesSorted.associateBy { it.senseOrd }
-                                    flatSenses.mapIndexed { i, sense ->
-                                        targetByOrd[i]?.glosses?.joinToString("; ")
-                                            ?: sense.targetDefinitions.joinToString("; ")
-                                    }
-                                }
-                            }
-                            is DefinitionResult.MachineTranslated -> {
-                                val defs = defResult.translatedDefinitions
-                                if (defs == null) headerLine = defResult.translatedHeadword
-                                flatSenses.mapIndexed { i, sense ->
-                                    defs?.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
-                                        ?: sense.targetDefinitions.joinToString("; ")
-                                }
-                            }
-                            is DefinitionResult.EnglishFallback -> {
-                                val defs = defResult.translatedDefinitions
-                                flatSenses.mapIndexed { i, sense ->
-                                    defs?.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
-                                        ?: sense.targetDefinitions.joinToString("; ")
-                                }
-                            }
+            // Imported term-dictionary lines lead the flat
+            // definition string (one per line, source in parens),
+            // numbered continuously with the pack's lines below.
+            // Built BEFORE the empty-check so an imported-only
+            // word (pack-miss synthesis) still gets a row.
+            val importedLines = importedFlatLines(entry.importedSenses)
+            var headerLine: String? = null
+            val packLines: List<String> = when (defResult) {
+                is DefinitionResult.Native -> {
+                    val targetSensesSorted = defResult.targetSenses.sortedBy { it.senseOrd }
+                    val isTargetDriven = targetLang != "en" && targetSensesSorted.isNotEmpty()
+                    if (isTargetDriven) {
+                        targetSensesSorted.map { it.glosses.joinToString("; ") }
+                    } else {
+                        val targetByOrd = targetSensesSorted.associateBy { it.senseOrd }
+                        flatSenses.mapIndexed { i, sense ->
+                            targetByOrd[i]?.glosses?.joinToString("; ")
+                                ?: sense.targetDefinitions.joinToString("; ")
                         }
-                        val rawLines = importedLines + packLines.filter { it.isNotEmpty() }
-                        val numbered =
-                            if (rawLines.size > 1) rawLines.mapIndexed { i, l -> "${i + 1}. $l" }
-                            else rawLines
-                        val meaning =
-                            (listOfNotNull(headerLine) + numbered).joinToString("\n")
-                        if (meaning.isEmpty()) return@async null
-                        // Structured senses for the cell's numbered, POS-grouped
-                        // definitions, built once via the shared tier logic the
-                        // lens popup also uses.
-                        val senses = buildSenseDisplays(defResult, response.entries, targetLang)
-                        val ankiPos = entry.senses.firstOrNull()?.partsOfSpeech
-                            ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
-                        val surface = surfaceByToken[word] ?: word
-                        Row(
-                            rowState = RowState(
-                                displayWord = displayWord,
-                                reading = reading,
-                                meaning = meaning,
-                                senses = senses,
-                                importedGroups = entry.importedSenses,
-                                freqScore = freqScore,
-                                isCommon = entry.isCommon == true,
-                                surface = surface,
-                                ankiPos = ankiPos,
-                                pitch = display.pitch,
-                                frequencies = display.frequencies,
-                                inflectedForms = rowInflectedForms(
-                                    occurrencesByLemma[word].orEmpty(), response.deinflection,
-                                    InflectionParadigms.readingsOf(engine.profile.id, response.entries, displayWord),
-                                ),
-                                // Same ordering the word detail page uses; bold the
-                                // occurrence (the selected headword's reading).
-                                readingRows = entry.orderedReadingRows(primary?.reading),
-                                // The key this row resolved under, for its detail page.
-                                lookupForm = word,
-                                lookupReading = readingByToken[word],
-                            ),
-                            surfaceMapping = if (surface != displayWord) {
-                                displayWord to surface
-                            } else null,
-                        )
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        null
                     }
                 }
-            }.awaitAll()
+                is DefinitionResult.MachineTranslated -> {
+                    val defs = defResult.translatedDefinitions
+                    if (defs == null) headerLine = defResult.translatedHeadword
+                    flatSenses.mapIndexed { i, sense ->
+                        defs?.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
+                            ?: sense.targetDefinitions.joinToString("; ")
+                    }
+                }
+                is DefinitionResult.EnglishFallback -> {
+                    val defs = defResult.translatedDefinitions
+                    flatSenses.mapIndexed { i, sense ->
+                        defs?.getOrElse(i) { sense.targetDefinitions.joinToString("; ") }
+                            ?: sense.targetDefinitions.joinToString("; ")
+                    }
+                }
+            }
+            val rawLines = importedLines + packLines.filter { it.isNotEmpty() }
+            val numbered =
+                if (rawLines.size > 1) rawLines.mapIndexed { i, l -> "${i + 1}. $l" }
+                else rawLines
+            val meaning =
+                (listOfNotNull(headerLine) + numbered).joinToString("\n")
+            if (meaning.isEmpty()) return RowOutcome.Skipped
+            // Structured senses for the cell's numbered, POS-grouped
+            // definitions, built once via the shared tier logic the
+            // lens popup also uses.
+            val senses = buildSenseDisplays(defResult, response.entries, targetLang)
+            val ankiPos = entry.senses.firstOrNull()?.partsOfSpeech
+                ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
+            val surface = token.surface
+            return RowOutcome.Found(ResolvedRow(
+                rowState = RowState(
+                    displayWord = displayWord,
+                    reading = reading,
+                    meaning = meaning,
+                    senses = senses,
+                    importedGroups = entry.importedSenses,
+                    freqScore = freqScore,
+                    isCommon = entry.isCommon == true,
+                    surface = surface,
+                    ankiPos = ankiPos,
+                    pitch = display.pitch,
+                    frequencies = display.frequencies,
+                    inflectedForms = rowInflectedForms(
+                        occurrences, response.deinflection,
+                        InflectionParadigms.readingsOf(engine.profile.id, response.entries, displayWord),
+                    ),
+                    // Same ordering the word detail page uses; bold the
+                    // occurrence (the selected headword's reading).
+                    readingRows = entry.orderedReadingRows(primary?.reading),
+                    // The key this row resolved under, for its detail page.
+                    lookupForm = word,
+                    lookupReading = token.reading,
+                ),
+                surfaceMapping = if (surface != displayWord) {
+                    displayWord to surface
+                } else null,
+            ))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return RowOutcome.Skipped
         }
     }
 
-    val resolvedRows = results.filterNotNull().map { it.rowState }
-    val surfaces = results.filterNotNull()
-        .mapNotNull { it.surfaceMapping }
-        .toMap()
+    /** [resolveOne] over [spans], fanned out in parallel on IO; the result
+     *  is index-parallel to [spans]. */
+    suspend fun resolveAll(spans: List<TokenSpan>): List<RowOutcome> = withContext(Dispatchers.IO) {
+        coroutineScope {
+            spans.map { t -> async { resolveOne(t, occurrencesByLemma[t.lookupForm] ?: listOf(t)) } }.awaitAll()
+        }
+    }
 
-    val lookupToReading = mutableMapOf<String, String>()
-    results.forEachIndexed { idx, row ->
-        if (row != null && row.rowState.reading.isNotEmpty()) {
-            lookupToReading[resolveTokens[idx]] = row.rowState.reading
-            val surface = surfaceByToken[resolveTokens[idx]]
-            if (surface != null && surface != resolveTokens[idx]) {
-                lookupToReading[surface] = row.rowState.reading
+    val firstPass = resolveAll(uniqueTokens)
+    // A token no dictionary lists is replaced, in its place, by the rows of
+    // its member words ([memberWordsFor] with no entry), so an unlisted
+    // fused phrase lists its parts where it listed nothing. A single-unit
+    // token has no members and still yields no row. Only a confirmed miss
+    // is split: a skipped token stays out, row-less.
+    val rows = mutableListOf<Pair<TokenSpan, ResolvedRow>>()
+    uniqueTokens.forEachIndexed { idx, token ->
+        when (val outcome = firstPass[idx]) {
+            is RowOutcome.Found -> rows += token to outcome.row
+            RowOutcome.Skipped -> Unit
+            RowOutcome.Miss -> {
+                // The split is guarded as each row's lookup is: a failure
+                // inside it (a pack query throwing mid-split) costs this
+                // token its member rows and nothing else; cancellation
+                // propagates.
+                val split = try {
+                    withContext(Dispatchers.IO) { engine.memberWordsFor(token.lookupForm, token.reading, entry = null) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                val members = split.filter { seen.add(it.lookupForm) }
+                if (members.isNotEmpty()) {
+                    members.zip(resolveAll(members)).forEach { (member, memberOutcome) ->
+                        if (memberOutcome is RowOutcome.Found) rows += member to memberOutcome.row
+                    }
+                }
             }
         }
     }
 
+    val surfaces = rows.mapNotNull { (_, row) -> row.surfaceMapping }.toMap()
+    // Both the lookup form and the surface map to the resolved reading, so
+    // conjugated surfaces still get furigana.
+    val lookupToReading = mutableMapOf<String, String>()
+    for ((token, row) in rows) {
+        val reading = row.rowState.reading
+        if (reading.isEmpty()) continue
+        lookupToReading[token.lookupForm] = reading
+        if (token.surface != token.lookupForm) lookupToReading[token.surface] = reading
+    }
+
     return LookupData(
-        rows = resolvedRows,
+        rows = rows.map { (_, row) -> row.rowState },
         tokenSpans = allTokens,
         lookupToReading = lookupToReading,
         surfaces = surfaces,

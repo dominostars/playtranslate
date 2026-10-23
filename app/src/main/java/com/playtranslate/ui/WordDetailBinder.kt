@@ -43,6 +43,7 @@ import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.TatoebaClient
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.language.TokenSpan
+import com.playtranslate.language.memberWordsFor
 import com.playtranslate.language.WordTranslator
 import com.playtranslate.language.dedupeMtCsv
 import com.playtranslate.model.CharacterDetail
@@ -454,6 +455,21 @@ class WordDetailBinder(
             content.removeView(loadingView)
             if (primary == null) {
                 addNotFoundNotice(content, ctx.getString(R.string.word_detail_no_definitions))
+                // The page still descends, as the lens does under its own
+                // placeholder: a fused unit no dictionary lists offers its
+                // member words and the other entries it could be
+                // ([loadSecondarySections] with no primary), so the parts
+                // of an unlisted phrase stay one tap away.
+                val wordSpan = TokenSpan(surface ?: lookupForm, lookupForm, args.lookupReading, tokenTags)
+                val display = HeadwordDisplay(
+                    word, (args.lookupReading ?: readingHint)?.takeIf { it.isNotBlank() && it != word },
+                )
+                launch {
+                    loadSecondarySections(
+                        addSecondaryHost(content), primary = null, entries, wordSpan, engine, sourceLangId,
+                        targetLangCode, display,
+                    )
+                }
                 return@launch
             }
             val initialTranslations: List<List<String>>? = if (targetLangCode == "en") {
@@ -1109,11 +1125,18 @@ class WordDetailBinder(
         }
 
         // ── Words and Other matches (loaded after the Anki button) ───────
-        // Their rows resolve through the full definition tier chain, which
-        // machine-translates on a non-English target without a native
-        // gloss, so [bind] loads them through [loadSecondarySections] into
-        // this host, which holds a loading line styled like the More
-        // examples placeholder's until they land.
+        return addSecondaryHost(content)
+    }
+
+    /** Appends to [content] and returns the host the Words and Other
+     *  matches sections load into ([loadSecondarySections]). Their rows
+     *  resolve through the full definition tier chain, which
+     *  machine-translates on a non-English target without a native gloss,
+     *  so [bind] loads them after the primary content; until they land the
+     *  host holds a loading line styled like the More examples
+     *  placeholder's. The found page places it under the definitions
+     *  ([buildContent]), the not-found page under its notice. */
+    private fun addSecondaryHost(content: LinearLayout): LinearLayout {
         val secondaryHost = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(
@@ -1138,14 +1161,16 @@ class WordDetailBinder(
     }
 
     /** Loads the Words and Other matches sections into [host], the one
-     *  [buildContent] returned, after [bind] has shown and wired the Anki
-     *  button: releases the previous cells' renderers
+     *  [addSecondaryHost] appended, after [bind] has shown the page's
+     *  primary content (and wired the Anki button, on a found page):
+     *  releases the previous cells' renderers
      *  ([releaseMemberStyledCells]), appends Words then Other matches after
      *  the host's loading line, then removes the line, and the host as well
-     *  when neither section rendered. */
+     *  when neither section rendered. [primary] is null on the not-found
+     *  page, where the sections are all the page has to offer. */
     private suspend fun loadSecondarySections(
         host: LinearLayout,
-        primary: DictionaryEntry,
+        primary: DictionaryEntry?,
         entries: List<DictionaryEntry>,
         wordSpan: TokenSpan,
         engine: com.playtranslate.language.SourceLanguageEngine,
@@ -1193,26 +1218,22 @@ class WordDetailBinder(
      *  renderers first. */
     private suspend fun addMemberWordsSection(
         content: LinearLayout,
-        primary: DictionaryEntry,
+        primary: DictionaryEntry?,
         engine: com.playtranslate.language.SourceLanguageEngine,
         sourceLangId: SourceLangId,
         targetLangCode: String,
         display: HeadwordDisplay,
     ) {
-        val displayed = display.written
-        // Spaced headwords are expressions by form; no-whitespace ones
-        // carry their POS class into the engine's member policy — phrases
-        // (exp-tagged, or glue-bearing by the engine's own reading of them)
-        // get the loose gate: 気になる → 気, 瞬く間に → 瞬く and 間;
-        // transparent compounds (放送番組/ペース配分) need every unit
-        // accounted for (kanji words render, katakana words and particles
-        // are excused), and 図書館-style compounds stay whole. The display
+        // The engine's member policy through the one rule every surface
+        // shares ([memberWordsFor]): spaced headwords and phrases
+        // (exp-tagged, or glue-bearing by the engine's own reading of them,
+        // which is how the not-found page's unlisted phrase qualifies) get
+        // the loose gate, 気になる → 気, 瞬く間に → 瞬く and 間; transparent
+        // compounds (放送番組/ペース配分) need every unit accounted for
+        // (kanji words render, katakana words and particles are excused),
+        // and 図書館-style compounds stay whole, listed or not. The display
         // reading rides along so the members' hints align with it.
-        val members = engine.memberWordsOf(
-            displayed,
-            expressionClass = displayed.any(Char::isWhitespace) || primary.isExpression,
-            headwordReading = display.reading,
-        )
+        val members = engine.memberWordsFor(display.written, display.reading, primary)
         if (members.isEmpty()) return
         val appCtx = ctx.applicationContext
         val rows = resolveWordRows(

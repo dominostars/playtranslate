@@ -238,4 +238,31 @@ class TermMergeTest {
         assertEquals(emptyList<ImportedSenseGroup>(), result.groups)
         assertNull(result.resolvedReading)
     }
+
+    @Test
+    fun `resolving to the first reading keeps one reading's senses, in that reading`() {
+        // The imported lookup's pack-miss retry: it could not narrow, so the
+        // term's first row picks the reading and only its rows survive; the
+        // synthesized entry (one headword) then reads as what it defines
+        // (Codex review, 2026-10-22). In memory, no second query.
+        val result = TermMerge.merge(
+            listOf(row("dictA", "なま", 0.0, "raw"), row("dictA", "せい", 0.0, "life")),
+            order, normalizedReadings = null, normalizedTerm = "生", resolveToFirstReading = true,
+        )
+        assertEquals(listOf("raw"), result.groups.single().senses.map { it.definition })
+        assertEquals("なま", result.resolvedReading)
+    }
+
+    @Test
+    fun `an unnarrowed lookup without that resolution keeps every reading`() {
+        // Null-reading callers whose readings are not Yomitan keys
+        // (ChineseEngine: pinyin heteronyms) rely on every row surviving.
+        val result = merge(
+            rows = listOf(row("dictA", "なま", 0.0, "raw"), row("dictA", "せい", 0.0, "life")),
+            normalizedReading = null,
+            normalizedTerm = "生",
+        )
+        assertEquals(listOf("raw", "life"), result.groups.single().senses.map { it.definition })
+        assertEquals("なま", result.resolvedReading)
+    }
 }

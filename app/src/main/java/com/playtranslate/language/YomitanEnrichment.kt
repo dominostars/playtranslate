@@ -129,10 +129,11 @@ class YomitanEnrichment(
     /**
      * Imported-term resolution mirrors the pack's candidate tiers
      * independently (Yomitan semantics — sources don't need to agree on a
-     * lemma): the word as passed first, then — when [reading] disambiguated
-     * everything away — the readings the pack itself resolved, then the
-     * pack's own spellings of the word ([packForms]), then the engine's
-     * fallback forms.
+     * lemma), in the order [importedLookupTiers] lays out: the word as
+     * passed first, then — when [reading] disambiguated everything away —
+     * the readings the pack itself resolved, or the word unnarrowed when
+     * the pack resolved none, then the pack's own spellings of the word
+     * ([packForms]), then the engine's fallback forms.
      *
      * The [packReadings] tier exists because `reading` has no single
      * meaning across callers. The tap surfaces pass the JMdict-RESOLVED
@@ -147,6 +148,32 @@ class YomitanEnrichment(
      * the spelling's readings by the time [applyTo] runs, so the imported
      * groups are narrowed by exactly the identity the pack landed on and the
      * two sources cannot disagree per-surface again.
+     *
+     * The unnarrowed tier is that fallback's pack-miss half. With no pack
+     * entry there is no identity for the imported groups to attach to, so a
+     * reading the pack cannot corroborate is the tokenizer's guess and
+     * nothing more, and the term's own rows answer, as the pack's own
+     * lookup yields to its unfiltered exact match at the same point
+     * ([com.playtranslate.dictionary.DictionaryManager.lookup], step 2).
+     * Without it a phrase the imported-dictionary oracle fused by TEXT
+     * (星と深淵を目指せ, a 2026-10-22 field report) was narrowed away here by
+     * READING, so the tap showed no definitions for a span that existed
+     * only because the dictionary has it. On a pack hit the retry stays
+     * narrowed to the pack's readings: an unnarrowed match there could put
+     * a homograph's senses (辛い read つらい) under the entry the pack
+     * resolved (からい).
+     *
+     * The unnarrowed retry resolves to ONE reading: the dictionary's first
+     * row for the term picks it and only that reading's rows survive
+     * ([com.playtranslate.yomitan.TermMerge.merge]'s resolveToFirstReading,
+     * applied in memory to the rows the one query fetched, no extra query).
+     * Without it the retry merged every reading's senses under the first
+     * row's reading, since the synthesized entry carries one headword
+     * (Codex review, 2026-10-22). The other readings' senses are not
+     * reachable from here anyway: the "Also matches" sections read the
+     * pack alone ([com.playtranslate.dictionary.DictionaryManager.alternativeKeys]),
+     * and showing a term's imported readings apart is homograph
+     * presentation work for pack and imports alike, not this fallback's.
      *
      * The [packForms] tier exists because the store matches imported rows on
      * the TERM column alone, while Yomitan itself queries its expression AND
@@ -178,27 +205,15 @@ class YomitanEnrichment(
         packForms: List<Pair<String, Set<String>>>,
         fallbackForms: List<String>,
     ): ImportedTerms {
-        if (!YomitanDataStore.hasTermDictionaries(appContext, sourceLang)) {
-            return ImportedTerms(YomitanDataStore.TermLookup(emptyList(), reading), null)
+        val miss = ImportedTerms(YomitanDataStore.TermLookup(emptyList(), reading), null)
+        if (!YomitanDataStore.hasTermDictionaries(appContext, sourceLang)) return miss
+        for (query in importedLookupTiers(word, reading, packReadings, packForms, fallbackForms)) {
+            val hit = YomitanDataStore.termSensesFor(
+                appContext, sourceLang, query.term, query.readings, query.resolveToFirstReading,
+            )
+            if (hit.groups.isNotEmpty()) return ImportedTerms(hit, query.term)
         }
-        val direct =
-            YomitanDataStore.termSensesFor(appContext, sourceLang, word, reading?.let(::setOf))
-        if (direct.groups.isNotEmpty()) return ImportedTerms(direct, word)
-        // Only when the caller actually narrowed: an unnarrowed miss already
-        // saw every row for the term, and no reading set can widen that.
-        if (reading != null && packReadings.isNotEmpty()) {
-            val byPack = YomitanDataStore.termSensesFor(appContext, sourceLang, word, packReadings)
-            if (byPack.groups.isNotEmpty()) return ImportedTerms(byPack, word)
-        }
-        for ((form, formReadings) in packForms) {
-            val bySpelling = YomitanDataStore.termSensesFor(appContext, sourceLang, form, formReadings)
-            if (bySpelling.groups.isNotEmpty()) return ImportedTerms(bySpelling, form)
-        }
-        for (form in fallbackForms) {
-            val hit = YomitanDataStore.termSensesFor(appContext, sourceLang, form, null)
-            if (hit.groups.isNotEmpty()) return ImportedTerms(hit, form)
-        }
-        return ImportedTerms(direct, null)
+        return miss
     }
 
     companion object {
@@ -242,6 +257,43 @@ class YomitanEnrichment(
                         .mapNotNull { it.reading?.takeIf(String::isNotBlank) }
                 }
                 .orEmpty()
+
+        /** One imported-dictionary query: the [term] and the readings it is
+         *  narrowed to, null for every row of the term, or, with
+         *  [resolveToFirstReading], for the term's first reading alone. */
+        internal data class ImportedQuery(
+            val term: String,
+            val readings: Set<String>?,
+            val resolveToFirstReading: Boolean = false,
+        )
+
+        /**
+         * The queries [lookupImportedTerms] runs for one lookup, in order,
+         * stopping at the first that finds a row: the [word] narrowed to
+         * the caller's [reading]; after a narrowed miss, the word narrowed
+         * to [packReadings], or, when the pack resolved none (a pack miss),
+         * resolved to the dictionary's first reading for the word; each
+         * pack spelling of [packForms] with its readings;
+         * each of [fallbackForms] unnarrowed. Pure, and distinct: a pack
+         * whose only reading is the caller's does not re-run the first
+         * query. The retry exists only when the caller narrowed: an
+         * unnarrowed first query already saw every row of the term, and no
+         * reading set can widen that.
+         */
+        internal fun importedLookupTiers(
+            word: String,
+            reading: String?,
+            packReadings: Set<String>,
+            packForms: List<Pair<String, Set<String>>>,
+            fallbackForms: List<String>,
+        ): List<ImportedQuery> = buildList {
+            add(ImportedQuery(word, reading?.let(::setOf)))
+            if (reading != null) {
+                add(ImportedQuery(word, packReadings.ifEmpty { null }, resolveToFirstReading = packReadings.isEmpty()))
+            }
+            for ((form, formReadings) in packForms) add(ImportedQuery(form, formReadings))
+            for (form in fallbackForms) add(ImportedQuery(form, null))
+        }.distinct()
 
         /**
          * The pack's own spellings of [word], for [lookupImportedTerms]'s

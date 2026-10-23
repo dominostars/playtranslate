@@ -30,6 +30,7 @@ import com.playtranslate.language.inflection.InflectionParadigms
 import com.playtranslate.language.OfflineFallbackTranslators
 import com.playtranslate.language.SourceLanguageEngine
 import com.playtranslate.language.SourceLanguageEngines
+import com.playtranslate.language.memberWordsFor
 import com.playtranslate.language.TargetGlossDatabaseProvider
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.DictionaryResponse
@@ -1532,19 +1533,16 @@ class DragLookupController(
 
         // The secondary sections: the multi-word expression containing the
         // dragged word (Latin) alone; else, on JA, the member words of the
-        // fused expression the dragged token is (the engine's policy sets
-        // how strictly: 気になる offers 気, 図書館 stays whole) and the
-        // other dictionary entries the dragged token could be, each under
+        // fused expression the dragged token is, entry or not (the engine's
+        // policy sets how strictly, [memberWordsFor]: 気になる offers 気,
+        // 図書館 stays whole, an unlisted fused phrase offers its parts) and
+        // the other dictionary entries the dragged token could be, each under
         // its own key on the dragged surface. [collectSecondaryKeys] decides
         // them; the ones that need no machine translation resolve before the
         // lens shows, the rest wait in [LookupResolution.pending] behind the
         // lens's "Load more" row ([loadSecondaries]).
-        val memberSpans = if (phraseKey == null && entry != null) {
-            withContext(Dispatchers.IO) {
-                engine.memberWordsOf(
-                    popupData.word, expressionClass = entry.isExpression, headwordReading = popupData.reading,
-                )
-            }
+        val memberSpans = if (phraseKey == null) {
+            withContext(Dispatchers.IO) { engine.memberWordsFor(popupData.word, popupData.reading, entry) }
         } else {
             emptyList()
         }

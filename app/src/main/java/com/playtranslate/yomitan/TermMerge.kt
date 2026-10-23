@@ -35,7 +35,15 @@ internal object TermMerge {
      * the term itself ([normalizedTerm]) didn't disambiguate at all (the
      * format's blank-reading sentinel, common in sloppier conversions) and
      * match any supplied reading. With no reading supplied, every row for
-     * the term applies.
+     * the term applies, unless [resolveToFirstReading]: then the term's
+     * first row, in section order (the reading the result reports as
+     * resolved), picks the reading and only its rows survive, so a lookup
+     * that could not narrow still yields ONE word's senses under the
+     * reading it reports, instead of every homograph's senses under the
+     * first one's reading. In memory, over the rows already fetched. Set by
+     * the imported lookup's pack-miss retry alone; a null-reading lookup
+     * from a caller whose readings are not Yomitan keys (ChineseEngine,
+     * pinyin) keeps every row, as its heteronyms need.
      *
      * A SET rather than one reading because the caller's disambiguator is
      * not always a single reading: when the tap's reading narrows nothing,
@@ -60,12 +68,22 @@ internal object TermMerge {
         /** Per-dictionary accent override (ARGB) keyed by dict id; tints each
          *  imported group's title. Defaulted so existing callers are unaffected. */
         dictColors: Map<String, Int?> = emptyMap(),
+        resolveToFirstReading: Boolean = false,
     ): YomitanDataStore.TermLookup {
-        val narrowed =
-            if (normalizedReadings.isNullOrEmpty()) rows
-            else rows.filter {
+        val narrowed = when {
+            !normalizedReadings.isNullOrEmpty() -> rows.filter {
                 it.reading in normalizedReadings || it.reading == normalizedTerm
             }
+            resolveToFirstReading -> {
+                // The reading [resolvedReading] reports below: the first row,
+                // in section order, of the first dictionary with rows.
+                val first = dictOrder.firstNotNullOfOrNull { (dictId, _) ->
+                    rows.firstOrNull { it.dictId == dictId }?.reading
+                }
+                if (first == null) rows else rows.filter { it.reading == first }
+            }
+            else -> rows
+        }
         // Section order across dicts; score (desc) within a dict —
         // sortedByDescending is stable, so equal scores keep bank order.
         // One sense per bank ENTRY: an entry's multiple glossary items are

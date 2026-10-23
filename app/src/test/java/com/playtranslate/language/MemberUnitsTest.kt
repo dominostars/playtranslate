@@ -83,4 +83,15 @@ class MemberUnitsTest {
         val units = memberUnits(tokens, listOf(word(2, "向く", "向く")), expressionClass = false)
         assertEquals(listOf("気", "の", "向く"), units.map { it.surface })
     }
+
+    @Test fun `an unlisted compound without grammar keeps the completeness check — 璃月港 offers nothing as a word`() {
+        // The class a missing entry passes ([memberWordsFor]) is the word's: a
+        // two-kanji unit beside a one-kanji unit is vetoed, so 港 is never
+        // offered alone as if it explained the whole, where the phrase class
+        // would list both (Codex review, 2026-10-22).
+        val tokens = listOf(tok("璃月", JaCategory.NOUN), tok("港", JaCategory.NOUN))
+        val spans = listOf(word(0, "璃月", "璃月"), word(1, "港", "港"))
+        assertEquals(emptyList<MemberUnit>(), memberUnits(tokens, spans, expressionClass = false))
+        assertEquals(listOf("璃月", "港"), memberUnits(tokens, spans, expressionClass = true).map { it.surface })
+    }
 }

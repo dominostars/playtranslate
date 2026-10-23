@@ -466,7 +466,9 @@ object YomitanDataStore {
      * section order; within a dict, entries sort by their bank score
      * (descending). Supplied [readings] are a hard disambiguator (see
      * [TermMerge.merge] — homograph content must not attach to the wrong
-     * word); null or empty narrows nothing. Returns a [TermLookup] with
+     * word); null or empty narrows nothing, unless [resolveToFirstReading],
+     * which narrows in memory to the term's first reading (the one the
+     * result reports), with no extra query. Returns a [TermLookup] with
      * empty groups when nothing matches (or no term dictionary is
      * installed).
      */
@@ -475,6 +477,7 @@ object YomitanDataStore {
         sourceLanguage: String,
         term: String,
         readings: Set<String>?,
+        resolveToFirstReading: Boolean = false,
     ): TermLookup = withContext(Dispatchers.IO) {
         val empty = TermLookup(emptyList(), readings?.singleOrNull())
         if (term.isEmpty()) return@withContext empty
@@ -514,6 +517,7 @@ object YomitanDataStore {
             normalizedTerm = Deinflector.katakanaToHiragana(term),
             singleDictionary = caps.termsSingleDictionary,
             dictColors = caps.dictColors,
+            resolveToFirstReading = resolveToFirstReading,
         )
     }
 

@@ -375,3 +375,31 @@ object SourceLanguageEngines {
         SourceLangId.TH -> ThaiEngine(app)
     }
 }
+
+/**
+ * [SourceLanguageEngine.memberWordsOf] for a looked-up unit as a surface
+ * shows it: the displayed [word], its [reading] and the [entry] it resolved
+ * to, null when none did. The member policy's class comes from here and
+ * nowhere else: an entry's own expression flag, or a spaced word, which is
+ * an expression by form whatever its entry says. A unit with NO entry
+ * passes as a word and the engine's own structural reading decides: one
+ * with standalone grammar inside it (星と深淵を目指せ, fused by an imported
+ * dictionary that then defines nothing for it) is a phrase and descends
+ * loosely to 星, 深淵 and 目指す, while an unlisted compound without grammar
+ * (璃月港) keeps the completeness check, so a partial breakdown (港 alone,
+ * as if it explained the whole) is never offered, as 図書館 offers none.
+ * Forcing the phrase class on a missing entry would skip that check for
+ * nothing, since the grammar promotion already covers every unlisted
+ * phrase (Codex review, 2026-10-22). The tap lens, the drag lens, the
+ * detail page and the words panel all descend through this one rule, so a
+ * unit no dictionary lists reads the same on every surface.
+ */
+suspend fun SourceLanguageEngine.memberWordsFor(
+    word: String,
+    reading: String?,
+    entry: DictionaryEntry?,
+): List<TokenSpan> = memberWordsOf(
+    word,
+    expressionClass = entry?.isExpression == true || word.any(Char::isWhitespace),
+    headwordReading = reading,
+)
