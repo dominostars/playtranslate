@@ -8,6 +8,7 @@ import com.playtranslate.model.ImportedSenseGroup
 import com.playtranslate.model.Sense
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -114,6 +115,7 @@ class WordCardDefinitionTest {
             defResult = null,
             targetLang = "en",
             removedSenses = emptySet(),
+            removedImported = emptySet(),
             removedExamples = emptySet(),
             exampleTranslations = emptyMap(),
         )
@@ -168,6 +170,120 @@ class WordCardDefinitionTest {
         val html = withImported.panelHtml(classStyler, null, header, noMisc)
         assertTrue(html, html.contains("cat (flat)"))
         assertFalse("imported rows already carry the fallback's lines", html.contains("the fallback"))
+    }
+
+    // ─── removedImported: imported rows curated away ────────────────────
+    // The sheet removes an imported row by its flat index across the
+    // entry's imported senses, in group order. importedGroups is the one
+    // retained view every rule reads: the rows the panel renders, the
+    // dictionaries whose CSS it inlines, the fallback's gate, and the
+    // groups the pipeline fetches glossaries for.
+
+    private val groupG = ImportedSenseGroup(
+        source = "G",
+        senses = listOf(ImportedSense("alpha"), ImportedSense("beta")),
+        dictId = "g",
+    )
+    private val groupH = ImportedSenseGroup(
+        source = "H",
+        senses = listOf(ImportedSense("gamma")),
+        dictId = "h",
+    )
+
+    // Mutation: index removedImported per group (defIdx), so 2 matches no row and gamma stays.
+    @Test
+    fun `a removed imported row is skipped by its flat index across groups`() {
+        val def = WordCardDefinition(
+            fallback = "fallback",
+            entry = entry(imported = listOf(groupG, groupH)),
+            removedImported = setOf(2),
+        )
+
+        val html = def.panelHtml(classStyler, null, header, noMisc)
+
+        assertTrue(html, html.contains("alpha"))
+        assertTrue(html, html.contains("beta"))
+        assertFalse(html, html.contains("gamma"))
+    }
+
+    // Mutation: key the dictionary label on the row's original defIdx == 0, so removing that row drops the label.
+    @Test
+    fun `the dictionary label moves to the group's first kept row`() {
+        val twoSenses = ImportedSenseGroup(
+            source = "Jitendex",
+            senses = listOf(ImportedSense("cat (first)", pos = "n"), ImportedSense("feline (second)", pos = "n")),
+            dictId = "d1",
+        )
+        val def = WordCardDefinition(
+            fallback = "fallback",
+            entry = entry(imported = listOf(twoSenses)),
+            removedImported = setOf(0),
+        )
+
+        val html = def.panelHtml(classStyler, null, header, noMisc)
+
+        assertFalse(html, html.contains("cat (first)"))
+        assertTrue(html, html.contains("feline (second)"))
+        assertTrue("the kept row carries the dictionary label", html.contains("Jitendex"))
+    }
+
+    // Mutation: compute the inlined-CSS list from entry.importedSenses, so d1's scoped block ships.
+    @Test
+    fun `a dictionary with every row removed ships no scoped css`() {
+        val daijirin = ImportedSenseGroup(
+            source = "Daijirin",
+            senses = listOf(ImportedSense("cat (d2 flat)", scRowid = 8L)),
+            dictId = "d2",
+        )
+        val def = WordCardDefinition(
+            fallback = "fallback",
+            entry = entry(imported = listOf(jitendex, daijirin)),
+            removedImported = setOf(0),
+        )
+        val st = YomitanStyledData(
+            structured = mapOf(7L to structuredCat, 8L to structuredCat),
+            dictStyles = mapOf("d1" to "li{color:red}", "d2" to "li{color:blue}"),
+            sourceLanguage = "ja",
+        )
+
+        val html = def.panelHtml(classStyler, st, header, noMisc)
+
+        assertTrue(html, html.contains("data-dictionary=\"d2\""))
+        assertTrue(html, html.contains(".gl-sc[data-dictionary=\"d2\"] li"))
+        assertFalse("neither a gl-sc block nor a style selector names d1", html.contains("data-dictionary=\"d1\""))
+    }
+
+    // Mutation: compute hasImportedRows from entry.importedSenses, so the removed row still counts and the card renders empty.
+    @Test
+    fun `every imported and pack row curated away falls back to the flat text`() {
+        // The other half (an imported row kept, so no fallback) is pinned by
+        // `every sense curated away falls back to the flat text unless imported rows rendered`.
+        val def = WordCardDefinition(
+            fallback = "the fallback",
+            entry = entry(imported = listOf(jitendex), senses = listOf(sense("a cat"))),
+            removedSenses = setOf(0),
+            removedImported = setOf(0),
+        )
+
+        val html = def.panelHtml(classStyler, null, header, noMisc)
+
+        assertTrue(html, html.contains("the fallback"))
+        assertFalse(html, html.contains("cat (flat)"))
+    }
+
+    // Mutation: leave the importedGroups getter as entry?.importedSenses.orEmpty(), so removed rows stay listed.
+    @Test
+    fun `importedGroups is the retained list and the entry's own list when nothing is removed`() {
+        val e = entry(imported = listOf(groupG, groupH))
+
+        val curated = WordCardDefinition(fallback = "f", entry = e, removedImported = setOf(0, 2))
+        assertEquals(
+            listOf(groupG.copy(senses = listOf(ImportedSense("beta")))),
+            curated.importedGroups,
+        )
+
+        val uncurated = WordCardDefinition(fallback = "f", entry = e)
+        assertSame(e.importedSenses, uncurated.importedGroups)
     }
 
     // ─── fromSenses: the sentence card's shape ───────────────────────────

@@ -29,12 +29,16 @@ class DefinitionsDocumentTest {
         d: WordDefinitionData,
         structured: Map<Long, String> = emptyMap(),
         metaChips: List<DefinitionsDocument.MetaChip> = emptyList(),
+        importedCuration: DefinitionsDocument.ImportedCuration? = null,
     ) = DefinitionsDocument.contentHtml(
         d, structured, localizePos = { it.joinToString("/") }, metaChips = metaChips,
+        importedCuration = importedCuration,
     )
 
     @Test
-    fun `imported groups render in sections scoped by dict id`() {
+    fun `imported groups render in unscoped sections with the dictionary scope per glossary`() {
+        // Catches: the dictionary attribute left on the section, and the
+        // glossary emitted without its scope wrapper.
         val html = content(
             data(
                 groups = listOf(
@@ -45,7 +49,10 @@ class DefinitionsDocumentTest {
             ),
             structured = mapOf(7L to structuredGlossary),
         )
-        assertTrue(html.contains("<section class=\"dict-group\" data-dictionary=\"abc\">"))
+        assertTrue(html.contains("<section class=\"dict-group\">"))
+        assertFalse(html.contains("<section class=\"dict-group\" data-dictionary"))
+        val glossary = checkNotNull(YomitanContentHtml.glossaryHtml(structuredGlossary, "abc"))
+        assertTrue(html.contains("<div class=\"gloss-scope\" data-dictionary=\"abc\">$glossary</div>"))
         assertTrue(html.contains("styled cat"))
     }
 
@@ -96,6 +103,203 @@ class DefinitionsDocumentTest {
             ),
         )
         assertEquals(1, Regex("Dict · n").findAll(html).count())
+    }
+
+    @Test
+    fun `without curation a flat imported group renders bare rows in an unscoped section`() {
+        // Catches: wrapping senses in .imp-sense whether or not a curation was
+        // passed, and a dictionary attribute on the section or on a flat row
+        // (flat text is our rendering, not the dictionary's content, so a flat
+        // sense carries no scope).
+        val html = content(
+            data(
+                groups = listOf(
+                    ImportedSenseGroup(
+                        "Dict",
+                        listOf(ImportedSense("one", pos = "n"), ImportedSense("two", pos = "n")),
+                        dictId = "d",
+                    ),
+                ),
+            ),
+        )
+        assertTrue(
+            html.contains(
+                "<section class=\"dict-group\"><div class=\"pos-h\">Dict · n</div>" +
+                    "<div class=\"def-row\"><div class=\"def-text\">one</div></div>" +
+                    "<div class=\"def-row\"><div class=\"def-text\">two</div></div></section>",
+            ),
+        )
+    }
+
+    // ── Imported-row curation (the Anki word sheet) ─────────────────────
+
+    private fun curation(removed: Set<Int>, removable: Boolean = true, label: String = "Remove") =
+        DefinitionsDocument.ImportedCuration(removed, removable, label)
+
+    @Test
+    fun `curated rows carry their original flat index across groups`() {
+        // Catches: numbering by kept position within the group plus its base
+        // (emits 0 and 2), and a counter reset per group (emits 1 twice, no 3).
+        // Each group's FIRST sense is removed, so a kept position never equals
+        // its original one.
+        val html = content(
+            data(
+                groups = listOf(
+                    ImportedSenseGroup("A", listOf(ImportedSense("s0"), ImportedSense("s1")), dictId = "a"),
+                    ImportedSenseGroup("B", listOf(ImportedSense("s2"), ImportedSense("s3")), dictId = "b"),
+                ),
+            ),
+            importedCuration = curation(removed = setOf(0, 2)),
+        )
+        assertTrue(html.contains("data-imp=\"1\""))
+        assertTrue(html.contains("data-imp=\"3\""))
+        assertFalse(html.contains("data-imp=\"0\""))
+        assertFalse(html.contains("data-imp=\"2\""))
+        assertFalse(html.contains(">s0<"))
+        assertTrue(html.contains(">s1<"))
+        assertFalse(html.contains(">s2<"))
+        assertTrue(html.contains(">s3<"))
+    }
+
+    @Test
+    fun `a card down to its last row keeps the wrappers but draws no remove button`() {
+        // Catches: emitting the button whatever removable says.
+        val html = content(
+            data(
+                groups = listOf(
+                    ImportedSenseGroup("D", listOf(ImportedSense("only")), dictId = "d"),
+                ),
+            ),
+            importedCuration = curation(removed = emptySet(), removable = false),
+        )
+        assertTrue(html.contains("<div class=\"imp-sense\" data-imp=\"0\">"))
+        assertFalse(html.contains("imp-x"))
+    }
+
+    @Test
+    fun `the remove button follows the body, outside it, with an escaped label`() {
+        // Catches: the button inside .imp-body, and the label not escaped.
+        val html = content(
+            data(
+                groups = listOf(
+                    ImportedSenseGroup("Jitendex", listOf(ImportedSense("cat", scRowid = 7L)), dictId = "abc"),
+                ),
+            ),
+            structured = mapOf(7L to structuredGlossary),
+            importedCuration = curation(removed = emptySet(), label = "a<b"),
+        )
+        assertTrue(html.contains("styled cat"))
+        assertTrue(html.contains("</div><button type=\"button\" class=\"imp-x\""))
+        assertTrue(html.contains("aria-label=\"a&lt;b\""))
+        // The glossary itself ends in </div>, so the adjacency above holds
+        // either way: what places the button outside the body is that every
+        // div opened after .imp-body's own, and .imp-body itself, closed first.
+        val body = html.substringAfter("<div class=\"imp-body\">").substringBefore("<button")
+        assertEquals(
+            Regex("<div").findAll(body).count() + 1,
+            Regex("</div>").findAll(body).count(),
+        )
+    }
+
+    @Test
+    fun `under curation the dictionary scope sits inside the body and the remove button outside it`() {
+        // Catches: the button emitted inside the scope, and the scope wrapping
+        // the whole .imp-sense (the body and the button inside it).
+        val html = content(
+            data(
+                groups = listOf(
+                    ImportedSenseGroup("Jitendex", listOf(ImportedSense("cat", scRowid = 7L)), dictId = "abc"),
+                ),
+            ),
+            structured = mapOf(7L to structuredGlossary),
+            importedCuration = curation(removed = emptySet(), label = "Remove"),
+        )
+        assertTrue(html.contains("<div class=\"imp-body\"><div class=\"gloss-scope\" data-dictionary=\"abc\">"))
+        // The scope closes, then the body, then the button.
+        assertTrue(html.contains("</div></div><button type=\"button\" class=\"imp-x\""))
+        assertTrue(html.indexOf("class=\"imp-x\"") > html.indexOf("data-dictionary"))
+        // A glossary may itself end in </div></div>, so the adjacency alone
+        // cannot place the button: every div opened inside the scope, then the
+        // scope and the body, close before it.
+        val inScope = html.substringAfter("data-dictionary=\"abc\">").substringBefore("<button")
+        assertEquals(
+            Regex("<div").findAll(inScope).count() + 2,
+            Regex("</div>").findAll(inScope).count(),
+        )
+    }
+
+    @Test
+    fun `the header stays outside the wrapper and collapses over kept senses`() {
+        // Catches: the header inside the wrapper; the loop running over all
+        // senses and emitting a header before it skips a removed one (a, b, a
+        // again); and the run tracked over removed senses without emitting
+        // their headers (no header at all when the run's first row goes).
+        val alternating = data(
+            groups = listOf(
+                ImportedSenseGroup(
+                    "Dict",
+                    listOf(
+                        ImportedSense("one", pos = "a"),
+                        ImportedSense("two", pos = "b"),
+                        ImportedSense("three", pos = "a"),
+                    ),
+                    dictId = "d",
+                ),
+            ),
+        )
+        // The middle row removed: the two kept rows share one header, and the
+        // removed row's header is nowhere.
+        val middleRemoved = content(alternating, importedCuration = curation(removed = setOf(1)))
+        assertEquals(1, Regex("Dict · a").findAll(middleRemoved).count())
+        assertFalse(middleRemoved.contains("Dict · b"))
+        assertTrue(
+            middleRemoved.indexOf("class=\"pos-h\"") < middleRemoved.indexOf("class=\"imp-sense\""),
+        )
+        // The run's first row removed: its header passes to the next kept one.
+        val sameHeader = data(
+            groups = listOf(
+                ImportedSenseGroup(
+                    "Dict",
+                    listOf(
+                        ImportedSense("one", pos = "n"),
+                        ImportedSense("two", pos = "n"),
+                        ImportedSense("three", pos = "n"),
+                    ),
+                    dictId = "d",
+                ),
+            ),
+        )
+        val firstRemoved = content(sameHeader, importedCuration = curation(removed = setOf(0)))
+        assertEquals(1, Regex("Dict · n").findAll(firstRemoved).count())
+    }
+
+    @Test
+    fun `a group whose every sense was removed emits no section`() {
+        // Catches: dropping the emptied-group skip (an empty section for A).
+        val html = content(
+            data(
+                groups = listOf(
+                    ImportedSenseGroup("A", listOf(ImportedSense("a0")), dictId = "a"),
+                    ImportedSenseGroup("B", listOf(ImportedSense("b0")), dictId = "b"),
+                ),
+            ),
+            importedCuration = curation(removed = setOf(0)),
+        )
+        // Sections carry no dictionary attribute, so B's is told by its header.
+        assertEquals(1, Regex("<section class=\"dict-group\">").findAll(html).count())
+        assertTrue(html.contains("<section class=\"dict-group\"><div class=\"pos-h\">B</div>"))
+    }
+
+    @Test
+    fun `the shell reports a remove tap before the link check and spaces curated rows`() {
+        // Catches: the remove branch placed after the link check, the sibling rule deleted,
+        // and the flat row's margin reset deleted.
+        val shell = shell()
+        assertTrue(shell.contains("closest('.imp-x')"))
+        assertTrue(shell.contains("PTBridge.onRemoveImported"))
+        assertTrue(shell.contains(".imp-sense + .imp-sense"))
+        assertTrue(shell.contains(".imp-body > .def-row { margin: 0; }"))
+        assertTrue(shell.indexOf("onRemoveImported") < shell.indexOf("closest('a[href]')"))
     }
 
     @Test
@@ -198,6 +402,10 @@ class DefinitionsDocumentTest {
         assertTrue(shell.contains("getBoundingClientRect().height"))
         assertTrue(shell.contains("clientWidth < 1"))
         assertTrue(shell.contains("#root { display: flow-root; }"))
+        // The scope is per glossary, so consecutive structured senses' items
+        // are no longer siblings and the scopes carry the gap between them.
+        // Catches: the .gloss-scope sibling rule deleted.
+        assertTrue(shell.contains(".gloss-scope + .gloss-scope { margin-top: .4em; }"))
     }
 
     @Test

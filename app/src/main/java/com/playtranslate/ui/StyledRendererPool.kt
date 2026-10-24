@@ -60,6 +60,7 @@ internal class StyledRendererPool(private val cap: Int) : WordResultCell.StyledR
         v.onContentHeight = null
         v.onRendererGone = null
         v.onBodyTap = null
+        v.onRemoveImported = null
         (v.parent as? ViewGroup)?.removeView(v)
         when {
             !v.isUsable() -> {

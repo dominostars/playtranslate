@@ -93,7 +93,7 @@ data class ImportedSenseGroup(
      *  the default muted header. */
     val accentColor: Int? = null,
     /** Owning dictionary's id — the styled renderer's key for scoping the
-     *  dictionary's CSS to its own group ([data-dictionary]) and resolving
+     *  dictionary's CSS to its own glossaries ([data-dictionary]) and resolving
      *  media paths. Empty on legacy/synthetic groups; the flat tier never
      *  reads it. */
     val dictId: String = "",

@@ -232,6 +232,14 @@ class WordAnkiReviewBinder(
                 ankiStyledBroken = true
                 rebuildDefinitions() // native rows take the block's place
             }
+            // Re-checks the × bit on arrival: the page's tap crosses the JS
+            // bridge and a post, so two fast taps on different rows can both
+            // land against the state before either rebuild and remove the
+            // card's last row. The native × has no such gap, since it
+            // rebuilds inside its own click.
+            created.onRemoveImported = { i ->
+                if (rowRemovalAllowed && removedImported.add(i)) rebuildDefinitions()
+            }
             ankiStyledView = created
         }
         // Re-parent for this rebuild pass (removeAllViews orphaned it).
@@ -252,6 +260,13 @@ class WordAnkiReviewBinder(
                 ),
                 styledData.structured,
                 localizePos = { it.joinToString(" · ") },
+                // Read synchronously inside contentHtml, so the live set
+                // needs no copy.
+                importedCuration = DefinitionsDocument.ImportedCuration(
+                    removed = removedImported,
+                    removable = rowRemovalAllowed,
+                    removeLabel = ctx.getString(R.string.anki_word_remove_content_description),
+                ),
             ),
             styledData.dictStyles,
             styledData.sourceLanguage,
@@ -265,6 +280,15 @@ class WordAnkiReviewBinder(
     /** Sense ords the user has removed via the row × — they're skipped
      *  in both the rendered Definitions card and the Anki HTML payload. */
     private val removedSenses = mutableSetOf<Int>()
+    /** Imported rows removed via their ×, keyed as
+     *  [WordCardDefinition.removedImported] and the panel's `data-imp` are:
+     *  the row's flat index across the entry's imported senses in group
+     *  order. */
+    private val removedImported = mutableSetOf<Int>()
+    /** Whether the last rebuild offered a ×, i.e. more than one row was
+     *  visible across imported and pack rows together. Re-read when a
+     *  WebView × lands, because that tap crosses the bridge asynchronously. */
+    private var rowRemovalAllowed = false
     /** (sense ord, example index) pairs removed via the per-example ×. */
     private val removedExamples = mutableSetOf<Pair<Int, Int>>()
     /** Tatoeba pairs removed via the More examples ×. */
@@ -347,6 +371,7 @@ class WordAnkiReviewBinder(
         // Curation sets always start empty — a rebuild is a new editor
         // instance (the old sheet's per-instance semantics).
         removedSenses.clear()
+        removedImported.clear()
         removedExamples.clear()
         removedTatoebaIdx.clear()
         // Both modes possible → seed from the remembered preference (the
@@ -859,36 +884,8 @@ class WordAnkiReviewBinder(
         val card = definitionsCard ?: return
         card.removeAllViews()
 
-        // Imported term-dictionary definitions lead, mirroring the detail
-        // sheet and what WordCardDefinition puts on the card. Not
-        // curatable in v1 (visibleSiblingCount = 1 suppresses the ×).
-        var importedRowCount = 0
-        if (addStyledImportedPanel(card)) {
-            importedRowCount = entry.importedSenses.sumOf { it.senses.size }
-        } else {
-            entry.importedSenses.forEach { group ->
-                group.senses.forEachIndexed { defIdx, sense ->
-                    if (importedRowCount > 0) ankiInsetDivider(card, indentDp = 16)
-                    addAnkiSenseRow(
-                        parent = card,
-                        posLabels = buildList {
-                            if (defIdx == 0) add(group.source)
-                            if (sense.pos.isNotBlank()) add(sense.pos)
-                        },
-                        imported = true,
-                        glossList = listOf(sense.definition),
-                        senseNumber = null,
-                        miscText = null,
-                        examples = emptyList(),
-                        senseIndex = -1,
-                        visibleSiblingCount = 1,
-                    )
-                    importedRowCount++
-                }
-            }
-        }
-        val hasImportedRows = importedRowCount > 0
-
+        // The pack side is resolved first, so the × rule's count spans
+        // imported and pack rows before either renders.
         val defResult = resolvedDefResult
         val translatedDefs = when (defResult) {
             is DefinitionResult.MachineTranslated -> defResult.translatedDefinitions
@@ -906,12 +903,67 @@ class WordAnkiReviewBinder(
             ?.sortedBy { it.senseOrd }
             ?.takeIf { it.isNotEmpty() }
         val isTargetDriven = moreExamplesTargetLang != "en" && nativeTargetSenses != null
+        val visibleTarget = nativeTargetSenses.orEmpty().withIndex()
+            .filter { (idx, _) -> idx !in removedSenses }
+
+        val targetByOrd = if (defResult is DefinitionResult.Native)
+            defResult.targetSenses.associateBy { it.senseOrd } else null
+        val visibleSenses = flatSenses.withIndex().filter { (idx, s) ->
+            s.targetDefinitions.isNotEmpty() && idx !in removedSenses
+        }
+
+        val importedTotal = entry.importedSenses.sumOf { it.senses.size }
+        val visibleImported = (0 until importedTotal).count { it !in removedImported }
+        val visiblePack = if (isTargetDriven) visibleTarget.size else visibleSenses.size
+        rowRemovalAllowed = visibleImported + visiblePack > 1
+
+        // Imported term-dictionary definitions lead, mirroring the detail
+        // sheet and what WordCardDefinition puts on the card. They curate
+        // like pack senses, keyed by their flat index across the groups
+        // ([removedImported]); on the styled path the × lives in the
+        // document ([DefinitionsDocument.ImportedCuration]).
+        var importedRowCount = 0
+        if (visibleImported > 0) {
+            if (addStyledImportedPanel(card)) {
+                importedRowCount = visibleImported
+            } else {
+                var flatIdx = 0
+                entry.importedSenses.forEach { group ->
+                    var labelled = false
+                    group.senses.forEach { sense ->
+                        val idx = flatIdx++
+                        if (idx in removedImported) return@forEach
+                        if (importedRowCount > 0) ankiInsetDivider(card, indentDp = 16)
+                        addAnkiSenseRow(
+                            parent = card,
+                            // The dictionary label rides the group's first
+                            // KEPT row, so removing the row that carried it
+                            // hands it on.
+                            posLabels = buildList {
+                                if (!labelled) add(group.source)
+                                if (sense.pos.isNotBlank()) add(sense.pos)
+                            },
+                            imported = true,
+                            glossList = listOf(sense.definition),
+                            senseNumber = null,
+                            miscText = null,
+                            // No examples, so this row's index never meets
+                            // removedExamples or the translation cache.
+                            examples = emptyList(),
+                            senseIndex = idx,
+                            removable = rowRemovalAllowed,
+                        )
+                        labelled = true
+                        importedRowCount++
+                    }
+                }
+            }
+        }
+        val hasImportedRows = importedRowCount > 0
 
         if (isTargetDriven) {
             val fallbackPos = com.playtranslate.model
                 .unambiguousFallbackPos(resolvedEntries)
-            val visibleTarget = nativeTargetSenses.withIndex()
-                .filter { (idx, _) -> idx !in removedSenses }
             val numVisible = visibleTarget.size
             visibleTarget.forEachIndexed { displayIdx, (idx, target) ->
                 val senseNumber = if (numVisible > 1) displayIdx + 1 else null
@@ -931,7 +983,7 @@ class WordAnkiReviewBinder(
                     miscText = ctx.renderMiscText(target.misc),
                     examples = visibleExamples,
                     senseIndex = idx,
-                    visibleSiblingCount = numVisible,
+                    removable = rowRemovalAllowed,
                 )
             }
             if (visibleTarget.isEmpty() && !hasImportedRows) {
@@ -940,12 +992,6 @@ class WordAnkiReviewBinder(
             return
         }
 
-        val targetByOrd = if (defResult is DefinitionResult.Native)
-            defResult.targetSenses.associateBy { it.senseOrd } else null
-
-        val visibleSenses = flatSenses.withIndex().filter { (idx, s) ->
-            s.targetDefinitions.isNotEmpty() && idx !in removedSenses
-        }
         val numVisibleSenses = visibleSenses.size
 
         var displayCount = 0
@@ -969,7 +1015,7 @@ class WordAnkiReviewBinder(
                 miscText = ctx.renderMiscText(sense.misc),
                 examples = visibleExamples,
                 senseIndex = flatIdx,
-                visibleSiblingCount = numVisibleSenses,
+                removable = rowRemovalAllowed,
             )
             displayCount++
         }
@@ -997,7 +1043,7 @@ class WordAnkiReviewBinder(
         miscText: String?,
         examples: List<IndexedValue<Example>>,
         senseIndex: Int,
-        visibleSiblingCount: Int,
+        removable: Boolean,
     ) {
         val density = ctx.resources.displayMetrics.density
         val rowH = (16 * density).toInt()
@@ -1088,13 +1134,13 @@ class WordAnkiReviewBinder(
             col.addView(block)
         }
         row.addView(col)
-        // Trailing × — only render it when there's more than one visible
-        // sense, so removing the only sense doesn't strand the card with
-        // no definition. The count is supplied by the caller because the
-        // relevant universe differs per render mode.
-        if (visibleSiblingCount > 1) {
+        // Trailing ×, only while more than one row is visible across the
+        // imported and pack rows together ([rowRemovalAllowed]): one count
+        // over both kinds, so the last row standing, of either kind, can
+        // never be removed and the card never goes empty.
+        if (removable) {
             row.addView(buildPlainRemoveGlyph(ctx, leadingMargin = 8) {
-                removedSenses.add(senseIndex)
+                (if (imported) removedImported else removedSenses).add(senseIndex)
                 rebuildDefinitions()
             })
         }
@@ -1473,6 +1519,7 @@ class WordAnkiReviewBinder(
             defResult = resolvedDefResult,
             targetLang = moreExamplesTargetLang,
             removedSenses = removedSenses.toSet(),
+            removedImported = removedImported.toSet(),
             removedExamples = removedExamples.toSet(),
             exampleTranslations = exampleTranslationCache.toMap(),
         )

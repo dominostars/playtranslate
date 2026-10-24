@@ -40,15 +40,35 @@ data class WordCardDefinition(
     /** Curation: indexes (flat pack senses, or Native target senses when
      *  target-driven) the user removed in the editor. */
     val removedSenses: Set<Int> = emptySet(),
+    /** Curation: flat indexes across [entry]'s imported senses, in group
+     *  order, removed in the editor. */
+    val removedImported: Set<Int> = emptySet(),
     /** Curation: (sense, example) indexes the user removed. */
     val removedExamples: Set<Pair<Int, Int>> = emptySet(),
     /** (sense, example) → translation the editor produced for a pack
      *  example; absent = the example's own translation. */
     val exampleTranslations: Map<Pair<Int, Int>, String> = emptyMap(),
 ) {
-    /** The groups whose structured glossaries the pipeline fetches. */
+    /**
+     * The imported groups this card keeps: the ones [panelHtml] renders and
+     * whose structured glossaries the pipeline fetches, so every rule about
+     * imported rows reads this one view. Each group drops its
+     * [removedImported] senses, and a group left with none drops out. With
+     * nothing removed it is the entry's own list, by identity: that identity
+     * is what keeps an uncurated card's HTML (one-tap's and the sentence
+     * card's, which never curate) structurally byte-identical.
+     */
     val importedGroups: List<ImportedSenseGroup>
-        get() = entry?.importedSenses.orEmpty()
+        get() {
+            val groups = entry?.importedSenses.orEmpty()
+            if (removedImported.isEmpty()) return groups
+            var base = 0
+            return groups.mapNotNull { g ->
+                val kept = g.senses.filterIndexed { i, _ -> base + i !in removedImported }
+                base += g.senses.size
+                if (kept.isEmpty()) null else g.copy(senses = kept)
+            }
+        }
 
     /**
      * The Definition field's full v002 chrome — localized "Definitions"
@@ -67,15 +87,19 @@ data class WordCardDefinition(
         definitionsHeader: String,
         renderMisc: (List<String>) -> String?,
     ): String {
-        val entry = entry
-            ?: return WordAnkiHtmlBuilder.wrapFlatDefinitionHtml(fallback, styler, definitionsHeader)
-        val body = buildString { appendSenses(entry, styler, styled, renderMisc) }
+        if (entry == null) {
+            return WordAnkiHtmlBuilder.wrapFlatDefinitionHtml(fallback, styler, definitionsHeader)
+        }
+        val groups = importedGroups
+        val body = buildString { appendSenses(groups, styler, styled, renderMisc) }
         if (body.isEmpty()) return ""
         // Tier 2: dictionaries whose structured senses render in this card
         // ship their styles.css, scoped, inline in the field (identity by
-        // the data-dictionary the gl-sc blocks carry).
+        // the data-dictionary the gl-sc blocks carry). Read from the kept
+        // groups: a dictionary whose every row was removed renders nothing,
+        // so its stylesheet would be dead weight on the card.
         val styles = styled?.let { st ->
-            val used = entry.importedSenses
+            val used = groups
                 .filter { g -> g.senses.any { it.scRowid != null && st.structured.containsKey(it.scRowid) } }
                 .map { it.dictId }
             AnkiCardCss.styleBlocks(used, st.dictStyles)
@@ -86,7 +110,7 @@ data class WordCardDefinition(
     }
 
     private fun StringBuilder.appendSenses(
-        entry: DictionaryEntry,
+        groups: List<ImportedSenseGroup>,
         styler: HtmlStyler,
         styled: YomitanStyledData?,
         renderMisc: (List<String>) -> String?,
@@ -111,9 +135,12 @@ data class WordCardDefinition(
                 .joinToString("<br>") { htmlEscape(it.trimStart()) }
             append("<div ${styler("gl-gloss", "padding:14px 0;")}>$defHtml</div>")
         }
-        // Imported term-dictionary definitions lead the card, final text.
-        val hasImportedRows = entry.importedSenses.any { it.senses.isNotEmpty() }
-        entry.importedSenses.forEach { group ->
+        // Imported term-dictionary definitions lead the card, final text:
+        // the kept rows only ([importedGroups]), so defIdx counts kept
+        // senses and a group's dictionary label rides its first kept row
+        // when the user removed the row that carried it.
+        val hasImportedRows = groups.any { it.senses.isNotEmpty() }
+        groups.forEach { group ->
             group.senses.forEachIndexed { defIdx, sense ->
                 openSense()
                 // Structured glossary when the sense retained one and the
@@ -213,10 +240,12 @@ data class WordCardDefinition(
             s.targetDefinitions.isNotEmpty() && idx !in removedSenses
         }
         if (visibleSenses.isEmpty()) {
-            // User stripped every sense — the renderer hides the × on
-            // the last visible sense, but defensive: emit the fallback
+            // No pack sense left. The editor shows a row's × only while
+            // more than one row is visible across imported and pack rows
+            // together, so the kept imported blocks above carry the card;
+            // but defensive: with none of those either, emit the fallback
             // so the card never goes empty. Skipped when imported blocks
-            // already rendered (the fallback would duplicate them).
+            // rendered (the fallback would duplicate them).
             if (!hasImportedRows) appendFlatFallback()
             return
         }

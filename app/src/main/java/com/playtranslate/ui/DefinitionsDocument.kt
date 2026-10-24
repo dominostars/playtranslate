@@ -21,6 +21,13 @@ import kotlin.math.roundToInt
  * (the known hole in Yomitan's string-concat scoping). Scope keys are our
  * opaque dict ids — no title escaping hazards.
  *
+ * The scope sits per glossary, on `.gloss-scope`, never on a whole group:
+ * a dictionary's stylesheet reaches its own structured content and nothing
+ * of ours (the headers, the flat rows, the curation wrapper and its ✕), the
+ * same boundary the Anki card draws with `.gl-sc[data-dictionary]`
+ * ([WordCardDefinition]). Scoped to the group's section, a rule on a bare
+ * element (`button`, `div`, `*`) would restyle that chrome.
+ *
  * Engine floor: constructable stylesheets + CSS nesting = Chromium 120
  * (2023). On an older WebView the dictionary's own CSS quietly doesn't
  * apply; the structured layout + base stylesheet still render.
@@ -163,6 +170,26 @@ body {
 .def-text { flex: 1; min-width: 0; }
 .dict-group { margin: 0 0 .4em; }
 .gloss-item + .gloss-item { margin-top: .4em; }
+/* Consecutive structured senses were spaced by the rule above while their
+   items were direct siblings in the section; each sense's items now live in
+   their own dictionary scope, so the scopes carry that gap. */
+.gloss-scope + .gloss-scope { margin-top: .4em; }
+/* The Anki word sheet's imported-row curation only ([ImportedCuration]); no
+   other surface emits these classes. The ✕ is a plain box in the row's flex
+   line: no flex of its own (unverified on the API 30 WebView) and no negative
+   margin, since a hit box reaching past its own row could remove a neighbour. */
+.imp-sense { display: flex; align-items: flex-start; }
+.imp-sense + .imp-sense { margin-top: .4em; }   /* replaces the cross-sense .gloss-scope + .gloss-scope gap */
+.imp-body { flex: 1; min-width: 0; }
+/* Under curation the sibling rule above owns the spacing; a flat row's own
+   margins would no longer collapse (its body is a flex item) and would
+   double the gap, so they go. */
+.imp-body > .def-row { margin: 0; }
+.imp-sense > .imp-x {
+  flex: none; width: 40px; min-height: 40px; margin: 0 0 0 .25em; padding: .35em 0 0;
+  border: 0; background: none; font: inherit; font-size: .875em; text-align: center;
+  color: var(--pt-secondary);
+}
 .gloss-link { color: var(--pt-accent); text-decoration: underline; }
 .gloss-image { max-width: 100%; height: auto; border-radius: 4px; vertical-align: text-bottom; }
 .gloss-sc-table-container { overflow-x: auto; max-width: 100%; }
@@ -335,8 +362,18 @@ ruby > rt { font-size: .5em; }
   // navigates (the Kotlin client hands it to the browser); any other click
   // reports up as a plain body tap and the host acts on that instead of
   // second-guessing the WebView from outside.
+  // An imported row's ✕ (the Anki word sheet's curation) is consumed first:
+  // it reports the row's flat index and is never a navigation or a body tap.
   document.addEventListener('click', function (e) {
-    var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    var t = e.target;
+    var x = t && t.closest ? t.closest('.imp-x') : null;
+    if (x) {
+      var row = x.closest('.imp-sense');
+      var i = row ? parseInt(row.getAttribute('data-imp'), 10) : -1;
+      if (i >= 0 && window.PTBridge && window.PTBridge.onRemoveImported) window.PTBridge.onRemoveImported(i);
+      return;
+    }
+    var a = t && t.closest ? t.closest('a[href]') : null;
     if (a) return;
     if (window.PTBridge && window.PTBridge.onBodyTap) window.PTBridge.onBodyTap();
   });
@@ -364,19 +401,6 @@ ruby > rt { font-size: .5em; }
 
     // ── Content ─────────────────────────────────────────────────────────
 
-    /**
-     * The per-lookup markup handed to `ptSwap`: imported groups first (in
-     * their given order — [TermMerge] already ordered them), each wrapped
-     * in `<section data-dictionary>` so its dictionary's scoped CSS can
-     * reach it, then the pack's own senses with the classic numbered
-     * layout. [data]'s flattened imported rows are skipped here — the
-     * groups ARE those rows in structured form.
-     *
-     * [structured] maps [com.playtranslate.model.ImportedSense.scRowid] →
-     * glossary JSON; senses without an entry render their flat text.
-     * [localizePos] is the pack-sense POS localizer (imported headers stay
-     * verbatim, same rule as [WordDefinitionsView]).
-     */
     /** One chip in the styled document's meta row — the HTML counterpart
      *  of [WordDefinitionsView]'s Common pill / ★ run / frequency chips /
      *  deck badge (built Android-side, where strings and theme live). */
@@ -401,6 +425,54 @@ ruby > rt { font-size: .5em; }
         enum class Icon { NONE, CARD_STACK }
     }
 
+    /**
+     * The Anki word sheet's per-card removal of imported rows, the page's
+     * counterpart of the native ✕ each pack sense carries. Every other
+     * surface passes none and keeps its markup exactly as it was.
+     *
+     * A row's identity is its flat index across ALL the entry's imported
+     * senses in group order ([WordCardDefinition.removedImported]'s key),
+     * and the page reports that ORIGINAL index, never a kept position: kept
+     * positions shift with every removal, so a tap landing on a swap the
+     * sheet has since superseded would name a different row.
+     */
+    class ImportedCuration(
+        /** Flat indexes already removed; those senses are not emitted. */
+        val removed: Set<Int>,
+        /** False when the card is down to its last visible row, imported and
+         *  pack alike: the rows still carry their index, but no ✕ is drawn. */
+        val removable: Boolean,
+        /** The ✕'s accessible name, the native glyph's contentDescription
+         *  (`R.string.anki_word_remove_content_description`). */
+        val removeLabel: String,
+    )
+
+    /**
+     * The per-lookup markup handed to `ptSwap`: imported groups first (in
+     * their given order — [TermMerge] already ordered them), each in its
+     * own `<section class="dict-group">`, then the pack's own senses with
+     * the classic numbered layout. A structured sense's glossary is wrapped
+     * in `<div class="gloss-scope" data-dictionary>`, the one element its
+     * dictionary's scoped CSS is keyed to, so the stylesheet reaches its own
+     * structured content and nothing of ours (the headers, the flat rows,
+     * the curation wrapper and its ✕), the same boundary the card draws with
+     * `.gl-sc[data-dictionary]`. A flat sense's row carries no scope: its
+     * text is our rendering, not the dictionary's content. [data]'s
+     * flattened imported rows are skipped here — the groups ARE those rows
+     * in structured form.
+     *
+     * [structured] maps [com.playtranslate.model.ImportedSense.scRowid] →
+     * glossary JSON; senses without an entry render their flat text.
+     * [localizePos] is the pack-sense POS localizer (imported headers stay
+     * verbatim, same rule as [WordDefinitionsView]).
+     *
+     * [importedCuration] (the Anki word sheet only) leaves its removed
+     * senses out, a group with none left dropping its section, and wraps
+     * each kept one in `.imp-sense` whose `data-imp` is the sense's ORIGINAL
+     * flat index (see [ImportedCuration]), with the ✕ beside the body when
+     * removal is allowed. The shell's click listener reports that index
+     * through `PTBridge.onRemoveImported`. Null emits no wrapper at all.
+     */
     fun contentHtml(
         data: WordDefinitionData,
         structured: Map<Long, String>,
@@ -413,6 +485,7 @@ ruby > rt { font-size: .5em; }
          *  one block each; the lens passes its word's, every other surface
          *  none. */
         inflectionLines: List<String> = emptyList(),
+        importedCuration: ImportedCuration? = null,
     ): String {
         val sb = StringBuilder()
         for (line in inflectionLines) {
@@ -439,28 +512,44 @@ ruby > rt { font-size: .5em; }
             }
             sb.append("</div>")
         }
+        // The flat index of each group's first sense, counted over removed
+        // senses too: the curation's identity names a row across every group.
+        var groupBase = 0
         for (group in data.importedGroups) {
-            sb.append("<section class=\"dict-group\" data-dictionary=\"")
-                .append(htmlEscape(group.dictId)).append("\">")
+            val base = groupBase
+            groupBase += group.senses.size
+            val kept = group.senses.withIndex()
+                .filter { importedCuration == null || base + it.index !in importedCuration.removed }
+            // Every sense removed: the group drops out, as it does from the
+            // card ([WordCardDefinition.importedGroups]).
+            if (group.senses.isNotEmpty() && kept.isEmpty()) continue
+            sb.append("<section class=\"dict-group\">")
+            // The dictionary's scope opens on its glossary alone: on the
+            // section, its rules could reach the headers, a flat row and the
+            // curation's wrapper and ✕ (see the file header).
+            val scopeOpen = "<div class=\"gloss-scope\" data-dictionary=\"" + htmlEscape(group.dictId) + "\">"
             val headerColor = group.accentColor?.let { " style=\"color:${cssHex(it)}\"" }.orEmpty()
             var previousHeader: String? = null
-            for (sense in group.senses) {
+            for ((i, sense) in kept) {
                 // Same collapse rule as WordDefinitionsView: consecutive
-                // senses sharing a header emit it once.
+                // senses sharing a header emit it once. Run over the kept
+                // senses and outside the curation wrapper, so removing a
+                // run's first row hands its header to the next.
                 val header = importedHeader(group.source, sense.pos)
                 if (header != previousHeader) {
                     sb.append("<div class=\"pos-h\"$headerColor>")
                         .append(htmlEscape(header)).append("</div>")
                     previousHeader = header
                 }
-                val glossary = sense.scRowid?.let { structured[it] }
+                val body = sense.scRowid?.let { structured[it] }
                     ?.let { YomitanContentHtml.glossaryHtml(it, group.dictId) }
-                if (glossary != null) {
-                    sb.append(glossary)
+                    ?.let { scopeOpen + it + "</div>" }
+                    ?: ("<div class=\"def-row\"><div class=\"def-text\">" +
+                        htmlEscape(sense.definition).replace("\n", "<br>") + "</div></div>")
+                if (importedCuration == null) {
+                    sb.append(body)
                 } else {
-                    sb.append("<div class=\"def-row\"><div class=\"def-text\">")
-                        .append(htmlEscape(sense.definition).replace("\n", "<br>"))
-                        .append("</div></div>")
+                    appendCuratedSense(sb, base + i, body, importedCuration)
                 }
             }
             sb.append("</section>")
@@ -485,6 +574,27 @@ ruby > rt { font-size: .5em; }
             sb.append("</div></div>")
         }
         return sb.toString()
+    }
+
+    /**
+     * One kept imported sense under [curation]: [body] (its glossary or flat
+     * row, unchanged) in `.imp-body`, then the ✕ when removal is allowed.
+     * The ✕ sits OUTSIDE the body, so the shell's listener tells the two
+     * apart by `closest` and a tap on the definition is never a removal.
+     */
+    private fun appendCuratedSense(
+        sb: StringBuilder,
+        flatIndex: Int,
+        body: String,
+        curation: ImportedCuration,
+    ) {
+        sb.append("<div class=\"imp-sense\" data-imp=\"").append(flatIndex)
+            .append("\"><div class=\"imp-body\">").append(body).append("</div>")
+        if (curation.removable) {
+            sb.append("<button type=\"button\" class=\"imp-x\" aria-label=\"")
+                .append(htmlEscape(curation.removeLabel)).append("\">✕</button>")
+        }
+        sb.append("</div>")
     }
 
     /**

@@ -75,6 +75,14 @@ internal class YomitanDefinitionsView(
      *  which would race the link handoff. Main thread. */
     var onBodyTap: (() -> Unit)? = null
 
+    /** A tap on an imported row's `.imp-x` (the Anki word sheet's curation,
+     *  see [DefinitionsDocument.ImportedCuration]), delivered as the row's
+     *  flat imported index, stable for the content's life. Main thread.
+     *  Unlike the height report it carries no generation check: the index
+     *  names the original row, not a kept position, so a tap from a
+     *  superseded swap still names the row the user tapped. */
+    var onRemoveImported: ((Int) -> Unit)? = null
+
     private var webView: WebView? = null
     private var pageReady = false
     private val pendingJs = mutableListOf<String>()
@@ -222,6 +230,11 @@ internal class YomitanDefinitionsView(
         @JavascriptInterface
         fun onBodyTap() {
             post { this@YomitanDefinitionsView.onBodyTap?.invoke() }
+        }
+
+        @JavascriptInterface
+        fun onRemoveImported(index: Int) {
+            post { this@YomitanDefinitionsView.onRemoveImported?.invoke(index) }
         }
     }
 
