@@ -379,7 +379,7 @@ class RootSettingsViewModelTest {
 
         Prefs(ctx).ptCloudOcrEnabled = true
         shadowOf(Looper.getMainLooper()).idle()
-        assertEquals("OCR only", vm.state.value.cloudSummary)
+        assertEquals("Server-grade OCR only", vm.state.value.cloudSummary)
 
         Prefs(ctx).ptCloudOcrEnabled = false
         shadowOf(Looper.getMainLooper()).idle()
@@ -393,23 +393,46 @@ class RootSettingsViewModelTest {
     @Test fun `cloud summary names the routes once a key is saved`() {
         val cloudPrefs = PtCloudTestSupport.prefs(ctx)
         PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(cloudPrefs))
+        // OCR only, so the key's arrival is visible: with both switches on the
+        // cell reads the pitch before and after the key.
         Prefs(ctx).ptCloudOcrEnabled = true
-        Prefs(ctx).ptCloudTranslateEnabled = true
         val vm = RootSettingsViewModel(app)
         assertEquals("Server-grade OCR and translation", vm.state.value.cloudSummary)
 
         cloudPrefs.ptCloudClientKey = PtCloudTestSupport.KEY
         shadowOf(Looper.getMainLooper()).idle()
-        assertEquals("the key slot is observed", "OCR and translation", vm.state.value.cloudSummary)
+        assertEquals("the key slot is observed", "Server-grade OCR only", vm.state.value.cloudSummary)
 
         Prefs(ctx).ptCloudOcrEnabled = false
+        Prefs(ctx).ptCloudTranslateEnabled = true
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals("Translation only", vm.state.value.cloudSummary)
 
         Prefs(ctx).ptCloudOcrEnabled = true
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("both routes on read as the pitch, the no-key line", "Server-grade OCR and translation", vm.state.value.cloudSummary)
+    }
+
+    @Test fun `cloud cell reports the key slot for its icon tint, whatever the switches hold`() {
+        val cloudPrefs = PtCloudTestSupport.prefs(ctx)
+        PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(cloudPrefs))
+        Prefs(ctx).ptCloudOcrEnabled = true
+        Prefs(ctx).ptCloudTranslateEnabled = true
+        val vm = RootSettingsViewModel(app)
+        assertFalse("no key: the icon is muted under the pitch", vm.state.value.cloudHasKey)
+
+        cloudPrefs.ptCloudClientKey = PtCloudTestSupport.KEY
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue("the key slot is observed", vm.state.value.cloudHasKey)
+
+        Prefs(ctx).ptCloudOcrEnabled = false
         Prefs(ctx).ptCloudTranslateEnabled = false
         shadowOf(Looper.getMainLooper()).idle()
-        assertEquals("OCR only", vm.state.value.cloudSummary)
+        assertTrue("both switches off with a key: Off is the subtitle's to say", vm.state.value.cloudHasKey)
+
+        cloudPrefs.ptCloudClientKey = ""
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse("a cleared key mutes it again", vm.state.value.cloudHasKey)
     }
 
     /** The capture digest names the reader captures go to: the cloud while

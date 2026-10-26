@@ -3318,14 +3318,11 @@
          switches (OCR, translation) are off. -->
     <string name="settings_pt_cloud_summary_off">Off</string>
     <!-- Subtitle of the PlayTranslate Cloud CONFIGURE cell while no client key is
-         saved: a one-line pitch of the service, since the cell is the way to its
-         page, where the key is entered. "Server-grade" means on PlayTranslate's
-         server rather than on the device. -->
-    <string name="settings_pt_cloud_summary_no_key">Server-grade OCR and translation</string>
-    <!-- Subtitle of the PlayTranslate Cloud CONFIGURE cell while both of its
-         switches are on with a key saved: captures are read (OCR) and translated
-         on PlayTranslate's server. -->
-    <string name="settings_pt_cloud_summary_both">OCR and translation</string>
+         saved, and again while both of its switches (OCR, translation) are on
+         with a key saved: a one-line pitch of the service, since the cell is the
+         way to its page, where the key is entered. "Server-grade" means on
+         PlayTranslate's server rather than on the device. -->
+    <string name="settings_pt_cloud_summary_pitch">Server-grade OCR and translation</string>
     <!-- Subtitle of the PlayTranslate Cloud CONFIGURE cell while only its
          translation switch is on with a key saved: this device reads captures,
          the server translates. -->
@@ -3333,7 +3330,7 @@
     <!-- Subtitle of the PlayTranslate Cloud CONFIGURE cell while only its OCR
          switch is on with a key saved: the server reads captures, the user's own
          translation services translate. -->
-    <string name="settings_pt_cloud_summary_ocr_only">OCR only</string>
+    <string name="settings_pt_cloud_summary_ocr_only">Server-grade OCR only</string>
     <!-- Title of the first switch row on the PlayTranslate Cloud page: whether the
          screen captures are read, that is OCR'd, on PlayTranslate's server. -->
     <string name="pt_cloud_ocr_toggle_title">Read the screen</string>

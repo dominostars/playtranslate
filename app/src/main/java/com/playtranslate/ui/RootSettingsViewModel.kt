@@ -130,9 +130,14 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
         val captureSummary: String,
         val anki: AnkiCell,
         val tts: TtsCell,
-        /** PlayTranslate Cloud CONFIGURE cell digest (debug builds only):
-         *  "Off", "On", or "On, no key" ([cloudDigest]). */
+        /** PlayTranslate Cloud CONFIGURE cell digest (debug builds only): the
+         *  pitch while no key is saved and while both switches are on, else
+         *  "Off" or the one route that is on ([cloudDigest]). */
         val cloudSummary: String,
+        /** Whether a usable client key is saved ([PtCloudConfig.hasKey]).
+         *  False mutes the cell's icon: the subtitle is the pitch then, so
+         *  the icon is what says the service is not set up. */
+        val cloudHasKey: Boolean,
         /** Yomitan CONFIGURE cell digest: import prompt when empty,
          *  dictionary count otherwise. Null until the first [refresh]
          *  resolves it (subtitle hidden). */
@@ -170,6 +175,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
                     hotkeysSummary = hotkeysDigest(),
                     appearanceSummary = appearanceDigest(),
                     cloudSummary = cloudDigest(),
+                    cloudHasKey = PtCloudService.config.hasKey,
                     // Names the cloud while its OCR switch is on, so that
                     // pref moves it too; the rest of it stays polled.
                     captureSummary = captureDigest(),
@@ -220,6 +226,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
             anki = resolveAnkiCell(),
             tts = TtsCell.Loading,
             cloudSummary = cloudDigest(),
+            cloudHasKey = PtCloudService.config.hasKey,
         )
     }
 
@@ -298,13 +305,17 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
      *  two switches as the service's settings read them
      *  ([PtCloudService.config], both already false outside debug builds).
      *  All prefs, so it is observed, not polled. */
+    /** The pitch names both routes, so it serves the no-key cell (the sell,
+     *  since the cell is the way to the page where the key goes) and the
+     *  both-on cell alike (2026-10-25); the digest only departs from it
+     *  to name the one route that is on, or to say both are off. */
     private fun cloudDigest(): String {
         val config = PtCloudService.config
         return str(
             when {
-                !config.hasKey -> R.string.settings_pt_cloud_summary_no_key
+                !config.hasKey -> R.string.settings_pt_cloud_summary_pitch
                 !config.anyEnabled -> R.string.settings_pt_cloud_summary_off
-                config.ocrEnabled && config.translateEnabled -> R.string.settings_pt_cloud_summary_both
+                config.ocrEnabled && config.translateEnabled -> R.string.settings_pt_cloud_summary_pitch
                 config.translateEnabled -> R.string.settings_pt_cloud_summary_translation_only
                 else -> R.string.settings_pt_cloud_summary_ocr_only
             },
