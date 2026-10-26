@@ -33,8 +33,12 @@ import androidx.core.graphics.scale
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.core.widget.TextViewCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.playtranslate.BuildConfig
+import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.CaptureService
 import com.playtranslate.OcrManager
 import com.playtranslate.OcrTokenScope
@@ -66,10 +70,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Capture & overlay sub-page: OCR engine choice, the multi-display capture
- * picker, the auto-translate controls (enhanced auto-translate, hide-overlays,
- * touches-refresh, capture interval) and the overlay controls (overlay mode,
- * widen vertical text, edge indicator).
+ * Capture & overlay sub-page: OCR engine choice (with PlayTranslate Cloud's
+ * OCR switch at the top of that group in debug builds, [bindCloudOcrRow]),
+ * the multi-display capture picker, the auto-translate controls (enhanced
+ * auto-translate, hide-overlays, touches-refresh, capture interval) and the
+ * overlay controls (overlay mode, widen vertical text, edge indicator).
  *
  * Unlike the toggle-only Appearance / Hotkeys pages, this screen renders mostly
  * *live system state* — connected displays + window thumbnails, OCR pack
@@ -152,6 +157,18 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         setupOverlaySection()
         setupCaptureDisplaySection()
         setupOcrSection()
+        // The cloud row follows the service: a gesture on another surface
+        // (the cloud page, the OCR picker over the game) or the first key
+        // save counts on PtCloudService.changes, and the StateFlow replays to
+        // this collector on each resume. The row repaints nothing after its
+        // own switch flips (the services page's rule).
+        if (BuildConfig.DEBUG) {
+            lifecycleScope.launch {
+                repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                    PtCloudService.changes.collect { renderCloudOcrRow() }
+                }
+            }
+        }
         setupDisplays()
     }
 
@@ -637,10 +654,16 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
 
     // ── OCR ──────────────────────────────────────────────────────────────
 
-    /** One cell per OCR engine available for the CURRENT source language. The
-     *  selected engine gets the same accent + check treatment as the display
-     *  picker above; a downloaded, unselected engine gets a trash. Hidden when
-     *  the language has no real choice beyond the ML Kit floor. */
+    /** The OCR group: PlayTranslate Cloud's OCR switch in its own card at the
+     *  top (debug builds only, [bindCloudOcrRow]), then one cell per OCR
+     *  engine available for the CURRENT source language. The selected engine
+     *  gets the same accent + check treatment as the display picker above; a
+     *  downloaded, unselected engine gets a trash. The engine card is hidden
+     *  when the language has no real choice beyond the ML Kit floor; the
+     *  header shows with either card. The engine cells never touch the cloud
+     *  switch: the switch is the state and the list is the device engine (the
+     *  fallback while the cloud reads), unlike the OCR picker, whose one
+     *  highlight makes it a radio ([OcrPicker]). */
     private fun setupOcrSection() {
         val container = findViewById<LinearLayout>(R.id.containerOcrLanguages) ?: return
         val card = findViewById<View>(R.id.cardOcr)
@@ -651,16 +674,20 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         // re-shows it when the cell applies.
         findViewById<View>(R.id.cardMangaOcr)?.visibility = View.GONE
 
+        val cloudShown = bindCloudOcrRow()
+        setGroupHeader(R.id.headerOcr, R.string.settings_header_ocr)
         val id = prefs.sourceLangId
         val backends = OcrModelManager.availableBackends(this, id)
+        header?.isVisible = cloudShown || backends.size > 1
+        // The engine card keeps the group gap below the cloud card; without
+        // the cloud card (every release build) its spacing is the layout's.
+        (card?.layoutParams as? ViewGroup.MarginLayoutParams)?.topMargin =
+            if (cloudShown) resources.getDimensionPixelSize(R.dimen.pt_group_gap) else 0
         if (backends.size <= 1) {
-            header?.visibility = View.GONE
             card?.visibility = View.GONE
             return
         }
-        header?.visibility = View.VISIBLE
         card?.visibility = View.VISIBLE
-        setGroupHeader(R.id.headerOcr, R.string.settings_header_ocr)
         // Footer takes the Default-badge label as a placeholder so its wording
         // can never drift from the badge itself.
         findViewById<TextView>(R.id.tvOcrFooter)?.text = getString(
@@ -983,6 +1010,60 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     private fun deleteOcr(backend: OcrBackend) {
         backend.packKeys.forEach { OcrModelManager.deleteOcrPack(this, it) }
         setupOcrSection()
+    }
+
+    // ── PlayTranslate Cloud's OCR switch ─────────────────────────────────────
+
+    /** The cloud row's switch, once bound; null outside debug builds. */
+    private var cloudOcrSwitch: MaterialSwitch? = null
+
+    /**
+     * Binds the cloud row at the top of the OCR group and returns whether it
+     * shows (debug builds only; the switch reads false outside them,
+     * [Prefs.ptCloudOcrEnabled]). The Translation services cloud row's idiom:
+     * with a usable key saved the switch writes the service's one OCR
+     * mutation ([PtCloudService.setOcrEnabled]) and a tap anywhere else on
+     * the row opens the cloud page; with no key the switch shows off and is
+     * no tap target of its own, so a tap on it falls through to the row and
+     * opens the page, where the key goes, and nothing is written
+     * (2026-10-25). The shared row layout gives the whole row to one
+     * listener, so the switch is made its own tap target only with a key.
+     * Bound once per [setupOcrSection]; [renderCloudOcrRow] repaints it from
+     * the service.
+     */
+    private fun bindCloudOcrRow(): Boolean {
+        val card = findViewById<View>(R.id.cardPtCloud) ?: return false
+        if (!BuildConfig.DEBUG) {
+            card.isGone = true
+            return false
+        }
+        val row = findViewById<View>(R.id.rowPtCloudOcr)
+        row.findViewById<TextView>(R.id.tvRowTitle).setText(R.string.pt_cloud_display_name)
+        cloudOcrSwitch = row.findViewById(R.id.switchRowToggle)
+        renderCloudOcrRow()
+        row.setOnClickListener { startActivity(Intent(this, PtCloudSettingsActivity::class.java)) }
+        card.isVisible = true
+        return true
+    }
+
+    /** Repaints the cloud row from the service's settings with the switch's
+     *  listener detached, so a repaint never writes. The subtitle is one
+     *  line in every state (a pitch of reading on the server); the switch
+     *  carries the state. */
+    private fun renderCloudOcrRow() {
+        val toggle = cloudOcrSwitch ?: return
+        val config = PtCloudService.config
+        val hasKey = config.hasKey
+        val row = findViewById<View>(R.id.rowPtCloudOcr)
+        row.findViewById<TextView>(R.id.tvRowSubtitle).apply {
+            setText(R.string.pt_cloud_ocr_row_subtitle)
+            isVisible = true
+        }
+        toggle.setOnCheckedChangeListener(null)
+        toggle.isClickable = hasKey
+        toggle.isFocusable = hasKey
+        toggle.isChecked = hasKey && config.ocrEnabled
+        toggle.setOnCheckedChangeListener { _, checked -> PtCloudService.setOcrEnabled(checked) }
     }
 
     // ── "Use MangaOCR" cell ─────────────────────────────────────────────────────

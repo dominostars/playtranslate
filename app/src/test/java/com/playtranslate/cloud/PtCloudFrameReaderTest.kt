@@ -106,8 +106,10 @@ class PtCloudFrameReaderTest {
     private fun request(src: SourceLangId = SourceLangId.JA, target: String = "en") =
         ReadRequest(src, screenshotWidth = 1920, targetLang = target, frameId = "capture-0042")
 
-    private fun reader(client: OkHttpClient, scale: Float = 1f): PtCloudFrameReader {
-        val config = PtCloudTestSupport.switchedOn(ctx)
+    /** The reader on [client], under both switches on, or with [translate]
+     *  false under the OCR switch alone. */
+    private fun reader(client: OkHttpClient, scale: Float = 1f, translate: Boolean = true): PtCloudFrameReader {
+        val config = if (translate) PtCloudTestSupport.switchedOn(ctx) else PtCloudTestSupport.ocrOnly(ctx)
         return PtCloudFrameReader(
             PtCloudClient(config, clientFactory = { client }),
             config,
@@ -267,6 +269,39 @@ class PtCloudFrameReaderTest {
         // counts, reported at part 1.
         assertOneAttempt(failure = null)
     }
+
+    @Test fun `with the translation switch off the request is same-language and carries no context`() = runBlocking {
+        LlmPromptTemplates.contextProvider = { _, _ -> "Recent dialogue:\nA: hi\n\n" }
+        val reading = reader(streaming(listOf(part1, PtCloudTestSupport.part2("skipped", "[]"))), translate = false)
+            .read(bitmap, request(SourceLangId.JA, "en"))
+        val meta = sentMeta()
+        assertEquals("ja", meta.str("source"))
+        assertEquals("target equals source, so the server skips translation", "ja", meta.str("target"))
+        assertFalse("no context for a frame that is not translated", "context" in meta)
+        assertEquals("true", meta.str("stream_translations"))
+        assertEquals(emptyMap<Int, String>(), reading.settled())
+        coroutineContext.job.joinChildren()
+        assertOneAttempt(failure = null)
+    }
+
+    /** The outcome tests "every group answered" before "same-language", and
+     *  the translations keep the REQUEST's pair, so a text taken from part 1
+     *  would be cached as the consumer's translation: with the switch off
+     *  nothing is taken, whatever the server sent. */
+    @Test fun `with the translation switch off the reading's translations are empty and settled for the request's pair, whatever part 1 carried`() =
+        runBlocking {
+            val reading = reader(
+                streaming(listOf(twoGroups(mapOf(0 to "Hi", 1 to "World")), PtCloudTestSupport.part2("skipped", "[]"))),
+                translate = false,
+            ).read(bitmap, request(SourceLangId.EN, "ja"))
+            val translations = reading.translations!!
+            assertEquals(emptyMap<Int, String>(), translations.ready)
+            assertFalse("nothing to wait for", translations.pending)
+            assertTrue("the request's pair, so the consumer takes them as nothing provided", translations.isFor("en", "ja"))
+            assertEquals(emptyMap<Int, String>(), reading.settled())
+            coroutineContext.job.joinChildren()
+            assertOneAttempt(failure = null)
+        }
 
     @Test fun `persona and context go out when the user has them, keyed by the translation pair`() = runBlocking {
         val asked = mutableListOf<Pair<String, String>>()
@@ -655,7 +690,7 @@ class PtCloudFrameReaderTest {
                 }
             }
             val cloud = readerEncoding(streaming(listOf(part1, PtCloudTestSupport.part2()))) {
-                PtCloudTestSupport.prefs(ctx).ptCloudEnabled = false
+                PtCloudTestSupport.prefs(ctx).ptCloudOcrEnabled = false
             }
             val request = request()
 
@@ -670,7 +705,7 @@ class PtCloudFrameReaderTest {
         }
 
     @Test fun `the switch turned off during the encode is the router's refusal, asked again`() = runBlocking {
-        assertRefusedDuringEncode(CloudRefusal.SWITCH_OFF) { PtCloudTestSupport.prefs(ctx).ptCloudEnabled = false }
+        assertRefusedDuringEncode(CloudRefusal.SWITCH_OFF) { PtCloudTestSupport.prefs(ctx).ptCloudOcrEnabled = false }
         assertNull("nothing recorded", cooldown.unavailableUntil())
     }
 

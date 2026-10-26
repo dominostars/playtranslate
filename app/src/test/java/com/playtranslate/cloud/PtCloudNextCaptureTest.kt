@@ -49,15 +49,17 @@ class PtCloudNextCaptureTest {
         PtCloudTestSupport.sharedPrefs(ctx).edit().clear().commit()
     }
 
-    /** The switch [on] and [key] stored, as [PtCloudConfig] reads them,
-     *  through [codec]. */
+    /** The OCR switch [on], the translation switch [translate] and [key]
+     *  stored, as [PtCloudConfig] reads them, through [codec]. */
     private fun config(
         on: Boolean = true,
         key: String = PtCloudTestSupport.KEY,
         codec: SecretCodec = PtCloudTestSupport.FakeCodec(),
+        translate: Boolean = false,
     ): PtCloudConfig {
         val prefs = Prefs(ctx, codec)
-        prefs.ptCloudEnabled = on
+        prefs.ptCloudOcrEnabled = on
+        prefs.ptCloudTranslateEnabled = translate
         prefs.ptCloudClientKey = key
         return PtCloudConfig(prefs)
     }
@@ -85,6 +87,15 @@ class PtCloudNextCaptureTest {
             CloudRefusal.SWITCH_OFF,
             refusal(config(on = false, key = ""), deviceOnly = true, internet = InternetState.NONE),
         )
+    }
+
+    /** The OCR switch is the frame route's; the translation switch has no say
+     *  over where a frame is read, in either direction. */
+    @Test fun `the translation switch alone sends nothing to the cloud, and off it keeps nothing from it`() {
+        assertEquals(CloudRefusal.SWITCH_OFF, refusal(config(on = false, translate = true)))
+        assertFalse(next(config(on = false, translate = true)))
+        assertNull(refusal(config(on = true, translate = false)))
+        assertTrue(next(config(on = true, translate = false)))
     }
 
     @Test fun `a device-only read is refused for that before anything else is read`() {

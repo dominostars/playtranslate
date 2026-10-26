@@ -2380,15 +2380,24 @@ class CaptureResultOverlay(
             ctx,
             prov.sourceLangId,
             prov.engineToken,
-            onReOcr = { reOcr(prov, path) },
+            onReOcr = { reOcr(prov, path, deviceOnly = true) },
             onDownload = { backend -> launchOcrSettings(backend, prov.sourceLangId); dismiss() },
+            cloud = OcrPicker.CloudChoice(
+                onReOcr = { reOcr(prov, path, deviceOnly = false) },
+                // The cloud page, the way the download page opens: on the
+                // foreground display, this sheet gone since the app comes up.
+                onOpenPage = { launchOnForegroundDisplay(Intent(ctx.applicationContext, PtCloudSettingsActivity::class.java)); dismiss() },
+            ),
         ).showAsOverlay()
     }
 
-    /** Re-run the capture pipeline on the pinned screenshot with the just-selected
-     *  engine, driving this sheet through the normal loading stages (and re-emitting
-     *  the no-text status + gear if it still finds nothing) via [observe]. */
-    private fun reOcr(prov: OcrProvenance, path: String) {
+    /** Re-run the capture pipeline on the pinned screenshot with the just-made
+     *  pick, driving this sheet through the normal loading stages (and re-emitting
+     *  the no-text status + gear if it still finds nothing) via [observe].
+     *  [deviceOnly] is the pick's statement to the reader router: true for a
+     *  device engine, false for PlayTranslate Cloud's entry
+     *  ([CaptureService.processScreenshot]). */
+    private fun reOcr(prov: OcrProvenance, path: String, deviceOnly: Boolean) {
         val svc = CaptureService.instance ?: return
         scope.launch {
             val bmp = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(path) } ?: return@launch
@@ -2398,6 +2407,7 @@ class CaptureResultOverlay(
                     includesOwnOverlays = prov.frameIncludesOwnOverlays ?: false,
                 ),
                 prov.displayId, prov.region, prov.sourceLangId,
+                deviceOnly = deviceOnly,
             ))
         }
     }
@@ -2406,10 +2416,17 @@ class CaptureResultOverlay(
      *  foreground display (mirrors [openSentenceAnkiReview]). The caller dismisses
      *  this sheet since the app comes to the foreground. */
     private fun launchOcrSettings(backend: OcrBackend, id: SourceLangId) {
+        launchOnForegroundDisplay(
+            CaptureOverlaySettingsActivity.downloadIntent(ctx.applicationContext, id, backend.selectionToken),
+        )
+    }
+
+    /** Starts [intent] as a new task on the foreground display (else this
+     *  sheet's): the one way an activity opens from this over-game sheet, for
+     *  the OCR download page and the PlayTranslate Cloud page alike. */
+    private fun launchOnForegroundDisplay(intent: Intent) {
         val app = ctx.applicationContext
-        val intent = CaptureOverlaySettingsActivity.downloadIntent(app, id, backend.selectionToken).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val targetDisplay = PlayTranslateApplication.foregroundDisplayId() ?: displayId
         val opts = android.app.ActivityOptions.makeBasic().setLaunchDisplayId(targetDisplay).toBundle()
         app.startActivity(intent, opts)

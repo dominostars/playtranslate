@@ -69,7 +69,7 @@ class HoldRouterStatementTest {
         service!!.get().configureSaved(displayIds = setOf(0))
         val codec = PtCloudTestSupport.CountingCodec()
         val prefs = Prefs(ctx, codec).apply {
-            ptCloudEnabled = true
+            ptCloudOcrEnabled = true
             ptCloudClientKey = PtCloudTestSupport.KEY
         }
         PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(prefs))

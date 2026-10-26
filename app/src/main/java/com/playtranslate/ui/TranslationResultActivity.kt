@@ -264,7 +264,7 @@ class TranslationResultActivity :
         showEditOverlay()
     }
 
-    override fun onReOcrRequested() {
+    override fun onReOcrRequested(deviceOnly: Boolean) {
         val svc = captureService ?: return
         val (prov, path) = reOcrTarget() ?: return
         reOcrJob?.cancel()
@@ -279,6 +279,7 @@ class TranslationResultActivity :
                     includesOwnOverlays = prov.frameIncludesOwnOverlays ?: false,
                 ),
                 prov.displayId, prov.region, prov.sourceLangId,
+                deviceOnly = deviceOnly,
             ))
         }
     }

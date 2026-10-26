@@ -39,7 +39,8 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <!-- Master switch. -->
+            <!-- The two "use for" switches, one per route: Read captures (OCR)
+                 and Translate. Independent; no master switch. -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -50,8 +51,19 @@
                 app:strokeColor="?attr/ptDivider"
                 app:strokeWidth="1dp">
 
-                <include layout="@layout/settings_row_switch"
-                    android:id="@+id/rowCloudToggle" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <include layout="@layout/settings_row_switch"
+                        android:id="@+id/rowCloudOcr" />
+
+                    <include layout="@layout/settings_row_divider" />
+
+                    <include layout="@layout/settings_row_switch"
+                        android:id="@+id/rowCloudTranslate" />
+                </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
             <!-- Client key, persisted by Save. -->

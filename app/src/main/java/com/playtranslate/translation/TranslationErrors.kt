@@ -7,6 +7,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.VisibleForTesting
 import com.playtranslate.Prefs
+import com.playtranslate.cloud.PtCloudConfig
 import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.net.NetworkConnectivity
 import com.playtranslate.net.NetworkConnectivity.InternetState
@@ -403,11 +404,13 @@ object TranslationErrors {
             // Read on the main thread, where OnlineServiceMutations deletes
             // and toggles. Every online backend is built from a store
             // instance; PlayTranslate Cloud, which reports without being one,
-            // is active while its switch is on (always off outside debug
-            // builds).
+            // is active while either of its switches is on (both always off
+            // outside debug builds): its frame route and its translate route
+            // report under the one id, and each switch alone puts one route
+            // in play.
             isActive = {
                 OnlineServiceStore.byId(it)?.enabled == true ||
-                    (it == PtCloudService.ID && Prefs(app).ptCloudEnabled)
+                    (it == PtCloudService.ID && PtCloudConfig(Prefs(app)).anyEnabled)
             },
         )
         t.presenter = presenter

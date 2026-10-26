@@ -96,8 +96,10 @@ class ReaderTranslations private constructor(
      *  cache's configuration generation when the reader's request went out,
      *  not when a consumer takes them. A consumer caches them only while it
      *  still stands ([TranslationCache.setIfConfigUnchanged]), so a settings
-     *  clear between the request and the consumer's call (the cloud's switch
-     *  flipped while a capture reads) shows them but never caches them. */
+     *  clear between the request and the consumer's call (the cloud's
+     *  translation switch flipped, or its key saved, while a capture reads;
+     *  its OCR switch clears nothing, since it changes only where a frame is
+     *  read) shows them but never caches them. */
     val configGeneration: Int get() = shared.configGeneration
 
     /** Whether these translations are for the pair ([source], [target]) the

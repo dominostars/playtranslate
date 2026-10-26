@@ -21,11 +21,30 @@ import com.playtranslate.Prefs
  * becomes a user setting later, so a second copy of 1920 would silently stop
  * following it.
  */
-class PtCloudConfig(private val prefs: Prefs) {
+class PtCloudConfig(
+    /** The settings' store. Exposed so [PtCloudService]'s gestures write the
+     *  switches and the key through the instance they are read from: in
+     *  production the application's, in a JVM test the fake-codec one a
+     *  test installed, since production [Prefs] stores no key without the
+     *  AndroidKeyStore. */
+    internal val prefs: Prefs,
+) {
 
-    /** The user's switch, already false outside debug builds
-     *  ([Prefs.ptCloudEnabled]). */
-    val enabled: Boolean get() = prefs.ptCloudEnabled
+    /** The OCR switch, already false outside debug builds
+     *  ([Prefs.ptCloudOcrEnabled]): whether captures are read through the
+     *  cloud. The frame route's switch ([PtCloudService.refusal]). */
+    val ocrEnabled: Boolean get() = prefs.ptCloudOcrEnabled
+
+    /** The translation switch ([Prefs.ptCloudTranslateEnabled]): whether the
+     *  cloud translates, as the waterfall's first backend
+     *  ([PtCloudBackend.isUsable]) and within a frame it reads
+     *  ([PtCloudFrameReader.read]). */
+    val translateEnabled: Boolean get() = prefs.ptCloudTranslateEnabled
+
+    /** Either switch on: the service takes part in something, so its
+     *  reports count ([com.playtranslate.translation.TranslationErrors]) and
+     *  the Settings hub describes it as on. */
+    val anyEnabled: Boolean get() = ocrEnabled || translateEnabled
 
     /** The client key sent as the bearer token, trimmed (a pasted key often
      *  carries a newline, which is not a legal header value). Never logged. */

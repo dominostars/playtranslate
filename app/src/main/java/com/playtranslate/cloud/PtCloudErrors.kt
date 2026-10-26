@@ -93,7 +93,7 @@ sealed interface CooldownAction {
     /** The client key is wrong or missing: the RateLimit ladder, as a bad
      *  key (the account class, shown without a retry time). A key does not
      *  fix itself; saving one resets the cooldown
-     *  ([PtCloudService.onCredentialsSaved]). */
+     *  ([PtCloudService.saveClientKey]). */
     data object BadKeyLadder : CooldownAction {
         override fun applyTo(cooldown: CooldownState) =
             cooldown.recordLadderFailure(CooldownLadder.RateLimit, BAD_KEY, CooldownCause.AUTH)
@@ -102,7 +102,7 @@ sealed interface CooldownAction {
     /** The key is good but its account has no membership (the edge's 403
      *  `no_entitlement`): the RateLimit ladder, as billing (the account
      *  class, shown without a retry time, in the BILLING kind's existing
-     *  wording). Only the account fixes it; the switch and a key save reset
+     *  wording). Only the account fixes it; either switch and a key save reset
      *  the cooldown, as for a bad key. */
     data object NoMembershipLadder : CooldownAction {
         override fun applyTo(cooldown: CooldownState) =

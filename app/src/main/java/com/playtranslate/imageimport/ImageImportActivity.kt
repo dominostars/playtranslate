@@ -510,9 +510,9 @@ class ImageImportActivity : AppCompatActivity() {
                     this, prefs.sourceLangId, OcrTokenScope.IMPORT,
                 )?.selectionToken ?: ""
             ) +
-            // The PlayTranslate Cloud switch picks the reader, as the engine
-            // does (see the camera's langKey).
-            "|cloud=${prefs.ptCloudEnabled}"
+            // PlayTranslate Cloud's two switches pick the reader and what it
+            // asks for, as the engine does (see the camera's langKey).
+            "|cloudOcr=${prefs.ptCloudOcrEnabled}|cloudTr=${prefs.ptCloudTranslateEnabled}"
 
     /** The read settings changed (LanguageSetupActivity return, an OCR pick,
      *  a completed download): re-read the retained image under them.

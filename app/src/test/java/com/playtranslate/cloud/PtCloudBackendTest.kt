@@ -105,7 +105,7 @@ class PtCloudBackendTest {
 
     /** A config switched on (or off) with [key] stored. */
     private fun config(key: String = KEY, enabled: Boolean = true): PtCloudConfig {
-        PtCloudTestSupport.prefs(ctx).ptCloudEnabled = enabled
+        PtCloudTestSupport.prefs(ctx).ptCloudTranslateEnabled = enabled
         return PtCloudTestSupport.config(ctx, key)
     }
 
@@ -346,7 +346,7 @@ class PtCloudBackendTest {
         val prefs = PtCloudTestSupport.prefs(ctx)
         val http = server { t, n ->
             // The user switches the service off while this call is out.
-            if (n == 0) prefs.ptCloudEnabled = false
+            if (n == 0) prefs.ptCloudTranslateEnabled = false
             200 to echo(t)
         }
         TranslationBackendRegistry.init(listOf(backend(http), next))
@@ -677,15 +677,30 @@ class PtCloudBackendTest {
         val codec = CountingCodec()
         val prefs = Prefs(ctx, codec)
         prefs.ptCloudClientKey = KEY
-        prefs.ptCloudEnabled = false
+        prefs.ptCloudTranslateEnabled = false
         val config = PtCloudConfig(prefs)
         val b = PtCloudBackend(client = { error("no call") }, config = { config })
 
         assertFalse(b.isUsable("ja", "en"))
         assertEquals(0, codec.decrypts.get())
-        prefs.ptCloudEnabled = true
+        prefs.ptCloudTranslateEnabled = true
         assertTrue(b.isUsable("ja", "en"))
         assertTrue(codec.decrypts.get() > 0)
+    }
+
+    /** The OCR switch has no say over the waterfall: on alone, the backend is
+     *  not usable and reads no key. */
+    @Test fun `the OCR switch alone makes the backend no more usable, and its key is never read`() {
+        val codec = CountingCodec()
+        val prefs = Prefs(ctx, codec)
+        prefs.ptCloudClientKey = KEY
+        prefs.ptCloudOcrEnabled = true
+        prefs.ptCloudTranslateEnabled = false
+        val config = PtCloudConfig(prefs)
+        val b = PtCloudBackend(client = { error("no call") }, config = { config })
+
+        assertFalse(b.isUsable("ja", "en"))
+        assertEquals(0, codec.decrypts.get())
     }
 
     // ── The wire ───────────────────────────────────────────────────────
@@ -750,7 +765,7 @@ class PtCloudBackendTest {
         collect(server { _, _ -> 200 to ok(emptyMap()) }, batch = listOf(text.repeat(1_000)))
         // The switch turned off between two calls.
         val prefs = PtCloudTestSupport.prefs(ctx)
-        collect(server { t, n -> if (n == 0) prefs.ptCloudEnabled = false; 200 to echo(t) }, batch = List(65) { "$text$it" })
+        collect(server { t, n -> if (n == 0) prefs.ptCloudTranslateEnabled = false; 200 to echo(t) }, batch = List(65) { "$text$it" })
         assertEquals(9, messages.size)
         for (message in messages) {
             assertNotNull(message)

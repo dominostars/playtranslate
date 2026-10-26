@@ -958,8 +958,9 @@ class SettingsRenderer(
      *  trailing) from the VM state. Re-run on each emission — the digests are
      *  the dynamic part; icons / titles / clicks are constant. */
     private fun bindConfigureCells(state: RootSettingsViewModel.UiState) {
-        // PlayTranslate Cloud exists only in debug builds (its switch reads
-        // false in release, Prefs.ptCloudEnabled). Each row owns the divider
+        // PlayTranslate Cloud exists only in debug builds (its switches read
+        // false in release, Prefs.ptCloudOcrEnabled and
+        // Prefs.ptCloudTranslateEnabled). Each row owns the divider
         // below it and Appearance stays the last, so hiding this first row
         // leaves the card intact.
         val cloudRow = root.findViewById<View>(R.id.rowConfigCloud)

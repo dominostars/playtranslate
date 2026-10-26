@@ -40,8 +40,12 @@ class PrefsDebugOverrideGateTest {
             { debugLogTrace }, { debugLogTrace = it },
         ),
         GatedOverride(
-            "ptCloudEnabled", "pt_cloud_enabled",
-            { ptCloudEnabled }, { ptCloudEnabled = it },
+            "ptCloudOcrEnabled", "pt_cloud_ocr_enabled",
+            { ptCloudOcrEnabled }, { ptCloudOcrEnabled = it },
+        ),
+        GatedOverride(
+            "ptCloudTranslateEnabled", "pt_cloud_translate_enabled",
+            { ptCloudTranslateEnabled }, { ptCloudTranslateEnabled = it },
         ),
     )
 
@@ -85,6 +89,17 @@ class PrefsDebugOverrideGateTest {
             assertTrue(o.name, sp().getBoolean(o.key, false))
             assertFalse(o.name, o.get(prefs))
         }
+    }
+
+    /** The single cloud switch retired on 2026-10-25 (`pt_cloud_enabled`,
+     *  which drove both routes) is left stored on old debug installs and
+     *  read by neither of the two that replaced it. */
+    @Test
+    fun legacyCloudSwitch_readsNeitherNewSwitch() {
+        sp().edit().putBoolean("pt_cloud_enabled", true).commit()
+        val prefs = Prefs(ctx, SecretCipher, debugBuild = true)
+        assertFalse(prefs.ptCloudOcrEnabled)
+        assertFalse(prefs.ptCloudTranslateEnabled)
     }
 
     @Test

@@ -112,7 +112,8 @@ class Prefs internal constructor(
      *  over a debug one inherits every pref the debug build wrote. An override
      *  that changes production behaviour must therefore read as OFF outside
      *  debug builds regardless of what is stored; see [debugForceMmapWeights],
-     *  [debugShortTextRouting], [debugLogTrace] and [ptCloudEnabled].
+     *  [debugShortTextRouting], [debugLogTrace], [ptCloudOcrEnabled] and
+     *  [ptCloudTranslateEnabled].
      *  Seam for JVM tests; production always passes [BuildConfig.DEBUG]. */
     private val debugBuild: Boolean = BuildConfig.DEBUG,
 ) {
@@ -1643,22 +1644,39 @@ class Prefs internal constructor(
     // [com.playtranslate.cloud.PtCloudConfig] reads these per capture; the
     // defaults live there.
 
-    /** Debug-only: PlayTranslate Cloud's switch. On, captures are read
-     *  through the cloud (OCR, grouping and translation in one server call)
-     *  instead of the device OCR, and every translation the app makes
-     *  without a frame goes to the cloud first in the translation waterfall
-     *  ([com.playtranslate.cloud.PtCloudBackend]), before the user's own
-     *  services; dictionary definitions never do. Written only through
-     *  [com.playtranslate.cloud.PtCloudService.setEnabled].
+    /** Debug-only: PlayTranslate Cloud's OCR switch. On, captures are read
+     *  through the cloud (OCR and grouping on the server, with the
+     *  translation in the same call while [ptCloudTranslateEnabled] is on)
+     *  instead of the device OCR, falling back to the device for a frame the
+     *  cloud cannot read. Independent of [ptCloudTranslateEnabled]: a user
+     *  may read on the device and translate on the cloud, or the reverse.
+     *  Written only through
+     *  [com.playtranslate.cloud.PtCloudService.setOcrEnabled] (and by the
+     *  first key save, [com.playtranslate.cloud.PtCloudService.saveClientKey]).
      *
      *  Reads as false outside debug builds even when the stored value is true
-     *  (see [debugBuild]): the switch and its settings page exist only in
+     *  (see [debugBuild]): the switches and their settings page exist only in
      *  debug builds, so a stale `true` carried into a release install would
      *  otherwise upload every capture to a service that release users have
-     *  no key for and no row to turn off. */
-    var ptCloudEnabled: Boolean
-        get() = debugBuild && sp.getBoolean(KEY_PT_CLOUD_ENABLED, false)
-        set(v) = sp.edit { putBoolean(KEY_PT_CLOUD_ENABLED, v) }
+     *  no key for and no row to turn off. The retired single switch
+     *  (`pt_cloud_enabled`, which drove both routes until 2026-10-25) is left
+     *  stored and read by nothing. */
+    var ptCloudOcrEnabled: Boolean
+        get() = debugBuild && sp.getBoolean(KEY_PT_CLOUD_OCR_ENABLED, false)
+        set(v) = sp.edit { putBoolean(KEY_PT_CLOUD_OCR_ENABLED, v) }
+
+    /** Debug-only: PlayTranslate Cloud's translation switch. On, every
+     *  translation the app makes goes to the cloud first in the translation
+     *  waterfall ([com.playtranslate.cloud.PtCloudBackend]), before the
+     *  user's own services, and a frame the cloud reads
+     *  ([ptCloudOcrEnabled]) is translated in the same server call;
+     *  dictionary definitions never go. Off, a frame the cloud reads is sent
+     *  as the same-language pair, so the server translates nothing and the
+     *  waterfall does. Gated and written like [ptCloudOcrEnabled], through
+     *  [com.playtranslate.cloud.PtCloudService.setTranslateEnabled]. */
+    var ptCloudTranslateEnabled: Boolean
+        get() = debugBuild && sp.getBoolean(KEY_PT_CLOUD_TRANSLATE_ENABLED, false)
+        set(v) = sp.edit { putBoolean(KEY_PT_CLOUD_TRANSLATE_ENABLED, v) }
 
     /** Long side, in pixels, a frame is scaled down to before upload. No UI
      *  yet; a user setting later. */
@@ -1985,9 +2003,10 @@ class Prefs internal constructor(
         private const val KEY_DEBUG_LOG_GROUPING             = "debug_log_grouping"
         private const val KEY_DEBUG_ANGLE_GATE_TARGET        = "debug_angle_gate_target"
         private const val KEY_DEBUG_LOG_TRACE                = "debug_log_trace"
-        /** Public so the settings sheet can [observe] the cloud's switch and
-         *  key for its summary. */
-        const val KEY_PT_CLOUD_ENABLED                     = "pt_cloud_enabled"
+        /** Public so the settings sheet can [observe] the cloud's switches
+         *  and key for its summaries. */
+        const val KEY_PT_CLOUD_OCR_ENABLED                 = "pt_cloud_ocr_enabled"
+        const val KEY_PT_CLOUD_TRANSLATE_ENABLED           = "pt_cloud_translate_enabled"
         const val KEY_PT_CLOUD_CLIENT_KEY                  = "pt_cloud_client_key"
         private const val KEY_PT_CLOUD_UPLOAD_CAP          = "pt_cloud_upload_long_side_cap"
         const val KEY_HOTKEY_TRANSLATION                   = "hotkey_translation"

@@ -197,12 +197,13 @@ class MainActivity :
         showEditOverlay()
     }
 
-    override fun onReOcrRequested() {
+    override fun onReOcrRequested(deviceOnly: Boolean) {
         val svc = captureService ?: return
-        // Live mode re-OCRs itself. The picker has already persisted the new token and
-        // the engine is resolved per OCR call (OcrEngineRegistry.engineFor), so forcing
-        // a fresh look reads the CURRENT screen with the new tool — which is what the
-        // gear is for. Deliberately NOT the pinned-frame path: the live pin is written
+        // Live mode re-OCRs itself. The picker has already persisted the pick (a device
+        // token, resolved per OCR call by OcrEngineRegistry.engineFor, or the cloud's OCR
+        // switch, which the router reads), so forcing a fresh look reads the CURRENT
+        // screen with the new tool — which is what the gear is for; the live tiers never
+        // state device-only. Deliberately NOT the pinned-frame path: the live pin is written
         // for the Anki card photo, and on the pinhole tier it is the honest frame, which
         // carries our own overlay boxes (that tier OCRs a filled COPY, never the frame
         // itself) — re-OCRing it would read our translations back as source text.
@@ -224,6 +225,7 @@ class MainActivity :
                         includesOwnOverlays = prov.frameIncludesOwnOverlays ?: false,
                     ),
                     prov.displayId, prov.region, prov.sourceLangId,
+                    deviceOnly = deviceOnly,
                 )
         }
     }

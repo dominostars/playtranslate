@@ -82,6 +82,41 @@ class CaptureOverlaySettingsLayoutTest {
         )
     }
 
+    /** The OCR group's order: its header, PlayTranslate Cloud's card (debug
+     *  builds, which the unit tests are), then the engine card, which shows
+     *  only for a language with an engine choice; the header shows with the
+     *  cloud card even when the engine card is hidden. On the JVM the engine
+     *  set is whatever the registry offers without native runtimes, so the
+     *  cell reads it rather than assuming it. */
+    @Test
+    fun ocrGroup_cloudCardFirst_headerWithEitherCard() {
+        for (source in listOf(SourceLangId.JA, SourceLangId.EN)) {
+            Prefs(ctx).sourceLang = source.code
+            val controller = Robolectric.buildActivity(CaptureOverlaySettingsActivity::class.java)
+            val thrown = runCatching { controller.create() }.exceptionOrNull()
+            assertTrue("$thrown", thrown == null || thrown is UnsupportedOperationException)
+            val activity = controller.get()
+            val engines = com.playtranslate.ocr.registry.OcrModelManager.availableBackends(activity, source).size > 1
+            // The whole page column, whose unnamed views are skipped.
+            val column = activity.findViewById<View>(R.id.cardPtCloud).parent as ViewGroup
+            val page = (0 until column.childCount).map(column::getChildAt)
+                .filter { it.visibility == View.VISIBLE && it.id != View.NO_ID }
+                .map { activity.resources.getResourceEntryName(it.id) }
+            assertEquals(
+                "$source",
+                listOfNotNull("headerOcr", "cardPtCloud", "cardOcr".takeIf { engines }),
+                page.take(if (engines) 3 else 2),
+            )
+            // The MangaOCR card may follow for Japanese; the next group does after it.
+            assertTrue("$source: $page", page.indexOf("headerAutoTranslate") > page.indexOf("cardPtCloud"))
+            assertEquals(
+                "PlayTranslate Cloud",
+                activity.findViewById<View>(R.id.rowPtCloudOcr)
+                    .findViewById<android.widget.TextView>(R.id.tvRowTitle).text.toString(),
+            )
+        }
+    }
+
     /** Entry names of the visible views in the card column holding [rowId]. */
     private fun visibleRows(activity: Activity, rowId: Int): List<String> {
         val column = activity.findViewById<View>(rowId).parent as ViewGroup

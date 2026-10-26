@@ -83,11 +83,14 @@ class TranslationResultFragment : Fragment() {
         fun onEditOriginalRequested()
 
         /** User picked a different (already-downloaded) OCR tool from the source
-         *  OCR picker. The new token is already persisted; the host re-reads the
-         *  screen with it — from the current result's cached screenshot, or, when
-         *  live mode is running, by forcing a fresh look.
+         *  OCR picker. The pick is already persisted (a device engine's token,
+         *  or PlayTranslate Cloud's OCR switch); the host re-reads the screen
+         *  with it — from the current result's cached screenshot, or, when
+         *  live mode is running, by forcing a fresh look. [deviceOnly] is the
+         *  pick's statement to the reader router: true for a device engine,
+         *  false for the cloud entry ([com.playtranslate.CaptureService.processScreenshot]).
          *  No-op for hosts/results without OCR provenance. */
-        fun onReOcrRequested()
+        fun onReOcrRequested(deviceOnly: Boolean)
 
         /** Whether an OCR-tool switch would actually be acted on right now —
          *  the gate for offering the gear at all. True when the host has a
@@ -285,10 +288,14 @@ class TranslationResultFragment : Fragment() {
             ctx,
             id,
             appliedToken,
-            onReOcr = { host?.onReOcrRequested() },
+            onReOcr = { host?.onReOcrRequested(deviceOnly = true) },
             onDownload = { backend ->
                 startActivity(CaptureOverlaySettingsActivity.downloadIntent(ctx, id, backend.selectionToken))
             },
+            cloud = OcrPicker.CloudChoice(
+                onReOcr = { host?.onReOcrRequested(deviceOnly = false) },
+                onOpenPage = { startActivity(Intent(ctx, PtCloudSettingsActivity::class.java)) },
+            ),
         ).show()
     }
 

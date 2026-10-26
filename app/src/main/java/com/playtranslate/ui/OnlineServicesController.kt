@@ -70,7 +70,7 @@ class OnlineServicesController(
 
     /** PlayTranslate Cloud's row ([bindCloudRow]), null outside debug
      *  builds, where it is hidden once and never bound: the service's switch
-     *  reads false there ([com.playtranslate.Prefs.ptCloudEnabled]) and its
+     *  reads false there ([com.playtranslate.Prefs.ptCloudTranslateEnabled]) and its
      *  page, like the Settings cell that opens it, exists only in debug
      *  builds. */
     private val cloudRow: View? = root.findViewById<View>(R.id.rowPtCloud).let { row ->
@@ -135,8 +135,10 @@ class OnlineServicesController(
      * service's settings ([PtCloudService.config]); the status line ("Account
      * required" with no key) and the cooldown line and tint from the
      * registry's backend, whose cooldown is the service's at the moment of
-     * the read. The switch mirrors the service's switch and writes through
-     * its one mutation, [PtCloudService.setEnabled]; the mutation announces
+     * the read. The switch is the service's TRANSLATION switch, as every
+     * row's switch on this page means "translate with this" (its OCR switch
+     * lives with the OCR engines, on the Capture & overlay page), and writes
+     * through its one mutation, [PtCloudService.setTranslateEnabled]; the mutation announces
      * itself ([PtCloudService.changes]) and the host repaints the row from
      * that, so nothing here repaints after it.
      */
@@ -149,8 +151,14 @@ class OnlineServicesController(
         // render never fires a toggle.
         val switch = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
         switch.setOnCheckedChangeListener(null)
-        switch.isChecked = config.enabled
-        switch.setOnCheckedChangeListener { _, checked -> PtCloudService.setEnabled(checked) }
+        // No key saved: the switch shows off and is not a tap target of its
+        // own, so a tap on it falls through to rowMain and opens the cloud
+        // page, where the key goes; nothing is written here
+        // (2026-10-25). With a key it flips in place.
+        val hasKey = config.hasKey
+        switch.isClickable = hasKey
+        switch.isChecked = hasKey && config.translateEnabled
+        switch.setOnCheckedChangeListener { _, checked -> PtCloudService.setTranslateEnabled(checked) }
         // The card's rule for its last row (the adapter's, below): no
         // divider above the footer. This row is the last one only when the
         // store holds no instance.

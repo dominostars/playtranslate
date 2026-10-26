@@ -68,7 +68,7 @@ object FrameReaders {
      * against it, else the device alone. The decision, from
      * [PtCloudService.config] read at this call:
      *
-     * | switch | deviceOnly | network | usable key | source | cooling down | reader |
+     * | OCR switch | deviceOnly | network | usable key | source | cooling down | reader |
      * |---|---|---|---|---|---|---|
      * | off (always, outside debug builds) | any | any | any | any | any | device |
      * | on | true | any | any | any | any | device |
@@ -81,7 +81,10 @@ object FrameReaders {
      * "Network" is the default network as
      * [com.playtranslate.net.NetworkConnectivity.state] last heard it, the one
      * the floating menu's cloud strip follows: "some" is any, validated or
-     * not, and with none no key is read.
+     * not, and with none no key is read. The translation switch
+     * ([com.playtranslate.cloud.PtCloudConfig.translateEnabled]) is not in
+     * the table: it decides what the cloud reader asks for, not where a
+     * frame is read ([PtCloudFrameReader.read]).
      *
      * The decision is made before the frame is encoded, and the cloud reader
      * asks it once more just before its upload ([PtCloudFrameReader.read]):
@@ -91,9 +94,11 @@ object FrameReaders {
      *
      * [deviceOnly] is the caller's statement that this read must stay on the
      * device whatever the settings say, because the user picked a device
-     * engine for it: a re-OCR of a capture, and every re-read of the camera's
-     * frozen frame or the import tool's page after an engine pick there,
-     * which holds for that frame's review. A stopped pod and a refused key
+     * engine for it: a re-OCR of a capture on a device engine (a re-OCR on
+     * the OCR picker's cloud entry states nothing and follows the router),
+     * and every re-read of the camera's frozen frame or the import tool's
+     * page after an engine pick there, which holds for that frame's review.
+     * A stopped pod and a refused key
      * are cooldowns ([PtCloudService]), so a live tier or the camera's
      * acquires read on the device while one runs without stating anything.
      *
@@ -121,8 +126,10 @@ object FrameReaders {
      * crop and the encode. One caller per kind of read: a capture's cycle,
      * the single-screen capture sheet, a press-and-hold, a drag lookup's
      * capture, a live mode's start (for its first cycle's read only), the
-     * camera's shutter and acquire, the import tool's page load. A re-OCR
-     * reads on the device and never warms.
+     * camera's shutter and acquire, the import tool's page load, and a re-OCR
+     * that follows the router (the picker's cloud entry;
+     * [com.playtranslate.CaptureService.processScreenshot]). A re-OCR on a
+     * device engine reads on the device and never warms.
      *
      * Returns at once, on the caller's thread, when the switch is off or when
      * [deviceOnly] is true: a plain pref read, no key. Otherwise the decision,
@@ -135,7 +142,7 @@ object FrameReaders {
      */
     fun warm(srcId: SourceLangId, deviceOnly: Boolean) {
         val config = PtCloudService.config
-        if (!config.enabled || deviceOnly) return
+        if (!config.ocrEnabled || deviceOnly) return
         scope.launch(Dispatchers.IO) {
             if (PtCloudService.refusal(config, srcId, deviceOnly) == null) PtCloudService.client.warm()
         }

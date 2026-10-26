@@ -91,14 +91,21 @@ class PtCloudFrameReader(
      * source's translationCode and [ReadRequest.targetLang]); a consumer
      * under another pair ignores them ([ReaderTranslations.isFor]).
      *
-     * The request's pair decides what the server is asked for. `source` is
-     * the wire code of [ReadRequest.sourceLangId]; when the app's pair is
-     * same-language (its translationCode equals [ReadRequest.targetLang],
-     * which includes a Traditional Chinese source with a "zh" target),
-     * `target` is sent equal to `source`, so the server skips translation
-     * and a capture that needs none never pays for one; a lines-only read
+     * The request's pair and the translation switch decide what the server
+     * is asked for. `source` is the wire code of [ReadRequest.sourceLangId];
+     * when the app's pair is same-language (its translationCode equals
+     * [ReadRequest.targetLang], which includes a Traditional Chinese source
+     * with a "zh" target), or the translation switch is off
+     * ([PtCloudConfig.translateEnabled], read for this read like the key
+     * and the cap), `target` is sent equal to `source`, so the server skips
+     * translation and a capture that needs none, or whose user translates
+     * elsewhere, never pays for one; a lines-only read
      * ([com.playtranslate.ocr.readLines]) arrives as the same-language pair
-     * for this reason. `persona` is the
+     * for this reason. With the translation switch off the reading's
+     * translations are empty and settled on return whatever part 1 carried,
+     * and they keep the REQUEST's pair, so a consumer under that pair takes
+     * them as "nothing provided" and sends every position to the app's cache
+     * and the waterfall, rather than as another pair's. `persona` is the
      * user's System prompt override, absent without one (the server's
      * default is the app's default persona). `context` is the recent-dialogue
      * block the translation log keeps for the pair, absent when blank or
@@ -110,10 +117,10 @@ class PtCloudFrameReader(
      * same capture follow the same setting. The upload cap is read from the
      * config for this read.
      *
-     * The attribution token "ptcloud" is unknown to the OCR picker: a result
-     * read here highlights no engine there, and a re-OCR the user starts from
-     * it runs on the device engine they pick (the router keeps a re-OCR on the
-     * device).
+     * The attribution token is [PtCloudService.ID], which the OCR picker
+     * knows as its cloud entry ([com.playtranslate.ui.OcrPicker]): a result
+     * read here highlights that entry, and a device engine picked from it
+     * turns the OCR switch off and re-reads the capture on that engine.
      *
      * Throws [PtCloudRefusedException] when the router's question, asked
      * again once the frame is encoded, refuses the read (the class doc).
@@ -124,16 +131,19 @@ class PtCloudFrameReader(
         // cancels it, as postFrame's own part-2 reader is.
         val callerContext = currentCoroutineContext()
         // The configuration the request goes out under, stamped before
-        // anything of it is read: a settings clear from here on (the switch
-        // or the key changed while this frame reads) leaves this frame's
-        // translations shown but uncached ([ReaderTranslations.configGeneration]).
+        // anything of it is read: a settings clear from here on (the
+        // translation switch or the key changed while this frame reads)
+        // leaves this frame's translations shown but uncached
+        // ([ReaderTranslations.configGeneration]).
         val configGeneration = TranslationCache.shared.configGeneration
 
         val frame = encode(bitmap, config.uploadLongSideCap)
 
         val source = request.sourceLangId.code
         val translationCode = SourceLanguageProfiles[request.sourceLangId].translationCode
-        val sameLanguage = translationCode == request.targetLang
+        // Read once, here, so the request and the reading agree on it.
+        val translate = config.translateEnabled
+        val sameLanguage = !translate || translationCode == request.targetLang
         val meta = FrameMeta(
             source = source,
             target = if (sameLanguage) source else request.targetLang,
@@ -166,9 +176,15 @@ class PtCloudFrameReader(
         }
 
         // The groups the server's cache answered: final for this frame,
-        // whatever the final part says. A blank one is no translation.
+        // whatever the final part says. A blank one is no translation. With
+        // the translation switch off nothing is taken, whatever part 1
+        // carried: the outcome below tests "every group answered" before
+        // "same-language", and the request's pair is the consumer's real
+        // pair, so a text taken here would be cached as its translation.
         val groups = response.ocr.groups
-        val ready = groups.mapNotNull { g -> g.translation?.takeIf { it.isNotBlank() }?.let { g.id to it } }.toMap()
+        val ready =
+            if (!translate) emptyMap()
+            else groups.mapNotNull { g -> g.translation?.takeIf { it.isNotBlank() }?.let { g.id to it } }.toMap()
         // The frame's outcome when part 1 already decides it, else null: every
         // group answered by the cache (the contract makes no model call and
         // sends the final part at once with ok), or nothing to translate, a

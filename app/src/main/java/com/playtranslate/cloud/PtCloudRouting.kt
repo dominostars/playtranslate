@@ -27,19 +27,22 @@ object PtCloudRouting {
     fun isSupportedSource(id: SourceLangId): Boolean = id.code in SUPPORTED_SOURCE_CODES
 
     /**
-     * The one definition of "configured": the user switched the service on
-     * ([enabled] is already false outside debug builds) and a usable client
+     * The one definition of "configured": the user switched the route on
+     * ([enabled], already false outside debug builds: the OCR switch for the
+     * frame route, [PtCloudConfig.ocrEnabled], the translation switch for the
+     * translate route, [PtCloudConfig.translateEnabled]) and a usable client
      * key is stored ([PtCloudConfig.hasKey]). [hasKey] is asked only when
      * the switch is on, since reading the key decrypts it through the
      * AndroidKeyStore and the registry asks [PtCloudBackend.isUsable] several
      * times per translation on the caller's thread. [eligible] builds on it,
-     * so the frame route and the translate route agree on it.
+     * so the two routes agree on what "configured" means, each for its
+     * switch.
      */
     inline fun configured(enabled: Boolean, hasKey: () -> Boolean): Boolean = enabled && hasKey()
 
     /**
-     * True only when every condition allows the cloud: it is [configured]
-     * (switched on, a usable client key set), the source is one the server
+     * True only when every condition allows the cloud to read a frame: it is
+     * [configured] (the OCR switch on, a usable client key set), the source is one the server
      * reads, the service is not cooling down (a stopped pod and a refused
      * key cool it down too), the caller did not ask for the device reader
      * ([deviceOnly]: a re-OCR, and a re-read of the camera's frozen frame or

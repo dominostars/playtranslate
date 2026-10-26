@@ -926,6 +926,15 @@ class CaptureService : Service() {
      * false — deliberately: a re-OCR records no History rows (see the gate in
      * [runFrameCycle]), so a deferred re-OCR would have nothing to attach
      * its late translation to.
+     *
+     * [deviceOnly] is the caller's statement to the reader router that this
+     * read stays on the device whatever the settings say
+     * ([com.playtranslate.ocr.FrameReaders.readerFor]): a re-OCR on a device
+     * engine the user picked passes true; a re-OCR on the OCR picker's cloud
+     * entry, and every fresh frame, pass false and follow the router. It is
+     * a fact of its own, not derived from the overrides: whether a frame is a
+     * re-OCR decides what is recorded, and which reader it goes to is the
+     * user's pick.
      */
     fun processScreenshot(
         frame: com.playtranslate.capture.CapturedFrame,
@@ -933,13 +942,16 @@ class CaptureService : Service() {
         regionOverride: RegionEntry? = null,
         sourceLangIdOverride: SourceLangId? = null,
         allowDeferTranslation: Boolean = false,
+        deviceOnly: Boolean = false,
     ): CaptureSession {
         oneShotCaptureJob?.cancel()
         val state = MutableStateFlow<CaptureState>(
             CaptureState.InProgress(getString(R.string.status_capturing))
         )
         val job = serviceScope.launch {
-            runProcessCycle(frame, displayId, state, regionOverride, sourceLangIdOverride, allowDeferTranslation)
+            runProcessCycle(
+                frame, displayId, state, regionOverride, sourceLangIdOverride, allowDeferTranslation, deviceOnly,
+            )
         }
         attachCancellationTerminal(job, state)
         oneShotCaptureJob = job
@@ -1027,18 +1039,28 @@ class CaptureService : Service() {
         regionOverride: RegionEntry? = null,
         sourceLangIdOverride: SourceLangId? = null,
         allowDeferTranslation: Boolean = false,
+        deviceOnly: Boolean = false,
     ) {
         state.value = CaptureState.InProgress(getString(R.string.status_capturing))
         // Source language + region come from current settings for a fresh capture,
         // or from the pinned overrides when re-OCR'ing an existing capture (so the
         // re-scan reads the SAME region/language that produced the result — only the
-        // OCR engine changes). Override-carrying calls are exactly the re-OCRs, so
+        // reader changes). Override-carrying calls are exactly the re-OCRs, so
         // they are what [runFrameCycle]'s recording gate keys on.
+        val srcId = sourceLangIdOverride ?: Prefs(this@CaptureService).sourceLangId
+        val isReOcr = regionOverride != null || sourceLangIdOverride != null
+        // A re-OCR the router may send to PlayTranslate Cloud (the picker's
+        // cloud entry) warms it here, the one place its three callers meet,
+        // ahead of the crop and the encode; a device pick never warms. A
+        // fresh frame is warmed by its caller before its screenshot
+        // (runCaptureCycle, the capture sheet) and must not warm twice.
+        if (isReOcr && !deviceOnly) FrameReaders.warm(srcId, deviceOnly = false)
         val outcome = runFrameCycle(
             frame, displayId,
             region = regionOverride ?: activeRegionForDisplay(displayId),
-            srcId = sourceLangIdOverride ?: Prefs(this@CaptureService).sourceLangId,
-            isReOcr = regionOverride != null || sourceLangIdOverride != null,
+            srcId = srcId,
+            isReOcr = isReOcr,
+            deviceOnly = deviceOnly,
             allowDeferTranslation = allowDeferTranslation,
             onOcrStart = { state.value = CaptureState.InProgress(getString(R.string.status_ocr)) },
             onOcrReady = { originalText, segments, ocrProvenance, overlayData ->
@@ -3284,7 +3306,10 @@ class CaptureService : Service() {
      * [region] and [srcId] are the caller's one snapshot, taken before OCR,
      * so OCR, translation, recording and provenance can't disagree even if
      * settings change mid-cycle. [isReOcr] marks a re-OCR of an existing
-     * capture, which records nothing (see the gate below). [onOcrStart] runs
+     * capture, which records nothing (see the gate below); [deviceOnly] is
+     * the caller's statement to the reader router that the read stays on the
+     * device (a re-OCR on a device engine the user picked), a fact of its own
+     * ([processScreenshot]). [onOcrStart] runs
      * just before OCR; [onOcrReady] once OCR found text, before the (slower)
      * translation, with the boxes as they stand then (some may already be
      * translated, by the reader with its OCR or from the cache); [onBoxesFilled]
@@ -3297,6 +3322,7 @@ class CaptureService : Service() {
         region: RegionEntry,
         srcId: SourceLangId,
         isReOcr: Boolean,
+        deviceOnly: Boolean,
         allowDeferTranslation: Boolean,
         onOcrStart: (() -> Unit)?,
         onOcrReady: ((
@@ -3361,9 +3387,11 @@ class CaptureService : Service() {
                 }
             }
             onOcrStart?.invoke()
-            // A re-OCR stays on the device: the user picked a device engine for
-            // this capture from the result's OCR gear.
-            val reading = FrameReaders.readerFor(srcId, deviceOnly = isReOcr).read(
+            // The caller's statement: a re-OCR on a device engine the user
+            // picked from the result's OCR gear stays on the device; a re-OCR
+            // on the picker's cloud entry, and every fresh frame, follow the
+            // router.
+            val reading = FrameReaders.readerFor(srcId, deviceOnly = deviceOnly).read(
                 bitmap,
                 ReadRequest(
                     srcId,
@@ -3621,6 +3649,7 @@ class CaptureService : Service() {
             region = activeRegionForDisplay(displayId),
             srcId = Prefs(this@CaptureService).sourceLangId,
             isReOcr = false,
+            deviceOnly = false,
             allowDeferTranslation = allowDeferTranslation,
             onOcrStart = null,
             // Reveal the source as soon as OCR finishes; translation lands on Done.

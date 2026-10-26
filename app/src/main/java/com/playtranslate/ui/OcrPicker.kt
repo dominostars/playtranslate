@@ -12,8 +12,10 @@ import android.view.View
 import android.widget.TextView
 import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
+import com.playtranslate.BuildConfig
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.language.OcrBackend
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.ocr.registry.OcrModelManager
@@ -24,25 +26,55 @@ import com.playtranslate.themeColor
 
 /**
  * Populates an [OverlayAlert.Builder] as the "Choose OCR tool" picker for source
- * language [id]: one button per available OCR backend — the one APPLIED to the
- * displayed result ([appliedToken]) in the accent style, the others in the
- * divider/cancel style, any not-yet-downloaded one with a download icon —
- * followed by Cancel.
+ * language [id]: PlayTranslate Cloud's entry first when the surface offers it
+ * ([cloud], debug builds only), then one button per available OCR backend —
+ * the one APPLIED to the displayed result ([appliedToken]) in the accent
+ * style, the others in the divider/cancel style, any not-yet-downloaded one
+ * with a download icon — followed by Cancel.
  *
- * Shared by every result surface (the over-game [CaptureResultOverlay] and the
- * in-app [TranslationResultFragment]) so the styling, ordering, and switch/
- * download routing can't drift. The CALLER constructs the right Builder
- * (overlay-window vs. activity) and calls `.show()` / `.showAsOverlay()` on the
- * returned builder.
+ * Shared by every result surface (the over-game [CaptureResultOverlay], the
+ * in-app [TranslationResultFragment], the floating menu's OCR row, and the
+ * camera and import tools) so the styling, ordering, and switch/download
+ * routing can't drift. The CALLER constructs the right Builder (overlay-window
+ * vs. activity) and calls `.show()` / `.showAsOverlay()` on the returned
+ * builder.
  *
- * [appliedToken] is the engine that produced the on-screen result (from its
- * [com.playtranslate.model.OcrProvenance]), NOT the current global OCR preference.
- * Highlighting the applied engine keeps the picker consistent with the "Scanned
+ * [appliedToken] is the reader that produced the on-screen result (from its
+ * [com.playtranslate.model.OcrProvenance]: an engine's token, or
+ * [PtCloudService.ID] for a cloud read), NOT the current global OCR preference.
+ * Highlighting the applied reader keeps the picker consistent with the "Scanned
  * by …" label and avoids a dead-end where the global selection has drifted (e.g.
- * changed in Settings): tapping any engine other than the applied one re-OCRs,
- * even if it happens to match the global preference.
+ * changed in Settings): tapping any entry other than the applied one re-reads,
+ * even if it happens to match the global preference. A surface with no result
+ * (the floating menu) passes the selection: the cloud while its OCR switch is on,
+ * else the selected engine.
  *
- * Tap routing:
+ * With [cloud] the picker is a radio over two settings at once, the per-language
+ * engine token and the cloud's OCR switch ([PtCloudService.setOcrEnabled]),
+ * because its one highlight is the only state it shows: picking anything means
+ * "read with this from now on", and the switch's own gesture tail refreshes a
+ * running live session. The Capture & overlay page is not a radio (its switch is
+ * the state and its engine list the device engine), so the rule lives here
+ * alone. The tap table, with [cloud]:
+ *
+ * | applied | OCR switch | tap | effect |
+ * |---|---|---|---|
+ * | cloud | on | Cloud | dismiss (no store, no reset: a tap on the current choice) |
+ * | cloud | off (turned off elsewhere since the read) | Cloud | switch on, no re-read |
+ * | cloud | on | engine X, downloaded | persist X, switch off, [onReOcr] (device) |
+ * | cloud | on | engine X, not downloaded | switch off, [onDownload] (the download screen persists X on success) |
+ * | device | off | Cloud, key saved | switch on, [CloudChoice.onReOcr] (through the router, warmed) |
+ * | any | any | Cloud, no key | nothing switched, [CloudChoice.onOpenPage] (the page takes the key; the first key turns both switches on) |
+ * | device (the cloud refused: cooldown, offline) | on | Cloud | switch on again, whose tail resets the cooldown, [CloudChoice.onReOcr] |
+ * | device | on | the applied engine | switch off, no re-read (the off-ramp for a result the device read under the cloud) |
+ * | device | off | the applied engine | dismiss |
+ * | device | off | engine X, downloaded | persist X, [onReOcr] |
+ *
+ * An applied entry's tap reconciles the switch with the entry and never
+ * re-reads. A device pick persists its token before flipping the switch, since
+ * the switch's tail refreshes live mode, which must see the new token. Without
+ * [cloud] (the camera and import tools, whose picks are scope-local and whose
+ * frozen frames hold a device-only review) nothing about the switch is touched:
  *  - not downloaded            → [onDownload] (the surface deep-links to Settings
  *    and starts the download; the selection is persisted there, only on success).
  *  - downloaded & applied      → no-op (already the result's engine; just dismiss).
@@ -52,6 +84,19 @@ import com.playtranslate.themeColor
  *    its per-flow token instead of the global one); null = the global write.
  */
 object OcrPicker {
+
+    /**
+     * What a surface does for PlayTranslate Cloud's entry: [onReOcr] re-reads
+     * through the reader router (a re-OCR stating no device-only, which the
+     * router sends to the cloud and warms), [onOpenPage] opens the cloud page
+     * the way the surface opens the OCR download page, for a pick with no
+     * usable key saved. The switch itself is flipped here, not by the surface.
+     */
+    class CloudChoice(
+        val onReOcr: () -> Unit,
+        val onOpenPage: () -> Unit,
+    )
+
     fun populate(
         builder: OverlayAlert.Builder,
         ctx: Context,
@@ -60,9 +105,43 @@ object OcrPicker {
         onReOcr: () -> Unit,
         onDownload: (OcrBackend) -> Unit,
         applyToken: ((OcrBackend) -> Unit)? = null,
+        cloud: CloudChoice? = null,
     ): OverlayAlert.Builder {
         builder.setTitle(ctx.getString(R.string.ocr_picker_title))
             .setMessage(ctx.getString(R.string.ocr_picker_message))
+        // The one gate on the entry: a surface offers it, in a debug build
+        // (the OCR switch reads false outside them, Prefs.ptCloudOcrEnabled).
+        val cloudEntry = cloud?.takeIf { BuildConfig.DEBUG }
+        if (cloudEntry != null) {
+            val applied = appliedToken == PtCloudService.ID
+            val bg = if (applied) ctx.themeColor(R.attr.ptAccent) else ctx.themeColor(R.attr.ptDivider)
+            val fg = if (applied) ctx.themeColor(R.attr.ptAccentOn) else ctx.themeColor(R.attr.ptText)
+            builder.addButton(PtCloudService.DISPLAY_NAME, bg, fg, R.drawable.ic_cloud) {
+                // No usable key saved: nothing is switched, as on the settings
+                // rows; the cloud page is where the key goes, and its first
+                // key turns both switches on.
+                if (!PtCloudService.config.hasKey) {
+                    cloudEntry.onOpenPage()
+                    return@addButton
+                }
+                // The switch reconciled with the entry when there is something
+                // to reconcile: the switch off, or a result the device read
+                // under the cloud (a cooldown kept it there), whose tap means
+                // "read this one with the cloud now" and whose gesture tail,
+                // the cooldown reset, is the retry. Applied and already on is
+                // a tap on the current choice, a dismiss like an engine's: no
+                // store, no reset (a cooldown reset there would retry a
+                // rate-limited or spent service for nothing; Codex review,
+                // 2026-10-25).
+                if (!applied || !PtCloudService.config.ocrEnabled) PtCloudService.setOcrEnabled(true)
+                if (!applied) cloudEntry.onReOcr()
+            }
+        }
+        // A device pick while the cloud reads: the switch goes off (the radio
+        // rule), after the token write when there is one.
+        fun deviceTurnsCloudOff() {
+            if (cloudEntry != null && PtCloudService.config.ocrEnabled) PtCloudService.setOcrEnabled(false)
+        }
         for (backend in OcrModelManager.availableBackends(ctx, id)) {
             val applied = backend.selectionToken == appliedToken
             val downloaded = backend.isDownloaded(ctx)
@@ -71,11 +150,15 @@ object OcrPicker {
             val icon = if (!downloaded) R.drawable.ic_download else null
             builder.addButton(backend.ocrLabel(ctx), bg, fg, icon) {
                 when {
-                    !downloaded -> onDownload(backend)
-                    applied -> { /* already the result's engine — just dismiss */ }
+                    !downloaded -> {
+                        deviceTurnsCloudOff()
+                        onDownload(backend)
+                    }
+                    applied -> deviceTurnsCloudOff() // already the result's engine: no re-read
                     else -> {
                         applyToken?.invoke(backend)
                             ?: Prefs(ctx).setOcrBackendToken(id, backend.selectionToken)
+                        deviceTurnsCloudOff()
                         onReOcr()
                     }
                 }

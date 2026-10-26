@@ -161,7 +161,8 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
                 Prefs.KEY_HOTKEY_TRANSLATION_TAP, Prefs.KEY_HOTKEY_FURIGANA_TAP,
                 Prefs.KEY_HOTKEY_CAPTURE_TAP, Prefs.KEY_HOTKEY_CHANGE_GAME_LANGUAGE_TAP,
                 Prefs.KEY_THEME_MODE, Prefs.KEY_ACCENT_NAME,
-                Prefs.KEY_PT_CLOUD_ENABLED, Prefs.KEY_PT_CLOUD_CLIENT_KEY,
+                Prefs.KEY_PT_CLOUD_OCR_ENABLED, Prefs.KEY_PT_CLOUD_TRANSLATE_ENABLED,
+                Prefs.KEY_PT_CLOUD_CLIENT_KEY,
             ).collect {
                 _state.value = _state.value.copy(
                     sourceName = resolveSourceName(),
@@ -169,6 +170,9 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
                     hotkeysSummary = hotkeysDigest(),
                     appearanceSummary = appearanceDigest(),
                     cloudSummary = cloudDigest(),
+                    // Names the cloud while its OCR switch is on, so that
+                    // pref moves it too; the rest of it stays polled.
+                    captureSummary = captureDigest(),
                 )
             }
         }
@@ -288,17 +292,21 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── PlayTranslate Cloud digest ────────────────────────────────────────
 
-    /** "Off", "On", or "On, no key": the switch as the service's settings
-     *  read it ([PtCloudService.config], already false outside debug builds),
-     *  and whether a capture would have a key to send. Both are prefs, so it
-     *  is observed, not polled. */
+    /** "No key", "Off", "OCR and translation", "Translation only" or "OCR
+     *  only": whether a call would have a key to send (without one the
+     *  switches are shown off and disabled, whatever is stored), then the
+     *  two switches as the service's settings read them
+     *  ([PtCloudService.config], both already false outside debug builds).
+     *  All prefs, so it is observed, not polled. */
     private fun cloudDigest(): String {
         val config = PtCloudService.config
         return str(
             when {
-                !config.enabled -> R.string.settings_pt_cloud_summary_off
-                config.hasKey -> R.string.settings_pt_cloud_summary_on
-                else -> R.string.settings_pt_cloud_summary_no_key
+                !config.hasKey -> R.string.settings_pt_cloud_summary_no_key
+                !config.anyEnabled -> R.string.settings_pt_cloud_summary_off
+                config.ocrEnabled && config.translateEnabled -> R.string.settings_pt_cloud_summary_both
+                config.translateEnabled -> R.string.settings_pt_cloud_summary_translation_only
+                else -> R.string.settings_pt_cloud_summary_ocr_only
             },
         )
     }
@@ -324,9 +332,14 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (displayPart != null) parts += displayPart
         }
-        // No-floor languages (e.g. Russian on a 32-bit device) can resolve to no
-        // backend — omit the OCR label rather than show a placeholder.
-        OcrModelManager.selectedBackend(ctx, prefs.sourceLangId)?.let { parts += it.ocrLabel(ctx) }
+        // The reader captures go to: PlayTranslate Cloud while its OCR switch
+        // is on (the selection, as the quick menu's OCR row and picker show
+        // it; whether a capture would reach it is the menu strip's question),
+        // else the selected device engine. No-floor languages (e.g. Russian
+        // on a 32-bit device) can resolve to no backend — omit the OCR label
+        // rather than show a placeholder.
+        if (PtCloudService.config.ocrEnabled) parts += PtCloudService.DISPLAY_NAME
+        else OcrModelManager.selectedBackend(ctx, prefs.sourceLangId)?.let { parts += it.ocrLabel(ctx) }
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
         parts += ctx.getString(overlayModeLabelRes(prefs.overlayMode, hintKind))
         return parts.joinToString(" → ")

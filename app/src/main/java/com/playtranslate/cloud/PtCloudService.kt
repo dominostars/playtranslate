@@ -35,6 +35,16 @@ import kotlinx.coroutines.flow.update
  * recording, its degraded messaging and its connectivity fan-out reach the
  * cooldown through it, read at each call.
  *
+ * Two switches, one per route ([PtCloudConfig.ocrEnabled],
+ * [PtCloudConfig.translateEnabled]), independent of each other: the OCR
+ * switch decides whether a capture is read here ([refusal]), the translation
+ * switch whether the cloud translates, in the waterfall
+ * ([PtCloudBackend.isUsable]) and within a frame it reads
+ * ([PtCloudFrameReader.read] asks for no translation while it is off). A
+ * switch means what the page it sits on is about (the OCR section's row
+ * reads captures; the Translation services row translates), so no surface
+ * flips both at once; the first key saved turns both on ([saveClientKey]).
+ *
  * One [CooldownState] covers the whole service, OCR and translation, frame
  * and translate call alike: the server counts both against one budget and
  * one rate bucket, and a client key cannot ask it to skip translation, so a
@@ -45,8 +55,9 @@ import kotlinx.coroutines.flow.update
  * that reads again and again (a live tier, the camera's acquires), every
  * capture and every waterfall pass stay off the cloud together until the
  * cooldown ends or a gesture resets it. The user's gestures stay here:
- * [setEnabled] (the switch, on the cloud page and on the service's
- * Translation services row), [onCredentialsSaved] and [onHealthRunning].
+ * [setOcrEnabled] (the OCR section's row, the OCR picker's cloud entry and
+ * the cloud page), [setTranslateEnabled] (the Translation services row and
+ * the cloud page), [saveClientKey] and [onHealthRunning].
  *
  * The cooldown feeds the router's decision, which lives here ([refusal]) so
  * that every reader asks the same question: the router
@@ -67,15 +78,16 @@ object PtCloudService {
 
     /**
      * Every change a gesture or the health check makes to the service's
-     * state, as a count: the switch ([setEnabled]), the key
-     * ([onCredentialsSaved]) and the cooldown those two reset, and the
-     * cooldown [onHealthRunning] drops. The two surfaces that show the
-     * service, the cloud page and its row on the Translation services page,
-     * repaint from it while resumed, so the mutation announces itself and no
-     * caller of one has to repaint after it; and since a StateFlow replays
-     * its value to a new collector, each resume repaints too. A cooldown a
-     * failed call records is no gesture and is not counted: it shows at the
-     * next resume, as a store instance's does.
+     * state, as a count: a switch ([setOcrEnabled], [setTranslateEnabled]),
+     * the key ([saveClientKey], which can turn both switches on) and the
+     * cooldown those reset, and the cooldown [onHealthRunning] drops. The
+     * surfaces that show the service, the cloud page, its row on the
+     * Translation services page and its row in the Capture & overlay page's
+     * OCR section, repaint from it while resumed, so the mutation announces
+     * itself and no caller of one has to repaint after it; and since a
+     * StateFlow replays its value to a new collector, each resume repaints
+     * too. A cooldown a failed call records is no gesture and is not
+     * counted: it shows at the next resume, as a store instance's does.
      */
     val changes: StateFlow<Int> = changed.asStateFlow()
 
@@ -86,8 +98,8 @@ object PtCloudService {
     @Volatile private var defaultConfig: PtCloudConfig? = null
 
     /** Builds the persisted cooldown and the stored settings ([config]), and
-     *  keeps the application context the gestures use: the switch is stored
-     *  ([setEnabled]) and the translation cache reconciled with it. Called
+     *  keeps the application context the gestures use (the translation
+     *  cache is reconciled with it). Called
      *  once from
      *  [com.playtranslate.PlayTranslateApplication.onCreate], before the
      *  translation registry, whose cloud backend reads the settings, the
@@ -167,9 +179,12 @@ object PtCloudService {
      * The three facts that cost nothing decide first, each ending the
      * decision when it keeps the read on the device, so a read that could
      * never go to the cloud reads nothing else, the key's AndroidKeyStore
-     * decryption included: the switch, off in every release build, then the
-     * caller's device-only statement (a re-OCR, and a re-read of the camera's
-     * frozen frame or the import tool's page after an engine pick), then the
+     * decryption included: the OCR switch ([PtCloudConfig.ocrEnabled]; the
+     * translation switch has no say over where a frame is read), off in
+     * every release build, then the
+     * caller's device-only statement (a re-OCR on a device engine the user
+     * picked, and a re-read of the camera's frozen frame or the import tool's
+     * page after an engine pick), then the
      * network: [internet], by default the default network as
      * [com.playtranslate.net.NetworkConnectivity.state] last heard it (an
      * in-memory read), where none ([InternetState.NONE], the app's one "no
@@ -185,7 +200,7 @@ object PtCloudService {
         deviceOnly: Boolean,
         internet: InternetState = NetworkConnectivity.state.value.internet,
     ): CloudRefusal? {
-        val enabled = config.enabled
+        val enabled = config.ocrEnabled
         if (!enabled) return CloudRefusal.SWITCH_OFF
         if (deviceOnly) return CloudRefusal.DEVICE_ONLY
         val online = internet != InternetState.NONE
@@ -223,20 +238,59 @@ object PtCloudService {
         internet: InternetState,
     ): Boolean = refusal(config, srcId, deviceOnly = false, internet) == null
 
-    /** The service's switch, the one mutation behind both of its faces:
-     *  the cloud page's master switch and the service's row on the
-     *  Translation services page. Stores it ([Prefs.ptCloudEnabled]) and
-     *  resets the service, since either direction means "try it again now";
-     *  the store comes first because the reset's reconcile reads the switch
-     *  (whether the waterfall's first backend is this one). Main thread. */
-    fun setEnabled(enabled: Boolean) {
-        Prefs(requireContext()).ptCloudEnabled = enabled
-        resetForUserGesture()
+    /** The OCR switch ([Prefs.ptCloudOcrEnabled]), the one mutation behind
+     *  its faces: the Capture & overlay page's cloud row, the OCR picker's
+     *  cloud entry (and its device engines, which turn it off), and the
+     *  cloud page's Read captures row. Stores it, then resets the service
+     *  with the translation cache left alone: either direction means "try
+     *  it again now" for the cooldown, but which reader a capture goes to
+     *  does not move the waterfall's routing identity, which keys the
+     *  cache, so a frame's cached translations stay valid across the flip.
+     *  The store comes first because the reset's tail re-routes a running
+     *  live session and repaints the surfaces, both of which read the
+     *  switch. Main thread. */
+    fun setOcrEnabled(enabled: Boolean) {
+        config.prefs.ptCloudOcrEnabled = enabled
+        resetForUserGesture(clearTranslations = false)
     }
 
-    /** A new key was saved: the old cooldown and errors describe a
-     *  configuration that is gone. Main thread. */
-    fun onCredentialsSaved() = resetForUserGesture()
+    /** The translation switch ([Prefs.ptCloudTranslateEnabled]), the one
+     *  mutation behind its faces: the service's row on the Translation
+     *  services page and the cloud page's Translate row. Stores it, then
+     *  resets the service and clears the translation cache, since the flip
+     *  moves the waterfall's first backend; the store comes first because
+     *  the reset's reconcile reads the switch ([PtCloudBackend.isUsable]).
+     *  Main thread. */
+    fun setTranslateEnabled(enabled: Boolean) {
+        config.prefs.ptCloudTranslateEnabled = enabled
+        resetForUserGesture(clearTranslations = true)
+    }
+
+    /** Saves the client key, the cloud page's Save. The key's presence
+     *  moves both switches together ([PtCloudConfig.hasKey] before and after
+     *  the write): the first key turns both on, since the save is the
+     *  sign-up moment and the bundle, reading and translating on the cloud,
+     *  is what the user came for; a key cleared (a blank or unusable save
+     *  over a usable key) turns both off, since without a key the switches
+     *  are shown off and disabled everywhere and nothing may stay stored
+     *  behind them. Replacing one usable key with another leaves the
+     *  switches alone, so a route the user turned off stays off across a
+     *  key rotation after an auth error. A write the keystore refuses keeps
+     *  the old key ([Prefs.writeSecret]'s fail-closed rule), so `hasKey` is
+     *  unchanged and nothing flips. Then the reset every gesture makes, the
+     *  translation cache cleared with it: the old cooldown and errors
+     *  describe a configuration that is gone. Main thread. */
+    fun saveClientKey(key: String) {
+        val prefs = config.prefs
+        val hadKey = config.hasKey
+        prefs.ptCloudClientKey = key
+        val hasKey = config.hasKey
+        if (hadKey != hasKey) {
+            prefs.ptCloudOcrEnabled = hasKey
+            prefs.ptCloudTranslateEnabled = hasKey
+        }
+        resetForUserGesture(clearTranslations = true)
+    }
 
     /** The cloud page's health check found the service running (`GET /health`
      *  answered 200: the origin is up and its OCR ready). A cooldown whose
@@ -284,22 +338,27 @@ object PtCloudService {
     /** Drops the cooldown and both ladders, then does what
      *  [com.playtranslate.translation.OnlineServiceMutations.saveConfig]
      *  does for a waterfall service: forget the pill's errors so a failure
-     *  after the gesture shows again and clear the translation cache (the
-     *  process's one, [TranslationCache.shared], so the camera's and the
-     *  import tool's translations under the old configuration go too), then
-     *  what follows every reset ([afterCooldownReset]), the routing identity
-     *  reconciled against the cleared state (the order
+     *  after the gesture shows again (both routes report under [ID], so any
+     *  gesture on the service forgets them) and, with [clearTranslations],
+     *  clear the translation cache (the process's one,
+     *  [TranslationCache.shared], so the camera's and the import tool's
+     *  translations under the old configuration go too), then what follows
+     *  every reset ([afterCooldownReset]), the routing identity reconciled
+     *  against the cleared state (the order
      *  [com.playtranslate.translation.OnlineServiceMutations.setEnabled]
-     *  uses: the switch and the key decide whether the waterfall's first
-     *  backend is this one). saveConfig itself resets no cooldown: a store
+     *  uses: the translation switch and the key decide whether the
+     *  waterfall's first backend is this one). The cache is cleared by the
+     *  gestures that change what a translation is made by (the translation
+     *  switch, the key) and kept by the OCR switch, which changes only
+     *  where a frame is read. saveConfig itself resets no cooldown: a store
      *  backend clears its own when one instance of it sees its credentials
      *  change ([com.playtranslate.translation.GeminiBackend],
      *  [com.playtranslate.translation.DeepLBackend]), while this service's
      *  one cooldown, which both routes share, is reset here, by the gesture. */
-    private fun resetForUserGesture() {
+    private fun resetForUserGesture(clearTranslations: Boolean) {
         cooldown.resetCooldown()
         TranslationErrors.forget(ID)
-        GroupTranslator.clearShared()
+        if (clearTranslations) GroupTranslator.clearShared()
         afterCooldownReset()
     }
 

@@ -3314,20 +3314,50 @@
     <!-- PLAYTRANSLATE CLOUD — the CONFIGURE cell and its page (Settings →
          Configure → PlayTranslate Cloud). Debug builds only for now. The
          cell and the page title use pt_cloud_display_name, a product name. -->
-    <!-- Subtitle of the PlayTranslate Cloud CONFIGURE cell while its switch is off. -->
+    <!-- Subtitle of the PlayTranslate Cloud CONFIGURE cell while both of its
+         switches (OCR, translation) are off. -->
     <string name="settings_pt_cloud_summary_off">Off</string>
-    <!-- Subtitle of the PlayTranslate Cloud CONFIGURE cell while its switch is on
-         and a client key is saved. -->
-    <string name="settings_pt_cloud_summary_on">On</string>
-    <!-- Subtitle of the PlayTranslate Cloud CONFIGURE cell while its switch is on
-         but no client key is saved, so captures stay on this device. -->
-    <string name="settings_pt_cloud_summary_no_key">On, no key</string>
-    <!-- Master switch title at the top of the PlayTranslate Cloud page.
-         "PlayTranslate Cloud" is a product name; keep it in English. -->
-    <string name="pt_cloud_toggle_title">Use PlayTranslate Cloud</string>
-    <!-- Subtitle under the PlayTranslate Cloud master switch: what turning it on
-         does. "Captures" are the screenshots the user asks to translate. -->
-    <string name="pt_cloud_toggle_subtitle">Reads and translates captures on PlayTranslate\'s server instead of on this device</string>
+    <!-- Subtitle of the PlayTranslate Cloud CONFIGURE cell while no client key is
+         saved: a one-line pitch of the service, since the cell is the way to its
+         page, where the key is entered. "Server-grade" means on PlayTranslate's
+         server rather than on the device. -->
+    <string name="settings_pt_cloud_summary_no_key">Server-grade OCR and translation</string>
+    <!-- Subtitle of the PlayTranslate Cloud CONFIGURE cell while both of its
+         switches are on with a key saved: captures are read (OCR) and translated
+         on PlayTranslate's server. -->
+    <string name="settings_pt_cloud_summary_both">OCR and translation</string>
+    <!-- Subtitle of the PlayTranslate Cloud CONFIGURE cell while only its
+         translation switch is on with a key saved: this device reads captures,
+         the server translates. -->
+    <string name="settings_pt_cloud_summary_translation_only">Translation only</string>
+    <!-- Subtitle of the PlayTranslate Cloud CONFIGURE cell while only its OCR
+         switch is on with a key saved: the server reads captures, the user's own
+         translation services translate. -->
+    <string name="settings_pt_cloud_summary_ocr_only">OCR only</string>
+    <!-- Title of the first switch row on the PlayTranslate Cloud page: whether the
+         screen captures are read, that is OCR'd, on PlayTranslate's server. -->
+    <string name="pt_cloud_ocr_toggle_title">Read the screen</string>
+    <!-- Subtitle under the "Read the screen" switch on the PlayTranslate Cloud page:
+         why to turn it on. "Stronger OCR" is the server's larger text recognition
+         model; the second sentence says the device does no OCR work itself. -->
+    <string name="pt_cloud_ocr_toggle_subtitle">Stronger OCR on a server GPU. All your device\'s power goes to the game.</string>
+    <!-- Title of the second switch row on the PlayTranslate Cloud page: whether
+         PlayTranslate's server translates the recognized text, ahead of the user's
+         own translation services. -->
+    <string name="pt_cloud_translate_toggle_title">Translate the text</string>
+    <!-- Subtitle under the "Translate the text" switch on the PlayTranslate Cloud
+         page: why to turn it on. The server holds subscriptions to several paid
+         translation models and routes each request to the one suited to it. -->
+    <string name="pt_cloud_translate_toggle_subtitle">Paid translation models bundled in, the best one picked for each job.</string>
+    <!-- Subtitle of the PlayTranslate Cloud row in the Capture &amp; overlay page's
+         OCR section, in every state of the switch: a one-line pitch of reading
+         the screen on PlayTranslate's server (no OCR work on the device). -->
+    <string name="pt_cloud_ocr_row_subtitle">Server-grade OCR, zero device load</string>
+    <!-- Status line of PlayTranslate Cloud's row on the Translation services page
+         while no client key is saved, where the other rows read "Account required":
+         a one-line pitch of the server's translation (paid models included in the
+         service). -->
+    <string name="pt_cloud_translate_row_subtitle_no_key">The best paid models, bundled in</string>
     <!-- Label above the text field for the PlayTranslate Cloud client key, a
          password-like token the user was given. -->
     <string name="pt_cloud_key_label">Client key</string>
@@ -3352,9 +3382,9 @@
     <!-- Status row value before any health check has run on this page. -->
     <string name="pt_cloud_status_unchecked">Not checked</string>
     <!-- Screen-reader label of the strip at the top of the floating icon's quick
-         menu while PlayTranslate Cloud is switched on, when its wifi glyph shows:
-         the device is online and the next capture would be read and translated
-         on PlayTranslate's server. %1$s = pt_cloud_display_name, a product name. -->
+         menu while PlayTranslate Cloud's OCR switch is on, when its wifi glyph
+         shows: the device is online and the next capture would be read on
+         PlayTranslate's server. %1$s = pt_cloud_display_name, a product name. -->
     <string name="floating_menu_pt_cloud_available"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: available</string>
     <!-- Screen-reader label of the same strip when its wifi_off glyph shows: the
          device is offline, or the next capture would stay on this device (no

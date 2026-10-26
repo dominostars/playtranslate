@@ -27,7 +27,7 @@ import kotlinx.coroutines.launch
  * add row + PlayTranslate Cloud's row + toolbar EDIT mode); every online
  * mutation routes through
  * [com.playtranslate.translation.OnlineServiceMutations], or for the
- * cloud's switch [com.playtranslate.cloud.PtCloudService.setEnabled],
+ * cloud's translation switch [com.playtranslate.cloud.PtCloudService.setTranslateEnabled],
  * which handles the registry/order/cache/reconcile choreography at write
  * time, so this Activity's own lifecycle work reduces to an onResume
  * rebind and render of the cloud's row.

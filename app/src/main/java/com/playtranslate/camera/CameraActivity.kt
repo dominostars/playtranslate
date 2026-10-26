@@ -263,11 +263,12 @@ class CameraActivity : AppCompatActivity() {
                     this, prefs.sourceLangId, com.playtranslate.OcrTokenScope.CAMERA,
                 )?.selectionToken ?: ""
             ) +
-            // The PlayTranslate Cloud switch picks the reader, as the engine
-            // does: flipped on the cloud page, it re-reads a frozen frame on
+            // PlayTranslate Cloud's OCR switch picks the reader, as the engine
+            // does, and its translation switch what that reader asks for:
+            // flipped on a settings page, either re-reads a frozen frame on
             // return (a key save resets the service, which no frozen frame
             // can see; its next read follows the router).
-            "|cloud=${prefs.ptCloudEnabled}"
+            "|cloudOcr=${prefs.ptCloudOcrEnabled}|cloudTr=${prefs.ptCloudTranslateEnabled}"
 
     override fun onPause() {
         super.onPause()

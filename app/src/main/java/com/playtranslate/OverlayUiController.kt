@@ -1949,9 +1949,10 @@ class OverlayUiController(
         val themedCtx = android.view.ContextThemeWrapper(context.createDisplayContext(display), themeRes)
         applyAccentOverlay(themedCtx.theme, context)
         val prefs = Prefs(context)
-        // PlayTranslate Cloud's strip, while its switch is on (never outside
-        // debug builds).
-        val cloudStrip = PtCloudService.config.enabled
+        // PlayTranslate Cloud's strip, while its OCR switch is on (never
+        // outside debug builds): the strip answers whether the next capture
+        // would be read there, which the translation switch has no say over.
+        val cloudStrip = PtCloudService.config.ocrEnabled
         val menu = FloatingIconMenu(themedCtx, showCloudHeader = cloudStrip)
         menu.isSingleScreen = Prefs.isSingleScreen(context)
         menu.exitFlow = CaptureLifecycle.hasActivateControl(context)
@@ -1972,7 +1973,12 @@ class OverlayUiController(
 
         // Expanded settings-panel table: data + row actions.
         val languageName = prefs.sourceLangId.displayName()
-        val ocrName = OcrModelManager.selectedBackend(context, prefs.sourceLangId)?.ocrLabel(context) ?: "ML Kit"
+        // The reader captures go to: PlayTranslate Cloud while its OCR switch
+        // is on (the selection; the strip above says whether the next capture
+        // would reach it), else the selected device engine.
+        val ocrName =
+            if (PtCloudService.config.ocrEnabled) PtCloudService.DISPLAY_NAME
+            else OcrModelManager.selectedBackend(context, prefs.sourceLangId)?.ocrLabel(context) ?: "ML Kit"
         val overlayValue = if (hintKind != HintTextKind.NONE)
             overlayModeLabel(prefs.overlayMode, hintKind) else null
         menu.onSelectLanguage = {
@@ -2196,26 +2202,34 @@ class OverlayUiController(
 
     /** Open the "Choose OCR tool" OverlayAlert for [id] on [display], stacked
      *  over the still-open floating menu so its holdActive keeps live capture
-     *  paused. There's no live result to re-OCR here, so a different-engine pick
+     *  paused. There's no live result to re-OCR here, so a different pick
      *  dismisses the menu (clearing holdActive) and refreshes live mode, as a
-     *  tap outside the menu does: the new engine is persisted by OcrPicker, and
-     *  a running tier must look again with it now rather than when its change
-     *  gate next sees the pixels move (the furigana tier reads only on pixel
-     *  change; Codex, 2026-10-16). Cancel or re-picking the current engine
-     *  leaves the menu open underneath. */
+     *  tap outside the menu does: the pick is persisted by OcrPicker (an
+     *  engine's token, or PlayTranslate Cloud's OCR switch, whose own gesture
+     *  tail refreshes too), and a running tier must look again with it now
+     *  rather than when its change gate next sees the pixels move (the
+     *  furigana tier reads only on pixel change; Codex, 2026-10-16). The
+     *  highlighted entry is the SELECTION, since there is no result here: the
+     *  cloud while its OCR switch is on (whether the next capture would reach
+     *  it is the strip's question), else the selected engine. Cancel or
+     *  re-picking the highlighted entry leaves the menu open underneath. */
     private fun showOcrPicker(display: Display, id: SourceLangId) {
         val displayCtx = context.createDisplayContext(display)
         val wm = OwnWindows.manager(displayCtx) ?: return
         val themed = overlayThemedContext(displayCtx)
+        val applied =
+            if (PtCloudService.config.ocrEnabled) PtCloudService.ID
+            else OcrModelManager.selectedBackend(context, id)?.selectionToken ?: ""
+        val reread: () -> Unit = {
+            dismissFloatingMenu()
+            CaptureService.instance?.refreshLiveOverlay()
+        }
         OcrPicker.populate(
             OverlayAlert.Builder(themed, overlayHost, wm, display.displayId),
             themed,
             id,
-            OcrModelManager.selectedBackend(context, id)?.selectionToken ?: "",
-            onReOcr = {
-                dismissFloatingMenu()
-                CaptureService.instance?.refreshLiveOverlay()
-            },
+            applied,
+            onReOcr = reread,
             onDownload = { backend ->
                 dismissFloatingMenu()
                 launchOnOverlayDisplay(
@@ -2225,6 +2239,16 @@ class OverlayUiController(
                     display.displayId,
                 )
             },
+            cloud = OcrPicker.CloudChoice(
+                onReOcr = reread,
+                onOpenPage = {
+                    dismissFloatingMenu()
+                    launchOnOverlayDisplay(
+                        Intent(context.applicationContext, PtCloudSettingsActivity::class.java),
+                        display.displayId,
+                    )
+                },
+            ),
         ).showAsOverlay()
     }
 

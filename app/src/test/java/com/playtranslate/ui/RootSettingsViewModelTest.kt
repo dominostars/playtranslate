@@ -18,6 +18,7 @@ import com.playtranslate.translation.Cooldownable
 import com.playtranslate.translation.TranslationBackend
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -348,38 +349,86 @@ class RootSettingsViewModelTest {
     // (the AndroidKeyStore codec fails closed). (Unit tests run the debug
     // variant, so the switch's debug-build gate reads through.)
 
-    @Test fun `cloud summary reads Off while the switch is off`() {
+    /** A usable key stored on the service's settings, through a reversible
+     *  codec, so the switches count. */
+    private fun cloudPrefsWithKey(): Prefs {
+        val cloudPrefs = PtCloudTestSupport.prefs(ctx)
+        PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(cloudPrefs))
+        cloudPrefs.ptCloudClientKey = PtCloudTestSupport.KEY
+        return cloudPrefs
+    }
+
+    @Test fun `cloud summary is the pitch while no key is saved, whatever the switches hold`() {
+        val pitch = "Server-grade OCR and translation"
+        assertEquals(pitch, RootSettingsViewModel(app).state.value.cloudSummary)
+        Prefs(ctx).ptCloudOcrEnabled = true
+        assertEquals(pitch, RootSettingsViewModel(app).state.value.cloudSummary)
+        Prefs(ctx).ptCloudTranslateEnabled = true
+        assertEquals(pitch, RootSettingsViewModel(app).state.value.cloudSummary)
+    }
+
+    @Test fun `cloud summary reads Off with a key while both switches are off`() {
+        cloudPrefsWithKey()
         assertEquals("Off", RootSettingsViewModel(app).state.value.cloudSummary)
     }
 
-    @Test fun `cloud summary reads On, no key while the switch is on without a key`() {
-        Prefs(ctx).ptCloudEnabled = true
-        assertEquals("On, no key", RootSettingsViewModel(app).state.value.cloudSummary)
-    }
-
-    @Test fun `cloud summary follows the switch flipped after construction`() {
+    @Test fun `cloud summary follows either switch flipped after construction`() {
+        cloudPrefsWithKey()
         val vm = RootSettingsViewModel(app)
         assertEquals("Off", vm.state.value.cloudSummary)
 
-        Prefs(ctx).ptCloudEnabled = true
+        Prefs(ctx).ptCloudOcrEnabled = true
         shadowOf(Looper.getMainLooper()).idle()
-        assertEquals("On, no key", vm.state.value.cloudSummary)
+        assertEquals("OCR only", vm.state.value.cloudSummary)
 
-        Prefs(ctx).ptCloudEnabled = false
+        Prefs(ctx).ptCloudOcrEnabled = false
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals("Off", vm.state.value.cloudSummary)
+
+        Prefs(ctx).ptCloudTranslateEnabled = true
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("the translation switch is observed too", "Translation only", vm.state.value.cloudSummary)
     }
 
-    @Test fun `cloud summary reads On once a key is saved`() {
+    @Test fun `cloud summary names the routes once a key is saved`() {
         val cloudPrefs = PtCloudTestSupport.prefs(ctx)
         PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(cloudPrefs))
-        Prefs(ctx).ptCloudEnabled = true
+        Prefs(ctx).ptCloudOcrEnabled = true
+        Prefs(ctx).ptCloudTranslateEnabled = true
         val vm = RootSettingsViewModel(app)
-        assertEquals("On, no key", vm.state.value.cloudSummary)
+        assertEquals("Server-grade OCR and translation", vm.state.value.cloudSummary)
 
         cloudPrefs.ptCloudClientKey = PtCloudTestSupport.KEY
         shadowOf(Looper.getMainLooper()).idle()
-        assertEquals("the key slot is observed", "On", vm.state.value.cloudSummary)
+        assertEquals("the key slot is observed", "OCR and translation", vm.state.value.cloudSummary)
+
+        Prefs(ctx).ptCloudOcrEnabled = false
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("Translation only", vm.state.value.cloudSummary)
+
+        Prefs(ctx).ptCloudOcrEnabled = true
+        Prefs(ctx).ptCloudTranslateEnabled = false
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("OCR only", vm.state.value.cloudSummary)
+    }
+
+    /** The capture digest names the reader captures go to: the cloud while
+     *  its OCR switch is on (the selection, whatever the key or network), else
+     *  the device engine; and that pref moves it, where the rest of the
+     *  digest is polled. */
+    @Test fun `capture summary names the cloud while its OCR switch is on`() {
+        val vm = RootSettingsViewModel(app)
+        val device = vm.state.value.captureSummary
+        assertFalse(device.startsWith(PtCloudService.DISPLAY_NAME))
+
+        Prefs(ctx).ptCloudOcrEnabled = true
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(vm.state.value.captureSummary, vm.state.value.captureSummary.startsWith(PtCloudService.DISPLAY_NAME + " → "))
+
+        Prefs(ctx).ptCloudTranslateEnabled = true
+        Prefs(ctx).ptCloudOcrEnabled = false
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("the translation switch does not name it", device, vm.state.value.captureSummary)
     }
 
     @Test fun `appearance digest is theme mode + accent name`() {

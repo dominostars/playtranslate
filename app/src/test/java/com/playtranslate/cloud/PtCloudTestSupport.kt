@@ -93,12 +93,26 @@ internal object PtCloudTestSupport {
         return PtCloudConfig(p)
     }
 
-    /** A config with the switch on and [key] stored: the state the router
+    /** A config with BOTH switches on and [key] stored: the state the router
      *  routes a read to the cloud under, which the reader asks for again
-     *  before its upload, so a test that reads through the reader starts
-     *  here. */
+     *  before its upload, and under which the reader asks for translations,
+     *  so a test that reads through the reader starts here. */
     fun switchedOn(ctx: Context, key: String = KEY): PtCloudConfig {
-        prefs(ctx).ptCloudEnabled = true
+        prefs(ctx).apply {
+            ptCloudOcrEnabled = true
+            ptCloudTranslateEnabled = true
+        }
+        return config(ctx, key)
+    }
+
+    /** A config with the OCR switch on, the translation switch off and
+     *  [key] stored: the router routes a read to the cloud, and the reader
+     *  asks for no translation. */
+    fun ocrOnly(ctx: Context, key: String = KEY): PtCloudConfig {
+        prefs(ctx).apply {
+            ptCloudOcrEnabled = true
+            ptCloudTranslateEnabled = false
+        }
         return config(ctx, key)
     }
 

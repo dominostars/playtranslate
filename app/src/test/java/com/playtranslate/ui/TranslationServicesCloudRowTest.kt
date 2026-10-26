@@ -36,8 +36,8 @@ import org.robolectric.android.controller.ActivityController
  * online card, ahead of the store's instances; its cooldown line and tint
  * from the registry's backend, which reads the service's cooldown at each
  * call (the state a test installs after the Application built the backend);
- * its switch through the service's one mutation; the key's tail or
- * "Account required"; a tap to the cloud page; and a fresh render on a
+ * its switch through the service's one mutation; the key's tail or, with no
+ * key, the service's one-line pitch; a tap to the cloud page; and a fresh render on a
  * return from that page while the card is in edit mode, which the store
  * rows' rebind skips.
  *
@@ -146,12 +146,22 @@ class TranslationServicesCloudRowTest {
     }
 
     @Test fun `the switch mirrors the stored switch, and building the page writes and resets nothing`() {
-        prefs.ptCloudEnabled = true
+        prefs.ptCloudTranslateEnabled = true
         recordCooldown()
         val page = open()
         assertTrue(page.switch().isChecked)
-        assertTrue(prefs.ptCloudEnabled)
+        assertTrue(prefs.ptCloudTranslateEnabled)
         assertNotNull("rendering resets nothing", PtCloudService.unavailableUntil())
+    }
+
+    /** This row's switch is the TRANSLATION switch, as every row's switch on
+     *  this page means "translate with this"; the OCR switch lives with the
+     *  OCR engines and shows nowhere here. */
+    @Test fun `the OCR switch alone leaves the row off`() {
+        prefs.ptCloudOcrEnabled = true
+        val page = open()
+        assertFalse(page.switch().isChecked)
+        assertFalse(prefs.ptCloudTranslateEnabled)
     }
 
     @Test fun `flipping the switch stores it and resets the cooldown, either way`() {
@@ -161,7 +171,7 @@ class TranslationServicesCloudRowTest {
 
         page.switch().performClick()
         shadowOf(Looper.getMainLooper()).idle()
-        assertTrue(prefs.ptCloudEnabled)
+        assertTrue(prefs.ptCloudTranslateEnabled)
         assertNull(PtCloudService.unavailableUntil())
         assertFalse("the line goes with the cooldown", page.cooldownLine().isVisible)
         assertFalse(page.tinted())
@@ -170,7 +180,7 @@ class TranslationServicesCloudRowTest {
         page.switch().performClick()
         shadowOf(Looper.getMainLooper()).idle()
         assertFalse(page.switch().isChecked)
-        assertFalse(prefs.ptCloudEnabled)
+        assertFalse(prefs.ptCloudTranslateEnabled)
         assertNull(PtCloudService.unavailableUntil())
         assertFalse(page.cooldownLine().isVisible)
     }
@@ -184,7 +194,7 @@ class TranslationServicesCloudRowTest {
         assertTrue(page.cooldownLine().isVisible)
         assertTrue(page.tinted())
 
-        PtCloudService.onCredentialsSaved()
+        PtCloudService.saveClientKey(KEY)
         shadowOf(Looper.getMainLooper()).idle()
 
         assertFalse("the line goes with the cooldown", page.cooldownLine().isVisible)
@@ -200,12 +210,40 @@ class TranslationServicesCloudRowTest {
         assertFalse(page.statusLine().isVisible)
     }
 
-    @Test fun `with no key the status line reads Account required and no tail shows`() {
+    /** The row has no description slot: its one line under the title is the
+     *  backend's status, which with no key is the service's pitch rather
+     *  than the store rows' "Account required". */
+    @Test fun `with no key the status line is the pitch and no tail shows`() {
         PtCloudService.installForTest(cooldown, PtCloudTestSupport.config(ctx, key = ""))
         val page = open()
         assertFalse(page.keyTail().isVisible)
         assertTrue(page.statusLine().isVisible)
-        assertEquals("Account required", page.statusLine().text.toString())
+        assertEquals("The best paid models, bundled in", page.statusLine().text.toString())
+    }
+
+    /** No key saved: the switch looks live but shows off, whatever is
+     *  stored, and is not its own tap target, so a touch on it falls
+     *  through to the row and opens the cloud page where the key goes;
+     *  nothing is written (2026-10-25). With a key it flips in place. */
+    @Test fun `with no key the switch shows off and is not its own tap target, so a tap opens the cloud page and writes nothing`() {
+        PtCloudService.installForTest(cooldown, PtCloudTestSupport.config(ctx, key = ""))
+        prefs.ptCloudTranslateEnabled = true
+        recordCooldown()
+        val page = open()
+        assertTrue("looks live", page.switch().isEnabled)
+        assertFalse("shows off whatever is stored", page.switch().isChecked)
+        assertFalse("a touch on it reaches the row", page.switch().isClickable)
+
+        page.rowMain().performClick()
+
+        assertEquals(PtCloudSettingsActivity::class.java.name, shadowOf(page).nextStartedActivity.component!!.className)
+        assertTrue("nothing written", prefs.ptCloudTranslateEnabled)
+        assertNotNull("nothing reset", PtCloudService.unavailableUntil())
+    }
+
+    @Test fun `with a key the switch is its own tap target`() {
+        val page = open()
+        assertTrue(page.switch().isClickable)
     }
 
     // ── Navigation and edit mode ─────────────────────────────────────────
@@ -235,7 +273,7 @@ class TranslationServicesCloudRowTest {
         // failed and cooled the service down.
         page.rowMain().performClick()
         controller!!.pause()
-        PtCloudService.setEnabled(true)
+        PtCloudService.setTranslateEnabled(true)
         recordCooldown()
         controller!!.resume()
         shadowOf(Looper.getMainLooper()).idle()

@@ -87,13 +87,35 @@
             <!-- IMAGE-TO-TEXT (OCR)                                   -->
             <!-- ══════════════════════════════════════════════════════ -->
             <!-- Header + card visibility are toggled in
-                 CaptureOverlaySettingsActivity.setupOcrSection (hidden when the
-                 current source language has no engine choice beyond the ML Kit
-                 floor). One row per available OCR engine is inflated into
+                 CaptureOverlaySettingsActivity.setupOcrSection (the engine card
+                 hidden when the current source language has no engine choice
+                 beyond the ML Kit floor; the header shown with either card).
+                 One row per available OCR engine is inflated into
                  containerOcrLanguages. -->
 
             <include layout="@layout/settings_group_header"
                 android:id="@+id/headerOcr" />
+
+            <!-- PlayTranslate Cloud's OCR switch, its own card at the top of the
+                 group (debug builds only; bound and un-hidden by
+                 bindCloudOcrRow): on, captures are read on the server and the
+                 engine list below is the device fallback. A tap anywhere but
+                 the switch opens the cloud page. -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardPtCloud"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:visibility="gone"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <include layout="@layout/settings_row_switch"
+                    android:id="@+id/rowPtCloudOcr" />
+
+            </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardOcr"

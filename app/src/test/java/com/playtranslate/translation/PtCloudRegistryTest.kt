@@ -40,7 +40,7 @@ class PtCloudRegistryTest {
         PtCloudTestSupport.sharedPrefs(ctx).edit().clear().commit()
         cooldown = CooldownState(null, PtCloudService.ID)
         PtCloudService.installForTest(cooldown, PtCloudTestSupport.config(ctx))
-        PtCloudTestSupport.prefs(ctx).ptCloudEnabled = true
+        PtCloudTestSupport.prefs(ctx).ptCloudTranslateEnabled = true
     }
 
     @After fun tearDown() {
@@ -117,7 +117,11 @@ class PtCloudRegistryTest {
         assertEquals("next", TranslationBackendRegistry.preferredOnlineId("ja", "en"))
 
         cooldown.resetCooldown()
-        PtCloudTestSupport.prefs(ctx).ptCloudEnabled = false
+        PtCloudTestSupport.prefs(ctx).ptCloudTranslateEnabled = false
+        assertEquals("next", TranslationBackendRegistry.preferredOnlineId("ja", "en"))
+
+        // The OCR switch has no say over the waterfall.
+        PtCloudTestSupport.prefs(ctx).ptCloudOcrEnabled = true
         assertEquals("next", TranslationBackendRegistry.preferredOnlineId("ja", "en"))
     }
 

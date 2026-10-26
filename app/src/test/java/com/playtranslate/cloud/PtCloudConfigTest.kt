@@ -45,7 +45,23 @@ class PtCloudConfigTest {
         val config = PtCloudConfig(PtCloudTestSupport.prefs(ctx))
         assertEquals(PtCloudConfig.DEFAULT_UPLOAD_LONG_SIDE_CAP, config.uploadLongSideCap)
         assertFalse(config.hasKey)
-        assertFalse(config.enabled)
+        assertFalse(config.ocrEnabled)
+        assertFalse(config.translateEnabled)
+        assertFalse(config.anyEnabled)
+    }
+
+    @Test fun `the two switches are independent, and anyEnabled is either`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        val config = PtCloudConfig(prefs)
+        prefs.ptCloudOcrEnabled = true
+        assertTrue(config.ocrEnabled)
+        assertFalse(config.translateEnabled)
+        assertTrue(config.anyEnabled)
+        prefs.ptCloudOcrEnabled = false
+        prefs.ptCloudTranslateEnabled = true
+        assertFalse(config.ocrEnabled)
+        assertTrue(config.translateEnabled)
+        assertTrue(config.anyEnabled)
     }
 
     @Test fun `the config serves the stored values, cleaned for the wire`() {

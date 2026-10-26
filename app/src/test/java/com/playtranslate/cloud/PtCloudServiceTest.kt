@@ -105,14 +105,14 @@ class PtCloudServiceTest {
         // The wall clock: the registry judges a cooldown against it.
         val state = CooldownState(null, PtCloudService.ID)
         PtCloudService.installForTest(state, PtCloudTestSupport.config(ctx))
-        PtCloudTestSupport.prefs(ctx).ptCloudEnabled = true
+        PtCloudTestSupport.prefs(ctx).ptCloudTranslateEnabled = true
         state.recordLadderFailure(CooldownLadder.RateLimit, "Bad key", CooldownCause.AUTH)
         TranslationCache.shared.resetForTest()
         // The cloud cools down: the identity is the next online service's.
         GroupTranslator.reconcileShared(ctx)
         assertTrue(TranslationBackendRegistry.preferredOnlineId("ja", "en") != PtCloudService.ID)
 
-        PtCloudService.setEnabled(true)
+        PtCloudService.setTranslateEnabled(true)
 
         // The gesture moved the identity onto the cloud, so a reconcile
         // after it finds nothing changed and keeps what the cache holds.
@@ -123,11 +123,109 @@ class PtCloudServiceTest {
         assertEquals("one" to PtCloudService.DISPLAY_NAME, TranslationCache.shared[key])
     }
 
+    /** The OCR switch changes where a frame is read, not what a translation
+     *  is made by: its flip keeps the translation cache, where the
+     *  translation switch's clears it. */
+    @Test fun `an OCR flip keeps the shared translation cache, a translation flip clears it`() {
+        PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudTestSupport.config(ctx))
+        PtCloudTestSupport.prefs(ctx).ptCloudTranslateEnabled = true
+        TranslationCache.shared.resetForTest()
+        GroupTranslator.reconcileShared(ctx)
+        val key = TranslationCache.Key("一", "ja", "en")
+        TranslationCache.shared[key] = "one" to PtCloudService.DISPLAY_NAME
+
+        PtCloudService.setOcrEnabled(true)
+        assertEquals("kept across the OCR flip", "one" to PtCloudService.DISPLAY_NAME, TranslationCache.shared[key])
+        PtCloudService.setOcrEnabled(false)
+        assertEquals("and back", "one" to PtCloudService.DISPLAY_NAME, TranslationCache.shared[key])
+
+        PtCloudService.setTranslateEnabled(true)
+        assertNull("the translation flip clears it", TranslationCache.shared[key])
+    }
+
+    /** The reconcile stays in the OCR flip's tail: its cooldown reset can
+     *  make the cloud the waterfall's first backend again (translation on,
+     *  the cooldown gone), and the identity's move is what clears the
+     *  entries the fallback's routing made. */
+    @Test fun `an OCR flip's cooldown reset moves the routing identity back onto the cloud and clears the fallback's entry`() {
+        val state = CooldownState(null, PtCloudService.ID)
+        PtCloudService.installForTest(state, PtCloudTestSupport.config(ctx))
+        PtCloudTestSupport.prefs(ctx).ptCloudTranslateEnabled = true
+        state.recordLadderFailure(CooldownLadder.RateLimit, "Bad key", CooldownCause.AUTH)
+        TranslationCache.shared.resetForTest()
+        GroupTranslator.reconcileShared(ctx)
+        assertTrue(TranslationBackendRegistry.preferredOnlineId("ja", "en") != PtCloudService.ID)
+        val key = TranslationCache.Key("一", "ja", "en")
+        TranslationCache.shared[key] = "one" to "Fallback"
+
+        PtCloudService.setOcrEnabled(true)
+
+        assertEquals(PtCloudService.ID, TranslationBackendRegistry.preferredOnlineId("ja", "en"))
+        assertNull(TranslationCache.shared[key])
+    }
+
+    // ── The key save ────────────────────────────────────────────────────
+
+    @Test fun `the first key saved turns both switches on`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(prefs))
+        assertFalse(prefs.ptCloudOcrEnabled)
+        assertFalse(prefs.ptCloudTranslateEnabled)
+
+        PtCloudService.saveClientKey(PtCloudTestSupport.KEY)
+
+        assertEquals(PtCloudTestSupport.KEY, prefs.ptCloudClientKey)
+        assertTrue(prefs.ptCloudOcrEnabled)
+        assertTrue(prefs.ptCloudTranslateEnabled)
+    }
+
+    @Test fun `a replacement key leaves the switches as the user set them`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(prefs))
+        prefs.ptCloudClientKey = PtCloudTestSupport.KEY
+        prefs.ptCloudOcrEnabled = false
+        prefs.ptCloudTranslateEnabled = true
+
+        PtCloudService.saveClientKey("another-key")
+
+        assertEquals("another-key", prefs.ptCloudClientKey)
+        assertFalse("a deliberate off survives a key rotation", prefs.ptCloudOcrEnabled)
+        assertTrue(prefs.ptCloudTranslateEnabled)
+    }
+
+    @Test fun `a cleared key turns both switches off`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(prefs))
+        prefs.ptCloudClientKey = PtCloudTestSupport.KEY
+        prefs.ptCloudOcrEnabled = true
+        prefs.ptCloudTranslateEnabled = true
+
+        PtCloudService.saveClientKey("")
+
+        assertEquals("", prefs.ptCloudClientKey)
+        assertFalse("nothing stays stored behind a disabled switch", prefs.ptCloudOcrEnabled)
+        assertFalse(prefs.ptCloudTranslateEnabled)
+    }
+
+    @Test fun `a blank or unusable key saved turns nothing on`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(prefs))
+
+        PtCloudService.saveClientKey("")
+        assertFalse(prefs.ptCloudOcrEnabled)
+        assertFalse(prefs.ptCloudTranslateEnabled)
+
+        // A character no header may carry reads as no key (PtCloudConfig.hasKey).
+        PtCloudService.saveClientKey("k\u0001ey")
+        assertFalse(prefs.ptCloudOcrEnabled)
+        assertFalse(prefs.ptCloudTranslateEnabled)
+    }
+
     @Test fun `a Running health check reconciles the shared cache's routing identity, as a gesture does`() {
         // The wall clock: the registry judges a cooldown against it.
         val state = CooldownState(null, PtCloudService.ID)
         PtCloudService.installForTest(state, PtCloudTestSupport.config(ctx))
-        PtCloudTestSupport.prefs(ctx).ptCloudEnabled = true
+        PtCloudTestSupport.prefs(ctx).ptCloudTranslateEnabled = true
         state.recordLadderFailure(CooldownLadder.RateLimit, "Not running", CooldownCause.NOT_RUNNING)
         TranslationCache.shared.resetForTest()
         // The cloud cools down: the identity is the next online service's,
@@ -148,32 +246,40 @@ class PtCloudServiceTest {
 
     @Test fun `every gesture and a health check that resets count a change, a recorded failure does not`() {
         val state = install()
+        PtCloudService.installForTest(state, PtCloudTestSupport.config(ctx))
         val before = PtCloudService.changes.value
 
-        PtCloudService.setEnabled(true)
+        PtCloudService.setOcrEnabled(true)
         assertEquals(before + 1, PtCloudService.changes.value)
-        PtCloudService.onCredentialsSaved()
+        PtCloudService.setTranslateEnabled(true)
         assertEquals(before + 2, PtCloudService.changes.value)
+        PtCloudService.saveClientKey(PtCloudTestSupport.KEY)
+        assertEquals(before + 3, PtCloudService.changes.value)
 
         state.recordLadderFailure(CooldownLadder.RateLimit, "Bad key", CooldownCause.AUTH)
-        assertEquals("a failure is no gesture", before + 2, PtCloudService.changes.value)
+        assertEquals("a failure is no gesture", before + 3, PtCloudService.changes.value)
         PtCloudService.onHealthRunning()
-        assertEquals("Running resets nothing it does not disprove", before + 2, PtCloudService.changes.value)
+        assertEquals("Running resets nothing it does not disprove", before + 3, PtCloudService.changes.value)
 
         state.resetCooldown()
         state.recordLadderFailure(CooldownLadder.RateLimit, "Not running", CooldownCause.NOT_RUNNING)
         PtCloudService.onHealthRunning()
-        assertEquals(before + 3, PtCloudService.changes.value)
+        assertEquals(before + 4, PtCloudService.changes.value)
     }
 
-    @Test fun `toggling the switch or saving credentials drops any cooldown`() {
+    @Test fun `toggling either switch or saving a key drops any cooldown`() {
         val state = install()
+        PtCloudService.installForTest(state, PtCloudTestSupport.config(ctx))
         state.recordParsedFailure(clock.get() + 3_600_000, "Daily quota used", CooldownCause.DAILY_QUOTA)
-        PtCloudService.setEnabled(true)
+        PtCloudService.setOcrEnabled(true)
+        assertNull(PtCloudService.unavailableUntil())
+
+        state.recordParsedFailure(clock.get() + 3_600_000, "Daily quota used", CooldownCause.DAILY_QUOTA)
+        PtCloudService.setTranslateEnabled(true)
         assertNull(PtCloudService.unavailableUntil())
 
         state.recordLadderFailure(CooldownLadder.RateLimit, "Rate limited")
-        PtCloudService.onCredentialsSaved()
+        PtCloudService.saveClientKey(PtCloudTestSupport.KEY)
         assertNull(PtCloudService.unavailableUntil())
     }
 

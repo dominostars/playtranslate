@@ -58,7 +58,7 @@ class FrameReadersTest {
         FrameReaders.init(ctx, CoroutineScope(Dispatchers.IO))
         FrameReaders.cloud
         val prefs = Prefs(ctx, codec).apply {
-            ptCloudEnabled = true
+            ptCloudOcrEnabled = true
             ptCloudClientKey = PtCloudTestSupport.KEY
         }
         PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(prefs))
@@ -88,7 +88,7 @@ class FrameReadersTest {
     @Test fun `init is idempotent and the switch off routes every read to the one device reader`() {
         FrameReaders.init(ctx, CoroutineScope(Dispatchers.IO))
         FrameReaders.init(ctx, CoroutineScope(Dispatchers.IO))
-        Prefs(ctx).ptCloudEnabled = false
+        Prefs(ctx).ptCloudOcrEnabled = false
         for (id in SourceLangId.entries) {
             assertSame(FrameReaders.device, FrameReaders.readerFor(id, deviceOnly = false))
             assertSame(FrameReaders.device, FrameReaders.readerFor(id, deviceOnly = true))
@@ -97,8 +97,17 @@ class FrameReadersTest {
 
     @Test fun `a device-only read stays on the device with the switch on`() {
         FrameReaders.init(ctx, CoroutineScope(Dispatchers.IO))
-        Prefs(ctx).ptCloudEnabled = true
+        Prefs(ctx).ptCloudOcrEnabled = true
         assertSame(FrameReaders.device, FrameReaders.readerFor(SourceLangId.JA, deviceOnly = true))
+    }
+
+    /** The translation switch decides what the cloud reader asks for, never
+     *  where a frame is read. */
+    @Test fun `the translation switch alone routes every read to the device`() {
+        FrameReaders.init(ctx, CoroutineScope(Dispatchers.IO))
+        Prefs(ctx).ptCloudOcrEnabled = false
+        Prefs(ctx).ptCloudTranslateEnabled = true
+        assertSame(FrameReaders.device, FrameReaders.readerFor(SourceLangId.JA, deviceOnly = false))
     }
 
     @Test fun `the test override wins over the router`() {
@@ -119,7 +128,7 @@ class FrameReadersTest {
 
     @Test fun `the warm returns at once with the switch off`() {
         FrameReaders.init(ctx, CoroutineScope(Dispatchers.IO))
-        Prefs(ctx).ptCloudEnabled = false
+        Prefs(ctx).ptCloudOcrEnabled = false
         // Nothing to observe but that it neither throws nor blocks.
         FrameReaders.warm(SourceLangId.JA, deviceOnly = false)
         FrameReaders.warm(SourceLangId.JA, deviceOnly = true)

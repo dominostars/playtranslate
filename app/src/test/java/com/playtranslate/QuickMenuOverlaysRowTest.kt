@@ -194,7 +194,7 @@ class QuickMenuOverlaysRowTest {
     // tier (every tier reads through the same router), so the row leaves it
     // as the network last drew it.
     @Test fun `the row leaves the cloud strip alone`() {
-        prefs.ptCloudEnabled = true
+        prefs.ptCloudOcrEnabled = true
         val menu = openQuickMenu()
         assertEquals(HoldBehavior.HIDE_TRANSLATIONS, svc.holdBehavior)
         menu.cloudAvailable = true

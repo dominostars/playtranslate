@@ -61,7 +61,7 @@ class GroupTranslator(
 
     companion object {
         /** A backend's configuration changed under the same id (an LLM's
-         *  model, key or URL; the cloud's switch or key): every translation
+         *  model, key or URL; the cloud's translation switch or key): every translation
          *  the process's one cache holds was made under the old one, so it
          *  is dropped, for every surface, whether or not the capture service
          *  runs. The settings pages' one hook for that. */

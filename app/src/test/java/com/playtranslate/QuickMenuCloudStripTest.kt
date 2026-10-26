@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.os.Looper
 import android.view.Display
 import android.view.View
+import androidx.core.view.allViews
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.capture.CaptureLifecycle
 import com.playtranslate.cloud.PtCloudService
@@ -17,6 +18,7 @@ import kotlinx.coroutines.Job
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -121,14 +123,53 @@ class QuickMenuCloudStripTest {
         .getDeclaredField("cloudHeader").apply { isAccessible = true }.get(menu) as View
 
     @Test fun `with the switch off the menu has no strip and follows nothing`() {
-        prefs.ptCloudEnabled = false
+        prefs.ptCloudOcrEnabled = false
         val menu = openQuickMenu()
         assertEquals(View.GONE, strip(menu).visibility)
         assertNull(cloudJob())
     }
 
+    /** The strip answers whether the next capture would be READ on the
+     *  cloud; the translation switch has no say over that. */
+    @Test fun `the translation switch alone shows no strip`() {
+        prefs.ptCloudOcrEnabled = false
+        prefs.ptCloudTranslateEnabled = true
+        val menu = openQuickMenu()
+        assertEquals(View.GONE, strip(menu).visibility)
+        assertNull(cloudJob())
+    }
+
+    /** The expanded panel's OCR row names the reader captures go to: the
+     *  cloud while its OCR switch is on (the selection, whatever the key or
+     *  network: the strip above answers availability), else the device
+     *  engine. */
+    @Test fun `the panel's OCR row names the cloud while its OCR switch is on`() {
+        prefs.ptCloudOcrEnabled = false
+        val deviceName = ocrRowValue(openQuickMenu())
+        assertFalse(deviceName.isEmpty())
+        assertNotEquals("PlayTranslate Cloud", deviceName)
+
+        prefs.ptCloudOcrEnabled = true
+        assertEquals("PlayTranslate Cloud", ocrRowValue(openQuickMenu()))
+
+        prefs.ptCloudOcrEnabled = false
+        prefs.ptCloudTranslateEnabled = true
+        assertEquals("the translation switch does not name it", deviceName, ocrRowValue(openQuickMenu()))
+    }
+
+    /** The value of the panel row titled "OCR" (settings_row_value: a title
+     *  and a value under one row view). */
+    private fun ocrRowValue(menu: FloatingIconMenu): String {
+        val title = ctx.getString(R.string.floating_menu_panel_ocr)
+        val titleView = menu.allViews.filterIsInstance<android.widget.TextView>()
+            .first { it.id == R.id.tvRowTitle && it.text.toString() == title }
+        var row: View = titleView
+        while (row.findViewById<View>(R.id.tvRowValue) == null) row = row.parent as View
+        return row.findViewById<android.widget.TextView>(R.id.tvRowValue).text.toString()
+    }
+
     @Test fun `the first glyph is drawn with the window, before its first frame, wifi with a key and wifi_off without`() {
-        prefs.ptCloudEnabled = true
+        prefs.ptCloudOcrEnabled = true
         PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudTestSupport.config(ctx))
         val keyed = openQuickMenu()
         // Nothing has been idled since the tap: the window is added and no
@@ -143,7 +184,7 @@ class QuickMenuCloudStripTest {
     }
 
     @Test fun `with the switch on the menu has the strip and follows the network`() {
-        prefs.ptCloudEnabled = true
+        prefs.ptCloudOcrEnabled = true
         val menu = openQuickMenu()
         assertEquals(View.VISIBLE, strip(menu).visibility)
         assertFalse("no key here, so unavailable", menu.cloudAvailable)
@@ -151,7 +192,7 @@ class QuickMenuCloudStripTest {
     }
 
     @Test fun `every network change while the menu is up redraws the strip`() {
-        prefs.ptCloudEnabled = true
+        prefs.ptCloudOcrEnabled = true
         val menu = openQuickMenu()
 
         menu.cloudAvailable = true
@@ -169,7 +210,7 @@ class QuickMenuCloudStripTest {
     // Codex: the switch ends a "Connection failed" cooldown, and the strip
     // never heard of it while the state stayed UNVALIDATED.
     @Test fun `a switch between two unvalidated networks redraws the strip`() {
-        prefs.ptCloudEnabled = true
+        prefs.ptCloudOcrEnabled = true
         val menu = openQuickMenu()
         assertEquals(NetworkConnectivity.InternetState.UNVALIDATED, NetworkConnectivity.state.value.internet)
 
@@ -181,7 +222,7 @@ class QuickMenuCloudStripTest {
     }
 
     @Test fun `closing the menu stops it following the network`() {
-        prefs.ptCloudEnabled = true
+        prefs.ptCloudOcrEnabled = true
         val menu = openQuickMenu()
         val job = cloudJob()!!
 
@@ -196,7 +237,7 @@ class QuickMenuCloudStripTest {
     }
 
     @Test fun `a menu opened over another follows alone`() {
-        prefs.ptCloudEnabled = true
+        prefs.ptCloudOcrEnabled = true
         val first = openQuickMenu()
         val second = openQuickMenu()
 

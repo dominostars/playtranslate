@@ -1,7 +1,7 @@
 package com.playtranslate.cloud
 
+import com.playtranslate.R
 import com.playtranslate.ocr.FrameReaders
-import com.playtranslate.translation.AccountRequirement
 import com.playtranslate.translation.BackendFailure
 import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.translation.BackendStatus
@@ -24,7 +24,7 @@ import kotlinx.coroutines.withContext
  * every translation the app makes without a frame (an edited text, a
  * sentence, select-to-translate, a group a frame's reader left unnamed)
  * goes through `POST /v1/translate` ([PtCloudClient.postTranslate]) while
- * the service is switched on with a key stored. Registered once, at
+ * the service's translation switch is on with a key stored. Registered once, at
  * [com.playtranslate.PlayTranslateApplication.onCreate], with a fixed id;
  * never a store instance.
  *
@@ -99,21 +99,24 @@ class PtCloudBackend(
      */
     override val usableAsOfflineFallback: Boolean get() = false
 
-    /** The status line of the service's Translation services row: "Account
-     *  required" while no usable key is stored ([PtCloudConfig.hasKey]), as
-     *  a Gemini, DeepL or OpenAI row reads before its key is saved; none
-     *  once one is, where the row shows the key's tail instead. */
+    /** The status line of the service's Translation services row: while no
+     *  usable key is stored ([PtCloudConfig.hasKey]) the service's one-line
+     *  pitch (the row has no description slot, and this line is its only one
+     *  under the title; the store rows read "Account required" here), with
+     *  the row's tap leading to the cloud page where the key goes; none once
+     *  a key is, where the row shows the key's tail instead. */
     override val status: BackendStatus
         get() = if (config().hasKey) BackendStatus.Hidden
-        else BackendStatus.Account(AccountRequirement.REQUIRED)
+        else BackendStatus.Info(R.string.pt_cloud_translate_row_subtitle_no_key)
 
-    /** Switched on with a usable key ([PtCloudRouting.configured]); the key
-     *  is read, and so decrypted, only when the switch is on. Any pair: the
-     *  route takes any code. The network and the cooldown are the
-     *  registry's to judge. */
+    /** The translation switch on ([PtCloudConfig.translateEnabled]; the OCR
+     *  switch has no say over the waterfall) with a usable key
+     *  ([PtCloudRouting.configured]); the key is read, and so decrypted,
+     *  only when the switch is on. Any pair: the route takes any code. The
+     *  network and the cooldown are the registry's to judge. */
     override fun isUsable(source: String, target: String): Boolean {
         val config = config()
-        return PtCloudRouting.configured(config.enabled) { config.hasKey }
+        return PtCloudRouting.configured(config.translateEnabled) { config.hasKey }
     }
 
     override suspend fun translate(text: String, source: String, target: String): String =
@@ -140,9 +143,9 @@ class PtCloudBackend(
      *    and the first failure ([PtCloudReadException], already recorded by
      *    the client) ends the batch: calls in parallel would record one
      *    transport failure twice and spend the budget twice.
-     *  - Before EACH call the switch and the key are read again ([isUsable]):
-     *    the registry asks once per batch, and a user who switches the
-     *    service off, or clears its key, while a batch of several calls runs
+     *  - Before EACH call the translation switch and the key are read again
+     *    ([isUsable]): the registry asks once per batch, and a user who
+     *    switches the route off, or clears its key, while a batch of several calls runs
      *    has opted out of the calls not yet sent. Such a call is refused as
      *    [StructuralFailureException] (REJECTED, no server answered) before
      *    any request, and the registry hands the whole list to the next

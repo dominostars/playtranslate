@@ -14,6 +14,7 @@ import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.TranslationCache
 import com.playtranslate.cloud.HealthStatus
+import com.playtranslate.cloud.PtCloudConfig
 import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.cloud.PtCloudTestSupport
 import com.playtranslate.translation.CooldownCause
@@ -37,14 +38,17 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
 
 /**
- * The PlayTranslate Cloud page: its switch seeds from the pref without
- * resetting the service and keeps its own state across a recreate, a flip
- * writes the pref and resets the service's cooldown through the service's
- * one mutation (the pref stored before the reset's reconcile of the shared
- * cache), it is the page's only switch and the client key the page's only
- * text field (the upload format, the item lines and the warm call are fixed,
- * as is the service's address), Save resets the service and starts a check,
- * and the status row shows the check's answer in its wording for each.
+ * The PlayTranslate Cloud page: its two "use for" switches (Read captures,
+ * Translate) seed from their prefs without resetting the service and keep
+ * their state across a recreate, a flip writes its pref and resets the
+ * service's cooldown through the service's one mutation for that switch
+ * (the pref stored before the reset's reconcile of the shared cache), they
+ * repaint from the service's change signal when flipped elsewhere, they are
+ * the page's only switches and the client key the page's only text field
+ * (the upload format, the item lines and the warm call are fixed, as is the
+ * service's address), Save resets the service and starts a check (and a
+ * first key turns both switches on), and the status row shows the check's
+ * answer in its wording for each.
  *
  * The client key is not asserted: the page's [Prefs] uses the AndroidKeyStore
  * codec, which a JVM test has none of (the key round trip is
@@ -91,37 +95,77 @@ class PtCloudSettingsActivityTest {
     private fun recordCooldown() =
         cooldown.recordParsedFailure(System.currentTimeMillis() + 10 * 60_000L, "Rate limited", CooldownCause.RATE_LIMITED)
 
-    private fun PtCloudSettingsActivity.toggleRow() = findViewById<View>(R.id.rowCloudToggle)
-    private fun PtCloudSettingsActivity.switch() = toggleRow().findViewById<MaterialSwitch>(R.id.switchRowToggle)
+    private fun PtCloudSettingsActivity.ocrRow() = findViewById<View>(R.id.rowCloudOcr)
+    private fun PtCloudSettingsActivity.translateRow() = findViewById<View>(R.id.rowCloudTranslate)
+    private fun View.switch() = findViewById<MaterialSwitch>(R.id.switchRowToggle)
+    private fun View.title() = findViewById<TextView>(R.id.tvRowTitle).text.toString()
     private fun PtCloudSettingsActivity.saveButton() = findViewById<MaterialButton>(R.id.btnCloudSave)
     private fun PtCloudSettingsActivity.status() = findViewById<TextView>(R.id.tvCloudStatus).text.toString()
     private fun PtCloudSettingsActivity.cooldownLine() = findViewById<TextView>(R.id.tvCloudCooldown)
 
-    // ── The switch ────────────────────────────────────────────────────────
+    // ── The two switches ──────────────────────────────────────────────────
 
-    @Test fun `the switch seeds on from the pref, keeps it across a recreate, and resets nothing`() {
-        prefs.ptCloudEnabled = true
+    /** A usable key stored on the service, so the rows are live. */
+    private fun withKey() = PtCloudService.installForTest(cooldown, PtCloudTestSupport.config(ctx))
+
+    @Test fun `the switches seed from their prefs, keep them across a recreate, and reset nothing`() {
+        withKey()
+        prefs.ptCloudOcrEnabled = true
+        prefs.ptCloudTranslateEnabled = false
         recordCooldown()
         val page = open()
-        assertTrue(page.switch().isChecked)
-        assertEquals("Use PlayTranslate Cloud", page.toggleRow().findViewById<TextView>(R.id.tvRowTitle).text.toString())
+        assertTrue(page.ocrRow().switch().isChecked)
+        assertFalse(page.translateRow().switch().isChecked)
+        assertTrue(page.ocrRow().switch().isEnabled)
+        assertEquals("Read the screen", page.ocrRow().title())
+        assertEquals("Translate the text", page.translateRow().title())
 
         controller!!.recreate()
         shadowOf(Looper.getMainLooper()).idle()
 
-        assertTrue(controller!!.get().switch().isChecked)
-        assertTrue(prefs.ptCloudEnabled)
-        // Seeding through the listener would have reset the service.
+        assertTrue(controller!!.get().ocrRow().switch().isChecked)
+        assertFalse(controller!!.get().translateRow().switch().isChecked)
+        assertTrue(prefs.ptCloudOcrEnabled)
+        assertFalse(prefs.ptCloudTranslateEnabled)
+        // Seeding through the listeners would have reset the service.
         assertNotNull("building or restoring the page resets nothing", PtCloudService.unavailableUntil())
     }
 
-    @Test fun `the switch seeds off from the pref`() {
+    @Test fun `the switches seed off from the prefs`() {
+        withKey()
         val page = open()
-        assertFalse(page.switch().isChecked)
-        assertFalse(prefs.ptCloudEnabled)
+        assertFalse(page.ocrRow().switch().isChecked)
+        assertFalse(page.translateRow().switch().isChecked)
+        assertFalse(prefs.ptCloudOcrEnabled)
+        assertFalse(prefs.ptCloudTranslateEnabled)
     }
 
-    @Test fun `a row tap writes the pref and resets the cooldown, either way`() {
+    /** No usable key saved: the rows are disabled and their switches off,
+     *  whatever is stored, and a tap on them writes and resets nothing. The
+     *  key field below is the first step. */
+    @Test fun `with no key the switches are disabled and off, and a row tap does nothing`() {
+        prefs.ptCloudOcrEnabled = true
+        recordCooldown()
+        val page = open()
+        for (row in listOf(page.ocrRow(), page.translateRow())) {
+            assertFalse(row.switch().isEnabled)
+            assertFalse(row.switch().isChecked)
+            assertFalse(row.isEnabled)
+            assertEquals(0.5f, row.alpha)
+        }
+
+        page.ocrRow().performClick()
+        page.translateRow().performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertFalse(page.ocrRow().switch().isChecked)
+        assertTrue("nothing written", prefs.ptCloudOcrEnabled)
+        assertFalse(prefs.ptCloudTranslateEnabled)
+        assertNotNull("nothing reset", PtCloudService.unavailableUntil())
+    }
+
+    @Test fun `a row tap writes its pref alone and resets the cooldown, either way`() {
+        withKey()
         recordCooldown()
         val page = open()
         assertTrue("the cooldown line shows while it runs", page.cooldownLine().isVisible)
@@ -130,41 +174,65 @@ class PtCloudSettingsActivityTest {
             page.cooldownLine().text.toString().startsWith("Rate limited · Retry at "),
         )
 
-        page.toggleRow().performClick()
+        page.ocrRow().performClick()
         shadowOf(Looper.getMainLooper()).idle()
-        assertTrue(page.switch().isChecked)
-        assertTrue(prefs.ptCloudEnabled)
+        assertTrue(page.ocrRow().switch().isChecked)
+        assertTrue(prefs.ptCloudOcrEnabled)
+        assertFalse("the other switch is its own", prefs.ptCloudTranslateEnabled)
         assertNull(PtCloudService.unavailableUntil())
         assertFalse(page.cooldownLine().isVisible)
 
         recordCooldown()
-        page.toggleRow().performClick()
-        assertFalse(page.switch().isChecked)
-        assertFalse(prefs.ptCloudEnabled)
+        page.ocrRow().performClick()
+        assertFalse(page.ocrRow().switch().isChecked)
+        assertFalse(prefs.ptCloudOcrEnabled)
+        assertNull(PtCloudService.unavailableUntil())
+
+        recordCooldown()
+        page.translateRow().performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(page.translateRow().switch().isChecked)
+        assertTrue(prefs.ptCloudTranslateEnabled)
+        assertFalse("the other switch is its own", prefs.ptCloudOcrEnabled)
+        assertNull(PtCloudService.unavailableUntil())
+
+        recordCooldown()
+        page.translateRow().performClick()
+        assertFalse(page.translateRow().switch().isChecked)
+        assertFalse(prefs.ptCloudTranslateEnabled)
         assertNull(PtCloudService.unavailableUntil())
     }
 
-    /** The cooldown line repaints from the service's change signal: a
-     *  gesture made elsewhere (the services row's switch) while the page is
-     *  resumed reaches it with no call of the page's own. */
-    @Test fun `the cooldown line repaints from the service's change signal`() {
+    /** The cooldown line and the switches repaint from the service's change
+     *  signal: a gesture made elsewhere (the services row's switch, the OCR
+     *  picker over the game) while the page is resumed reaches them with no
+     *  call of the page's own. */
+    @Test fun `the cooldown line and the switches repaint from the service's change signal`() {
+        withKey()
         recordCooldown()
         val page = open()
         assertTrue(page.cooldownLine().isVisible)
+        assertFalse(page.ocrRow().switch().isChecked)
 
-        PtCloudService.setEnabled(true)
+        PtCloudService.setOcrEnabled(true)
         shadowOf(Looper.getMainLooper()).idle()
 
         assertFalse(page.cooldownLine().isVisible)
+        assertTrue("flipped elsewhere, shown here", page.ocrRow().switch().isChecked)
+        assertFalse(page.translateRow().switch().isChecked)
+        // The repaint wrote nothing: a second gesture would have counted.
+        val changes = PtCloudService.changes.value
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(changes, PtCloudService.changes.value)
     }
 
-    /** The switch goes through [PtCloudService.setEnabled], the mutation the
-     *  service's Translation services row shares: the pref is stored before
-     *  the reset, whose reconcile then reads it, so the shared cache's
-     *  routing identity is the cloud's once a flip turns it on with a key
-     *  stored. A page that reset first and stored after would leave the
-     *  identity on the old switch. */
-    @Test fun `the switch goes through the service's one mutation, the pref stored before the reset's reconcile`() {
+    /** The Translate switch goes through [PtCloudService.setTranslateEnabled],
+     *  the mutation the service's Translation services row shares: the pref
+     *  is stored before the reset, whose reconcile then reads it, so the
+     *  shared cache's routing identity is the cloud's once a flip turns it on
+     *  with a key stored. A page that reset first and stored after would
+     *  leave the identity on the old switch. */
+    @Test fun `the Translate switch goes through the service's one mutation, the pref stored before the reset's reconcile`() {
         PtCloudService.installForTest(cooldown, PtCloudTestSupport.config(ctx))
         recordCooldown()
         val page = open()
@@ -172,9 +240,9 @@ class PtCloudSettingsActivityTest {
         GroupTranslator.reconcileShared(ctx)
         assertNotEquals(PtCloudService.ID, TranslationBackendRegistry.preferredOnlineId("ja", "en"))
 
-        page.toggleRow().performClick()
+        page.translateRow().performClick()
 
-        assertTrue(prefs.ptCloudEnabled)
+        assertTrue(prefs.ptCloudTranslateEnabled)
         assertNull(PtCloudService.unavailableUntil())
         assertEquals(PtCloudService.ID, TranslationBackendRegistry.preferredOnlineId("ja", "en"))
         // The flip's reconcile already moved the identity onto the cloud, so
@@ -185,10 +253,44 @@ class PtCloudSettingsActivityTest {
         assertEquals("one" to PtCloudService.DISPLAY_NAME, TranslationCache.shared[key])
     }
 
-    @Test fun `the service's switch is the page's only switch`() {
+    @Test fun `the page's two switches are the service's two, and no master`() {
         val page = open()
         val switches = page.window.decorView.allViews.filterIsInstance<MaterialSwitch>().toList()
-        assertEquals(listOf(page.switch()), switches)
+        assertEquals(listOf(page.ocrRow().switch(), page.translateRow().switch()), switches)
+    }
+
+    /** The first key saved turns both switches on, through the service
+     *  ([PtCloudService.saveClientKey]); the rows show it from the change
+     *  signal, with no resume. The key is stored through a fake codec
+     *  installed on the service, since the page's own Prefs stores none. */
+    @Test fun `Save with a first key turns both switches on and live, shown at once, and a cleared key turns them off and disabled`() {
+        val cloudPrefs = PtCloudTestSupport.prefs(ctx)
+        PtCloudService.installForTest(cooldown, PtCloudConfig(cloudPrefs))
+        val page = open()
+        assertFalse(page.ocrRow().switch().isEnabled)
+        assertFalse(page.ocrRow().switch().isChecked)
+        assertFalse(page.translateRow().switch().isChecked)
+
+        page.findViewById<EditText>(R.id.etCloudKey).setText(PtCloudTestSupport.KEY)
+        page.saveButton().performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(PtCloudTestSupport.KEY, cloudPrefs.ptCloudClientKey)
+        assertTrue(cloudPrefs.ptCloudOcrEnabled)
+        assertTrue(cloudPrefs.ptCloudTranslateEnabled)
+        assertTrue(page.ocrRow().switch().isEnabled)
+        assertTrue(page.ocrRow().switch().isChecked)
+        assertTrue(page.translateRow().switch().isChecked)
+
+        page.findViewById<EditText>(R.id.etCloudKey).setText("")
+        page.saveButton().performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertFalse(cloudPrefs.ptCloudOcrEnabled)
+        assertFalse(cloudPrefs.ptCloudTranslateEnabled)
+        assertFalse(page.ocrRow().switch().isEnabled)
+        assertFalse(page.ocrRow().switch().isChecked)
+        assertFalse(page.translateRow().switch().isChecked)
     }
 
     // ── The key and Save ──────────────────────────────────────────────────
