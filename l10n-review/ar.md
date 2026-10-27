@@ -991,3 +991,147 @@ Clean areas: The note keeps all three English facts: free and keyless; run by Bi
 ### Disposition (2026-10-14)
 
 Applied the 1 💬 («حدود لاستخدامها»).
+
+## Delta review 2026-10-27 (PlayTranslate Cloud: 24 keys; plus the owed review of 15 keys localized outside the sync)
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports `39 keys x 13 locales: 0 problems` (no ar line: all 39 present; every `<xliff:g>` span byte-identical to EN; `%1$s` / `%1$d` parity; no `<b>`, `\n`, `\{ \}` or entities on either side; the three EN `\'` (`pt_cloud_ocr_toggle_subtitle`, `pt_cloud_status_unreachable`, `keep_running_screen_unavailable`) have no apostrophe to carry in ar; no raw `'`/`"`, no edge or double spaces; the file parses as XML); `python3 scripts/l10n_diff.py --locale app/src/main/res/values-ar/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync". `git diff` of `values-ar/strings.xml` holds exactly the 24 Part A keys (23 added, `keep_running_screen_unavailable` changed). **No 🛑 build-breaking issues.**
+
+Render code read before reviewing: `TranslationErrorPills.buildRow` (14 sp, `maxLines=2`, ellipsized; on a 360 dp portrait phone the text gets about 174 dp, in landscape far more); `PtCloudSettingsActivity` + `activity_pt_cloud_settings.xml` (switch rows from `settings_row_switch.xml`, subtitles wrap with no `maxLines`; the key hint sits in a `singleLine` 13 sp field about 280 dp wide; the status row is two TextViews, title `weight=1` and value `wrap_content`, so title and value are never one composed string); `settings_row_hub.xml` (summary 13 sp, `singleLine` + `ellipsize=end`, 218 dp on a 360 dp phone after the hub's 14 dp page padding, 178 dp on a 320 dp phone); `CaptureOverlaySettingsActivity.renderCloudOcrRow` and `item_online_service.xml` (both lines wrap); `FloatingIconMenu.updateCloudHeader` (contentDescription only; the visible label is the brand); `KeepRunningActivity` (`LENGTH_LONG` toast); `PillToggle.buildPillToggle` (segments 13 sp, auto-shrink to 10 sp, 8 dp side padding when more than three); `WordDetailBinder.addGroupHeader` (`uppercase(Locale.ROOT)` + `Text.PT.GroupHeader`); `RegionEditorControls.pill` (14 sp, `isSingleLine`, 16 dp margins and padding); `ScreenshotCropPage` (`hidesHeader = true`, so `anki_screenshot_crop` is heard as the button label, not seen as a title); `MagnifierLens.addLoadMoreRow` (13 sp, one line, alternates with `lens_loading`).
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| pt_cloud_status_running | ⚠️ | `تعمل` | `قيد التشغيل` | One English term, one translation. "Running" is «قيد التشغيل» in the file's two other strings that say it (`onboarding_notif_row_status_sub`, `anki_send_failed_message`) and in AOSP (`notification_channel_heavy_weight_app` "App running" = «التطبيق قيد التشغيل»), and AOSP pairs it with «متوقف» for on/off (`roamingText0` / `roamingText1`), the same pair this row then forms with `pt_cloud_status_not_running` «متوقفة». As a lone value, «تعمل» can also be read as second person ("you work"). With the fix the row's server states share one root: «جارٍ بدء التشغيل» → «قيد التشغيل» → «متوقفة». |
+| word_detail_group_declension | ⚠️ | `الإعراب` | `تصريف الاسم` | «الإعراب» is Arabic grammar's case-ending system, and to most readers the school exercise of parsing a sentence (إعراب الجملة). The card is a German noun's case-by-number table, and number is not إعراب. «تصريف الاسم» ("the noun's inflection") names the whole table, and Arabic grammars of German call this table «تصريف الأسماء» (from memory). It stays one definite noun phrase like «التعريفات». |
+| word_detail_group_conjugation | 💬 | `التصريف` | `تصريف الفعل` | Apply only with the row above. Bare «التصريف» is the generic word for inflection (and the name of morphology). Next to «تصريف الاسم» it should say whose, and «تصريف الفعل» / «تصريف الاسم» then read as a pair when a page shows both kinds of card. On its own «التصريف» is correct. |
+
+3 rows: 2 ⚠️, 1 💬. No ❌, no 🛑. The other 36 keys pass as they are. One code observation that is not a string finding (the segmented control's selected pill in RTL) is in the appendix.
+
+### Clean areas (checked, no findings)
+
+**Translation error pill.** `translation_error_not_running` takes the family's «خدمة %1$s: …» shape (the decision recorded on 2026-09-29), and «متوقفة» agrees with خدمة and byte-matches `pt_cloud_status_not_running`, so the pill and the page it opens say the same word. On a 360 dp portrait phone the text gets about 174 dp, so it takes 2 lines, as the English does: «خدمة PlayTranslate Cloud:» | «متوقفة», breaking after the colon. In landscape it is one line.
+
+**PlayTranslate Cloud page, read top to bottom.**
+- **The two switch rows read as a pair.** Both titles are verbal nouns, like the file's other switch titles: «قراءة النص على الشاشة» / «ترجمة النص».
+- **OCR subtitle.** «وحدة GPU» follows the file's pattern for a Latin initialism («مفتاح API», «عنوان URL», «نموذج LLM»). «قدرة جهازك» is processing power, the right word here; «طاقة» would suggest the battery.
+- **Translate subtitle.** «تتضمن … ويُختار أفضلها لكل مهمة» agrees throughout: feminine for the implied service, and ـها for the non-human plural نماذج.
+- **Key card.** «مفتاح العميل» uses the file's «مفتاح» (`llm_backend_api_key_label` «مفتاح API», `tr_service_key_tail_fmt` «المفتاح ••••»). The hint's «الصق» is `hint_deepl_key`'s verb. The hint measures 140 dp in its 280 dp field.
+- **Status row, all seven values with the title «الخدمة».**
+  - «تعذّر الاتصال» is `translation_error_unreachable`'s status byte for byte.
+  - «استجابة غير متوقعة (500)» is `translation_error_bad_response`'s status plus the code. EN's "answer" against "response" is not a distinction worth two words.
+  - «متوقفة» is the pill's word (see the pill paragraph above).
+  - «جارٍ التحقق» is AOSP's `ext_media_status_checking`, without the ellipsis, which EN also lacks.
+  - «جارٍ بدء التشغيل» follows AOSP's «جارٍ بدء تشغيل الهاتف…».
+  - «لم يتم التحقق» is only the layout default, which `onResume` replaces with «جارٍ التحقق» before the first frame (from code).
+  - Only «تعمل» is a finding.
+
+**Settings hub, Configure card.**
+- **«معطّل»** matches the History cell's «معطّل · سجل الجمل الملتقَطة» and `capture_lifecycle_state_off`. Masculine is the unmarked form under a Latin title.
+- **«بقوة الخوادم»** renders "Server-grade" as the comment defines it: on the server rather than on the device.
+- **Widths.** Measured at 13 sp with Geeza Pro (the tool's Arabic font, about 3% narrower than Noto Naskh Arabic UI by the 2026-10-07 calibration): pitch 152 dp, OCR only 133, translation only 55. Each is one line at 218 dp (360 dp phone) and at 178 dp (320 dp phone), so none ellipsizes; the English pitch already does at 178.
+
+**The OCR term.** All four delta strings that say "OCR" render it as «قراءة النص», where the file elsewhere keeps the Latin token (أداة OCR، نموذج OCR، تقنية OCR). This passes for three reasons:
+- The OCR section's header «تحويل الصورة إلى نص (OCR)» names the term, and the engine notes under it already describe OCR as reading («يقرأ النص الصغير»).
+- The English itself calls the switch "Read the screen".
+- Putting the token first in the hub pitch would start the line with a Latin word.
+
+**Capture & overlay, Translation services, quick menu.**
+- **OCR row.** «قراءة النص بقوة الخوادم، دون أي عبء على الجهاز» has the two-clause shape of the engine notes under it («يقرأ النص الصغير، لكنه أبطأ»).
+- **Services row.** «أفضل نماذج الترجمة المدفوعة مضمّنة» stands where other rows read «يتطلب حسابًا». «مضمّنة» agrees with the non-human plural نماذج and echoes the switch subtitle's «تتضمن». Both lines wrap.
+- **Quick menu.** The two labels take the pill family's shape, and «متاحة / غير متاحة» agree with خدمة. The services row's own `backend_status_unavailable_default` «غير متاح» stands without a noun, so the different gender is right in each place.
+
+**Fix disappearing icon toast.**
+- **The new first sentence says what the English now says:** «تعذّر فتح الشاشة المطلوبة.» «الشاشة المطلوبة» cannot be taken for the App info page that opens next. The second sentence is byte-identical to the value passed on 2026-10-07, and «ابحث عن» is the cards' verb.
+- **Width.** Measured at 14 sp: 394 dp (Geeza Pro), about 407 dp in Noto. It takes 2 lines at 264, 296 and 320 dp: at 296 the break falls after «في». The reworded English is now 2 lines as well.
+
+**Part B, thinking row and levels.**
+- **Same word.** Both titles use التفكير («وضع التفكير», «مستوى التفكير»), as the comments require. Both subtitles keep that root for "reasons" («يفكّر», «تفكير»).
+- **Tokens.** «توكنات» matches `tr_service_status_usage_today_fmt` «التوكنات اليوم».
+- **«أبطأ،».** The bare comparative mirrors "Slower," and has precedent in `settings_ocr_tier_fast_note` («أسرع بكثير، …»). «كلما ارتفع كان أبطأ» is idiomatic for "Higher is slower".
+- **Segments.** They are masculine, agreeing with مستوى. «معطّل» is the file's Off. «أدنى» reads as the step below «منخفض», which is what Google's "Minimal" is. Each label measures 22 to 37 dp at 13 sp, against about 57 dp of label room in a four-segment row (the code comment's 45 dp at 14 dp padding, plus 12), so none needs the auto-shrink.
+
+**Part B, crop, load more, group headers.**
+- **Crop button.** «اقتصاص» is the standard crop verb, and «اقتصاص لقطة الشاشة» pairs with the remove button's «إزالة لقطة الشاشة».
+- **Crop instruction.** It has `region_overlay_drag_instruction`'s «اسحب الحواف لـ…» shape. At 193 dp in a one-line pill it is far inside its room: at least 272 dp in the workspace card on a 360 dp portrait phone (12 dp inset, 16 dp margins, 16 dp padding), and 296 dp in the sheets' full-screen dialog.
+- **Load more.** «تحميل» is the file's "load" and «تنزيل» its "download"; «المزيد» is the file's "more" (`word_detail_more_examples` «المزيد من الأمثلة»). The row measures 74 dp, on one line.
+- **Group headers.** «الصيغ» sits with «التعريفات» as a definite noun. «التصريف» is correct alone (see the findings for the pair).
+
+**Register and grammar, all 39.**
+- Formal MSA, with masculine-singular imperatives (الصق، ابحث، اسحب) as in the rest of the file.
+- Spelling follows the file: «جارٍ» (54 uses, never جاري), «تعذّر» with shadda (33 uses), «معطّل», «مضمّنة».
+- Every status word agrees with its subject, as checked above.
+
+### RTL render notes
+
+- **Paragraph direction.** All 39 values start with an Arabic letter (bidi class AL), checked by script with real values filled in («PlayTranslate Cloud», «500», «٢»). So every TextView resolves an RTL paragraph under Android's first-strong heuristic. None contains a bidi control, NBSP, zero-width character or tatweel. The only punctuation is `:` `.` `،` `( )`, and no string asks a question or gives a path, so none needs ؟ or ←.
+- **Runs**, computed with `java.text.Bidi` on a default-RTL paragraph:
+  - `translation_error_not_running` and both `floating_menu_pt_cloud_*` give `[R «خدمة »] [L «PlayTranslate Cloud»] [R «: متوقفة»]`. The space inside the name stays in the Latin run (N1). The colon resolves to the RTL side (N2), so it reads name, colon, status. When the pill wraps in portrait, the colon closes line 1 at its left end.
+  - In `pt_cloud_ocr_toggle_subtitle`, «GPU» is one Latin run inside the Arabic sentence.
+  - `pt_cloud_status_other` gives `[R «استجابة غير متوقعة (»] [L «500»] [R «)»]`. N0 counts the digits as R inside the pair, so both brackets resolve RTL and mirror, and the code sits at the left end of the value. `load_more_count` resolves the same way.
+- **Digits.** The code passes `status.code.toString()` into `%1$s`, so the HTTP code stays ASCII, as in `translation_error_rejected_code`'s «(HTTP 404)». `load_more_count` is `%1$d`, formatted in the UI locale, so most Arabic regions show «(٢)» (which regions use Latin digits: from memory). Either digit kind pairs correctly.
+- **Group headers.** `uppercase(Locale.ROOT)` and `textAllCaps` leave Arabic unchanged. Minikin applies no letter spacing to Arabic script (from memory), so the style's 0.12 spacing does not break the joins. The lemma badge (e.g. «venir») is its own TextView, so it never enters the header's bidi.
+- **Segment order.** The row's LinearLayout lays segments out from the right, so the scale runs from «معطّل» or «أدنى» at the right to «مرتفع» at the left. That is the natural RTL order.
+- **Code observation, outside the strings** (from code, not run on a device): in RTL, a selected segment other than the first may show as a blank.
+  - **Mechanism.** `PillToggle.buildPillToggle` places the accent indicator with `translationX = pillW * index`, both after layout and in the tap animation. In RTL the LinearLayout puts segment 0 at the right edge, and the FrameLayout puts the indicator at START, which is also the right edge. Any index above 0 therefore pushes the indicator further right, off the track, which clips it. The selected label is drawn in `ptSurface`, the track's own colour.
+  - **Where it shows.** It affects the new thinking levels (every pick but the first segment). It also predates this delta: the Overlay mode toggle on the Capture & overlay page with Furigana selected, and `RegionPickerSheet`'s display control. No earlier ar section mentions it.
+  - **Fix shape.** Negating the translation when the layout is RTL is the shape of a fix. Reported, not fixed.
+- **Device pass still owed on an ar device.**
+  - Carried over: the toast wrap and the centred alerts.
+  - New: the error pill's two-line wrap in portrait, the status row's value at the left edge, and the segmented control above.
+
+### Disposition (2026-10-27)
+
+All three findings applied: `pt_cloud_status_running` «قيد التشغيل» (the file's and AOSP's word, and the row now reads جارٍ بدء التشغيل / قيد التشغيل / متوقفة), `word_detail_group_declension` «تصريف الاسم», and with it `word_detail_group_conjugation` «تصريف الفعل» so the two headers read as a pair. The `PillToggle.buildPillToggle` RTL observation is a code finding, verified in code (`translationX = pillW * index` with no layout-direction handling) but not run on a device; reported to the developer, not fixed in this sync.
+
+### Round 2 (2026-10-27), final review after applying round 1
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports `39 keys x 13 locales: 0 problems`, with no line for values-ar (all 39 names present; every `<xliff:g>` span byte-identical to EN; placeholder multiset and `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; no raw `'`/`"`; no edge or double spaces; the file parses as XML); `python3 scripts/l10n_diff.py --locale app/src/main/res/values-ar/strings.xml` reports `values-ar missing=0 orphan=0 modified=0`, "in sync". **No 🛑 build-breaking issues.**
+
+Round-1 changes checked (each value compared byte for byte with the round-1 "suggested" cell and with the applied-fix list):
+- `pt_cloud_status_running` «تعمل» → «قيد التشغيل»: confirmed. It is the file's "running" (`onboarding_notif_row_status_sub`) and AOSP's (`app_running_notification_title`, `notification_channel_heavy_weight_app`, re-read in the android-36 ar file). AOSP pairs it with «متوقف» (`roamingText0` / `roamingText1`), as the row now pairs it with «متوقفة». It has no gender to agree, and under the title «الخدمة» it can no longer be read as "you work". The value is `wrap_content` beside a `weight=1` title, so it cannot clip.
+- `word_detail_group_declension` «الإعراب» → «تصريف الاسم»: confirmed. The only DECLENSION table is built by `GermanParadigm.nominalTable`, which returns null for an adjective (its «dekliniert» forms). The table is therefore always a noun's, and «الاسم» is accurate.
+- `word_detail_group_conjugation` «التصريف» → «تصريف الفعل»: confirmed. `RomanceParadigm.table` sends any all-nominal set of readings to `nominalTable`, so a CONJUGATION table is always a verb's. Both headers remain one definite noun phrase, like «التعريفات», and `uppercase(Locale.ROOT)` leaves them unchanged.
+- Nothing else moved. Part A equals the sync's drafts except `pt_cloud_status_running`, and `git diff` shows Part B changed only in the two headers.
+- The `PillToggle.buildPillToggle` RTL observation stands as the Disposition records it: the code still sets `translationX = pillW * idx` at layout and in the tap animation. Not re-raised.
+
+#### Findings (round 2)
+
+No findings.
+
+**Fresh read of all 39 keys: checked, no finding.**
+- **Agreement.**
+  - The pill and both quick-menu labels end in a feminine word agreeing with خدمة («متوقفة», «متاحة», «غير متاحة»), as the family's «لا تستجيب» does.
+  - Under the title «الخدمة», «متوقفة» agrees with it. The other six values are genderless or agree with their own noun («استجابة غير متوقعة», «جارٍ بدء التشغيل»).
+  - The level segments are masculine, agreeing with مستوى.
+  - «أفضلها» and «مضمّنة» take the feminine singular of the non-human plural نماذج, and «تتفرغ قدرة جهازك كلها» agrees with قدرة.
+- **Pill family.** `translation_error_not_running` keeps the «خدمة %1$s: …» shape (the 2026-09-29 decision), and its status byte-matches `pt_cloud_status_not_running`. `pt_cloud_status_unreachable` and `pt_cloud_status_other` byte-match the status parts of `translation_error_unreachable` and `translation_error_bad_response`.
+- **Terms against the file.**
+  - «الصق» is `hint_deepl_key`'s verb, «مفتاح» is the key noun of `llm_backend_api_key_label` and `tr_service_key_tail_fmt`, and «معطّل» is the Off of `settings_cell_history_summary_off` and `capture_lifecycle_state_off`.
+  - «توكنات» matches `tr_service_status_usage_today_fmt`, and «تحميل المزيد» sits with `word_detail_more_examples` «المزيد من الأمثلة».
+  - The toast's «ابحث عن … إعدادات» is the keep-running cards' wording.
+  - OCR as «قراءة النص» has the file's own precedent in `ocr_source_label` «تمت القراءة بواسطة» and the section header «تحويل الصورة إلى نص (OCR)». Nothing new argues against round 1's reasoning.
+- **Register.** Formal MSA throughout, with masculine-singular imperatives (الصق، ابحث، اسحب) as in the rest of the file.
+- **Bidi.** Checked with real values filled in and computed with `java.text.Bidi`.
+  - All 39 values open with an Arabic letter, so each resolves RTL under the first-strong rule.
+  - The only Latin or digit runs are «PlayTranslate Cloud», «GPU», «500» and «٢». The brackets around the last two resolve RTL.
+  - No value has bidi controls, NBSP, zero-width characters or tatweel.
+- **Widths, re-measured.** The tool's Arabic font is Geeza Pro, about 3% narrower than Noto; every result below holds with that margin added.
+  - **Hub summaries:** 25 to 152 dp, against 178 dp on a 320 dp phone and 216 dp on a 360 dp phone.
+  - **Pill:** 195 dp. That is 2 lines in a 174 dp portrait slot, breaking after the colon, and 1 line in landscape.
+  - **Toast:** 394 dp, which takes 2 lines at 264, 296 and 320 dp.
+  - **Crop pill:** 193 dp of the 270 dp available.
+  - **Level segments:** 25 to 44 dp in bold, against about 57 dp.
+  - **Key hint:** 140 dp of about 278 dp.
+  - **Load more:** 74 dp.
+
+#### Verdict (round 2)
+
+**PASS.** The three round-1 changes landed as the Disposition says, and the fresh read of all 39 keys finds nothing: 0 🛑, 0 ❌, 0 ⚠️, 0 💬. Nothing open is a string issue:
+- the recorded `PillToggle` RTL observation;
+- the device pass that the round-1 appendix lists (the pill's portrait wrap, the status value at the left edge, the segmented control);
+- one code note new to this file (from code and the bidi rules, not seen on a device). The cooldown line under the status row, like every Translation services row's, opens with an English description set in code (`PtCloudErrors` "Not running"; the other backends' "Rate limited", "Server error"). In ar the line therefore starts with a Latin letter, resolves as an LTR paragraph and sits left-aligned under the RTL status row: "Not running · إعادة المحاولة في …". The English text is app-wide, predates this delta and is already noted in the de, fr and ko sections; the RTL effect is the part those sections cannot show.
+
+### After the final review (2026-10-27)
+
+The segmented-control finding from round 1 is fixed in code at the developer's request. Both sliding controls (`buildPillToggle` and the Anki Sentence | Word `buildAnkiModeToggle`) now get the indicator's size and position from the selected segment's laid-out bounds on every layout. Previously they used `pillW * index`, so under RTL a selected segment other than the first drew its indicator off the track. `PillToggleIndicatorTest` reproduced that before the fix (indicator at x=370 and x=443 on a 300 px track) and passes after it, in RTL and LTR, after taps and resizes. The device pass on an ar phone is still owed.

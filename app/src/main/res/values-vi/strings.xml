@@ -1152,6 +1152,8 @@
 
     <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>: không thể kết nối</string>
 
+    <string name="translation_error_not_running"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: đã dừng</string>
+
     <string name="translation_error_discard_card_title">Bỏ thẻ này?</string>
 
     <string name="translation_error_discard_card_message">Nếu mở cài đặt, bạn sẽ mất thẻ này và phải tạo lại từ một lần chụp mới.</string>
@@ -1554,6 +1556,50 @@
     <plurals name="settings_yomitan_outdated_summary">
         <item quantity="other">Cần nhập lại <xliff:g id="count" example="3">%d</xliff:g> từ điển</item>
     </plurals>
+
+    <string name="settings_pt_cloud_summary_off">Tắt</string>
+
+    <string name="settings_pt_cloud_summary_pitch">OCR và dịch trên máy chủ mạnh</string>
+
+    <string name="settings_pt_cloud_summary_translation_only">Chỉ dịch</string>
+
+    <string name="settings_pt_cloud_summary_ocr_only">Chỉ OCR trên máy chủ mạnh</string>
+
+    <string name="pt_cloud_ocr_toggle_title">Nhận dạng chữ trên màn hình</string>
+
+    <string name="pt_cloud_ocr_toggle_subtitle">OCR mạnh hơn trên GPU của máy chủ. Toàn bộ sức mạnh của thiết bị dành cho trò chơi.</string>
+
+    <string name="pt_cloud_translate_toggle_title">Dịch văn bản</string>
+
+    <string name="pt_cloud_translate_toggle_subtitle">Đã bao gồm các mô hình dịch trả phí, tự động chọn mô hình tốt nhất cho từng việc.</string>
+
+    <string name="pt_cloud_ocr_row_subtitle">OCR trên máy chủ mạnh, không tốn tài nguyên thiết bị</string>
+
+    <string name="pt_cloud_translate_row_subtitle_no_key">Đã bao gồm các mô hình dịch trả phí tốt nhất</string>
+
+    <string name="pt_cloud_key_label">Khóa ứng dụng khách</string>
+
+    <string name="pt_cloud_key_hint">Dán khóa bạn đã nhận được</string>
+
+    <string name="pt_cloud_status_title">Dịch vụ</string>
+
+    <string name="pt_cloud_status_running">Đang chạy</string>
+
+    <string name="pt_cloud_status_starting">Đang khởi động</string>
+
+    <string name="pt_cloud_status_not_running">Đã dừng</string>
+
+    <string name="pt_cloud_status_unreachable">Không thể kết nối</string>
+
+    <string name="pt_cloud_status_other">Phản hồi không mong đợi (<xliff:g id="http_code" example="500">%1$s</xliff:g>)</string>
+
+    <string name="pt_cloud_status_checking">Đang kiểm tra</string>
+
+    <string name="pt_cloud_status_unchecked">Chưa kiểm tra</string>
+
+    <string name="floating_menu_pt_cloud_available"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: khả dụng</string>
+
+    <string name="floating_menu_pt_cloud_unavailable"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: không khả dụng</string>
 
     <string name="yomitan_page_description">Từ điển Yomitan là các tệp từ điển do cộng đồng tạo, được dùng bởi tiện ích mở rộng trình duyệt Yomitan. Tính năng bao gồm các từ điển bổ sung, dữ liệu tần suất và trọng âm cao độ. Hãy nhập một từ điển (.zip) hoặc tệp xuất bộ sưu tập từ điển Yomitan (.json) bằng nút +, và PlayTranslate sẽ tích hợp nó liền mạch trong toàn bộ ứng dụng.</string>
 
@@ -2027,7 +2073,7 @@
 
     <string name="keep_running_tile_line">Ô này giúp bạn bật lại <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> từ bất kỳ màn hình nào.</string>
 
-    <string name="keep_running_screen_unavailable">Điện thoại này không có màn hình đó. Hãy tìm mục cài đặt đó trong Cài đặt của điện thoại.</string>
+    <string name="keep_running_screen_unavailable">Không thể mở màn hình đó. Hãy tìm mục cài đặt đó trong Cài đặt của điện thoại.</string>
 
     <string name="keep_running_xiaomi_autostart_title">Cho phép tự khởi động</string>
 

@@ -977,3 +977,69 @@ Clean areas: Render code read first. The note is `tvProviderNote` (13 sp, no lin
 ### Disposition (2026-10-14)
 
 Applied the 1 💬 (使用限额 → 使用上限, the file's word for a usage limit and zh-rHK's).
+
+## Delta review 2026-10-27 (PlayTranslate Cloud: 24 keys; plus the owed review of 15 keys localized outside the sync)
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports `39 keys x 13 locales: 0 problems` (no line for zh-rCN: every key present, `<xliff:g>` spans byte-identical to EN, placeholders and markup counts match, no raw `'`/`"`, no stray or double spaces, XML well-formed); `python3 scripts/l10n_diff.py --locale app/src/main/res/values-zh-rCN/strings.xml` reports `values-zh-rCN missing=0 orphan=0 modified=0`, "in sync". **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- Error pill (`TranslationErrorPills.kt`): 14 sp, `maxLines = 2`, ellipsized; `TranslationErrorMessages` maps `NOT_RUNNING` to the new key with the service name. For a PlayTranslate Cloud error the pill's gear opens the cloud page (`PtCloudSettingsActivity` header comment), so the pill's word and the status row's word meet one tap apart.
+- Cloud page (`activity_pt_cloud_settings.xml`, `settings_row_switch.xml`): two switch rows in one card (title 15 sp, subtitle 13 sp, no `maxLines`, both wrap), the key label over a `singleLine` field whose hint is the key hint, Save, then a status card: `pt_cloud_status_title` (weight 1) with the value at its end (`Text.PT.RowValue`, 13 sp). The value starts as 未检查, becomes 检查中 on every resume and Save, then one of the five answers.
+- Hub (`RootSettingsViewModel.cloudDigest`, `settings_row_hub.xml`): the summary is `singleLine` + `ellipsize="end"`, about 216 dp wide on a 360 dp phone (360 − 2×14 section padding − 2×16 row padding − 36 chip − 2×14 text margins − 18 chevron).
+- Capture & overlay (`bindCloudOcrRow`): the cloud row's subtitle is set once and shows in every switch state, above the engine rows. Translation services (`PtCloudBackend.status` → `OnlineServicesController.renderBackendStatusLine`): the no-key line sits in `tvRowSubtitle2`, which wraps. Quick menu (`updateCloudHeader`): the two keys are the strip's contentDescription only; the strip shows the brand and a wifi glyph.
+- Toast (`KeepRunningActivity.openFirst`): `LENGTH_LONG`, then App info opens.
+- Part B: `WordDetailBinder.addGroupHeader` applies `uppercase(Locale.ROOT)`, a no-op on Han. `LlmBackendSettingsActivity.applyReasoningRow` shows either the switch row or the title, subtitle and `buildPillToggle` segments (13 sp shrinking to 10 sp before ellipsizing, narrower padding above three segments). `ScreenshotCropEditor` passes the instruction to the shared editor pill; `WorkspaceAnkiPages` uses `anki_screenshot_crop` as the page title and `AnkiScreenshotCell` as the button's contentDescription. `MagnifierLens.addLoadMoreRow`: 13 sp, link colour, centred, `maxLines = 1`, replaced by `lens_loading` while it loads.
+
+### Findings
+
+No findings in the 39 keys: 0 ❌, 0 ⚠️, 0 💬.
+
+### Clean areas (checked, no findings)
+
+**Error pill.** `translation_error_not_running` (`%1$s：未运行`) has the family's shape: the span, a full-width colon with no space, then a short state, like 无法连接 and 响应异常 above it. With PlayTranslate Cloud filled in it is shorter than the English, well inside the pill's two lines. 未运行 is also the status row's word (`pt_cloud_status_not_running`), so the gear lands on the same word.
+
+**Cloud page.** The switch titles 识别屏幕文字 / 翻译文字 read as a verb-object pair. The first uses the file's OCR verb (`status_ocr` 正在识别文字…, `ocr_source_label` 由 %1$s 识别, `settings_ocr_tier_accurate_note` 能识别小字). Each subtitle is one sentence with one comma and keeps both English facts. The OCR one has the server GPU and the device doing none of the work (设备性能全部留给游戏). The translation one has the several paid models included and the best one per request (每次翻译自动选用最合适的一款; 多款 … 一款 agree). The key label 客户端密钥 and the hint 粘贴你收到的密钥 use the file's 密钥 (`llm_backend_api_key_label` API 密钥, `tr_service_key_tail_fmt` 密钥 ••••) and its paste verb (`hint_deepl_key` 在此粘贴你的…). The hint uses casual 你. The status row is 服务 with one of 运行中 / 启动中 / 未运行 / 无法连接 / 响应异常（500） / 检查中 / 未检查. These are short state words that replace one another in a single slot. 服务 needs no 状态 after it: the value beside it completes the row (服务 … 运行中), as English's Service / Running does. 无法连接 is `translation_error_unreachable`, 响应异常 is `translation_error_bad_response`, and 未运行 is `translation_error_not_running`, byte for byte. AOSP zh-CN writes in-flight states in sentences as 正在检查 / 正在启动 (5 and 6 uses; 检查中 and 启动中, 0). The X中 form suits a value slot and keeps the set parallel, as English's participles do. The file's own 正在检查更新 (the update-check titles) is a phrase, not a value slot, so the two forms do not compete. The HTTP code sits in full-width parentheses with no space, as a protocol digit string.
+
+**Settings hub.** Measured at 13 sp (PingFang SC): 服务器级 OCR 和翻译 is 128 dp, 仅服务器级 OCR 98 dp and 仅翻译 39 dp. All are whole in the ~216 dp single-line summary, and all three still fit at 180 dp. 关 is the file's Off state word (`capture_lifecycle_state_off`, `settings_cell_history_summary_off` 关 · 截取到的句子记录), so the Configure card says Off one way. AOSP's 已关闭 is not the file's choice and is not raised. 仅翻译 / 仅服务器级 OCR mirror the English pair. In a digest slot, 仅翻译 reads as a state, not as an instruction.
+
+**Capture & overlay, OCR section.** 服务器级 OCR，设备零负载 is a two-part comma note like the engine notes under it (最适合游戏，单词查询最精准; 能识别小字，速度较慢; 快得多，可能漏掉小字). The group's header above it, 图像转文字（OCR） (outside the delta), names the same technology and does not clash. 服务器级 is spelled the same in the pitch, the OCR-only digest and this row. It carries the English pun: server-class quality, and run on the server, which the page's subtitle spells out (在服务器 GPU 上).
+
+**Translation services page.** 内置顶尖付费翻译模型 stands where the store rows read 需要账号, and it shares 内置 + 付费翻译模型 with the page's toggle subtitle. Its line wraps (`item_online_service.xml`, no `maxLines`).
+
+**Quick menu (screen reader).** PlayTranslate Cloud：可用 / PlayTranslate Cloud：不可用. 不可用 is `backend_status_unavailable_default` and the file's word in eight other strings. The colon gives TalkBack its pause.
+
+**Fix disappearing icon toast.** 无法打开该页面。请改为在手机的设置中搜索该选项。 drops the old 此手机上. It now says the app could not open the screen, not that the phone lacks one, which is the English change. The second sentence is the reviewed one, unchanged: 搜索 is the cards' verb (在设置中搜索“…”), and 该选项 points back to the card title. Measured at 14 sp: 24 characters, 336 dp, so 2 lines at 296 dp (…搜索该 | 选项。, an ordinary character break) and at 320 dp, with nothing dropped.
+
+**Part B, word detail headers.** 变位 (verb conjugation, as in 动词变位), 变格 (noun declension) and 词形 (word forms, for the label-and-form list) are the standard terms, each one noun like 释义 and 汉字 beside them. Uppercasing does not touch them.
+
+**Part B, crop.** 裁剪截图 works both as the button's label for TalkBack and as the page title. 截图 is the file's screenshot word (`anki_group_screenshot`, `anki_screenshot_remove_content_description` 移除截图). 拖动边缘以裁剪截图 repeats `region_overlay_drag_instruction`'s opening (拖动边缘以…) word for word, the shape the English comment asks for. 裁剪 is also the audio-trim word (`anki_game_audio_cell_untrimmed` 保存时裁剪). Chinese uses it for both, and each names its object, so they never read alike.
+
+**Part B, thinking.** 思考模式 and 思考强度 share 思考, as both English comments require. The subtitles say 推理 for "reasons", just as English uses Thinking for the feature and reasons for the process. token stays Latin as in `tr_service_status_usage_today_fmt` (个 token). 按输出 token 计费 is "billed as output tokens", and 也 adds the "(like the answer)" that the comment implies. 越高越慢 reads off the title's 强度. The segments 关 / 最低 / 低 / 中 / 高 are one or two characters each, well inside the ~45 dp per segment of a four-segment row, so nothing shrinks. 最低 under 低 reads as the bottom of the scale, and 关 is the file's Off. 作答 is a touch more written than 回答 but natural for a model answering; not raised.
+
+**Part B, lens.** 加载更多（2） uses the file's 加载 (10 uses), fits one line at 13 sp, and sits beside the caption 其他匹配 and its own loading text 正在查询….
+
+### Pangu spacing and script audit
+
+Checked by script over all 39 values, with each `<xliff:g>` span counted as one unit:
+- Every Han character is in GB2312, so the text is Simplified only. There is no 您: the only pronoun is the casual 你 in `pt_cloud_key_hint`. There are no quotes in the delta, no half-width punctuation beside Han, and everything is NFC.
+- Han/Latin seams, each with one space on both sides and none before full-width punctuation: 服务器级 OCR 和翻译, 仅服务器级 OCR, 在服务器 GPU 上运行更强的 OCR，, 服务器级 OCR，设备零负载, 按输出 token 计费 (twice).
+- Span seams: `%1$s：` in three keys (the span fills with PlayTranslate Cloud, and a full-width colon takes no space); `（%1$s）` and `（%1$d）` (digits inside full-width parentheses, no space). No span fills with Chinese text, so the no-space rule for language names does not arise.
+- Key order and placement match English: the new keys sit after `translation_error_unreachable` and after `settings_yomitan_outdated_summary`, as in `values/strings.xml`.
+
+### Disposition (2026-10-27)
+
+No findings; nothing to apply.
+
+### Round 2 (2026-10-27), final review after applying round 1
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports `39 keys x 13 locales: 0 problems` (no line for zh-rCN); `python3 scripts/l10n_diff.py --locale app/src/main/res/values-zh-rCN/strings.xml` reports `values-zh-rCN missing=0 orphan=0 modified=0`, "in sync". **No 🛑 build-breaking issues.**
+
+Round-1 changes checked: none to check. Round 1 had no findings and its Disposition applied nothing, and the file is the one round 1 read: its SHA-1 (`dfa8e8e7…`) matches `SP/locale-hashes-after-fixes.txt`, it was last written at 11:33, before round 1's zh scratch work (12:03 to 12:09), no `SP/fixes-*.tsv` row names zh-rCN, every value the round-1 section quotes is the file's value, and `git diff` still shows exactly the 24 Part A keys (23 added, `keep_running_screen_unavailable` reworded).
+
+#### Findings (round 2)
+
+No findings.
+
+#### Verdict (round 2)
+
+**PASS**; nothing is open in the strings. All 39 values were re-read from scratch where they render, with the render code read again (not seen on a device). The pill's `%1$s：未运行` has the family's shape and is the status row's word one gear tap away; 无法连接 and 响应异常 match the pill family byte for byte; 密钥, 粘贴, 识别 and 关 are the file's words; both thinking titles share 思考. Re-measured with the width tool (PingFang SC): the hub summaries are 128 and 98 dp in a ~216 dp single line, and the toast is 336 dp, 2 lines at both 296 and 256 dp. Changes made to other locales after round 1 were weighed for zh and do not carry over. fr and pt-rBR gave the reasoning subtitle a verb, but 模型作答前推理的程度。 is how this file already renders that English shape (`settings_capture_interval_hint` 在自动翻译期间截取游戏画面的频率。). es and pt-rBR swapped Off for None to fit the segment, and 关 is one character. ru dropped a word that also means "switched on", and 内置 has no such sense. Outside the strings (read in code): the cooldown line under the status row takes an English description from `PtCloudErrors`, so a stopped server can show 未运行 above "Not running · 重试于 15:42". That is app-wide, already recorded in the de, fr, es, pt-rBR, ru, tr and ar sections and reported to the developer, so it is not a zh-rCN finding.

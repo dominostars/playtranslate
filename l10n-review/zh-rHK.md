@@ -425,3 +425,72 @@ Outside this delta, for the record: `anki_models_unavailable` still says 請稍�
 ### Disposition (2026-10-14)
 
 No findings in the delta; nothing to apply. The out-of-delta note (`anki_models_unavailable` still says 請稍後重試 where Android's Hong Kong wording is 請稍後再試) is reported to the developer.
+
+## Delta review 2026-10-27 (PlayTranslate Cloud: 24 keys; plus the owed review of 15 keys localized outside the sync)
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports `39 keys x 13 locales: 0 problems` (no line for zh-rHK: every key present, `<xliff:g>` spans byte-identical to EN, placeholders and markup counts match, no raw `'`/`"`, no stray or double spaces, XML well-formed); `python3 scripts/l10n_diff.py --locale app/src/main/res/values-zh-rHK/strings.xml` reports `values-zh-rHK missing=0 orphan=0 modified=0`, "in sync". **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing** (the same surfaces as zh-rCN's section of this date). The error pill is 14 sp, two lines, ellipsized, and for a PlayTranslate Cloud error its gear opens the cloud page. On the cloud page, the two switch rows wrap (`settings_row_switch.xml`, no `maxLines`); the key label sits over a `singleLine` field whose hint is the key hint; the status card is `pt_cloud_status_title` with the value at its end, 未檢查 until the check that every resume and Save starts (檢查中). The hub summary is `singleLine` + ellipsized, about 216 dp on a 360 dp phone. The Capture & overlay cloud row shows its subtitle in every switch state. The Translation services status line wraps. The quick-menu keys are contentDescription only. The toast is `LENGTH_LONG`, then App info opens. Group headers get `uppercase(Locale.ROOT)`, a no-op on Han. The thinking segments are `buildPillToggle` (13 sp shrinking to 10 sp). The crop page title and the crop button's label are one string. The load-more row is 13 sp with `maxLines = 1`.
+
+### Findings
+
+No findings in the 39 keys: 0 ❌, 0 ⚠️, 0 💬.
+
+### Clean areas (checked, no findings)
+
+**Derivation from zh-rCN, key by key.** All 39 values keep zh-rCN's structure, clause order and span position (`%1$s：…`, `…（%1$s）`, `…（%1$d）`), and the key order of the two files is identical (1,087 names, same sequence). Every swap from the parameters block that the delta touches is in: 服务器→伺服器, 设备→裝置, 识别→辨識, 屏幕→螢幕, 运行→執行, 密钥→金鑰, 粘贴→貼上, 连接→連線, 响应→回應, 打开→開啟, 设置→設定, 搜索→搜尋, 拖动→拖曳, 加载→載入. 内置 stays 內置, as the block says, not Taiwan's 內建. Three hand edits go beyond the table, and each is Hong Kong usage. 性能→效能: AOSP zh-HK has 效能 4 times to 性能 once, including 為達致更佳效能，一次只能開啟其中一個遊戲, and the file says 請留意效能 in `tr_service_offline_footer`. 计费→收費: this matches 按用量收費, and the file has no 計費. 且→而且 is natural either way. Appendix below.
+
+**Error pill and status row.** 未執行 is both the pill's word (`translation_error_not_running`) and the status row's (`pt_cloud_status_not_running`), and it pairs with 執行中. Android zh-HK's own "running" is 執行中 (「%1$s」執行中, 駕駛應用程式執行中). 無法連線 = `translation_error_unreachable` and 回應異常 = `translation_error_bad_response`, byte for byte. AOSP zh-HK has 無法連線 3 times to 無法連接 once. The set 執行中 / 啟動中 / 未執行 / 無法連線 / 回應異常（500） / 檢查中 / 未檢查 holds short, parallel state words for one slot. Out of context, 未執行 could read as "not executed". Here it fills the slot where 執行中 shows, or follows a service name in the pill, so it reads as "not running". 服務 needs no 狀態 after it, since the value beside it completes the row.
+
+**Cloud page.** 辨識螢幕文字 / 翻譯文字 read as a pair. 辨識 is the file's OCR verb (14 uses) and AOSP zh-HK's verb for "recognise" (無法辨識指紋). 客戶端金鑰 and 貼上你收到的金鑰 match `llm_backend_api_key_label` (API 金鑰), `tr_service_key_tail_fmt` (金鑰 ••••) and `hint_deepl_key` (在此貼上你的…). 客戶端 is the Hong Kong form; Taiwan says 用戶端 (from memory; neither appears in the framework strings). The two subtitles keep every English fact, as in zh-rCN.
+
+**Settings hub.** Measured at 13 sp (PingFang HK): 伺服器級 OCR 和翻譯 is 128 dp, 僅伺服器級 OCR 98 dp, 僅翻譯 39 dp. All are whole in the ~216 dp summary, and still at 180 dp. 關 is the file's Off (`capture_lifecycle_state_off`, 關 · 擷取到的句子記錄).
+
+**Other surfaces.** In the OCR section, 伺服器級 OCR，裝置零負載 follows the comma-note shape of the engine notes under it (最適合遊戲，詞語查詢最精準), under the header 文字辨識（OCR）. 內置頂尖付費翻譯模型 stands where the store rows say 需要帳戶. The quick menu reads PlayTranslate Cloud：可用 / ：不可用 (= `backend_status_unavailable_default`). The toast 無法開啟該頁面。請改為在手機的設定中搜尋該選項。 drops 此手機上 as English dropped "on this phone", keeps the reviewed second sentence, and measures 24 characters, 336 dp at 14 sp: 2 lines at 296 dp (…搜尋該 | 選項。) and at 320 dp.
+
+**Part B.** 變位 / 變格 / 詞形 sit beside 釋義 and 漢字 as one-noun headers. 裁剪截圖 serves as both the title and the button label; 截圖 is the file's screenshot word, and 裁剪 is the Hong Kong form (Taiwan 裁切, from memory; the framework strings have no crop label) and the file's audio-trim word (儲存時裁剪). 拖曳邊緣以裁剪截圖 opens like `region_overlay_drag_instruction` (拖曳邊緣，將螢幕擷取範圍限制在此區域). Only the connector differs: 以 suits a short purpose, and the region pill's comma carries a long 將 clause. The two pills never share a screen. 思考模式 / 思考強度 share 思考, and the subtitles keep 推理, token in Latin (as in 個 token) and 按輸出 token 收費. The segments are 關 / 最低 / 低 / 中 / 高, nowhere near the width limit. 載入更多（2） sits beside 其他相符 and 正在查詢….
+
+**Collisions on shared screens: none.** The cloud page holds the toolbar brand, 辨識螢幕文字 / 翻譯文字, 客戶端金鑰, 儲存 and 服務, with no swap landing on a neighbour's word. On the hub, the pitch sits under the Configure header 設定, a recorded decision, and repeats no word of it. In the OCR section, the 預設 badge and the cloud row share no word. The LLM page's 思考 rows sit under the 取得 %1$s API 金鑰 link (`llm_backend_get_key_title_fmt`) without overlap.
+
+### HK-vs-Mainland term audit (the 39 keys)
+
+| keys | zh-rCN | zh-rHK | how it was derived |
+|---|---|---|---|
+| translation_error_not_running, pt_cloud_status_running, pt_cloud_status_not_running | 未运行 / 运行中 | 未執行 / 執行中 | 运行→執行; Android zh-HK says 執行中 |
+| settings_pt_cloud_summary_pitch, settings_pt_cloud_summary_ocr_only, pt_cloud_ocr_row_subtitle, pt_cloud_ocr_toggle_subtitle | 服务器级 / 服务器 GPU / 设备 / 运行 / 性能 | 伺服器級 / 伺服器 GPU / 裝置 / 執行 / 效能 | table swaps, plus 效能 (AOSP zh-HK, the file) |
+| pt_cloud_ocr_toggle_title | 识别屏幕文字 | 辨識螢幕文字 | 识别→辨識, 屏幕→螢幕 |
+| pt_cloud_translate_toggle_subtitle, pt_cloud_translate_row_subtitle_no_key | 内置 … 付费 | 內置 … 付費 | 內置 kept (not 內建) |
+| pt_cloud_key_label, pt_cloud_key_hint | 客户端密钥 / 粘贴 | 客戶端金鑰 / 貼上 | 密钥→金鑰, 粘贴→貼上 |
+| pt_cloud_status_unreachable, pt_cloud_status_other | 无法连接 / 响应异常 | 無法連線 / 回應異常 | 连接→連線, 响应→回應; = the pill family |
+| pt_cloud_status_starting | 启动中 | 啟動中 | 啟, not 啓 |
+| keep_running_screen_unavailable | 打开 / 设置 / 搜索 | 開啟 / 設定 / 搜尋 | three table swaps |
+| anki_screenshot_crop_instruction | 拖动 | 拖曳 | 拖动→拖曳 |
+| llm_backend_thinking_subtitle, llm_backend_reasoning_subtitle | 且 … 计费 | 而且 … 收費 | 收費 as in 按用量收費 |
+| load_more_count | 加载更多 | 載入更多 | 加载→載入 |
+| settings_pt_cloud_summary_off, settings_pt_cloud_summary_translation_only, pt_cloud_translate_toggle_title, pt_cloud_status_title, pt_cloud_status_checking, pt_cloud_status_unchecked, floating_menu_pt_cloud_available, floating_menu_pt_cloud_unavailable, anki_screenshot_crop, word_detail_group_*, llm_backend_thinking_title, llm_backend_reasoning_title, the five level segments | 关 / 仅翻译 / 翻译文字 / 服务 / 检查中 / 未检查 / 可用 / 不可用 / 裁剪截图 / 变位 / 变格 / 词形 / 思考模式 / 思考强度 / 关 最低 低 中 高 | the same, script only | each is already Hong Kong usage (see the notes below) |
+
+Script, glyphs and spacing, checked by script over the 39 values: every Han character is in Big5. None of 啓 説 閲 裏 着 爲 appears (啟動中, 請改為). There are no quotes in the delta, so the 「」 rule does not arise. No 您; 你 appears in the key hint. Pangu spacing is identical to zh-rCN: one space at each Han/Latin seam (伺服器級 OCR 和翻譯, 伺服器 GPU 上, 輸出 token 收費), and none beside full-width punctuation or at the span seams. All values are NFC.
+
+Data points, recorded here and not raised:
+- **不可用 in the quick-menu label.** Android zh-HK pairs 可用 with 無法使用 (`media_route_status_available` / `_not_available`) and has no 不可用. This file says 不可用 in nine other strings, including `backend_status_unavailable_default` and the contributor's own rewrite of `tr_service_order_footer` (某項服務不可用時). The delta follows the file, and the word is ordinary Hong Kong written usage.
+- **檢查中 / 啟動中.** Android zh-HK writes in-flight states as 正在檢查 / 正在啟動 (5 each; the 中 forms do not occur), while its states take 中 (使用中, 執行中). In a value slot that cycles 檢查中 → 執行中, the parallel 中 form reads naturally in Hong Kong and matches zh-rCN's set.
+- **金鑰.** Android zh-HK's only two "key" strings say 密鑰 (點對點加密聯絡人密鑰); zh-TW says 金鑰. The file's 金鑰 (18 uses, now including the two new keys) is the full review's recorded swap (密鑰→金鑰), so the delta is right to follow it. This is noted only in case that decision is ever revisited file-wide.
+- **辨識.** Android zh-HK uses 辨識 for the verb "recognise" (無法辨識指紋) and 識別 in noun compounds (生物識別). 辨識螢幕文字 is the verb, which fits the table's 识别→辨識.
+
+### Disposition (2026-10-27)
+
+No findings; nothing to apply.
+
+### Round 2 (2026-10-27), final review after applying round 1
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports `39 keys x 13 locales: 0 problems` (no line for zh-rHK); `python3 scripts/l10n_diff.py --locale app/src/main/res/values-zh-rHK/strings.xml` reports `values-zh-rHK missing=0 orphan=0 modified=0`, "in sync". **No 🛑 build-breaking issues.**
+
+Round-1 changes checked: none to check. Round 1 had no findings and its Disposition applied nothing, and the file is the one round 1 read: its SHA-1 (`ac4a71ff…`) matches `SP/locale-hashes-after-fixes.txt`, it was last written at 11:33, before round 1's zh scratch work (12:03 to 12:09), no `SP/fixes-*.tsv` row names zh-rHK, every value the round-1 section and its term audit quote is the file's value, and `git diff` still shows exactly the 24 Part A keys (23 added, `keep_running_screen_unavailable` reworded).
+
+#### Findings (round 2)
+
+No findings.
+
+#### Verdict (round 2)
+
+**PASS**; nothing is open in the strings. Each of the 39 values was re-derived from zh-rCN's value of the same key. Every table swap these words need is in (伺服器, 裝置, 辨識, 螢幕, 執行, 金鑰, 貼上, 連線, 回應, 開啟, 設定, 搜尋, 拖曳, 載入; 內置 kept), the hand edits 效能, 收費 and 而且 are Hong Kong usage, and the script-only spans (頂尖, 零負載, 多款, 選用, 推理, 作答, 程度, 變位, 變格, 詞形, 裁剪, 該頁面, 該選項, 檢查中, 不可用, 最低 and the rest) hold no Mainland word. The framework's zh-HK strings on disk confirm the Android-facing words: 貼上 (`paste`), 搜尋 (`search_go`), 正在載入 (`loading`), 關 (`capital_off`, exactly the file's Off) and 執行中 for a running app (「%1$s」執行中). Glyphs are Android's (啟動中, 請改為; none of 啓 説 閲 裏 着 爲), every Han character is in Big5, there is no 您, no quote arises, spacing matches zh-rCN, and widths match it (PingFang HK: toast 336 dp, 2 lines at 296 and 256 dp). No swap collides on a shared screen: the cloud page's 執行 (OCR subtitle) and 執行中 (status) agree, and the LLM page's 關 segment and 關閉 close button are different controls. A data point, not raised: zh-HK also uses 運行 for software (停止運行 where zh-TW says 停止執行), so 未執行 is the table's pick between two Hong Kong forms, kept because it pairs with 執行中; round 1's other data points (不可用, 檢查中 / 啟動中, 金鑰) stand. Outside the strings (read in code), the English cooldown description from `PtCloudErrors`, app-wide and already recorded in other locales and reported, can show "Not running · 重試於 15:42" under 未執行.

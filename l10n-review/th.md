@@ -857,3 +857,132 @@ Clean areas: Render code read first. The note is `tvProviderNote` (13 sp, no lin
 ### Disposition (2026-10-14)
 
 No findings; nothing to apply.
+
+## Delta review 2026-10-27 (PlayTranslate Cloud: 24 keys; plus the owed review of 15 keys localized outside the sync)
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports `39 keys x 13 locales: 0 problems`, with no line for values-th (all 39 names present; every `<xliff:g>` span byte-identical to EN; placeholder multiset, `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; no raw `'`/`"`; no stray or double space; the file parses as XML); `python3 scripts/l10n_diff.py --locale app/src/main/res/values-th/strings.xml` reports `values-th missing=0 orphan=0 modified=0`, "in sync". **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- Error pill (`TranslationErrorPills`): 14 sp, `maxLines=2`, ellipsized; `TranslationErrorMessages` maps `NOT_RUNNING` to `translation_error_not_running` with the service name, like the rest of the family.
+- PlayTranslate Cloud page (`PtCloudSettingsActivity`, `activity_pt_cloud_settings.xml`): two `settings_row_switch` rows (title 15 sp, subtitle 13 sp, no line cap), shown at half alpha and disabled while no key is saved. The key label is a `RowTitle` above a single-line 13 sp monospace `EditText` (about 278 dp of text on a 360 dp phone). The status row is `pt_cloud_status_title` (weight 1) beside a wrap-content value. The page sets `pt_cloud_status_checking` on every resume, so `pt_cloud_status_unchecked` is barely seen.
+- Settings hub (`RootSettingsViewModel.cloudDigest`): the summary is `singleLine` + `ellipsize="end"`, 13 sp, 216 dp on a 360 dp phone and 249 dp on a wider one. The pitch shows with no key and again with both switches on.
+- Capture & overlay (`bindCloudOcrRow`): the cloud row is a `settings_row_switch` whose subtitle wraps, above the engine rows with their notes.
+- Translation services (`PtCloudBackend.status`): `BackendStatus.Info` in `tvRowSubtitle2`, which wraps.
+- Floating menu (`FloatingIconMenu.updateCloudHeader`): both strings are only the strip's `contentDescription`. The visible text is the brand name.
+- `KeepRunningActivity.openFirst`: a `LENGTH_LONG` toast, then App info.
+- Part B: `addGroupHeader` applies `uppercase(Locale.ROOT)`, a no-op for Thai. The level segments are `buildPillToggle` labels: 13 sp, autosized down to 10 sp before they ellipsize, about 56 dp each with four segments on a 360 dp phone. The crop pill is `RegionEditorControls.pill`: 14 sp, single line, ellipsized, about 270 dp of text in the floating workspace on a 360 dp phone and 294 dp in the review sheets' full-screen dialog. Its page title is hidden (`hidesHeader`). The lens's load-more row is 13 sp with `maxLines=1`, and `lens_loading` replaces it while it loads.
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| llm_backend_reasoning_subtitle | 💬 | โมเดลจะคิดมากแค่ไหนก่อนตอบ ยิ่งสูงยิ่งช้า และส่วนที่คิดจะถูกเรียกเก็บเงินเป็นโทเค็นเอาต์พุต | กำหนดว่าโมเดลจะคิดมากแค่ไหนก่อนตอบ ยิ่งสูงยิ่งช้า และส่วนที่คิดจะถูกเรียกเก็บเงินเป็นโทเค็นเอาต์พุต | On its own, โมเดลจะคิดมากแค่ไหนก่อนตอบ has the form of a direct question ("How much will the model think before answering"). The English is a noun clause that describes the row. The file's only other English line of this shape, `settings_capture_interval_hint` ("How often the game screen is captured…"), became a noun phrase (ความถี่ในการจับภาพ…), not a bare question. Adding กำหนดว่า says what the segments under the line set, and ยิ่งสูงยิ่งช้า then reads as the result. |
+
+### Clean areas (checked, no findings)
+
+**Error pill.** «PlayTranslate Cloud: ไม่ได้ทำงาน» has the family's shape (the service name, a colon, then a short status) and its register: «เชื่อมต่อไม่ได้», «ไม่ตอบสนอง», «ข้อผิดพลาดของเซิร์ฟเวอร์». ไม่ได้ทำงาน is the right word for a stopped service: AOSP Thai's crash dialog says หยุดทำงาน (`aerr_application`, "has stopped"), so that word would read as a crash. It is also the status row's value, so the pill and the page say the same thing. The pill measures 194 dp: one line.
+
+**PlayTranslate Cloud page.**
+- **The two switch rows** read as a pair: «อ่านข้อความบนหน้าจอ» / «แปลข้อความ», verb first, both ending in ข้อความ.
+  - In the OCR subtitle, the second sentence follows from the first: อุปกรณ์จึงใช้พลังทั้งหมดกับเกมได้, where จึง carries the "so" that English leaves implied.
+  - In the translation subtitle, the first clause («มีโมเดลการแปลแบบชำระเงินรวมอยู่ด้วย») and the no-key line on the services page («รวมโมเดลการแปลแบบชำระเงินที่ดีที่สุดไว้แล้ว») share โมเดลการแปลแบบชำระเงิน and รวม.
+  - Both subtitles wrap to 2 lines at 249 dp, and nothing clips.
+- **Key.** «คีย์ไคลเอนต์» and «วางคีย์ที่คุณได้รับ» use the file's key noun (คีย์ API in `llm_backend_api_key_label`, คีย์ ••••… in `tr_service_key_tail_fmt`) and its paste verb (วางคีย์ API ของ DeepL ที่นี่ in `hint_deepl_key`). The hint is 91 dp in a field about 278 dp wide.
+- **Status row.** «บริการ» beside each value: กำลังทำงาน (AOSP's `app_running_notification_title`), กำลังเริ่มต้น, ไม่ได้ทำงาน, กำลังตรวจสอบ (AOSP's `ext_media_status_checking` without the ellipsis, as English drops it), ยังไม่ได้ตรวจสอบ. Each value has its pill counterpart where the brief pairs them:
+  - `pt_cloud_status_unreachable` = `translation_error_unreachable` (เชื่อมต่อไม่ได้);
+  - `pt_cloud_status_other` = `translation_error_bad_response` (การตอบกลับที่ไม่คาดคิด) plus « (500)», with a space before the parenthesis;
+  - `pt_cloud_status_not_running` = `translation_error_not_running`.
+  The longest value, 172 dp, still leaves the title room.
+
+**Settings hub.** The three digests read as one set: «OCR และการแปลระดับเซิร์ฟเวอร์» (175 dp), «เฉพาะ OCR ระดับเซิร์ฟเวอร์» (147 dp) and «เฉพาะการแปล» (77 dp). All are whole at 216 dp. «ปิด» is the Off of `settings_cell_history_summary_off` (ปิด · …) and of AOSP. ระดับเซิร์ฟเวอร์ is Thai tech marketing's usual "server-grade". The OCR row's second phrase, ไม่เป็นภาระต่ออุปกรณ์, supplies the "on the server, not the device" that the English comment asks for.
+
+**Capture & overlay.** «OCR ระดับเซิร์ฟเวอร์ ไม่เป็นภาระต่ออุปกรณ์» has the engine notes' shape: two short phrases split by a space, as in «อ่านตัวอักษรเล็กได้ แต่ช้ากว่า» and «เหมาะกับเกมที่สุด ค้นหาคำได้แม่นยำที่สุด». At 232 dp it may wrap on a 360 dp phone, as the Meiki note does in English, and the row has no line cap.
+
+**Translation services and floating menu.** The no-key line stands where other rows read «ต้องมีบัญชี». It is 244 dp and wraps freely. The two screen-reader labels use AOSP's pair (`media_route_status_available` พร้อมใช้งาน / `_not_available` ไม่พร้อมใช้งาน), which is also `backend_status_unavailable_default`.
+
+**Toast.** «เปิดหน้าจอนั้นไม่ได้ ค้นหาการตั้งค่านี้ในการตั้งค่าของโทรศัพท์แทน» now says the app could not open the screen. The old text said the phone has no such screen. The search sentence is the reviewed one, with the cards' verb ค้นหา (ในการตั้งค่า ให้ค้นหา “…”). Measured at 14 sp, it takes 2 lines at both 296 and 320 dp (378 dp in all; English is 491).
+
+**Part B.**
+- **Thinking titles.** Both titles use การคิด, as the comments require: «โหมดการคิด» / «ระดับการคิด». โหมดการ… follows the file's โหมดการซ้อนทับ and โหมดการช่วยเหลือพิเศษ.
+- **Subtitles.** Both reuse โมเดล (`llm_backend_model_label`), โทเค็น (`tr_service_status_usage_today_fmt`) and the file's billing word เรียกเก็บเงิน (`note_mlkit_account_issue`). ยิ่งสูงยิ่งช้า is idiomatic.
+- **Level segments.** «ปิด / ต่ำสุด / ต่ำ / กลาง / สูง». ปิด is the file's Off, and ต่ำสุด, below ต่ำ, keeps Gemini's Minimal on the same scale. In bold at 13 sp they measure 14 to 31 dp against about 56, so none of them shrinks.
+- **Group headers.** «การผันกริยา», «การผันคำนาม» and «รูปคำ» sit beside «คำจำกัดความ» as plain noun phrases. การผันกริยา and รูปคำ are the usual Thai learner terms. การผันคำนาม matches the comment's "a noun's case-and-number table", and `GermanParadigm.nominalTable` returns no table for adjectives.
+- **Crop.** «ครอบตัดภาพหน้าจอ» pairs with its neighbour button «ลบภาพหน้าจอ» (verb + ภาพหน้าจอ), and ครอบตัด is the usual Thai photo-editor verb (from memory). «ลากขอบเพื่อครอบตัดภาพหน้าจอ» has the same shape as «ลากขอบเพื่อจำกัดการจับภาพหน้าจอให้อยู่ในพื้นที่นี้». At 187 dp it fits the 270 dp pill.
+- **Load more.** «โหลดเพิ่มเติม (2)» uses the file's โหลด (กำลังโหลดตัวอย่าง…). It is 97 dp and becomes «กำลังค้นหา…» while loading.
+
+**Considered and left.**
+- `llm_backend_thinking_subtitle` puts ช้ากว่า between two spaces as a one-word fragment. That mirrors English "Slower,", and the file already has a bare แต่ช้ากว่า in the OCR tier note.
+- Both subtitles use ถูกเรียกเก็บเงิน with ส่วนที่คิด as the subject. That passive is the common Thai wording for "billed as output tokens", and the term matches the file.
+- กลาง vs ปานกลาง (AOSP's "medium" in its password-complexity scale, 51 dp bold, also fits). In a row beside ต่ำ and สูง, กลาง reads as a level, and it is the common game-settings word.
+- In «OCR และการแปลระดับเซิร์ฟเวอร์» the post-modifier may attach only to การแปล. Both routes are server-side, so either reading is true, and English has the same ambiguity.
+- ไคลเอนต์ is the Royal Institute spelling. Google's Thai consoles write ไคลเอ็นต์ (from memory). This is the file's only use of either spelling, so it conflicts with nothing.
+- In the translation subtitle, «พร้อมเลือกโมเดลที่ดีที่สุดให้แต่ละงาน» makes the service the one who picks: ให้แต่ละงาน means "for each job", and there is no ให้เลือก, which would read "for you to choose". So it avoids the "you pick" reading that the vi report flags in its own wording.
+
+### Thai appendix: spacing, register, classifiers
+
+**Spacing**, from a script that listed every space with the real values filled in (PlayTranslate Cloud, 500, 2):
+- **Around Latin.** Every Latin run (OCR, GPU, the brand) and every number in parentheses has a space on the Thai side. No Thai character touches Latin, a digit or a parenthesis.
+- **Between Thai words.** Every Thai-to-Thai space falls at a phrase or clause boundary. In the subtitles and the toast that boundary is a sentence break (…เซิร์ฟเวอร์␣อุปกรณ์จึง…, …ด้วย␣พร้อมเลือก…, …ไม่ได้␣ค้นหา…, …ก่อนตอบ␣ช้ากว่า␣และ…, …ก่อนตอบ␣ยิ่งสูงยิ่งช้า␣และ…); in the OCR row it falls between its two phrases.
+- **Everything else.** The other 26 values have no spaces at all. Every value is NFC, with no zero-width or odd characters.
+
+**ภาษา prefix.** It does not arise: the only placeholders are the Latin brand, `http_code` and `count`.
+
+**Register.** There is no ครับ/ค่ะ. คุณ appears once, in the hint's relative clause (ที่คุณได้รับ), as in `keep_running_intro`. The status values are bare state words, as AOSP's are.
+
+**Classifiers.** The only count is `load_more_count`, a bare number in parentheses after the action, which takes no classifier in Thai (the badge style of «ความคิดเห็น (2)»).
+
+### Verdict
+
+0 🛑, 0 ❌, 0 ⚠️, 1 💬 (`llm_backend_reasoning_subtitle`, optional). The other 38 keys pass as written.
+
+### Disposition (2026-10-27)
+
+The one 💬 is applied: `llm_backend_reasoning_subtitle` now opens with กำหนดว่า, so it says what the row sets rather than asking a question (ja, fr and pt-rBR made the same change to this key).
+
+### Round 2 (2026-10-27), final review after applying round 1
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports `39 keys x 13 locales: 0 problems`, with no line for values-th (all 39 names present; every `<xliff:g>` span byte-identical to EN; placeholder multiset and `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; no raw `'`/`"`; no edge or double spaces; the file parses as XML); `python3 scripts/l10n_diff.py --locale app/src/main/res/values-th/strings.xml` reports `values-th missing=0 orphan=0 modified=0`, "in sync". **No 🛑 build-breaking issues.**
+
+Round-1 changes checked:
+- `llm_backend_reasoning_subtitle` now opens with «กำหนดว่า» («กำหนดว่าโมเดลจะคิดมากแค่ไหนก่อนตอบ ยิ่งสูงยิ่งช้า และ…»): confirmed, byte-identical to the round-1 suggestion and the applied-fix list.
+  - The line now says what the segments under it set instead of reading as a question, and ยิ่งสูง reads as the level named in the title «ระดับการคิด».
+  - Its spaces are unchanged: two, both at clause breaks.
+  - The subtitle wraps with no `maxLines` (`activity_llm_backend_settings.xml`), so the extra word costs nothing.
+- Nothing else moved. Part A equals the sync's drafts, and `git diff` shows Part B changed only in this key.
+
+#### Findings (round 2)
+
+No findings.
+
+**Fresh read of all 39 keys: checked, no finding.**
+- **Register and spacing.**
+  - No ครับ/ค่ะ. คุณ appears only in the hint's relative clause.
+  - A script listed every space with the real values filled in. Each Latin run (OCR, GPU, the brand) and each «(500)» / «(2)» has a space on the Thai side, and no Thai letter touches Latin, a digit or a bracket.
+  - Every space between two Thai words falls at a phrase or clause break. All values are NFC, with no zero-width characters.
+  - The ภาษา rule does not arise, since no placeholder takes a language name.
+- **Pill family and status row.**
+  - `translation_error_not_running` and `pt_cloud_status_not_running` share «ไม่ได้ทำงาน».
+  - `pt_cloud_status_unreachable` = `translation_error_unreachable` «เชื่อมต่อไม่ได้».
+  - `pt_cloud_status_other` = `translation_error_bad_response` plus « (500)», spaced like `translation_error_rejected_code`.
+  - «กำลังทำงาน», «กำลังตรวจสอบ» and «พร้อมใช้งาน / ไม่พร้อมใช้งาน» are AOSP's words (android-36 th `app_running_notification_title`, `ext_media_status_checking`, `media_route_status_available` / `_not_available`).
+- **Terms against the file.**
+  - Key and paste: คีย์ and วาง, as in `llm_backend_api_key_label`, `tr_service_key_tail_fmt` and `hint_deepl_key`.
+  - Server, device, model, token: เซิร์ฟเวอร์ (`translation_error_server`), อุปกรณ์ (26 strings), โมเดล (`llm_backend_model_label`) and โทเค็น.
+  - Off: ปิด, as in `settings_cell_history_summary_off`.
+  - The toast uses the cards' ค้นหา, and the toggle subtitle and the services row share โมเดลการแปลแบบชำระเงิน.
+- **Neighbours.**
+  - The OCR row's two phrases have the engine notes' shape («อ่านตัวอักษรเล็กได้ แต่ช้ากว่า»), and the two switch titles pair as verb + ข้อความ.
+  - The group headers sit with «คำจำกัดความ» as plain nouns. In code, CONJUGATION tables are always a verb's and DECLENSION tables a German noun's, which is what การผันกริยา / การผันคำนาม say.
+  - The crop instruction has `region_overlay_drag_instruction`'s ลากขอบเพื่อ… shape.
+- **Widths, re-measured in Thonburi.**
+  - **Hub summaries:** 17 to 175 dp, against 216 dp.
+  - **Toast:** 378 dp, which takes 2 lines at 264, 296 and 320 dp.
+  - **Crop pill:** 187 dp of the 270 dp available.
+  - **Level segments:** 14 to 31 dp in bold, against about 57 dp.
+  - **Key hint:** 91 dp.
+  - **Load more:** 97 dp.
+- **A correction to the round-1 record, not a finding.** On a 360 dp portrait phone the pill's text gets about 174 dp: the 328 dp pill, less the logo, the paddings and two 48 dp buttons. At 209 dp in Thonburi it does not fit on one line there, as round 1 said it would. It wraps after ไม่ได้, which is a word break, and stays within `maxLines=2`, just as the English wraps after "Not". In landscape it is one line.
+
+#### Verdict (round 2)
+
+**PASS.** The one round-1 change landed as the Disposition says, and the fresh read of all 39 keys finds nothing: 0 🛑, 0 ❌, 0 ⚠️, 0 💬. Nothing is left open for Thai.

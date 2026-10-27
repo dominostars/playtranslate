@@ -721,7 +721,7 @@
     <string name="llm_backend_thinking_subtitle">โมเดลจะคิดก่อนตอบ ช้ากว่า และส่วนที่คิดจะถูกเรียกเก็บเงินเป็นโทเค็นเอาต์พุต</string>
 
     <string name="llm_backend_reasoning_title">ระดับการคิด</string>
-    <string name="llm_backend_reasoning_subtitle">โมเดลจะคิดมากแค่ไหนก่อนตอบ ยิ่งสูงยิ่งช้า และส่วนที่คิดจะถูกเรียกเก็บเงินเป็นโทเค็นเอาต์พุต</string>
+    <string name="llm_backend_reasoning_subtitle">กำหนดว่าโมเดลจะคิดมากแค่ไหนก่อนตอบ ยิ่งสูงยิ่งช้า และส่วนที่คิดจะถูกเรียกเก็บเงินเป็นโทเค็นเอาต์พุต</string>
     <string name="llm_backend_reasoning_off">ปิด</string>
     <string name="llm_backend_reasoning_minimal">ต่ำสุด</string>
     <string name="llm_backend_reasoning_low">ต่ำ</string>
@@ -1104,6 +1104,8 @@
 
     <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>: เชื่อมต่อไม่ได้</string>
 
+    <string name="translation_error_not_running"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: ไม่ได้ทำงาน</string>
+
     <string name="translation_error_discard_card_title">ละทิ้งการ์ดหรือไม่</string>
 
     <string name="translation_error_discard_card_message">หากเปิดการตั้งค่า การ์ดนี้จะหายไป และต้องสร้างใหม่จากการจับภาพครั้งใหม่</string>
@@ -1481,6 +1483,50 @@
     <plurals name="settings_yomitan_outdated_summary">
         <item quantity="other">ต้องนำเข้าพจนานุกรมใหม่ <xliff:g id="count" example="3">%d</xliff:g> ฉบับ</item>
     </plurals>
+
+    <string name="settings_pt_cloud_summary_off">ปิด</string>
+
+    <string name="settings_pt_cloud_summary_pitch">OCR และการแปลระดับเซิร์ฟเวอร์</string>
+
+    <string name="settings_pt_cloud_summary_translation_only">เฉพาะการแปล</string>
+
+    <string name="settings_pt_cloud_summary_ocr_only">เฉพาะ OCR ระดับเซิร์ฟเวอร์</string>
+
+    <string name="pt_cloud_ocr_toggle_title">อ่านข้อความบนหน้าจอ</string>
+
+    <string name="pt_cloud_ocr_toggle_subtitle">OCR ที่ทรงพลังกว่าบน GPU ของเซิร์ฟเวอร์ อุปกรณ์จึงใช้พลังทั้งหมดกับเกมได้</string>
+
+    <string name="pt_cloud_translate_toggle_title">แปลข้อความ</string>
+
+    <string name="pt_cloud_translate_toggle_subtitle">มีโมเดลการแปลแบบชำระเงินรวมอยู่ด้วย พร้อมเลือกโมเดลที่ดีที่สุดให้แต่ละงาน</string>
+
+    <string name="pt_cloud_ocr_row_subtitle">OCR ระดับเซิร์ฟเวอร์ ไม่เป็นภาระต่ออุปกรณ์</string>
+
+    <string name="pt_cloud_translate_row_subtitle_no_key">รวมโมเดลการแปลแบบชำระเงินที่ดีที่สุดไว้แล้ว</string>
+
+    <string name="pt_cloud_key_label">คีย์ไคลเอนต์</string>
+
+    <string name="pt_cloud_key_hint">วางคีย์ที่คุณได้รับ</string>
+
+    <string name="pt_cloud_status_title">บริการ</string>
+
+    <string name="pt_cloud_status_running">กำลังทำงาน</string>
+
+    <string name="pt_cloud_status_starting">กำลังเริ่มต้น</string>
+
+    <string name="pt_cloud_status_not_running">ไม่ได้ทำงาน</string>
+
+    <string name="pt_cloud_status_unreachable">เชื่อมต่อไม่ได้</string>
+
+    <string name="pt_cloud_status_other">การตอบกลับที่ไม่คาดคิด (<xliff:g id="http_code" example="500">%1$s</xliff:g>)</string>
+
+    <string name="pt_cloud_status_checking">กำลังตรวจสอบ</string>
+
+    <string name="pt_cloud_status_unchecked">ยังไม่ได้ตรวจสอบ</string>
+
+    <string name="floating_menu_pt_cloud_available"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: พร้อมใช้งาน</string>
+
+    <string name="floating_menu_pt_cloud_unavailable"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: ไม่พร้อมใช้งาน</string>
 
     <!-- ═══ YOMITAN — dictionary import page ═══ -->
 
@@ -1941,7 +1987,7 @@
 
     <string name="keep_running_tile_line">เปิด <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> อีกครั้งได้จากทุกหน้าจอ</string>
 
-    <string name="keep_running_screen_unavailable">หน้าจอนั้นไม่มีในโทรศัพท์เครื่องนี้ ค้นหาการตั้งค่านี้ในการตั้งค่าของโทรศัพท์แทน</string>
+    <string name="keep_running_screen_unavailable">เปิดหน้าจอนั้นไม่ได้ ค้นหาการตั้งค่านี้ในการตั้งค่าของโทรศัพท์แทน</string>
 
     <string name="keep_running_xiaomi_autostart_title">อนุญาตการเริ่มอัตโนมัติ</string>
 

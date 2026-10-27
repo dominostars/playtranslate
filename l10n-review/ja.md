@@ -961,3 +961,79 @@ Clean areas: Render code read first. The note is `tvProviderNote` (13 sp `Text.P
 ### Disposition (2026-10-14)
 
 No findings; nothing to apply.
+
+## Delta review 2026-10-27 (PlayTranslate Cloud: 24 keys; plus the owed review of 15 keys localized outside the sync)
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports `39 keys x 13 locales: 0 problems`, so no `ja:` line (every name present; `<xliff:g>` spans byte-identical to EN; placeholder, `<b>`/`\n`/`\{ \}`/entity counts match; no raw `'`/`"`, no stray or double space; the file parses); `python3 scripts/l10n_diff.py --locale app/src/main/res/values-ja/strings.xml` reports `values-ja missing=0 orphan=0 modified=0`, "in sync". **No 🛑 build-breaking issues.**
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| anki_screenshot_crop_instruction | ⚠️ | `端をドラッグして、スクリーンショットをトリミングします` | `端をドラッグして、トリミングします` | Clipping confirmed in code. The pill is one line (`RegionEditorControls.pill`: 14 sp, `isSingleLine`, `ellipsize=END`, 16 dp padding, plus 16 dp margins in `RegionEditor.show`), and the editor also opens in portrait: as a full-screen dialog from the in-app review sheets (`showScreenshotCropDialog`), or as a page in the workspace card over a portrait game. No activity locks orientation. 27 full-width characters come to 378 dp, against 296 dp of text width on a 360 dp phone (347 dp at 411 dp, 272 dp in the workspace card). Portrait therefore shows about 「端をドラッグして、スクリーンショットをト…」, with the verb cut. English is 215 dp. The suggestion is 238 dp. It keeps `region_overlay_drag_instruction`'s 「端をドラッグして、〜します」 shape and drops only the object, which is the image the editor is showing. (The region pill, outside the delta, is just as long but is drawn over the game, which is usually landscape.) |
+| llm_backend_reasoning_subtitle | ⚠️ | `回答の前にモデルがどれだけ推論するかです。高いほど遅くなり、推論の分も出力トークンとして課金されます。` | `回答の前にモデルがどれだけ推論するかを設定します。高いほど遅くなり、推論の分も出力トークンとして課金されます。` | 「…どれだけ推論するかです。」 copies the English fragment ("How much the model reasons…") and has no topic. It is the only 〜かです sentence in the file. The file's row subtitles either end in a noun or say what the row does with 〜します (`settings_vertical_grow_subtitle`, `settings_edge_indicator_subtitle`). 「〜を設定します」 says what the segments under it do, and 「高いほど」 then refers to the level just set. The second sentence stays byte-identical to `llm_backend_thinking_subtitle`'s. |
+| pt_cloud_translate_toggle_subtitle | 💬 | `有料の翻訳モデルが付属し、翻訳ごとに最適なモデルが選ばれます。` | `有料の翻訳モデルを搭載し、翻訳ごとに最適なモデルが選ばれます。` | 付属 is a packaging word (付属品, 付属ソフト: something that comes in the box with a product). Japanese copy for a product or service that runs translation models uses 搭載 (「最新の翻訳エンジンを搭載」, 「GPT搭載」). The current line is understood, so this is polish. If applied, change it together with the next row so the two pitches use the same verb. |
+| pt_cloud_translate_row_subtitle_no_key | 💬 | `最高の有料翻訳モデルが付属` | `最高の有料翻訳モデルを搭載` | Same change as the row above. This line sits where store rows read 「アカウントが必要」, and the noun ending keeps it just as terse. |
+| word_detail_group_forms | 💬 | `語形` | `変化形` | The group lists a word's inflected forms (spoke, spoken; bigger, biggest) under English row labels. 変化形 is the word learners know for exactly this (「動詞の変化形」, 「不規則変化」). 語形 is correct but reads as the linguist's "word form". 変化形 is still one noun, distinct from 活用 and 格変化. |
+
+### Clean areas (checked, no findings)
+
+**Render code read first.** The error pill (`TranslationErrorPills`) is 14 sp, `maxLines=2`, ellipsized, and `TranslationErrorMessages` maps NOT_RUNNING to the new key. On the PlayTranslate Cloud page, both switches are `settings_row_switch` rows (15 sp title, 13 sp subtitle, no line cap), dimmed until a key is saved. The key label is a RowTitle over a 13 sp monospace single-line EditText, about 280 dp wide on a 360 dp phone, whose hint is `pt_cloud_key_hint`. The status row puts the title (weight 1) beside a wrap-content value; the value reads 未確認 from the layout and switches to 確認中 as soon as `onResume` starts the check. The Settings hub cloud cell's summary is `singleLine` + `ellipsize=end` at 13 sp, about 216 dp of text on a 360 dp phone (14 dp section padding, 16 dp cell padding, 36 dp chip, 14 dp text margins, 18 dp chevron). The Capture & overlay cloud row is a `settings_row_switch` titled with the brand, and its subtitle wraps. On the Translation services page, the cloud row's status line is `tvRowSubtitle2`, which wraps, in the slot where store rows show `service_account_required`. The floating menu strip shows the brand name as visible text; the two delta keys are only its contentDescription. On the Fix disappearing icon page, the toast is a `LENGTH_LONG` text toast, and App info opens beneath it. Part B: `addGroupHeader` uppercases with `Locale.ROOT`, which does nothing to kana or kanji. `anki_screenshot_crop` is the crop button's contentDescription; the crop page also sets it as its title, but on a header the page hides (`hidesHeader`), so it is never seen. The thinking switch row and the levels row never show together. The load-more row is 13 sp, `maxLines=1`, ellipsized, and shows `lens_loading` 「検索中…」 while loading.
+
+**Error pill.** 「PlayTranslate Cloud：停止中」 uses the family's full-width colon after the name. 停止中 ends in a noun, like 「サーバーエラー」, and is the status row's own word, so the pill and the page its gear opens say the same thing. The same holds for 接続できません and 予期しない応答 below.
+
+**Status row: 「サービス」 with each of its seven values.** The values are 稼働中 / 起動中 / 停止中 / 接続できません / 予期しない応答（500） / 確認中 / 未確認. 稼働中 is the usual word for a server being up; the file's 実行中 is the app's own notification, a different subject. Next to 稼働中, 起動中 reads as "starting". 接続できません byte-matches `translation_error_unreachable`. 予期しない応答 is `translation_error_bad_response`'s noun, and the code is half-width in full-width parentheses, as in `translation_error_rejected_code`. 確認中 is the framework's word (`lockscreen_glogin_checking_password`) and the file's (`tr_service_status_loading` 使用量を確認中…). Every value fits beside the title.
+
+**The two switches as a pair.** 「画面の読み取り」 / 「テキストの翻訳」 are parallel noun forms. 読み取り is the file's OCR word (`ocr_source_label` 「…による読み取り」; 「画面の読み取り」 in `slow_ocr_prompt_message`), and it cannot be mistaken for a screen reader (読み上げ). Both subtitles use です/ます, and 端末 means "device" here as everywhere in the file. 「端末の処理能力をすべてゲームに回せます」 and 「翻訳ごとに最適なモデルが選ばれます」 read naturally.
+
+**Key.** クライアントキー uses the file's キー (`llm_backend_api_key_label` APIキー, `tr_service_key_tail_fmt` キー：). The hint shares 貼り付けてください with `hint_deepl_key` (the framework says 貼り付け), and 発行された is the usual verb for an issued key. It is 16 characters, about 208 dp in the field.
+
+**Hub digests.** オフ matches `settings_cell_history_summary_off`'s オフ; then 翻訳のみ. 「高性能サーバーのOCRと翻訳」 (173 dp) and 「高性能サーバーのOCRのみ」 (160 dp) each stay on one line at 216 dp. 高性能サーバー translates "Server-grade" in all three places, and it carries both "on the server" and "powerful".
+
+**Marketing lines.** Apart from 付属 (see findings), they read as Japanese copy rather than translation. 「高性能サーバーでOCR、端末の負荷ゼロ」 has the 「A、B」 shape of the engine notes under it (「ゲームに最適、単語検索が最も正確」, 「小さな文字も認識、速度は遅め」), and 負荷ゼロ is a stock phrase. In the hub digest, の is the natural possessive for a terse summary; による would also work, but nothing calls for it.
+
+**Floating strip.** 利用可能 / 利用不可 pair with `backend_status_unavailable_default` 利用不可, after the same full-width colon as the pill.
+
+**Toast.** 「その画面を開けませんでした。代わりに設定アプリでこの設定を検索してください。」 now says "couldn't open", as the reworded English does. 「設定アプリで…を検索」 is the cards' own phrase, and 「この設定」 points at the card just tapped, as in the reviewed wording. At 38 characters it takes 2 lines at 296 dp (294 dp, then 238 dp) and at 320 dp. Line 1 ends inside 設定アプリ; that is Japanese character wrapping, not a wording problem.
+
+**Rest of Part B.** 活用 and 格変化 are the standard grammar terms (スペイン語の動詞の活用, ドイツ語の名詞の格変化), one noun each. 「スクリーンショットをトリミング」 is a noun-stem title and a clear TalkBack label. トリミング is also the file's word for audio trimming (`anki_game_audio_cell_untrimmed` 保存時にトリミング); Japanese uses it for both, and the two sit on different cells. 思考モード and 思考レベル share 思考, as both comments require, and it is the usual Japanese word for model thinking. The subtitles say 推論 where the English says "reasons", and 「推論の分も出力トークンとして課金されます」 is natural. The segments オフ / 最小 / 低 / 中 / 高 are one or two characters each, the game-settings convention for levels, and オフ is the file's word for Off. 「さらに読み込む（2）」 has full-width parentheses and a half-width count, and is about 130 dp in its single-line row.
+
+### Japanese register and punctuation appendix
+
+- No あなた in any of the 39 values. Every sentence value uses です/ます: both cloud subtitles, the key hint, the toast, both LLM subtitles and the crop pill. Titles, labels, digests and statuses end in nouns (体言止め).
+- Only full-width 、。（）： are used. Numbers and placeholders are half-width, and there is no space between Japanese and Latin runs (サーバーのGPUで, 高性能サーバーのOCRと翻訳), as in the rest of the file. No em dash, NBSP or zero-width character; all values are NFC. Each key sits between its English neighbours.
+- Katakana is spelled as the file spells it: サーバー (as in サーバーエラー), キー, モデル, テキスト, トークン, スクリーンショット, トリミング, ドラッグ, オフ, モード. The two new words, クライアント and レベル, use the standard spellings.
+- Out of scope (code, not this file): the cooldown line under the status row takes its description from an English constant (`PtCloudErrors` "Not running", through `cooldownLine`), so it can read "Not running · 15:42に再試行" right under 停止中. Every service's cooldown line works the same way.
+
+### Disposition (2026-10-27)
+
+All five findings applied: `anki_screenshot_crop_instruction` 「端をドラッグして、トリミングします」 (fits the one-line pill in portrait), `llm_backend_reasoning_subtitle` 「…どれだけ推論するかを設定します。…」, 搭載 in both `pt_cloud_translate_toggle_subtitle` and `pt_cloud_translate_row_subtitle_no_key` so the two pitches share one verb, and `word_detail_group_forms` 「変化形」. The cooldown line's English description is a code finding outside the delta, verified in code (`PtCloudErrors` constants); reported to the developer, not fixed in this sync.
+
+### Round 2 (2026-10-27), final review after applying round 1
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports `39 keys x 13 locales: 0 problems`, so no `ja:` line; `python3 scripts/l10n_diff.py --locale app/src/main/res/values-ja/strings.xml` reports `values-ja missing=0 orphan=0 modified=0`, "in sync". **No 🛑 build-breaking issues.**
+
+Round-1 changes checked (`git diff` shows exactly these five plus the 24 Part A keys; the other 22 Part A values are byte-identical to the drafted values round 1 reviewed, and the other 12 Part B values to HEAD):
+- `anki_screenshot_crop_instruction` 「端をドラッグして、トリミングします」: confirmed, byte-identical to the suggestion. With Android's own fonts (Noto Sans CJK JP, the ttc face `fonts.xml` gives ja, and Roboto, both from Robolectric's runtime jar) it is 238 dp at 14 sp. That keeps it on one line in the dialog pill (296 dp) and in the workspace card on a 360 dp portrait phone (272 dp: card inset 12 dp, then 16 dp pill margin and 16 dp padding per side, re-read in `OverlayWorkspace`, `RegionEditor` and `RegionEditorControls.pill`). The old value measures 378 dp. It keeps `region_overlay_drag_instruction`'s 「端をドラッグして、〜します」 shape, and the image on screen supplies the dropped object.
+- `llm_backend_reasoning_subtitle` 「回答の前にモデルがどれだけ推論するかを設定します。…」: confirmed. The first sentence now says what the row does, and 「高いほど」 then reads as the level named by the 思考レベル title just above. The second sentence is unchanged and still ends as `llm_backend_thinking_subtitle` does. The subtitle wraps.
+- `pt_cloud_translate_toggle_subtitle` 「有料の翻訳モデルを搭載し、翻訳ごとに最適なモデルが選ばれます。」: confirmed. 搭載 is the usual verb for models built into a product or service. The change gives the first clause an implied agent (the service) beside the passive second clause; that mix is ordinary in Japanese product copy (「…を搭載し、…が自動で選ばれます」), so it is not a finding.
+- `pt_cloud_translate_row_subtitle_no_key` 「最高の有料翻訳モデルを搭載」: confirmed. It shares 搭載 with the switch subtitle, and the 〜を搭載 ending is as terse as 「アカウントが必要」 in the same slot.
+- `word_detail_group_forms` 「変化形」: confirmed. One noun, distinct from 活用 and 格変化; the `Locale.ROOT` uppercasing leaves it as is.
+
+#### Findings (round 2)
+
+No findings.
+
+Fresh read of all 39 by surface, against the file:
+- Error pill: 「PlayTranslate Cloud：停止中」 keeps the family's full-width colon and uses the status row's word.
+- Cloud page: 「画面の読み取り」 / 「テキストの翻訳」 pair as nouns, and both subtitles are です/ます. クライアントキー and 「発行されたキーを貼り付けてください」 use the file's キー and 貼り付け. The hint is 17 characters, 221 dp at 13 sp (round 1 said 16 and 208), still one line in the 280 dp field. 「サービス」 takes 稼働中 / 起動中 / 停止中 / 接続できません / 予期しない応答（500） / 確認中 / 未確認, sharing wording with the pill siblings.
+- Hub: オフ, 翻訳のみ, 高性能サーバーのOCRと翻訳 (168 dp) and 高性能サーバーのOCRのみ (155 dp), each on one line in the summary (about 216 dp on a 360 dp phone: 14 dp section padding, 16 dp cell padding, 36 dp chip, 14 dp text margins, 18 dp chevron).
+- Capture & overlay: 「高性能サーバーでOCR、端末の負荷ゼロ」 has the engine notes' 「A、B」 shape. Floating strip: 利用可能 / 利用不可 after the same ：.
+- Toast: 532 dp, two lines at 296 dp whether Japanese breaks by character (294 | 238 dp) or at phrase boundaries (252 | 280 dp), and at 320 dp.
+- Part B: 活用 / 格変化 / 変化形. 思考モード / 思考レベル share 思考, with 推論 for "reasons" in both subtitles, as the English keeps Thinking and reasoning apart. The segments オフ / 最小 / 低 / 中 / 高 are at most 26 dp at 13 sp, far inside a segment. 「さらに読み込む（2）」 is 124 dp on a lens card about 306 dp wide, with the file's full-width parentheses (all 6 parenthesized placeholders in the file use them).
+- Register and form: no あなた; only full-width 、。（）：; katakana as the file spells it (サーバー, キー, トークン as in `tr_service_status_usage_today_fmt`). The marketing lines read as Japanese copy. Each key sits between its English neighbours, with no duplicate names.
+- Not re-raised: the cooldown line's English description (`PtCloudErrors`), a code finding the Disposition recorded.
+
+#### Verdict (round 2)
+
+**PASS.** 0 ❌, 0 ⚠️, 0 💬. All five round-1 changes landed byte-exact, match the Disposition, and broke nothing around them; measured with Android's own fonts, the crop pill now fits in portrait. Nothing is open in the ja translation. Outside it, the cooldown line's English description stays with the developer.

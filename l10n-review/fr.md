@@ -939,3 +939,92 @@ Clean areas: The note keeps all three English facts: free and keyless; run by Bi
 ### Disposition (2026-10-14)
 
 No findings; nothing to apply.
+
+## Delta review 2026-10-27 (PlayTranslate Cloud: 24 keys; plus the owed review of 15 keys localized outside the sync)
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports "39 keys x 13 locales: 0 problems", with no line for fr (every key present; `<xliff:g>` spans byte-identical to English; placeholder multiset, `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped `'` or `"`; no edge or double space; the file parses as XML); `python3 scripts/l10n_diff.py --locale app/src/main/res/values-fr/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync". **No 🛑 build-breaking issues.**
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| llm_backend_reasoning_subtitle | ⚠️ | Combien le modèle réfléchit avant de répondre. Plus le niveau est élevé, plus c\'est lent, et la réflexion est facturée comme des tokens de sortie. | Détermine à quel point le modèle réfléchit avant de répondre. Plus le niveau est élevé, plus c\'est lent, et la réflexion est facturée comme des tokens de sortie. | « Combien le modèle réfléchit… » carries English's verbless fragment ("How much the model reasons…") into French. On its own line, a bare « combien » + clause reads as an exclamation or an unfinished indirect question. The file never does this: the same English shape, "How often the game screen is captured…" (`settings_capture_interval_hint`), is « Fréquence à laquelle… ». The suggestion uses the file's third-person subtitle form (« Affiche une légère lueur… », `settings_edge_indicator_subtitle`), and the second sentence is unchanged. |
+| pt_cloud_translate_row_subtitle_no_key | ⚠️ | Les meilleurs modèles de traduction payants, inclus | Les meilleurs modèles de traduction payants, déjà inclus | English's tacked-on ", bundled in" does not carry over. In French a bare participle after the comma reads as cut off: « …, inclus » wants a complement or an adverb (« inclus dans le service », « déjà inclus »). The suggestion keeps the line a noun-phrase pitch, the shape of the « Compte requis » it stands in for on this page. « Inclut les meilleurs modèles de traduction payants » also works. The line wraps (`tvRowSubtitle2`, no `maxLines`). |
+| anki_screenshot_crop_instruction | ⚠️ | Faites glisser les bords pour rogner la capture d\'écran | Faites glisser les bords pour rogner l\'image | Clipping confirmed in code: `RegionEditorControls.pill` is `isSingleLine` with `ellipsize=END` at 14 sp, with a 16 dp margin and 16 dp padding on each side. The review sheets open the crop editor as a full-screen dialog, which leaves 296 dp of text on a 360 dp portrait phone; the workspace page sits in a card inset 12 dp, which leaves 272 dp. The current text measures 334 dp (Arial) and ends « …rogner la captu… ». English is 215 dp. The suggestion is 267 dp and fits both. It keeps `region_overlay_drag_instruction`'s « Faites glisser les bords pour … » and the title's « rogner », and the screenshot is the only image on the page. |
+| pt_cloud_ocr_toggle_title, pt_cloud_translate_toggle_title | 💬 | Reconnaissance du texte · Traduction du texte | Reconnaître le texte · Traduire le texte | Values in name order. The file renders an English verb-phrase switch title as an infinitive (« Conserver l'historique du texte », « Enregistrer les images de capture », « Masquer les traductions ») and keeps nouns for English noun titles (« Mise à jour automatique »). The two nouns read fine as a pair; the infinitives follow the file and the English verbs. « Lire l'écran » would echo `slow_ocr_prompt_message`, but as a bare title it can suggest a screen reader. |
+| pt_cloud_ocr_toggle_subtitle | 💬 | Reconnaissance plus puissante sur un GPU de serveur. Toute la puissance de votre appareil est réservée au jeu. | Reconnaissance plus performante sur un GPU de serveur. Toute la puissance de votre appareil est réservée au jeu. | « puissante » then « puissance » in back-to-back sentences, where English uses two different words (stronger, power). « performante » is the usual French for a more capable engine. |
+| pt_cloud_translate_toggle_subtitle | 💬 | Modèles de traduction payants inclus, le meilleur choisi pour chaque tâche. | Modèles de traduction payants inclus : le meilleur est choisi pour chaque tâche. | « le meilleur choisi pour chaque tâche » is a verbless participle clause, English's telegraphic shape. A colon and « est » turn the second half into a sentence that explains the first. The colon takes a space before it, as every prose colon in the file does (the only unspaced ones are inside the Anki `{{furigana:}}` token). |
+| llm_backend_thinking_subtitle | 💬 | Le modèle réfléchit avant de répondre. Plus lent, et la réflexion est facturée comme des tokens de sortie. | Le modèle réfléchit avant de répondre. C\'est plus lent, et la réflexion est facturée comme des tokens de sortie. | « Plus lent, et … » uses « et » to join a verbless adjective to a full clause, which is English's shape. « C'est plus lent » makes one sentence, and it matches the sibling's « plus c'est lent ». |
+
+### Clean areas (checked, no findings)
+
+**Translation error pill** (`TranslationErrorMessages`, `TranslationErrorPills`: 14 sp, `maxLines=2`). « PlayTranslate Cloud : arrêté » joins the family (« connexion impossible », « ne répond pas »), with a space before the colon and a lowercase status. « arrêté » is masculine for the implied service, and it is the usual French status for a stopped service; « hors service » would mean broken.
+
+**PlayTranslate Cloud page.** The two `settings_row_switch` rows wrap (no `maxLines`). « Toute la puissance de votre appareil est réservée au jeu. » reads naturally, with « réservée » agreeing with « puissance »; « GPU » is masculine (« un GPU »). For the key, « Clé client » sits beside « Clé d'API » (`llm_backend_api_key_label`) and « Clé •••• » (`tr_service_key_tail_fmt`). « Collez la clé qui vous a été fournie » takes `hint_deepl_key`'s « Collez », and « fournie » agrees with « la clé ». The field is a `singleLine` 13 sp monospace EditText, 7.8 dp a character (Droid Sans Mono's 0.6 em advance, a font metric from memory). The hint fits with no margin at 360 dp: 36 characters are 281 dp of advance against 280 dp, so the final « e » loses at most part of its blank side bearing. It is whole at 393 dp and wider. The status row is « Service », with the values Actif, Démarrage en cours, Arrêté, Connexion impossible, Réponse inattendue (500), Vérification en cours and Non vérifié. The adjectives agree with « Service » (Actif, Arrêté, Non vérifié). « Actif », « Vérification en cours… » and « Démarrage … » are AOSP's own status words (framework values-fr: `hearing_device_status_active`, `ext_media_status_checking`, `android_start_title`). The three values that pair with pill strings match them (« connexion impossible », « réponse inattendue », « arrêté »).
+
+**Settings hub, Configure card** (`cloudDigest`; summary `singleLine`, `ellipsize=end`, 13 sp, 216 dp on a 360 dp phone). All four values show whole: « OCR et traduction côté serveur » (179 dp), « OCR côté serveur uniquement » (176), « Traduction uniquement » (133) and « Désactivé ». « Désactivé » is the History cell's off word, masculine for the service. « côté serveur » renders "Server-grade" as the English comment defines it: on the server, not on the device.
+
+**Capture & overlay, OCR section** (`bindCloudOcrRow`). « OCR côté serveur, aucune charge pour l'appareil » has the shape of the engine notes below it (« Détecte le petit texte, plus lent », « Réactif, même sur les écrans chargés en texte ») and uses the hub's « OCR côté serveur ».
+
+**Floating icon quick menu** (contentDescription). « disponible » and « indisponible » are `backend_status_unavailable_default`'s « Indisponible » and AOSP's media-route pair (« Disponible » / « Indisponible »), each with a space before the colon.
+
+**Fix disappearing icon toast** (`openFirst`, LENGTH_LONG). « Impossible d'ouvrir cette page. Recherchez plutôt ce paramètre dans les Paramètres. » now says what the English says, and the old "unavailable on this phone" is gone. « Impossible de … » is the file's error form (« Impossible de joindre le serveur… »), and « Recherchez … dans les Paramètres » matches the cards' « Dans les Paramètres, recherchez … ». It wraps to 2 lines at 296 dp (268 + 257 dp) and at 320 dp. « cette » covers English's "that", since French has one demonstrative. The textbook « la page demandée » takes a third line at 296 dp in the measurement. The capital in « Paramètres » names the Settings app, which carries English's "your phone's Settings"; the paramètre / Paramètres echo was judged harmless on 2026-10-07.
+
+**Part B.** The group headers « Conjugaison », « Déclinaison » and « Formes » go through `addGroupHeader`, which uppercases with `Locale.ROOT`. That keeps the accent, as French typography wants: DÉCLINAISON, beside DÉFINITIONS. « Rogner la capture d'écran » pairs with « Retirer la capture d'écran » on the button beside it, and both crop strings say « rogner ». « Mode réflexion » (the « mode avion » pattern) and « Niveau de réflexion » share « réflexion », as both English comments require, and « tokens » is the file's word (`tr_service_status_usage_today_fmt`). The segments Désactivé, Minimal, Faible, Moyen and Élevé are masculine, agreeing with « niveau ». « Désactivé » has 9 characters, 57 dp at 13 sp in Arial, against about 56 dp per label in a four-segment row at 360 dp (Roboto runs narrower). At worst it drops one size step when bold, since `buildPillToggle` shrinks from 13 to 10 sp before it ellipsizes; the others are at most 45 dp. « Charger plus (2) » is a common French UI label and reads well beside the lens's « Autre correspondance » and « Recherche… ».
+
+**Outside the delta: code, not a string (read from code, not seen on a device).** The cooldown line under the cloud page's status row is `cooldownLine(…, PtCloudService.unavailableDescription(), …)`. `PtCloudErrors` records that description from English constants (« Not running », « Rate limited », « Server error »), so a French device can show « Arrêté » with « Not running · Nouvel essai à 14:05 » under it. The Translation services rows build the same line the same way for the other backends (« Connection failed »), so this is app-wide and predates the delta. It is not a French finding.
+
+### French: typography, agreement, marketing lines
+
+- **vous.** « votre appareil », « qui vous a été fournie », and the imperatives Collez, Recherchez and Faites glisser. A script over all 39 values finds no tu, ton, ta or toi.
+- **Apostrophes and spacing.** The five apostrophes are all `\'` (« l\'appareil », « d\'ouvrir », « c\'est », « d\'écran » twice), with no curly ’ (checked by script). The three colon strings have a plain space before « : », as in the rest of the file, which has no NBSP. None of the 39 has ? ! ; or « ».
+- **Agreement with an implied noun.** With the service (masculine): « arrêté » / « Arrêté », « Actif », « Non vérifié », and « Désactivé » in the hub. With « niveau » (masculine): « Désactivé », « Minimal », « Moyen », « Élevé ». « Plus lent » takes the mode or the model, both masculine. With an explicit noun: « réservée » (puissance), « fournie » (la clé), « aucune charge », « le meilleur » (modèle), « inclus » (modèles). All correct.
+- **Marketing lines.** The hub pitch, the OCR-only summary and the Capture row subtitle read as native UI copy. The two switch subtitles keep English's telegraphic shape (💬 each). The Translation services pitch ends on a bare participle (⚠️).
+
+### Disposition (2026-10-27)
+
+All seven findings applied: `llm_backend_reasoning_subtitle` « Détermine à quel point… », `pt_cloud_translate_row_subtitle_no_key` « …, déjà inclus », `anki_screenshot_crop_instruction` « Faites glisser les bords pour rogner l\'image », the infinitive switch titles « Reconnaître le texte » / « Traduire le texte », `pt_cloud_ocr_toggle_subtitle` « performante », `pt_cloud_translate_toggle_subtitle` « … inclus : le meilleur est choisi … », and `llm_backend_thinking_subtitle` « C\'est plus lent, … ». One change is the translator's own, not the reviewer's: `pt_cloud_key_hint` « Collez la clé qui vous a été fournie » measured about 282 dp in the 280 dp one-line monospace field (the same field the German review found clipping), so it is now « Collez la clé que vous avez reçue » (about 258 dp). The final review covers it. The cooldown line's English description is a code finding, verified in code; reported, not fixed.
+
+### Round 2 (2026-10-27), final review after applying round 1
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports "39 keys x 13 locales: 0 problems", with no line for fr (every key present; `<xliff:g>` spans byte-identical to English; placeholders, markup and escapes match; no unescaped `'` or `"`; the file parses as XML); `python3 scripts/l10n_diff.py --locale app/src/main/res/values-fr/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync". **No 🛑 build-breaking issues.**
+
+Round-1 changes checked. Every applied value is byte-identical to round 1's suggestion, and the file's hash equals `SP/locale-hashes-after-fixes.txt`. Against the sync's drafts (`SP/drafts.py`), exactly the six Part A keys below changed. Against `HEAD`, exactly the three Part B keys below changed.
+- `llm_backend_reasoning_subtitle`, « Détermine à quel point le modèle réfléchit avant de répondre. … »: confirmed. It is the file's subject-less third-person subtitle (`settings_edge_indicator_subtitle`), « à quel point » carries English's "how much", and the second sentence is unchanged.
+- `pt_cloud_translate_row_subtitle_no_key`, « Les meilleurs modèles de traduction payants, déjà inclus »: confirmed. The participle now has its adverb, and the line is still a noun phrase where other rows read « Compte requis ». It wraps (`tvRowSubtitle2`, no `maxLines`).
+- `anki_screenshot_crop_instruction`, « Faites glisser les bords pour rogner l\'image »: confirmed.
+  - Width: 267 dp (Arial, 14 sp) in the `isSingleLine`, `ellipsize=END` pill. The pill has 272 dp in the workspace card and 296 dp in the review sheets' dialog (re-read in `RegionEditor`, `RegionEditorControls.pill` and `pt_workspace_inset`).
+  - Wording: it keeps `region_overlay_drag_instruction`'s opening and the title's « rogner ».
+- `pt_cloud_ocr_toggle_title` and `pt_cloud_translate_toggle_title`, « Reconnaître le texte » / « Traduire le texte »: confirmed. Both are infinitives, as the file renders verb-phrase switch titles. « reconnaître » is the file's OCR verb (« Reconnu par … », « Reconnaissance du texte… »).
+- `pt_cloud_ocr_toggle_subtitle`, « Reconnaissance plus performante … »: confirmed. « performante » agrees with « reconnaissance », and the puissante/puissance echo is gone.
+- `pt_cloud_translate_toggle_subtitle`, « Modèles de traduction payants inclus : le meilleur est choisi pour chaque tâche. »: confirmed. The colon has a plain space before it, like the file's 63 other spaced colons; the file has no NBSP.
+- `llm_backend_thinking_subtitle`, « … C\'est plus lent, et … »: confirmed. It matches the sibling's « plus c\'est lent ».
+- `pt_cloud_key_hint`, « Collez la clé que vous avez reçue » (the translator's own change): confirmed.
+  - Width: 33 characters are 257 dp of advance at 13 sp in a 0.6 em monospace (258 dp measured in Menlo), against the field's 280 dp. The old « … qui vous a été fournie » needed 281 dp.
+  - Grammar and wording: « reçue » agrees with the preceding object « que » (la clé), and the register is vous. « Collez » is `hint_deepl_key`'s verb and AOSP's « Coller ». The meaning is still "the key you were given".
+
+#### Findings (round 2)
+
+No findings.
+
+Fresh read of all 39 values (checked, no finding):
+- **Error pill.** « PlayTranslate Cloud : arrêté » has the family's shape: a space before the colon, then a lowercase status. Only `PtCloudErrors` raises `NOT_RUNNING`, so the masculine always stands for the service.
+- **Cloud page.**
+  - Agreement: the adjectives under « Service » agree with it (Actif, Arrêté, Non vérifié).
+  - The three values that echo pill strings match them.
+  - Width: the longest value, « Réponse inattendue (500) » (150 dp at 13 sp), fits beside the title in the 300 dp row.
+  - Key: « Clé client » sits with « Clé d\'API » and « Clé •••• ».
+- **Hub** (13 sp, `singleLine`, 216 dp). All four summaries fit on one line; the widest, the pitch, is 179 dp. « Désactivé » is the History cell's off word, masculine for the service.
+- **Capture & overlay row.** « OCR côté serveur, aucune charge pour l\'appareil » has the shape of the engine notes below it.
+- **Screen-reader labels.** « disponible » / « indisponible » match `backend_status_unavailable_default`.
+- **Toast.** It wraps to 2 lines at 296 dp: « Impossible d\'ouvrir cette page. Recherchez » / « plutôt ce paramètre dans les Paramètres. »
+- **Part B.**
+  - `Locale.ROOT` keeps the accent in DÉCLINAISON.
+  - « Mode réflexion » and « Niveau de réflexion » share « réflexion ».
+  - « Charger plus (2) » shows « Recherche… » in the same row while it loads.
+- **The one tight label.** « Désactivé » measures 57 dp at 13 sp in Arial (61 dp in bold, when it is the active segment), against about 56 dp per segment in a four-segment row. `buildPillToggle` drops it at most one size step, to 12 sp (53 dp, or 56 dp in bold), so it never ellipsizes; Roboto runs narrower than Arial. Round 1 recorded this and passed it, and nothing new changes that.
+- **Typography** (checked by script over the 39). No tu form. All six apostrophes are `\'`, with no curly ’. The four colons each have a plain space before them, and there are no « » and no NBSP.
+
+#### Verdict (round 2)
+
+**PASS** (0 🛑, 0 ❌, 0 ⚠️, 0 💬). All seven round-1 fixes and the translator's own `pt_cloud_key_hint` change are in the file as the Disposition says, and none of them broke anything around it. The fresh read of the 39 keys found nothing new. One recorded item stays open, the cloud page's cooldown line in English. It is a code finding and does not block the sync.

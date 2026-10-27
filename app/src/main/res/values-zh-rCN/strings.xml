@@ -1190,6 +1190,8 @@
 
     <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>：无法连接</string>
 
+    <string name="translation_error_not_running"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>：未运行</string>
+
     <string name="translation_error_discard_card_title">放弃这张卡片？</string>
 
     <string name="translation_error_discard_card_message">打开设置后，这张卡片将会丢失，需要重新截取屏幕后再次生成。</string>
@@ -1598,6 +1600,50 @@
     <plurals name="settings_yomitan_outdated_summary">
         <item quantity="other">有 <xliff:g id="count" example="3">%d</xliff:g> 部词典需要重新导入</item>
     </plurals>
+
+    <string name="settings_pt_cloud_summary_off">关</string>
+
+    <string name="settings_pt_cloud_summary_pitch">服务器级 OCR 和翻译</string>
+
+    <string name="settings_pt_cloud_summary_translation_only">仅翻译</string>
+
+    <string name="settings_pt_cloud_summary_ocr_only">仅服务器级 OCR</string>
+
+    <string name="pt_cloud_ocr_toggle_title">识别屏幕文字</string>
+
+    <string name="pt_cloud_ocr_toggle_subtitle">在服务器 GPU 上运行更强的 OCR，设备性能全部留给游戏。</string>
+
+    <string name="pt_cloud_translate_toggle_title">翻译文字</string>
+
+    <string name="pt_cloud_translate_toggle_subtitle">内置多款付费翻译模型，每次翻译自动选用最合适的一款。</string>
+
+    <string name="pt_cloud_ocr_row_subtitle">服务器级 OCR，设备零负载</string>
+
+    <string name="pt_cloud_translate_row_subtitle_no_key">内置顶尖付费翻译模型</string>
+
+    <string name="pt_cloud_key_label">客户端密钥</string>
+
+    <string name="pt_cloud_key_hint">粘贴你收到的密钥</string>
+
+    <string name="pt_cloud_status_title">服务</string>
+
+    <string name="pt_cloud_status_running">运行中</string>
+
+    <string name="pt_cloud_status_starting">启动中</string>
+
+    <string name="pt_cloud_status_not_running">未运行</string>
+
+    <string name="pt_cloud_status_unreachable">无法连接</string>
+
+    <string name="pt_cloud_status_other">响应异常（<xliff:g id="http_code" example="500">%1$s</xliff:g>）</string>
+
+    <string name="pt_cloud_status_checking">检查中</string>
+
+    <string name="pt_cloud_status_unchecked">未检查</string>
+
+    <string name="floating_menu_pt_cloud_available"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>：可用</string>
+
+    <string name="floating_menu_pt_cloud_unavailable"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>：不可用</string>
 
     <string name="yomitan_page_description">Yomitan 词典是供 Yomitan 浏览器扩展使用的、由社区创建的词典文件。其功能包括额外的词典、词频数据和音高重音。用 + 按钮导入词典（.zip）或 Yomitan 词典合集导出文件（.json），PlayTranslate 便会将其无缝整合到应用的各处。</string>
 
@@ -2072,7 +2118,7 @@
 
     <string name="keep_running_tile_line">可在任意界面重新开启 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>。</string>
 
-    <string name="keep_running_screen_unavailable">此手机上无法打开该页面。请改为在手机的设置中搜索该选项。</string>
+    <string name="keep_running_screen_unavailable">无法打开该页面。请改为在手机的设置中搜索该选项。</string>
 
     <string name="keep_running_xiaomi_autostart_title">允许“自启动”</string>
 

@@ -578,7 +578,7 @@
 
     <string name="anki_screenshot_remove_content_description">Retirer la capture d\'écran</string>
     <string name="anki_screenshot_crop">Rogner la capture d\'écran</string>
-    <string name="anki_screenshot_crop_instruction">Faites glisser les bords pour rogner la capture d\'écran</string>
+    <string name="anki_screenshot_crop_instruction">Faites glisser les bords pour rogner l\'image</string>
 
     <string name="anki_group_audio">Audio</string>
 
@@ -783,10 +783,10 @@
 
     <string name="llm_backend_get_key_title_fmt">Obtenir une clé d\'API <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g></string>
     <string name="llm_backend_thinking_title">Mode réflexion</string>
-    <string name="llm_backend_thinking_subtitle">Le modèle réfléchit avant de répondre. Plus lent, et la réflexion est facturée comme des tokens de sortie.</string>
+    <string name="llm_backend_thinking_subtitle">Le modèle réfléchit avant de répondre. C\'est plus lent, et la réflexion est facturée comme des tokens de sortie.</string>
 
     <string name="llm_backend_reasoning_title">Niveau de réflexion</string>
-    <string name="llm_backend_reasoning_subtitle">Combien le modèle réfléchit avant de répondre. Plus le niveau est élevé, plus c\'est lent, et la réflexion est facturée comme des tokens de sortie.</string>
+    <string name="llm_backend_reasoning_subtitle">Détermine à quel point le modèle réfléchit avant de répondre. Plus le niveau est élevé, plus c\'est lent, et la réflexion est facturée comme des tokens de sortie.</string>
     <string name="llm_backend_reasoning_off">Désactivé</string>
     <string name="llm_backend_reasoning_minimal">Minimal</string>
     <string name="llm_backend_reasoning_low">Faible</string>
@@ -1192,6 +1192,8 @@
 
     <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g> : connexion impossible</string>
 
+    <string name="translation_error_not_running"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> : arrêté</string>
+
     <string name="translation_error_discard_card_title">Abandonner la carte ?</string>
 
     <string name="translation_error_discard_card_message">Si vous ouvrez les paramètres, vous perdrez cette carte et devrez la recréer à partir d\'une nouvelle capture.</string>
@@ -1593,6 +1595,50 @@
         <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> dictionnaire doit être réimporté</item>
         <item quantity="other"><xliff:g id="count" example="3">%d</xliff:g> dictionnaires doivent être réimportés</item>
     </plurals>
+
+    <string name="settings_pt_cloud_summary_off">Désactivé</string>
+
+    <string name="settings_pt_cloud_summary_pitch">OCR et traduction côté serveur</string>
+
+    <string name="settings_pt_cloud_summary_translation_only">Traduction uniquement</string>
+
+    <string name="settings_pt_cloud_summary_ocr_only">OCR côté serveur uniquement</string>
+
+    <string name="pt_cloud_ocr_toggle_title">Reconnaître le texte</string>
+
+    <string name="pt_cloud_ocr_toggle_subtitle">Reconnaissance plus performante sur un GPU de serveur. Toute la puissance de votre appareil est réservée au jeu.</string>
+
+    <string name="pt_cloud_translate_toggle_title">Traduire le texte</string>
+
+    <string name="pt_cloud_translate_toggle_subtitle">Modèles de traduction payants inclus : le meilleur est choisi pour chaque tâche.</string>
+
+    <string name="pt_cloud_ocr_row_subtitle">OCR côté serveur, aucune charge pour l\'appareil</string>
+
+    <string name="pt_cloud_translate_row_subtitle_no_key">Les meilleurs modèles de traduction payants, déjà inclus</string>
+
+    <string name="pt_cloud_key_label">Clé client</string>
+
+    <string name="pt_cloud_key_hint">Collez la clé que vous avez reçue</string>
+
+    <string name="pt_cloud_status_title">Service</string>
+
+    <string name="pt_cloud_status_running">Actif</string>
+
+    <string name="pt_cloud_status_starting">Démarrage en cours</string>
+
+    <string name="pt_cloud_status_not_running">Arrêté</string>
+
+    <string name="pt_cloud_status_unreachable">Connexion impossible</string>
+
+    <string name="pt_cloud_status_other">Réponse inattendue (<xliff:g id="http_code" example="500">%1$s</xliff:g>)</string>
+
+    <string name="pt_cloud_status_checking">Vérification en cours</string>
+
+    <string name="pt_cloud_status_unchecked">Non vérifié</string>
+
+    <string name="floating_menu_pt_cloud_available"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> : disponible</string>
+
+    <string name="floating_menu_pt_cloud_unavailable"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> : indisponible</string>
 
     <string name="yomitan_page_description">Les dictionnaires Yomitan sont des fichiers de dictionnaire créés par la communauté et utilisés par l\'extension de navigateur Yomitan. Les fonctionnalités incluent des dictionnaires supplémentaires, des données de fréquence et l\'accent tonal. Importez un dictionnaire (.zip) ou l\'export d\'une collection de dictionnaires Yomitan (.json) à l\'aide du bouton +, et PlayTranslate l\'intégrera de façon transparente dans toute l\'application.</string>
 
@@ -2004,7 +2050,7 @@
 
     <string name="keep_running_tile_line">Réactive <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> depuis n\'importe quel écran.</string>
 
-    <string name="keep_running_screen_unavailable">Page indisponible sur ce téléphone. Recherchez ce paramètre dans les Paramètres.</string>
+    <string name="keep_running_screen_unavailable">Impossible d\'ouvrir cette page. Recherchez plutôt ce paramètre dans les Paramètres.</string>
 
     <string name="keep_running_xiaomi_autostart_title">Autoriser le démarrage automatique</string>
 

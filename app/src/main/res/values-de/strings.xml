@@ -275,7 +275,7 @@
          DEEPL — settings hints
          ═══════════════════════════════════════════════════════════════ -->
 
-    <string name="hint_deepl_key">Füge hier deinen <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g>-API-Schlüssel ein</string>
+    <string name="hint_deepl_key"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g>-API-Schlüssel einfügen</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          TRANSLATION FALLBACK NOTES
@@ -567,7 +567,7 @@
 
     <string name="anki_screenshot_remove_content_description">Screenshot entfernen</string>
     <string name="anki_screenshot_crop">Screenshot zuschneiden</string>
-    <string name="anki_screenshot_crop_instruction">Ziehe die Kanten, um den Screenshot zuzuschneiden</string>
+    <string name="anki_screenshot_crop_instruction">Ziehe die Kanten zum Zuschneiden</string>
 
     <string name="anki_group_audio">Audio</string>
 
@@ -776,7 +776,7 @@
 
     <string name="llm_backend_get_key_title_fmt"><xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g>-API-Schlüssel erhalten</string>
     <string name="llm_backend_thinking_title">Denkmodus</string>
-    <string name="llm_backend_thinking_subtitle">Das Modell denkt nach, bevor es antwortet. Langsamer, und das Nachdenken wird als Ausgabe-Tokens abgerechnet.</string>
+    <string name="llm_backend_thinking_subtitle">Das Modell denkt nach, bevor es antwortet. Das ist langsamer, und das Nachdenken wird als Ausgabe-Tokens abgerechnet.</string>
 
     <string name="llm_backend_reasoning_title">Denkstufe</string>
     <string name="llm_backend_reasoning_subtitle">Wie viel das Modell nachdenkt, bevor es antwortet. Je höher, desto langsamer, und das Nachdenken wird als Ausgabe-Tokens abgerechnet.</string>
@@ -1154,6 +1154,8 @@
     <string name="translation_error_timeout"><xliff:g id="service" example="DeepSeek">%1$s</xliff:g>: reagiert nicht</string>
 
     <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>: keine Verbindung möglich</string>
+
+    <string name="translation_error_not_running"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: läuft nicht</string>
 
     <string name="translation_error_discard_card_title">Karte verwerfen?</string>
 
@@ -1561,6 +1563,50 @@
         <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> Wörterbuch muss neu importiert werden</item>
         <item quantity="other"><xliff:g id="count" example="3">%d</xliff:g> Wörterbücher müssen neu importiert werden</item>
     </plurals>
+
+    <string name="settings_pt_cloud_summary_off">Aus</string>
+
+    <string name="settings_pt_cloud_summary_pitch">Server-OCR und -Übersetzung</string>
+
+    <string name="settings_pt_cloud_summary_translation_only">Nur Übersetzung</string>
+
+    <string name="settings_pt_cloud_summary_ocr_only">Nur Server-OCR</string>
+
+    <string name="pt_cloud_ocr_toggle_title">Text erkennen</string>
+
+    <string name="pt_cloud_ocr_toggle_subtitle">Stärkere OCR auf einer Server-GPU. Die ganze Leistung deines Geräts bleibt fürs Spiel.</string>
+
+    <string name="pt_cloud_translate_toggle_title">Text übersetzen</string>
+
+    <string name="pt_cloud_translate_toggle_subtitle">Bezahlte Übersetzungsmodelle inklusive, für jede Aufgabe wird das beste gewählt.</string>
+
+    <string name="pt_cloud_ocr_row_subtitle">Server-OCR, keine Last auf dem Gerät</string>
+
+    <string name="pt_cloud_translate_row_subtitle_no_key">Die besten bezahlten Übersetzungsmodelle inklusive</string>
+
+    <string name="pt_cloud_key_label">Client-Schlüssel</string>
+
+    <string name="pt_cloud_key_hint">Füge den erhaltenen Schlüssel ein</string>
+
+    <string name="pt_cloud_status_title">Dienst</string>
+
+    <string name="pt_cloud_status_running">Läuft</string>
+
+    <string name="pt_cloud_status_starting">Startet</string>
+
+    <string name="pt_cloud_status_not_running">Läuft nicht</string>
+
+    <string name="pt_cloud_status_unreachable">Keine Verbindung möglich</string>
+
+    <string name="pt_cloud_status_other">Unerwartete Antwort (<xliff:g id="http_code" example="500">%1$s</xliff:g>)</string>
+
+    <string name="pt_cloud_status_checking">Wird geprüft</string>
+
+    <string name="pt_cloud_status_unchecked">Nicht geprüft</string>
+
+    <string name="floating_menu_pt_cloud_available"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: verfügbar</string>
+
+    <string name="floating_menu_pt_cloud_unavailable"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: nicht verfügbar</string>
 
     <string name="yomitan_page_description">Yomitan-Wörterbücher sind von der Community erstellte Wörterbuchdateien, die von der Browser-Erweiterung Yomitan verwendet werden. Zu den Funktionen gehören zusätzliche Wörterbücher, Häufigkeitsdaten und Tonhöhenakzent. Importiere ein Wörterbuch (.zip) oder den Export einer Yomitan-Wörterbuchsammlung (.json) mit der Schaltfläche „+“, und PlayTranslate bindet es nahtlos in der gesamten App ein.</string>
 
@@ -2040,7 +2086,7 @@
 
     <string name="keep_running_tile_line">Damit schaltest du <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> von jedem Bildschirm aus wieder ein.</string>
 
-    <string name="keep_running_screen_unavailable">Die Seite fehlt auf diesem Smartphone. Suche die Option in den Einstellungen.</string>
+    <string name="keep_running_screen_unavailable">Die Seite ließ sich nicht öffnen. Suche die Option stattdessen in den Einstellungen.</string>
 
     <string name="keep_running_xiaomi_autostart_title">Autostart zulassen</string>
 

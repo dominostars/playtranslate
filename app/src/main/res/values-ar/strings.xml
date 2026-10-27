@@ -173,8 +173,8 @@
     </plurals>
 
     <string name="word_detail_group_definitions">التعريفات</string>
-    <string name="word_detail_group_conjugation">التصريف</string>
-    <string name="word_detail_group_declension">الإعراب</string>
+    <string name="word_detail_group_conjugation">تصريف الفعل</string>
+    <string name="word_detail_group_declension">تصريف الاسم</string>
     <string name="word_detail_group_forms">الصيغ</string>
 
     <string name="word_detail_group_kanji">كانجي</string>
@@ -1103,6 +1103,8 @@
 
     <string name="translation_error_unreachable">خدمة <xliff:g id="service" example="Lingva">%1$s</xliff:g>: تعذّر الاتصال</string>
 
+    <string name="translation_error_not_running">خدمة <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: متوقفة</string>
+
     <string name="translation_error_discard_card_title">تجاهل البطاقة؟</string>
 
     <string name="translation_error_discard_card_message">إذا فتحت الإعدادات فستفقد هذه البطاقة، وسيتعيّن عليك إنشاؤها مرة أخرى من التقاط جديد.</string>
@@ -1486,6 +1488,50 @@
         <item quantity="many">يلزم إعادة استيراد <xliff:g id="count" example="11">%d</xliff:g> قاموسًا</item>
         <item quantity="other">يلزم إعادة استيراد <xliff:g id="count" example="100">%d</xliff:g> قاموس</item>
     </plurals>
+
+    <string name="settings_pt_cloud_summary_off">معطّل</string>
+
+    <string name="settings_pt_cloud_summary_pitch">قراءة النص وترجمته بقوة الخوادم</string>
+
+    <string name="settings_pt_cloud_summary_translation_only">الترجمة فقط</string>
+
+    <string name="settings_pt_cloud_summary_ocr_only">قراءة النص فقط بقوة الخوادم</string>
+
+    <string name="pt_cloud_ocr_toggle_title">قراءة النص على الشاشة</string>
+
+    <string name="pt_cloud_ocr_toggle_subtitle">قراءة أقوى للنص على وحدة GPU في الخادم. وتتفرغ قدرة جهازك كلها للعبة.</string>
+
+    <string name="pt_cloud_translate_toggle_title">ترجمة النص</string>
+
+    <string name="pt_cloud_translate_toggle_subtitle">تتضمن نماذج ترجمة مدفوعة، ويُختار أفضلها لكل مهمة.</string>
+
+    <string name="pt_cloud_ocr_row_subtitle">قراءة النص بقوة الخوادم، دون أي عبء على الجهاز</string>
+
+    <string name="pt_cloud_translate_row_subtitle_no_key">أفضل نماذج الترجمة المدفوعة مضمّنة</string>
+
+    <string name="pt_cloud_key_label">مفتاح العميل</string>
+
+    <string name="pt_cloud_key_hint">الصق المفتاح الذي حصلت عليه</string>
+
+    <string name="pt_cloud_status_title">الخدمة</string>
+
+    <string name="pt_cloud_status_running">قيد التشغيل</string>
+
+    <string name="pt_cloud_status_starting">جارٍ بدء التشغيل</string>
+
+    <string name="pt_cloud_status_not_running">متوقفة</string>
+
+    <string name="pt_cloud_status_unreachable">تعذّر الاتصال</string>
+
+    <string name="pt_cloud_status_other">استجابة غير متوقعة (<xliff:g id="http_code" example="500">%1$s</xliff:g>)</string>
+
+    <string name="pt_cloud_status_checking">جارٍ التحقق</string>
+
+    <string name="pt_cloud_status_unchecked">لم يتم التحقق</string>
+
+    <string name="floating_menu_pt_cloud_available">خدمة <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: متاحة</string>
+
+    <string name="floating_menu_pt_cloud_unavailable">خدمة <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: غير متاحة</string>
 
     <string name="yomitan_page_description">قواميس Yomitan هي ملفات قواميس أنشأها المجتمع وتُستخدم مع امتداد المتصفح Yomitan. تشمل ميزاتها قواميس إضافية وبيانات التكرار والنبرة الصوتية. استورد قاموسًا (.zip) أو ملف تصدير مجموعة قواميس Yomitan (.json) باستخدام زر +، وسيدمجه PlayTranslate بسلاسة في جميع أنحاء التطبيق.</string>
 
@@ -1965,7 +2011,7 @@
 
     <string name="keep_running_tile_line">يمكنك تشغيل <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> مجددًا من أي شاشة.</string>
 
-    <string name="keep_running_screen_unavailable">الشاشة المطلوبة غير متاحة على هذا الهاتف. ابحث عن هذا الإعداد في إعدادات هاتفك بدلًا من ذلك.</string>
+    <string name="keep_running_screen_unavailable">تعذّر فتح الشاشة المطلوبة. ابحث عن هذا الإعداد في إعدادات هاتفك بدلًا من ذلك.</string>
 
     <string name="keep_running_xiaomi_autostart_title">السماح بالتشغيل التلقائي</string>
 

@@ -638,3 +638,140 @@ Clean areas: Render code read first. The note is `tvProviderNote` (13 sp, no lin
 ### Disposition (2026-10-14)
 
 No findings; nothing to apply.
+
+## Delta review 2026-10-27 (PlayTranslate Cloud: 24 keys; plus the owed review of 15 keys localized outside the sync)
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports `39 keys x 13 locales: 0 problems`, with no line for values-vi (all 39 names present; every `<xliff:g>` span byte-identical to EN; placeholder multiset, `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; no raw `'`/`"`; no stray or double space; the file parses as XML); `python3 scripts/l10n_diff.py --locale app/src/main/res/values-vi/strings.xml` reports `values-vi missing=0 orphan=0 modified=0`, "in sync". **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.**
+- Error pill (`TranslationErrorPills`): 14 sp, `maxLines=2`, ellipsized; `TranslationErrorMessages` maps `NOT_RUNNING` to `translation_error_not_running` with the service name.
+- PlayTranslate Cloud page (`PtCloudSettingsActivity`, `activity_pt_cloud_settings.xml`): two `settings_row_switch` rows (title 15 sp, subtitle 13 sp, no line cap), disabled at half alpha while no key is saved. The key label sits above a single-line 13 sp monospace field (about 278 dp of text on a 360 dp phone). The status row is `pt_cloud_status_title` (weight 1) beside a wrap-content value, set to `pt_cloud_status_checking` on every resume.
+- Settings hub (`RootSettingsViewModel.cloudDigest`): `singleLine` + `ellipsize="end"`, 13 sp, 216 dp on a 360 dp phone and 249 dp on a wider one. The pitch shows with no key and again with both switches on.
+- Capture & overlay (`bindCloudOcrRow`): a switch row whose subtitle wraps, above the engine rows and their notes.
+- Translation services (`PtCloudBackend.status`): an Info line in `tvRowSubtitle2`, which wraps.
+- Floating menu (`FloatingIconMenu.updateCloudHeader`): both strings are only the strip's `contentDescription`. The visible text is the brand.
+- `KeepRunningActivity.openFirst`: a `LENGTH_LONG` toast, then App info.
+- Part B: `addGroupHeader` uppercases with `Locale.ROOT`. The level segments are `buildPillToggle` labels: 13 sp, autosized to 10 sp before they ellipsize, about 56 dp each with four segments. The crop pill (`RegionEditorControls.pill`) is 14 sp, single line and ellipsized, with about 270 dp of text in the floating workspace on a 360 dp phone (the narrowest host) and 294 dp in the review sheets' dialog. The load-more row is 13 sp with `maxLines=1`.
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| pt_cloud_translate_toggle_subtitle | 💬 | Đã bao gồm các mô hình dịch trả phí, tự chọn mô hình tốt nhất cho từng việc. | Đã bao gồm các mô hình dịch trả phí, tự động chọn mô hình tốt nhất cho từng việc. | The line has no subject, so "tự chọn" can also be read as "choose it yourself" (as in "gói tự chọn", pick-your-own). That is the opposite of the English, where the server picks. "tự động chọn" leaves only the server reading, at the cost of one syllable. The line wraps and has no cap. |
+
+### Clean areas (checked, no findings)
+
+**Error pill.** «PlayTranslate Cloud: đã dừng» has the family's shape (the name, a colon, then a lowercase status, as in «không thể kết nối» and «lỗi máy chủ»). It measures 173 dp, one line. đã dừng pairs with the status row: «Đang chạy» / «Đã dừng».
+
+**PlayTranslate Cloud page.**
+- **The two switch rows** read as a verb-first pair: «Nhận dạng chữ trên màn hình» / «Dịch văn bản».
+  - A literal «Đọc màn hình» would recall the screen reader («Trình đọc màn hình», from memory) in an app with an accessibility service. chữ is the file's word for on-screen text in the OCR notes («chữ nhỏ», «màn hình nhiều chữ»).
+  - The OCR subtitle keeps both English sentences in natural order. «Toàn bộ sức mạnh của thiết bị dành cho trò chơi.» echoes «mạnh hơn», as English echoes "Stronger … power".
+  - The translation subtitle's first clause and the services row's no-key line share «Đã bao gồm các mô hình dịch trả phí».
+- **Key.** «Khóa ứng dụng khách» / «Dán khóa bạn đã nhận được» use the file's key noun (Khóa API in `llm_backend_api_key_label`, «Khóa ••••…» in `tr_service_key_tail_fmt`) and its paste verb («Dán khóa API DeepL của bạn vào đây» in `hint_deepl_key`).
+  - ứng dụng khách is the common Vietnamese for a software "client" (from memory: Google's consoles use it for an OAuth client).
+  - The hint under the label settles any "khóa = lock" reading.
+  - The hint is 196 dp in monospace, inside about 278 dp.
+- **Status row.** «Dịch vụ» beside Đang chạy (AOSP's `app_running_notification_title`), Đang khởi động, Đã dừng, Đang kiểm tra (AOSP's `ext_media_status_checking` without the ellipsis, as English has none) and Chưa kiểm tra. Each value matches its pill counterpart:
+  - `pt_cloud_status_unreachable` = `translation_error_unreachable` (không thể kết nối);
+  - `pt_cloud_status_other` = `translation_error_bad_response` (phản hồi không mong đợi) plus « (500)»;
+  - `pt_cloud_status_not_running` = `translation_error_not_running` (đã dừng).
+  Values are capitalized when they stand alone and lowercase after a colon, as the file does.
+
+**Settings hub.** The three digests read as one set: «OCR và dịch trên máy chủ mạnh» (189 dp), «Chỉ OCR trên máy chủ mạnh» (167 dp) and «Chỉ dịch» (47 dp), all whole at 216 dp. trên máy chủ mạnh carries both senses of "Server-grade" that the comment asks for: on the server, and a strong one. «Tắt» is the Off of `settings_cell_history_summary_off` (Tắt · …) and of AOSP.
+
+**Capture & overlay.** «OCR trên máy chủ mạnh, không tốn tài nguyên thiết bị» has the engine notes' shape (two phrases and a comma, as in «Đọc được chữ nhỏ, nhưng chậm hơn»). At 314 dp it wraps to 2 lines, as the vi Meiki note does (246 dp). The row has no line cap.
+
+**Translation services and floating menu.** The no-key line stands where other rows read «Cần tài khoản», and it wraps freely. The screen-reader labels use AOSP's «Khả dụng» / «Không khả dụng» (`media_route_status_available` / `_not_available`), lowercased after the colon, as the pill family is. Standing alone, `backend_status_unavailable_default` is «Không khả dụng».
+
+**Toast.** «Không thể mở màn hình đó. Hãy tìm mục cài đặt đó trong Cài đặt của điện thoại.» says the app could not open the screen, as the new English does. The second sentence is the reviewed one, with the cards' verb tìm («Trong Cài đặt, hãy tìm “…”») and Cài đặt capitalized as the Settings app. At 14 sp it takes 2 lines at both 296 and 320 dp (500 dp in all, English 491). The break at 296 falls between cài and đặt, which is ordinary Vietnamese line breaking.
+
+**Part B.**
+- **Thinking titles.** Both titles use suy luận, as the comments require: «Chế độ suy luận» / «Mức suy luận». Vietnamese tech writing calls reasoning models mô hình suy luận. Chế độ … follows «Chế độ lớp phủ».
+- **Subtitles.** Both reuse mô hình (`llm_backend_model_label`) and token (`tr_service_status_usage_today_fmt`). «Càng cao càng chậm» is idiomatic. «Mức độ mô hình suy luận …» is the ordinary "mức độ + clause" pattern, and it follows the file's noun-phrase handling of "How often…" (`settings_capture_interval_hint`, «Tần suất chụp …»).
+- **Level segments.** «Tắt / Tối thiểu / Thấp / Vừa / Cao», measured in bold at 13 sp: 20, 54, 31, 25 and 25 dp against about 56, so none shrinks. Vừa is the right call: «Trung bình», the stock middle of thấp/cao, measures 68 dp and would shrink to about 11 sp. Beside Thấp and Cao, vừa reads as "moderate".
+- **Group headers.** «Chia động từ», «Biến cách» and «Dạng từ» are the standard Vietnamese grammar terms. chia động từ and dạng từ are what learner materials call conjugation and word-form exercises (from memory), and biến cách is declension. Uppercased with `Locale.ROOT` they render «CHIA ĐỘNG TỪ», «BIẾN CÁCH», «DẠNG TỪ» beside «ĐỊNH NGHĨA», with every tone mark kept (đ→Đ, ộ→Ộ, ừ→Ừ).
+- **Crop.** «Cắt ảnh chụp màn hình» pairs with the neighbouring «Xóa ảnh chụp màn hình». «Kéo các cạnh để cắt ảnh chụp màn hình» has the shape of «Kéo các cạnh để giới hạn việc chụp màn hình trong vùng này». At 251 dp in Arial it fits the narrowest host's 270 dp, and Roboto runs narrower.
+- **Load more.** «Tải thêm (2)» uses the file's tải («Đang tải ví dụ…»). It is 70 dp and becomes «Đang tra…» while loading.
+
+**Considered and left.**
+- «Phản hồi không mong đợi (500)»: phản hồi bất thường would be more idiomatic, but the status row has to match the reviewed pill string.
+- «Chậm hơn, và …» keeps English's fragment and its comma. Both are acceptable in Vietnamese UI copy.
+- «Khóa ứng dụng khách» is technical, but so is "Client key", and the field's hint explains it.
+
+### Vietnamese appendix: diacritics, syllables, terms
+
+**Diacritics and syllables.** A script split the 39 values into syllables: 124 distinct tokens. Every Vietnamese syllable carries its full tone and vowel marks. The ASCII-only tokens are all real syllables (bao, cho, khi, mong, ra, suy, tra, trong, Cao, Chia) or Latin terms (OCR, GPU, token). Nothing is stripped or merged. Every value is NFC, with no double, edge or odd-width spaces, and every character is either ASCII or a Vietnamese letter. Tone marks use the new style (khóa), which is the file's style.
+
+**Register.** bạn appears where a pronoun is needed («khóa bạn đã nhận được»). Elsewhere the lines need no pronoun, as in the rest of the file, and the toast's «Hãy tìm …» is the file's imperative.
+
+**Terms, one translation each, checked against the file:**
+
+| English | Vietnamese | precedent |
+|---|---|---|
+| server | máy chủ | `translation_error_server`, `llm_backend_base_url_custom_hint` |
+| device | thiết bị | 21 strings |
+| key | khóa | `llm_backend_api_key_label`, `tr_service_key_tail_fmt` |
+| paste | Dán | `hint_deepl_key` |
+| OCR | OCR | `ocr_picker_title` (Chọn công cụ OCR) |
+| model | mô hình | `llm_backend_model_label` |
+| token | token | `tr_service_status_usage_today_fmt` |
+| Off | Tắt | `settings_cell_history_summary_off`, AOSP |
+| available / unavailable | khả dụng / không khả dụng | AOSP, `backend_status_unavailable_default` |
+| screenshot | ảnh chụp màn hình | `anki_screenshot_remove_content_description` |
+| game | trò chơi | file-wide |
+| Settings (the phone's) | Cài đặt | the keep-running cards |
+
+Hỗ trợ tiếp cận does not occur in this delta, and Trợ năng appears nowhere in the file.
+
+### Verdict
+
+0 🛑, 0 ❌, 0 ⚠️, 1 💬 (`pt_cloud_translate_toggle_subtitle`, optional). The other 38 keys pass as written.
+
+### Disposition (2026-10-27)
+
+The one 💬 is applied: `pt_cloud_translate_toggle_subtitle` «…, tự động chọn mô hình tốt nhất cho từng việc.», which leaves only the reading where the server picks.
+
+### Round 2 (2026-10-27), final review after applying round 1
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports `39 keys x 13 locales: 0 problems`, with no line for values-vi (all 39 names present; every `<xliff:g>` span byte-identical to EN; placeholder multiset and `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; no raw `'`/`"`; no edge or double spaces; the file parses as XML); `python3 scripts/l10n_diff.py --locale app/src/main/res/values-vi/strings.xml` reports `values-vi missing=0 orphan=0 modified=0`, "in sync". **No 🛑 build-breaking issues.**
+
+Round-1 changes checked:
+- `pt_cloud_translate_toggle_subtitle` «tự chọn» → «tự động chọn» («Đã bao gồm các mô hình dịch trả phí, tự động chọn mô hình tốt nhất cho từng việc.»): confirmed, byte-identical to the round-1 suggestion and the applied-fix list.
+  - Only the reading where the service picks remains.
+  - The first clause still matches the services row's «Đã bao gồm các mô hình dịch trả phí tốt nhất».
+  - The subtitle wraps with no `maxLines`.
+- Nothing else moved. Part A equals the sync's drafts except this key, and `git diff` shows no Part B change.
+
+#### Findings (round 2)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| llm_backend_reasoning_subtitle | 💬 | Mức độ mô hình suy luận trước khi trả lời. Càng cao càng chậm, và phần suy luận được tính phí như token đầu ra. | Mức độ suy luận của mô hình trước khi trả lời. Càng cao càng chậm, và phần suy luận được tính phí như token đầu ra. | After «Mức độ», the words «mô hình suy luận» first read as the compound "reasoning model". Round 1 itself notes that Vietnamese tech writing uses mô hình suy luận for reasoning models. So the line starts as "the level of the reasoning model before answering", and the reader has to re-parse it as a clause. «Mức độ suy luận của mô hình» ("the model's degree of reasoning") has only one reading and echoes the title «Mức suy luận». It also matches the shape of the precedent round 1 cited, «Tần suất chụp màn hình…» (noun + verb phrase, with no subject between them). It adds one syllable, and the line wraps freely: 3 lines at 298 dp either way. Optional. |
+
+**Fresh read of the other 38 keys: checked, no finding.**
+- **Register and orthography.**
+  - bạn appears only where a pronoun is needed (the hint), and the toast's «Hãy tìm» is the file's imperative.
+  - All 39 values are NFC, with no odd spaces. A script split them into 126 tokens. The ones without diacritics are real syllables (bao, cho, khi, mong, ra, suy, tra, trong, Cao, Chia) or Latin terms (OCR, GPU, token, the brand).
+  - Uppercased with `Locale.ROOT`, the headers keep every mark: CHIA ĐỘNG TỪ, BIẾN CÁCH, DẠNG TỪ.
+- **Pill family and status row.**
+  - Each status matches its pill counterpart: «đã dừng» / «Đã dừng», «không thể kết nối» / «Không thể kết nối», «phản hồi không mong đợi» / «Phản hồi không mong đợi (500)».
+  - Each is lowercase after a colon and capitalized when it stands alone, as the file does.
+  - «Đang chạy», «Đang kiểm tra» and «khả dụng / không khả dụng» are AOSP's words (android-36 vi).
+- **Terms against the file.** máy chủ, thiết bị, khóa, Dán, mô hình, token, Tắt, trò chơi, ảnh chụp màn hình and Cài đặt each match the precedent round 1 tabled. Both thinking titles use suy luận.
+- **Neighbours.**
+  - The two switch titles are verb-first, and the OCR row has the engine notes' "phrase, phrase" shape.
+  - The crop instruction has `region_overlay_drag_instruction`'s «Kéo các cạnh để …» shape, and the crop button pairs with «Xóa ảnh chụp màn hình».
+  - In code, CONJUGATION tables are always a verb's and DECLENSION tables a German noun's, which is what Chia động từ / Biến cách say.
+- **Widths, re-measured in Arial** (a few percent wider than Roboto).
+  - **Hub summaries:** 19 to 189 dp, against 216 dp. On a 320 dp phone (178 dp) the pitch ellipsizes, as the English (197 dp) does.
+  - **Toast:** 500 dp, which takes 2 lines at 264, 296 and 320 dp.
+  - **Crop pill:** 251 dp of the 270 dp available.
+  - **Level segments:** 20 to 54 dp in bold, against about 57 dp.
+  - **Key hint:** 196 dp of about 278 dp.
+  - **Load more:** 70 dp.
+- **A correction to the round-1 record, not a finding.** The pill measures 186 dp here (round 1 had 173 dp). On a 360 dp portrait phone its text gets about 174 dp: the 328 dp pill, less the logo, the paddings and two 48 dp buttons. So it wraps as "PlayTranslate Cloud: đã | dừng" and stays within `maxLines=2`, as the English wraps after "Not". In landscape it is one line.
+
+#### Verdict (round 2)
+
+**PASS.** The one round-1 change landed as the Disposition says. The fresh read finds one optional 💬, `llm_backend_reasoning_subtitle` (a clearer word order), and no 🛑, ❌ or ⚠️. Nothing blocks the commit.

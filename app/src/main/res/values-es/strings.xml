@@ -566,7 +566,7 @@
 
     <string name="anki_screenshot_remove_content_description">Quitar captura de pantalla</string>
     <string name="anki_screenshot_crop">Recortar captura de pantalla</string>
-    <string name="anki_screenshot_crop_instruction">Arrastra los bordes para recortar la captura de pantalla</string>
+    <string name="anki_screenshot_crop_instruction">Arrastra los bordes para recortar la captura</string>
 
     <string name="anki_group_audio">Audio</string>
 
@@ -779,7 +779,7 @@
 
     <string name="llm_backend_reasoning_title">Nivel de razonamiento</string>
     <string name="llm_backend_reasoning_subtitle">Cuánto razona el modelo antes de responder. Cuanto más alto, más lento, y el razonamiento se factura como tokens de salida.</string>
-    <string name="llm_backend_reasoning_off">Desactivado</string>
+    <string name="llm_backend_reasoning_off">Ninguno</string>
     <string name="llm_backend_reasoning_minimal">Mínimo</string>
     <string name="llm_backend_reasoning_low">Bajo</string>
     <string name="llm_backend_reasoning_medium">Medio</string>
@@ -1152,6 +1152,8 @@
     <string name="translation_error_timeout"><xliff:g id="service" example="DeepSeek">%1$s</xliff:g>: no responde</string>
 
     <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>: no se puede conectar</string>
+
+    <string name="translation_error_not_running"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: detenido</string>
 
     <string name="translation_error_discard_card_title">¿Descartar la tarjeta?</string>
 
@@ -1558,6 +1560,50 @@
         <item quantity="one">Hay que volver a importar <xliff:g id="count" example="1">%d</xliff:g> diccionario</item>
         <item quantity="other">Hay que volver a importar <xliff:g id="count" example="3">%d</xliff:g> diccionarios</item>
     </plurals>
+
+    <string name="settings_pt_cloud_summary_off">Desactivado</string>
+
+    <string name="settings_pt_cloud_summary_pitch">OCR y traducción en el servidor</string>
+
+    <string name="settings_pt_cloud_summary_translation_only">Solo traducción</string>
+
+    <string name="settings_pt_cloud_summary_ocr_only">Solo OCR en el servidor</string>
+
+    <string name="pt_cloud_ocr_toggle_title">Reconocimiento de texto</string>
+
+    <string name="pt_cloud_ocr_toggle_subtitle">OCR más potente en una GPU del servidor. Toda la potencia de tu dispositivo queda para el juego.</string>
+
+    <string name="pt_cloud_translate_toggle_title">Traducción de texto</string>
+
+    <string name="pt_cloud_translate_toggle_subtitle">Incluye modelos de traducción de pago y elige el mejor para cada tarea.</string>
+
+    <string name="pt_cloud_ocr_row_subtitle">OCR en el servidor, sin carga para el dispositivo</string>
+
+    <string name="pt_cloud_translate_row_subtitle_no_key">Los mejores modelos de traducción de pago, ya incluidos</string>
+
+    <string name="pt_cloud_key_label">Clave de cliente</string>
+
+    <string name="pt_cloud_key_hint">Pega la clave que te dieron</string>
+
+    <string name="pt_cloud_status_title">Servicio</string>
+
+    <string name="pt_cloud_status_running">En ejecución</string>
+
+    <string name="pt_cloud_status_starting">Iniciando</string>
+
+    <string name="pt_cloud_status_not_running">Detenido</string>
+
+    <string name="pt_cloud_status_unreachable">No se puede conectar</string>
+
+    <string name="pt_cloud_status_other">Respuesta inesperada (<xliff:g id="http_code" example="500">%1$s</xliff:g>)</string>
+
+    <string name="pt_cloud_status_checking">Comprobando</string>
+
+    <string name="pt_cloud_status_unchecked">Sin comprobar</string>
+
+    <string name="floating_menu_pt_cloud_available"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: disponible</string>
+
+    <string name="floating_menu_pt_cloud_unavailable"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: no disponible</string>
 
     <string name="yomitan_page_description">Los diccionarios de Yomitan son archivos de diccionario creados por la comunidad que usa la extensión de navegador Yomitan. Entre sus funciones se incluyen diccionarios adicionales, datos de frecuencia y acento tonal. Importa un diccionario (.zip) o la exportación de una colección de diccionarios de Yomitan (.json) con el botón + y PlayTranslate lo integrará de forma fluida en toda la app.</string>
 
@@ -2037,7 +2083,7 @@
 
     <string name="keep_running_tile_line">Vuelve a activar <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> desde cualquier pantalla.</string>
 
-    <string name="keep_running_screen_unavailable">Esa pantalla no está disponible en este teléfono. Busca la opción en Ajustes.</string>
+    <string name="keep_running_screen_unavailable">No se pudo abrir esa pantalla. En su lugar, busca la opción en Ajustes.</string>
 
     <string name="keep_running_xiaomi_autostart_title">Permitir el inicio automático</string>
 

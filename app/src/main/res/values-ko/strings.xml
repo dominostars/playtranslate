@@ -335,7 +335,7 @@
 
     <string name="lens_loading">검색 중…</string>
     <string name="lens_also_matches">다른 후보</string>
-    <string name="load_more_count">더 불러오기 (<xliff:g id="count" example="2">%1$d</xliff:g>)</string>
+    <string name="load_more_count">더 불러오기(<xliff:g id="count" example="2">%1$d</xliff:g>)</string>
     <string name="section_other_matches">다른 후보</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
@@ -1152,6 +1152,8 @@
 
     <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>: 연결할 수 없음</string>
 
+    <string name="translation_error_not_running"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: 중지됨</string>
+
     <string name="translation_error_discard_card_title">카드를 삭제하시겠습니까?</string>
 
     <string name="translation_error_discard_card_message">설정을 열면 이 카드가 사라지며, 새로 캡처해서 다시 만들어야 합니다.</string>
@@ -1555,6 +1557,50 @@
     <plurals name="settings_yomitan_outdated_summary">
         <item quantity="other">사전 <xliff:g id="count" example="3">%d</xliff:g>개를 다시 가져와야 합니다</item>
     </plurals>
+
+    <string name="settings_pt_cloud_summary_off">꺼짐</string>
+
+    <string name="settings_pt_cloud_summary_pitch">서버급 OCR 및 번역</string>
+
+    <string name="settings_pt_cloud_summary_translation_only">번역만 사용</string>
+
+    <string name="settings_pt_cloud_summary_ocr_only">서버급 OCR만 사용</string>
+
+    <string name="pt_cloud_ocr_toggle_title">화면 텍스트 인식</string>
+
+    <string name="pt_cloud_ocr_toggle_subtitle">서버 GPU에서 더 강력한 OCR을 실행합니다. 기기 성능은 모두 게임에 쓰입니다.</string>
+
+    <string name="pt_cloud_translate_toggle_title">텍스트 번역</string>
+
+    <string name="pt_cloud_translate_toggle_subtitle">유료 번역 모델이 포함되어 있으며, 작업마다 가장 적합한 모델이 선택됩니다.</string>
+
+    <string name="pt_cloud_ocr_row_subtitle">서버급 OCR, 기기 부하 없음</string>
+
+    <string name="pt_cloud_translate_row_subtitle_no_key">최고의 유료 번역 모델 포함</string>
+
+    <string name="pt_cloud_key_label">클라이언트 키</string>
+
+    <string name="pt_cloud_key_hint">발급받은 키를 붙여넣으세요</string>
+
+    <string name="pt_cloud_status_title">서비스</string>
+
+    <string name="pt_cloud_status_running">실행 중</string>
+
+    <string name="pt_cloud_status_starting">시작 중</string>
+
+    <string name="pt_cloud_status_not_running">중지됨</string>
+
+    <string name="pt_cloud_status_unreachable">연결할 수 없음</string>
+
+    <string name="pt_cloud_status_other">예기치 않은 응답(<xliff:g id="http_code" example="500">%1$s</xliff:g>)</string>
+
+    <string name="pt_cloud_status_checking">확인 중</string>
+
+    <string name="pt_cloud_status_unchecked">미확인</string>
+
+    <string name="floating_menu_pt_cloud_available"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: 사용 가능</string>
+
+    <string name="floating_menu_pt_cloud_unavailable"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: 사용 불가</string>
 
     <string name="yomitan_page_description">Yomitan 사전은 Yomitan 브라우저 확장 프로그램에서 사용하는, 커뮤니티에서 만든 사전 파일입니다. 추가 사전, 빈도 데이터, 고저 악센트 등의 기능을 제공합니다. + 버튼으로 사전(.zip) 또는 Yomitan 사전 컬렉션 내보내기 파일(.json)을 가져오면 PlayTranslate가 앱 전체에 자연스럽게 통합합니다.</string>
 
@@ -2014,7 +2060,7 @@
 
     <string name="keep_running_tile_line">어느 화면에서든 <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>를 다시 켤 수 있습니다.</string>
 
-    <string name="keep_running_screen_unavailable">이 휴대전화에서는 해당 화면을 열 수 없습니다. 대신 휴대전화 설정에서 이 항목을 검색하세요.</string>
+    <string name="keep_running_screen_unavailable">해당 화면을 열지 못했습니다. 대신 휴대전화 설정에서 이 항목을 검색하세요.</string>
 
     <string name="keep_running_xiaomi_autostart_title">자동 시작 허용</string>
 

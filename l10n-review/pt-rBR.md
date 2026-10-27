@@ -890,3 +890,119 @@ Clean areas: The note keeps all three English facts: free and keyless; run by Bi
 ### Disposition (2026-10-14)
 
 Applied the 1 💬 («para este serviço»).
+
+## Delta review 2026-10-27 (PlayTranslate Cloud: 24 keys; plus the owed review of 15 keys localized outside the sync)
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports `39 keys x 13 locales: 0 problems`, with no line for pt-rBR (all 39 present; every `<xliff:g>` span, placeholder, markup count and escape as in English; no raw `'` or `"`; no edge or double space; the file parses as XML); `python3 scripts/l10n_diff.py --locale app/src/main/res/values-pt-rBR/strings.xml` reports `values-pt-rBR missing=0 orphan=0 modified=0`, "in sync". `git diff` of the locale file touches exactly the 24 Part A keys. No `<plurals>` in scope. **No 🛑 build-breaking issues.**
+
+**Render code read before reviewing.** Error pill: `TranslationErrorPills` (14 sp, `maxLines=2`, ellipsized); `NOT_RUNNING` comes only from PlayTranslate Cloud (`PtCloudErrors`), so `%1$s` is always "PlayTranslate Cloud". Cloud page (`activity_pt_cloud_settings.xml`, `settings_row_switch.xml`): titles 15 sp and subtitles 13 sp wrap freely; the key hint is a `singleLine` 13 sp monospace EditText (about 278 dp of room on a 360 dp phone); the status row is title (weight 1) plus a wrap-content value. Hub cell (`settings_row_hub.xml`): summary `singleLine` + `ellipsize="end"`, 216 dp on a 360 dp phone. Capture & overlay: the cloud card sits under the OCR header, above the engine card. Services row: `tvRowSubtitle2`, no `maxLines`. Quick menu: the two strings are the strip's `contentDescription` only. Toast: `LENGTH_LONG`, two lines at 296 dp. Thinking row: `buildPillToggle` (13 sp autosizing down to 10 sp, then ellipsized; 8 dp pill padding at four segments). Crop pill: `RegionEditorControls.pill` (14 sp, `singleLine`, ellipsized, 16 dp padding) with 16 dp margins in the workspace card, which is inset 12 dp from each screen edge; the crop page hides the workspace header, so `anki_screenshot_crop` is read only by TalkBack there and on the crop button. Group headers: `addGroupHeader` uppercases with `Locale.ROOT`, which is correct for every Portuguese letter (Ç, Ã, Õ, accented vowels). Load more: `maxLines=1`, ellipsized.
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| llm_backend_reasoning_off | 💬 | Desativado | Nenhum | With four segments on a 360 dp phone, each label gets about 56 dp (296 dp row, minus 6 dp of track padding, divided by 4, minus 2 × 8 dp of pill padding). Labels autosize from 13 sp down to 10 sp and are then ellipsized. «Desativado» measures 55.0 dp regular at 11 sp and 53.4 dp bold at 10 sp (Arial), so it fits without an ellipsis, but it always renders at 10–11 sp beside 13 sp «Baixo · Médio · Alto», and the comment's comfortable limit is about 8 letters. «Nenhum» fits at 13 sp (52.0 dp bold), agrees with «nível», is the file's "None" (`settings_digest_none`), and names what the segment sends: the API value `none` (`Reasoning.apiName`). Optional. |
+| anki_screenshot_crop_instruction | ⚠️ | Arraste as bordas para cortar a captura de tela | Arraste as bordas para cortar a captura | The pill is one ellipsized line inside the workspace card. On a 360 dp portrait phone (a portrait game) that leaves about 270 dp (360, minus 24 for the card inset, 32 for the pill margins and 32 for its padding). The current text measures 290 dp, so «de tela» turns into «…» there. It fits from about 393 dp up and in landscape, so only the narrowest phones are hit, but the clipping is confirmed in code. The suggestion measures 244 dp and fits everywhere. It keeps the shape of `region_overlay_drag_instruction`, which already shortens to «as capturas», and on this page «a captura» can only be the screenshot. |
+| llm_backend_reasoning_subtitle | 💬 | Quanto o modelo raciocina antes de responder. Quanto mais alto, mais lento, e o raciocínio é cobrado como tokens de saída. | Define quanto o modelo raciocina antes de responder. Quanto mais alto, mais lento, e o raciocínio é cobrado como tokens de saída. | Two sentences in a row open with «Quanto», in two senses ("how much", then "the more"). Spanish tells them apart with an accent (Cuánto / Cuanto); Portuguese cannot, so the second reads like a restart. A verb on the first fragment ends the echo and makes it a full sentence, like its sibling's «O modelo raciocina antes de responder». |
+| pt_cloud_ocr_row_subtitle | 💬 | OCR no servidor, sem carga para o dispositivo | OCR no servidor, sem pesar no dispositivo | «sem carga para o dispositivo» puts "zero device load" into Portuguese word for word. «pesar no» is how Brazilian copy says a job weighs on a device («não pesa no celular»), and it keeps the line as short as the engine notes beneath it. Optional; the current line is understood. |
+
+**Outside the delta (code, not a string, so it has no table row).** Under the status row, the cloud page shows `cooldownLine`. For PlayTranslate Cloud that line's description is an English constant in `PtCloudErrors`: "Not running", and also "Rate limited", "Server error", "Bad key" and "No membership". So with the server stopped, the page can show «Serviço … Parado» above "Not running · Nova tentativa às 15:42". Every service's cooldown line works this way ("Connection failed" and "Rate limited" in the store backends). The fix belongs in code (a string resource per cause), not in `values-pt-rBR`. Read in code, not seen on a device.
+
+### Clean areas (checked, no findings)
+
+**Form.** você throughout: «seu dispositivo», «você recebeu», and the imperatives Cole, Arraste, pesquise. None of the 39 strings asks a question or exclaims. No em dash, no straight quote, no apostrophe.
+
+**Error pill.** «PlayTranslate Cloud: parado» has the family's lowercase "service: status" shape (… não está respondendo, … não foi possível conectar, … resposta inesperada). «parado» is masculine, agreeing with the service, and it matches the status row's «Parado». At 165 dp it is one line of the two-line pill.
+
+**Cloud page, read as one screen.** The switches «Reconhecimento de texto» and «Tradução de texto» are two parallel nouns, so they read as a pair. «Reconhecimento de texto» is the file's OCR term (`settings_header_ocr`, `slow_ocr_prompt_title`).
+
+The two subtitles:
+- «OCR mais potente em uma GPU de servidor. Toda a potência do seu dispositivo fica para o jogo.» reads as natural Brazilian gaming copy. The potente/potência echo mirrors English's stronger/power, and «uma GPU» is correctly feminine.
+- «Inclui modelos de tradução pagos e escolhe o melhor para cada tarefa.» is natural, and «o melhor» agrees with «modelo».
+
+The key:
+- «Chave de cliente» follows «Chave de API» (`llm_backend_api_key_label`) and the services row's «Chave ••••…» (`tr_service_key_tail_fmt`).
+- «Cole» is the verb of `hint_deepl_key` and AOSP pt-BR's «Colar».
+- The hint is 29 characters, about 226 dp in the 13 sp monospace field (0.6 em a glyph) against about 278 dp.
+
+The status row:
+- «Serviço» takes seven values: «Em execução», «Iniciando», «Parado», «Não foi possível conectar», «Resposta inesperada (500)», «Verificando», «Não verificado».
+- «em execução», «Verificando…» and «Iniciando» are AOSP pt-BR's own words (`heavy_weight_notification`, `lockscreen_glogin_checking_password`, `android_upgrading_starting_apps`). The file already says «Verificando…» (`update_progress_verifying`). «Em execução» / «Parado» is also the pair Windows' Brazilian service status shows (from memory).
+- «Parado» and «Não verificado» agree with «Serviço».
+- The three pairs the brief names match their pill twins word for word, capitalized as standalone values: `translation_error_unreachable`, `translation_error_bad_response` and `translation_error_not_running`.
+- The widest value (157 dp) fits on one line beside «Serviço».
+
+**Settings hub.** Measured at 13 sp against the 216 dp a summary gets on a 360 dp phone: «OCR e tradução no servidor» 162 dp, «Somente OCR no servidor» 153, «Somente tradução» 106, «Desativado» 65. All four are one line. «no servidor» is what the English comment says "Server-grade" means. «Somente» is the file's word in «Somente online» and the `misc_*_only` tags. «Desativado» is the file's Off (`capture_lifecycle_state_off`, `settings_cell_history_summary_off`).
+
+**Capture & overlay.** The cloud row's subtitle has the engine notes' "what, then what it costs" comma shape («Ágil, mesmo em telas com muito texto», «Encontra textos pequenos, mais lento»). The wording is the 💬 above.
+
+**Translation services.** «Os melhores modelos de tradução pagos, já incluídos» stands where the other rows read «Requer conta». «já incluídos» is the everyday Brazilian commerce phrase, so the tagline reads as native copy, and the line wraps.
+
+**Quick menu.** «disponível» and «indisponível» match `backend_status_unavailable_default` «Indisponível» and AOSP's «indisponível». They are lowercase after the colon, as in the pill family.
+
+**Toast.** «Não foi possível abrir essa tela. Em vez disso, pesquise a configuração nas Configurações.» says what the new English says.
+- «Não foi possível abrir» is the file's pattern (`image_import_decode_failed`, `update_error_install_launch`).
+- «Em vez disso» is the file's "instead" (`update_error_wrong_package`, `keep_running_xiaomi_lock_line`).
+- «pesquise … nas Configurações» uses the cards' own «Nas Configurações, pesquise».
+- The «a configuração nas Configurações» echo is the decision recorded on 2026-10-07, so I do not raise it again.
+- It measures 2 lines at 296 dp (286 + 276 dp in Arial; Roboto runs narrower) and at 320 dp. It is the tightest string in the delta, so adding words such as «do celular» would mean dropping «Em vez disso,».
+
+**Part B.**
+- **Group headers.** «Conjugação», «Declinação» and «Formas» are the standard grammar terms, one noun each. `Locale.ROOT` uppercases them correctly (CONJUGAÇÃO, DECLINAÇÃO) beside DEFINIÇÕES.
+- **Crop button and page title.** «Cortar captura de tela» pairs with the ✕'s «Remover captura de tela» and uses the file's screenshot term (`anki_group_screenshot`). «Cortar» also stays clear of AOSP pt-BR's «Recortar» (cut).
+- **Thinking titles.** «Modo de raciocínio» and «Nível de raciocínio» use one word for "thinking", as both comments require. It is the same root as the subtitles' «raciocina … raciocínio».
+- **Thinking subtitles.** «é cobrado como tokens de saída» reads naturally. The comma before «e» is right, since a new subject follows.
+- **Levels.** «Mínimo · Baixo · Médio · Alto» agree with «nível» and fit at 13 sp (Mínimo is 45.5 dp bold, against about 56).
+- **Load more.** «Carregar mais (2)» is 102 dp in the one-line 13 sp row, beside «Outra correspondência» and «Consultando…». The count in parentheses needs no plural.
+
+### Brazilian Portuguese appendix: BR vocabulary, agreement, the marketing lines
+
+- **BR-vs-EU audit over all 39 keys.**
+  - Brazilian forms only: tela (captura de tela, essa tela), Configurações, dispositivo, chave, Cole, pagos, tarefa, Carregar mais, cobrado.
+  - Gerunds where pt-PT writes «a» + infinitive: «Iniciando», «Verificando» (pt-PT «A iniciar», «A verificar»).
+  - None of ecrã, ficheiro, telemóvel, utilizador, aplicação, transferir, eliminar or registar.
+  - «em uma GPU» is the form Brazilian UI text prefers, where pt-PT copy tends to write «numa».
+- **Agreement with an implied noun.**
+  - The service: «Desativado» (hub), «parado» / «Parado» and «Não verificado» (the row title is «Serviço»).
+  - The model: «Mais lento», «o melhor».
+  - The level: «Mínimo», «Baixo», «Médio», «Alto», and the suggested «Nenhum».
+  - The models: «já incluídos».
+
+  «uma GPU» is feminine, and «OCR» goes without an article in every string.
+- **Placeholders, read with real values.** Both `service` spans fill with "PlayTranslate Cloud", and nothing after the colon needs an article. `http_code` and `count` sit in parentheses, so «Carregar mais (1)» needs no singular form.
+- **The marketing lines as Brazilian UI copy.**
+  - «OCR e tradução no servidor»: a plain spec line.
+  - «Toda a potência do seu dispositivo fica para o jogo»: idiomatic gaming copy.
+  - «Inclui modelos de tradução pagos e escolhe o melhor para cada tarefa»: natural.
+  - «Os melhores modelos de tradução pagos, já incluídos»: natural.
+
+  Only «sem carga para o dispositivo» reads translated (💬 above).
+
+### Disposition (2026-10-27)
+
+All four findings applied: `anki_screenshot_crop_instruction` «Arraste as bordas para cortar a captura»; the optional 💬 `llm_backend_reasoning_off` «Nenhum» too, so the segment stays at 13 sp beside its siblings and matches es «Ninguno»; `llm_backend_reasoning_subtitle` «Define quanto…»; and `pt_cloud_ocr_row_subtitle` «…, sem pesar no dispositivo». The cooldown line's English description is a code finding, verified in code; reported, not fixed.
+
+### Round 2 (2026-10-27), final review after applying round 1
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports `39 keys x 13 locales: 0 problems`, with no line for pt-rBR (all 39 present; every `<xliff:g>` span, placeholder, markup count and escape as in English; no raw `'` or `"`; no edge or double space; the file parses as XML); `python3 scripts/l10n_diff.py --locale app/src/main/res/values-pt-rBR/strings.xml` reports `values-pt-rBR missing=0 orphan=0 modified=0`, "in sync". `git diff` of the locale file touches 27 names: the 24 Part A keys and the three Part B keys round 1 changed (`anki_screenshot_crop_instruction`, `llm_backend_reasoning_subtitle`, `llm_backend_reasoning_off`). No `<plurals>` in scope. **No 🛑 build-breaking issues.**
+
+Round-1 changes checked. Nothing moved beyond the Disposition: the file's hash equals the post-fix record (`SP/locale-hashes-after-fixes.txt`), and the 24 Part A values equal the translator's drafts (`SP/drafts.py`) except the one fixed key. Widths below are Roboto, the font Android draws, extracted from Robolectric's runtime jar.
+- `anki_screenshot_crop_instruction` «Arraste as bordas para cortar a captura»: confirmed. It measures 243.8 dp at 14 sp, against 272 dp in the floating workspace on a 360 dp portrait phone and 296 dp in the review sheet's dialog. It keeps the shape of `region_overlay_drag_instruction` («Arraste as bordas para restringir as capturas a esta região»), and «cortar» matches the button's «Cortar captura de tela», clear of AOSP pt-BR's «Recortar» (cut).
+- `llm_backend_reasoning_off` «Nenhum»: confirmed. It now sits at 13 sp (49.2 dp, and 49.4 dp in Roboto Black, the face a selected segment gets), where «Desativado» rendered at 11 sp. It agrees with «Nível de raciocínio», is the file's None (`settings_digest_none`), matches es «Ninguno», and never shares a row with «Mínimo» (`Reasoning.reported` drops Minimal beside Off).
+- `llm_backend_reasoning_subtitle` «Define quanto o modelo raciocina antes de responder. …»: confirmed. The two «Quanto» no longer open consecutive sentences, and under «Nível de raciocínio» the row describes itself. The second sentence is byte-identical to before.
+- `pt_cloud_ocr_row_subtitle` «OCR no servidor, sem pesar no dispositivo»: confirmed. It is the Brazilian idiom («não pesa no celular»), and «no dispositivo» keeps «pesar» a verb, so it never reads as «sem pesar» ("without regret"). It keeps the engine notes' "what, then what it costs" shape («Ágil, mesmo em telas com muito texto») and wraps freely.
+
+#### Findings (round 2)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| keep_running_screen_unavailable | 💬 | Não foi possível abrir essa tela. Em vez disso, pesquise a configuração nas Configurações. | Não foi possível abrir essa tela. Pesquise a configuração nas Configurações. | Fits, with almost no room to spare. The toast shows at most two lines (the platform's `transient_notification.xml` has `maxLines="2"` and `ellipsize="end"`), 296 dp wide on a 360 dp phone. In Roboto 14 sp both lines are nearly full (283 and 276 dp). From 1.05× text size it needs a third line, so the ellipsis lands on «Configurações», the place to search (Pixel's first step up is 1.15×, from memory). English holds two lines through 1.2×, and es through 1.3×. Without «Em vez disso,» the toast measures 475 dp and holds two lines through 1.15×. Its second sentence is then byte-identical to the one passed on 2026-10-07, which found that dropping "instead" loses nothing, since App info opens behind the toast; the recorded «a configuração nas Configurações» echo stays as it was. Optional. |
+
+#### Verdict (round 2)
+
+**PASS** (0 🛑, 0 ❌, 0 ⚠️, 1 💬). The four round-1 fixes landed as the Disposition says and read right on their screens, and no other value moved. A fresh read of all 39 keys found nothing else:
+- **Form and agreement.** você throughout, with Brazilian forms only (tela, dispositivo, Configurações, Cole, pagos, and the gerunds Iniciando and Verificando). Every word agrees with its implied noun (serviço, nível, modelo), and «uma GPU» is feminine.
+- **Terms.** The file's own: Reconhecimento de texto, Chave de cliente after «Chave de API», captura de tela, and Cortar beside AOSP's «Recortar» (cut). «em execução», «Verificando» and «indisponível» are AOSP pt-BR wording, and the three status values match their pill twins.
+- **Widths, in Roboto.** Everything fits: hub summaries (158 dp at most, of 216), status values, the key hint (DroidSansMono, 226 of about 280 dp), the level segments, Load more, and the crop pill (up to 1.12× text size in the workspace).
+
+Left open: the optional 💬, and the code finding round 1 recorded (the cloud page's cooldown line takes an English description from `PtCloudErrors`), which no string can fix.

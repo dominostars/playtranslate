@@ -583,7 +583,7 @@
 
     <string name="anki_screenshot_remove_content_description">Убрать снимок экрана</string>
     <string name="anki_screenshot_crop">Обрезать снимок экрана</string>
-    <string name="anki_screenshot_crop_instruction">Перетащите края, чтобы обрезать снимок экрана</string>
+    <string name="anki_screenshot_crop_instruction">Перетащите края, чтобы обрезать снимок</string>
 
     <string name="anki_group_audio">Аудио</string>
 
@@ -1209,6 +1209,8 @@
 
     <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>: не удаётся подключиться</string>
 
+    <string name="translation_error_not_running"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: остановлен</string>
+
     <string name="translation_error_discard_card_title">Отказаться от карточки?</string>
 
     <string name="translation_error_discard_card_message">Если открыть настройки, эта карточка будет потеряна и её придётся заново создать из нового захвата экрана.</string>
@@ -1623,6 +1625,50 @@
         <item quantity="many"><xliff:g id="count" example="5">%d</xliff:g> словарей нужно импортировать заново</item>
         <item quantity="other"><xliff:g id="count" example="1.5">%d</xliff:g> словаря нужно импортировать заново</item>
     </plurals>
+
+    <string name="settings_pt_cloud_summary_off">Выкл.</string>
+
+    <string name="settings_pt_cloud_summary_pitch">OCR и перевод на сервере</string>
+
+    <string name="settings_pt_cloud_summary_translation_only">Только перевод</string>
+
+    <string name="settings_pt_cloud_summary_ocr_only">Только OCR на сервере</string>
+
+    <string name="pt_cloud_ocr_toggle_title">Распознавание текста</string>
+
+    <string name="pt_cloud_ocr_toggle_subtitle">Более мощная модель OCR на серверном GPU. Все ресурсы устройства достаются игре.</string>
+
+    <string name="pt_cloud_translate_toggle_title">Перевод текста</string>
+
+    <string name="pt_cloud_translate_toggle_subtitle">Платные модели перевода уже входят в сервис, и для каждой задачи выбирается лучшая.</string>
+
+    <string name="pt_cloud_ocr_row_subtitle">OCR на сервере, без нагрузки на устройство</string>
+
+    <string name="pt_cloud_translate_row_subtitle_no_key">Лучшие платные модели перевода уже входят в сервис</string>
+
+    <string name="pt_cloud_key_label">Клиентский ключ</string>
+
+    <string name="pt_cloud_key_hint">Вставьте полученный ключ</string>
+
+    <string name="pt_cloud_status_title">Сервис</string>
+
+    <string name="pt_cloud_status_running">Работает</string>
+
+    <string name="pt_cloud_status_starting">Запускается</string>
+
+    <string name="pt_cloud_status_not_running">Остановлен</string>
+
+    <string name="pt_cloud_status_unreachable">Не удаётся подключиться</string>
+
+    <string name="pt_cloud_status_other">Неожиданный ответ (<xliff:g id="http_code" example="500">%1$s</xliff:g>)</string>
+
+    <string name="pt_cloud_status_checking">Проверка</string>
+
+    <string name="pt_cloud_status_unchecked">Не проверено</string>
+
+    <string name="floating_menu_pt_cloud_available"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: доступен</string>
+
+    <string name="floating_menu_pt_cloud_unavailable"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: недоступен</string>
 
     <string name="yomitan_page_description">Словари Yomitan — это созданные сообществом файлы словарей, которые использует расширение Yomitan для браузера. Среди возможностей — дополнительные словари, данные о частотности и тональное ударение. Импортируйте словарь (.zip) или экспорт коллекции словарей Yomitan (.json) кнопкой «+», и PlayTranslate органично встроит его по всему приложению.</string>
 
@@ -2112,7 +2158,7 @@
 
     <string name="keep_running_tile_line">Плитка снова включает <xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> с любого экрана.</string>
 
-    <string name="keep_running_screen_unavailable">На телефоне нет такого экрана. Найдите этот параметр через поиск в настройках.</string>
+    <string name="keep_running_screen_unavailable">Не удалось открыть экран. Найдите этот параметр через поиск в настройках.</string>
 
     <string name="keep_running_xiaomi_autostart_title">Разрешить автозапуск</string>
 

@@ -159,8 +159,8 @@
     </plurals>
 
     <string name="word_detail_group_definitions">Tanımlar</string>
-    <string name="word_detail_group_conjugation">Çekim</string>
-    <string name="word_detail_group_declension">Ad çekimi</string>
+    <string name="word_detail_group_conjugation">Fiil çekimi</string>
+    <string name="word_detail_group_declension">İsim çekimi</string>
     <string name="word_detail_group_forms">Biçimler</string>
 
     <string name="word_detail_group_kanji">Kanji</string>
@@ -257,7 +257,7 @@
          DEEPL — settings hints and warnings
          ═══════════════════════════════════════════════════════════════ -->
 
-    <string name="hint_deepl_key"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> API anahtarınızı buraya yapıştırın</string>
+    <string name="hint_deepl_key"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> API anahtarınızı yapıştırın</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          TRANSLATION FALLBACK NOTES
@@ -559,7 +559,7 @@
 
     <string name="anki_screenshot_remove_content_description">Ekran görüntüsünü kaldır</string>
     <string name="anki_screenshot_crop">Ekran görüntüsünü kırp</string>
-    <string name="anki_screenshot_crop_instruction">Ekran görüntüsünü kırpmak için kenarları sürükleyin</string>
+    <string name="anki_screenshot_crop_instruction">Görüntüyü kırpmak için kenarları sürükleyin</string>
 
     <string name="anki_group_audio">Ses</string>
 
@@ -1182,6 +1182,8 @@
 
     <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>: bağlanılamıyor</string>
 
+    <string name="translation_error_not_running"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: çalışmıyor</string>
+
     <string name="translation_error_discard_card_title">Kart atılsın mı?</string>
 
     <string name="translation_error_discard_card_message">Ayarları açarsanız bu kartı kaybedersiniz ve onu yeni bir ekran yakalamasından yeniden oluşturmanız gerekir.</string>
@@ -1587,6 +1589,50 @@
         <item quantity="one"><xliff:g id="count" example="1">%d</xliff:g> sözlüğün yeniden içe aktarılması gerekiyor</item>
         <item quantity="other"><xliff:g id="count" example="3">%d</xliff:g> sözlüğün yeniden içe aktarılması gerekiyor</item>
     </plurals>
+
+    <string name="settings_pt_cloud_summary_off">Kapalı</string>
+
+    <string name="settings_pt_cloud_summary_pitch">Sunucu düzeyinde OCR ve çeviri</string>
+
+    <string name="settings_pt_cloud_summary_translation_only">Yalnızca çeviri</string>
+
+    <string name="settings_pt_cloud_summary_ocr_only">Yalnızca sunucu düzeyinde OCR</string>
+
+    <string name="pt_cloud_ocr_toggle_title">Metin tanıma</string>
+
+    <string name="pt_cloud_ocr_toggle_subtitle">Sunucudaki GPU ile daha güçlü OCR. Cihazınızın tüm gücü oyuna ayrılır.</string>
+
+    <string name="pt_cloud_translate_toggle_title">Metin çevirisi</string>
+
+    <string name="pt_cloud_translate_toggle_subtitle">Ücretli çeviri modelleri dahil; her iş için en iyisi seçilir.</string>
+
+    <string name="pt_cloud_ocr_row_subtitle">Sunucu düzeyinde OCR, cihazı hiç zorlamaz</string>
+
+    <string name="pt_cloud_translate_row_subtitle_no_key">En iyi ücretli çeviri modelleri dahil</string>
+
+    <string name="pt_cloud_key_label">İstemci anahtarı</string>
+
+    <string name="pt_cloud_key_hint">Size verilen anahtarı yapıştırın</string>
+
+    <string name="pt_cloud_status_title">Hizmet</string>
+
+    <string name="pt_cloud_status_running">Çalışıyor</string>
+
+    <string name="pt_cloud_status_starting">Başlatılıyor</string>
+
+    <string name="pt_cloud_status_not_running">Çalışmıyor</string>
+
+    <string name="pt_cloud_status_unreachable">Bağlanılamıyor</string>
+
+    <string name="pt_cloud_status_other">Beklenmeyen yanıt (<xliff:g id="http_code" example="500">%1$s</xliff:g>)</string>
+
+    <string name="pt_cloud_status_checking">Kontrol ediliyor</string>
+
+    <string name="pt_cloud_status_unchecked">Kontrol edilmedi</string>
+
+    <string name="floating_menu_pt_cloud_available"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: kullanılabilir</string>
+
+    <string name="floating_menu_pt_cloud_unavailable"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: kullanılamıyor</string>
     <string name="yomitan_page_description">Yomitan sözlükleri, Yomitan tarayıcı uzantısı tarafından kullanılan, topluluk tarafından oluşturulmuş sözlük dosyalarıdır. Sundukları arasında ek sözlükler, sıklık verileri ve perde vurgusu bulunur. + düğmesiyle bir sözlük (.zip) veya bir Yomitan sözlük koleksiyonu dışa aktarımı (.json) içe aktarın; PlayTranslate bunu uygulama genelinde sorunsuzca bütünleştirir.</string>
 
     <string name="yomitan_outdated_label">Uygulama güncellemesinden sonra yeniden içe aktarılması gerekiyor. Dosyasını yeniden içe aktarmak için dokunun.</string>
@@ -1976,7 +2022,7 @@
 
     <string name="keep_running_tile_line"><xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g> uygulamasını her ekrandan yeniden açabilirsiniz.</string>
 
-    <string name="keep_running_screen_unavailable">O ekran telefonunuzda kullanılamıyor. Bunun yerine ayarı Ayarlar uygulamasında arayın.</string>
+    <string name="keep_running_screen_unavailable">O ekran açılamadı. Bunun yerine ayarı telefonunuzun Ayarlar uygulamasında arayın.</string>
 
     <string name="keep_running_xiaomi_autostart_title">Otomatik başlatmaya izin ver</string>
 

@@ -1207,3 +1207,77 @@ Clean areas: Render code read first. The note is `tvProviderNote` (13 sp, no lin
 ### Disposition (2026-10-14)
 
 No findings; nothing to apply.
+
+## Delta review 2026-10-27 (PlayTranslate Cloud: 24 keys; plus the owed review of 15 keys localized outside the sync)
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports `39 keys x 13 locales: 0 problems`, so no `ko:` line (every name present; `<xliff:g>` spans byte-identical to EN; placeholder, `<b>`/`\n`/`\{ \}`/entity counts match; no raw `'`/`"`, no stray or double space; the file parses); `python3 scripts/l10n_diff.py --locale app/src/main/res/values-ko/strings.xml` reports `values-ko missing=0 orphan=0 modified=0`, "in sync". **No 🛑 build-breaking issues.**
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| load_more_count | 💬 | `더 불러오기 (<xliff:g id="count" example="2">%1$d</xliff:g>)` | `더 불러오기(<xliff:g id="count" example="2">%1$d</xliff:g>)` | The file attaches an opening parenthesis to the word before it: this delta's `pt_cloud_status_other` 예기치 않은 응답(500), and `translation_error_rejected_code` 요청 거부됨(HTTP 404) and `service_account_required_free` 계정 필요(무료 요금제 있음). An earlier ko review recorded that convention ("no space before an opening parenthesis, consistent with the committed file"), and it is the 한글 맞춤법 rule. Apart from the Anki marker labels' literal "(x)", this is the only Hangul word followed by a spaced parenthesis. The row (13 sp, one line, centred) fits either way. |
+
+### Clean areas (checked, no findings)
+
+**Render code read first.** The error pill (`TranslationErrorPills`) is 14 sp, `maxLines=2`, ellipsized. On the PlayTranslate Cloud page, both switches are `settings_row_switch` rows (15 sp title, 13 sp subtitle, no line cap), dimmed until a key is saved. The key label sits over a 13 sp monospace single-line EditText whose hint is `pt_cloud_key_hint`. The status row puts the title (weight 1) beside a wrap-content value; the value reads 미확인 from the layout and switches to 확인 중 as soon as `onResume` starts the check. The Settings hub cloud cell's summary is `singleLine` + `ellipsize=end` at 13 sp, about 216 dp of text on a 360 dp phone. The Capture & overlay cloud row's subtitle wraps. On the Translation services page, the cloud row's status line (`tvRowSubtitle2`, wraps) is in the slot where store rows show 계정 필요. The two `floating_menu_pt_cloud_*` keys are only the strip's contentDescription; its visible text is the brand name. The toast is a `LENGTH_LONG` text toast over App info. Part B: `addGroupHeader` uppercases with `Locale.ROOT`, which does nothing to Hangul. `anki_screenshot_crop` is the crop button's contentDescription; the crop page's title sits on a header the page hides. The crop pill is one line (`isSingleLine`, `ellipsize=END`). The thinking switch row and the levels row never show together. The load-more row is 13 sp, `maxLines=1`, and shows 검색 중… while loading.
+
+**Error pill.** 「PlayTranslate Cloud: 중지됨」 has the family's half-width colon and space and its noun-form ending (서버 오류, 요청 거부됨, 연결할 수 없음). 중지됨 is the status row's own word, so the pill and the page its gear opens say the same thing. The same holds for 연결할 수 없음 and 예기치 않은 응답, which byte-match their pill siblings.
+
+**Status row: 서비스 with each of its seven values.** The values are 실행 중 / 시작 중 / 중지됨 / 연결할 수 없음 / 예기치 않은 응답(500) / 확인 중 / 미확인, the usual Korean service-status words. 확인 중 matches the framework (`ext_media_status_checking` 확인 중…) and the file. 중지됨 keeps 중지, the file's word for "stop" (사용 중지, 자동 번역 시작/중지).
+
+**The two switches as a pair.** 「화면 텍스트 인식」 / 「텍스트 번역」 are parallel nouns. 텍스트 인식 is the file's OCR term (`settings_header_ocr` 텍스트 인식(OCR), `status_ocr`), and it avoids 화면 읽기, which suggests a screen reader. Both subtitles are 합니다체 (실행합니다, 쓰입니다, 선택됩니다), and 기기 means "device" here as everywhere in the file.
+
+**Key.** 클라이언트 키 is spaced like API 키 (`llm_backend_api_key_label`). 붙여넣으세요 is `hint_deepl_key`'s verb, and 발급받은 is the usual way to say a key was issued to you.
+
+**Hub digests.** 꺼짐 matches `settings_cell_history_summary_off`. 번역만 사용 and 서버급 OCR만 사용 are parallel, and 서버급 OCR 및 번역 uses 및 as a terse summary should. All three fit far inside 216 dp on one line: the tool gives 60 to 102 dp, and even at one em per syllable none passes 150 dp. 서버급 is an established Korean collocation (서버급 CPU, 서버급 성능), used for "Server-grade" in all three places, and the switch's subtitle spells out the server (서버 GPU에서).
+
+**Marketing lines.** They read as Korean copy. 「서버급 OCR, 기기 부하 없음」 has the clipped noun-ending shape (개조식) of the engine notes under it (게임에 가장 적합, 단어 검색이 가장 정확; 작은 글자도 인식, 속도는 느림). 「최고의 유료 번역 모델 포함」 has the noun ending of 계정 필요, which it replaces, and 포함 renders "bundled in" in both translate lines.
+
+**Floating strip.** 사용 가능 / 사용 불가 pair with `backend_status_unavailable_default` 사용 불가 (the framework's `media_route_status_available` is 사용 가능).
+
+**Toast.** 「해당 화면을 열지 못했습니다. 대신 휴대전화 설정에서 이 항목을 검색하세요.」 says "couldn't open" (열지 못했습니다), as the reworded English does; the old 이 휴대전화에서는 … 열 수 없습니다 said the screen cannot be opened on this phone. It keeps the reviewed 해당 화면, 이 항목 and 휴대전화 설정. It takes 2 lines at 296 and at 320 dp: the tool gives 415 dp in all, and a one-em-per-syllable hand count gives 271 dp, then 195 dp, at 296 dp.
+
+**Rest of Part B.** 활용 and 격변화 are the standard grammar terms (스페인어 동사 활용, 독일어 명사 격변화). 어형 (as in 어형 변화) is a correct header over a list of inflected forms. 스크린샷 자르기 uses the file's ~기 title form. 자르기 is also the file's word for audio trimming (`anki_game_audio_cell_untrimmed`), which Korean uses for both, and the two sit on different cells. The crop pill has `region_overlay_drag_instruction`'s shape (가장자리를 드래그하여 … ~하세요). It measures 241 dp with the tool and about 275 dp at one em per syllable, so it fits the dialog's 296 dp in portrait. In the workspace card on a 360 dp portrait screen (272 dp) it comes within a few dp of the edge, inside measurement noise, so it is not flagged. 추론 모드 and 추론 수준 share 추론, as both comments require. That is the usual Korean word for model reasoning (추론 모델), and the subtitles use the same word, so the page has one term throughout. The segments 꺼짐 / 최소 / 낮음 / 보통 / 높음 are two syllables each, and 꺼짐 is the file's word for Off.
+
+### Korean particle and spacing appendix
+
+- After Latin acronyms: OCR을 (ㄹ-final 오시알, like the file's OCR은 in `ocr_picker_message`), and OCR만 and GPU에서, which do not alternate.
+- After placeholders: none. The three service-name keys use 「%1$s: …」, and the HTTP code and the count sit in parentheses with no particle.
+- Other contact points: 모델이 (ㄹ-final), 키를, 화면을, 항목을, 스크린샷을 (ㅅ-final), 가장자리를, 성능은, 게임에, 내용도, 작업마다, 번역만, 설정에서, 높을수록.
+- 띄어쓰기: the dependent noun 중 is spaced (실행 중, 시작 중, 확인 중); 사용 가능 / 사용 불가; the suffixes in 서버급 and 발급받은 are attached; also 붙여넣으세요, 열지 못했습니다, 답하기 전에, 더 불러오기.
+- Parentheses: attached in 예기치 않은 응답(500); spaced in 더 불러오기 (2), the one finding.
+- Register: every sentence value is 합니다체 (both cloud subtitles, the toast, both LLM subtitles), and the hint and the crop pill are polite ~하세요 requests. Titles, labels, digests and statuses are nouns or ~기 forms. No 해요체, and no 당신.
+- Glyphs: ASCII punctuation only, with no NBSP, zero-width character or dash; all values are NFC, and each key sits between its English neighbours.
+- Out of scope (code, not this file): the cooldown line under the status row takes its description from an English constant (`PtCloudErrors` "Not running", through `cooldownLine`), so it can read "Not running · 15:42에 재시도" right under 중지됨. Every service's cooldown line works the same way.
+
+### Disposition (2026-10-27)
+
+The one 💬 is applied: `load_more_count` 「더 불러오기(…)」, with the parenthesis attached as elsewhere in the file. The cooldown line's English description is a code finding outside the delta, verified in code; reported to the developer, not fixed in this sync.
+
+### Round 2 (2026-10-27), final review after applying round 1
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports `39 keys x 13 locales: 0 problems`, so no `ko:` line; `python3 scripts/l10n_diff.py --locale app/src/main/res/values-ko/strings.xml` reports `values-ko missing=0 orphan=0 modified=0`, "in sync". **No 🛑 build-breaking issues.**
+
+Round-1 changes checked (`git diff` shows exactly this one plus the 24 Part A keys; those 24 are byte-identical to the drafted values round 1 reviewed, and the other 14 Part B values to HEAD):
+- `load_more_count` 「더 불러오기(…)」: confirmed, byte-identical to the suggestion. The convention it follows holds: in the file, 63 opening parentheses sit directly after a Hangul word, and the 4 spaced ones are the Anki marker labels' literal "(x)". The value is 79 dp at 13 sp in the single-line, centred row of a lens card about 306 dp wide (min(85% of the screen, 380 dp)). The loading text 검색 중… is unchanged.
+
+#### Findings (round 2)
+
+No findings.
+
+Fresh read of all 39 by surface, against the file:
+- Error pill: 「PlayTranslate Cloud: 중지됨」 keeps the family's ASCII colon and space and its noun ending, and uses the status row's word.
+- Cloud page: 「화면 텍스트 인식」 / 「텍스트 번역」 pair as nouns, 텍스트 인식 being the file's OCR term. Both subtitles are 합니다체 (실행합니다, 쓰입니다, 선택됩니다). 클라이언트 키 is spaced like API 키, and 「발급받은 키를 붙여넣으세요」 shares `hint_deepl_key`'s verb (150 dp in the 280 dp field). 서비스 takes 실행 중 / 시작 중 / 중지됨 / 연결할 수 없음 / 예기치 않은 응답(500) / 확인 중 / 미확인.
+- Hub: 꺼짐, 번역만 사용, 서버급 OCR 및 번역 and 서버급 OCR만 사용 run 24 to 107 dp, each on one line in the ~216 dp summary.
+- Capture & overlay: 「서버급 OCR, 기기 부하 없음」 has the engine notes' clipped shape. Floating strip: 사용 가능 / 사용 불가 after ": ".
+- Toast: 438 dp, two lines at 296 dp whether Hangul breaks between syllables (295 | 143 dp) or only at spaces (253 | 182 dp), and at 320 dp.
+- Part B: 활용 / 격변화 / 어형. 어형 stands: it is a correct one-noun header over inflected forms (as in 어형 변화), and 변화형 would only be an equal alternative, so ja's 語形 → 変化形 change does not carry over. 스크린샷 자르기; the pill has `region_overlay_drag_instruction`'s 가장자리를 드래그하여 … ~하세요 shape. 추론 모드 / 추론 수준 share 추론, which both subtitles use too. Under a settings title, 「…얼마나 추론할지 정합니다」 reads as what the row sets, the usual Korean pattern for a setting's description (cf. …할지 설정합니다), not as "the model decides". The segments 꺼짐 / 최소 / 낮음 / 보통 / 높음 are two syllables each.
+- Width correction, with Android's own fonts (Noto Sans CJK KR, the ttc face `fonts.xml` gives ko, and Roboto, both from Robolectric's runtime jar): a Hangul syllable advances 0.92 em, not one em. The crop pill is therefore 255 dp at 14 sp, not round 1's ~275 dp. It fits the 272 dp workspace-card pill on a 360 dp portrait phone with 17 dp to spare, so round 1's "within a few dp" doubt is gone.
+- Particles: OCR을 (ㄹ-final 오시알, as the file's OCR은 in `ocr_picker_message`), GPU에서 and OCR만 (invariant), 모델이, 키를, 화면을, 항목을, 스크린샷을, 가장자리를, 성능은, 토큰으로. No particle follows a placeholder: the three service-name keys use ": ", and the code and the count sit in parentheses. 띄어쓰기: 실행 중 / 시작 중 / 확인 중 (the dependent noun spaced), 사용 가능 / 사용 불가 and 연결할 수 없음, with 서버급, 번역만, 발급받은 and 높을수록 attached. Parentheses are attached in 응답(500) and 불러오기(2), as the file does.
+- Register and form: 합니다체 statements, ~하세요 requests (the hint, the toast, the crop pill), and nouns for titles and statuses; no 해요체 statement and no 당신. Each key sits between its English neighbours, with no duplicate names.
+- Not re-raised: the cooldown line's English description (`PtCloudErrors`), a code finding the Disposition recorded.
+
+#### Verdict (round 2)
+
+**PASS.** 0 ❌, 0 ⚠️, 0 💬. The one round-1 change landed byte-exact, matches the Disposition, and follows the file's parenthesis rule. Nothing is open in the ko translation. Outside it, the cooldown line's English description stays with the developer.

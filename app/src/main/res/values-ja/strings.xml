@@ -177,7 +177,7 @@
     <string name="word_detail_group_definitions">定義</string>
     <string name="word_detail_group_conjugation">活用</string>
     <string name="word_detail_group_declension">格変化</string>
-    <string name="word_detail_group_forms">語形</string>
+    <string name="word_detail_group_forms">変化形</string>
 
     <string name="word_detail_group_kanji">漢字</string>
 
@@ -574,7 +574,7 @@
 
     <string name="anki_screenshot_remove_content_description">スクリーンショットを削除</string>
     <string name="anki_screenshot_crop">スクリーンショットをトリミング</string>
-    <string name="anki_screenshot_crop_instruction">端をドラッグして、スクリーンショットをトリミングします</string>
+    <string name="anki_screenshot_crop_instruction">端をドラッグして、トリミングします</string>
 
     <string name="anki_group_audio">音声</string>
 
@@ -792,7 +792,7 @@
     <string name="llm_backend_thinking_subtitle">回答の前にモデルが推論します。速度は遅くなり、推論の分も出力トークンとして課金されます。</string>
 
     <string name="llm_backend_reasoning_title">思考レベル</string>
-    <string name="llm_backend_reasoning_subtitle">回答の前にモデルがどれだけ推論するかです。高いほど遅くなり、推論の分も出力トークンとして課金されます。</string>
+    <string name="llm_backend_reasoning_subtitle">回答の前にモデルがどれだけ推論するかを設定します。高いほど遅くなり、推論の分も出力トークンとして課金されます。</string>
     <string name="llm_backend_reasoning_off">オフ</string>
     <string name="llm_backend_reasoning_minimal">最小</string>
     <string name="llm_backend_reasoning_low">低</string>
@@ -1204,6 +1204,8 @@
 
     <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>：接続できません</string>
 
+    <string name="translation_error_not_running"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>：停止中</string>
+
     <string name="translation_error_discard_card_title">カードを破棄しますか？</string>
 
     <string name="translation_error_discard_card_message">設定を開くと、このカードは失われ、新しいキャプチャからもう一度作成する必要があります。</string>
@@ -1612,6 +1614,50 @@
     <plurals name="settings_yomitan_outdated_summary">
         <item quantity="other"><xliff:g id="count" example="3">%d</xliff:g>件の辞書を再インポートする必要があります</item>
     </plurals>
+
+    <string name="settings_pt_cloud_summary_off">オフ</string>
+
+    <string name="settings_pt_cloud_summary_pitch">高性能サーバーのOCRと翻訳</string>
+
+    <string name="settings_pt_cloud_summary_translation_only">翻訳のみ</string>
+
+    <string name="settings_pt_cloud_summary_ocr_only">高性能サーバーのOCRのみ</string>
+
+    <string name="pt_cloud_ocr_toggle_title">画面の読み取り</string>
+
+    <string name="pt_cloud_ocr_toggle_subtitle">サーバーのGPUで、より強力なOCRを実行します。端末の処理能力をすべてゲームに回せます。</string>
+
+    <string name="pt_cloud_translate_toggle_title">テキストの翻訳</string>
+
+    <string name="pt_cloud_translate_toggle_subtitle">有料の翻訳モデルを搭載し、翻訳ごとに最適なモデルが選ばれます。</string>
+
+    <string name="pt_cloud_ocr_row_subtitle">高性能サーバーでOCR、端末の負荷ゼロ</string>
+
+    <string name="pt_cloud_translate_row_subtitle_no_key">最高の有料翻訳モデルを搭載</string>
+
+    <string name="pt_cloud_key_label">クライアントキー</string>
+
+    <string name="pt_cloud_key_hint">発行されたキーを貼り付けてください</string>
+
+    <string name="pt_cloud_status_title">サービス</string>
+
+    <string name="pt_cloud_status_running">稼働中</string>
+
+    <string name="pt_cloud_status_starting">起動中</string>
+
+    <string name="pt_cloud_status_not_running">停止中</string>
+
+    <string name="pt_cloud_status_unreachable">接続できません</string>
+
+    <string name="pt_cloud_status_other">予期しない応答（<xliff:g id="http_code" example="500">%1$s</xliff:g>）</string>
+
+    <string name="pt_cloud_status_checking">確認中</string>
+
+    <string name="pt_cloud_status_unchecked">未確認</string>
+
+    <string name="floating_menu_pt_cloud_available"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>：利用可能</string>
+
+    <string name="floating_menu_pt_cloud_unavailable"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>：利用不可</string>
 
     <string name="yomitan_page_description">Yomitan辞書は、Yomitanブラウザ拡張機能で使われる、有志が作成した辞書ファイルです。追加の辞書、頻度データ、高低アクセントなどの機能があります。+ボタンで辞書（.zip）またはYomitanの辞書コレクションのエクスポート（.json）をインポートすると、PlayTranslateがアプリ全体にシームレスに組み込みます。</string>
 
@@ -2086,7 +2132,7 @@
 
     <string name="keep_running_tile_line">どの画面からでも<xliff:g id="app_name" example="PlayTranslate">PlayTranslate</xliff:g>を再びオンにできます。</string>
 
-    <string name="keep_running_screen_unavailable">その画面はこのスマートフォンにありません。設定アプリでこの設定を検索してください。</string>
+    <string name="keep_running_screen_unavailable">その画面を開けませんでした。代わりに設定アプリでこの設定を検索してください。</string>
 
     <string name="keep_running_xiaomi_autostart_title">「自動起動」を許可</string>
 

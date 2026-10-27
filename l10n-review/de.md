@@ -968,3 +968,92 @@ Clean areas: The note keeps all three English facts: free and keyless; run by Bi
 ### Disposition (2026-10-14)
 
 No findings; nothing to apply.
+
+## Delta review 2026-10-27 (PlayTranslate Cloud: 24 keys; plus the owed review of 15 keys localized outside the sync)
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports "39 keys x 13 locales: 0 problems", with no line for de (every key present; `<xliff:g>` spans byte-identical to English; placeholder multiset, `<b>`, `\n`, `\{ \}`, `&lt;/&gt;/&amp;` counts match; no unescaped `'` or `"`; no edge or double space; the file parses as XML); `python3 scripts/l10n_diff.py --locale app/src/main/res/values-de/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync". **No 🛑 build-breaking issues.**
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| pt_cloud_key_hint | ⚠️ | Füge den Schlüssel ein, den du erhalten hast | Füge den erhaltenen Schlüssel ein | Clipping confirmed in code: the hint sits in a `singleLine` 13 sp monospace EditText (`activity_pt_cloud_settings.xml`), so it never wraps and is cut at the padding edge with no ellipsis. Android's monospace, Droid Sans Mono, advances 0.6 em (font metric from memory), 7.8 dp a character. The 44 characters need 343 dp; the field gives 280 dp on a 360 dp phone (313 at 393, 331 at 411), so a 360 dp phone cuts it inside „erhalten“: „Füge den Schlüssel ein, den du erhal“. The suggestion is 33 characters (257 dp). It keeps the du imperative and `hint_deepl_key`'s „einfügen“, and „den erhaltenen Code/Schlüssel“ is the everyday German pattern. Outside the delta and on another page: the reviewed `hint_deepl_key` (40 characters, 312 dp) clips the same way at 360 dp. |
+| anki_screenshot_crop_instruction | ⚠️ | Ziehe die Kanten, um den Screenshot zuzuschneiden | Ziehe die Kanten zum Zuschneiden | Clipping confirmed in code: `RegionEditorControls.pill` is `isSingleLine` with `ellipsize=END` at 14 sp, with a 16 dp margin and 16 dp padding on each side. The review sheets open the crop editor as a full-screen dialog, which leaves 296 dp of text on a 360 dp portrait phone; the workspace page sits in a card inset 12 dp, which leaves 272 dp. The current text measures 332 dp (Arial) and ends „…Screenshot zuzus…“. English is 215 dp. The suggestion is 220 dp. „zum Zuschneiden“ is the file's „tippe zum Fokussieren“ (`camera_no_text_hint`) pattern, it still opens like `region_overlay_drag_instruction` („Ziehe die Kanten, …“), and the screenshot is the only thing on the page. |
+| pt_cloud_ocr_toggle_title | 💬 | Bildschirmtext erkennen | Text erkennen | „Bildschirmtext“ is the lexicalized name of Btx, the Bundespost's videotex service (that is Duden's entry, from memory). In context it reads as "screen text", but older readers will hear the service. „Text erkennen“ pairs with the second switch, „Text übersetzen“, and echoes the section header „Texterkennung (OCR)“ and `ocr_source_label` „Erkannt von …“. |
+| llm_backend_thinking_subtitle | 💬 | Das Modell denkt nach, bevor es antwortet. Langsamer, und das Nachdenken wird als Ausgabe-Tokens abgerechnet. | Das Modell denkt nach, bevor es antwortet. Das ist langsamer, und das Nachdenken wird als Ausgabe-Tokens abgerechnet. | „Langsamer, und …“ uses „und“ to join a verbless comparative to a full clause, which is English's shape. „Das ist langsamer“ makes it one sentence of two clauses. The sibling `llm_backend_reasoning_subtitle` can stay as it is, because „Je höher, desto langsamer“ is an idiom. |
+
+### Clean areas (checked, no findings)
+
+**Translation error pill** (`TranslationErrorMessages`, `TranslationErrorPills`: 14 sp, `maxLines=2`, most of the display wide). „PlayTranslate Cloud: läuft nicht“ has the family's shape: the service name, a colon, then a lowercase status, since no sentence follows (Duden). It reads like its nearest siblings „reagiert nicht“ and „keine Verbindung möglich“, and it fits on one line.
+
+**PlayTranslate Cloud page.** The two `settings_row_switch` rows wrap (no `maxLines`). Their titles are a pair of infinitives, like the file's „Textverlauf speichern“ (one finding on the first title's noun). „Stärkere OCR auf einer Server-GPU“ takes OCR as feminine (die Texterkennung); nothing in the file fixes another gender, since it uses „OCR“ without an article („OCR erkennt den Text …“). GPU is feminine too. „Die ganze Leistung deines Geräts bleibt fürs Spiel“ is idiomatic (bleiben für, as in „mehr Zeit bleibt für …“). In „…, für jede Aufgabe wird das beste gewählt“, lowercase „das beste“ stands for the implied „Modell“ (Duden), and the comma joins two main clauses. For the key, „Client-Schlüssel“ sits beside „API-Schlüssel“ (`llm_backend_api_key_label`) and „Schlüssel ••••“ (`tr_service_key_tail_fmt`), and the hint uses `hint_deepl_key`'s verb (width finding above). The status row is „Dienst“, the file's word for a service („der Dienst“ in `tr_service_remove_message`, „den Dienst“ in `a11y_stuck_message`). Its values are Läuft, Startet, Läuft nicht, Keine Verbindung möglich, Unerwartete Antwort (500), Wird geprüft and Nicht geprüft. The three that pair with pill strings match them word for word („keine Verbindung möglich“, „unerwartete Antwort“, „läuft nicht“), capitalized as standalone values. „Wird geprüft“ follows the file's „Nutzung wird geprüft…“ (`tr_service_status_loading`); AOSP's „Wird überprüft…“ would also be correct. The value shares one row with the title, and the longest value (25 characters) fits.
+
+**Settings hub, Configure card** (`cloudDigest`; `settings_row_hub.xml` summary `singleLine`, `ellipsize=end`, 13 sp, 216 dp on a 360 dp phone). All four values show whole: „Server-OCR und -Übersetzung“ (179 dp), „Nur Server-OCR“ (96), „Nur Übersetzung“ (98) and „Aus“. „Aus“ is the History cell's off word („Aus · Liste der aufgenommenen Sätze“). The hyphen in „-Übersetzung“ correctly stands in for the shared „Server-“ (Duden: „Bahnhofsvorplatz und -halle“). „Server-“ renders "Server-grade" as the English comment defines it: on the server, not on the device.
+
+**Capture & overlay, OCR section** (`bindCloudOcrRow`). „Server-OCR, keine Last auf dem Gerät“ has the "trait, trait" shape of the engine notes below it („Findet kleinen Text, langsamer“, „Flott, auch bei viel Text auf dem Bildschirm“) and uses the hub's „Server-OCR“.
+
+**Translation services page** (`PtCloudBackend.status`, `tvRowSubtitle2`, which wraps). „Die besten bezahlten Übersetzungsmodelle inklusive“ stands where other rows read „Konto erforderlich“. A trailing „inklusive“ is everyday German pitch („Frühstück inklusive“), and „bezahlte“ is the usual word for paid content.
+
+**Floating icon quick menu** (contentDescription). „PlayTranslate Cloud: verfügbar“ and „…: nicht verfügbar“ use `backend_status_unavailable_default`'s „Nicht verfügbar“ and AOSP's media-route pair „Verfügbar“ / „Nicht verfügbar“ (framework values-de), lowercase after the colon as in the pill.
+
+**Fix disappearing icon toast** (`openFirst`, LENGTH_LONG). „Die Seite ließ sich nicht öffnen. Suche die Option stattdessen in den Einstellungen.“ now says what the English says: the screen could not be opened, so search Settings instead. The old "missing on this phone" is gone. It wraps to 2 lines at 296 dp (258 + 251 dp) and at 320 dp. „Die Seite“ and „Option“ are the 2026-10-07 decisions, kept. „Suche … in den Einstellungen“ is the cards' own wording („Suche in den Einstellungen nach …“). There is no room for English's "your phone's": „… in den Einstellungen deines Geräts.“ needs a third line at 296 dp, which Android drops.
+
+**Part B.** The group headers go through `addGroupHeader`, which uppercases with `Locale.ROOT`. For these words that gives the same result as German casing (no ß): KONJUGATION, DEKLINATION and FORMEN, beside DEFINITIONEN. Each is a single noun and the standard grammar term. „Screenshot zuschneiden“ pairs with „Screenshot entfernen“ on the button beside it; the workspace crop page hides its header, so this string is mainly that button's label. The crop instruction keeps its sibling's „Ziehe die Kanten, um …“ (width finding above). „Denkmodus“ and „Denkstufe“ both use „Denk-“, as the two English comments require. „Wie viel das Modell nachdenkt, bevor es antwortet.“ follows the file's „Wie oft der Spielbildschirm … aufgenommen wird.“ (`settings_capture_interval_hint`), and „Ausgabe-Tokens“ matches the file's „Tokens“ (`tr_service_status_usage_today_fmt`). The segments Aus, Minimal, Niedrig, Mittel and Hoch are 7 characters or fewer and at most 45 dp at 13 sp. A four-segment row leaves about 56 dp per label at 360 dp (`buildPillToggle` shrinks 13 to 10 sp before it ellipsizes), so none shrinks. „Aus“ is the file's off word. „Mehr laden (2)“ (13 sp, `maxLines=1`) reads well beside the lens's „Auch möglich“ and „Wird nachgeschlagen…“.
+
+**Outside the delta: code, not a string (read from code, not seen on a device).** The cooldown line under the cloud page's status row is `cooldownLine(…, PtCloudService.unavailableDescription(), …)`. `PtCloudErrors` records that description from English constants („Not running“, „Rate limited“, „Server error“), so a German device can show „Läuft nicht“ with „Not running · Neuer Versuch um 14:05“ under it. The Translation services rows build the same line the same way for the other backends („Connection failed“), so this is app-wide and predates the delta. It is not a German finding.
+
+### German: register, compounds, widths
+
+- **du.** „deines Geräts“ and „den du erhalten hast“, plus the imperatives Füge, Suche and Ziehe. A script over all 39 values finds no Sie, Ihr, Ihre or Ihnen. None of the 39 has a quotation, so „ “ does not come up.
+- **Compounds.** Hyphenated where an acronym or loanword meets a German noun: Server-OCR, Server-GPU, Client-Schlüssel and Ausgabe-Tokens (the file's API-Schlüssel and OCR-Tool pattern). Closed and ordinary: Übersetzungsmodelle, Denkmodus and Denkstufe. „Bildschirmtext“ is the one that carries another meaning (💬 above).
+- **Widths read in code** (360 dp phone). Hub summary: 216 dp, one line. Toast: 296 dp, two lines. Crop pill: 296 dp (review sheets) and 272 dp (workspace), one line. Key field: 280 dp, monospace, one line. Level segment: about 56 dp, autosized. Error pill: two lines. The switch subtitles, the services status line and the Capture row subtitle all wrap.
+
+### Disposition (2026-10-27)
+
+All four findings applied: `pt_cloud_key_hint` „Füge den erhaltenen Schlüssel ein“ (fits the one-line monospace field), `anki_screenshot_crop_instruction` „Ziehe die Kanten zum Zuschneiden“, `pt_cloud_ocr_toggle_title` „Text erkennen“ (pairs with „Text übersetzen“ and avoids Btx), and `llm_backend_thinking_subtitle` „… Das ist langsamer, und …“. The out-of-delta note on `hint_deepl_key` was verified (same monospace field style; de and tr both measure about 313 dp against 280 dp) and is left for the next sync, since it is a reviewed string outside this scope. The cooldown line's English description is a code finding, verified in code; reported, not fixed.
+
+### Round 2 (2026-10-27), final review after applying round 1
+
+Mechanical layer: `python3 SP/mechcheck.py <the 39 keys>` reports "39 keys x 13 locales: 0 problems", with no line for de (every key present; `<xliff:g>` spans byte-identical to English; placeholders, markup and escapes match; no unescaped `'` or `"`; the file parses as XML); `python3 scripts/l10n_diff.py --locale app/src/main/res/values-de/strings.xml` reports `missing=0 orphan=0 modified=0`, "in sync". **No 🛑 build-breaking issues.**
+
+Round-1 changes checked. All four values are byte-identical to round 1's suggestions, and the file's hash equals `SP/locale-hashes-after-fixes.txt`. Against the sync's drafts (`SP/drafts.py`), only the two Part A keys below changed. Against `HEAD`, only the two Part B keys below changed.
+- `pt_cloud_key_hint`, „Füge den erhaltenen Schlüssel ein“: confirmed.
+  - Width: 33 characters are 257 dp of advance at 13 sp in a 0.6 em monospace (258 dp measured in Menlo). The `singleLine` monospace field gives 280 dp on a 360 dp phone; re-read in `activity_pt_cloud_settings.xml`: 14 dp page, 16 dp card and 10 dp field padding on each side.
+  - Wording: „einfügen“ is `hint_deepl_key`'s verb and AOSP's „Einfügen“. „den du erhalten hast“ is gone, so the imperative „Füge“ now carries the du register on its own.
+- `anki_screenshot_crop_instruction`, „Ziehe die Kanten zum Zuschneiden“: confirmed.
+  - Width: 220 dp (Arial, 14 sp) in the `isSingleLine`, `ellipsize=END` pill. The pill has 296 dp in the review sheets' full-screen dialog and 272 dp in the workspace card (`pt_workspace_inset` 12 dp, then 16 dp of margin and 16 dp of padding a side).
+  - Shape: it still opens like `region_overlay_drag_instruction` („Ziehe die Kanten, …“).
+- `pt_cloud_ocr_toggle_title`, „Text erkennen“: confirmed. It pairs with „Text übersetzen“ and uses the file's OCR verb („Erkannt von …“, „Texterkennung (OCR)“). Its subtitle still says OCR, which ties the row to the hub's „Nur Server-OCR“.
+- `llm_backend_thinking_subtitle`, „… Das ist langsamer, und das Nachdenken …“: confirmed. „Das“ refers back to the first sentence, as in „Das ist zwar langsamer, aber …“. The subtitle wraps, and the sibling `llm_backend_reasoning_subtitle` („Je höher, desto langsamer, …“) is unchanged.
+
+#### Findings (round 2)
+
+No findings.
+
+Fresh read of all 39 values (checked, no finding):
+- **Error pill.** „PlayTranslate Cloud: läuft nicht“ has the family's lowercase status after the colon („reagiert nicht“, „keine Verbindung möglich“). Only `PtCloudErrors` raises `NOT_RUNNING`, so no other service name fills it. It fits on one line of the 14 sp pill (`maxLines=2`).
+- **Cloud page.** The switch subtitles wrap.
+  - Genders: „Stärkere OCR“ and „einer Server-GPU“ are feminine, as the section header „Texterkennung (OCR)“ implies.
+  - „das beste“ is lowercase because it stands for „Modell“.
+  - Key: „Client-Schlüssel“ matches „API-Schlüssel“ and „Schlüssel ••••“.
+  - Status row: under „Dienst“, the three values that echo pill strings match them word for word. The longest value, „Unerwartete Antwort (500)“ (153 dp at 13 sp), fits beside the title in the 300 dp row.
+- **Hub** (`settings_row_hub.xml`: 13 sp, `singleLine`, 216 dp). All four summaries fit on one line; the widest, the pitch, is 179 dp. „Aus“ is the History cell's off word.
+- **Capture & overlay row and services line.** Both wrap. The Capture & overlay row reads „Server-OCR, keine Last auf dem Gerät“. Each has the shape of its neighbours.
+- **Screen-reader labels.** „verfügbar“ / „nicht verfügbar“, as in `backend_status_unavailable_default`.
+- **Toast.** It wraps to 2 lines at 296 dp: „Die Seite ließ sich nicht öffnen. Suche die“ / „Option stattdessen in den Einstellungen.“
+- **Part B.**
+  - `uppercase(Locale.ROOT)` gives KONJUGATION, DEKLINATION and FORMEN (no ß).
+  - „Denkmodus“ and „Denkstufe“ share „Denk-“.
+  - The widest level label, „Minimal“ (48 dp in bold at 13 sp), fits the roughly 56 dp a four-segment row leaves.
+  - „Mehr laden (2)“ shows „Wird nachgeschlagen…“ in the same row while it loads.
+- **Register and typography** (checked by script over the 39). No Sie, Ihr or Ihnen, and no quotation mark, dash or NBSP.
+
+#### Verdict (round 2)
+
+**PASS** (0 🛑, 0 ❌, 0 ⚠️, 0 💬). All four round-1 fixes landed exactly as suggested and broke nothing around them, and the fresh read of the 39 keys found nothing new. Two recorded items stay open. Neither blocks the sync, and neither changes these strings:
+- `hint_deepl_key` clips in the same kind of monospace field. It is outside the scope and left for the next sync.
+- The cloud page's cooldown line can show its English description. This is a code finding.
+
+### After the final review (2026-10-27)
+
+At the developer's request, `hint_deepl_key` was changed after round 2: «Füge hier deinen DeepL-API-Schlüssel ein» measured 312 dp in the DeepL page's 276 dp one-line monospace key field (Droid Sans Mono, 13 sp) and was cut inside its verb. It is now «DeepL-API-Schlüssel einfügen» (218 dp), in the infinitive the file's other hints use («Wörter suchen», «Sprachen suchen»). Not yet independently reviewed.
