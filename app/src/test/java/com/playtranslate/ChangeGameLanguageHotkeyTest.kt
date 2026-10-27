@@ -62,6 +62,14 @@ class ChangeGameLanguageHotkeyTest {
         CaptureLifecycle.setFloatingIconSuppressed(ctx, false)
         prefs.captureDisplayIds = setOf(Display.DEFAULT_DISPLAY)
         prefs.hotkeyChangeGameLanguageTap = key.toString()
+        // Every case starts in English, set before the capture service
+        // starts. Set later, it is a change of the game language, and the
+        // service warms the new language's engine on a background thread
+        // (CaptureService.onSourceLanguageChanged), which finds a faked pack
+        // corrupt and deletes it: a quick-menu case, settling before its
+        // press, raced that deletion, and whenever the deletion came first
+        // the press saw Spanish alone downloaded and opened the picker.
+        prefs.sourceLang = "en"
         val built = Robolectric.buildService(PlayTranslateAccessibilityService::class.java).create()
         a11y = built
         PlayTranslateAccessibilityService.instance = built.get()
@@ -88,7 +96,8 @@ class ChangeGameLanguageHotkeyTest {
         clearPrefs()
     }
 
-    /** [ids]' packs on disk, as a finished download leaves them. */
+    /** [ids]' packs on disk, as the installed check reads a finished
+     *  download; an engine load finds them corrupt (see [setUp]). */
     private fun downloaded(vararg ids: SourceLangId) {
         for (id in ids) {
             val dict = LanguagePackStore.dictDbFor(ctx, id)
@@ -149,7 +158,6 @@ class ChangeGameLanguageHotkeyTest {
 
     @Test fun `with two languages downloaded the hotkey switches to the other and says so`() {
         downloaded(SourceLangId.EN, SourceLangId.ES)
-        prefs.sourceLang = "en"
 
         pressHotkey()
 
@@ -160,7 +168,6 @@ class ChangeGameLanguageHotkeyTest {
 
     @Test fun `with one language downloaded the hotkey opens the picker`() {
         downloaded(SourceLangId.EN)
-        prefs.sourceLang = "en"
 
         pressHotkey()
 
@@ -175,7 +182,6 @@ class ChangeGameLanguageHotkeyTest {
         val second = ShadowDisplayManager.addDisplay("w640dp-h480dp")
         service!!.get().lastInteractedDisplayId = second
         downloaded(SourceLangId.EN, SourceLangId.ES)
-        prefs.sourceLang = "en"
 
         pressHotkey()
 
@@ -190,7 +196,6 @@ class ChangeGameLanguageHotkeyTest {
         service!!.get().lastInteractedDisplayId = second
         ShadowDisplayManager.removeDisplay(second)
         downloaded(SourceLangId.EN, SourceLangId.ES)
-        prefs.sourceLang = "en"
 
         pressHotkey()
 
@@ -203,7 +208,6 @@ class ChangeGameLanguageHotkeyTest {
     // open (the menu covers the icon); a hotkey can, and it left the menu up.
     @Test fun `with the quick menu open the hotkey closes it and switches`() {
         downloaded(SourceLangId.EN, SourceLangId.ES)
-        prefs.sourceLang = "en"
         openQuickMenu()
 
         pressHotkey()
@@ -216,7 +220,6 @@ class ChangeGameLanguageHotkeyTest {
 
     @Test fun `with the quick menu open the hotkey closes it and opens the picker`() {
         downloaded(SourceLangId.EN)
-        prefs.sourceLang = "en"
         openQuickMenu()
 
         pressHotkey()
