@@ -37,7 +37,9 @@ import com.playtranslate.themeColor
 import com.playtranslate.translation.ChineseScriptConverter
 import com.playtranslate.tts.ttsTextForWord
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
@@ -146,6 +148,17 @@ class WordAnkiReviewBinder(
      *  restored from the shell's saved state on recreation so applied
      *  translation/words survive (the old child-fragment semantics). */
     private var contentArgs: Bundle? = null
+
+    /** The card's own word ([CardTarget] in [args], keyed by the word detail
+     *  page) resolved for the sentence content, started once at bind; null
+     *  when the opener keyed none or the sheet has no sentence. Every list of
+     *  rows the content shows gets it placed ([withCardTarget]). */
+    private var cardTarget: Deferred<ResolvedCardTarget?>? = null
+
+    /** The latest words fill or target placement while it runs — the
+     *  sentence send waits for it, as the sentence-only editors wait for
+     *  theirs, so a quick Save can't ship rows without the card's word. */
+    private var wordsFillJob: Job? = null
 
     private fun launchWordAudioPicker(word: String, reading: String) {
         val lang = SourceLangId.fromCode(args.getString(ARG_SOURCE_LANG))
@@ -421,6 +434,13 @@ class WordAnkiReviewBinder(
             freqScore, isCommon, sourceLangId)
 
         if (hasSentenceData) {
+            // The card's own word, when its opener keyed one: resolved once,
+            // then placed into every list of rows the content shows, so a
+            // card made for a word the sentence's analysis read as another
+            // (弾く in 弾けた, read as 弾ける) is still for that word.
+            cardTarget = args.getCardTarget()?.let { target ->
+                scope.async { resolveCardTarget(ctx, sourceLangId, word, target) }
+            }
             // The content's launch state: fresh at first bind, the persisted
             // bundle (carrying applied translation/words + the pinned
             // screenshot) on a saved-state recreation.
@@ -453,27 +473,46 @@ class WordAnkiReviewBinder(
                 launchWordsFill(newOriginal, "")
             }
 
+            // The launcher's deferred pending (if any) rides the args — a
+            // fill for the launch sentence then COMPLETES the deferred
+            // capture (History rows fill too) instead of translating around it.
+            @Suppress("DEPRECATION")
+            val launchPending = args.getSerializable(ARG_SENTENCE_PENDING)
+                as? com.playtranslate.model.PendingTranslation
+
             // Fill in any missing pieces asynchronously (fresh binds — a
             // restored bundle carries whatever was applied, and resumes only
-            // a words fill it was saved in the middle of).
+            // the fills it was saved in the middle of, for the sentence it
+            // shows).
             if (restoredArgs == null) {
                 if (sentenceTranslation.isBlank()) {
-                    // The launcher's deferred pending (if any) rides the args —
-                    // the fill then COMPLETES the deferred capture (History rows
-                    // fill too) instead of translating around it.
-                    @Suppress("DEPRECATION")
-                    launchTranslationFill(
-                        meaningfulSentence,
-                        args.getSerializable(ARG_SENTENCE_PENDING)
-                            as? com.playtranslate.model.PendingTranslation,
-                    )
+                    launchTranslationFill(meaningfulSentence, launchPending)
                 }
                 if (args.getStringArray(ARG_SENTENCE_WORDS).isNullOrEmpty()) {
                     launchWordsFill(meaningfulSentence, word)
+                } else {
+                    placeCardTarget(meaningfulSentence, word)
                 }
-            } else if (SentenceAnkiContentView.wordsFillOwed(restoredArgs)) {
-                // Saved mid-fill: the restored args owe the words, so resume.
-                launchWordsFill(meaningfulSentence, word)
+            } else {
+                // The sentence the restored content shows: the launch one, or
+                // an Original edit committed over it, whose fills carry no
+                // pending and select no target, as the edit's own refill does.
+                val shown = SentenceAnkiContentView.originalOf(restoredArgs)
+                val edited = shown != meaningfulSentence
+                val shownTarget = if (edited) "" else word
+                if (SentenceAnkiContentView.translationOf(restoredArgs).isBlank()) {
+                    launchTranslationFill(shown, if (edited) null else launchPending)
+                }
+                if (SentenceAnkiContentView.wordsFillOwed(restoredArgs)) {
+                    // Saved mid-fill: the restored args owe the words, so resume.
+                    launchWordsFill(shown, shownTarget)
+                } else {
+                    // Restored rows keep the card's word but not the text it
+                    // was found as, nor its senses (the args carry neither):
+                    // the placement swaps the resolved row back in. Rows saved
+                    // before a placement landed get their first one here.
+                    placeCardTarget(shown, shownTarget)
+                }
             }
         }
 
@@ -1448,21 +1487,50 @@ class WordAnkiReviewBinder(
     }
 
     /** Fetch the sentence's per-word breakdown and push it into the
-     *  sentence content. Joins any in-flight word-lookup started by the
-     *  drag controller's prefetch. The payload's surfaces map is paired
-     *  with its results at the point the deferred completed — reading
+     *  sentence content, with the card's own word placed ([cardTarget]).
+     *  Joins any in-flight word-lookup started by the drag controller's
+     *  prefetch. The payload's surfaces map is paired with its results at
+     *  the point the deferred completed — reading
      *  [LastSentenceCache.surfaceForms] separately would race live mode
-     *  rotating the cache to a different sentence. */
+     *  rotating the cache to a different sentence. The job replaces
+     *  [wordsFillJob]; an earlier one is left to finish, and applyWords,
+     *  which guards on the visible original, drops its rows. */
     private fun launchWordsFill(sentence: String, targetWord: String) {
         wordsFillCount++
         refreshFillingPendingIndicator()
-        scope.launch {
+        wordsFillJob = scope.launch {
             try {
                 val payload = LastSentenceCache.awaitOrStartWordLookups(
                     ctx.applicationContext,
                     sentence,
                 )
-                contentView?.applyWords(sentence, payload.toWordEntries(), targetWord)
+                val placed = withCardTarget(payload.toWordEntries(), cardTarget?.await(), sentence)
+                contentView?.applyWords(sentence, placed.words, targetWord, placed.readingOverride)
+            } finally {
+                wordsFillCount--
+                refreshFillingPendingIndicator()
+            }
+        }
+    }
+
+    /** Place the card's own word ([cardTarget]) into the rows the content
+     *  shows without a fill (handed by the opener, or restored), when they
+     *  lack it as found ([withCardTarget]); nothing when they carry it or the
+     *  opener keyed no word. Replaces [wordsFillJob] as a fill does, so Save
+     *  waits for it. */
+    private fun placeCardTarget(sentence: String, targetWord: String) {
+        val target = cardTarget ?: return
+        wordsFillCount++
+        refreshFillingPendingIndicator()
+        wordsFillJob = scope.launch {
+            try {
+                val resolved = target.await()
+                val content = contentView ?: return@launch
+                val shown = content.wordEntries()
+                val placed = withCardTarget(shown, resolved, sentence)
+                if (placed.words != shown) {
+                    content.applyWords(sentence, placed.words, targetWord, placed.readingOverride)
+                }
             } finally {
                 wordsFillCount--
                 refreshFillingPendingIndicator()
@@ -1634,6 +1702,9 @@ class WordAnkiReviewBinder(
             sendButton?.setLoading(false)
             return
         }
+        // A card saved mid-fill would ship without its words table, or
+        // without its own word placed.
+        wordsFillJob?.join()
         val data = content.getCardData()
         val input = SentenceSendInput(
             original = data.source,
@@ -1650,6 +1721,7 @@ class WordAnkiReviewBinder(
             // for the structured path. Built with inlineStyler since the
             // structured outputs have no surrounding <style> block.
             examplesHtml = buildExamplesHtml(inlineStyler),
+            readingOverride = data.readingOverride,
         )
         val result = ctx.sendSentenceCard(input, deckId, oversizePrompt = {
             awaitOversizeConsent(ctx, host::presentAlert)
@@ -1698,7 +1770,9 @@ class WordAnkiReviewBinder(
         internal const val ARG_AUDIO_ANCHOR_MS = "audio_anchor_ms"
 
         /** The launch-state bundle both hosts build (the old
-         *  [WordAnkiReviewSheet.newInstance] shape). */
+         *  [WordAnkiReviewSheet.newInstance] shape). [target] is the card's
+         *  own word as its opener found it in the sentence ([CardTarget]),
+         *  read only alongside a sentence; null when the opener keys none. */
         fun buildArgs(
             word: String,
             reading: String,
@@ -1713,7 +1787,9 @@ class WordAnkiReviewBinder(
             sourceLangId: SourceLangId = SourceLangId.JA,
             sentencePending: com.playtranslate.model.PendingTranslation? = null,
             audioAnchorMs: Long? = null,
+            target: CardTarget? = null,
         ): Bundle = Bundle().apply {
+            if (target != null) putCardTarget(target)
             putString(ARG_WORD, word)
             putString(ARG_READING, reading)
             putString(ARG_POS, pos)

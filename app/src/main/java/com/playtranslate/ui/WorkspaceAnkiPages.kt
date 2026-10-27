@@ -696,6 +696,7 @@ class AnkiSentenceEditorPage(
             targetWordAudioWords = data.targetWordAudioWords,
             sentenceSelection = data.sentenceSelection,
             wordSelections = data.wordSelections,
+            readingOverride = data.readingOverride,
         )
         val result = ctx.sendSentenceCard(input, deckId, oversizePrompt = {
             awaitOversizeConsent(ctx) { it.showInParent(host.modalLayer) }

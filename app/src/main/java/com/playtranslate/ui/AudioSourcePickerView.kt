@@ -28,6 +28,7 @@ import com.playtranslate.audio.PronunciationPlayer
 import com.playtranslate.audio.SpokenText
 import com.playtranslate.audio.sources.RecordingAudioSource
 import com.playtranslate.audio.sources.TtsAudioSource
+import com.playtranslate.language.ReadingOverride
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.themeColor
 import com.playtranslate.tts.TtsEngine
@@ -75,12 +76,16 @@ class AudioSourcePickerView(
         val initialKey: String?,
         val initialLocator: String?,
         val initialAttribution: Attribution?,
+        /** A sentence card's reading of its own word ([ReadingOverride]),
+         *  so the previews read the line as the card's audio will; null
+         *  for a word. */
+        val readingOverride: ReadingOverride? = null,
     )
 
     private val req: AudioRequest = if (args.isWord) {
         AudioRequest.word(args.surface, args.reading, args.lang)
     } else {
-        AudioRequest.sentence(args.surface, args.lang)
+        AudioRequest.sentence(args.surface, args.lang, args.readingOverride)
     }
 
     private var selectedSourceId: String? = args.initialSourceId

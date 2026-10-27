@@ -2,6 +2,7 @@ package com.playtranslate.ui
 
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -29,12 +30,13 @@ import kotlinx.coroutines.launch
  * body), and the sentence context still travels for the Anki card via
  * [sentenceContext].
  *
- * Cross-reference and member-word taps PUSH another instance — the nested
- * detail becomes a real back stack (the DialogFragment host stacks child
- * fragments instead). The Anki actions trampoline to the review Activity
- * for now — the workspace dismisses first (programmatically, so no stashed
- * capture sheet re-shows underneath the launched activity); an in-window
- * editor page replaces that trampoline when the Anki stack is de-fragmented.
+ * Words and Other matches taps PUSH another instance ([nested]) on this
+ * page's sentence — the nested detail becomes a real back stack (the
+ * DialogFragment host stacks child fragments instead). The Anki actions
+ * trampoline to the review Activity for now — the workspace dismisses
+ * first (programmatically, so no stashed capture sheet re-shows underneath
+ * the launched activity); an in-window editor page replaces that
+ * trampoline when the Anki stack is de-fragmented.
  */
 class WorkspaceWordDetailPage(
     private val word: String,
@@ -51,14 +53,31 @@ class WorkspaceWordDetailPage(
      *  ([WordDetailBinder.Args.lookupReading]); [reading] when the opener
      *  has no key of its own. */
     private val lookupReading: String? = reading,
-    private val screenshotPath: String? = null,
+    internal val screenshotPath: String? = null,
     /** Game-audio ring anchor for the Anki flow (the capture moment); null
      *  when the launching surface has no capture (drag flow). */
-    private val audioAnchorMs: Long? = null,
+    internal val audioAnchorMs: Long? = null,
     /** Sentence-context snapshot from the launching surface — taken at open
      *  time, which is correct over the game: the capture is frozen. */
-    private val sentenceContext: () -> SentenceContext? = { null },
+    internal val sentenceContext: () -> SentenceContext? = { null },
 ) : WorkspacePage {
+
+    /** The page a Words or Other matches cell opens: a word found inside
+     *  this page's word, so in the same sentence, carrying this page's
+     *  sentence (its provider, live where this page's is), screenshot and
+     *  audio anchor for its Anki card. */
+    internal fun nested(
+        word: String,
+        reading: String?,
+        surface: String?,
+        lookupForm: String,
+        lookupReading: String?,
+    ): WorkspaceWordDetailPage = WorkspaceWordDetailPage(
+        word, reading, surface, lookupForm, lookupReading,
+        screenshotPath = screenshotPath,
+        audioAnchorMs = audioAnchorMs,
+        sentenceContext = sentenceContext,
+    )
 
     private var pageScope: CoroutineScope? = null
     private var binder: WordDetailBinder? = null
@@ -170,10 +189,9 @@ class WorkspaceWordDetailPage(
             lookupForm: String,
             lookupReading: String?,
         ) {
-            // Cross-reference drill-down as a real back stack — the nested
-            // detail carries no sentence/screenshot, mirroring the
-            // fragment host's bare nested sheet.
-            host.push(WorkspaceWordDetailPage(word, reading, surface, lookupForm, lookupReading))
+            // A Words / Other matches drill-down as a real back stack, on
+            // this page's sentence.
+            host.push(nested(word, reading, surface, lookupForm, lookupReading))
         }
 
         override fun openAnkiReview(args: WordDetailBinder.WordAnkiArgs) {
@@ -199,6 +217,7 @@ class WorkspaceWordDetailPage(
                             sourceLangId = args.sourceLangId,
                             sentencePending = args.sentencePending,
                             audioAnchorMs = audioAnchorMs,
+                            target = args.target,
                         ),
                     ),
                 )
@@ -285,6 +304,8 @@ class WorkspaceWordDetailPage(
             audioAnchorMs?.let {
                 putExtra(WordAnkiReviewActivity.EXTRA_AUDIO_ANCHOR_MS, it)
             }
+            // The card's own word; AnkiPermissionActivity forwards every extra.
+            putExtras(Bundle().apply { putCardTarget(args.target) })
         }
         val targetDisplay = PlayTranslateApplication.foregroundDisplayId() ?: host.displayId
         val opts = android.app.ActivityOptions.makeBasic()

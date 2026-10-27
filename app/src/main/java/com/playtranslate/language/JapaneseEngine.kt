@@ -272,6 +272,24 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
             TokenSpan(surface = span.surface, lookupForm = it.lookupForm, reading = it.reading, inflections = it.tags)
         }
 
+    /** [JapaneseDeinflector.occurrenceReading] under the class of the pack
+     *  entry the key resolves to: the pack's senses carry the part of
+     *  speech, so an imported-only word has no class and keeps the
+     *  analysis's reading for any surface that conjugates. */
+    override suspend fun occurrenceReading(
+        surface: String,
+        lookupForm: String,
+        lookupReading: String?,
+        lemmaReading: String,
+    ): String? {
+        val entry = dict.lookup(lookupForm, lookupReading)?.entries?.firstOrNull()
+        val posFlags = JapaneseDeinflector.posFlags(entry?.senses.orEmpty().flatMap { it.partsOfSpeech })
+        return JapaneseDeinflector.occurrenceReading(surface, lookupForm, lemmaReading, posFlags)
+    }
+
+    override fun withReading(annotation: SentenceAnnotation, override: ReadingOverride): SentenceAnnotation =
+        SentenceAnnotator.withReading(annotation, override)
+
     /** Reading hints for the member [units] (surface to lookupForm, in
      *  headword order) by aligning the headword's own reading against the
      *  units' dictionary readings — see [alignMemberReadings] for why the
@@ -349,14 +367,16 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
     override suspend fun annotateForHintText(text: String): List<HintTextAnnotation> =
         annotate(text, AnnotationDepth.TOKENS).hintAnnotations()
 
-    override suspend fun spokenForm(text: String): String =
+    override suspend fun spokenForm(text: String, readingOverride: ReadingOverride?): String =
         withContext(Dispatchers.Default) {
             // TTS speaks the SAME readings the display shows — audio ==
             // display by construction. Both project from ONE FULL-depth
             // annotation now, so dictionary-corrected compound readings
             // (一泊 → いっぱく) are spoken, not just displayed. annotate is
-            // fail-soft: no tokenizer → one plain span → surface text.
-            val spans = annotate(text, AnnotationDepth.FULL).spans
+            // fail-soft: no tokenizer → one plain span → surface text. A
+            // card's override re-reads it as the card's furigana does.
+            val annotation = annotate(text, AnnotationDepth.FULL)
+            val spans = (readingOverride?.let { withReading(annotation, it) } ?: annotation).spans
             if (spans.isEmpty()) text
             else buildString { for (s in spans) append(s.reading ?: s.surface) }
         }

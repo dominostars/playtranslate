@@ -210,6 +210,33 @@ interface SourceLanguageEngine {
     suspend fun alternativesOf(span: TokenSpan, primaryIds: Set<Long>): List<TokenSpan> = emptyList()
 
     /**
+     * How [surface] reads as an occurrence of the dictionary word
+     * [lookupForm] read [lemmaReading] (the entry [lookup] resolves under
+     * [lookupForm] and [lookupReading]): the reading a sentence card made
+     * for that word gives its text when the sentence's analysis chose
+     * another word there ([ReadingOverride]). Null keeps the analysis's
+     * reading. Default: none; [JapaneseEngine] overrides with the kana
+     * reading.
+     */
+    suspend fun occurrenceReading(
+        surface: String,
+        lookupForm: String,
+        lookupReading: String?,
+        lemmaReading: String,
+    ): String? = null
+
+    /**
+     * [annotation] as a sentence card reads it under [override]: the span on
+     * the override's surface becomes its word, read its reading, when the
+     * sentence holds that surface once (a repeat stays as analyzed), and a
+     * surface inside one larger span is split out of it, readings kept.
+     * Default: unchanged, as every engine that derives no override
+     * ([occurrenceReading]) wants it; [JapaneseEngine] overrides.
+     */
+    fun withReading(annotation: SentenceAnnotation, override: ReadingOverride): SentenceAnnotation =
+        annotation
+
+    /**
      * The pack's whole inflection table for [entry] (its conjugation or
      * declension: every form with kaikki's tags, in table order), for the
      * detail page's conjugation card. Default: none; [LatinEngine] reads it
@@ -269,12 +296,14 @@ interface SourceLanguageEngine {
      *  callers must invoke it from a coroutine rather than blocking the UI. */
     suspend fun annotateForHintText(text: String): List<HintTextAnnotation> = emptyList()
 
-    /** The text to feed a TTS engine to speak [text] aloud. Default returns
+    /** The text to feed a TTS engine to speak [text] aloud, read under a
+     *  sentence card's [readingOverride] when it has one ([withReading]), so
+     *  the card's audio says what its furigana shows. Default returns
      *  [text] unchanged. Japanese overrides it with a kana rendering so the
      *  system engine doesn't re-guess compound readings (初夏 → はつか). Stays
      *  identity for languages whose "reading" isn't speakable kana — Chinese
      *  readings are pinyin, Korean/Latin surfaces are already phonetic. */
-    suspend fun spokenForm(text: String): String = text
+    suspend fun spokenForm(text: String, readingOverride: ReadingOverride? = null): String = text
 
     fun close()
 }

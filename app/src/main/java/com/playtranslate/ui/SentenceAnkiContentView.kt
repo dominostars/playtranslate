@@ -47,6 +47,7 @@ import com.playtranslate.audio.vad.SpeechSnap
 import com.playtranslate.audio.vad.VoiceLineSnap
 import com.playtranslate.capture.GameAudioSnapshot
 import com.playtranslate.dictionary.Deinflector
+import com.playtranslate.language.ReadingOverride
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.themeColor
 import com.playtranslate.tts.ttsTextForWord
@@ -130,6 +131,18 @@ class SentenceAnkiContentView(
 
     private val words = mutableListOf<SentenceAnkiHtmlBuilder.WordEntry>()
     val selectedWords = mutableSetOf<String>()
+
+    /** How the card reads the stretch of the sentence its own word was found
+     *  as, when [words] carry that word in place of the analysis's choice
+     *  ([withCardTarget]). It arrives and leaves with the list it describes
+     *  ([applyWords], an Original edit), is persisted beside it in [args],
+     *  and every reader of the sentence's reading here follows it: the card
+     *  ([getCardData]), the sentence audio chip and the audio picker. */
+    private var readingOverride: ReadingOverride? = null
+
+    /** The current word rows, for a host placing the card's own word into
+     *  them ([withCardTarget]) and handing the result back to [applyWords]. */
+    fun wordEntries(): List<SentenceAnkiHtmlBuilder.WordEntry> = words.toList()
 
     /** Styled payload for the word rows (structured glossaries + dict
      *  CSS), fetched once after the words list is built; null = every row
@@ -500,7 +513,11 @@ class SentenceAnkiContentView(
                 Triple(target.word, words.firstOrNull { it.word == target.word }?.reading, true)
         }
         host.openAudioPicker(
-            AudioSourcePickerActivity.intent(ctx, lang, surface, reading, isWord, current),
+            AudioSourcePickerActivity.intent(
+                ctx, lang, surface, reading, isWord, current,
+                // The picker's sentence previews read the line as the card does.
+                readingOverride = if (isWord) null else readingOverride,
+            ),
         ) { selection -> handleAudioPick(target, selection) }
     }
 
@@ -554,6 +571,9 @@ class SentenceAnkiContentView(
         val sentenceSelection: AudioSelection = AudioSelection.Auto,
         /** Per-target-word audio selections (only [targetWordAudioWords]). */
         val wordSelections: Map<String, AudioSelection> = emptyMap(),
+        /** The card's own reading of its word's stretch of [source]
+         *  ([SentenceSendInput.readingOverride]); null = the analysis's. */
+        val readingOverride: ReadingOverride? = null,
     )
 
     fun getCardData(): CardData {
@@ -572,6 +592,7 @@ class SentenceAnkiContentView(
             // send path iterates targetWordAudioWords anyway.
             sentenceSelection = sentenceSelection,
             wordSelections = enabledTargets.associateWith { wordSelections[it] ?: AudioSelection.Auto },
+            readingOverride = readingOverride,
         )
     }
 
@@ -703,6 +724,10 @@ class SentenceAnkiContentView(
                 ))
             }
         }
+
+        // The override persisted beside the rows a fill applied (a restore);
+        // none on a fresh build, whose rows arrive later through applyWords.
+        readingOverride = args.getReadingOverride()
 
         // Auto-target the looked-up word and float targets to the top.
         val targetWord = args.getString(ARG_TARGET_WORD)
@@ -1189,7 +1214,7 @@ class SentenceAnkiContentView(
             // applies the kana spoken-form for JA itself. Commons has no
             // sentence recordings, so the sentence cell effectively uses TTS.
             selection = { sentenceSelection },
-            audioRequest = { AudioRequest.sentence(etOriginal.text.toString(), lang) },
+            audioRequest = { AudioRequest.sentence(etOriginal.text.toString(), lang, readingOverride) },
             // Game-audio mode: the chip drives the inline panel's playback
             // (raw PCM + cursor sweep on the waveform) instead of the
             // registry path; null for every other selection.
@@ -1875,6 +1900,7 @@ class SentenceAnkiContentView(
             etTranslation.setText("")
             etTranslation.hint = ctx.getString(R.string.status_translating)
             etTranslation.setHintTextColor(ctx.themeColor(R.attr.ptTextMuted))
+            args.putString(ARG_TRANSLATION, "")
         }
 
         // Words: every per-word piece of state is keyed by surface form,
@@ -1888,8 +1914,25 @@ class SentenceAnkiContentView(
         wordAudioHandles.clear()
         wordSelections.clear()
         words.clear()
+        // It described the rows just cleared; the new sentence's fill brings
+        // its own.
+        readingOverride = null
         wordsLoading = true
         rebuildWordRows()
+
+        // The edit is the card's state now, in the args a saved-state
+        // restore rebuilds from: its text, no rows and no reading override
+        // until the fill lands, so the restore owes that fill
+        // ([wordsFillOwed]) for this text ([originalOf]), and a cleared
+        // translation (above) is owed too. Left alone, a restore before the
+        // fill landed showed the edit beside the old sentence's rows.
+        args.putString(ARG_ORIGINAL, newText)
+        args.remove(ARG_WORDS)
+        args.remove(ARG_READINGS)
+        args.remove(ARG_MEANINGS)
+        args.remove(ARG_FREQ_SCORES)
+        args.putBoolean(ARG_WORDS_LOADING, true)
+        args.putReadingOverride(null)
 
         callback(newText)
     }
@@ -1931,18 +1974,22 @@ class SentenceAnkiContentView(
      *
      * [forOriginal] is the sentence whose word breakdown [entries] is —
      * compared against the visible [etOriginal] text. Mirrors
-     * [applyTranslation]'s guard.
+     * [applyTranslation]'s guard. [readingOverride] is the one [entries]
+     * came with ([withCardTarget]), and replaces the previous list's.
      */
     fun applyWords(
         forOriginal: String,
         entries: List<SentenceAnkiHtmlBuilder.WordEntry>,
         targetWord: String?,
+        readingOverride: ReadingOverride? = null,
     ) {
         if (!::wordsCard.isInitialized) return
         if (forOriginal != etOriginal.text.toString()) return
         wordsLoading = false
         words.clear()
         words.addAll(entries)
+        this.readingOverride = readingOverride
+        args.putReadingOverride(readingOverride)
         if (targetWord != null && words.any { it.word == targetWord }) {
             selectedWords.add(targetWord)
         }
@@ -2006,6 +2053,16 @@ class SentenceAnkiContentView(
          *  it. [applyWords] clears the flag, so a landed fill never reads as owed. */
         fun wordsFillOwed(args: Bundle): Boolean =
             args.getBoolean(ARG_WORDS_LOADING, false) && args.getStringArray(ARG_WORDS).isNullOrEmpty()
+
+        /** The sentence a content built from [args] shows: the launch
+         *  sentence, or the last Original edit committed over it. A restore
+         *  resumes its fills for this text, never the launch sentence the
+         *  host remembers. */
+        fun originalOf(args: Bundle): String = args.getString(ARG_ORIGINAL).orEmpty()
+
+        /** The translation a content built from [args] shows: blank while
+         *  one is owed (none at launch, or an edit cleared it). */
+        fun translationOf(args: Bundle): String = args.getString(ARG_TRANSLATION).orEmpty()
 
         /** The launch-state bundle both hosts build — the fragment stores it
          *  as its arguments (so its mutation semantics are unchanged), the

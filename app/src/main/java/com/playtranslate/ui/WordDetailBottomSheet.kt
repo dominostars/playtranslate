@@ -132,9 +132,38 @@ class WordDetailBottomSheet : DialogFragment() {
             val lookupForm = bundle.getString(ARG_LOOKUP_FORM) ?: return args
             return args.copy(lookupForm = lookupForm, lookupReading = bundle.getString(ARG_LOOKUP_READING))
         }
+
+        /** The sheet a Words or Other matches cell of [parent]'s page opens:
+         *  a word found inside [parent]'s word, so in the same sentence, with
+         *  [parent]'s sentence and screenshot for its Anki card. A host
+         *  activity's live provider ([SentenceContextProvider]) still answers
+         *  first, as on every sheet it hosts. */
+        internal fun nestedInstance(
+            parent: WordDetailBinder.Args?,
+            word: String,
+            reading: String?,
+            surface: String?,
+            lookupForm: String,
+            lookupReading: String?,
+        ) = newInstance(
+            word = word,
+            reading = reading,
+            surface = surface,
+            screenshotPath = parent?.screenshotPath,
+            sentenceOriginal = parent?.sentenceOriginal,
+            sentenceTranslation = parent?.sentenceTranslation,
+            sentenceWordResults = parent?.sentenceWordResults,
+            sentencePending = parent?.sentencePending,
+            lookupForm = lookupForm,
+            lookupReading = lookupReading,
+        )
     }
 
     private var binder: WordDetailBinder? = null
+
+    /** This sheet's launch inputs, for the sheets its cells open
+     *  ([nestedInstance]). */
+    private var launchArgs: WordDetailBinder.Args? = null
 
     override fun getTheme(): Int = fullScreenDialogTheme(requireContext())
 
@@ -187,6 +216,7 @@ class WordDetailBottomSheet : DialogFragment() {
             if (!embedded) dismiss()
             return
         }
+        launchArgs = args
 
         val b = WordDetailBinder(requireContext(), viewLifecycleOwner.lifecycleScope, FragmentUi())
         binder = b
@@ -210,10 +240,8 @@ class WordDetailBottomSheet : DialogFragment() {
             lookupForm: String,
             lookupReading: String?,
         ) {
-            newInstance(
-                word = word, reading = reading, surface = surface,
-                lookupForm = lookupForm, lookupReading = lookupReading,
-            ).show(childFragmentManager, TAG)
+            nestedInstance(launchArgs, word, reading, surface, lookupForm, lookupReading)
+                .show(childFragmentManager, TAG)
         }
 
         override fun openAnkiReview(args: WordDetailBinder.WordAnkiArgs) {
@@ -235,6 +263,7 @@ class WordDetailBottomSheet : DialogFragment() {
                 sentenceWordResults = args.sentenceWordResults,
                 sourceLangId = args.sourceLangId,
                 sentencePending = args.sentencePending,
+                target = args.target,
             ).show(childFragmentManager, WordAnkiReviewSheet.TAG)
         }
 

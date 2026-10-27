@@ -7,6 +7,7 @@ import com.playtranslate.dictionary.JaToken
 import com.playtranslate.dictionary.SentenceAnnotator
 import com.playtranslate.language.AnnotatedSpan
 import com.playtranslate.language.EntryRef
+import com.playtranslate.language.ReadingOverride
 import com.playtranslate.language.SentenceAnnotation
 import com.playtranslate.language.SourceLangId
 import org.junit.Assert.*
@@ -202,6 +203,79 @@ class SentenceAnkiHtmlBuilderTest {
             sourceLangId = SourceLangId.JA, annotation = ann,
         )
         assertEquals("友達[ともだち]<wbr>に<b><wbr>聞[き]<wbr>いた</b>", result)
+    }
+
+    @Test fun `A card's reading override re-reads its word's span, bolded and wrapped as that word`() {
+        pos = 0
+        // The analysis reads 弾けた as 弾ける (はじける); the card is for 弾く
+        // read ひく, which reads the same text ひけた.
+        val ann = jaAnn(
+            "上手に弾けた",
+            listOf(
+                tok("上手", JaCategory.NOUN, "ジョウズ"), tok("に", JaCategory.PARTICLE, "ニ"),
+                tok("弾け", JaCategory.VERB, "ハジケ", dict = "弾ける"), tok("た", JaCategory.AUX, "タ"),
+            ),
+            knownForms = setOf("上手", "弾ける"),
+        )
+        assertEquals(
+            "上手[じょうず]<wbr>に<wbr>弾[はじ]<wbr>けた",
+            SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+                "上手に弾けた", sourceLangId = SourceLangId.JA, annotation = ann,
+            ),
+        )
+
+        val words = listOf(SentenceAnkiHtmlBuilder.WordEntry(
+            word = "弾く", reading = "ひく", meaning = "to play", surfaceForm = "弾けた",
+        ))
+        val reRead = SentenceAnnotator.withReading(ann, ReadingOverride("弾けた", "弾く", "ひけた"))
+        assertEquals(
+            "上手[じょうず]<wbr>に<b><wbr>弾[ひ]<wbr>けた</b>",
+            SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+                "上手に弾けた", words, setOf("弾く"), SourceLangId.JA, annotation = reRead,
+            ),
+        )
+        val wrapped = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            "上手に弾けた", words, setOf("弾く"), SourceLangId.JA, wrapWords = true, annotation = reRead,
+        )
+        assertTrue(wrapped, wrapped.contains("data-pt-w=\"弾く\""))
+        assertFalse(wrapped, wrapped.contains("はじ"))
+    }
+
+    @Test fun `A card for a member word marks it alone inside the unit the analysis read whole`() {
+        pos = 0
+        // The analysis fuses 気になる into one span; the card is for its 気.
+        val ann = jaAnn(
+            "とても気になる",
+            listOf(
+                tok("とても", JaCategory.ADVERB, "トテモ"), tok("気", JaCategory.NOUN, "キ"),
+                tok("に", JaCategory.PARTICLE, "ニ"), tok("なる", JaCategory.VERB, "ナル"),
+            ),
+            knownPhrases = setOf("気になる"),
+            knownForms = setOf("とても", "気", "なる"),
+        )
+        val words = listOf(
+            SentenceAnkiHtmlBuilder.WordEntry(word = "気", reading = "き", meaning = "spirit", surfaceForm = "気"),
+            SentenceAnkiHtmlBuilder.WordEntry(word = "気になる", reading = "きになる", meaning = "to bother"),
+        )
+        assertEquals(
+            "とても<wbr>気[き]<wbr>になる",
+            SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+                "とても気になる", words, setOf("気"), SourceLangId.JA, annotation = ann,
+            ),
+        )
+
+        val split = SentenceAnnotator.withReading(ann, ReadingOverride("気", "気", "き"))
+        assertEquals(
+            "とても<b><wbr>気[き]<wbr></b>になる",
+            SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+                "とても気になる", words, setOf("気"), SourceLangId.JA, annotation = split,
+            ),
+        )
+        val wrapped = SentenceAnkiHtmlBuilder.buildSentenceFurigana(
+            "とても気になる", words, setOf("気"), SourceLangId.JA, wrapWords = true, annotation = split,
+        )
+        assertTrue(wrapped, wrapped.contains("data-pt-w=\"気\""))
+        assertFalse(wrapped, wrapped.contains("data-pt-w=\"気になる\""))
     }
 
     // ── Annotator policy through the renderer (sandhi override et al.) ───

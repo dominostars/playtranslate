@@ -18,6 +18,7 @@ import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.applyTheme
 import com.playtranslate.audio.Attribution
 import com.playtranslate.audio.AudioSelection
+import com.playtranslate.language.ReadingOverride
 import com.playtranslate.language.SourceLangId
 
 /**
@@ -107,6 +108,8 @@ class AudioSourcePickerActivity : AppCompatActivity() {
         const val EXTRA_PICKED_LOCATOR = "picked_locator"
         const val EXTRA_PICKED_ATTRIBUTION = "picked_attribution"
 
+        /** [readingOverride] is a sentence card's reading of its own word
+         *  ([AudioSourcePickerView.Args.readingOverride]); null for a word. */
         fun intent(
             context: Context,
             lang: SourceLangId,
@@ -114,6 +117,7 @@ class AudioSourcePickerActivity : AppCompatActivity() {
             reading: String?,
             isWord: Boolean,
             current: AudioSelection,
+            readingOverride: ReadingOverride? = null,
         ): Intent {
             val explicit = current as? AudioSelection.Explicit
             return Intent(context, AudioSourcePickerActivity::class.java)
@@ -130,6 +134,7 @@ class AudioSourcePickerActivity : AppCompatActivity() {
                         PtJson.lenient.encodeToString(Attribution.serializer(), it)
                     },
                 )
+                .putExtras(Bundle().apply { putReadingOverride(readingOverride) })
         }
 
         /** The launch extras decoded back into the content core's [Args] —
@@ -151,6 +156,7 @@ class AudioSourcePickerActivity : AppCompatActivity() {
                         PtJson.lenient.decodeFromString(Attribution.serializer(), it)
                     }.getOrNull()
                 },
+            readingOverride = intent.extras?.getReadingOverride(),
         )
     }
 }

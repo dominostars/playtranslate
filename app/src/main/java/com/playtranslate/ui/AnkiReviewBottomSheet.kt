@@ -173,13 +173,19 @@ class AnkiReviewBottomSheet : DialogFragment() {
         )
         refreshDeckSubtitle()
 
+        // The sentence the card shows: the launch one, or on a restore an
+        // Original edit committed over it, which the restored args carry.
+        val shown = restoredContentArgs?.let { SentenceAnkiContentView.originalOf(it) } ?: original
+        val shownTranslation =
+            restoredContentArgs?.let { SentenceAnkiContentView.translationOf(it) } ?: translation
+
         // Handed no words for a real sentence: the launching result's word
         // lookups were deferred (its words card hidden) or are still
         // running, so the lazy words fill below supplies them. On restore
         // the restored args are the truth, and when they say a fill is owed
-        // (saved mid-fill), the restore resumes it; Save's join covers the
-        // resumed job too.
-        val fillWords = original.isNotBlank() && (
+        // (saved mid-fill), the restore resumes it for the sentence they
+        // show; Save's join covers the resumed job too.
+        val fillWords = shown.isNotBlank() && (
             if (restoredContentArgs == null) words.isEmpty()
             else SentenceAnkiContentView.wordsFillOwed(restoredContentArgs)
         )
@@ -239,15 +245,17 @@ class AnkiReviewBottomSheet : DialogFragment() {
         // Lazy translation fill (mirror of the word editor's): a blank
         // incoming translation means the sheet was opened from a result whose
         // translation never ran — the hidden-section deferral — or hasn't
-        // landed yet. Safe after restore too: applyTranslation guards on the
-        // visible original and on user-touched state.
-        if (translation.isBlank() && original.isNotBlank()) {
-            launchTranslationFill(original, pending)
+        // landed yet; a blank restored one, that it still hadn't, or that an
+        // edit cleared it. Safe after restore too: applyTranslation guards on
+        // the visible original and on user-touched state. An edited sentence
+        // is not the capture's, so its fill carries no pending.
+        if (shownTranslation.isBlank() && shown.isNotBlank()) {
+            launchTranslationFill(shown, pending.takeIf { shown == original })
         }
 
         // Lazy words fill (mirror of the word editor's), owed per fillWords
         // above.
-        if (fillWords) launchWordsFill(original)
+        if (fillWords) launchWordsFill(shown)
     }
 
     /** Fetch [sentence]'s translation and push it into the content, via
@@ -339,6 +347,7 @@ class AnkiReviewBottomSheet : DialogFragment() {
             targetWordAudioWords = data.targetWordAudioWords,
             sentenceSelection = data.sentenceSelection,
             wordSelections = data.wordSelections,
+            readingOverride = data.readingOverride,
         )
         // Fragment receiver so NeedsMapping opens the mapping dialog
         // (Context.sendSentenceCard would skip it).

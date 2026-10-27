@@ -18,6 +18,44 @@ class WordDetailBottomSheetArgsTest {
         WordDetailBottomSheet.argsFrom(sheet.requireArguments())!!
 
     @Test
+    fun `a nested sheet carries its parent's sentence and screenshot`() {
+        val pending = com.playtranslate.model.PendingTranslation(
+            listOf("一番うまく弾けた！"), com.playtranslate.language.SourceLangId.JA, "en", isCapture = true,
+        )
+        val parent = roundTrip(
+            WordDetailBottomSheet.newInstance(
+                word = "弾ける", reading = "はじける", surface = "弾けた", screenshotPath = "/shot.png",
+                sentenceOriginal = "一番うまく弾けた！", sentenceTranslation = "I played it best!",
+                sentenceWordResults = mapOf("弾ける" to Triple("はじける", "to burst", 0)),
+                sentencePending = pending,
+            ),
+        )
+        val nested = roundTrip(
+            WordDetailBottomSheet.nestedInstance(parent, "弾く", "ひく", "弾けた", "弾く", "ひく"),
+        )
+        assertEquals("弾く" to "ひく", nested.word to nested.reading)
+        assertEquals("弾けた", nested.surface)
+        assertEquals("弾く" to "ひく", nested.lookupForm to nested.lookupReading)
+        assertEquals("/shot.png", nested.screenshotPath)
+        assertEquals("一番うまく弾けた！", nested.sentenceOriginal)
+        assertEquals("I played it best!", nested.sentenceTranslation)
+        assertEquals(parent.sentenceWordResults, nested.sentenceWordResults)
+        assertEquals(pending, nested.sentencePending)
+        // A nested sheet is a dialog of its own, never the embedded tab.
+        assertEquals(false, nested.embedded)
+    }
+
+    @Test
+    fun `a nested sheet of a parent with no sentence carries none`() {
+        val parent = roundTrip(WordDetailBottomSheet.newInstance(word = "弾ける", reading = "はじける"))
+        val nested = roundTrip(
+            WordDetailBottomSheet.nestedInstance(parent, "弾く", "ひく", "弾けた", "弾く", "ひく"),
+        )
+        assertEquals(null, nested.sentenceOriginal)
+        assertEquals(null, nested.screenshotPath)
+    }
+
+    @Test
     fun `the key round-trips beside the display`() {
         val args = roundTrip(
             WordDetailBottomSheet.newInstance(

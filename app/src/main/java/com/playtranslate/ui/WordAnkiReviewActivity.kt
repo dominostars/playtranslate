@@ -54,7 +54,10 @@ class WordAnkiReviewActivity : AppCompatActivity() {
 
         showReviewSheet(word, reading, pos, definition, freqScore, screenshotPath,
             sentenceOriginal, sentenceTranslation, cachedWordResults, sourceLangId,
-            sentencePending, audioAnchorMs)
+            sentencePending, audioAnchorMs,
+            // The card's own word, when the opener keyed one ([putCardTarget]
+            // on the launch extras).
+            intent.extras?.getCardTarget())
     }
 
     private fun showReviewSheet(
@@ -65,6 +68,7 @@ class WordAnkiReviewActivity : AppCompatActivity() {
         sourceLangId: SourceLangId = SourceLangId.JA,
         sentencePending: com.playtranslate.model.PendingTranslation? = null,
         audioAnchorMs: Long? = null,
+        target: CardTarget? = null,
     ) {
         val sheet = WordAnkiReviewSheet.newInstance(
             word, reading, pos, definition, screenshotPath,
@@ -75,6 +79,7 @@ class WordAnkiReviewActivity : AppCompatActivity() {
             sourceLangId = sourceLangId,
             sentencePending = sentencePending,
             audioAnchorMs = audioAnchorMs,
+            target = target,
         )
         sheet.onDismissListener = DialogInterface.OnDismissListener { finish() }
         sheet.show(supportFragmentManager, WordAnkiReviewSheet.TAG)

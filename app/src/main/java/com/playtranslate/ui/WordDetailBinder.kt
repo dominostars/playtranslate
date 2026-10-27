@@ -127,7 +127,9 @@ class WordDetailBinder(
 
     /** Everything the editable word review needs — the host decides HOW to
      *  present it (child DialogFragment, or the Anki activity trampoline
-     *  until the workspace grows its own editor page). */
+     *  until the workspace grows its own editor page). [target] is [word] as
+     *  it was found in the sentence, which the review's sentence card places
+     *  among the sentence's words ([withCardTarget]). */
     data class WordAnkiArgs(
         val word: String,
         val reading: String,
@@ -141,6 +143,7 @@ class WordDetailBinder(
         val sentenceWordResults: Map<String, Triple<String, String, Int>>?,
         val sourceLangId: SourceLangId,
         val sentencePending: com.playtranslate.model.PendingTranslation?,
+        val target: CardTarget,
     )
 
     interface Ui {
@@ -161,10 +164,14 @@ class WordDetailBinder(
          *  null when the host has none — [Args]' sentence fields then apply. */
         fun sentenceContext(): SentenceContext?
 
-        /** Cross-reference / member-word tap: open that word's own detail
+        /** A Words or Other matches cell's tap: open that word's own detail
          *  (nested sheet on childFragmentManager, or a workspace push).
          *  [surface] is [Args.surface] for the opened page, [lookupForm] and
-         *  [lookupReading] its [Args.lookupForm] and [Args.lookupReading]. */
+         *  [lookupReading] its [Args.lookupForm] and [Args.lookupReading].
+         *  The word is found inside this page's word, so inside the same
+         *  sentence: the opened page carries this page's sentence and
+         *  screenshot for its Anki card, from the host's own launch context
+         *  (its arguments, or the workspace page's provider and anchor). */
         fun openWordDetail(
             word: String,
             reading: String?,
@@ -207,6 +214,53 @@ class WordDetailBinder(
         private const val COLLAPSE_DISTANCE_DP = 40
         /** Scale at the pinned end of the animation: 18sp / 38sp. */
         private const val TOOLBAR_SCALE = 0.47f
+
+        /**
+         * The sentence every Anki action on the page rides: [host], the
+         * host's live context (the embedded host activity's provider, the
+         * workspace caller's snapshot), field by field over [args]' launch
+         * fields, except the pending, which rides only beside the original
+         * of the source that supplied it, never crossed between them
+         * ([resolveAnkiTranslation]'s caller contract). Surfaces and
+         * enrichment are left out: they pair only with the words of the
+         * host's own atomic snapshot, which the one-tap reads from [host].
+         */
+        internal fun pageSentence(host: SentenceContext?, args: Args?): SentenceContext =
+            SentenceContext(
+                original = host?.original ?: args?.sentenceOriginal,
+                translation = host?.translation ?: args?.sentenceTranslation,
+                wordResults = host?.wordResults ?: args?.sentenceWordResults,
+                pending = if (host != null) host.pending else args?.sentencePending,
+            )
+
+        /**
+         * The editable review for [row], a cell of the page's Words or Other
+         * matches section: the row's own fields on the page's [sentence] and
+         * [screenshotPath], since the row is a word found inside the page's
+         * word, so inside the same sentence. The row as it was found is the
+         * card's [CardTarget], so its sentence card is for this word even
+         * where the sentence's analysis chose another there (弾く in 弾けた).
+         */
+        internal fun rowAnkiArgs(
+            row: RowState,
+            sentence: SentenceContext,
+            screenshotPath: String?,
+            sourceLangId: SourceLangId,
+        ): WordAnkiArgs = WordAnkiArgs(
+            word = row.displayWord,
+            reading = row.reading.takeIf { it.isNotEmpty() && it != row.displayWord } ?: "",
+            pos = row.ankiPos,
+            definition = row.meaning,
+            screenshotPath = screenshotPath,
+            freqScore = row.freqScore,
+            isCommon = row.isCommon,
+            sentenceOriginal = sentence.original,
+            sentenceTranslation = sentence.translation,
+            sentenceWordResults = sentence.wordResults,
+            sourceLangId = sourceLangId,
+            sentencePending = sentence.pending,
+            target = CardTarget(row.surface, row.lookupForm, row.lookupReading),
+        )
     }
 
     private var args: Args? = null
@@ -648,11 +702,15 @@ class WordDetailBinder(
         return Triple(reading, pos, definition)
     }
 
-    /** The sentence context an Anki action rides: the host's live provider
-     *  first (the embedded host activity / the workspace caller's snapshot),
-     *  else the launch-time [Args] fields — mirroring the fragment's
-     *  hostContext-vs-arguments fallback per field. The card's word is the
-     *  display [word]; its fields come from the headword [lookupForm] names. */
+    /** The page's own word as its opener found it ([CardTarget]): the text
+     *  the opener found it as, else its key [lookupForm], which is the text
+     *  for an opener that had only the lemma. */
+    private fun pageTarget(lookupForm: String): CardTarget =
+        CardTarget(args?.surface ?: lookupForm, lookupForm, args?.lookupReading)
+
+    /** The editable review for the page's own word, on the page's sentence
+     *  ([pageSentence]). The card's word is the display [word]; its fields
+     *  come from the headword [lookupForm] names. */
     private fun ankiReviewArgs(
         word: String,
         lookupForm: String,
@@ -661,15 +719,7 @@ class WordDetailBinder(
         defResult: DefinitionResult?,
     ): WordAnkiArgs {
         val (reading, pos, definition) = buildAnkiWordFields(entry, defResult, lookupForm)
-        val a = args
-        val hostContext = ui.sentenceContext()
-        val sentenceOriginal = hostContext?.original ?: a?.sentenceOriginal
-        val sentenceTranslation = hostContext?.translation ?: a?.sentenceTranslation
-        // The pending rides whichever source supplied the sentence text —
-        // never crossed between them (it's only meaningful alongside its
-        // own result's original).
-        val sentencePending = if (hostContext != null) hostContext.pending else a?.sentencePending
-        val sentenceWordResults = hostContext?.wordResults ?: a?.sentenceWordResults
+        val sentence = pageSentence(ui.sentenceContext(), args)
         return WordAnkiArgs(
             word = word,
             reading = reading,
@@ -678,11 +728,12 @@ class WordDetailBinder(
             screenshotPath = screenshotPath,
             freqScore = entry.freqScore,
             isCommon = entry.isCommon == true,
-            sentenceOriginal = sentenceOriginal,
-            sentenceTranslation = sentenceTranslation,
-            sentenceWordResults = sentenceWordResults,
+            sentenceOriginal = sentence.original,
+            sentenceTranslation = sentence.translation,
+            sentenceWordResults = sentence.wordResults,
             sourceLangId = Prefs(ctx.applicationContext).sourceLangId,
-            sentencePending = sentencePending,
+            sentencePending = sentence.pending,
+            target = pageTarget(lookupForm),
         )
     }
 
@@ -716,17 +767,10 @@ class WordDetailBinder(
         }
         val sourceLangId = prefs.sourceLangId
 
-        // Read sentence context the same way the review path does (host
-        // provider OR launch-time args). When present, route to a sentence
-        // card with the word as target.
-        val a = args
+        // The page's sentence, as the review path reads it ([pageSentence]).
+        // When present, route to a sentence card with the word as target.
         val hostContext = ui.sentenceContext()
-        val sentenceOriginal = hostContext?.original ?: a?.sentenceOriginal
-        val sentenceTranslation = hostContext?.translation ?: a?.sentenceTranslation
-        // The pending rides whichever source supplied the sentence text —
-        // never crossed between them (it's only meaningful alongside its
-        // own result's original).
-        val sentencePending = if (hostContext != null) hostContext.pending else a?.sentencePending
+        val sentence = pageSentence(hostContext, args)
         // Build a WordsPayload only when both halves come from the
         // same atomic source (the host's SentenceContext, populated
         // from a single Settled emission). Args-only fallback has no
@@ -749,6 +793,7 @@ class WordDetailBinder(
         // The headword the key names, with the display [word] as the seen
         // surface deciding the kana-only collapse.
         val hw = entry.headwordDisplay(entry.selectHeadword(lookupForm, lookupForm, readingHint), word)
+        val target = pageTarget(lookupForm)
         // Ui.launchOneTap: dismissing the page mid-send must not cancel the
         // card; result handling runs only while the surface is live, else
         // degrades to an app-context toast.
@@ -767,15 +812,16 @@ class WordDetailBinder(
                     freqScore = entry.freqScore,
                     pitch = hw.pitch,
                     frequencies = hw.frequencies,
-                    sentenceOriginal = sentenceOriginal,
-                    sentenceTranslation = sentenceTranslation,
+                    sentenceOriginal = sentence.original,
+                    sentenceTranslation = sentence.translation,
                     wordsPayload = sentenceWordsPayload,
                     screenshotPath = screenshotPath,
                     sourceLangId = sourceLangId,
-                    pendingTranslation = sentencePending,
+                    pendingTranslation = sentence.pending,
                     // The page's target-language tier rides to the card so
                     // its senses read as the page showed them.
                     defResult = defResult,
+                    target = target,
                 )
             },
             presentResult = { (result, mode) ->
@@ -1321,25 +1367,15 @@ class WordDetailBinder(
                 },
                 onSpeak = { speakHeadword(row.displayWord, sourceLangId) },
                 // These cells never stub or hide; the Anki button stays, as
-                // on the dictionary results.
+                // on the dictionary results, on the page's own sentence.
                 trailing = WordResultCell.TrailingAction.Anki {
                     if (!AnkiManager(ctx).isAnkiDroidInstalled()) {
                         ui.showAnkiNotInstalled()
                     } else {
                         ui.openAnkiReview(
-                            WordAnkiArgs(
-                                word = row.displayWord,
-                                reading = row.reading.takeIf { it.isNotEmpty() && it != row.displayWord } ?: "",
-                                pos = row.ankiPos,
-                                definition = row.meaning,
-                                screenshotPath = null,
-                                freqScore = row.freqScore,
-                                isCommon = row.isCommon,
-                                sentenceOriginal = null,
-                                sentenceTranslation = null,
-                                sentenceWordResults = null,
-                                sourceLangId = sourceLangId,
-                                sentencePending = null,
+                            rowAnkiArgs(
+                                row, pageSentence(ui.sentenceContext(), args),
+                                args?.screenshotPath, sourceLangId,
                             ),
                         )
                     }

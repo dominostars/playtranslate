@@ -3,7 +3,10 @@ package com.playtranslate.ui
 import android.content.Context
 import android.os.Bundle
 import android.os.Looper
+import android.view.View
+import android.view.ViewGroup
 import android.widget.EditText
+import android.widget.TextView
 import androidx.fragment.app.FragmentActivity
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.R
@@ -26,8 +29,10 @@ import org.robolectric.android.controller.ActivityController
  * still running), the sheet fills its rows from
  * [LastSentenceCache.awaitOrStartWordLookups]; handed words, it renders
  * exactly those and never consults the cache. An edited Original, once
- * committed, refills the words and translation for the new sentence. The
- * cache is seeded so the lookup is a HIT (no engine runs under Robolectric).
+ * committed, refills the words and translation for the new sentence, and a
+ * recreation before that refill landed resumes it for the edited sentence.
+ * The cache is seeded so the lookup is a HIT (no engine runs under
+ * Robolectric), except where the refill must still be in flight.
  */
 @RunWith(RobolectricTestRunner::class)
 class AnkiReviewSheetWordsFillTest {
@@ -120,6 +125,36 @@ class AnkiReviewSheetWordsFillTest {
     }
 
     @Test
+    fun editedOriginal_restoredBeforeItsRefill_refillsForTheEditedSentence() {
+        val controller = show(
+            AnkiReviewBottomSheet.newInstance(
+                SENTENCE, TRANSLATION,
+                mapOf("猫" to Triple("ねこ", "cat", 3)), emptyMap(), emptyMap(),
+                null, SourceLangId.JA,
+            ),
+        )
+        settle()
+
+        // Committed on focus loss; the uncached sentence's refill has not
+        // landed when the sheet is recreated (rotation, dark mode).
+        val etOriginal = sheet(controller).requireView()
+            .findViewById<EditText>(R.id.etAnkiOriginal)
+        etOriginal.requestFocus()
+        etOriginal.setText(EDITED)
+        etOriginal.clearFocus()
+        controller.recreate()
+        settleUntil { !showsWordsLoading(controller) }
+
+        // The restore resumed the fill for the edited sentence (which has no
+        // dictionary here, so no rows), never the old sentence's rows beside it.
+        val data = content(controller).getCardData()
+        assertEquals(EDITED, data.source)
+        assertEquals(emptyList<String>(), data.words.map { it.word })
+        assertEquals(false, showsWordsLoading(controller))
+        controller.pause().stop().destroy()
+    }
+
+    @Test
     fun wordsFillOwed_onlyWhileLoadingWithNoWords() {
         val owed = SentenceAnkiContentView.buildArgs(
             SENTENCE, TRANSLATION, emptyList(), wordsLoading = true,
@@ -171,6 +206,26 @@ class AnkiReviewSheetWordsFillTest {
             .getDeclaredField("contentView")
             .apply { isAccessible = true }
             .get(sheet(controller)) as SentenceAnkiContentView
+
+    /** Whether the Words card still shows its "Looking up words…"
+     *  placeholder: a fill is owed and has not landed. */
+    private fun showsWordsLoading(controller: ActivityController<Host>): Boolean {
+        val loading = ctx.getString(R.string.words_loading)
+        fun View.has(): Boolean = (this is TextView && text.toString() == loading) ||
+            (this is ViewGroup && (0 until childCount).any { getChildAt(it).has() })
+        return sheet(controller).requireView().has()
+    }
+
+    /** [settle] until [done], for a fill whose lookup runs off the main
+     *  thread; bounded, so a fill that never lands fails the assertion
+     *  after it rather than hanging. */
+    private fun settleUntil(done: () -> Boolean) {
+        repeat(40) {
+            settle()
+            if (done()) return
+            Thread.sleep(25)
+        }
+    }
 
     /** Main-thread work plus the hidden-words load the word rows trigger,
      *  whose revision bump rebuilds them (as in the snapshot lifecycle test). */

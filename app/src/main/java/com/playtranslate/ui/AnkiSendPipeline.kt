@@ -11,7 +11,9 @@ import com.playtranslate.audio.AudioSelection
 import com.playtranslate.vocab.HiddenWordsStore
 import com.playtranslate.audio.AudioSelections
 import com.playtranslate.audio.ResolvedAudio
+import com.playtranslate.language.ReadingOverride
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.yomitan.TermGlossary
 import java.io.File
@@ -75,6 +77,11 @@ data class SentenceSendInput(
      *  sentence flow has examples; the result-screen sentence flow
      *  passes empty. */
     val examplesHtml: String = "",
+    /** How the card reads the stretch of [original] its own word was found
+     *  as, where the sentence's analysis chose another word there
+     *  ([withCardTarget]): its furigana, word wrappers and sentence audio
+     *  all follow it. Null = the analysis as it is. */
+    val readingOverride: ReadingOverride? = null,
 )
 
 /** Inputs needed to send a word card. The Definition field arrives as
@@ -175,11 +182,12 @@ suspend fun Context.sendSentenceCard(
         // Sentence audio: multi-source resolution, Commons-first → TTS floor with
         // the user's saved voice. Every caller — sheet and one-tap — goes through
         // the registry; the TTS floor speaks SpokenText's kana pronunciation, so
-        // compound readings (初夏 → はつか) aren't re-guessed by the engine.
+        // compound readings (初夏 → はつか) aren't re-guessed by the engine, and
+        // reads the card's own word the way the card's furigana below does.
         sentenceResolved = if (input.includeSentenceAudio) {
             AudioSelections.toFile(
                 ctx, input.sentenceSelection,
-                AudioRequest.sentence(input.original, input.sourceLangId),
+                AudioRequest.sentence(input.original, input.sourceLangId, input.readingOverride),
             )
         } else null
         audioFile = sentenceResolved?.file
@@ -217,12 +225,15 @@ suspend fun Context.sendSentenceCard(
         // mid-session can never leak pre-import readings onto a card. The
         // renderers draw this annotation — card furigana, highlights, and
         // wrappers must describe the text actually being sent, and must
-        // match what the result screen displayed and TTS spoke.
-        val annotation = LastSentenceCache.snapshotFor(cardData.source)?.annotation
+        // match what the result screen displayed and TTS spoke. The one
+        // exception is the card's own word where the analysis chose another
+        // there: the card reads that stretch as its word ([readingOverride]),
+        // as its sentence audio above does.
+        val engine by lazy { SourceLanguageEngines.get(ctx.applicationContext, cardData.sourceLangId) }
+        val analysis = LastSentenceCache.snapshotFor(cardData.source)?.annotation
             ?.takeIf { it.text == cardData.source }
-            ?: com.playtranslate.language.SourceLanguageEngines
-                .get(ctx.applicationContext, cardData.sourceLangId)
-                .annotate(cardData.source)
+            ?: engine.annotate(cardData.source)
+        val annotation = input.readingOverride?.let { engine.withReading(analysis, it) } ?: analysis
         // Styled payload for the words table: fetched ONCE here so both
         // the sheet path and one-tap (which funnel through this function)
         // render imported senses as real structure on the card, with each

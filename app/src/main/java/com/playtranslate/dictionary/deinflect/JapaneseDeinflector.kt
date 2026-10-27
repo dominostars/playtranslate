@@ -1,5 +1,7 @@
 package com.playtranslate.dictionary.deinflect
 
+import com.playtranslate.dictionary.Deinflector
+
 /**
  * One candidate dictionary form of a looked-up word: [text], the condition
  * flag mask it carries ([conditions], 0 when the last rule applied names no
@@ -80,6 +82,39 @@ internal object JapaneseDeinflector {
      */
     fun accepts(candidate: Deinflection, posFlags: Int): Boolean =
         LanguageTransformer.conditionsMatch(candidate.conditions, posFlags)
+
+    /**
+     * The kana reading of [surface] as an occurrence of the dictionary word
+     * [lemma] read [lemmaReading], whose entry's parts of speech give
+     * [posFlags]: 弾けた as 弾く read ひく reads ひけた. A [surface] equal to
+     * [lemma] reads [lemmaReading], and a kana [surface] reads itself.
+     * Otherwise the stem [surface] shares with [lemma] keeps its reading (弾,
+     * ひ) and [lemma]'s kana tail (く) gives way to [surface]'s (けた), which
+     * is accepted only when that reading deinflects to [lemmaReading] by a
+     * chain [surface] deinflects to [lemma] by, both under the entry's class.
+     * The class is what rejects the kanji whose reading changes as it
+     * conjugates: 来た as 来る read くる would read くた, which deinflects
+     * to くる only as an ichidan verb. Null when [surface] shares no stem with
+     * [lemma], carries kanji past it, or no chain agrees.
+     */
+    fun occurrenceReading(surface: String, lemma: String, lemmaReading: String, posFlags: Int): String? {
+        if (surface == lemma) return lemmaReading
+        if (surface.all(Deinflector::isKana)) return surface
+        val stem = surface.commonPrefixWith(lemma).length
+        if (stem == 0) return null
+        val lemmaTail = lemma.substring(stem)
+        val surfaceTail = surface.substring(stem)
+        if (!lemmaTail.all(Deinflector::isKana) || !surfaceTail.all(Deinflector::isKana)) return null
+        if (!lemmaReading.endsWith(lemmaTail)) return null
+        val reading = lemmaReading.dropLast(lemmaTail.length) + surfaceTail
+        val chains = candidates(surface)
+            .filter { it.text == lemma && accepts(it, posFlags) }
+            .mapTo(HashSet()) { it.transformKeys }
+        val agrees = candidates(reading).any {
+            it.text == lemmaReading && accepts(it, posFlags) && it.transformKeys in chains
+        }
+        return reading.takeIf { agrees }
+    }
 
     private fun compute(word: String): List<Deinflection> {
         val results = transformer.transform(word)

@@ -205,6 +205,10 @@ fun oneTapResultToast(appCtx: Context, result: AnkiSendResult, mode: CardMode) {
  *   MUST NOT split the read across two field accesses.
  * @param targetWord    when non-null and present in the lookup, the
  *   sole selected target on the card (drag-lens / word-popup)
+ * @param target        [targetWord] as the opener found it in [original]
+ *   (the word detail page keys one): placed into the lookup's rows with
+ *   [withCardTarget] first, so the card is for that word even where the
+ *   sentence's analysis chose another there
  */
 suspend fun Context.oneTapSendSentence(
     original: String,
@@ -214,6 +218,7 @@ suspend fun Context.oneTapSendSentence(
     sourceLangId: SourceLangId,
     targetWord: String? = null,
     pendingTranslation: PendingTranslation? = null,
+    target: CardTarget? = null,
 ): AnkiSendResult {
     val ctx = this
     val prefs = Prefs(ctx)
@@ -254,7 +259,7 @@ suspend fun Context.oneTapSendSentence(
         resolvedSurfaces = payload.surfaces
         resolvedEnrichment = payload.enrichment
     }
-    val wordEntries: List<SentenceAnkiHtmlBuilder.WordEntry> =
+    val lookupEntries: List<SentenceAnkiHtmlBuilder.WordEntry> =
         resolvedWords.map { (w, triple) ->
             SentenceAnkiHtmlBuilder.WordEntry(
                 w,
@@ -268,6 +273,14 @@ suspend fun Context.oneTapSendSentence(
                 senses = resolvedEnrichment[w]?.senses.orEmpty(),
             )
         }
+    // The card's own word placed as the review sheet places it, with the
+    // reading override that comes with it.
+    val cardWords = withCardTarget(
+        lookupEntries,
+        if (target != null && targetWord != null) resolveCardTarget(ctx, sourceLangId, targetWord, target) else null,
+        original,
+    )
+    val wordEntries = cardWords.words
 
     // Match the sheet's defaults exactly:
     //  - With a target word (lens / popup path), select only that
@@ -305,6 +318,7 @@ suspend fun Context.oneTapSendSentence(
         // voice, silently ignoring the picked voice.)
         targetWordAudioWords = targetWordAudio,
         examplesHtml = "",
+        readingOverride = cardWords.readingOverride,
     )
     return ctx.sendSentenceCard(input, deckId = prefs.ankiDeckId)
 }
@@ -374,7 +388,9 @@ suspend fun Context.oneTapSendWord(
  *
  * Returns the send result plus the [CardMode] actually used — callers
  * surface mode-specific recovery (the review-sheet NeedsMapping dialog)
- * and the mode-named success toast from it.
+ * and the mode-named success toast from it. [target] is [word] as the
+ * opener found it in the sentence ([oneTapSendSentence]'s); a word card
+ * has no use for it.
  */
 suspend fun Context.oneTapSend(
     word: String,
@@ -393,6 +409,7 @@ suspend fun Context.oneTapSend(
     sourceLangId: SourceLangId,
     pendingTranslation: PendingTranslation? = null,
     defResult: DefinitionResult? = null,
+    target: CardTarget? = null,
 ): Pair<AnkiSendResult, CardMode> =
     if (sentenceIsJustTheWord(sentenceOriginal, word) ||
         Prefs(this).ankiPreferredCardMode == CardMode.WORD) {
@@ -422,6 +439,7 @@ suspend fun Context.oneTapSend(
             // deferred result's — its pending must ride, or the sentence
             // branch would translate without completing (null rows).
             pendingTranslation = pendingTranslation,
+            target = target,
         ) to CardMode.SENTENCE
     }
 

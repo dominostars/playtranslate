@@ -2,6 +2,7 @@ package com.playtranslate.dictionary
 
 import com.playtranslate.language.AnnotatedSpan
 import com.playtranslate.language.EntryRef
+import com.playtranslate.language.ReadingOverride
 import com.playtranslate.language.ReadingPart
 import com.playtranslate.language.SentenceAnnotation
 import com.playtranslate.language.SourceLangId
@@ -236,4 +237,127 @@ internal object SentenceAnnotator {
 
     private fun splitParts(surface: String, reading: String): List<ReadingPart> =
         Deinflector.splitFurigana(surface, reading).map { ReadingPart(it.text, it.reading) }
+
+    /**
+     * [annotation] as a sentence card reads it under [override]: the one
+     * anchored span whose surface is [ReadingOverride.surface] becomes the
+     * card's word, read [ReadingOverride.reading], with its ruby parts split
+     * the way [buildSpan] splits a span it reads whole (a kana surface reading
+     * itself stays plain). Its entry ref and pitch described the word the
+     * analysis chose and are dropped; the fields left alone (lookup form,
+     * hint, tags) feed the interactive lookups, which never see an override.
+     * A surface the sentence holds more than once is left as analyzed: the
+     * override names no occurrence, and a repeat may be another word read
+     * another way (上手な方と下手な方 reads かた, then ほう), so re-reading every
+     * one could put a reading on the card the sentence does not have. With no
+     * span on the surface at all, the word may sit inside a larger one
+     * ([withMemberSplit]). The same instance when neither applies;
+     * [annotation] itself, which the engine and the sentence cache share, is
+     * never modified. Accepted limit: a card for a word inside a unit whose
+     * text also stands alone elsewhere in the sentence re-reads that
+     * standalone span, since nothing here tells the occurrences apart; it
+     * changes a reading only where the two are read differently, and
+     * refusing whenever the text recurs inside other words would also refuse
+     * 地方の方に聞いた (方 read かた), the case this exists for.
+     */
+    fun withReading(annotation: SentenceAnnotation, override: ReadingOverride): SentenceAnnotation {
+        fun matches(span: AnnotatedSpan) = span.start >= 0 && span.surface == override.surface
+        when (annotation.spans.count(::matches)) {
+            0 -> return withMemberSplit(annotation, override) ?: annotation
+            1 -> Unit
+            else -> return annotation
+        }
+        return annotation.copy(
+            spans = annotation.spans.map { span ->
+                if (!matches(span)) span
+                else span.copy(
+                    word = override.word,
+                    entryRef = null,
+                    reading = override.reading,
+                    furigana =
+                        if (override.reading == span.surface) listOf(ReadingPart(span.surface, null))
+                        else splitParts(span.surface, override.reading),
+                    pitch = emptyList(),
+                )
+            },
+        )
+    }
+
+    /**
+     * [override]'s word split out of the one larger span that holds its text:
+     * the card is for a member of a unit the analysis read whole (気 in
+     * 気になる, from the detail page's Words section), and the span becomes
+     * the pieces before, of and after the word, so the card can bold and wrap
+     * the word alone. The pieces keep the analysis's readings, so the
+     * sentence reads and sounds as it did: inside a unit read whole, a
+     * member's own reading need not hold (間 reads ま in 瞬く間に). The word's
+     * piece is the card's word; the others resolve to nothing, since the
+     * unit no longer spans the text. Null, leaving the analysis alone, unless
+     * exactly one anchored span holds the text, and holds it once (天気が気になる
+     * puts 気 in two spans: no telling which), both cuts fall between ruby
+     * parts or inside kana (a kanji's reading belongs to its whole part: 大
+     * cannot leave 大人), and the span's reading is its parts' readings joined.
+     */
+    private fun withMemberSplit(annotation: SentenceAnnotation, override: ReadingOverride): SentenceAnnotation? {
+        val text = override.surface
+        if (text.isEmpty()) return null
+        val holder = annotation.spans.singleOrNull { it.start >= 0 && it.surface.contains(text) } ?: return null
+        val from = holder.surface.indexOf(text)
+        if (holder.surface.indexOf(text, from + 1) >= 0) return null
+        val to = from + text.length
+        val (before, inside, after) = cutParts(holder.furigana, holder.surface.length, from, to) ?: return null
+        fun readingOf(parts: List<ReadingPart>) =
+            parts.joinToString("") { it.reading ?: Deinflector.katakanaToHiragana(it.text) }
+        val reading = holder.reading
+        if (reading != null && Deinflector.katakanaToHiragana(reading) != readingOf(before + inside + after)) {
+            return null
+        }
+        fun piece(at: Int, parts: List<ReadingPart>, isWord: Boolean): AnnotatedSpan {
+            val surface = parts.joinToString("") { it.text }
+            val pieceReading = reading?.let { readingOf(parts) }
+            return AnnotatedSpan(
+                start = holder.start + at, end = holder.start + at + surface.length, surface = surface,
+                lookupForm = if (isWord) override.word else null,
+                word = if (isWord) override.word else null,
+                reading = pieceReading,
+                furigana = parts,
+                tokenReading = pieceReading,
+            )
+        }
+        val pieces = buildList {
+            if (before.isNotEmpty()) add(piece(0, before, isWord = false))
+            add(piece(from, inside, isWord = true))
+            if (after.isNotEmpty()) add(piece(to, after, isWord = false))
+        }
+        return annotation.copy(spans = annotation.spans.flatMap { if (it === holder) pieces else listOf(it) })
+    }
+
+    /** [parts], one span's ruby tiling its [length] chars, cut at [from] and
+     *  [to]: the parts before, between and after, a kana part divided where a
+     *  cut falls inside it. Null when a cut falls inside a part that carries
+     *  a reading, the parts do not tile the span, or nothing lies between. */
+    private fun cutParts(
+        parts: List<ReadingPart>,
+        length: Int,
+        from: Int,
+        to: Int,
+    ): Triple<List<ReadingPart>, List<ReadingPart>, List<ReadingPart>>? {
+        val before = mutableListOf<ReadingPart>()
+        val inside = mutableListOf<ReadingPart>()
+        val after = mutableListOf<ReadingPart>()
+        var start = 0
+        for (part in parts) {
+            val end = start + part.text.length
+            if (part.reading != null && (from in (start + 1) until end || to in (start + 1) until end)) return null
+            fun take(a: Int, b: Int, into: MutableList<ReadingPart>) {
+                if (b <= a) return
+                into += if (a == start && b == end) part else ReadingPart(part.text.substring(a - start, b - start), null)
+            }
+            take(start, minOf(end, from), before)
+            take(maxOf(start, from), minOf(end, to), inside)
+            take(maxOf(start, to), end, after)
+            start = end
+        }
+        return if (start != length || inside.isEmpty()) null else Triple(before, inside, after)
+    }
 }
