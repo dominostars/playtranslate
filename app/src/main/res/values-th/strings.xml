@@ -720,6 +720,14 @@
     <string name="llm_backend_thinking_title">โหมดการคิด</string>
     <string name="llm_backend_thinking_subtitle">โมเดลจะคิดก่อนตอบ ช้ากว่า และส่วนที่คิดจะถูกเรียกเก็บเงินเป็นโทเค็นเอาต์พุต</string>
 
+    <string name="llm_backend_reasoning_title">ระดับการคิด</string>
+    <string name="llm_backend_reasoning_subtitle">โมเดลจะคิดมากแค่ไหนก่อนตอบ ยิ่งสูงยิ่งช้า และส่วนที่คิดจะถูกเรียกเก็บเงินเป็นโทเค็นเอาต์พุต</string>
+    <string name="llm_backend_reasoning_off">ปิด</string>
+    <string name="llm_backend_reasoning_minimal">ต่ำสุด</string>
+    <string name="llm_backend_reasoning_low">ต่ำ</string>
+    <string name="llm_backend_reasoning_medium">กลาง</string>
+    <string name="llm_backend_reasoning_high">สูง</string>
+
     <string name="llm_backend_model_custom_entry">กำหนดเอง…</string>
 
     <string name="llm_model_picker_loading">กำลังโหลดโมเดล…</string>

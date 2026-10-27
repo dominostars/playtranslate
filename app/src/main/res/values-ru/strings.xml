@@ -796,6 +796,14 @@
     <string name="llm_backend_thinking_title">Режим рассуждений</string>
     <string name="llm_backend_thinking_subtitle">Модель рассуждает перед ответом. Медленнее, а рассуждения оплачиваются как выходные токены.</string>
 
+    <string name="llm_backend_reasoning_title">Уровень рассуждений</string>
+    <string name="llm_backend_reasoning_subtitle">Сколько модель рассуждает перед ответом. Чем выше уровень, тем медленнее, а рассуждения оплачиваются как выходные токены.</string>
+    <string name="llm_backend_reasoning_off">Выкл.</string>
+    <string name="llm_backend_reasoning_minimal">Минимум</string>
+    <string name="llm_backend_reasoning_low">Низкий</string>
+    <string name="llm_backend_reasoning_medium">Средний</string>
+    <string name="llm_backend_reasoning_high">Высокий</string>
+
     <string name="llm_backend_model_custom_entry">Вручную…</string>
 
     <string name="llm_model_picker_loading">Загрузка моделей…</string>

@@ -744,6 +744,14 @@
     <string name="llm_backend_thinking_title">وضع التفكير</string>
     <string name="llm_backend_thinking_subtitle">يفكّر النموذج قبل أن يجيب. أبطأ، وتُحتسب تكلفة التفكير كتوكنات إخراج.</string>
 
+    <string name="llm_backend_reasoning_title">مستوى التفكير</string>
+    <string name="llm_backend_reasoning_subtitle">مقدار تفكير النموذج قبل أن يجيب. كلما ارتفع كان أبطأ، وتُحتسب تكلفة التفكير كتوكنات إخراج.</string>
+    <string name="llm_backend_reasoning_off">معطّل</string>
+    <string name="llm_backend_reasoning_minimal">أدنى</string>
+    <string name="llm_backend_reasoning_low">منخفض</string>
+    <string name="llm_backend_reasoning_medium">متوسط</string>
+    <string name="llm_backend_reasoning_high">مرتفع</string>
+
     <string name="llm_backend_model_custom_entry">مخصص…</string>
 
     <string name="llm_model_picker_loading">جارٍ تحميل النماذج…</string>

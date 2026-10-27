@@ -7,9 +7,9 @@
      (Gemini) and for a pinned preset with its own picker row
      (Index-Translate) — gated on LlmBackendConfig.allowsBaseUrl. The key
      section is GONE'd for a provider that takes no key, which shows its
-     note instead. The Thinking switch section is shown only for a
-     provider whose requests can choose thinking (DeepSeek), gated on
-     LlmBackendConfig.thinkingSwitch. -->
+     note instead. The thinking section is shown only where the provider
+     lets a request choose about thinking on the page's model, gated on
+     LlmBackendConfig.reasoning. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
@@ -154,12 +154,13 @@
                             android:id="@+id/rowGetKeyLink" />
                     </LinearLayout>
 
-                    <!-- Thinking switch (gated on LlmBackendConfig.thinkingSwitch):
-                         shown only for a provider whose requests can choose
-                         thinking on or off (DeepSeek). Saved as the
-                         instance's thinking flag, off by default. -->
+                    <!-- Thinking row (gated on LlmBackendConfig.reasoning): shown
+                         where the provider lets a request choose about thinking
+                         on the page's model. A switch where the choice is off or
+                         on, a segmented control where it is a level; one of the
+                         two shows. Saved as the instance's reasoning pick. -->
                     <LinearLayout
-                        android:id="@+id/sectionThinking"
+                        android:id="@+id/sectionReasoning"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical">
@@ -168,6 +169,34 @@
 
                         <include layout="@layout/settings_row_switch"
                             android:id="@+id/rowThinking" />
+
+                        <LinearLayout
+                            android:id="@+id/rowReasoningLevels"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:paddingHorizontal="@dimen/pt_row_h_padding"
+                            android:paddingVertical="@dimen/pt_row_v_padding">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/llm_backend_reasoning_title"
+                                style="@style/Text.PT.RowTitle" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="@string/llm_backend_reasoning_subtitle"
+                                style="@style/Text.PT.RowSubtitle" />
+
+                            <FrameLayout
+                                android:id="@+id/reasoningLevelsContainer"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="10dp" />
+                        </LinearLayout>
                     </LinearLayout>
 
                     <!-- A provider's note in place of the key field (gated on

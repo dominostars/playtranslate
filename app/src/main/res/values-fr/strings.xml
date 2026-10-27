@@ -785,6 +785,14 @@
     <string name="llm_backend_thinking_title">Mode réflexion</string>
     <string name="llm_backend_thinking_subtitle">Le modèle réfléchit avant de répondre. Plus lent, et la réflexion est facturée comme des tokens de sortie.</string>
 
+    <string name="llm_backend_reasoning_title">Niveau de réflexion</string>
+    <string name="llm_backend_reasoning_subtitle">Combien le modèle réfléchit avant de répondre. Plus le niveau est élevé, plus c\'est lent, et la réflexion est facturée comme des tokens de sortie.</string>
+    <string name="llm_backend_reasoning_off">Désactivé</string>
+    <string name="llm_backend_reasoning_minimal">Minimal</string>
+    <string name="llm_backend_reasoning_low">Faible</string>
+    <string name="llm_backend_reasoning_medium">Moyen</string>
+    <string name="llm_backend_reasoning_high">Élevé</string>
+
     <string name="llm_backend_model_custom_entry">Personnalisé…</string>
 
     <string name="llm_model_picker_loading">Chargement des modèles…</string>

@@ -777,6 +777,14 @@
     <string name="llm_backend_thinking_title">Modo de razonamiento</string>
     <string name="llm_backend_thinking_subtitle">El modelo razona antes de responder. Más lento, y el razonamiento se factura como tokens de salida.</string>
 
+    <string name="llm_backend_reasoning_title">Nivel de razonamiento</string>
+    <string name="llm_backend_reasoning_subtitle">Cuánto razona el modelo antes de responder. Cuanto más alto, más lento, y el razonamiento se factura como tokens de salida.</string>
+    <string name="llm_backend_reasoning_off">Desactivado</string>
+    <string name="llm_backend_reasoning_minimal">Mínimo</string>
+    <string name="llm_backend_reasoning_low">Bajo</string>
+    <string name="llm_backend_reasoning_medium">Medio</string>
+    <string name="llm_backend_reasoning_high">Alto</string>
+
     <string name="llm_backend_model_custom_entry">Personalizado…</string>
 
     <string name="llm_model_picker_loading">Cargando modelos…</string>

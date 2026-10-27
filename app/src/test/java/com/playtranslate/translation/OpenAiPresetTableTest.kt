@@ -16,10 +16,10 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * Every [OpenAiPreset]'s per-provider facts in one table (endpoint, default
- * model, name, key page, requirement, where the picker lists it, whether its
- * page shows the Thinking switch), pinned as literals so a branch edited by
- * mistake shows up here; and the requirement as the factory hands it to a
- * live backend.
+ * model, name, key page, requirement, where the picker lists it, the
+ * thinking row a new instance's page shows), pinned as literals so a branch
+ * edited by mistake shows up here; and the requirement as the factory hands
+ * it to a live backend.
  */
 @RunWith(RobolectricTestRunner::class)
 class OpenAiPresetTableTest {
@@ -33,26 +33,35 @@ class OpenAiPresetTableTest {
         val keyUrl: String,
         val account: AccountRequirement,
         val listedUnderOpenAi: Boolean,
-        val thinkingSwitch: Boolean = false,
+        /** The thinking row a new instance's page shows, on the default
+         *  model: empty for none, OFF/ON for a switch, else the segments. */
+        val thinkingRow: List<ReasoningLevel> = emptyList(),
     )
 
+    private val lowToHigh = listOf(ReasoningLevel.LOW, ReasoningLevel.MEDIUM, ReasoningLevel.HIGH)
+    private val switch = listOf(ReasoningLevel.OFF, ReasoningLevel.ON)
+
     private val table = mapOf(
+        // chat-latest is ChatGPT's Instant model: no reasoning to set.
         OpenAiPreset.OPENAI to Row(
             "https://api.openai.com/v1", "chat-latest", "OpenAI",
             "https://platform.openai.com/api-keys", AccountRequirement.REQUIRED, true,
         ),
+        // DeepSeek, OpenRouter and Claude draw the row from what their
+        // catalogs report, and a new instance has no report yet.
         OpenAiPreset.DEEPSEEK to Row(
             "https://api.deepseek.com/v1", "deepseek-v4-flash", "DeepSeek",
             "https://platform.deepseek.com/api_keys", AccountRequirement.REQUIRED, true,
-            thinkingSwitch = true,
         ),
         OpenAiPreset.MISTRAL to Row(
             "https://api.mistral.ai/v1", "mistral-small-2603", "Mistral",
             "https://console.mistral.ai/api-keys", AccountRequirement.REQUIRED, true,
+            thinkingRow = switch,
         ),
         OpenAiPreset.GROQ to Row(
             "https://api.groq.com/openai/v1", "openai/gpt-oss-20b", "Groq",
             "https://console.groq.com/keys", AccountRequirement.REQUIRED, true,
+            thinkingRow = lowToHigh,
         ),
         OpenAiPreset.OPENROUTER to Row(
             "https://openrouter.ai/api/v1", "google/gemini-2.5-flash-lite", "OpenRouter",
@@ -109,18 +118,18 @@ class OpenAiPresetTableTest {
             assertEquals(preset.name, row.listedUnderOpenAi, config.allowsBaseUrl)
             // The note exists exactly where the key field doesn't.
             assertEquals(preset.name, !row.account.requiresKey, config.noteRes != null)
-            // The Thinking row shows exactly where the preset offers the switch.
-            assertEquals(preset.name, row.thinkingSwitch, preset.thinkingSwitch)
-            assertEquals(preset.name, row.thinkingSwitch, config.thinkingSwitch)
+            // A new instance's page draws the thinking row for the default model.
+            assertEquals(preset.name, row.thinkingRow, config.reasoning.choices)
         }
     }
 
-    /** The switch is an OpenAI-type fact: a Gemini page never shows it,
-     *  whatever preset value its record carries by default. */
-    @Test fun `a Gemini page shows no Thinking switch`() {
+    /** A Gemini page draws its row from the Gemini model, whatever preset
+     *  value its record carries by default: the preset is an OpenAI-type
+     *  fact. The default model names a minimal level. */
+    @Test fun `a Gemini page draws the thinking row for its own model`() {
         OpenAiPreset.entries.forEach { preset ->
             val config = LlmBackendConfigs.forInstance(ctx, "gemini-$preset", ServiceType.GEMINI, preset)
-            assertFalse(preset.name, config.thinkingSwitch)
+            assertEquals(preset.name, listOf(ReasoningLevel.MINIMAL) + lowToHigh, config.reasoning.choices)
         }
     }
 

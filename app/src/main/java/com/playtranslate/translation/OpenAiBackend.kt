@@ -15,10 +15,14 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
@@ -108,10 +112,14 @@ class OpenAiBackend(
      *  stored key does not make it unconfigured. */
     private val account: () -> AccountRequirement = { ServiceType.OPENAI.account },
     /** Extra top-level fields for the chat-completions body, chosen per
-     *  model. Empty for most providers; Claude and Index-Translate switch
-     *  thinking off here, DeepSeek to its instance's Thinking switch
+     *  model: the instance's thinking pick as its preset's
+     *  [ReasoningControls] entry sends it, or nothing
      *  ([OnlineBackendFactory.requestExtrasFor]). */
     private val requestExtras: (String) -> Map<String, JsonElement> = { emptyMap() },
+    /** Where the provider's catalog states a model's thinking options
+     *  ([ThinkingCatalog.forPreset]), or null where it publishes none, which
+     *  makes [reportedThinking] answer null. */
+    private val thinkingCatalog: () -> ThinkingCatalog? = { null },
     private val usageTracker: UsageTracker,
     /** Returns true when [listModels] should apply OpenAI's first-party
      *  `owned_by` filter (strips fine-tunes / user-uploaded models on
@@ -128,7 +136,7 @@ class OpenAiBackend(
      *  return null/no-op and the registry's skip check never fires. */
     private val cooldownState: CooldownState? = null,
     private val client: OkHttpClient = defaultClient(),
-) : TranslationBackend, BatchTranslator, ModelLister, KeyValidator, Cooldownable {
+) : TranslationBackend, BatchTranslator, ModelLister, KeyValidator, Cooldownable, ThinkingReporter {
 
     override val requiresInternet: Boolean = true
     override val isDegradedFallback: Boolean = false
@@ -297,7 +305,7 @@ class OpenAiBackend(
                     }
                     val bodyStr = response.body.string()
                     val parsed = PtJson.lenient.decodeFromString<OpenAiChatResponse>(bodyStr)
-                    val raw = parsed.choices.firstOrNull()?.message?.content
+                    val raw = parsed.choices.firstOrNull()?.message?.text
                         ?: throw StructuralFailureException(
                             "No translation in OpenAI response", BackendFailure.BAD_RESPONSE,
                         )
@@ -432,7 +440,7 @@ class OpenAiBackend(
                 }
                 val bodyStr = response.body.string()
                 val parsed = PtJson.lenient.decodeFromString<OpenAiChatResponse>(bodyStr)
-                val rawJson = parsed.choices.firstOrNull()?.message?.content
+                val rawJson = parsed.choices.firstOrNull()?.message?.text
                     ?: throw BatchParseException("OpenAI batch: empty message content")
                 parsed.usage?.let { usageTracker.addTokens(it.prompt_tokens, it.completion_tokens) }
                 val wrapper = try {
@@ -651,6 +659,38 @@ class OpenAiBackend(
         }
     }
 
+    /**
+     * What the provider's catalog says about [model]'s thinking
+     * ([ThinkingCatalog.facts]), through the same catalog endpoint and
+     * headers as [listModels]. Null where the provider publishes none or
+     * the answer says nothing about the model.
+     *
+     * Throws [IOException] on any network / auth / parse failure.
+     */
+    override suspend fun reportedThinking(model: String): JsonObject? = withContext(Dispatchers.IO) {
+        val catalog = thinkingCatalog() ?: return@withContext null
+        val credential = credential()
+            ?: throw IOException("OpenAI API key not configured")
+        val request = Request.Builder()
+            .url(catalog.url(modelsUrlProvider().trim(), model))
+            .apply { credential.catalogAuthHeaders().forEach { (name, value) -> addHeader(name, value) } }
+            .build()
+        client.newCall(request).execute().use { response ->
+            when (response.code) {
+                401 -> throw OpenAiAuthException()
+                else -> if (!response.isSuccessful) {
+                    throw IOException("$catalog catalog error ${response.code}")
+                }
+            }
+            val body = try {
+                PtJson.lenient.parseToJsonElement(response.body.string())
+            } catch (e: SerializationException) {
+                throw IOException("Malformed $catalog catalog response", e)
+            }
+            catalog.facts(body, model)
+        }
+    }
+
     override fun close() {
         // Daemon thread because evictAll() can write TLS close-notify on the
         // calling thread; see the equivalent note in DeepLBackend.close().
@@ -669,7 +709,21 @@ class OpenAiBackend(
         @Serializable
         data class Choice(val message: Message? = null)
         @Serializable
-        data class Message(val content: String = "")
+        data class Message(val content: JsonElement? = null) {
+            /** The reply's text. Every provider answers with a string,
+             *  except Mistral with reasoning on, whose content is a list of
+             *  chunks: the `text` chunks are the answer and the `thinking`
+             *  chunks the reasoning, which is dropped. A missing or null
+             *  content reads as empty, as it did when this was a String. */
+            val text: String
+                get() = when (content) {
+                    is JsonPrimitive -> content.contentOrNull.orEmpty()
+                    is JsonArray -> content.filterIsInstance<JsonObject>()
+                        .filter { (it["type"] as? JsonPrimitive)?.contentOrNull == "text" }
+                        .joinToString("") { (it["text"] as? JsonPrimitive)?.contentOrNull.orEmpty() }
+                    else -> ""
+                }
+        }
         @Serializable
         data class Usage(
             val prompt_tokens: Long = 0,

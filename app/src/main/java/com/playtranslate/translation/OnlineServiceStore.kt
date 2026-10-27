@@ -7,8 +7,15 @@ import androidx.core.content.edit
 import com.playtranslate.BuildConfig
 import com.playtranslate.Prefs
 import com.playtranslate.PtJson
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonObject
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Single source of truth for the user's ordered list of
@@ -103,6 +110,14 @@ object OnlineServiceStore {
     private lateinit var prefs: Prefs
     private val writeLock = Any()
 
+    /** Told after every write to the instance list, outside [writeLock], on
+     *  the writing thread: the main thread, since every write is an
+     *  [OnlineServiceMutations] recipe. The config page listens while it is
+     *  resumed, so a provider's thinking report that lands while it is open
+     *  redraws its row. Copy-on-write, like [snapshot], so a listener
+     *  can remove itself while being told. */
+    private val listeners = CopyOnWriteArrayList<() -> Unit>()
+
     fun init(context: Context) = init(context, Prefs(context))
 
     /** Test seam: lets JVM tests hand in a [Prefs] built on a fake
@@ -137,6 +152,17 @@ object OnlineServiceStore {
         prefs.clearInstanceSecret(keySlot(id))
     }
 
+    /** Stores what [reported]'s provider said about its model, if [id] still
+     *  has that model: a report that lands after the user picked another
+     *  model writes nothing. Reached only through
+     *  [OnlineServiceMutations.applyReportedThinking]. */
+    fun setReportedThinking(id: String, reported: ReportedThinking) = mutate { list ->
+        list.map {
+            if (it.id == id && OnlineBackendFactory.modelOf(it) == reported.model) it.copy(reportedThinking = reported)
+            else it
+        }
+    }
+
     fun setEnabled(id: String, enabled: Boolean) {
         mutate { list -> list.map { if (it.id == id) it.copy(enabled = enabled) else it } }
     }
@@ -161,18 +187,29 @@ object OnlineServiceStore {
 
     fun writeKey(id: String, value: String) = prefs.writeInstanceSecret(keySlot(id), value)
 
+    fun addListener(listener: () -> Unit) {
+        listeners += listener
+    }
+
+    fun removeListener(listener: () -> Unit) {
+        listeners -= listener
+    }
+
     private inline fun mutate(transform: (List<OnlineServiceInstance>) -> List<OnlineServiceInstance>) {
         synchronized(writeLock) {
             val next = transform(snapshot)
             snapshot = next
             sp.edit { putString(KEY_INSTANCES, PtJson.lenient.encodeToString(next)) }
         }
+        listeners.forEach { it() }
     }
 
     private fun load(): List<OnlineServiceInstance> {
         val json = sp.getString(KEY_INSTANCES, null) ?: return defaultList()
         return try {
-            PtJson.lenient.decodeFromString<List<OnlineServiceInstance>>(json)
+            PtJson.lenient.decodeFromJsonElement<List<OnlineServiceInstance>>(
+                carryLegacyThinking(PtJson.lenient.parseToJsonElement(json)),
+            )
         } catch (e: Exception) {
             // Same recovery posture as Prefs.getRegionList: a corrupt blob
             // falls back to the fresh-install default rather than wedging
@@ -182,6 +219,24 @@ object OnlineServiceStore {
             Log.e(TAG, "Corrupt $KEY_INSTANCES — falling back to default", e)
             defaultList()
         }
+    }
+
+    /** DeepSeek's first Thinking switch (2026-10-20) saved its on as
+     *  `thinking: true`, which sent thinking enabled at DeepSeek's default
+     *  effort, high. A record with that key and no pick of its own takes
+     *  [ReasoningLevel.HIGH], the pick that sends the same request once
+     *  DeepSeek has reported its levels ([ReportedThinkingRefresher] asks at
+     *  launch; until then every DeepSeek request is thinking off). On any
+     *  other preset it reads as that preset's start state until the user
+     *  returns to DeepSeek. The next write drops the old key;
+     *  `thinking: false` was the start state and needs nothing. */
+    private fun carryLegacyThinking(list: JsonElement): JsonElement {
+        if (list !is JsonArray) return list
+        return JsonArray(list.map { record ->
+            val legacyOn = ((record as? JsonObject)?.get("thinking") as? JsonPrimitive)?.booleanOrNull == true
+            if (!legacyOn || "reasoning" in record.jsonObject) record
+            else JsonObject(record.jsonObject + ("reasoning" to JsonPrimitive(ReasoningLevel.HIGH.name)))
+        })
     }
 
     /** Fresh-install baseline: the free, keyless Lingva service, on. */

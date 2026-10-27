@@ -1,5 +1,7 @@
 package com.playtranslate.translation
 
+import kotlinx.serialization.json.JsonObject
+
 /**
  * Side interfaces that backends opt into to declare extra capabilities
  * beyond the base [TranslationBackend] contract.
@@ -207,6 +209,18 @@ class StructuralFailureException(
  */
 interface ModelLister {
     suspend fun listModels(): List<String>
+}
+
+/**
+ * Backends whose provider's model catalog states each model's thinking
+ * options ([ThinkingCatalog]). [reportedThinking] asks it about one model:
+ * the [ReportedThinking.facts] for it, or null where the provider publishes
+ * none or said nothing about this model. Throws [java.io.IOException] on a
+ * network, auth or parse failure; [ReportedThinkingRefresher] keeps what it
+ * had then.
+ */
+interface ThinkingReporter {
+    suspend fun reportedThinking(model: String): JsonObject?
 }
 
 /**

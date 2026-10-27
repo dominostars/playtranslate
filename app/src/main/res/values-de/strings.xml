@@ -778,6 +778,14 @@
     <string name="llm_backend_thinking_title">Denkmodus</string>
     <string name="llm_backend_thinking_subtitle">Das Modell denkt nach, bevor es antwortet. Langsamer, und das Nachdenken wird als Ausgabe-Tokens abgerechnet.</string>
 
+    <string name="llm_backend_reasoning_title">Denkstufe</string>
+    <string name="llm_backend_reasoning_subtitle">Wie viel das Modell nachdenkt, bevor es antwortet. Je höher, desto langsamer, und das Nachdenken wird als Ausgabe-Tokens abgerechnet.</string>
+    <string name="llm_backend_reasoning_off">Aus</string>
+    <string name="llm_backend_reasoning_minimal">Minimal</string>
+    <string name="llm_backend_reasoning_low">Niedrig</string>
+    <string name="llm_backend_reasoning_medium">Mittel</string>
+    <string name="llm_backend_reasoning_high">Hoch</string>
+
     <string name="llm_backend_model_custom_entry">Benutzerdefiniert…</string>
 
     <string name="llm_model_picker_loading">Modelle werden geladen…</string>

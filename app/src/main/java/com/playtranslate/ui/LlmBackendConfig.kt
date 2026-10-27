@@ -10,6 +10,8 @@ import com.playtranslate.translation.OnlineBackendFactory
 import com.playtranslate.translation.OnlineServiceInstance
 import com.playtranslate.translation.OnlineServiceStore
 import com.playtranslate.translation.OpenAiPreset
+import com.playtranslate.translation.ReasoningControl
+import com.playtranslate.translation.ReasoningControls
 import com.playtranslate.translation.ServiceType
 import com.playtranslate.translation.TranslationBackendRegistry
 
@@ -52,10 +54,12 @@ data class LlmBackendConfig(
     val account: AccountRequirement,
     /** A provider-specific note shown in place of the key field, or null. */
     @StringRes val noteRes: Int?,
-    /** True where the provider lets each request choose thinking on or off
-     *  ([OpenAiPreset.thinkingSwitch]; DeepSeek): the page shows the
-     *  Thinking switch row, saved as [OnlineServiceInstance.thinking]. */
-    val thinkingSwitch: Boolean,
+    /** What the page's provider lets a request choose about thinking on the
+     *  model the page would save ([LlmBackendConfigs.pageModel]), read with
+     *  what the provider last reported about that model: the page draws its
+     *  thinking row from it (none, a switch or levels) and saves the pick as
+     *  [OnlineServiceInstance.reasoning]. */
+    val reasoning: ReasoningControl,
     /** The base URL the current preset resolves to — field text for
      *  pinned presets, hint for CUSTOM. */
     val presetBaseUrl: String,
@@ -75,6 +79,9 @@ object LlmBackendConfigs {
         val shell = OnlineServiceInstance(
             id = instanceId, type = type, enabled = false, preset = preset,
         )
+        val existing = OnlineServiceStore.byId(instanceId)
+        val model = pageModel(existing, type, preset)
+            .ifBlank { OnlineBackendFactory.defaultModelFor(type, preset) }
         return LlmBackendConfig(
             instanceId = instanceId,
             type = type,
@@ -96,11 +103,23 @@ object LlmBackendConfigs {
             allowsBaseUrl = type == ServiceType.OPENAI && preset.listedUnderOpenAi,
             account = shell.account,
             noteRes = noteFor(type, preset),
-            thinkingSwitch = type == ServiceType.OPENAI && preset.thinkingSwitch,
+            reasoning = ReasoningControls.of(type, preset, model, existing?.reportedThinking),
             presetBaseUrl = OnlineBackendFactory.resolveBaseUrl(shell)
                 .ifBlank { Prefs.DEFAULT_OPENAI_BASE_URL },
             getBaseUrl = { OnlineServiceStore.byId(instanceId)?.baseUrl ?: "" },
         )
+    }
+
+    /** The model a config page saves for [existing] under [preset]: the
+     *  record's own, unless the page moved an OPENAI-type instance to another
+     *  preset (a DeepSeek model id means nothing to OpenAI) or there is no
+     *  record yet, and then the preset's default. May be blank, which every
+     *  reader takes as the default. One rule for what the page saves and the
+     *  model its thinking row is drawn for. */
+    fun pageModel(existing: OnlineServiceInstance?, type: ServiceType, preset: OpenAiPreset): String = when {
+        existing == null -> OnlineBackendFactory.defaultModelFor(type, preset)
+        type == ServiceType.OPENAI && existing.preset != preset -> OnlineBackendFactory.defaultModelFor(type, preset)
+        else -> existing.model
     }
 
     /** The note a provider's page shows in place of the key field. Exhaustive

@@ -15,10 +15,15 @@ import com.playtranslate.cloud.PtCloudService
  *   after a clear, [GroupTranslator.clearShared], when the change can alter
  *   what a given input translates to).
  *
- * Every mutation of one instance also forgets its translation errors
+ * Every user mutation of one instance also forgets its translation errors
  * ([TranslationErrors.forget]): saving its config, toggling it, picking a
  * model, or deleting it is the user saying "try this again", so a failure
- * after it shows its pill even if it is the one shown before.
+ * after it shows its pill even if it is the one shown before. A provider's
+ * thinking report ([applyReportedThinking]) is no such gesture and forgets
+ * nothing.
+ *
+ * Every recipe that changes an instance ends by asking its provider for a
+ * thinking report where it needs one ([ReportedThinkingRefresher.refreshIfNeeded]).
  *
  * All main-thread, like the registry's other mutators.
  */
@@ -46,6 +51,9 @@ object OnlineServiceMutations {
         TranslationErrors.forget(instance.id)
         GroupTranslator.clearShared()
         GroupTranslator.reconcileShared(context)
+        // Through the backend just registered, where a new provider, model or
+        // the service turned on leaves it without a report.
+        ReportedThinkingRefresher.refreshIfNeeded(instance.id)
     }
 
     /** Instant add with no config page (Lingva from the picker). */
@@ -56,6 +64,7 @@ object OnlineServiceMutations {
         )
         applyOnlineOrder()
         GroupTranslator.reconcileShared(context)
+        ReportedThinkingRefresher.refreshIfNeeded(instance.id)
     }
 
     /** Switch toggle on the services page. Backend closures read the
@@ -70,15 +79,41 @@ object OnlineServiceMutations {
         TranslationBackendRegistry.resetCooldown(id)
         TranslationErrors.forget(id)
         GroupTranslator.reconcileShared(context)
+        // The launch check skips a service that is off, so one turned on
+        // later may have no report yet.
+        ReportedThinkingRefresher.refreshIfNeeded(id)
     }
 
-    /** Model picked for an LLM instance. Output changes → cache clear. */
+    /** Model picked for an LLM instance. Output changes → cache clear. The
+     *  record's thinking report is about the old model and goes inert; the
+     *  provider is asked about the new one. */
     fun setModel(context: Context, id: String, model: String) {
         val instance = OnlineServiceStore.byId(id) ?: return
         OnlineServiceStore.update(instance.copy(model = model))
         TranslationErrors.forget(id)
         GroupTranslator.clearShared()
         GroupTranslator.reconcileShared(context)
+        ReportedThinkingRefresher.refreshIfNeeded(id)
+    }
+
+    /**
+     * A provider's report about [report]'s model arrived
+     * ([ReportedThinkingRefresher]). Stored only if [id] still has that model
+     * ([OnlineServiceStore.setReportedThinking]). When it changes what the
+     * instance's requests send (a first report, a provider that dropped a
+     * level the user picked), every translation the shared cache holds was
+     * made under the old request and is dropped, as a model change drops
+     * them; a translation in flight across the clear is shown but not
+     * cached ([com.playtranslate.TranslationCache]). The one writer of a
+     * report.
+     */
+    fun applyReportedThinking(id: String, report: ReportedThinking) {
+        val before = OnlineServiceStore.byId(id) ?: return
+        OnlineServiceStore.setReportedThinking(id, report)
+        val after = OnlineServiceStore.byId(id) ?: return
+        if (OnlineBackendFactory.reasoningFieldsOf(after) != OnlineBackendFactory.reasoningFieldsOf(before)) {
+            GroupTranslator.clearShared()
+        }
     }
 
     /**

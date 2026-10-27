@@ -5,8 +5,6 @@ import android.content.SharedPreferences
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 
 /**
  * Maps an [OnlineServiceInstance] to a live [TranslationBackend].
@@ -64,6 +62,7 @@ object OnlineBackendFactory {
                 keyProvider = { OnlineServiceStore.readKey(id) },
                 enabledProvider = { current().enabled },
                 modelProvider = { modelOf(current()) },
+                generationConfigExtras = { model -> generationConfigExtrasFor(current(), model) },
                 usageTracker = UsageTracker(sharedPrefs, id),
                 cooldownState = CooldownState(appContext, id),
             )
@@ -115,6 +114,7 @@ object OnlineBackendFactory {
             // through the one per-instance resolver (INDEX_TRANSLATE takes none).
             account = { current().account },
             requestExtras = { model -> requestExtrasFor(current(), model) },
+            thinkingCatalog = { ThinkingCatalog.forPreset(current().preset) },
             usageTracker = UsageTracker(sharedPrefs, id),
             // owned_by filtering only makes sense against the canonical
             // first-party OpenAI catalog; every other provider tags models
@@ -170,59 +170,43 @@ object OnlineBackendFactory {
     }
 
     /**
-     * Extra top-level fields on a chat-completions request: each provider's
-     * own switch for thinking, the one latency lever a live overlay has. The
-     * `when` is exhaustive so a new preset has to decide its switch rather
-     * than silently inherit none.
-     *
-     * Claude: Anthropic's compatible layer turns thinking ON by default for
-     * Claude 5 models, ignores `reasoning_effort`, and passes only a
-     * `thinking` field through. On the Thor (2026-09-06) Sonnet 5 took 4.9 s
-     * and 23.4 s for batches of 5 and 7 short strings, about 2,000 tokens of
-     * hidden reasoning across the pair, where Haiku 4.5 (no thinking by
-     * default) took 1.9 to 3.1 s on the same screens. Fable and Mythos ids get
-     * no field: thinking is always on there and an explicit off is a 400,
-     * which the batch path would then hand to the per-text retry. Their
-     * latency is whatever the model decides.
-     *
-     * Index-Translate: hybrid-thinking models built on Qwen 3.5, switched off
-     * through the chat template exactly as Bilibili's own client sends it
-     * (its comment: with thinking on, the reasoning can replace the
-     * translation in the response).
-     *
-     * DeepSeek: since V4 one model serves both modes, and a request that
-     * says nothing runs in thinking mode at `reasoning_effort` high, with the
-     * hidden reasoning billed at the output rate; a user found every
-     * translation running that way (issue #41). The request always carries
-     * the instance's own choice, [thinking], which is the Thinking switch on
-     * its config page ([OnlineServiceInstance.thinking], off by default), so
-     * the provider's default never decides. DeepSeek is the one preset that
-     * reads [thinking]; the others choose for the user.
+     * Extra top-level fields on a chat-completions request: what the
+     * preset's [ReasoningControls] entry sends for [model] at the pick
+     * [reasoning], the one latency lever a live overlay has. Thinking is
+     * where the time goes: on the Thor (2026-09-06) Sonnet 5 took 4.9 s and
+     * 23.4 s for batches of 5 and 7 short strings with its default thinking,
+     * about 2,000 hidden tokens across the pair, where Haiku 4.5 without it
+     * took 1.9 to 3.1 s on the same screens.
      */
-    fun requestExtrasFor(preset: OpenAiPreset, model: String, thinking: Boolean): Map<String, JsonElement> =
-        when (preset) {
-            OpenAiPreset.CLAUDE ->
-                if (CLAUDE_THINKING_ALWAYS_ON.any { model.startsWith(it) }) emptyMap()
-                else mapOf("thinking" to buildJsonObject { put("type", "disabled") })
-            OpenAiPreset.DEEPSEEK -> mapOf(
-                "thinking" to buildJsonObject { put("type", if (thinking) "enabled" else "disabled") },
-            )
-            OpenAiPreset.INDEX_TRANSLATE -> mapOf(
-                "chat_template_kwargs" to buildJsonObject { put("enable_thinking", false) },
-            )
-            OpenAiPreset.OPENAI, OpenAiPreset.MISTRAL,
-            OpenAiPreset.GROQ, OpenAiPreset.OPENROUTER, OpenAiPreset.CUSTOM -> emptyMap()
-        }
+    fun requestExtrasFor(
+        preset: OpenAiPreset,
+        model: String,
+        reasoning: ReasoningLevel,
+        reported: ReportedThinking? = null,
+    ): Map<String, JsonElement> =
+        ReasoningControls.of(ServiceType.OPENAI, preset, model, reported).fields(reasoning)
 
-    /** The extras for one instance: its preset's switch, read with the
-     *  instance's own Thinking choice. The live backend's hook reads this
-     *  off the store on every call, so a saved switch reaches the next
-     *  request without a rebuild. */
+    /** The extras for one instance, read with its own pick and what its
+     *  provider last reported. The live backend's hook reads this off the
+     *  store on every call, so a saved pick, a model chosen in the picker or
+     *  a fresh report reaches the next request without a rebuild. */
     fun requestExtrasFor(instance: OnlineServiceInstance, model: String): Map<String, JsonElement> =
-        requestExtrasFor(instance.preset, model, instance.thinking)
+        requestExtrasFor(instance.preset, model, instance.reasoning, instance.reportedThinking)
 
-    /** Model-id prefixes that reject `thinking: disabled`. */
-    private val CLAUDE_THINKING_ALWAYS_ON = listOf("claude-fable", "claude-mythos")
+    /** The fields Gemini's `generationConfig` adds for one instance on
+     *  [model]: its thinking config, read like [requestExtrasFor]. */
+    fun generationConfigExtrasFor(instance: OnlineServiceInstance, model: String): Map<String, JsonElement> =
+        ReasoningControls.of(ServiceType.GEMINI, instance.preset, model).fields(instance.reasoning)
+
+    /** What [instance]'s requests send about thinking now, on its own
+     *  model: the chat-completions extras, or Gemini's `generationConfig`
+     *  fields. A change in it changes translations
+     *  ([OnlineServiceMutations.applyReportedThinking]). */
+    fun reasoningFieldsOf(instance: OnlineServiceInstance): Map<String, JsonElement> = when (instance.type) {
+        ServiceType.OPENAI -> requestExtrasFor(instance, modelOf(instance))
+        ServiceType.GEMINI -> generationConfigExtrasFor(instance, modelOf(instance))
+        ServiceType.DEEPL, ServiceType.LINGVA -> emptyMap()
+    }
 
     /** Headers that carry [apiKey] on the catalog calls: the key probe and
      *  the model picker's /models. Every provider takes the same Bearer
@@ -279,6 +263,8 @@ object OnlineBackendFactory {
         ServiceType.LINGVA -> context.getString(R.string.lingva_display_name)
     }
 
-    private fun modelOf(instance: OnlineServiceInstance): String =
+    /** The model an instance's requests name: its own, or its preset's
+     *  default while blank. */
+    internal fun modelOf(instance: OnlineServiceInstance): String =
         instance.model.ifBlank { defaultModelFor(instance.type, instance.preset) }
 }

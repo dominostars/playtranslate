@@ -774,6 +774,14 @@
     <string name="llm_backend_thinking_title">Chế độ suy luận</string>
     <string name="llm_backend_thinking_subtitle">Mô hình suy luận trước khi trả lời. Chậm hơn, và phần suy luận được tính phí như token đầu ra.</string>
 
+    <string name="llm_backend_reasoning_title">Mức suy luận</string>
+    <string name="llm_backend_reasoning_subtitle">Mức độ mô hình suy luận trước khi trả lời. Càng cao càng chậm, và phần suy luận được tính phí như token đầu ra.</string>
+    <string name="llm_backend_reasoning_off">Tắt</string>
+    <string name="llm_backend_reasoning_minimal">Tối thiểu</string>
+    <string name="llm_backend_reasoning_low">Thấp</string>
+    <string name="llm_backend_reasoning_medium">Vừa</string>
+    <string name="llm_backend_reasoning_high">Cao</string>
+
     <string name="llm_backend_model_custom_entry">Tùy chỉnh…</string>
 
     <string name="llm_model_picker_loading">Đang tải mô hình…</string>

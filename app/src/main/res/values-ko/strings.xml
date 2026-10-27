@@ -775,6 +775,14 @@
     <string name="llm_backend_thinking_title">추론 모드</string>
     <string name="llm_backend_thinking_subtitle">모델이 답하기 전에 추론합니다. 속도가 느려지고, 추론 내용도 출력 토큰으로 과금됩니다.</string>
 
+    <string name="llm_backend_reasoning_title">추론 수준</string>
+    <string name="llm_backend_reasoning_subtitle">모델이 답하기 전에 얼마나 추론할지 정합니다. 높을수록 느려지고, 추론 내용도 출력 토큰으로 과금됩니다.</string>
+    <string name="llm_backend_reasoning_off">꺼짐</string>
+    <string name="llm_backend_reasoning_minimal">최소</string>
+    <string name="llm_backend_reasoning_low">낮음</string>
+    <string name="llm_backend_reasoning_medium">보통</string>
+    <string name="llm_backend_reasoning_high">높음</string>
+
     <string name="llm_backend_model_custom_entry">직접 입력…</string>
 
     <string name="llm_model_picker_loading">모델 불러오는 중…</string>

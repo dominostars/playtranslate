@@ -791,6 +791,14 @@
     <string name="llm_backend_thinking_title">思考モード</string>
     <string name="llm_backend_thinking_subtitle">回答の前にモデルが推論します。速度は遅くなり、推論の分も出力トークンとして課金されます。</string>
 
+    <string name="llm_backend_reasoning_title">思考レベル</string>
+    <string name="llm_backend_reasoning_subtitle">回答の前にモデルがどれだけ推論するかです。高いほど遅くなり、推論の分も出力トークンとして課金されます。</string>
+    <string name="llm_backend_reasoning_off">オフ</string>
+    <string name="llm_backend_reasoning_minimal">最小</string>
+    <string name="llm_backend_reasoning_low">低</string>
+    <string name="llm_backend_reasoning_medium">中</string>
+    <string name="llm_backend_reasoning_high">高</string>
+
     <string name="llm_backend_model_custom_entry">カスタム…</string>
 
     <string name="llm_model_picker_loading">モデルを読み込み中…</string>

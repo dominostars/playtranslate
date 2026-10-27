@@ -777,6 +777,14 @@
     <string name="llm_backend_thinking_title">思考模式</string>
     <string name="llm_backend_thinking_subtitle">模型会先推理再作答。速度较慢，且推理内容也按输出 token 计费。</string>
 
+    <string name="llm_backend_reasoning_title">思考强度</string>
+    <string name="llm_backend_reasoning_subtitle">模型作答前推理的程度。越高越慢，且推理内容也按输出 token 计费。</string>
+    <string name="llm_backend_reasoning_off">关</string>
+    <string name="llm_backend_reasoning_minimal">最低</string>
+    <string name="llm_backend_reasoning_low">低</string>
+    <string name="llm_backend_reasoning_medium">中</string>
+    <string name="llm_backend_reasoning_high">高</string>
+
     <string name="llm_backend_model_custom_entry">自定义…</string>
 
     <string name="llm_model_picker_loading">正在加载模型…</string>

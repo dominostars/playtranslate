@@ -2,11 +2,13 @@ package com.playtranslate.ui
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.core.view.isVisible
+import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ApplicationProvider
 import com.google.android.material.appbar.MaterialToolbar
 import com.playtranslate.Prefs
@@ -29,6 +31,7 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.android.controller.ActivityController
 
 /**
  * Bilibili Index-Translate across the screens a user meets it on: its own
@@ -59,6 +62,7 @@ class IndexTranslateServiceUiTest {
     /** Saves register live backends in the process-wide registry; drop them
      *  so no later test meets this one's instances. */
     @After fun tearDown() {
+        opened.forEach { close(it) }
         OnlineServiceStore.all().forEach { TranslationBackendRegistry.removeOnlineBackend(it.id) }
         TranslationBackendRegistry.setOrder(null)
         sp().edit().clear().commit()
@@ -134,11 +138,25 @@ class IndexTranslateServiceUiTest {
 
     // ── Config page ──────────────────────────────────────────────────────
 
+    /** Every config page a test opens. A page on screen is registered with
+     *  the store ([OnlineServiceStore.addListener]) until it pauses, so each
+     *  is closed after its test, and no later test's writes reach it. */
+    private val opened = mutableListOf<ActivityController<LlmBackendSettingsActivity>>()
+
+    private fun open(intent: Intent): ActivityController<LlmBackendSettingsActivity> =
+        Robolectric.buildActivity(LlmBackendSettingsActivity::class.java, intent).setup().also { opened += it }
+
+    private fun close(page: ActivityController<LlmBackendSettingsActivity>) {
+        when (page.get().lifecycle.currentState) {
+            Lifecycle.State.RESUMED -> page.pause().stop().destroy()
+            Lifecycle.State.STARTED -> page.stop().destroy()
+            Lifecycle.State.CREATED -> page.destroy()
+            else -> Unit
+        }
+    }
+
     private fun openCreate(id: String, preset: OpenAiPreset? = null): Activity =
-        Robolectric.buildActivity(
-            LlmBackendSettingsActivity::class.java,
-            LlmBackendSettingsActivity.createIntent(ctx, id, ServiceType.OPENAI, preset),
-        ).setup().get()
+        open(LlmBackendSettingsActivity.createIntent(ctx, id, ServiceType.OPENAI, preset)).get()
 
     private fun Activity.title() = findViewById<MaterialToolbar>(R.id.toolbar).title.toString()
 
@@ -170,10 +188,7 @@ class IndexTranslateServiceUiTest {
                 preset = OpenAiPreset.INDEX_TRANSLATE,
             ),
         )
-        val page = Robolectric.buildActivity(
-            LlmBackendSettingsActivity::class.java,
-            LlmBackendSettingsActivity.editIntent(ctx, "bili"),
-        ).setup().get()
+        val page = open(LlmBackendSettingsActivity.editIntent(ctx, "bili")).get()
         assertTrue(page.findViewById<View>(R.id.tvProviderNote).isVisible)
         assertFalse(page.findViewById<View>(R.id.sectionProviderUrl).isVisible)
 
@@ -182,12 +197,9 @@ class IndexTranslateServiceUiTest {
     }
 
     @Test fun `a recreated CREATE page keeps its pinned preset`() {
-        val controller = Robolectric.buildActivity(
-            LlmBackendSettingsActivity::class.java,
-            LlmBackendSettingsActivity.createIntent(
-                ctx, "new-bili", ServiceType.OPENAI, OpenAiPreset.INDEX_TRANSLATE,
-            ),
-        ).setup()
+        val controller = open(
+            LlmBackendSettingsActivity.createIntent(ctx, "new-bili", ServiceType.OPENAI, OpenAiPreset.INDEX_TRANSLATE),
+        )
         controller.recreate()
         val page = controller.get()
         assertEquals("Bilibili Index-Translate", page.title())

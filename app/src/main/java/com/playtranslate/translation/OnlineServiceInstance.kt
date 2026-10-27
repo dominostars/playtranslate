@@ -96,21 +96,14 @@ enum class ServiceType(
  *  chat-completions only: its /models is the native endpoint with its own
  *  auth headers ([OnlineBackendFactory.modelsAuthHeadersFor]).
  *
- *  [thinkingSwitch] is true where the provider lets each request choose
- *  thinking on or off and the app hands that choice to the user: the config
- *  page shows its Thinking row, saved as [OnlineServiceInstance.thinking],
- *  and [OnlineBackendFactory.requestExtrasFor] sends the chosen state on
- *  every request. DeepSeek is that case today: its API thinks by default
- *  when the request says nothing, at reasoning-token prices. The other
- *  presets decide for the user (Claude and Index-Translate are switched
- *  off there, the rest send nothing), so their pages show no row. */
+ *  What each preset lets a request choose about reasoning, model by model,
+ *  is [ReasoningControls]'s table, not a property here. */
 @Serializable
 enum class OpenAiPreset(
     val account: AccountRequirement = ServiceType.OPENAI.account,
-    val thinkingSwitch: Boolean = false,
 ) {
     OPENAI,
-    DEEPSEEK(thinkingSwitch = true),
+    DEEPSEEK,
     MISTRAL,
     GROQ,
     OPENROUTER,
@@ -156,14 +149,21 @@ data class OnlineServiceInstance(
     val preset: OpenAiPreset = OpenAiPreset.OPENAI,
     /** User-entered base URL — consulted only when [preset] == CUSTOM. */
     val baseUrl: String = "",
-    /** The Thinking switch on the config page: whether the model may reason
-     *  before answering. Off by default. Honored only by a preset with the
-     *  switch ([OpenAiPreset.thinkingSwitch]), whose every request carries
-     *  this state explicitly; the other presets ignore it. The flag stays
-     *  on the record across a preset change, so a user who returns to
-     *  DeepSeek finds the switch as they left it. A record written before
-     *  the field existed has no key and decodes as off. */
-    val thinking: Boolean = false,
+    /** The user's last pick on the config page's thinking row. Never read
+     *  raw: what it means depends on the preset and the model, so every
+     *  reader resolves it through [ReasoningControls] (a pick the current
+     *  model doesn't offer reads as that model's start state). The pick
+     *  stays on the record across a model or preset change, so it is
+     *  waiting where it applies again. A record written before the field
+     *  existed has no key and decodes as [ReasoningLevel.UNSET]. */
+    val reasoning: ReasoningLevel = ReasoningLevel.UNSET,
+    /** What the provider's own catalog last reported about the thinking of
+     *  [ReportedThinking.model] (DeepSeek, OpenRouter and Claude publish it;
+     *  see [ThinkingCatalog]). [ReasoningControls] reads it only while that
+     *  is this instance's model. Written only by
+     *  [OnlineServiceMutations.applyReportedThinking], with what
+     *  [ReportedThinkingRefresher] asked; null until a report arrives. */
+    val reportedThinking: ReportedThinking? = null,
 ) {
     /** What this instance's service costs to start, and so whether it takes
      *  a key ([AccountRequirement.requiresKey]): its preset's for an

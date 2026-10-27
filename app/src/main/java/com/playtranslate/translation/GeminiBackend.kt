@@ -15,6 +15,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
@@ -69,6 +70,11 @@ class GeminiBackend(
     private val keyProvider: () -> String?,
     private val enabledProvider: () -> Boolean,
     private val modelProvider: () -> String,
+    /** Extra fields inside `generationConfig`, chosen per model: the
+     *  instance's thinking config as [ReasoningControls] sends it, or
+     *  nothing ([OnlineBackendFactory.generationConfigExtrasFor]). Both
+     *  paths merge it beside their own fields. */
+    private val generationConfigExtras: (String) -> Map<String, JsonElement> = { emptyMap() },
     private val usageTracker: UsageTracker,
     private val cooldownState: CooldownState,
     private val client: OkHttpClient = defaultClient(),
@@ -151,7 +157,10 @@ class GeminiBackend(
                         putJsonArray("parts") { addJsonObject { put("text", user) } }
                     }
                 }
-                putJsonObject("generationConfig") { put("temperature", 0.2) }
+                putJsonObject("generationConfig") {
+                    put("temperature", 0.2)
+                    generationConfigExtras(model).forEach { (name, value) -> put(name, value) }
+                }
             }.toString()
 
             val request = Request.Builder()
@@ -275,6 +284,7 @@ class GeminiBackend(
                 put("temperature", 0.2)
                 put("responseMimeType", "application/json")
                 put("responseSchema", responseSchema)
+                generationConfigExtras(model).forEach { (name, value) -> put(name, value) }
             }
         }.toString()
 

@@ -20,6 +20,7 @@ import com.playtranslate.translation.MlKitBackend
 import com.playtranslate.translation.OnlineBackendFactory
 import com.playtranslate.translation.OnlineServiceMutations
 import com.playtranslate.translation.OnlineServiceStore
+import com.playtranslate.translation.ReportedThinkingRefresher
 import com.playtranslate.translation.QwenMnnBackend
 import com.playtranslate.translation.Qwen35Mnn2bBackend
 import com.playtranslate.translation.TranslationBackendRegistry
@@ -191,6 +192,11 @@ class PlayTranslateApplication : Application() {
             )
         )
         OnlineServiceMutations.applyOnlineOrder()
+        // What each service's provider reports about its model's thinking,
+        // asked in the background through the backends just registered,
+        // wherever a report is missing, about another model or a day old.
+        ReportedThinkingRefresher.init(appScope)
+        ReportedThinkingRefresher.refreshAllIfNeeded()
         // The frame readers and their router, for every consumer of the
         // FrameReader seam (the service, the drag lookup, the camera and
         // import tools); after the cloud service, whose cooldown the router

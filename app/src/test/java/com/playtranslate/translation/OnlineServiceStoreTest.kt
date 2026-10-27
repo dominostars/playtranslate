@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.BuildConfig
 import com.playtranslate.Prefs
 import com.playtranslate.security.SecretCodec
+import kotlinx.serialization.json.JsonObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -208,28 +209,106 @@ class OnlineServiceStoreTest {
         assertEquals(AccountRequirement.NONE, bili.account)
     }
 
-    /** The Thinking switch persists on the record, and a record written
-     *  before the field existed (no key in its JSON) decodes as off: the
-     *  default every DeepSeek instance now starts from. */
-    @Test fun `thinking round trips and an older record decodes with it off`() {
+    /** The thinking pick persists on the record. A record written before
+     *  the field existed (no key in its JSON) decodes as UNSET, which
+     *  every control reads as its start state, and so does a level name a
+     *  later build adds. */
+    @Test fun `the thinking pick round trips and older or unknown values decode as UNSET`() {
         suppressBakedDeeplKey()
         sp().edit().putString(
             OnlineServiceStore.KEY_INSTANCES,
             """[{"id":"deepseek","type":"OPENAI","enabled":true,"preset":"DEEPSEEK","model":"deepseek-v4-flash"},""" +
+                """{"id":"future","type":"OPENAI","enabled":true,"preset":"OPENAI","reasoning":"XHIGH"},""" +
                 """{"id":"lingva","type":"LINGVA","enabled":true}]""",
         ).commit()
         initStore()
         val older = OnlineServiceStore.byId("deepseek")!!
-        assertFalse(older.thinking)
+        assertEquals(ReasoningLevel.UNSET, older.reasoning)
+        assertEquals(ReasoningLevel.UNSET, OnlineServiceStore.byId("future")!!.reasoning)
+        assertEquals("the rest of the list still loads", 3, OnlineServiceStore.all().size)
 
-        OnlineServiceStore.update(older.copy(thinking = true))
-        assertTrue(sp().getString(OnlineServiceStore.KEY_INSTANCES, "")!!.contains("\"thinking\":true"))
+        OnlineServiceStore.update(older.copy(reasoning = ReasoningLevel.LOW))
+        assertTrue(sp().getString(OnlineServiceStore.KEY_INSTANCES, "")!!.contains("\"reasoning\":\"LOW\""))
         initStore()
-        assertTrue(OnlineServiceStore.byId("deepseek")!!.thinking)
+        assertEquals(ReasoningLevel.LOW, OnlineServiceStore.byId("deepseek")!!.reasoning)
         // The services-page toggle and the model picker copy the record, so
-        // neither drops the switch.
+        // neither drops the pick.
         OnlineServiceStore.setEnabled("deepseek", false)
-        assertTrue(OnlineServiceStore.byId("deepseek")!!.thinking)
+        OnlineServiceStore.update(OnlineServiceStore.byId("deepseek")!!.copy(model = "deepseek-v4-pro"))
+        assertEquals(ReasoningLevel.LOW, OnlineServiceStore.byId("deepseek")!!.reasoning)
+    }
+
+    /** What the provider reported about a model's thinking is written only
+     *  while the instance has that model, round-trips, and survives the
+     *  picker's copy of the record (inert for the new model, ready if the
+     *  user picks the old one back). */
+    @Test fun `a thinking report is stored only for the instance's model and round trips`() {
+        suppressBakedDeeplKey()
+        OnlineServiceStore.add(
+            OnlineServiceInstance(
+                id = "ds", type = ServiceType.OPENAI, enabled = true,
+                model = "deepseek-flash", preset = OpenAiPreset.DEEPSEEK,
+            ),
+        )
+        val facts = com.playtranslate.PtJson.lenient
+            .parseToJsonElement("""{"effort":{"supported_levels":["low","high"]}}""") as kotlinx.serialization.json.JsonObject
+
+        OnlineServiceStore.setReportedThinking("ds", ReportedThinking("deepseek-v4-pro", facts, fetchedAtMs = 5))
+        assertNull("about another model: not written", OnlineServiceStore.byId("ds")!!.reportedThinking)
+
+        val report = ReportedThinking("deepseek-flash", facts, fetchedAtMs = 5)
+        OnlineServiceStore.setReportedThinking("ds", report)
+        initStore()
+        assertEquals(report, OnlineServiceStore.byId("ds")!!.reportedThinking)
+
+        OnlineServiceStore.update(OnlineServiceStore.byId("ds")!!.copy(model = "deepseek-v4-pro"))
+        assertEquals(report, OnlineServiceStore.byId("ds")!!.reportedThinking)
+    }
+
+    /** DeepSeek's first Thinking switch saved `thinking: true`, which sent
+     *  thinking enabled at DeepSeek's default effort, high. Such a record
+     *  takes HIGH, the pick that sends that same request once DeepSeek has
+     *  reported its levels; one moved to another preset carries it too, read
+     *  as that preset's start state. Its off was the start state and needs
+     *  nothing, a pick of the record's own wins, and the next write drops the
+     *  old key. */
+    @Test fun `a saved Thinking switch on carries over as HIGH`() {
+        suppressBakedDeeplKey()
+        sp().edit().putString(
+            OnlineServiceStore.KEY_INSTANCES,
+            """[{"id":"on","type":"OPENAI","enabled":true,"preset":"DEEPSEEK","model":"deepseek-v4-flash","thinking":true},""" +
+                """{"id":"off","type":"OPENAI","enabled":true,"preset":"DEEPSEEK","thinking":false},""" +
+                """{"id":"moved","type":"OPENAI","enabled":true,"preset":"MISTRAL","thinking":true},""" +
+                """{"id":"picked","type":"OPENAI","enabled":true,"preset":"DEEPSEEK","thinking":true,"reasoning":"LOW"},""" +
+                """{"id":"lingva","type":"LINGVA","enabled":true}]""",
+        ).commit()
+        initStore()
+        val on = OnlineServiceStore.byId("on")!!
+        assertEquals(ReasoningLevel.HIGH, on.reasoning)
+        assertEquals(ReasoningLevel.UNSET, OnlineServiceStore.byId("off")!!.reasoning)
+        assertEquals(ReasoningLevel.HIGH, OnlineServiceStore.byId("moved")!!.reasoning)
+        assertEquals(ReasoningLevel.LOW, OnlineServiceStore.byId("picked")!!.reasoning)
+        assertEquals(5, OnlineServiceStore.all().size)
+
+        // Before DeepSeek reports its levels every request is thinking off;
+        // once it has, HIGH sends what the switch sent: thinking enabled,
+        // effort high.
+        fun extras(instance: OnlineServiceInstance) = kotlinx.serialization.json.JsonObject(
+            OnlineBackendFactory.requestExtrasFor(instance, "deepseek-v4-flash"),
+        ).toString()
+        assertEquals("""{"thinking":{"type":"disabled"}}""", extras(on))
+        val levels = com.playtranslate.PtJson.lenient
+            .parseToJsonElement("""{"effort":{"supported_levels":["low","high","max"]}}""") as kotlinx.serialization.json.JsonObject
+        assertEquals(
+            """{"thinking":{"type":"enabled"},"reasoning_effort":"high"}""",
+            extras(on.copy(reportedThinking = ReportedThinking("deepseek-v4-flash", levels, fetchedAtMs = 0))),
+        )
+
+        OnlineServiceStore.setEnabled("on", false)
+        val stored = sp().getString(OnlineServiceStore.KEY_INSTANCES, "")!!
+        assertFalse(stored, stored.contains("\"thinking\""))
+        initStore()
+        assertEquals(ReasoningLevel.HIGH, OnlineServiceStore.byId("on")!!.reasoning)
     }
 
     /** A build that predates a preset (a downgrade) decodes its name as
@@ -299,6 +378,36 @@ class OnlineServiceStoreTest {
 
         assertNull(OnlineServiceStore.byId("gemini"))
         assertFalse(sp().contains("gemini_api_key"))
+    }
+
+    /** The config page redraws its thinking row from this: every write to
+     *  the list tells each listener once, after the write has landed, and a
+     *  listener removed is told nothing more. */
+    @Test fun `every write tells the listeners, after it lands`() {
+        suppressBakedDeeplKey()
+        initStore()
+        val seen = mutableListOf<List<String>>()
+        val listener = { seen += OnlineServiceStore.all().map { it.id } }
+        OnlineServiceStore.addListener(listener)
+        try {
+            OnlineServiceStore.add(OnlineServiceInstance(id = "a", type = ServiceType.GEMINI, enabled = true))
+            OnlineServiceStore.update(OnlineServiceInstance(id = "a", type = ServiceType.GEMINI, enabled = true, model = "m"))
+            OnlineServiceStore.setEnabled("a", false)
+            OnlineServiceStore.setReportedThinking("a", ReportedThinking("m", JsonObject(emptyMap()), fetchedAtMs = 0))
+            OnlineServiceStore.reorder(listOf("lingva", "a"))
+            OnlineServiceStore.remove("a")
+        } finally {
+            OnlineServiceStore.removeListener(listener)
+        }
+        assertEquals(
+            listOf(
+                listOf("a", "lingva"), listOf("a", "lingva"), listOf("a", "lingva"),
+                listOf("a", "lingva"), listOf("lingva", "a"), listOf("lingva"),
+            ),
+            seen,
+        )
+        OnlineServiceStore.setEnabled("lingva", false)
+        assertEquals(6, seen.size)
     }
 
     // ── Key slots ─────────────────────────────────────────────────────────

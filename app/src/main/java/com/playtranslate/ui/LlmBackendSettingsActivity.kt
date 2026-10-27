@@ -32,6 +32,7 @@ import com.playtranslate.translation.OnlineServiceInstance
 import com.playtranslate.translation.OnlineServiceMutations
 import com.playtranslate.translation.OnlineServiceStore
 import com.playtranslate.translation.OpenAiPreset
+import com.playtranslate.translation.ReasoningLevel
 import com.playtranslate.translation.ServiceType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -59,15 +60,18 @@ import androidx.core.view.isGone
  * the instance's cell on the services page. A preset with its own picker
  * row shows neither: it is what the instance is.
  *
- * A provider whose requests can choose thinking on or off (DeepSeek,
- * [OpenAiPreset.thinkingSwitch]) gets a Thinking switch row under the key
- * section, off by default, saved as the instance's thinking flag. The row
- * follows the Provider dropdown like the rest of the preset chrome.
+ * Where the provider lets a request choose about thinking on the page's
+ * model ([LlmBackendConfig.reasoning]), a thinking row sits under the key
+ * section: a switch where the choice is off or on, segments where it is a
+ * level. It is saved as the instance's reasoning pick and follows the
+ * Provider dropdown like the rest of the preset chrome, and the provider's
+ * report: one that lands while the page is open redraws it
+ * ([refreshReasoningFromStore]).
  *
  * UX contract (unchanged from the legacy per-service screen):
  *  - The toolbar X discards in-progress edits. A recreation (rotation,
  *    theme change) keeps them: the typed key and URL through their own
- *    view state, the Provider pick and the Thinking flip through
+ *    view state, the Provider pick and the thinking pick through
  *    [onSaveInstanceState].
  *  - Save validates the typed key against the provider BEFORE
  *    persisting — against a shell backend built from the CURRENT page
@@ -83,6 +87,9 @@ import androidx.core.view.isGone
  */
 class LlmBackendSettingsActivity : AppCompatActivity() {
 
+    /** The page's provider read with the store: built again when the
+     *  provider changes ([applyPreset]) and when the store changes under it
+     *  ([refreshReasoningFromStore]). */
     private lateinit var config: LlmBackendConfig
     private lateinit var toolbar: MaterialToolbar
     private lateinit var etApiKey: EditText
@@ -90,9 +97,23 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
     private lateinit var progressSave: ProgressBar
     private lateinit var switchThinking: MaterialSwitch
 
+    /** The levels form of the thinking row, while it is the one showing. */
+    private var reasoningLevels: PillToggle? = null
+
+    /** A save is checking the key: the page is frozen ([setLoading]). */
+    private var loading = false
+
+    /** Registered with the store while the page is resumed ([onResume]). */
+    private val storeListener: () -> Unit = { refreshReasoningFromStore() }
+
     private lateinit var instanceId: String
     private lateinit var type: ServiceType
     private var preset = OpenAiPreset.OPENAI
+
+    /** The page's thinking pick: the record's until the user picks here,
+     *  and kept as is when the page's control doesn't offer it, so a pick
+     *  made for another provider or model is saved back unchanged. */
+    private var reasoning = ReasoningLevel.UNSET
 
     /** The instance's persisted custom URL (blank unless it was saved on
      *  the CUSTOM preset). Selecting Custom restores this rather than
@@ -143,7 +164,7 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         wireGetKeyLink(findViewById(R.id.rowGetKeyLink))
         wireProviderSection()
         applyKeyRequirement()
-        wireThinkingRow(existing, savedInstanceState)
+        wireReasoningRow(existing, savedInstanceState)
 
         btnSave = findViewById(R.id.btnSave)
         progressSave = findViewById(R.id.progressSave)
@@ -151,13 +172,30 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
     }
 
     /** The page's unsaved state that no view saves for itself: the
-     *  Provider pick and the Thinking flip. The key and URL fields save
+     *  Provider pick and the thinking pick. The key and URL fields save
      *  their own text by id; the switch row's layout turns that off
-     *  (every copy shares one id), so the host keeps it. */
+     *  (every copy shares one id) and the segments are rebuilt from the
+     *  pick, so the host keeps it. */
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putString(STATE_PRESET, preset.name)
-        outState.putBoolean(STATE_THINKING, switchThinking.isChecked)
+        outState.putString(STATE_REASONING, reasoning.name)
+    }
+
+    /** The page listens to the store while it is resumed, as the services
+     *  page listens to its preferences, and catches up on a write made while
+     *  it was away (in the get-key link's browser): a provider's report
+     *  about the record's model can land any time after launch or a change
+     *  to the service ([com.playtranslate.translation.ReportedThinkingRefresher]). */
+    override fun onResume() {
+        super.onResume()
+        OnlineServiceStore.addListener(storeListener)
+        refreshReasoningFromStore()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        OnlineServiceStore.removeListener(storeListener)
     }
 
     private fun wireGetKeyLink(row: View) {
@@ -205,11 +243,13 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         }
     }
 
-    /** The Thinking switch row, set from the page's own unsaved flip on a
-     *  recreation, else from the saved record (off for a new instance),
-     *  and shown only where the page's provider offers the choice
-     *  ([applyThinkingRow]). Nothing persists until Save. */
-    private fun wireThinkingRow(existing: OnlineServiceInstance?, savedInstanceState: Bundle?) {
+    /** The thinking row, set from the page's own unsaved pick on a
+     *  recreation, else from the saved record ([ReasoningLevel.UNSET] for
+     *  a new instance), and drawn for the page's provider and model
+     *  ([applyReasoningRow]). Nothing persists until Save. */
+    private fun wireReasoningRow(existing: OnlineServiceInstance?, savedInstanceState: Bundle?) {
+        reasoning = savedInstanceState?.getString(STATE_REASONING)?.let { ReasoningLevel.valueOf(it) }
+            ?: existing?.reasoning ?: ReasoningLevel.UNSET
         val row = findViewById<View>(R.id.rowThinking)
         row.findViewById<TextView>(R.id.tvRowTitle).setText(R.string.llm_backend_thinking_title)
         row.findViewById<TextView>(R.id.tvRowSubtitle).apply {
@@ -217,17 +257,55 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
             isVisible = true
         }
         switchThinking = row.findViewById(R.id.switchRowToggle)
-        switchThinking.isChecked = savedInstanceState?.getBoolean(STATE_THINKING)
-            ?: existing?.thinking ?: false
-        row.setOnClickListener { switchThinking.toggle() }
-        applyThinkingRow()
+        // The switch takes no taps of its own (settings_row_switch), so the
+        // row's tap is the one place the switch form makes a pick, and
+        // setting the switch from the pick never writes one.
+        row.setOnClickListener {
+            switchThinking.toggle()
+            reasoning = if (switchThinking.isChecked) ReasoningLevel.ON else ReasoningLevel.OFF
+        }
+        applyReasoningRow()
     }
 
-    /** The Thinking row shows exactly where the page's provider lets a
-     *  request choose; it reads the page config, so it moves with the
-     *  Provider dropdown. */
-    private fun applyThinkingRow() {
-        findViewById<View>(R.id.sectionThinking).isVisible = config.thinkingSwitch
+    /** The thinking row for the page's provider and model
+     *  ([LlmBackendConfig.reasoning]): gone where nothing can be chosen, the
+     *  switch where the choice is off or on, the segments where it is a
+     *  level. Either form shows the pick as the control reads it, so a pick
+     *  it doesn't offer shows as the control's start state. It reads the
+     *  page config, so it moves with the Provider dropdown and the store. */
+    private fun applyReasoningRow() {
+        val control = config.reasoning
+        val levels = control.choices.isNotEmpty() && !control.isSwitch
+        findViewById<View>(R.id.sectionReasoning).isVisible = control.choices.isNotEmpty()
+        findViewById<View>(R.id.rowThinking).isVisible = control.isSwitch
+        findViewById<View>(R.id.rowReasoningLevels).isVisible = levels
+        switchThinking.isChecked = control.resolve(reasoning) == ReasoningLevel.ON
+        reasoningLevels = if (levels) {
+            buildPillToggle(
+                container = findViewById(R.id.reasoningLevelsContainer),
+                options = control.choices.map { getString(levelLabel(it)) to it },
+                selected = control.resolve(reasoning),
+                onSelect = { reasoning = it },
+            )
+        } else null
+    }
+
+    /** The thinking row again for the store as it stands. The page's
+     *  provider and pick are its own and stay; only the record's model and
+     *  report are read again ([LlmBackendConfigs.forInstance]), so a report
+     *  that landed while the page was open gives it the row the provider
+     *  allows. Redrawn only when what the row shows changed, so a write that
+     *  leaves it alone keeps a segment's focus and press. Not while a save
+     *  is checking the key: the page is frozen then, and the answer either
+     *  finishes it or unfreezes it and comes back here ([setLoading]). */
+    private fun refreshReasoningFromStore() {
+        if (loading) return
+        val shown = config.reasoning
+        config = LlmBackendConfigs.forInstance(this, instanceId, type, preset)
+        val control = config.reasoning
+        if (control.choices != shown.choices || control.resolve(reasoning) != shown.resolve(reasoning)) {
+            applyReasoningRow()
+        }
     }
 
     /** Anchored dropdown of the presets the OpenAI row lists — a menu
@@ -267,7 +345,7 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         refreshProviderValue()
         applyPresetToUrlField()
         applyKeyRequirement()
-        applyThinkingRow()
+        applyReasoningRow()
     }
 
     private fun applyPresetToUrlField() {
@@ -293,13 +371,16 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
      *  button text is blanked + click suppressed and the centered
      *  ProgressBar overlays it, and every input on the page is disabled:
      *  the key field, the Provider row, the Custom URL field and the
-     *  Thinking row. The instance under validation was read off the page
-     *  when Save was tapped and the probe then suspends, so an edit landing
-     *  during it would show on screen and not be the thing saved, and a
-     *  provider switched mid-probe would be saved with a key validated
-     *  against the old one. The URL field's enabled state belongs to the
-     *  preset rule ([applyPresetToUrlField]): it comes back only on Custom. */
+     *  thinking row in either form. The instance under validation was read
+     *  off the page when Save was tapped and the probe then suspends, so an
+     *  edit landing during it would show on screen and not be the thing
+     *  saved, and a provider switched mid-probe would be saved with a key
+     *  validated against the old one. The URL field's enabled state belongs
+     *  to the preset rule ([applyPresetToUrlField]): it comes back only on
+     *  Custom. A report that lands during the check waits too: unfreezing
+     *  draws it ([refreshReasoningFromStore]). */
     private fun setLoading(loading: Boolean) {
+        this.loading = loading
         if (loading) {
             btnSave.text = ""
             progressSave.isVisible = true
@@ -314,6 +395,8 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.etBaseUrl).isEnabled = editable && preset == OpenAiPreset.CUSTOM
         findViewById<View>(R.id.rowThinking).isEnabled = editable
         switchThinking.isEnabled = editable
+        reasoningLevels?.setEnabled(editable)
+        if (editable) refreshReasoningFromStore()
     }
 
     private fun onSave() {
@@ -402,29 +485,25 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         }
     }
 
-    /** The instance this page would persist right now. Model carries
-     *  over from the saved record unless the preset changed — a
-     *  DeepSeek model id is meaningless against OpenAI and vice versa,
-     *  so a preset switch resets to the new preset's default. The
-     *  Thinking switch is saved as it stands, shown or not: a preset
-     *  without the switch ignores the flag, and the user's choice is
-     *  waiting when they switch back. */
-    private fun pageInstance(existing: OnlineServiceInstance?, enabled: Boolean): OnlineServiceInstance {
-        val model = when {
-            existing == null -> config.defaultModel
-            type == ServiceType.OPENAI && existing.preset != preset -> config.defaultModel
-            else -> existing.model
-        }
-        return OnlineServiceInstance(
+    /** The instance this page would persist right now. The model follows
+     *  [LlmBackendConfigs.pageModel], the rule the thinking row is drawn
+     *  for: the saved record's, reset to the new preset's default on a
+     *  preset switch. The thinking pick is saved as it stands, shown or
+     *  not: a control that doesn't offer it reads it as its start state,
+     *  and the pick is waiting where it applies again. The provider's
+     *  last report stays, bound to the model it is about; the save then
+     *  asks again ([OnlineServiceMutations.saveConfig]). */
+    private fun pageInstance(existing: OnlineServiceInstance?, enabled: Boolean): OnlineServiceInstance =
+        OnlineServiceInstance(
             id = instanceId,
             type = type,
             enabled = enabled,
-            model = model,
+            model = LlmBackendConfigs.pageModel(existing, type, preset),
             preset = if (type == ServiceType.OPENAI) preset else OpenAiPreset.OPENAI,
             baseUrl = customUrlOrNull() ?: "",
-            thinking = switchThinking.isChecked,
+            reasoning = reasoning,
+            reportedThinking = existing?.reportedThinking,
         )
-    }
 
     /** The user-entered URL, only meaningful on the CUSTOM preset. */
     private fun customUrlOrNull(): String? =
@@ -468,7 +547,20 @@ class LlmBackendSettingsActivity : AppCompatActivity() {
         const val EXTRA_TYPE = "service_type"
         const val EXTRA_PRESET = "openai_preset"
         private const val STATE_PRESET = "state_preset"
-        private const val STATE_THINKING = "state_thinking"
+        private const val STATE_REASONING = "state_reasoning"
+
+        /** A segment's label. [ReasoningLevel.ON] is a switch state and
+         *  [ReasoningLevel.UNSET] is never offered, so no segmented control
+         *  has either (ReasoningControlsTest pins it). */
+        @StringRes
+        internal fun levelLabel(level: ReasoningLevel): Int = when (level) {
+            ReasoningLevel.OFF -> R.string.llm_backend_reasoning_off
+            ReasoningLevel.MINIMAL -> R.string.llm_backend_reasoning_minimal
+            ReasoningLevel.LOW -> R.string.llm_backend_reasoning_low
+            ReasoningLevel.MEDIUM -> R.string.llm_backend_reasoning_medium
+            ReasoningLevel.HIGH -> R.string.llm_backend_reasoning_high
+            ReasoningLevel.UNSET, ReasoningLevel.ON -> error("$level is never a segment")
+        }
 
         /** The provider dropdown's items as (menu item id, preset): the
          *  presets the OpenAI row lists, each keyed by its ordinal, so an

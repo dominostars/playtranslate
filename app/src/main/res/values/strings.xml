@@ -1741,16 +1741,52 @@
          (e.g. "OpenAI"). -->
     <string name="llm_backend_get_key_title_fmt">Get a <xliff:g id="backend_name" example="OpenAI">%1$s</xliff:g> API key</string>
 
-    <!-- Title of the Thinking switch row on the DeepSeek config page, under
-         the "Get a DeepSeek API key" link. DeepSeek's models can reason in
-         hidden text before they answer; the app sends every request with
-         this off unless the switch is on. "Thinking mode" is DeepSeek's own
-         name for the feature. -->
+    <!-- Title of the Thinking switch row on an AI translation service's config
+         page (Claude, Mistral and older Gemini models), under the "Get an API
+         key" link. Shown where the model can only reason or not, with no
+         levels; the switch starts in the state the model already runs in.
+         The models can reason in hidden text before they answer. Pairs with
+         llm_backend_reasoning_title, the row shown instead where the choice
+         is a level: use the same word for "thinking" in both. -->
     <string name="llm_backend_thinking_title">Thinking mode</string>
     <!-- Subtitle under that switch: what turning it on does and what it
          costs. The reasoning is hidden text the model writes before its
-         answer, and DeepSeek bills it at its output-token rate. -->
+         answer, and the provider bills it at its output-token rate. -->
     <string name="llm_backend_thinking_subtitle">The model reasons before answering. Slower, and the reasoning is billed as output tokens.</string>
+
+    <!-- Title of the row that sets how much an AI translation service's model
+         reasons before it answers, on its config page, where the choice is a
+         level rather than on or off (OpenAI, DeepSeek, Gemini, Groq,
+         OpenRouter). The levels are a row of three or four segments under it
+         (llm_backend_reasoning_off through llm_backend_reasoning_high). Pairs with
+         llm_backend_thinking_title ("Thinking mode"): use the same word for
+         "thinking". -->
+    <string name="llm_backend_reasoning_title">Thinking level</string>
+    <!-- Subtitle under that title: what a higher level does and what it costs.
+         The reasoning is hidden text the model writes before its answer, billed
+         at the provider's output-token rate. -->
+    <string name="llm_backend_reasoning_subtitle">How much the model reasons before answering. Higher is slower, and the reasoning is billed as output tokens.</string>
+    <!-- Thinking level segment: no reasoning before the answer, the first
+         segment where a provider can turn reasoning off (DeepSeek, some Groq
+         and OpenRouter models), beside Low, Medium and High. One of up to four
+         segments sharing a phone-width row: keep it as short as the language
+         allows (the text shrinks before it is cut off, but about 8 characters
+         is the comfortable limit). -->
+    <string name="llm_backend_reasoning_off">Off</string>
+    <!-- Thinking level segment: the least reasoning a Gemini model offers,
+         below Low; Google's own name for the level. The first segment on those
+         models, beside Low, Medium and High. Same length limit as
+         llm_backend_reasoning_off. -->
+    <string name="llm_backend_reasoning_minimal">Minimal</string>
+    <!-- Thinking level segment: little reasoning. Same length limit as
+         llm_backend_reasoning_off. -->
+    <string name="llm_backend_reasoning_low">Low</string>
+    <!-- Thinking level segment: between Low and High. Same length limit as
+         llm_backend_reasoning_off. -->
+    <string name="llm_backend_reasoning_medium">Medium</string>
+    <!-- Thinking level segment: the most reasoning offered, the slowest and
+         the costliest. Same length limit as llm_backend_reasoning_off. -->
+    <string name="llm_backend_reasoning_high">High</string>
 
     <!-- Dropdown option in the model picker for entering a custom model
          id by hand. -->
