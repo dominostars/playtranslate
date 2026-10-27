@@ -759,45 +759,21 @@ fun buildAnkiModeToggle(
     container.addView(track)
 
     var currentIdx = initialIdx
-    var sliding = false
-    // Resize + reposition the indicator on every layout pass: the
-    // initial measurement (via `pillRow.post`) wasn't enough because
-    // the activity now handles config changes itself, so a rotation
-    // resizes the toolbar without recreating the toggle. We need the
-    // indicator width / translation to track the new pill width as
-    // pills resize. Guarded against no-op writes to avoid a relayout
-    // loop, and stood down while a click's slide runs — a stray layout
-    // pass would snap the indicator to its target mid-animation.
-    pillRow.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-        if (pills.isEmpty() || sliding) return@addOnLayoutChangeListener
-        val pillW = pills[0].width
-        if (pillW <= 0) return@addOnLayoutChangeListener
-        val targetX = (pillW * currentIdx).toFloat()
-        val curLp = indicator.layoutParams
-        if (curLp == null || curLp.width != pillW || indicator.translationX != targetX) {
-            indicator.layoutParams = FrameLayout.LayoutParams(pillW, pillH)
-            indicator.translationX = targetX
-            indicator.requestLayout()
-        }
-    }
+    // Placed from the laid-out segments on every layout, so a rotation that
+    // resizes the toolbar without recreating the toggle (the activity
+    // handles config changes itself) keeps it under its segment.
+    val slider = SegmentIndicator(indicator, pillRow, pillH, initialIdx)
 
     pills.forEachIndexed { idx, pill ->
         pill.setOnClickListener {
             if (idx == currentIdx) return@setOnClickListener
             currentIdx = idx
-            val pillW = pills[0].width
             // One motion, no flash: the labels crossfade between their
             // active/muted colors over the same 200ms the indicator slides
             // — an instant text swap reads as the highlight jumping to the
             // new segment before the pill arrives. The bold swap lands at
             // the end (binary anyway, and it re-renders the glyphs).
-            sliding = true
-            indicator.animate()
-                .translationX((pillW * idx).toFloat())
-                .setDuration(200)
-                .setInterpolator(android.view.animation.DecelerateInterpolator())
-                .withEndAction { sliding = false }
-                .start()
+            slider.slideTo(idx)
             val startColors = pills.map { it.currentTextColor }
             android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
                 duration = 200

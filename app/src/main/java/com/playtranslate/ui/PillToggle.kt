@@ -110,25 +110,14 @@ fun <T> buildPillToggle(
 
     container.addView(track)
 
-    pillRow.post {
-        if (pills.isEmpty()) return@post
-        val pillW = pills[0].width
-        indicator.layoutParams = FrameLayout.LayoutParams(pillW, pillH)
-        indicator.translationX = (pillW * selectedIdx).toFloat()
-        indicator.requestLayout()
-    }
+    val slider = SegmentIndicator(indicator, pillRow, pillH, selectedIdx)
 
     pills.forEachIndexed { idx, pill ->
         pill.setOnClickListener {
             if (idx == currentIdx) return@setOnClickListener
             currentIdx = idx
 
-            val pillW = pills[0].width
-            indicator.animate()
-                .translationX((pillW * idx).toFloat())
-                .setDuration(200)
-                .setInterpolator(android.view.animation.DecelerateInterpolator())
-                .start()
+            slider.slideTo(idx)
 
             pills.forEachIndexed { i, p ->
                 val active = i == idx
@@ -150,4 +139,70 @@ fun <T> buildPillToggle(
 class PillToggle internal constructor(private val segments: List<View>) {
     /** A disabled segment takes no taps; the indicator stays where it is. */
     fun setEnabled(enabled: Boolean) = segments.forEach { it.isEnabled = enabled }
+}
+
+/**
+ * The accent indicator of a sliding segmented control ([buildPillToggle],
+ * [buildAnkiModeToggle]): [indicator] sits in the track behind [row], both
+ * at the track's start edge, and is kept the size of the selected segment
+ * and under it after every layout of [row], so a resize that does not
+ * rebuild the control (a rotation in an activity that handles its own
+ * config changes) never strands it. Its offset comes from where the segment
+ * was laid out, not from its index: under RTL the row puts segment 0 at the
+ * right edge, which is also where the indicator rests.
+ */
+internal class SegmentIndicator(
+    private val indicator: View,
+    private val row: LinearLayout,
+    private val height: Int,
+    private var selected: Int,
+) {
+    /** A tap's slide is running; a layout pass meanwhile must not snap the
+     *  indicator to its target mid-animation. */
+    private var sliding = false
+
+    init {
+        // Zero wide until the first layout sizes it: a full-track accent
+        // would flash for a frame otherwise.
+        indicator.layoutParams = FrameLayout.LayoutParams(0, height, Gravity.TOP or Gravity.START)
+        row.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> if (!sliding) snap() }
+    }
+
+    /** Slides the indicator to segment [idx] (a tap). */
+    fun slideTo(idx: Int) {
+        selected = idx
+        val segment = row.getChildAt(idx) ?: return
+        sliding = true
+        indicator.animate()
+            .translationX(offsetOf(segment))
+            .setDuration(200)
+            .setInterpolator(android.view.animation.DecelerateInterpolator())
+            .withEndAction {
+                sliding = false
+                snap()
+            }
+            .start()
+    }
+
+    /** Sizes the indicator to the selected segment and puts it under it.
+     *  Writes only what changed: a new size relayouts, and this runs on
+     *  every layout of [row]. */
+    private fun snap() {
+        val segment = row.getChildAt(selected) ?: return
+        if (segment.width <= 0) return
+        if (indicator.layoutParams.width != segment.width) {
+            indicator.layoutParams = FrameLayout.LayoutParams(
+                segment.width, height, Gravity.TOP or Gravity.START,
+            )
+        }
+        val target = offsetOf(segment)
+        if (indicator.translationX != target) indicator.translationX = target
+    }
+
+    /** The translationX that puts the indicator's start edge on
+     *  [segment]'s. The indicator rests at the row's start edge, so under
+     *  RTL it is right-aligned and reaches a segment by moving left. */
+    private fun offsetOf(segment: View): Float =
+        if (row.layoutDirection == View.LAYOUT_DIRECTION_RTL) (segment.right - row.width).toFloat()
+        else segment.left.toFloat()
 }
