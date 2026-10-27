@@ -96,7 +96,7 @@ class TtsVoiceActivity : AppCompatActivity() {
 
         findViewById<View>(R.id.headerVoices)
             .findViewById<TextView>(R.id.tvGroupTitle).text =
-            getString(R.string.tts_voices_section_header, lang.displayName().uppercase())
+            getString(R.string.tts_voices_section_header, lang.displayName())
 
         findViewById<MaterialButton>(R.id.btnSave).setOnClickListener {
             setResult(

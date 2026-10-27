@@ -1428,12 +1428,11 @@ class SentenceAnkiContentView(
         wordStyledViews.keys.filter { it in hidden && it !in selectedWords }
             .forEach { wordStyledViews.remove(it)?.destroy() }
         // Live count in the group header: the words that will be on the card.
-        wordsHeaderTitle.text = ctx
-            .getString(
-                R.string.anki_group_words_count,
-                words.count { it.word !in hidden || it.word in selectedWords },
-            )
-            .uppercase(Locale.ROOT)
+        // As written; the header style capitalizes it in the UI's language.
+        wordsHeaderTitle.text = ctx.getString(
+            R.string.anki_group_words_count,
+            words.count { it.word !in hidden || it.word in selectedWords },
+        )
     }
 
     private fun buildWordsLoadingRow(): View {

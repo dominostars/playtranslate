@@ -258,7 +258,7 @@ class AnkiCardTypePickerView(
         val inflater = LayoutInflater.from(ctx)
 
         val header = inflater.inflate(R.layout.settings_group_header, parent, false)
-        header.findViewById<TextView>(R.id.tvGroupTitle).text = title.uppercase()
+        header.findViewById<TextView>(R.id.tvGroupTitle).text = title
         parent.addView(header)
 
         val card = PtGroupCard(ctx)
@@ -446,8 +446,7 @@ class AnkiContentSourcePickerView(
         val inflater = LayoutInflater.from(ctx)
 
         val header = inflater.inflate(R.layout.settings_group_header, parent, false)
-        header.findViewById<TextView>(R.id.tvGroupTitle).text =
-            ctx.getString(titleRes).uppercase()
+        header.findViewById<TextView>(R.id.tvGroupTitle).text = ctx.getString(titleRes)
         parent.addView(header)
 
         val card = PtGroupCard(ctx)

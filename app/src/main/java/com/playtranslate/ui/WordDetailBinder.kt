@@ -1859,7 +1859,10 @@ class WordDetailBinder(
     private fun addGroupHeader(parent: LinearLayout, title: String, suffix: String? = null) {
         val header = LayoutInflater.from(ctx)
             .inflate(R.layout.settings_group_header, parent, false)
-        header.findViewById<TextView>(R.id.tvGroupTitle).text = title.uppercase(Locale.ROOT)
+        // As written: the header style capitalizes it in the UI's language
+        // (textAllCaps). Uppercasing here would apply the root locale's
+        // rules first, and Turkish «Fiil» would show as FIIL, not FİİL.
+        header.findViewById<TextView>(R.id.tvGroupTitle).text = title
         val badge = header.findViewById<TextView>(R.id.tvGroupBadge)
         if (!suffix.isNullOrBlank()) {
             badge.text = suffix

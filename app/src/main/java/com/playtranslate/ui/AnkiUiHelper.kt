@@ -107,8 +107,9 @@ fun ankiGroupHeader(parent: LinearLayout, title: String, suffix: String? = null)
     val ctx = parent.context
     val header = android.view.LayoutInflater.from(ctx)
         .inflate(R.layout.settings_group_header, parent, false)
-    header.findViewById<TextView>(R.id.tvGroupTitle).text =
-        title.uppercase(java.util.Locale.ROOT)
+    // As written: the header style capitalizes it in the UI's language
+    // (textAllCaps); a root-locale uppercase here would lose Turkish İ.
+    header.findViewById<TextView>(R.id.tvGroupTitle).text = title
     val badge = header.findViewById<TextView>(R.id.tvGroupBadge)
     if (!suffix.isNullOrBlank()) {
         badge.text = suffix

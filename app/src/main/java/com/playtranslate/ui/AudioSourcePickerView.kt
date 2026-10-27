@@ -124,7 +124,7 @@ class AudioSourcePickerView(
         // it as a permanently-empty "No results" row and querying it for nothing.
         AudioSourceRegistry.all().filter { it.serves(req.kind) }.forEach { source ->
             val header = inflater.inflate(R.layout.settings_group_header, sections, false)
-            header.findViewById<TextView>(R.id.tvGroupTitle).text = source.label(ctx).uppercase()
+            header.findViewById<TextView>(R.id.tvGroupTitle).text = source.label(ctx)
             sections.addView(header)
             // The global TTS speed lives inside the Text-to-speech section,
             // as its own cell above the voice list — the same cell Settings'

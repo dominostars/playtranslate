@@ -41,7 +41,6 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.shadows.ShadowToast
-import java.util.Locale
 
 /**
  * Pins the hidden-word cells of the sentence card's Words group
@@ -600,8 +599,9 @@ class SentenceAnkiHiddenRowsTest {
 
     private fun dp(v: Int): Int = (v * ctx.resources.displayMetrics.density).toInt()
 
+    /** The header's text as set; its style capitalizes it on screen. */
     private fun headerText(count: Int): String =
-        ctx.getString(R.string.anki_group_words_count, count).uppercase(Locale.ROOT)
+        ctx.getString(R.string.anki_group_words_count, count)
 
     private fun wordsHeader(fragment: HostFragment): TextView =
         fragment.requireView().descendants().filterIsInstance<TextView>()
