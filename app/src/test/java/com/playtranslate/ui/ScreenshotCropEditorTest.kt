@@ -5,11 +5,15 @@ import android.content.Context
 import android.graphics.RectF
 import android.os.Bundle
 import android.os.Looper
+import android.view.Display
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.test.core.app.ApplicationProvider
+import com.playtranslate.CaptureService
+import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.RegionEntry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,6 +26,7 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.android.controller.ServiceController
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
@@ -29,9 +34,10 @@ import javax.imageio.ImageIO
 /**
  * [ScreenshotCropEditor] fits the screenshot into its stage and confines
  * the drag box to it, so the fractions it reports are the image's; it
- * seeds the box from the crop that stands (and then offers 🗑), writes ✓
- * and 🗑 to the state and leaves it alone on ✕, closes exactly once, and
- * re-fits the frame when the stage is resized (the box keeps its
+ * seeds the box from the crop that stands (and then offers 🗑), else from a
+ * custom capture region (a full-screen or empty one keeps the default),
+ * writes ✓ and 🗑 to the state and leaves it alone on ✕, closes exactly
+ * once, and re-fits the frame when the stage is resized (the box keeps its
  * fractions). The screenshot is a real PNG (the decode reads its size).
  */
 @RunWith(RobolectricTestRunner::class)
@@ -46,8 +52,22 @@ class ScreenshotCropEditorTest {
 
     private val ctx: Context = ApplicationProvider.getApplicationContext()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var service: ServiceController<CaptureService>? = null
 
-    @After fun tearDown() = scope.cancel()
+    @After fun tearDown() {
+        scope.cancel()
+        service?.destroy()
+        service = null
+    }
+
+    /** A running capture service with [region] selected on the default display. */
+    private fun captureRegion(region: RegionEntry) {
+        val prefs = Prefs(ctx)
+        prefs.setRegionList(listOf(region))
+        prefs.setSelectedRegionIdForDisplay(Display.DEFAULT_DISPLAY, region.id)
+        service = Robolectric.buildService(CaptureService::class.java).create()
+        assertEquals(region, CaptureService.instance!!.activeRegion)
+    }
 
     /** A 200 x 100 screenshot in the capture cache. */
     private fun screenshot(): File {
@@ -112,10 +132,51 @@ class ScreenshotCropEditorTest {
     }
 
     @Test fun `without a crop the box is the default and there is no trash`() {
+        assertNull(CaptureService.instance)
         val s = show(stateFor(null))
         assertEquals(0.25f, s.drag.topFraction, 0f)
         assertEquals(0.75f, s.drag.rightFraction, 0f)
         assertEquals("✕ ✓", 2, s.bar.childCount)
+    }
+
+    @Test fun `without a crop the box starts on a custom capture region`() {
+        captureRegion(RegionEntry("", top = 0.6f, bottom = 0.95f, left = 0.05f, right = 0.9f))
+        val s = show(stateFor(null))
+        assertEquals(0.05f, s.drag.leftFraction, 1e-6f)
+        assertEquals(0.6f, s.drag.topFraction, 1e-6f)
+        assertEquals(0.9f, s.drag.rightFraction, 1e-6f)
+        assertEquals(0.95f, s.drag.bottomFraction, 1e-6f)
+        assertEquals("✕ ✓", 2, s.bar.childCount)
+    }
+
+    @Test fun `a full-screen capture region leaves the default box`() {
+        captureRegion(RegionEntry("", top = 0f, bottom = 1f))
+        val s = show(stateFor(null))
+        assertEquals(0.25f, s.drag.topFraction, 0f)
+        assertEquals(0.75f, s.drag.rightFraction, 0f)
+    }
+
+    @Test fun `an empty capture region leaves the default box`() {
+        captureRegion(RegionEntry("", top = 0.4f, bottom = 0.4f))
+        val s = show(stateFor(null))
+        assertEquals(0.25f, s.drag.topFraction, 0f)
+        assertEquals(0.75f, s.drag.rightFraction, 0f)
+    }
+
+    @Test fun `a crop that stands wins over the capture region`() {
+        captureRegion(RegionEntry("", top = 0.6f, bottom = 0.95f, left = 0.05f, right = 0.9f))
+        val s = show(stateFor(crop))
+        assertEquals(0.2f, s.drag.topFraction, 1e-6f)
+        assertEquals(0.9f, s.drag.rightFraction, 1e-6f)
+        assertEquals("✕ 🗑 ✓", 3, s.bar.childCount)
+    }
+
+    @Test fun `confirming the capture region's box crops to it`() {
+        captureRegion(RegionEntry("", top = 0.6f, bottom = 0.95f, left = 0.05f, right = 0.9f))
+        val state = stateFor(null)
+        val s = show(state)
+        s.bar.getChildAt(1).performClick()
+        assertEquals(ScreenshotCrop.of(0.05f, 0.6f, 0.9f, 0.95f), state.attachment!!.crop)
     }
 
     @Test fun `confirm writes the box to the state and closes once`() {

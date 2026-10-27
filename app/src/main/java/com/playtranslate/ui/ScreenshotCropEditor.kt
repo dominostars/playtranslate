@@ -16,6 +16,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import com.playtranslate.CaptureService
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
 import com.playtranslate.applyDialogEdgeToEdge
@@ -31,12 +32,13 @@ import java.io.File
  * The Anki screenshot crop editor: the card's screenshot on a black ground,
  * fitted, with the shared [RegionEditor] over it (the drag box confined to
  * the image, the ✕/🗑/✓ bar and the instruction pill). It writes to the
- * [AnkiScreenshotState] it edits: ✓ sets the crop (a box over the whole
- * image clears it), 🗑 (present only while a crop stands) clears it, ✕
- * leaves it. Every outcome then calls [onClose] once; the host takes the
- * editor down. One class for every host: the review sheets show it in a
- * dialog window ([showScreenshotCropDialog]), the floating workspace as a
- * page ([ScreenshotCropPage]).
+ * [AnkiScreenshotState] it edits: the box starts on the crop that stands,
+ * else on the capture region, else the editor's default; ✓ sets the crop (a
+ * box over the whole image clears it), 🗑 (present only while a crop
+ * stands) clears it, ✕ leaves it. Every outcome then calls [onClose] once;
+ * the host takes the editor down. One class for every host: the review
+ * sheets show it in a dialog window ([showScreenshotCropDialog]), the
+ * floating workspace as a page ([ScreenshotCropPage]).
  *
  * [view] is the stage (the frame and the drag box, full bleed); [controls]
  * is the chrome's layer over it, which a host pads for the insets its bars
@@ -125,7 +127,7 @@ internal class ScreenshotCropEditor(
         frame.set(f)
         val crop = state.attachment?.crop
         editor.show(
-            init = crop?.toRectF(),
+            init = (crop ?: captureRegion())?.toRectF(),
             instruction = R.string.anki_screenshot_crop_instruction,
             onCancel = { close() },
             onClear = if (crop != null) {
@@ -143,6 +145,14 @@ internal class ScreenshotCropEditor(
         // The drag box was added above the chrome; the chrome goes back on top.
         view.bringChildToFront(controls)
     }
+
+    /** Where the box starts while no crop stands: the capture region, as the
+     *  floating icon's region editor starts on it (a capture saves the whole
+     *  screen and the region is fractions of it). Null for a full-screen or
+     *  empty region ([ScreenshotCrop.of]) or with no capture service, which
+     *  leaves the editor's default box. */
+    private fun captureRegion(): ScreenshotCrop? =
+        CaptureService.instance?.activeRegion?.let { ScreenshotCrop.of(it.left, it.top, it.right, it.bottom) }
 
     private fun close() {
         if (closed) return
