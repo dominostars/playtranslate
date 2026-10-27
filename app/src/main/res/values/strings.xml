@@ -3390,7 +3390,7 @@
          while no client key is saved, where the other rows read "Account required":
          a one-line pitch of the server's translation (paid models included in the
          service). -->
-    <string name="pt_cloud_translate_row_subtitle_no_key">The best paid models, bundled in</string>
+    <string name="pt_cloud_translate_row_subtitle_no_key">The best paid translation models, bundled in</string>
     <!-- Label above the text field for the PlayTranslate Cloud client key, a
          password-like token the user was given. -->
     <string name="pt_cloud_key_label">Client key</string>

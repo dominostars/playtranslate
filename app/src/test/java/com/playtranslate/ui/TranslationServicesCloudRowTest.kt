@@ -218,7 +218,7 @@ class TranslationServicesCloudRowTest {
         val page = open()
         assertFalse(page.keyTail().isVisible)
         assertTrue(page.statusLine().isVisible)
-        assertEquals("The best paid models, bundled in", page.statusLine().text.toString())
+        assertEquals("The best paid translation models, bundled in", page.statusLine().text.toString())
     }
 
     /** No key saved: the switch looks live but shows off, whatever is
