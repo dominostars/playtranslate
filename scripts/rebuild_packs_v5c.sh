@@ -26,7 +26,7 @@ set -uo pipefail
 ROOT="/d/translate_app"
 REPO="dominostars/playtranslate-langpacks"
 BRANCH="ja-v5-keinf"
-BASE_SHA="e16e1b5298c4df2d5d24c8707ec2bac05e6936c7"
+BASE_SHA="71b83a13f718353d6d2814a1e04ade7473420be1"
 
 BUILD="local/packs-v5c"
 STAGE="$BUILD/stage"
