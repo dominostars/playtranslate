@@ -20,6 +20,7 @@ import com.playtranslate.cloud.PtCloudTestSupport
 import com.playtranslate.translation.CooldownCause
 import com.playtranslate.translation.CooldownState
 import com.playtranslate.translation.GroupTranslator
+import com.playtranslate.translation.KeyStatus
 import com.playtranslate.translation.TranslationBackendRegistry
 import kotlinx.coroutines.awaitCancellation
 import org.junit.After
@@ -46,16 +47,19 @@ import org.robolectric.android.controller.ActivityController
  * repaint from the service's change signal when flipped elsewhere, they are
  * the page's only switches and the client key the page's only text field
  * (the upload format, the item lines and the warm call are fixed, as is the
- * service's address), Save resets the service and starts a check (and a
- * first key turns both switches on), and the status row shows the check's
- * answer in its wording for each.
+ * service's address), Save checks the typed key with the server first and
+ * stores it only when the server accepts it, which resets the service,
+ * starts a health check and turns both switches on for a first key, while a
+ * refused key and one that could not be checked store and reset nothing and
+ * say why in an alert, and a blank Save clears the key with no check; and
+ * the status row shows the health check's answer in its wording for each.
  *
- * The client key is not asserted: the page's [Prefs] uses the AndroidKeyStore
- * codec, which a JVM test has none of (the key round trip is
- * PtCloudConfigTest's, on a fake codec). The health check never reaches the
- * service: every test answers it through
- * [PtCloudSettingsActivity.healthOverrideForTest], by default with a check
- * that never ends, which [tearDown] cancels with the page.
+ * A stored key is asserted through a fake codec installed on the service:
+ * the page's own [Prefs] uses the AndroidKeyStore codec, which a JVM test has
+ * none of. Neither check reaches the service: every test answers them through
+ * [PtCloudSettingsActivity.healthOverrideForTest] and
+ * [PtCloudSettingsActivity.keyCheckOverrideForTest], by default with checks
+ * that never end, which [tearDown] cancels with the page.
  */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudSettingsActivityTest {
@@ -69,12 +73,14 @@ class PtCloudSettingsActivityTest {
         clearPrefs()
         cooldown = CooldownState(null, PtCloudService.ID).also { PtCloudService.installForTest(it) }
         PtCloudSettingsActivity.healthOverrideForTest = { awaitCancellation() }
+        PtCloudSettingsActivity.keyCheckOverrideForTest = { awaitCancellation() }
     }
 
     @After fun tearDown() {
         controller?.pause()?.stop()?.destroy()
         controller = null
         PtCloudSettingsActivity.healthOverrideForTest = null
+        PtCloudSettingsActivity.keyCheckOverrideForTest = null
         // A flip reconciles the shared cache's routing identity.
         TranslationCache.shared.resetForTest()
         PtCloudService.installForTest(null)
@@ -100,8 +106,48 @@ class PtCloudSettingsActivityTest {
     private fun View.switch() = findViewById<MaterialSwitch>(R.id.switchRowToggle)
     private fun View.title() = findViewById<TextView>(R.id.tvRowTitle).text.toString()
     private fun PtCloudSettingsActivity.saveButton() = findViewById<MaterialButton>(R.id.btnCloudSave)
+    private fun PtCloudSettingsActivity.keyField() = findViewById<EditText>(R.id.etCloudKey)
     private fun PtCloudSettingsActivity.status() = findViewById<TextView>(R.id.tvCloudStatus).text.toString()
     private fun PtCloudSettingsActivity.cooldownLine() = findViewById<TextView>(R.id.tvCloudCooldown)
+
+    /** Every text on the page's window, an alert attached to it included. */
+    private fun PtCloudSettingsActivity.texts() =
+        window.decorView.allViews.filterIsInstance<TextView>().map { it.text.toString() }.toList()
+
+    /** Types [key] and taps Save. */
+    private fun PtCloudSettingsActivity.save(key: String) {
+        keyField().setText(key)
+        saveButton().performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    /** Save while its key check runs: the button blanked and disabled under
+     *  its spinner, the key field locked. */
+    private fun assertSaveBusy(page: PtCloudSettingsActivity) {
+        assertFalse(page.saveButton().isEnabled)
+        assertEquals("", page.saveButton().text.toString())
+        assertTrue(page.findViewById<View>(R.id.progressCloudSave).isVisible)
+        assertFalse(page.keyField().isEnabled)
+    }
+
+    private fun assertSaveFree(page: PtCloudSettingsActivity) {
+        assertTrue(page.saveButton().isEnabled)
+        assertEquals("Save", page.saveButton().text.toString())
+        assertFalse(page.findViewById<View>(R.id.progressCloudSave).isVisible)
+        assertTrue(page.keyField().isEnabled)
+    }
+
+    /** The service's settings on a fake codec, so a key can be stored and
+     *  read back (the page writes through the service). Returns its Prefs. */
+    private fun cloudPrefs(): Prefs =
+        PtCloudTestSupport.prefs(ctx).also { PtCloudService.installForTest(cooldown, PtCloudConfig(it)) }
+
+    /** Counts the page's health checks, each one never ending. */
+    private fun countHealthChecks(): () -> Int {
+        var count = 0
+        PtCloudSettingsActivity.healthOverrideForTest = { count++; awaitCancellation() }
+        return { count }
+    }
 
     // ── The two switches ──────────────────────────────────────────────────
 
@@ -259,21 +305,18 @@ class PtCloudSettingsActivityTest {
         assertEquals(listOf(page.ocrRow().switch(), page.translateRow().switch()), switches)
     }
 
-    /** The first key saved turns both switches on, through the service
-     *  ([PtCloudService.saveClientKey]); the rows show it from the change
-     *  signal, with no resume. The key is stored through a fake codec
-     *  installed on the service, since the page's own Prefs stores none. */
+    /** The first key saved, once the server accepts it, turns both switches
+     *  on, through the service ([PtCloudService.saveClientKey]); the rows
+     *  show it from the change signal, with no resume. */
     @Test fun `Save with a first key turns both switches on and live, shown at once, and a cleared key turns them off and disabled`() {
-        val cloudPrefs = PtCloudTestSupport.prefs(ctx)
-        PtCloudService.installForTest(cooldown, PtCloudConfig(cloudPrefs))
+        val cloudPrefs = cloudPrefs()
+        PtCloudSettingsActivity.keyCheckOverrideForTest = { KeyStatus.Ok }
         val page = open()
         assertFalse(page.ocrRow().switch().isEnabled)
         assertFalse(page.ocrRow().switch().isChecked)
         assertFalse(page.translateRow().switch().isChecked)
 
-        page.findViewById<EditText>(R.id.etCloudKey).setText(PtCloudTestSupport.KEY)
-        page.saveButton().performClick()
-        shadowOf(Looper.getMainLooper()).idle()
+        page.save(PtCloudTestSupport.KEY)
 
         assertEquals(PtCloudTestSupport.KEY, cloudPrefs.ptCloudClientKey)
         assertTrue(cloudPrefs.ptCloudOcrEnabled)
@@ -282,9 +325,7 @@ class PtCloudSettingsActivityTest {
         assertTrue(page.ocrRow().switch().isChecked)
         assertTrue(page.translateRow().switch().isChecked)
 
-        page.findViewById<EditText>(R.id.etCloudKey).setText("")
-        page.saveButton().performClick()
-        shadowOf(Looper.getMainLooper()).idle()
+        page.save("")
 
         assertFalse(cloudPrefs.ptCloudOcrEnabled)
         assertFalse(cloudPrefs.ptCloudTranslateEnabled)
@@ -301,17 +342,138 @@ class PtCloudSettingsActivityTest {
         assertEquals(listOf(R.id.etCloudKey), fields)
     }
 
-    @Test fun `Save resets the service and starts a check`() {
+    @Test fun `a key the server accepts is stored, resetting the service and starting a health check, with Save free again`() {
+        val cloudPrefs = cloudPrefs()
         recordCooldown()
+        val healthChecks = countHealthChecks()
+        val checked = mutableListOf<String>()
+        PtCloudSettingsActivity.keyCheckOverrideForTest = { checked += it; KeyStatus.Ok }
         val page = open()
-        page.saveButton().performClick()
-        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("the resume's", 1, healthChecks())
 
+        page.save("  ${PtCloudTestSupport.KEY}  ")
+
+        assertEquals("the key checked is the trimmed key", listOf(PtCloudTestSupport.KEY), checked)
+        assertEquals(PtCloudTestSupport.KEY, cloudPrefs.ptCloudClientKey)
         assertNull(PtCloudService.unavailableUntil())
         assertFalse(page.cooldownLine().isVisible)
+        assertEquals(2, healthChecks())
         assertEquals("Checking", page.status())
-        assertFalse(page.saveButton().isEnabled)
-        assertTrue(page.findViewById<View>(R.id.progressCloudSave).isVisible)
+        assertSaveFree(page)
+    }
+
+    /** Save's busy state belongs to its key check: nothing is stored or
+     *  reset until the server answers, and the health check a resume starts
+     *  meanwhile leaves the busy state alone. */
+    @Test fun `while the key check runs Save is busy and the field locked, nothing is stored or reset, and a resume keeps it so`() {
+        val cloudPrefs = cloudPrefs()
+        recordCooldown()
+        val checked = mutableListOf<String>()
+        PtCloudSettingsActivity.keyCheckOverrideForTest = { checked += it; awaitCancellation() }
+        val page = open()
+
+        page.save(PtCloudTestSupport.KEY)
+
+        assertEquals(listOf(PtCloudTestSupport.KEY), checked)
+        assertSaveBusy(page)
+        assertEquals("", cloudPrefs.ptCloudClientKey)
+        assertFalse(cloudPrefs.ptCloudOcrEnabled)
+        assertNotNull("nothing reset", PtCloudService.unavailableUntil())
+
+        controller!!.pause().resume()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertSaveBusy(page)
+        assertEquals("one check, still running", 1, checked.size)
+        assertEquals("", cloudPrefs.ptCloudClientKey)
+    }
+
+    /** A refused key over a stored one: the stored key, its switches and
+     *  the cooldown stay as they were, the alert says why, and the typed
+     *  text stays in the field for another try. */
+    @Test fun `a key the server refuses is not stored, and an alert says so`() {
+        val cloudPrefs = cloudPrefs()
+        cloudPrefs.ptCloudClientKey = PtCloudTestSupport.KEY
+        cloudPrefs.ptCloudOcrEnabled = true
+        recordCooldown()
+        PtCloudSettingsActivity.keyCheckOverrideForTest = { KeyStatus.Invalid("HTTP 401") }
+        val page = open()
+
+        page.save("mistyped-key")
+
+        assertEquals(PtCloudTestSupport.KEY, cloudPrefs.ptCloudClientKey)
+        assertTrue(cloudPrefs.ptCloudOcrEnabled)
+        assertFalse(cloudPrefs.ptCloudTranslateEnabled)
+        assertNotNull("nothing reset", PtCloudService.unavailableUntil())
+        val texts = page.texts()
+        assertTrue(texts.toString(), "Key not saved" in texts)
+        assertTrue(
+            texts.toString(),
+            "PlayTranslate Cloud didn't accept this key. Check that you pasted all of it and try again." in texts,
+        )
+        assertEquals("mistyped-key", page.keyField().text.toString())
+        assertSaveFree(page)
+    }
+
+    /** A refusal that carries its own explanation (a real key whose account
+     *  has no membership) shows that explanation. */
+    @Test fun `a refusal with an explanation shows it in the alert`() {
+        val cloudPrefs = cloudPrefs()
+        PtCloudSettingsActivity.keyCheckOverrideForTest = {
+            KeyStatus.Invalid("HTTP 403", explanationRes = R.string.pt_cloud_key_no_membership)
+        }
+        val page = open()
+
+        page.save(PtCloudTestSupport.KEY)
+
+        assertEquals("", cloudPrefs.ptCloudClientKey)
+        val texts = page.texts()
+        assertTrue(texts.toString(), "This key's account has no active membership." in texts)
+        assertFalse(texts.any { it.contains("didn't accept") })
+    }
+
+    /** A key the server could not be asked about is not stored either:
+     *  only a valid key is saved (ruled 2026-10-27). */
+    @Test fun `a key that could not be checked is not stored, and an alert says so`() {
+        val cloudPrefs = cloudPrefs()
+        PtCloudSettingsActivity.keyCheckOverrideForTest = { KeyStatus.Unreachable }
+        val page = open()
+
+        page.save(PtCloudTestSupport.KEY)
+
+        assertEquals("", cloudPrefs.ptCloudClientKey)
+        assertFalse(cloudPrefs.ptCloudOcrEnabled)
+        assertFalse(cloudPrefs.ptCloudTranslateEnabled)
+        val texts = page.texts()
+        assertTrue(texts.toString(), "Key not saved" in texts)
+        assertTrue(
+            texts.toString(),
+            "PlayTranslate Cloud couldn't check this key just now. Make sure you're online and try again." in texts,
+        )
+        assertSaveFree(page)
+    }
+
+    @Test fun `a blank Save clears the key with no check, resets the service and starts a health check, with Save left free`() {
+        val cloudPrefs = cloudPrefs()
+        cloudPrefs.ptCloudClientKey = PtCloudTestSupport.KEY
+        cloudPrefs.ptCloudOcrEnabled = true
+        cloudPrefs.ptCloudTranslateEnabled = true
+        recordCooldown()
+        val healthChecks = countHealthChecks()
+        val checked = mutableListOf<String>()
+        PtCloudSettingsActivity.keyCheckOverrideForTest = { checked += it; KeyStatus.Ok }
+        val page = open()
+
+        page.save("   ")
+
+        assertTrue("a blank field is not checked", checked.isEmpty())
+        assertEquals("", cloudPrefs.ptCloudClientKey)
+        assertFalse(cloudPrefs.ptCloudOcrEnabled)
+        assertFalse(cloudPrefs.ptCloudTranslateEnabled)
+        assertNull(PtCloudService.unavailableUntil())
+        assertFalse(page.cooldownLine().isVisible)
+        assertEquals(2, healthChecks())
+        assertSaveFree(page)
     }
 
     // ── Status ────────────────────────────────────────────────────────────

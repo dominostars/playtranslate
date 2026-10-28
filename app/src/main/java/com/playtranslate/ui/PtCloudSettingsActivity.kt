@@ -18,6 +18,7 @@ import com.playtranslate.R
 import com.playtranslate.cloud.HealthStatus
 import com.playtranslate.cloud.PtCloudClient
 import com.playtranslate.cloud.PtCloudService
+import com.playtranslate.translation.KeyStatus
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -46,17 +47,24 @@ import kotlinx.coroutines.launch
  *    the services row does, so a switch flipped from another surface (the
  *    picker over the game, the key save below) shows here without the page
  *    repainting after a mutation itself.
- *  - Save persists the key through the service ([PtCloudService.saveClientKey]:
- *    the first key saved turns both switches on, a cleared key turns both
- *    off, a replacement leaves them), which resets the service, then checks
- *    health. Unlike the LLM page, the page stays open after Save: it is
- *    where the status shows.
+ *  - Save first asks the server whether the typed key works
+ *    ([PtCloudClient.checkKey], `GET /v1/key`, which the edge answers
+ *    alone) and persists it through the service
+ *    ([PtCloudService.saveClientKey]: the first key saved turns both
+ *    switches on, a replacement leaves them), which resets the service,
+ *    only when the server accepted it; then it checks health. A key the
+ *    server refused and a key it could not be asked about store nothing,
+ *    and an alert says which: only a valid key is saved (ruled 2026-10-27),
+ *    where the LLM page, whose alert this is, saves a key it could not
+ *    check. A blank field clears the key with no check, which turns both
+ *    switches off. Unlike the LLM page, the page stays open after Save: it
+ *    is where the status shows.
  *  - The status row is the server's answer to `GET /health`
  *    ([PtCloudClient.health], on the service's one client,
- *    [PtCloudService.client]), asked on resume and after Save; capture
- *    never asks it. Below it, while the service's cooldown runs, the line
- *    a Translation services row shows for its service's cooldown
- *    ([cooldownLine]).
+ *    [PtCloudService.client]), asked on resume and after Save stores or
+ *    clears a key; capture never asks it. Below it, while the service's
+ *    cooldown runs, the line a Translation services row shows for its
+ *    service's cooldown ([cooldownLine]).
  *
  * The key is not logged here.
  */
@@ -74,7 +82,7 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
     private lateinit var useForRows: List<UseForRow>
 
     /** The health check in flight. A new check cancels it, so only the
-     *  latest check writes the status row and ends Save's busy state. */
+     *  latest check writes the status row. */
     private var healthJob: Job? = null
 
     override fun onContentCreated(savedInstanceState: Bundle?) {
@@ -115,7 +123,7 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
 
     override fun onResume() {
         super.onResume()
-        checkHealth(fromSave = false)
+        checkHealth()
     }
 
     /** One "use for" switch row: its switch, what it reads and what it
@@ -166,18 +174,63 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         return UseForRow(row, toggle, isOn, write).also { it.render() }
     }
 
+    /** Checks the typed key, then stores it on the server's 200 (the class
+     *  doc's Save). Accepted residual (2026-10-27): the check runs on
+     *  lifecycleScope, so it outlives a pause, and its 200 stores the key
+     *  whatever happened meanwhile; a key cleared through a second copy of
+     *  this page (the overlay's launchers can push one over a stopped page)
+     *  while this page's check stalls comes back when the check answers,
+     *  both switches on. The window is one round trip, at most the client's
+     *  12 s call timeout, and the LLM page's validate-then-save has it too.
+     *  If it is ever seen, cancel the check in onStop; not a
+     *  [PtCloudService.changes] guard, which the resume health check's
+     *  cooldown drop also moves, so it would discard good saves that then
+     *  look accepted. */
     private fun onSave() {
-        PtCloudService.saveClientKey(etKey.text.toString().trim())
-        checkHealth(fromSave = true)
+        val key = etKey.text.toString().trim()
+        if (key.isEmpty()) {
+            // A cleared field clears the key: there is nothing to check.
+            PtCloudService.saveClientKey(key)
+            checkHealth()
+            return
+        }
+        setSaving(true)
+        // On lifecycleScope, so leaving the page mid-check cancels the check
+        // and nothing is stored, as on the LLM page.
+        lifecycleScope.launch {
+            val status = keyCheckOverrideForTest?.invoke(key) ?: PtCloudService.client.checkKey(key)
+            setSaving(false)
+            val service = getString(R.string.pt_cloud_display_name)
+            when (status) {
+                KeyStatus.Ok -> {
+                    PtCloudService.saveClientKey(key)
+                    checkHealth()
+                }
+                is KeyStatus.Invalid -> showKeyNotSaved(
+                    status.explanationRes?.let { getString(it) } ?: getString(R.string.pt_cloud_key_rejected, service),
+                )
+                KeyStatus.Unreachable -> showKeyNotSaved(getString(R.string.pt_cloud_key_unchecked, service))
+            }
+        }
     }
 
-    /** Asks the service's `GET /health` and shows the answer. [fromSave]
-     *  puts the Save button in its busy state until the answer lands (a
-     *  resume check leaves it alone, so a slow check never blocks a Save). */
-    private fun checkHealth(fromSave: Boolean) {
+    /** The alert for a Save that stored nothing, the LLM page's invalid-key
+     *  alert: [message] says whether the server refused the key or the key
+     *  could not be checked. */
+    private fun showKeyNotSaved(message: String) {
+        OverlayAlert.Builder(this)
+            .setTitle(getString(R.string.pt_cloud_key_not_saved_title))
+            .setMessage(message)
+            .addCancelButton(getString(R.string.btn_ok))
+            .show()
+    }
+
+    /** Asks the service's `GET /health` and shows the answer in the status
+     *  row. Save's busy state belongs to its key check alone ([onSave]), so
+     *  a check here, on resume or after a save, never ends it. */
+    private fun checkHealth() {
         healthJob?.cancel()
         tvStatus.setText(R.string.pt_cloud_status_checking)
-        setSaving(fromSave)
         healthJob = lifecycleScope.launch {
             val status = healthOverrideForTest?.invoke() ?: PtCloudService.client.health()
             tvStatus.text = healthStatusText(this@PtCloudSettingsActivity, status)
@@ -185,16 +238,17 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
             // stopped (a pod start is no gesture the app can see; this check
             // is where the app learns of it).
             if (status == HealthStatus.Running) PtCloudService.onHealthRunning()
-            setSaving(false)
         }
     }
 
-    /** While saving, the button is blanked and disabled and the spinner
-     *  sits on it, as on the LLM page. */
+    /** While Save's key check runs, the button is blanked and disabled and
+     *  the spinner sits on it, as on the LLM page, and the key field is
+     *  disabled, so the key saved is the key that was checked. */
     private fun setSaving(saving: Boolean) {
         btnSave.text = if (saving) "" else getString(R.string.btn_save)
         btnSave.isEnabled = !saving
         progressSave.isVisible = saving
+        etKey.isEnabled = !saving
     }
 
     /** The cooldown line: shown while the service's cooldown runs (an
@@ -214,6 +268,11 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
          *  a JVM test of the page never reaches the service. Never set in
          *  production. */
         @Volatile internal var healthOverrideForTest: (suspend () -> HealthStatus)? = null
+
+        /** Test seam: answers Save's key check in place of `GET /v1/key`, so
+         *  a JVM test of the page never reaches the service. Never set in
+         *  production. */
+        @Volatile internal var keyCheckOverrideForTest: (suspend (String) -> KeyStatus)? = null
 
         /** A "use for" row's alpha while no key is saved: the Settings
          *  sheet's dimming for a control that is currently out of reach. */

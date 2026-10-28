@@ -3414,6 +3414,22 @@
     <string name="pt_cloud_status_checking">Checking</string>
     <!-- Status row value before any health check has run on this page. -->
     <string name="pt_cloud_status_unchecked">Not checked</string>
+    <!-- Title of the alert shown on the PlayTranslate Cloud page when Save stored
+         nothing: PlayTranslate's server refused the client key just entered, or the
+         key could not be checked. The alert's message says which. -->
+    <string name="pt_cloud_key_not_saved_title">Key not saved</string>
+    <!-- Message of the "Key not saved" alert when PlayTranslate's server refused the
+         client key (unknown, revoked, or mistyped). %1$s = pt_cloud_display_name, a
+         product name. -->
+    <string name="pt_cloud_key_rejected"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> didn\'t accept this key. Check that you pasted all of it and try again.</string>
+    <!-- Message of the "Key not saved" alert when the client key is a real key but
+         the account it belongs to has no active membership, so the server would
+         refuse every request made with it. -->
+    <string name="pt_cloud_key_no_membership">This key\'s account has no active membership.</string>
+    <!-- Message of the "Key not saved" alert when the client key could not be
+         checked: no connection, or the server could not answer the check just now.
+         %1$s = pt_cloud_display_name, a product name. -->
+    <string name="pt_cloud_key_unchecked"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> couldn\'t check this key just now. Make sure you\'re online and try again.</string>
     <!-- Screen-reader label of the strip at the top of the floating icon's quick
          menu while PlayTranslate Cloud's OCR switch is on, when its wifi glyph
          shows: the device is online and the next capture would be read on

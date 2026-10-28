@@ -3,6 +3,7 @@ package com.playtranslate.cloud
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.Prefs
+import com.playtranslate.R
 import com.playtranslate.cloud.PtCloudTestSupport.BASE_URL
 import com.playtranslate.cloud.PtCloudTestSupport.CapturingExecutor
 import com.playtranslate.cloud.PtCloudTestSupport.KEY
@@ -10,6 +11,7 @@ import com.playtranslate.cloud.PtCloudTestSupport.onExecutor
 import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.translation.CooldownState
 import com.playtranslate.translation.HttpCallClock
+import com.playtranslate.translation.KeyStatus
 import com.playtranslate.translation.OnlineAttempt
 import com.playtranslate.translation.TranslationBackendRegistry
 import kotlinx.coroutines.runBlocking
@@ -44,9 +46,11 @@ import java.util.Collections
  * length whose `frame` is a JPEG file part and whose `meta` is a plain form
  * field (a file part named `meta` makes the server answer 422). Plus
  * `GET /health`'s status
- * mapping and `GET /v1/warm`: what it sends, when it sends nothing, and the
- * head start it hands the next frame's clock line. And a stored key no
- * request can carry, refused at the build on both routes.
+ * mapping; `GET /v1/key`: the key being saved as its bearer, its reading of
+ * the edge's answers, nothing recorded or reported, and a key no request can
+ * carry never sent; and `GET /v1/warm`: what it sends, when it sends nothing,
+ * and the head start it hands the next frame's clock line. And a stored key
+ * no request can carry, refused at the build on both routes.
  */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudRequestTest {
@@ -206,6 +210,93 @@ class PtCloudRequestTest {
         assertEquals(HealthStatus.Unreachable, runBlocking { client.health() })
         assertNull(PtCloudService.unavailableUntil())
         assertFalse(PtCloudService.isCoolingDown())
+    }
+
+    // ── GET /v1/key ────────────────────────────────────────────────────
+
+    /** The key the page is saving, where [KEY] is the one stored. */
+    private val typedKey = "typed-client-key"
+
+    private fun checkKey(
+        code: Int,
+        body: String,
+        seen: MutableList<Request> = mutableListOf(),
+        key: String = typedKey,
+    ): KeyStatus {
+        val client = PtCloudClient(
+            PtCloudTestSupport.config(ctx),
+            clientFactory = { PtCloudTestSupport.cannedClient(code, body, seen = seen) },
+        )
+        return runBlocking { client.checkKey(key) }
+    }
+
+    @Test fun `the key check is a GET on v1 key with the key being saved, not the stored one, and no body`() {
+        val seen = mutableListOf<Request>()
+        checkKey(200, """{"ok":true}""", seen)
+        val request = seen.single()
+        assertEquals("GET", request.method)
+        assertEquals("$BASE_URL/v1/key", request.url.toString())
+        assertEquals("Bearer $typedKey", request.header("Authorization"))
+        assertNull(request.body)
+    }
+
+    /** The edge's answers ("Key check" in docs/api.md): its 200 alone
+     *  accepts the key; a 401 and a 403 no_entitlement refuse it, the second
+     *  with its own explanation; every other answer leaves it unchecked. */
+    @Test fun `the key check reads the edge's answers`() {
+        assertEquals(KeyStatus.Ok, checkKey(200, """{"ok":true}"""))
+        val unknown = checkKey(401, """{"error":"unauthorized"}""")
+        assertTrue(unknown is KeyStatus.Invalid)
+        assertNull((unknown as KeyStatus.Invalid).explanationRes)
+        val noMembership = checkKey(403, """{"error":"no_entitlement"}""")
+        assertTrue(noMembership is KeyStatus.Invalid)
+        assertEquals(R.string.pt_cloud_key_no_membership, (noMembership as KeyStatus.Invalid).explanationRes)
+        val unchecked = listOf(
+            403 to """{"error":"forbidden"}""",
+            404 to """{"error":"not found"}""",
+            429 to """{"error":"rate limited"}""",
+            503 to """{"error":"auth unavailable"}""",
+            500 to "",
+        )
+        for ((code, body) in unchecked) assertEquals("$code", KeyStatus.Unreachable, checkKey(code, body))
+    }
+
+    @Test fun `a key check with no connection is unreachable`() {
+        val client = PtCloudClient(
+            PtCloudTestSupport.config(ctx),
+            clientFactory = { PtCloudTestSupport.failingClient(IOException("refused")) },
+        )
+        assertEquals(KeyStatus.Unreachable, runBlocking { client.checkKey(typedKey) })
+    }
+
+    /** Not a capture: whatever the check meets, the service's cooldown and
+     *  the error tracker hear nothing of it. Each of these answers records a
+     *  cooldown on a frame. */
+    @Test fun `no key check records a cooldown or reports an attempt`() {
+        val reported = mutableListOf<OnlineAttempt>()
+        TranslationBackendRegistry.onlineAttemptListener = { reported += it }
+        checkKey(401, """{"error":"unauthorized"}""")
+        checkKey(403, """{"error":"no_entitlement"}""")
+        checkKey(429, """{"error":"rate limited"}""")
+        checkKey(500, "")
+        assertNull(PtCloudService.unavailableUntil())
+        assertTrue(reported.isEmpty())
+    }
+
+    @Test fun `a key no request can carry is refused, and nothing is sent`() {
+        for (key in listOf("", "k\u0001ey")) {
+            val seen = mutableListOf<Request>()
+            assertTrue(key, checkKey(200, """{"ok":true}""", seen, key) is KeyStatus.Invalid)
+            assertTrue(key, seen.isEmpty())
+        }
+    }
+
+    @Test fun `the key check logs its status and never the key`() {
+        ShadowLog.clear()
+        checkKey(401, """{"error":"unauthorized"}""")
+        val lines = ShadowLog.getLogsForTag("PtCloud").map { it.msg }
+        assertTrue(lines.toString(), "key check status=401" in lines)
+        assertFalse(lines.toString(), lines.any { typedKey in it })
     }
 
     // ── GET /v1/warm ───────────────────────────────────────────────────

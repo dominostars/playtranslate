@@ -3,10 +3,13 @@ package com.playtranslate.cloud
 import android.os.SystemClock
 import android.util.Log
 import com.playtranslate.PtJson
+import com.playtranslate.R
 import com.playtranslate.net.PtHttp
+import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.translation.CooldownState
 import com.playtranslate.translation.HttpCallClock
 import com.playtranslate.translation.HttpTimingLogger
+import com.playtranslate.translation.KeyStatus
 import com.playtranslate.translation.OnlineAttempt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -97,9 +100,9 @@ sealed interface HealthStatus {
 
 /**
  * The HTTP client for PlayTranslate Cloud's `POST /v1/frame`,
- * `POST /v1/translate`, `GET /v1/warm` and `GET /health`, all under
- * [BASE_URL] (the contract: docs/api.md and docs/client-integration-brief.md
- * in the playtranslate-cloud repository).
+ * `POST /v1/translate`, `GET /v1/warm`, `GET /v1/key` and `GET /health`, all
+ * under [BASE_URL] (the contract: docs/api.md and
+ * docs/client-integration-brief.md in the playtranslate-cloud repository).
  *
  * On the frame route reporting is split at part 1. [postFrame] records the
  * cooldown and reports the [OnlineAttempt] of any failure before part 1
@@ -109,7 +112,9 @@ sealed interface HealthStatus {
  * attempt are its job, with [FrameResponse]'s stamps. On the translate route
  * [postTranslate] records every failure and reports nothing: its caller is a
  * registry backend ([PtCloudBackend]), and the registry reports an attempt
- * for every online backend it calls and records the success.
+ * for every online backend it calls and records the success. The settings
+ * page's two checks, [checkKey] and [health], record no cooldown and report
+ * nothing: neither is a capture.
  *
  * A cancelled call (the user released the hold, a newer capture superseded
  * this one) records nothing and reports nothing: it is not a fact about the
@@ -361,6 +366,55 @@ class PtCloudClient(
     }
 
     /**
+     * `GET {BASE_URL}/v1/key` ("Key check" in docs/api.md), for the cloud
+     * page's Save: whether the edge accepts [key], the key being saved (never
+     * the stored one), answered by the edge alone, so it answers the same
+     * with the service stopped. [KeyStatus.Ok] is its 200 alone. A refusal of
+     * the key, read as the frame route reads it ([classifiedAnswer]), is
+     * [KeyStatus.Invalid]: a 401 (a key unknown, revoked or of a disabled
+     * account), and a 403 `no_entitlement`, a real key whose account has no
+     * membership, with that as its explanation. So is a key no request can
+     * carry ([PtCloudConfig.isUsableKey]), which is never sent. Anything else
+     * is [KeyStatus.Unreachable], the key not checked: the edge's per-address
+     * 429, its 503 while its accounts database did not answer, any other
+     * answer, and a transport failure.
+     *
+     * Not a capture: the classification's cooldown is never applied and no
+     * attempt is reported. [CancellationException] when the caller was
+     * cancelled. Logs the status code or the failure's class, never the key
+     * or a body.
+     */
+    suspend fun checkKey(key: String): KeyStatus = withContext(Dispatchers.IO) {
+        if (!PtCloudConfig.isUsableKey(key)) return@withContext KeyStatus.Invalid("not a usable bearer value")
+        val url = BASE_URL.newBuilder().addPathSegments("v1/key").build()
+        val call = client.newCall(Request.Builder().url(url).bearer(key).get().build())
+        try {
+            blockingOn(call) { call.execute().use(::keyStatusOf) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IOException) {
+            if (!isActive) {
+                throw CancellationException("PlayTranslate Cloud key check cancelled").apply { initCause(e) }
+            }
+            Log.i(TAG, "key check unreachable (${e.javaClass.simpleName})")
+            KeyStatus.Unreachable
+        }
+    }
+
+    /** A key check's answer as [checkKey] reads it, logged by its status
+     *  code. The caller closes [response]. */
+    private fun keyStatusOf(response: Response): KeyStatus {
+        Log.i(TAG, "key check status=${response.code}")
+        if (response.code == 200) return KeyStatus.Ok
+        return when (classifiedAnswer(response).failure.kind) {
+            BackendFailureKind.AUTH -> KeyStatus.Invalid("HTTP ${response.code}")
+            BackendFailureKind.BILLING ->
+                KeyStatus.Invalid("HTTP ${response.code}", explanationRes = R.string.pt_cloud_key_no_membership)
+            else -> KeyStatus.Unreachable
+        }
+    }
+
+    /**
      * `GET {BASE_URL}/v1/warm` ("Pre-warm" in docs/api.md): wakes the radio,
      * the pooled connection, the edge's path to the origin and the origin's
      * translator connection before a frame is uploaded (the head start not
@@ -440,14 +494,16 @@ class PtCloudClient(
 
     /**
      * [key] as the bearer token, the one place every authenticated request
-     * ([frameRequest], [translateRequest], [warm]) sets it. Each request reads
-     * the key once ([PtCloudConfig.clientKey]) and hands it here, where it is
-     * checked with the router's own predicate ([PtCloudConfig.isUsableKey]):
-     * a key saved between the router's check and the build can fail it, and
-     * OkHttp's `header` would throw IllegalArgumentException for it, which
-     * nothing on a read's path or the warm's launch catches. It throws an
-     * IOException instead, which each route's failure path takes as a
-     * transport failure ([PtCloudErrors.classifyTransport]).
+     * ([frameRequest], [translateRequest], [warm], [checkKey]) sets it. Each
+     * request reads the stored key once ([PtCloudConfig.clientKey]; the key
+     * check takes the key being saved, judged by the same predicate first)
+     * and hands it here, where it is checked with the router's own predicate
+     * ([PtCloudConfig.isUsableKey]): a key saved between the router's check
+     * and the build can fail it, and OkHttp's `header` would throw
+     * IllegalArgumentException for it, which nothing on a read's path or the
+     * warm's launch catches. It throws an IOException instead, which each
+     * route's failure path takes as a transport failure
+     * ([PtCloudErrors.classifyTransport]).
      */
     private fun Request.Builder.bearer(key: String): Request.Builder {
         if (!PtCloudConfig.isUsableKey(key)) throw IOException("the stored client key is not a usable bearer value")
@@ -580,14 +636,14 @@ class PtCloudClient(
         val edgeHeader: String?,
     )
 
-    /** A non-200 answer as [Refused], classified by its status, its error
-     *  body (read up to [ERROR_BODY_LIMIT], never logged) and its
-     *  `Retry-After`. Both routes' one reading of an HTTP error. */
-    private fun httpRefusal(response: Response): Refused = Refused(
-        PtCloudErrors.classifyHttp(
-            response.code, response.peekBody(ERROR_BODY_LIMIT).string(), response.header("Retry-After"),
-        ),
-        "HTTP ${response.code}",
+    /** A non-200 answer as [Refused], classified by [classifiedAnswer]. */
+    private fun httpRefusal(response: Response): Refused = Refused(classifiedAnswer(response), "HTTP ${response.code}")
+
+    /** A non-200 answer classified by its status, its error body (read up
+     *  to [ERROR_BODY_LIMIT], never logged) and its `Retry-After`: the one
+     *  reading of an HTTP error, for both routes and the key check. */
+    private fun classifiedAnswer(response: Response): Classified = PtCloudErrors.classifyHttp(
+        response.code, response.peekBody(ERROR_BODY_LIMIT).string(), response.header("Retry-After"),
     )
 
     /** The server answered, but not with a usable part 1 or translate

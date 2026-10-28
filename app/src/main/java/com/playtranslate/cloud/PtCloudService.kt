@@ -266,7 +266,9 @@ object PtCloudService {
         resetForUserGesture(clearTranslations = true)
     }
 
-    /** Saves the client key, the cloud page's Save. The key's presence
+    /** Saves the client key: the cloud page's Save, with a key the server
+     *  accepted ([PtCloudClient.checkKey]; the page stores no other) or a
+     *  blank field, which clears it. The key's presence
      *  moves both switches together ([PtCloudConfig.hasKey] before and after
      *  the write): the first key turns both on, since the save is the
      *  sign-up moment and the bundle, reading and translating on the cloud,
