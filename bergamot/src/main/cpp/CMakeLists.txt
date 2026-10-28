@@ -44,6 +44,12 @@ set(WITH_TESTS                OFF CACHE BOOL "")
 # keeps descriptors out.
 add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-femulated-tls>)
 
+# Module-relative source paths in the binary: sentencepiece's and ruy's
+# CHECK/LOG macros keep __FILE__, which is otherwise the checkout's absolute
+# path and so names the build machine's home directory in every shipped APK.
+get_filename_component(MODULE_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../.. ABSOLUTE)
+add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-ffile-prefix-map=${MODULE_ROOT}/=>)
+
 add_subdirectory(${SLIMT_SRC} build-slimt)
 
 # --------------------------------------------------------------------------
