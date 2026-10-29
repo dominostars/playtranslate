@@ -1690,6 +1690,22 @@ class Prefs internal constructor(
         get() = readSecret(KEY_PT_CLOUD_CLIENT_KEY, "")
         set(v) = writeSecret(KEY_PT_CLOUD_CLIENT_KEY, v)
 
+    /** PlayTranslate Cloud's account record beside the client key, as JSON
+     *  ([com.playtranslate.cloud.PtCloudAccount]): the email the member
+     *  signed in with, whether the account is active, its dates, and when
+     *  the server last described it. Plain text, not a secret: it holds no
+     *  credential (the email is never logged). Null when none is stored.
+     *  Written only through
+     *  [com.playtranslate.cloud.PtCloudService.saveClientKey] and
+     *  [com.playtranslate.cloud.PtCloudService.onStoredKeyChecked], read
+     *  through [com.playtranslate.cloud.PtCloudConfig.account], which reads
+     *  none without a usable key. */
+    var ptCloudAccountJson: String?
+        get() = sp.getString(KEY_PT_CLOUD_ACCOUNT, null)
+        set(v) = sp.edit {
+            if (v == null) remove(KEY_PT_CLOUD_ACCOUNT) else putString(KEY_PT_CLOUD_ACCOUNT, v)
+        }
+
     /** Set to true after the user dismisses the target-pack migration dialog. */
     var targetPackMigrationDismissed: Boolean
         get() = sp.getBoolean(KEY_TARGET_PACK_MIGRATION_DISMISSED, false)
@@ -2003,11 +2019,12 @@ class Prefs internal constructor(
         private const val KEY_DEBUG_LOG_GROUPING             = "debug_log_grouping"
         private const val KEY_DEBUG_ANGLE_GATE_TARGET        = "debug_angle_gate_target"
         private const val KEY_DEBUG_LOG_TRACE                = "debug_log_trace"
-        /** Public so the settings sheet can [observe] the cloud's switches
-         *  and key for its summaries. */
+        /** Public so the settings sheet can [observe] the cloud's switches,
+         *  key and account record for its summaries. */
         const val KEY_PT_CLOUD_OCR_ENABLED                 = "pt_cloud_ocr_enabled"
         const val KEY_PT_CLOUD_TRANSLATE_ENABLED           = "pt_cloud_translate_enabled"
         const val KEY_PT_CLOUD_CLIENT_KEY                  = "pt_cloud_client_key"
+        const val KEY_PT_CLOUD_ACCOUNT                     = "pt_cloud_account"
         private const val KEY_PT_CLOUD_UPLOAD_CAP          = "pt_cloud_upload_long_side_cap"
         const val KEY_HOTKEY_TRANSLATION                   = "hotkey_translation"
         const val KEY_HOTKEY_FURIGANA                      = "hotkey_furigana"

@@ -38,9 +38,23 @@ enum class BackendFailureKind {
     /** No connection to the server: DNS, refused, TLS, dropped. */
     UNREACHABLE,
     /** The service is switched off: PlayTranslate Cloud's pod is stopped
-     *  and the edge answers 404 with no body. The server's edge answered,
-     *  so this is never the connection's fault. */
-    NOT_RUNNING;
+     *  and the edge answers 404 with no body, or 502 while it cannot reach
+     *  the host. The server's edge answered, so this is never the
+     *  connection's fault. */
+    NOT_RUNNING,
+    /** PlayTranslate Cloud's free trial ran out: the edge's 403
+     *  `no_entitlement` whose last ended entitlement is the trial. Only the
+     *  account fixes it (joining), so its own words, never "Out of
+     *  credits". */
+    TRIAL_ENDED,
+    /** PlayTranslate Cloud's account has no active membership: the edge's
+     *  403 `no_entitlement` for any other last entitlement, or none. Only the
+     *  account fixes it. */
+    MEMBERSHIP_INACTIVE,
+    /** PlayTranslate Cloud has closed for good: a `410 service_closed`, the
+     *  one answer that says the service will not come back by itself. The
+     *  operator's message is the cloud page's to show, never the pill's. */
+    CLOSED;
 
     /** True for the two kinds where the service never answered, which a
      *  dead network produces too. Only these can be the device's fault

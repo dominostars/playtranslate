@@ -1,9 +1,11 @@
 package com.playtranslate.cloud
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.annotation.VisibleForTesting
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
+import com.playtranslate.PtJson
 import com.playtranslate.TranslationCache
 import com.playtranslate.translation.GroupTranslator
 import com.playtranslate.language.SourceLangId
@@ -57,7 +59,12 @@ import kotlinx.coroutines.flow.update
  * cooldown ends or a gesture resets it. The user's gestures stay here:
  * [setOcrEnabled] (the OCR section's row, the OCR picker's cloud entry and
  * the cloud page), [setTranslateEnabled] (the Translation services row and
- * the cloud page), [saveClientKey] and [onHealthRunning].
+ * the cloud page), [saveClientKey], and the cloud page's two checks,
+ * [onHealthRunning] and [onStoredKeyChecked].
+ *
+ * The key and the account record beside it ([account]) are written here
+ * alone, by [saveClientKey] and [onStoredKeyChecked], so a record is only
+ * ever written beside a key that was stored and changes with it.
  *
  * The cooldown feeds the router's decision, which lives here ([refusal]) so
  * that every reader asks the same question: the router
@@ -77,17 +84,22 @@ object PtCloudService {
     private val changed = MutableStateFlow(0)
 
     /**
-     * Every change a gesture or the health check makes to the service's
-     * state, as a count: a switch ([setOcrEnabled], [setTranslateEnabled]),
-     * the key ([saveClientKey], which can turn both switches on) and the
-     * cooldown those reset, and the cooldown [onHealthRunning] drops. The
-     * surfaces that show the service, the cloud page, its row on the
-     * Translation services page and its row in the Capture & overlay page's
-     * OCR section, repaint from it while resumed, so the mutation announces
-     * itself and no caller of one has to repaint after it; and since a
-     * StateFlow replays its value to a new collector, each resume repaints
-     * too. A cooldown a failed call records is no gesture and is not
-     * counted: it shows at the next resume, as a store instance's does.
+     * Every change a gesture or the cloud page's checks make to the
+     * service's state, as a count: a switch ([setOcrEnabled],
+     * [setTranslateEnabled]), the key ([saveClientKey], which can turn both
+     * switches on, and which a refused stored key clears) and the cooldown
+     * those reset, and the cooldown [onHealthRunning] or an accepted key
+     * check ([onKeyAccepted]) drops. The surfaces that show the service, the
+     * cloud page, its row on the Translation services page and its row in
+     * the Capture & overlay page's OCR section, repaint from it while
+     * resumed, so the mutation announces itself and no caller of one has to
+     * repaint after it; and since a StateFlow replays its value to a new
+     * collector, each resume repaints too. A cooldown a failed call records
+     * is no gesture and is not counted: it shows at the next resume, as a
+     * store instance's does. Nor is a record a check rewrites with nothing
+     * else changed ([onStoredKeyChecked]): the page that asked repaints from
+     * its own answer, the Translation services row at its next resume, and
+     * the Settings sheet observes the record's pref.
      */
     val changes: StateFlow<Int> = changed.asStateFlow()
 
@@ -123,12 +135,14 @@ object PtCloudService {
      *  [testConfig] restores the stored settings. The [client] is not
      *  swapped: it is the process's one and sends to the real address, so a
      *  test that sends requests builds its own [PtCloudClient] on a canned
-     *  OkHttp client and hands it to the code under test. */
+     *  OkHttp client and hands it to the code under test. Forgets
+     *  [keyStoredAtMs], so no test inherits another's. */
     @VisibleForTesting
     @Synchronized
     fun installForTest(testState: CooldownState?, testConfig: PtCloudConfig? = null) {
         state = testState
         this.testConfig = testConfig
+        keyStoredAtMs = null
     }
 
     /** The service's cooldown. Throws until [init] has run. */
@@ -140,6 +154,23 @@ object PtCloudService {
      *  translation with nothing to rebuild. Throws until [init] has run. */
     val config: PtCloudConfig
         get() = testConfig ?: requireDefaultConfig()
+
+    /** The account record beside the stored key ([PtCloudConfig.account]):
+     *  null with no usable key, with none stored, or for one that does not
+     *  decode, each of which every reader shows as no details. */
+    val account: PtCloudAccount? get() = config.account
+
+    /**
+     * When a non-blank [saveClientKey] last stored its key
+     * ([SystemClock.elapsedRealtime]), null before any in this process: the
+     * moment a sign-in's key was stored, which the cloud page's check of the
+     * stored key reads to retry, once, a 401 that comes within about 10 s of
+     * it (a key just minted can answer 401 while the database's nearest
+     * replica catches up). Kept here, in memory, rather than on the page, so
+     * a recreated page or a second copy of it keeps the rule.
+     */
+    @Volatile var keyStoredAtMs: Long? = null
+        private set
 
     /** The one client, for every frame, warm and translate call, so a warm
      *  opens the connection both routes reuse (one connection pool). Built
@@ -266,32 +297,142 @@ object PtCloudService {
         resetForUserGesture(clearTranslations = true)
     }
 
-    /** Saves the client key: the cloud page's Save, with a key the server
-     *  accepted ([PtCloudClient.checkKey]; the page stores no other) or a
-     *  blank field, which clears it. The key's presence
-     *  moves both switches together ([PtCloudConfig.hasKey] before and after
-     *  the write): the first key turns both on, since the save is the
-     *  sign-up moment and the bundle, reading and translating on the cloud,
-     *  is what the user came for; a key cleared (a blank or unusable save
-     *  over a usable key) turns both off, since without a key the switches
-     *  are shown off and disabled everywhere and nothing may stay stored
-     *  behind them. Replacing one usable key with another leaves the
-     *  switches alone, so a route the user turned off stays off across a
-     *  key rotation after an auth error. A write the keystore refuses keeps
-     *  the old key ([Prefs.writeSecret]'s fail-closed rule), so `hasKey` is
-     *  unchanged and nothing flips. Then the reset every gesture makes, the
-     *  translation cache cleared with it: the old cooldown and errors
-     *  describe a configuration that is gone. Main thread. */
-    fun saveClientKey(key: String) {
+    /**
+     * Saves the client key, with the account record beside it: a sign-in's
+     * key with the record of its verify, the cloud page's Save with a key the
+     * server accepted ([PtCloudClient.checkKey]; the page stores no other)
+     * and the record of that check, or a blank key, which clears the key and
+     * the record together (Sign out, a blank Save, a stored key the server no
+     * longer accepts). Returns whether the key asked for is the key stored
+     * now ([PtCloudConfig.clientKey] read back; for a blank key, that none
+     * is): a write the keystore refuses keeps the old key
+     * ([Prefs.writeSecret]'s fail-closed rule), and a sign-in's key cannot
+     * be fetched again, so the caller draws a signed-in state only on true.
+     * Only a key that was stored gets [account] as its record (null clears
+     * the old one: a record never outlives the key it describes) and, when
+     * not blank, stamps [keyStoredAtMs]; a refused write leaves both as
+     * they were, beside the old key.
+     *
+     * The key's presence moves both switches together ([PtCloudConfig.hasKey]
+     * before and after the write): the first key turns both on, since the
+     * save is the sign-up moment and the bundle, reading and translating on
+     * the cloud, is what the user came for (a sign-in's key is a first key
+     * like a pasted one); a key cleared (a blank or unusable save over a
+     * usable key) turns both off, since without a key the switches are shown
+     * off and disabled everywhere and nothing may stay stored behind them.
+     * Replacing one usable key with another leaves the switches alone, so a
+     * route the user turned off stays off across a key rotation after an
+     * auth error. A refused write leaves `hasKey` unchanged, so nothing
+     * flips. Then the reset every gesture makes, the translation cache
+     * cleared with it: the old cooldown and errors describe a configuration
+     * that is gone. Main thread.
+     */
+    fun saveClientKey(key: String, account: PtCloudAccount? = null): Boolean {
         val prefs = config.prefs
         val hadKey = config.hasKey
         prefs.ptCloudClientKey = key
+        val asked = key.trim()
+        val stored = if (asked.isEmpty()) !config.hasKey else config.clientKey == asked
+        if (stored) {
+            writeAccount(account.takeIf { asked.isNotEmpty() })
+            if (asked.isNotEmpty()) keyStoredAtMs = SystemClock.elapsedRealtime()
+        }
         val hasKey = config.hasKey
         if (hadKey != hasKey) {
             prefs.ptCloudOcrEnabled = hasKey
             prefs.ptCloudTranslateEnabled = hasKey
         }
         resetForUserGesture(clearTranslations = true)
+        return stored
+    }
+
+    /**
+     * The cloud page's check of the stored key ([PtCloudClient.checkKey], on
+     * a resume or Check again) answered [check] for [checkedKey], the key the
+     * page read and sent. It acts only while [checkedKey] is a usable key
+     * ([PtCloudConfig.isUsableKey]) and still the stored one: a sign-out or
+     * another copy of the page can change the key during the round trip,
+     * and the answer describes a key that is gone; and a stored key that
+     * read back unusable (a decryption the keystore refused this once reads
+     * as blank) was never the key checked, so no answer for it, a
+     * [KeyCheck.Refused] least of all, may touch the key that is stored.
+     * Then, each answer decided here:
+     *  - [KeyCheck.Accepted] and [KeyCheck.Inactive]: the record is rewritten
+     *    from the answer ([PtCloudAccount.of]), with the email the record had
+     *    (a check does not carry it, and a pasted key's record has none); an
+     *    Accepted then clears the account cooldown it disproves
+     *    ([onKeyAccepted]).
+     *  - [KeyCheck.Refused], the HTTP 401 and the one answer that clears a
+     *    stored key: the key and the record are cleared as a sign-out clears
+     *    them ([saveClientKey] with a blank key), both switches off.
+     *  - [KeyCheck.Closed] and [KeyCheck.NotChecked]: nothing; the record
+     *    keeps what it last knew.
+     * Main thread.
+     */
+    fun onStoredKeyChecked(checkedKey: String, check: KeyCheck) {
+        if (!PtCloudConfig.isUsableKey(checkedKey) || config.clientKey != checkedKey) return
+        when (check) {
+            is KeyCheck.Accepted -> {
+                rewriteAccount(check)
+                onKeyAccepted()
+            }
+            is KeyCheck.Inactive -> rewriteAccount(check)
+            KeyCheck.Refused -> saveClientKey("")
+            is KeyCheck.Closed, KeyCheck.NotChecked -> Unit
+        }
+    }
+
+    /**
+     * A check of the stored key was accepted: the account behind it is
+     * entitled now. A cooldown whose cause that answer disproves
+     * ([clearedByAcceptedKey]: a refused key, an account with no membership)
+     * describes a state that is over; this is the way out of the ladder a
+     * 403 records ([CooldownAction.NoMembershipLadder]) once the member has
+     * joined. It is reset as a gesture resets it ([resetForUserGesture]: the
+     * cooldown and its ladders dropped, the pill's errors forgotten, the
+     * routing identity reconciled, the change counted on [changes]), with
+     * the translation cache kept, since the configuration did not change.
+     * Any other cooldown stays: a key check says nothing about a rate limit,
+     * a quota, or a service that is down or closed. Main thread.
+     */
+    fun onKeyAccepted() {
+        val cause = cooldown.unavailableCause() ?: return
+        if (!clearedByAcceptedKey(cause)) return
+        resetForUserGesture(clearTranslations = false)
+    }
+
+    /**
+     * Whether a check that accepted the stored key disproves a cooldown
+     * recorded for [cause], each cause decided here (a new one fails to
+     * compile until it is):
+     *  - AUTH, a refused key: yes, the edge accepts it now.
+     *  - BILLING, an account with no membership: yes, the check's 200 says
+     *    the account is entitled now.
+     *  - RATE_LIMITED, DAILY_QUOTA and MONTHLY_QUOTA: no, the check spends no
+     *    budget and says nothing of the limits.
+     *  - SERVER_ERROR, CONNECTION_FAILED and NOT_RUNNING: no, the edge
+     *    answers the check alone, whatever the state of the service behind
+     *    it.
+     *  - CLOSED: no; a closed service answers the check 410, and only a
+     *    Running health check says it reopened ([disprovedByRunning]).
+     */
+    private fun clearedByAcceptedKey(cause: CooldownCause): Boolean = when (cause) {
+        CooldownCause.AUTH, CooldownCause.BILLING -> true
+        CooldownCause.RATE_LIMITED, CooldownCause.DAILY_QUOTA, CooldownCause.MONTHLY_QUOTA,
+        CooldownCause.SERVER_ERROR, CooldownCause.CONNECTION_FAILED, CooldownCause.NOT_RUNNING,
+        CooldownCause.CLOSED -> false
+    }
+
+    /** The record rewritten from [answer], beside the stored key, keeping
+     *  the email the record had. */
+    private fun rewriteAccount(answer: KeyCheck.Account) =
+        writeAccount(PtCloudAccount.of(answer, config.account?.email, System.currentTimeMillis()))
+
+    /** [account] stored as the record ([Prefs.ptCloudAccountJson]), or the
+     *  record cleared for null. Only [saveClientKey] and
+     *  [onStoredKeyChecked] reach it, beside a key that is stored. */
+    private fun writeAccount(account: PtCloudAccount?) {
+        config.prefs.ptCloudAccountJson = account?.let { PtJson.lenient.encodeToString(PtCloudAccount.serializer(), it) }
     }
 
     /** The cloud page's health check found the service running (`GET /health`
@@ -316,14 +457,17 @@ object PtCloudService {
      * Whether a health check answering Running disproves a cooldown recorded
      * for [cause], each cause decided here (a new one fails to compile until
      * it is):
-     *  - NOT_RUNNING, an empty 404 (the pod stopped): yes, it runs now.
+     *  - NOT_RUNNING, an empty 404 (the pod stopped) or a 502 (the edge could
+     *    not reach the host, the pod booting say): yes, it runs now.
      *  - CONNECTION_FAILED, no connection or no answer in time: yes, the
      *    check just reached the service and had its answer.
-     *  - SERVER_ERROR, a 500, or the edge's 502 while the origin was
-     *    unreachable (the pod booting): yes, the origin answers with its OCR
-     *    ready. The translator's own server_error in a final part shares the
-     *    cause and is not what the check asks; dropping it costs at most one
-     *    translating frame whose final part fails again and records it anew.
+     *  - SERVER_ERROR, a 500, or a frame's 502 `ocr_unavailable`: yes, the
+     *    origin answers with its OCR ready. The translator's own server_error
+     *    in a final part shares the cause and is not what the check asks;
+     *    dropping it costs at most one translating frame whose final part
+     *    fails again and records it anew.
+     *  - CLOSED, a 410 `service_closed`: yes, the service is open again (a
+     *    closed service answers `/health` 410 too).
      *  - RATE_LIMITED, the edge's per-key limit or the translator's: no, the
      *    check takes no key and translates nothing.
      *  - DAILY_QUOTA and MONTHLY_QUOTA, the account's quota: no, for the same
@@ -332,7 +476,8 @@ object PtCloudService {
      *  - AUTH, a refused key: no, the check takes no key.
      */
     private fun disprovedByRunning(cause: CooldownCause): Boolean = when (cause) {
-        CooldownCause.NOT_RUNNING, CooldownCause.CONNECTION_FAILED, CooldownCause.SERVER_ERROR -> true
+        CooldownCause.NOT_RUNNING, CooldownCause.CONNECTION_FAILED, CooldownCause.SERVER_ERROR,
+        CooldownCause.CLOSED -> true
         CooldownCause.RATE_LIMITED, CooldownCause.DAILY_QUOTA, CooldownCause.MONTHLY_QUOTA,
         CooldownCause.BILLING, CooldownCause.AUTH -> false
     }

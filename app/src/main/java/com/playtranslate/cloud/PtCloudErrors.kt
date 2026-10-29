@@ -10,6 +10,7 @@ import com.playtranslate.translation.CooldownState
 import com.playtranslate.translation.classifyBackendFailure
 import com.playtranslate.translation.httpStatusFailure
 import com.playtranslate.translation.nextMidnightPacific
+import com.playtranslate.translation.parseIso8601
 import kotlinx.serialization.decodeFromString
 import java.io.IOException
 import java.io.InterruptedIOException
@@ -72,14 +73,15 @@ sealed interface CooldownAction {
             cooldown.recordLadderFailure(CooldownLadder.RateLimit, RATE_LIMITED)
     }
 
-    /** The service's own failure (a 500 or 502, or the translator's): the
-     *  RateLimit ladder, as a server error. */
+    /** The service's own failure (a 500, a 502 `ocr_unavailable`, or the
+     *  translator's): the RateLimit ladder, as a server error. */
     data object ServerErrorLadder : CooldownAction {
         override fun applyTo(cooldown: CooldownState) =
             cooldown.recordLadderFailure(CooldownLadder.RateLimit, SERVER_ERROR, CooldownCause.SERVER_ERROR)
     }
 
-    /** The service is switched off (its pod is stopped): the RateLimit
+    /** The service is switched off (its pod is stopped) or cannot be reached
+     *  behind the edge (a 502 that is not the OCR's): the RateLimit
      *  ladder, as not running. It does not start by itself, so every reader
      *  (a capture, a live tier, the camera's acquires) stays on the device
      *  until the ladder's step runs out, the user's gestures reset the
@@ -100,13 +102,27 @@ sealed interface CooldownAction {
     }
 
     /** The key is good but its account has no membership (the edge's 403
-     *  `no_entitlement`): the RateLimit ladder, as billing (the account
-     *  class, shown without a retry time, in the BILLING kind's existing
-     *  wording). Only the account fixes it; either switch and a key save reset
-     *  the cooldown, as for a bad key. */
+     *  `no_entitlement`, a trial that ended or a membership inactive): the
+     *  RateLimit ladder, as billing (the account class, shown without a retry
+     *  time). Only the account fixes it; either switch, a key save and an
+     *  accepted check of the stored key ([PtCloudService.onKeyAccepted])
+     *  reset the cooldown. */
     data object NoMembershipLadder : CooldownAction {
         override fun applyTo(cooldown: CooldownState) =
             cooldown.recordLadderFailure(CooldownLadder.RateLimit, NO_MEMBERSHIP, CooldownCause.BILLING)
+    }
+
+    /** The service has closed for good (a `410 service_closed`): the
+     *  RateLimit ladder, as closed (the account class, shown without a
+     *  retry time). It is the one answer that says the service will not come
+     *  back by itself, so every reader stays on the device until the ladder's
+     *  step runs out, a gesture resets the cooldown, or the cloud page's
+     *  health check finds the service running again
+     *  ([PtCloudService.onHealthRunning]). The server's message is never
+     *  recorded: it is the page's to show. */
+    data object ClosedLadder : CooldownAction {
+        override fun applyTo(cooldown: CooldownState) =
+            cooldown.recordLadderFailure(CooldownLadder.RateLimit, CLOSED, CooldownCause.CLOSED)
     }
 
     /** A retry time the server stated. */
@@ -127,6 +143,7 @@ sealed interface CooldownAction {
         const val NOT_RUNNING = "Not running"
         const val BAD_KEY = "Bad key"
         const val NO_MEMBERSHIP = "No membership"
+        const val CLOSED = "Closed"
     }
 }
 
@@ -175,9 +192,12 @@ sealed interface TranslationOutcome {
  * The one failure table for PlayTranslate Cloud, for both of its routes:
  * `POST /v1/frame` ([PtCloudClient.postFrame]) and `POST /v1/translate`
  * ([PtCloudClient.postTranslate], the registry backend [PtCloudBackend]'s
- * call). Every row of the plan's table is one branch of one of these pure
- * functions, so each is reachable by a test that asserts the kind, the
- * status code and the cooldown it records.
+ * call), and the one reading of the cloud page's calls: the key check
+ * ([classifyKeyCheck]), the health check ([classifyHealth]) and the two
+ * sign-in calls ([classifyRequestCode], [classifyVerifyCode]). Every row of
+ * the plan's tables is one branch of one of these pure functions, so each is
+ * reachable by a test that asserts what it maps to (on the two routes, the
+ * kind, the status code and the cooldown it records).
  *
  * On the frame route, before part 1 ([classifyHttp], [classifyTransport],
  * [badPart1]) the capture falls back to the device reader; after part 1
@@ -191,16 +211,19 @@ object PtCloudErrors {
     /**
      * A non-200 answer to `POST /v1/frame` or `POST /v1/translate`. Keyed on
      * the status code (the edge's and the origin's `error` strings differ),
-     * except 403, the one status two edge answers share:
+     * except where one status carries two answers, told apart by the body's
+     * `error` word ([EdgeError]):
      *  - 401: the client key is wrong or missing. The RateLimit ladder as a
      *    bad key ([CooldownAction.BadKeyLadder]): a key does not fix itself,
      *    and a read per capture or per camera scene while it holds would be
      *    waste; saving a key resets the cooldown.
-     *  - 403 whose body's `error` is `no_entitlement` ([EdgeError]): the key
-     *    is good but its account has no membership. BILLING on the RateLimit
-     *    ladder ([CooldownAction.NoMembershipLadder]), the account class. Any
-     *    other 403 (a body that is not that, or none) is [httpStatusFailure]
-     *    with no cooldown, as below.
+     *  - 403 `no_entitlement`: the key is good but its account has no active
+     *    entitlement. TRIAL_ENDED when the one that ended last is the trial
+     *    ([EdgeError.lastSource] is [SOURCE_TRIAL]), else MEMBERSHIP_INACTIVE
+     *    (another, none, or a Worker that sent none), both BILLING on the
+     *    RateLimit ladder ([CooldownAction.NoMembershipLadder]), the account
+     *    class. Any other 403 (a body that is not that, or none) is
+     *    [httpStatusFailure] with no cooldown, as below.
      *  - 404 with an empty body: the service is switched off (its pod is
      *    stopped and the edge passes the pod host's bare 404 through). The
      *    RateLimit ladder as not running ([CooldownAction.NotRunningLadder]):
@@ -213,8 +236,18 @@ object PtCloudErrors {
      *    text, which [PtCloudBackend] never sends; a 404 with a body is also
      *    the edge's answer for a route it does not serve yet), shown with
      *    its code.
+     *  - 410 `service_closed`: the service has closed for good. CLOSED on the
+     *    RateLimit ladder ([CooldownAction.ClosedLadder]), the account class;
+     *    the operator's message is not read here, since the pill never shows
+     *    it. Any other 410 is [httpStatusFailure] with no cooldown, as below:
+     *    a 410 is closed only with the server's word.
      *  - 429: the edge's per-key rate limit, with `Retry-After`.
-     *  - 500, 502: the service or its OCR failed, the RateLimit ladder.
+     *  - 500: the service failed, the RateLimit ladder.
+     *  - 502 `ocr_unavailable`: the OCR sidecar failed on a frame, the
+     *    RateLimit ladder as a server error. Any other 502 is the host being
+     *    off (the edge's `origin unreachable`, or the tunnel's own 502):
+     *    NOT_RUNNING on the RateLimit ladder, as an empty 404 is (ruled
+     *    2026-10-28).
      *  - 503: the pod is starting; waiting fixes it, so no cooldown.
      *  - anything else: [httpStatusFailure], no cooldown. That includes 411,
      *    the edge refusing an upload with no `Content-Length` (a multipart
@@ -223,27 +256,182 @@ object PtCloudErrors {
      */
     fun classifyHttp(code: Int, body: String, retryAfter: String?): Classified = when (code) {
         401 -> Classified(BackendFailure(BackendFailureKind.AUTH, code), CooldownAction.BadKeyLadder)
-        403 -> if (edgeError(body) == NO_ENTITLEMENT) {
-            Classified(BackendFailure(BackendFailureKind.BILLING, code), CooldownAction.NoMembershipLadder)
-        } else {
-            Classified(httpStatusFailure(code), CooldownAction.None)
+        403 -> {
+            val error = edgeError(body)
+            if (error?.error == NO_ENTITLEMENT) {
+                val kind = if (error.lastSource == SOURCE_TRIAL) {
+                    BackendFailureKind.TRIAL_ENDED
+                } else {
+                    BackendFailureKind.MEMBERSHIP_INACTIVE
+                }
+                Classified(BackendFailure(kind, code), CooldownAction.NoMembershipLadder)
+            } else {
+                Classified(httpStatusFailure(code), CooldownAction.None)
+            }
         }
         404 -> if (body.isBlank()) {
             Classified(BackendFailure(BackendFailureKind.NOT_RUNNING, code), CooldownAction.NotRunningLadder)
         } else {
             Classified(BackendFailure(BackendFailureKind.REJECTED, code), CooldownAction.None)
         }
+        410 -> if (errorWord(body) == SERVICE_CLOSED) {
+            Classified(BackendFailure(BackendFailureKind.CLOSED, code), CooldownAction.ClosedLadder)
+        } else {
+            Classified(httpStatusFailure(code), CooldownAction.None)
+        }
         413, 415, 422 -> Classified(BackendFailure(BackendFailureKind.REJECTED, code), CooldownAction.None)
         429 -> Classified(BackendFailure(BackendFailureKind.RATE_LIMITED, code), CooldownAction.RetryAfter(retryAfter))
-        500, 502 -> Classified(BackendFailure(BackendFailureKind.SERVER_ERROR, code), CooldownAction.ServerErrorLadder)
+        500 -> Classified(BackendFailure(BackendFailureKind.SERVER_ERROR, code), CooldownAction.ServerErrorLadder)
+        502 -> if (errorWord(body) == OCR_UNAVAILABLE) {
+            Classified(BackendFailure(BackendFailureKind.SERVER_ERROR, code), CooldownAction.ServerErrorLadder)
+        } else {
+            Classified(BackendFailure(BackendFailureKind.NOT_RUNNING, code), CooldownAction.NotRunningLadder)
+        }
         503 -> Classified(BackendFailure(BackendFailureKind.SERVER_ERROR, code), CooldownAction.None)
         else -> Classified(httpStatusFailure(code), CooldownAction.None)
     }
 
-    /** The edge's `error` string in [body], or null when [body] is not its
-     *  JSON error object. */
-    private fun edgeError(body: String): String? = try {
-        PtJson.lenient.decodeFromString<EdgeError>(body).error
+    /**
+     * `GET /v1/key`'s answer to the key it carried ("Key check" in
+     * docs/api.md), for the cloud page: the stored key's check on a resume
+     * and on Check again. [body] is read only for the three answers whose body
+     * says something:
+     *  - 200: [KeyCheck.Accepted] with the account's `source` and
+     *    `entitled_until`; a body without them (an older Worker, a failed
+     *    read) or that does not decode is `Accepted(null, null)`, since the
+     *    status alone proves the key good.
+     *  - 401: [KeyCheck.Refused], whatever the body.
+     *  - 403 `no_entitlement`: [KeyCheck.Inactive] with its `last_source` and
+     *    `ended_at`, both null when the Worker left them out.
+     *  - 410 `service_closed`: [KeyCheck.Closed] with the operator's message.
+     *  - anything else, a 403 or a 410 without its word included:
+     *    [KeyCheck.NotChecked], no verdict on the key.
+     * Dates that do not parse ([parseIso8601]) read as null.
+     */
+    fun classifyKeyCheck(code: Int, body: () -> String): KeyCheck = when (code) {
+        200 -> decoded<KeyOkBody>(body()).let { ok ->
+            KeyCheck.Accepted(ok?.source, parseIso8601(ok?.entitledUntil))
+        }
+        401 -> KeyCheck.Refused
+        403 -> edgeError(body())?.takeIf { it.error == NO_ENTITLEMENT }
+            ?.let { KeyCheck.Inactive(it.lastSource, parseIso8601(it.endedAt)) }
+            ?: KeyCheck.NotChecked
+        410 -> edgeError(body())?.takeIf { it.error == SERVICE_CLOSED }
+            ?.let { KeyCheck.Closed(it.message) }
+            ?: KeyCheck.NotChecked
+        else -> KeyCheck.NotChecked
+    }
+
+    /**
+     * `GET /health`'s answer ("Health" in docs/api.md), for the cloud page's
+     * status row: 200 [HealthStatus.Running], 503 [HealthStatus.Starting],
+     * 404 [HealthStatus.NotRunning], 502 [HealthStatus.Offline] (the edge
+     * cannot reach the host), a 410 `service_closed` [HealthStatus.Closed]
+     * with the operator's message, and anything else, a 410 without its word
+     * included, [HealthStatus.Other]. [body] is read for the 410 alone.
+     */
+    fun classifyHealth(code: Int, body: () -> String): HealthStatus = when (code) {
+        200 -> HealthStatus.Running
+        503 -> HealthStatus.Starting
+        404 -> HealthStatus.NotRunning
+        502 -> HealthStatus.Offline
+        410 -> edgeError(body())?.takeIf { it.error == SERVICE_CLOSED }
+            ?.let { HealthStatus.Closed(it.message) }
+            ?: HealthStatus.Other(code)
+        else -> HealthStatus.Other(code)
+    }
+
+    /**
+     * `POST /v1/signin`'s answer ("Sign-in" in docs/api.md), row for row:
+     * the 200's windows as [CodeRequestResult.Sent] ([SignInSentBody]'s
+     * defaults for a field it leaves out, and [SignInAnswer.Unavailable] with
+     * no retry time for a 200 that does not decode), the 429
+     * `too_many_codes` as [CodeRequestResult.TooManyCodes], the 503
+     * `mail_failed` as [CodeRequestResult.MailFailed], and every other answer
+     * as verify reads it too ([sharedAnswer]). [retryAfter] is the answer's
+     * `Retry-After` header ([retryAfterSeconds]).
+     */
+    fun classifyRequestCode(code: Int, body: String, retryAfter: String?): CodeRequestResult {
+        val error = edgeError(body)
+        val retryAfterS = retryAfterSeconds(retryAfter)
+        return when {
+            code == 200 -> decoded<SignInSentBody>(body)
+                ?.let { CodeRequestResult.Sent(it.expiresIn, it.resendAfter) }
+                ?: SignInAnswer.Unavailable(null)
+            code == 429 && error?.error == TOO_MANY_CODES -> CodeRequestResult.TooManyCodes(retryAfterS)
+            code == 503 && error?.error == MAIL_FAILED -> CodeRequestResult.MailFailed(retryAfterS)
+            else -> sharedAnswer(code, error, retryAfterS)
+        }
+    }
+
+    /**
+     * `POST /v1/signin/verify`'s answer ("Sign-in" in docs/api.md), row for
+     * row: the 200 as [VerifyResult.SignedIn] ([signedIn]), or
+     * [VerifyResult.BadAnswer] when it does not decode or its key is not a
+     * usable bearer value; the 400 `bad request` (a code or a label the app
+     * never sends) as [VerifyResult.BadAnswer]; the 401 `code_invalid` as
+     * [VerifyResult.CodeInvalid] with its tries left (0 when it says none);
+     * the 403 `account_disabled` as [VerifyResult.Disabled]; and every other
+     * answer as the request reads it too ([sharedAnswer]).
+     */
+    fun classifyVerifyCode(code: Int, body: String, retryAfter: String?): VerifyResult {
+        val error = edgeError(body)
+        val retryAfterS = retryAfterSeconds(retryAfter)
+        return when {
+            code == 200 -> signedIn(body) ?: VerifyResult.BadAnswer
+            code == 400 && error?.error == BAD_REQUEST -> VerifyResult.BadAnswer
+            code == 401 && error?.error == CODE_INVALID -> VerifyResult.CodeInvalid(error.attemptsLeft ?: 0)
+            code == 403 && error?.error == ACCOUNT_DISABLED -> VerifyResult.Disabled
+            else -> sharedAnswer(code, error, retryAfterS)
+        }
+    }
+
+    /** The rows the two sign-in routes share: a 410 `service_closed`, any 404
+     *  (a Worker from before the routes), any other 429 (the per-address
+     *  limit and the request's `cooldown`), a 400 `invalid_email`, a 503
+     *  `service_offline`, and anything else, the 503 `auth unavailable`, the
+     *  request's `daily_cap` and a 413 or 415 among them, as
+     *  [SignInAnswer.Unavailable] with its retry time when it has one. */
+    private fun sharedAnswer(code: Int, error: EdgeError?, retryAfterS: Int?): SignInAnswer = when {
+        code == 410 && error?.error == SERVICE_CLOSED -> SignInAnswer.Closed(error.message)
+        code == 404 -> SignInAnswer.NotAvailable
+        code == 429 -> SignInAnswer.RateLimited(retryAfterS)
+        code == 400 && error?.error == INVALID_EMAIL -> SignInAnswer.BadAddress
+        code == 503 && error?.error == SERVICE_OFFLINE -> SignInAnswer.Offline(retryAfterS)
+        else -> SignInAnswer.Unavailable(retryAfterS)
+    }
+
+    /** A verify 200 as [VerifyResult.SignedIn], or null when it does not
+     *  decode or its key is not a usable bearer value
+     *  ([PtCloudConfig.isUsableKey]). The account is read as the key check
+     *  reads it: `entitled` is [KeyCheck.Accepted] with the entitlement that
+     *  runs longest, else [KeyCheck.Inactive] with the one that ended last. */
+    private fun signedIn(body: String): VerifyResult.SignedIn? {
+        val ok = decoded<VerifyOkBody>(body) ?: return null
+        if (!PtCloudConfig.isUsableKey(ok.key)) return null
+        val account = if (ok.entitled) {
+            KeyCheck.Accepted(ok.source, parseIso8601(ok.entitledUntil))
+        } else {
+            KeyCheck.Inactive(ok.lastSource, parseIso8601(ok.endedAt))
+        }
+        return VerifyResult.SignedIn(ok.key, account)
+    }
+
+    /** A `Retry-After` header as the sign-in routes send it, whole seconds,
+     *  read as given; null when it is missing or not a number. */
+    fun retryAfterSeconds(header: String?): Int? = header?.toIntOrNull()
+
+    /** The `error` word of the edge's JSON error body, or null when [body]
+     *  is not one; the only part of a body a log line may carry (a sign-in
+     *  refusal's, [PtCloudClient]). */
+    fun errorWord(body: String): String? = edgeError(body)?.error
+
+    /** [body] as the edge's JSON error object, or null when it is not one. */
+    private fun edgeError(body: String): EdgeError? = decoded(body)
+
+    /** [body] decoded leniently as [T], or null when it does not decode. */
+    private inline fun <reified T> decoded(body: String): T? = try {
+        PtJson.lenient.decodeFromString<T>(body)
     } catch (e: IllegalArgumentException) {
         // kotlinx's SerializationException is one.
         null
@@ -373,6 +561,22 @@ object PtCloudErrors {
 
     /** The edge's 403 `error` for a key whose account has no membership. */
     private const val NO_ENTITLEMENT = "no_entitlement"
+
+    /** Any route's 410 `error` while the service is closed. */
+    private const val SERVICE_CLOSED = "service_closed"
+
+    /** A frame's 502 `error` when the OCR sidecar failed; any other 502 is
+     *  the host being off. */
+    private const val OCR_UNAVAILABLE = "ocr_unavailable"
+
+    /** The sign-in routes' `error` words that the tables tell apart. */
+    private const val TOO_MANY_CODES = "too_many_codes"
+    private const val MAIL_FAILED = "mail_failed"
+    private const val INVALID_EMAIL = "invalid_email"
+    private const val SERVICE_OFFLINE = "service_offline"
+    private const val BAD_REQUEST = "bad request"
+    private const val CODE_INVALID = "code_invalid"
+    private const val ACCOUNT_DISABLED = "account_disabled"
 
     private fun failed(failure: BackendFailure, action: CooldownAction) =
         TranslationOutcome.Failed(Classified(failure, action))

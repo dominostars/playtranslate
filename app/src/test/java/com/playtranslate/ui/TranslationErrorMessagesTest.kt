@@ -42,6 +42,9 @@ class TranslationErrorMessagesTest {
             BackendFailureKind.TIMEOUT to "Gemini: Not responding",
             BackendFailureKind.UNREACHABLE to "Gemini: Can't connect",
             BackendFailureKind.NOT_RUNNING to "Gemini: Not running",
+            BackendFailureKind.TRIAL_ENDED to "Gemini: Free trial ended",
+            BackendFailureKind.MEMBERSHIP_INACTIVE to "Gemini: Membership inactive",
+            BackendFailureKind.CLOSED to "Gemini: Service closed",
         )
         // Exhaustive: a new kind without a message fails here.
         assertEquals(BackendFailureKind.entries.toSet(), expected.keys)
@@ -61,5 +64,16 @@ class TranslationErrorMessagesTest {
             "PlayTranslate Cloud: Not running",
             service(BackendFailureKind.NOT_RUNNING, 404, "PlayTranslate Cloud"),
         )
+    }
+
+    /** Wording by kind, not by backend: the cloud's account and closed
+     *  states have kinds of their own, so no service's BILLING changes. */
+    @Test fun `TRIAL_ENDED, MEMBERSHIP_INACTIVE and CLOSED have their wording, and BILLING keeps Out of credits`() {
+        val cloud = "PlayTranslate Cloud"
+        assertEquals("PlayTranslate Cloud: Free trial ended", service(BackendFailureKind.TRIAL_ENDED, 403, cloud))
+        assertEquals("PlayTranslate Cloud: Membership inactive", service(BackendFailureKind.MEMBERSHIP_INACTIVE, 403, cloud))
+        assertEquals("PlayTranslate Cloud: Service closed", service(BackendFailureKind.CLOSED, 410, cloud))
+        assertEquals("Claude: Out of credits", service(BackendFailureKind.BILLING, 400, "Claude"))
+        assertEquals("OpenAI: Out of credits", service(BackendFailureKind.BILLING, 429, "OpenAI"))
     }
 }

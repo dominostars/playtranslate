@@ -3,10 +3,12 @@ package com.playtranslate.cloud
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.Prefs
+import com.playtranslate.PtJson
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -18,7 +20,8 @@ import org.robolectric.RobolectricTestRunner
  * encrypted slot round-trips (AndroidKeyStore is instrumented-only, so a
  * reversible codec stands in), and [PtCloudConfig] serves the defaults and
  * the cleaned-up values the client sends, refusing a stored key that
- * request building would throw on.
+ * request building would throw on; and the account record beside the key,
+ * read only with a usable key and as nothing when it does not decode.
  */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudConfigTest {
@@ -93,5 +96,28 @@ class PtCloudConfigTest {
         assertFalse(config(key = "key\u00A0123").hasKey)
         assertTrue(config(key = "pt_live-AbC.123~xyz").hasKey)
         assertTrue(config(key = "with space and\ttab").hasKey)
+    }
+
+    @Test fun `the account record is read beside a usable key, and never without one`() {
+        val record = PtCloudAccount(email = "player@example.com", active = true, source = "trial", entitledUntilMs = 5L, checkedAtMs = 1L)
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        prefs.ptCloudAccountJson = PtJson.lenient.encodeToString(PtCloudAccount.serializer(), record)
+        val config = PtCloudConfig(prefs)
+        assertNull("no key: no record, whatever is stored", config.account)
+        prefs.ptCloudClientKey = "abc\ndef"
+        assertNull("a key that is no key: no record", config.account)
+        prefs.ptCloudClientKey = "pt-key-123"
+        assertEquals(record, config.account)
+    }
+
+    @Test fun `no record, or one that does not decode, reads as none`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        prefs.ptCloudClientKey = "pt-key-123"
+        val config = PtCloudConfig(prefs)
+        assertNull(config.account)
+        for (json in listOf("", "not json", "[]", """{"email":"a@b.c"}""")) {
+            prefs.ptCloudAccountJson = json
+            assertNull(json, config.account)
+        }
     }
 }

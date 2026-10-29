@@ -1,6 +1,8 @@
 package com.playtranslate.cloud
 
 import com.playtranslate.Prefs
+import com.playtranslate.PtJson
+import kotlinx.serialization.decodeFromString
 
 /**
  * PlayTranslate Cloud's settings, read from [Prefs] at the moment they are
@@ -58,6 +60,25 @@ class PtCloudConfig(
      *  key failing this reads as no key, so the router keeps capture on the
      *  device, as it does when none is set. */
     val hasKey: Boolean get() = isUsableKey(clientKey)
+
+    /** The account record kept beside the key ([PtCloudAccount],
+     *  [Prefs.ptCloudAccountJson]), decoded leniently. Null unless [hasKey],
+     *  so no reader sees a record without its key; null too when none is
+     *  stored (a key saved before records) or the stored one does not
+     *  decode, which every reader takes as no details
+     *  ([PtCloudAccount.Standing.NO_DETAILS]). Reads the key, as [hasKey]
+     *  does. */
+    val account: PtCloudAccount?
+        get() {
+            if (!hasKey) return null
+            val json = prefs.ptCloudAccountJson ?: return null
+            return try {
+                PtJson.lenient.decodeFromString<PtCloudAccount>(json)
+            } catch (e: IllegalArgumentException) {
+                // kotlinx's SerializationException is one.
+                null
+            }
+        }
 
     companion object {
         /** True when [key] is usable as a bearer value: non-blank, and every

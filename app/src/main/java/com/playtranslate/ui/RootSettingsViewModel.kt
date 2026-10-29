@@ -12,6 +12,7 @@ import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.capturableDisplays
+import com.playtranslate.cloud.PtCloudAccount
 import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.HintTextKind
@@ -155,7 +156,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
     init {
         // Names + the Hotkeys / Appearance / Cloud digests react to their
         // backing prefs (source/target language, hotkey edits, accent/theme,
-        // the cloud switch and key). observe() seeds
+        // the cloud switches, key and account record). observe() seeds
         // on collect, so this also covers first render. The Translation digest
         // is polled in refresh() instead — it depends on non-pref state
         // (installed models, keys), so a pref signal can't carry it.
@@ -167,7 +168,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
                 Prefs.KEY_HOTKEY_CAPTURE_TAP, Prefs.KEY_HOTKEY_CHANGE_GAME_LANGUAGE_TAP,
                 Prefs.KEY_THEME_MODE, Prefs.KEY_ACCENT_NAME,
                 Prefs.KEY_PT_CLOUD_OCR_ENABLED, Prefs.KEY_PT_CLOUD_TRANSLATE_ENABLED,
-                Prefs.KEY_PT_CLOUD_CLIENT_KEY,
+                Prefs.KEY_PT_CLOUD_CLIENT_KEY, Prefs.KEY_PT_CLOUD_ACCOUNT,
             ).collect {
                 _state.value = _state.value.copy(
                     sourceName = resolveSourceName(),
@@ -186,7 +187,9 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Re-poll the state no pref signal carries: the Translation digest (real
      *  backend usability — installed models / keys / pair support), the Anki
-     *  permission + deck/card, and the TTS engine + voice. Called on resume. */
+     *  permission + deck/card, the TTS engine + voice, and the Cloud digest,
+     *  whose account standing moves with the clock (a trial's end passing).
+     *  Called on resume. */
     fun refresh() {
         val (online, offline) = translationDigests()
         _state.value = _state.value.copy(
@@ -194,6 +197,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
             translationOnline = online,
             translationOffline = offline,
             captureSummary = captureDigest(),
+            cloudSummary = cloudDigest(),
         )
         // The async writers below MUST resolve their value BEFORE touching
         // _state and write via update{}: `_state.value = _state.value.copy(
@@ -304,22 +308,43 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
      *  switches are shown off and disabled, whatever is stored), then the
      *  two switches as the service's settings read them
      *  ([PtCloudService.config], both already false outside debug builds).
-     *  All prefs, so it is observed, not polled. */
+     *  With a key, the account's standing comes first ([cloudStandingDigest]).
+     *  All prefs, so it is observed, and polled on resume too, since the
+     *  standing moves with the clock. */
     /** The pitch names both routes, so it serves the no-key cell (the sell,
      *  since the cell is the way to the page where the key goes) and the
      *  both-on cell alike (2026-10-25); the digest only departs from it
      *  to name the one route that is on, or to say both are off. */
     private fun cloudDigest(): String {
         val config = PtCloudService.config
+        if (!config.hasKey) return str(R.string.settings_pt_cloud_summary_pitch)
+        cloudStandingDigest(config.account)?.let { return it }
         return str(
             when {
-                !config.hasKey -> R.string.settings_pt_cloud_summary_pitch
                 !config.anyEnabled -> R.string.settings_pt_cloud_summary_off
                 config.ocrEnabled && config.translateEnabled -> R.string.settings_pt_cloud_summary_pitch
                 config.translateEnabled -> R.string.settings_pt_cloud_summary_translation_only
                 else -> R.string.settings_pt_cloud_summary_ocr_only
             },
         )
+    }
+
+    /** "Trial until {date}", "Trial ended" or "Membership inactive", from
+     *  the record kept beside the key ([PtCloudAccount.standing] now), never
+     *  from the server; null for the standings the cell leaves to the
+     *  switches: a membership, no details (no record, or one from a Worker
+     *  that sent no account), and a trial with no end date. */
+    private fun cloudStandingDigest(account: PtCloudAccount?): String? {
+        if (account == null) return null
+        val now = System.currentTimeMillis()
+        return when (account.standing(now)) {
+            PtCloudAccount.Standing.TRIAL -> account.entitledUntilMs?.let { until ->
+                str(R.string.settings_pt_cloud_summary_trial, CooldownTimeLabel.format(getApplication(), until, now))
+            }
+            PtCloudAccount.Standing.TRIAL_ENDED -> str(R.string.settings_pt_cloud_summary_trial_ended)
+            PtCloudAccount.Standing.INACTIVE -> str(R.string.settings_pt_cloud_summary_inactive)
+            PtCloudAccount.Standing.MEMBER, PtCloudAccount.Standing.NO_DETAILS -> null
+        }
     }
 
     // ── Capture digest (polled — live display / OCR state) ────────────────

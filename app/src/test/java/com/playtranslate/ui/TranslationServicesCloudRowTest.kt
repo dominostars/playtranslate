@@ -10,8 +10,10 @@ import androidx.core.view.isVisible
 import androidx.test.core.app.ApplicationProvider
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.playtranslate.PtJson
 import com.playtranslate.R
 import com.playtranslate.TranslationCache
+import com.playtranslate.cloud.PtCloudAccount
 import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.cloud.PtCloudTestSupport
 import com.playtranslate.translation.CooldownCause
@@ -208,6 +210,25 @@ class TranslationServicesCloudRowTest {
         assertTrue(page.keyTail().isVisible)
         assertEquals("Key ••••wxyz", page.keyTail().text.toString())
         assertFalse(page.statusLine().isVisible)
+    }
+
+    /** A member who signed in never saw a key: the account record's email
+     *  names the account in the tail's place. A pasted key's record has no
+     *  email, and keeps the tail. */
+    @Test fun `a stored key with an account's email shows the email in place of its tail`() {
+        prefs.ptCloudAccountJson = PtJson.lenient.encodeToString(
+            PtCloudAccount.serializer(),
+            PtCloudAccount(email = "player@example.com", active = true, source = "trial", entitledUntilMs = 5L, checkedAtMs = 1L),
+        )
+        val page = open()
+        assertTrue(page.keyTail().isVisible)
+        assertEquals("player@example.com", page.keyTail().text.toString())
+
+        controller?.pause()?.stop()?.destroy()
+        prefs.ptCloudAccountJson = PtJson.lenient.encodeToString(
+            PtCloudAccount.serializer(), PtCloudAccount(active = true, source = "manual", checkedAtMs = 1L),
+        )
+        assertEquals("Key ••••wxyz", open().keyTail().text.toString())
     }
 
     /** The row has no description slot: its one line under the title is the

@@ -36,7 +36,12 @@ enum class CooldownCause {
     NOT_RUNNING,
     /** The service refused the stored key: the account class, since only a
      *  new key fixes it. */
-    AUTH;
+    AUTH,
+    /** The service has closed for good (PlayTranslate Cloud's `410
+     *  service_closed`): the account class, shown without a retry time,
+     *  since nothing the device does reopens it and any "until X" would be
+     *  a false promise. */
+    CLOSED;
 
     /** Collapse to the user-facing message class. Users can't act
      *  differently on a 429 vs a 5xx vs a lingering network-ladder
@@ -47,7 +52,7 @@ enum class CooldownCause {
         get() = when (this) {
             RATE_LIMITED, SERVER_ERROR, CONNECTION_FAILED, NOT_RUNNING -> CooldownMessageClass.TRANSIENT
             DAILY_QUOTA, MONTHLY_QUOTA -> CooldownMessageClass.QUOTA
-            BILLING, AUTH -> CooldownMessageClass.ACCOUNT
+            BILLING, AUTH, CLOSED -> CooldownMessageClass.ACCOUNT
         }
 }
 

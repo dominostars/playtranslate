@@ -517,8 +517,11 @@ class PtCloudBackendTest {
         assertCooldown(now + 60_000, CooldownCause.AUTH, "Bad key")
     }
 
-    @Test fun `403 no_entitlement is BILLING on the rate-limit ladder, the account class`() {
-        assertEquals(BackendFailure(BackendFailureKind.BILLING, 403), http(403, """{"error":"no_entitlement"}""").failure)
+    @Test fun `403 no_entitlement is MEMBERSHIP_INACTIVE on the rate-limit ladder, the account class`() {
+        assertEquals(
+            BackendFailure(BackendFailureKind.MEMBERSHIP_INACTIVE, 403),
+            http(403, """{"error":"no_entitlement"}""").failure,
+        )
         assertCooldown(now + 60_000, CooldownCause.BILLING, "No membership")
         assertEquals(CooldownMessageClass.ACCOUNT, cooldown.unavailableCause()!!.messageClass)
     }

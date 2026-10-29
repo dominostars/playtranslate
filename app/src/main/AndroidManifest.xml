@@ -333,8 +333,10 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:theme="@style/Theme.PlayTranslate" />
 
-        <!-- PlayTranslate Cloud sub-page (switch, client key, server URL, status), launched from
-             Settings → Configure in debug builds and from the error pill's gear for a cloud error. -->
+        <!-- PlayTranslate Cloud sub-page (what the service is, sign-in and the account, Join, the two
+             switches, status), launched from Settings → Configure in debug builds and from the error
+             pill's gear for a cloud error. Rotation does not recreate it; a theme or locale change does,
+             and the pending sign-in survives that through the saved instance state. -->
         <activity
             android:name=".ui.PtCloudSettingsActivity"
             android:exported="false"

@@ -3,13 +3,10 @@ package com.playtranslate.cloud
 import android.os.SystemClock
 import android.util.Log
 import com.playtranslate.PtJson
-import com.playtranslate.R
 import com.playtranslate.net.PtHttp
-import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.translation.CooldownState
 import com.playtranslate.translation.HttpCallClock
 import com.playtranslate.translation.HttpTimingLogger
-import com.playtranslate.translation.KeyStatus
 import com.playtranslate.translation.OnlineAttempt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -85,7 +82,8 @@ class FrameResponse(
     val attemptStartedAtMs: Long,
 )
 
-/** `GET /health`, for the settings page only; capture never polls it. */
+/** `GET /health`, for the settings page only; capture never polls it. Each
+ *  answer read by [PtCloudErrors.classifyHealth]. */
 sealed interface HealthStatus {
     /** 200: ready. */
     data object Running : HealthStatus
@@ -93,16 +91,24 @@ sealed interface HealthStatus {
     data object Starting : HealthStatus
     /** 404: the service is switched off. */
     data object NotRunning : HealthStatus
+    /** 502: the edge cannot reach the host (no tunnel connector, or the
+     *  service behind it is down). */
+    data object Offline : HealthStatus
+    /** 410 `service_closed`: the service has closed for good; [message] is
+     *  the operator's text, for the page only. */
+    data class Closed(val message: String?) : HealthStatus
     /** No answer (DNS, connect, TLS, timeout). */
     data object Unreachable : HealthStatus
+    /** Any other answer, a 410 without the server's word included. */
     data class Other(val code: Int) : HealthStatus
 }
 
 /**
  * The HTTP client for PlayTranslate Cloud's `POST /v1/frame`,
- * `POST /v1/translate`, `GET /v1/warm`, `GET /v1/key` and `GET /health`, all
- * under [BASE_URL] (the contract: docs/api.md and
- * docs/client-integration-brief.md in the playtranslate-cloud repository).
+ * `POST /v1/translate`, `GET /v1/warm`, `GET /v1/key`, `GET /health` and the
+ * two sign-in calls, `POST /v1/signin` and `POST /v1/signin/verify`, all
+ * under [BASE_URL] (the contract: docs/api.md, docs/client-integration-brief.md
+ * and docs/client-signin-handoff.md in the playtranslate-cloud repository).
  *
  * On the frame route reporting is split at part 1. [postFrame] records the
  * cooldown and reports the [OnlineAttempt] of any failure before part 1
@@ -113,8 +119,10 @@ sealed interface HealthStatus {
  * [postTranslate] records every failure and reports nothing: its caller is a
  * registry backend ([PtCloudBackend]), and the registry reports an attempt
  * for every online backend it calls and records the success. The settings
- * page's two checks, [checkKey] and [health], record no cooldown and report
- * nothing: neither is a capture.
+ * page's calls, [checkKey], [health], [requestCode] and [verifyCode], record
+ * no cooldown, report nothing and retry nothing: none is a capture. The two
+ * sign-in calls carry no bearer: their routes take none, and the stored key
+ * must never ride along.
  *
  * A cancelled call (the user released the hold, a newer capture superseded
  * this one) records nothing and reports nothing: it is not a fact about the
@@ -123,10 +131,11 @@ sealed interface HealthStatus {
  * timeout is a failure (TIMEOUT), not the user's gesture.
  *
  * Logs carry the frame id the caller chose, status codes and names, byte,
- * text and group counts, sizes, timings and exception class names only;
- * never the key, the URL, a body, or recognized or translated text. Each
- * frame that reaches part 1 logs two clock lines ([PtCloudClocks]): one at
- * part 1 and one when the read after it ends, unless that read was
+ * text and group counts, sizes, timings and exception class names only, and
+ * on a sign-in refusal the server's `error` word; never the key, the URL, a
+ * body, recognized or translated text, or a sign-in's email, code or label.
+ * Each frame that reaches part 1 logs two clock lines ([PtCloudClocks]): one
+ * at part 1 and one when the read after it ends, unless that read was
  * cancelled; each translate call that was not cancelled logs one.
  */
 class PtCloudClient(
@@ -339,14 +348,21 @@ class PtCloudClient(
         return outcome
     }
 
-    /** `GET {BASE_URL}/health`, no auth. [HealthStatus.Unreachable] for a
+    /** `GET {BASE_URL}/health`, no auth, its answer read by
+     *  [PtCloudErrors.classifyHealth] (the body only on a 410, peeked up to
+     *  [ERROR_BODY_LIMIT] and never logged). [HealthStatus.Unreachable] for a
      *  transport failure; [CancellationException] when the caller was
-     *  cancelled. */
+     *  cancelled. Logs the status code or the failure's class. */
     suspend fun health(): HealthStatus = withContext(Dispatchers.IO) {
         val url = BASE_URL.newBuilder().addPathSegments("health").build()
         val call = client.newCall(Request.Builder().url(url).get().build())
-        val code = try {
-            blockingOn(call) { call.execute().use { it.code } }
+        try {
+            blockingOn(call) {
+                call.execute().use { response ->
+                    Log.i(TAG, "health status=${response.code}")
+                    PtCloudErrors.classifyHealth(response.code) { response.peekBody(ERROR_BODY_LIMIT).string() }
+                }
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: IOException) {
@@ -354,42 +370,38 @@ class PtCloudClient(
                 throw CancellationException("PlayTranslate Cloud health cancelled").apply { initCause(e) }
             }
             Log.i(TAG, "health unreachable (${e.javaClass.simpleName})")
-            return@withContext HealthStatus.Unreachable
-        }
-        Log.i(TAG, "health status=$code")
-        when (code) {
-            200 -> HealthStatus.Running
-            503 -> HealthStatus.Starting
-            404 -> HealthStatus.NotRunning
-            else -> HealthStatus.Other(code)
+            HealthStatus.Unreachable
         }
     }
 
     /**
      * `GET {BASE_URL}/v1/key` ("Key check" in docs/api.md), for the cloud
-     * page's Save: whether the edge accepts [key], the key being saved (never
-     * the stored one), answered by the edge alone, so it answers the same
-     * with the service stopped. [KeyStatus.Ok] is its 200 alone. A refusal of
-     * the key, read as the frame route reads it ([classifiedAnswer]), is
-     * [KeyStatus.Invalid]: a 401 (a key unknown, revoked or of a disabled
-     * account), and a 403 `no_entitlement`, a real key whose account has no
-     * membership, with that as its explanation. So is a key no request can
-     * carry ([PtCloudConfig.isUsableKey]), which is never sent. Anything else
-     * is [KeyStatus.Unreachable], the key not checked: the edge's per-address
-     * 429, its 503 while its accounts database did not answer, any other
-     * answer, and a transport failure.
+     * page: whether the edge accepts [key], and what it says of the account
+     * behind it. The page sends the stored key, which it reads itself and
+     * checks for usability first ([PtCloudConfig.isUsableKey]: a key that
+     * reads back unusable is never sent, and never read as a refusal).
+     * Answered by the edge alone, so it answers the same with the service
+     * stopped. Each answer is read by [PtCloudErrors.classifyKeyCheck], which
+     * reads the body (peeked up to [ERROR_BODY_LIMIT], never logged) of the
+     * answers whose body says something: the 200's account, the 403's ended
+     * entitlement, the 410's message. A transport failure is
+     * [KeyCheck.NotChecked].
      *
-     * Not a capture: the classification's cooldown is never applied and no
-     * attempt is reported. [CancellationException] when the caller was
+     * Not a capture: no cooldown is recorded, no attempt is reported and
+     * nothing is retried. [CancellationException] when the caller was
      * cancelled. Logs the status code or the failure's class, never the key
      * or a body.
      */
-    suspend fun checkKey(key: String): KeyStatus = withContext(Dispatchers.IO) {
-        if (!PtCloudConfig.isUsableKey(key)) return@withContext KeyStatus.Invalid("not a usable bearer value")
+    suspend fun checkKey(key: String): KeyCheck = withContext(Dispatchers.IO) {
         val url = BASE_URL.newBuilder().addPathSegments("v1/key").build()
         val call = client.newCall(Request.Builder().url(url).bearer(key).get().build())
         try {
-            blockingOn(call) { call.execute().use(::keyStatusOf) }
+            blockingOn(call) {
+                call.execute().use { response ->
+                    Log.i(TAG, "key check status=${response.code}")
+                    PtCloudErrors.classifyKeyCheck(response.code) { response.peekBody(ERROR_BODY_LIMIT).string() }
+                }
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: IOException) {
@@ -397,20 +409,88 @@ class PtCloudClient(
                 throw CancellationException("PlayTranslate Cloud key check cancelled").apply { initCause(e) }
             }
             Log.i(TAG, "key check unreachable (${e.javaClass.simpleName})")
-            KeyStatus.Unreachable
+            KeyCheck.NotChecked
         }
     }
 
-    /** A key check's answer as [checkKey] reads it, logged by its status
-     *  code. The caller closes [response]. */
-    private fun keyStatusOf(response: Response): KeyStatus {
-        Log.i(TAG, "key check status=${response.code}")
-        if (response.code == 200) return KeyStatus.Ok
-        return when (classifiedAnswer(response).failure.kind) {
-            BackendFailureKind.AUTH -> KeyStatus.Invalid("HTTP ${response.code}")
-            BackendFailureKind.BILLING ->
-                KeyStatus.Invalid("HTTP ${response.code}", explanationRes = R.string.pt_cloud_key_no_membership)
-            else -> KeyStatus.Unreachable
+    /**
+     * `POST {BASE_URL}/v1/signin` ("Sign-in" in docs/api.md): asks for a
+     * six-digit code to be mailed to [email], sent as the member typed it.
+     * Each answer is read by [PtCloudErrors.classifyRequestCode];
+     * [SignInAnswer.Unreachable] for a transport failure. See [postSignIn]
+     * for what the call sends, records and logs.
+     */
+    suspend fun requestCode(email: String): CodeRequestResult = postSignIn(
+        path = "v1/signin",
+        json = PtJson.lenient.encodeToString(SignInRequestBody.serializer(), SignInRequestBody(email)),
+        step = "request",
+        classify = PtCloudErrors::classifyRequestCode,
+        unreachable = SignInAnswer.Unreachable,
+    )
+
+    /**
+     * `POST {BASE_URL}/v1/signin/verify` ("Sign-in" in docs/api.md):
+     * exchanges [code], the six digits mailed to [email], for the client
+     * key, with [label] naming this device ([deviceLabel]). Each answer is
+     * read by [PtCloudErrors.classifyVerifyCode];
+     * [SignInAnswer.Unreachable] for a transport failure. Stores nothing:
+     * the caller stores the key of a [VerifyResult.SignedIn] at once, since
+     * no route answers it again. See [postSignIn] for what the call sends,
+     * records and logs.
+     */
+    suspend fun verifyCode(email: String, code: String, label: String): VerifyResult = postSignIn(
+        path = "v1/signin/verify",
+        json = PtJson.lenient.encodeToString(VerifyRequestBody.serializer(), VerifyRequestBody(email, code, label)),
+        step = "verify",
+        classify = PtCloudErrors::classifyVerifyCode,
+        unreachable = SignInAnswer.Unreachable,
+    )
+
+    /**
+     * Posts [json] to the sign-in route at [path] and classifies its answer
+     * with [classify], from its status, its body (peeked up to
+     * [ERROR_BODY_LIMIT]) and its `Retry-After`; a transport failure is
+     * [unreachable], each route's [SignInAnswer.Unreachable]. On [client],
+     * so on the shared pool and timeouts, as [checkKey]; typed
+     * `application/json` (anything else is a 415), as a byte array, so its
+     * length is known; and with no bearer ([bearer] is never called here:
+     * the routes take none).
+     *
+     * Not a capture: no cooldown is recorded, no attempt is reported and
+     * nothing is retried. [CancellationException] when the caller was
+     * cancelled. Logs `signin <step> status=NNN`, with the server's `error`
+     * word on a refusal ([PtCloudErrors.errorWord]), or the failure's class;
+     * never the email, the code, the key, the label or a body.
+     */
+    private suspend fun <T> postSignIn(
+        path: String,
+        json: String,
+        step: String,
+        classify: (code: Int, body: String, retryAfter: String?) -> T,
+        unreachable: T,
+    ): T = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url(BASE_URL.newBuilder().addPathSegments(path).build())
+            .post(json.toByteArray(Charsets.UTF_8).toRequestBody(JSON.toMediaType()))
+            .build()
+        val call = client.newCall(request)
+        try {
+            blockingOn(call) {
+                call.execute().use { response ->
+                    val body = response.peekBody(ERROR_BODY_LIMIT).string()
+                    val word = if (response.code == 200) null else PtCloudErrors.errorWord(body)
+                    Log.i(TAG, "signin $step status=${response.code}" + word?.let { " error=$it" }.orEmpty())
+                    classify(response.code, body, response.header("Retry-After"))
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IOException) {
+            if (!isActive) {
+                throw CancellationException("PlayTranslate Cloud sign-in cancelled").apply { initCause(e) }
+            }
+            Log.i(TAG, "signin $step unreachable (${e.javaClass.simpleName})")
+            unreachable
         }
     }
 
@@ -494,10 +574,11 @@ class PtCloudClient(
 
     /**
      * [key] as the bearer token, the one place every authenticated request
-     * ([frameRequest], [translateRequest], [warm], [checkKey]) sets it. Each
-     * request reads the stored key once ([PtCloudConfig.clientKey]; the key
-     * check takes the key being saved, judged by the same predicate first)
-     * and hands it here, where it is checked with the router's own predicate
+     * ([frameRequest], [translateRequest], [warm], [checkKey]) sets it; the
+     * sign-in calls ([postSignIn]) never do. Each request reads the stored
+     * key once ([PtCloudConfig.clientKey]; the key check takes the key it is
+     * given, judged by the same predicate first) and hands it here, where it
+     * is checked with the router's own predicate
      * ([PtCloudConfig.isUsableKey]): a key saved between the router's check
      * and the build can fail it, and OkHttp's `header` would throw
      * IllegalArgumentException for it, which nothing on a read's path or the
@@ -641,7 +722,7 @@ class PtCloudClient(
 
     /** A non-200 answer classified by its status, its error body (read up
      *  to [ERROR_BODY_LIMIT], never logged) and its `Retry-After`: the one
-     *  reading of an HTTP error, for both routes and the key check. */
+     *  reading of an HTTP error, for both routes. */
     private fun classifiedAnswer(response: Response): Classified = PtCloudErrors.classifyHttp(
         response.code, response.peekBody(ERROR_BODY_LIMIT).string(), response.header("Retry-After"),
     )
@@ -679,9 +760,12 @@ class PtCloudClient(
         private const val EDGE_UPLOAD_HEADER = "x-pt-edge-upload-ms"
         private const val EDGE_HEADER = "x-pt-edge-ms"
 
-        /** An error body is read only to tell the stopped service's empty
-         *  404 from a routing 404, and a 403 `no_entitlement` from any other
-         *  403; its text is never logged. */
+        /** A body read to classify an answer is read up to this: an error
+         *  body to tell one answer of a status from another (the stopped
+         *  service's empty 404 from a routing 404, a 403 `no_entitlement`
+         *  from any other 403, a 410 `service_closed` or a 502
+         *  `ocr_unavailable` from any other), and the small JSON of the key
+         *  check's and the sign-in calls' answers. Its text is never logged. */
         private const val ERROR_BODY_LIMIT = 4096L
 
         /** One client for the process, so consecutive captures reuse the

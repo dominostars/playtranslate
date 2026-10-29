@@ -50,6 +50,14 @@ object TranslationErrorMessages {
                     context.getString(R.string.translation_error_unreachable, name)
                 BackendFailureKind.NOT_RUNNING ->
                     context.getString(R.string.translation_error_not_running, name)
+                // PlayTranslate Cloud's account and closed states, in their own
+                // words: other backends' BILLING keeps "Out of credits".
+                BackendFailureKind.TRIAL_ENDED ->
+                    context.getString(R.string.translation_error_trial_ended, name)
+                BackendFailureKind.MEMBERSHIP_INACTIVE ->
+                    context.getString(R.string.translation_error_membership_inactive, name)
+                BackendFailureKind.CLOSED ->
+                    context.getString(R.string.translation_error_closed, name)
             }
         }
     }

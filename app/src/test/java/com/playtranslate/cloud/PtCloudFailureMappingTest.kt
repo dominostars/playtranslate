@@ -111,12 +111,29 @@ class PtCloudFailureMappingTest {
         assertEquals(CooldownMessageClass.ACCOUNT, CooldownCause.AUTH.messageClass)
     }
 
-    @Test fun `403 no_entitlement is BILLING on the rate-limit ladder, as no membership`() {
-        // The key is good but its account has no membership: the account
-        // class, shown without a retry time, in the BILLING kind's wording.
-        assertRow(http(403, """{"error":"no_entitlement"}"""), BackendFailureKind.BILLING, 403, reachedServer = true)
+    @Test fun `a 403 whose last_source is trial is TRIAL_ENDED on NoMembershipLadder`() {
+        // The key is good but its free trial ran out: the account class,
+        // shown without a retry time, in the trial's own wording.
+        val body = """{"error":"no_entitlement","last_source":"trial","ended_at":"2026-11-03T12:00:00.000Z"}"""
+        assertRow(http(403, body), BackendFailureKind.TRIAL_ENDED, 403, reachedServer = true)
         assertCooldown(now + 60_000, CooldownCause.BILLING, "No membership")
         assertEquals(CooldownMessageClass.ACCOUNT, CooldownCause.BILLING.messageClass)
+    }
+
+    /** Any other last entitlement, none ended, or a Worker that sent none:
+     *  no active membership, never a trial that ended. */
+    @Test fun `a 403 no_entitlement with another last_source is MEMBERSHIP_INACTIVE on NoMembershipLadder`() {
+        val bodies = listOf(
+            """{"error":"no_entitlement","last_source":"kofi","ended_at":"2026-11-03T12:00:00.000Z"}""",
+            """{"error":"no_entitlement","last_source":"manual","ended_at":"2026-11-03T12:00:00.000Z"}""",
+            """{"error":"no_entitlement","last_source":null,"ended_at":null}""",
+            """{"error":"no_entitlement"}""",
+        )
+        for (body in bodies) {
+            cooldown.resetCooldown()
+            assertRow(http(403, body), BackendFailureKind.MEMBERSHIP_INACTIVE, 403, reachedServer = true)
+            assertCooldown(now + 60_000, CooldownCause.BILLING, "No membership")
+        }
     }
 
     @Test fun `any other 403 is a rejected request with its code, no cooldown`() {
@@ -142,6 +159,28 @@ class PtCloudFailureMappingTest {
     @Test fun `404 with a JSON body is a rejected request, no cooldown`() {
         assertRow(http(404, """{"error":"not found"}"""), BackendFailureKind.REJECTED, 404, reachedServer = true)
         assertNoCooldown()
+    }
+
+    /** The one answer that says the service will not come back by itself:
+     *  the account class, shown without a retry time; the operator's message
+     *  is never recorded. */
+    @Test fun `a 410 service_closed is CLOSED on the rate-limit ladder, cause CLOSED`() {
+        val body = """{"error":"service_closed","message":"PlayTranslate Cloud has closed."}"""
+        assertRow(http(410, body), BackendFailureKind.CLOSED, 410, reachedServer = true)
+        assertCooldown(now + 60_000, CooldownCause.CLOSED, "Closed")
+        assertEquals(CooldownMessageClass.ACCOUNT, CooldownCause.CLOSED.messageClass)
+        // Once the step runs out, the next one climbs the ladder.
+        clock.addAndGet(61_000)
+        assertRow(http(410, """{"error":"service_closed"}"""), BackendFailureKind.CLOSED, 410, reachedServer = true)
+        assertCooldown(now + 10 * 60_000, CooldownCause.CLOSED, "Closed")
+    }
+
+    /** A 410 is closed only with the server's word. */
+    @Test fun `a 410 with another body stays REJECTED with its code, no cooldown`() {
+        for (body in listOf("""{"error":"gone"}""", "{}", "", "<html>410 Gone</html>")) {
+            assertRow(http(410, body), BackendFailureKind.REJECTED, 410, reachedServer = true)
+            assertNoCooldown()
+        }
     }
 
     @Test fun `413, 415 and 422 are rejected requests with their code, no cooldown`() {
@@ -171,12 +210,27 @@ class PtCloudFailureMappingTest {
         assertCooldown(now + 60_000, CooldownCause.RATE_LIMITED, "Rate limited")
     }
 
-    @Test fun `500 and 502 are SERVER_ERROR on the rate-limit ladder`() {
-        for (code in listOf(500, 502)) {
+    @Test fun `500 is SERVER_ERROR on the rate-limit ladder`() {
+        assertRow(http(500, """{"error":"internal"}"""), BackendFailureKind.SERVER_ERROR, 500, true)
+        assertCooldown(now + 60_000, CooldownCause.SERVER_ERROR, "Server error")
+    }
+
+    /** The host being off: the edge's own body while the tunnel has no
+     *  connector, or the tunnel's 502 passed through (ruled 2026-10-28). */
+    @Test fun `a 502 without ocr_unavailable is NOT_RUNNING on the rate-limit ladder`() {
+        val bodies = listOf(
+            """{"error":"origin unreachable","route":"vpc"}""", "", "<html>502 Bad Gateway</html>", """{"error":"internal"}""",
+        )
+        for (body in bodies) {
             cooldown.resetCooldown()
-            assertRow(http(code, """{"error":"internal"}"""), BackendFailureKind.SERVER_ERROR, code, true)
-            assertCooldown(now + 60_000, CooldownCause.SERVER_ERROR, "Server error")
+            assertRow(http(502, body), BackendFailureKind.NOT_RUNNING, 502, true)
+            assertCooldown(now + 60_000, CooldownCause.NOT_RUNNING, "Not running")
         }
+    }
+
+    @Test fun `a 502 ocr_unavailable is SERVER_ERROR on the rate-limit ladder`() {
+        assertRow(http(502, """{"error":"ocr_unavailable","detail":"sidecar 422"}"""), BackendFailureKind.SERVER_ERROR, 502, true)
+        assertCooldown(now + 60_000, CooldownCause.SERVER_ERROR, "Server error")
     }
 
     @Test fun `503 (the pod starting) is SERVER_ERROR with no cooldown`() {

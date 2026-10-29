@@ -132,7 +132,9 @@ class OnlineServicesController(
      * changed there.
      *
      * Through the store rows' own renderers: the key's tail from the
-     * service's settings ([PtCloudService.config]); the status line ("Account
+     * service's settings ([PtCloudService.config]), or in its place the
+     * account record's email when it has one ([PtCloudService.account]: a
+     * member who signed in never saw a key); the status line ("Account
      * required" with no key) and the cooldown line and tint from the
      * registry's backend, whose cooldown is the service's at the moment of
      * the read. The switch is the service's TRANSLATION switch, as every
@@ -145,7 +147,14 @@ class OnlineServicesController(
     fun bindCloudRow() {
         val row = cloudRow ?: return
         val config = PtCloudService.config
-        bindKeyTail(row.findViewById(R.id.tvKeyTail), config.clientKey)
+        val tail = row.findViewById<TextView>(R.id.tvKeyTail)
+        val email = PtCloudService.account?.email
+        if (email != null) {
+            tail.text = email
+            tail.isVisible = true
+        } else {
+            bindKeyTail(tail, config.clientKey)
+        }
         renderBackendLines(row, TranslationBackendRegistry.byId(PtCloudService.ID))
         // Listener cleared before setChecked, as on the store rows, so a
         // render never fires a toggle.

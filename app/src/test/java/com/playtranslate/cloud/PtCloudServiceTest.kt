@@ -1,7 +1,10 @@
 package com.playtranslate.cloud
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.test.core.app.ApplicationProvider
+import com.playtranslate.Prefs
+import com.playtranslate.security.SecretCodec
 import com.playtranslate.translation.BackendFailure
 import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.translation.CooldownCause
@@ -21,16 +24,22 @@ import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowSystemClock
 import java.net.ConnectException
+import java.time.Duration
 import java.util.concurrent.atomic.AtomicLong
 
 /** The service object: one cooldown, built once, cleared by the user's
  *  gestures, by a regained network (connection failures only, through the
- *  registry's fan-out and the cloud's registry backend) and by the cloud
+ *  registry's fan-out and the cloud's registry backend), by the cloud
  *  page's health check finding the service running (the causes that answer
- *  disproves: a stopped pod, a lost connection, a server error); the settings a test
- *  installs; and the reconcile of the shared cache's routing identity that
- *  follows every reset, a gesture's and the health check's. */
+ *  disproves: a stopped pod, a lost connection, a server error, a closed
+ *  service) and by an accepted check of the stored key (a refused key, no
+ *  membership); the settings a test installs; the key and the account record
+ *  written together, only beside a key that was stored, and the stored key's
+ *  check acting only on the key it checked; and the reconcile of the shared
+ *  cache's routing identity that follows every reset, a gesture's and the
+ *  health check's. */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudServiceTest {
 
@@ -331,12 +340,13 @@ class PtCloudServiceTest {
 
     @Test fun `a Running health check drops a 502's or a lost connection's cooldown, ladders and all`() {
         val state = install()
-        // The edge's 502 while the pod boots: a server error on the RateLimit ladder.
+        // The edge's 502 while it cannot reach the host (the pod booting):
+        // not running, on the RateLimit ladder.
         PtCloudErrors.classifyHttp(502, "", null).record(state)
-        assertEquals(CooldownCause.SERVER_ERROR, PtCloudService.unavailableCause())
+        assertEquals(CooldownCause.NOT_RUNNING, PtCloudService.unavailableCause())
         PtCloudService.onHealthRunning()
         assertNull(PtCloudService.unavailableUntil())
-        // Its rung went with it: the next server error costs the first step.
+        // Its rung went with it: the next 502 costs the first step.
         PtCloudErrors.classifyHttp(502, "", null).record(state)
         assertEquals(clock.get() + 60_000, PtCloudService.unavailableUntil())
 
@@ -348,14 +358,300 @@ class PtCloudServiceTest {
         assertNull(PtCloudService.unavailableUntil())
     }
 
+    /** A closed service answers `/health` 410 too, so a Running health says
+     *  it reopened. */
+    @Test fun `a Running health drops a CLOSED cooldown`() {
+        val state = install()
+        PtCloudErrors.classifyHttp(410, """{"error":"service_closed","message":"Closed."}""", null).record(state)
+        assertEquals(CooldownCause.CLOSED, PtCloudService.unavailableCause())
+        PtCloudService.onHealthRunning()
+        assertNull(PtCloudService.unavailableUntil())
+    }
+
     @Test fun `a Running health check drops exactly the causes a reachable, answering server disproves`() {
         val state = install()
-        val disproved = setOf(CooldownCause.NOT_RUNNING, CooldownCause.CONNECTION_FAILED, CooldownCause.SERVER_ERROR)
+        val disproved = setOf(
+            CooldownCause.NOT_RUNNING, CooldownCause.CONNECTION_FAILED, CooldownCause.SERVER_ERROR, CooldownCause.CLOSED,
+        )
         for (cause in CooldownCause.entries) {
             state.resetCooldown()
             state.recordParsedFailure(clock.get() + 3_600_000, cause.name, cause)
             PtCloudService.onHealthRunning()
             assertEquals("$cause still cooling down", cause !in disproved, PtCloudService.isCoolingDown(clock.get()))
         }
+    }
+
+    // ── An accepted check of the stored key ─────────────────────────────
+
+    /** AUTH and BILLING only: a key check says nothing about a rate limit,
+     *  a quota, or a service that is down or closed. */
+    @Test fun `onKeyAccepted drops an AUTH or a BILLING cooldown and no other`() {
+        val state = install()
+        val cleared = setOf(CooldownCause.AUTH, CooldownCause.BILLING)
+        for (cause in CooldownCause.entries) {
+            state.resetCooldown()
+            state.recordParsedFailure(clock.get() + 3_600_000, cause.name, cause)
+            PtCloudService.onKeyAccepted()
+            assertEquals("$cause still cooling down", cause !in cleared, PtCloudService.isCoolingDown(clock.get()))
+        }
+    }
+
+    /** The configuration did not change, so the cache stays, where a key
+     *  save clears it; the reset is counted as a gesture's is. */
+    @Test fun `onKeyAccepted keeps the translation cache and counts a change`() {
+        // The wall clock: the registry judges a cooldown against it.
+        val state = CooldownState(null, PtCloudService.ID)
+        PtCloudService.installForTest(state, PtCloudTestSupport.config(ctx))
+        PtCloudTestSupport.prefs(ctx).ptCloudTranslateEnabled = true
+        TranslationCache.shared.resetForTest()
+        GroupTranslator.reconcileShared(ctx)
+        val key = TranslationCache.Key("一", "ja", "en")
+        TranslationCache.shared[key] = "one" to PtCloudService.DISPLAY_NAME
+        state.recordLadderFailure(CooldownLadder.RateLimit, "No membership", CooldownCause.BILLING)
+        val before = PtCloudService.changes.value
+
+        PtCloudService.onKeyAccepted()
+
+        assertNull(PtCloudService.unavailableUntil())
+        assertEquals("one" to PtCloudService.DISPLAY_NAME, TranslationCache.shared[key])
+        assertEquals(before + 1, PtCloudService.changes.value)
+    }
+
+    @Test fun `onKeyAccepted with no cooldown, or one it keeps, counts no change`() {
+        val state = install()
+        val before = PtCloudService.changes.value
+        PtCloudService.onKeyAccepted()
+        state.recordLadderFailure(CooldownLadder.RateLimit, "Closed", CooldownCause.CLOSED)
+        PtCloudService.onKeyAccepted()
+        assertEquals(before, PtCloudService.changes.value)
+        assertEquals(CooldownCause.CLOSED, PtCloudService.unavailableCause())
+    }
+
+    // ── The account record beside the key ───────────────────────────────
+
+    /** The service's settings over [prefs], with a cooldown on the test's
+     *  clock. */
+    private fun installWith(prefs: Prefs): CooldownState =
+        CooldownState(null, PtCloudService.ID, nowMs = { clock.get() })
+            .also { PtCloudService.installForTest(it, PtCloudConfig(prefs)) }
+
+    @Test fun `saveClientKey stores the account beside the key and stamps when the key was stored`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        installWith(prefs)
+        assertNull(PtCloudService.keyStoredAtMs)
+
+        assertTrue(PtCloudService.saveClientKey(PtCloudTestSupport.KEY, TRIAL))
+
+        assertEquals(PtCloudTestSupport.KEY, prefs.ptCloudClientKey)
+        assertEquals(TRIAL, PtCloudService.account)
+        assertEquals(SystemClock.elapsedRealtime(), PtCloudService.keyStoredAtMs)
+        assertTrue("a sign-in's key is a first key: both switches on", prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
+    }
+
+    @Test fun `a change of key replaces the account, and a key saved with none clears it`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        installWith(prefs)
+        PtCloudService.saveClientKey(PtCloudTestSupport.KEY, TRIAL)
+        val pasted = PtCloudAccount(active = true, source = "manual", checkedAtMs = 2L)
+
+        assertTrue(PtCloudService.saveClientKey("another-key", pasted))
+        assertEquals(pasted, PtCloudService.account)
+
+        assertTrue(PtCloudService.saveClientKey("a-third-key"))
+        assertNull("a record never outlives the key it describes", prefs.ptCloudAccountJson)
+        assertNull(PtCloudService.account)
+    }
+
+    @Test fun `a blank key clears the key and the account together, and is no key stored`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        installWith(prefs)
+        PtCloudService.saveClientKey(PtCloudTestSupport.KEY, TRIAL)
+        val storedAt = PtCloudService.keyStoredAtMs
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(5))
+
+        assertTrue(PtCloudService.saveClientKey("", TRIAL))
+
+        assertEquals("", prefs.ptCloudClientKey)
+        assertNull("no record beside no key, whatever was passed", prefs.ptCloudAccountJson)
+        assertEquals("only a key stored stamps the moment", storedAt, PtCloudService.keyStoredAtMs)
+        assertFalse(prefs.ptCloudOcrEnabled)
+        assertFalse(prefs.ptCloudTranslateEnabled)
+    }
+
+    /** The keystore refusing the new key keeps the old one
+     *  ([Prefs.writeSecret]'s fail-closed rule): the save says so, and the
+     *  old key keeps its own record. */
+    @Test fun `a key the keystore refuses stores neither the key nor its account, and says so`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        installWith(prefs)
+        PtCloudService.saveClientKey(PtCloudTestSupport.KEY, TRIAL)
+        val refusing = Prefs(ctx, RefusingCodec())
+        installWith(refusing)
+
+        assertFalse(PtCloudService.saveClientKey("pt_new-key", TRIAL.copy(email = "someone@example.com")))
+
+        assertEquals(PtCloudTestSupport.KEY, refusing.ptCloudClientKey)
+        assertEquals(TRIAL, PtCloudService.account)
+        assertNull("not stored, not stamped", PtCloudService.keyStoredAtMs)
+        assertTrue("nothing flipped", refusing.ptCloudOcrEnabled && refusing.ptCloudTranslateEnabled)
+    }
+
+    /** A record whose key reads as no key (unusable) is never shown, and
+     *  the config's reading is the service's. */
+    @Test fun `the account reads null without a usable key`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        installWith(prefs)
+        PtCloudService.saveClientKey(PtCloudTestSupport.KEY, TRIAL)
+        prefs.ptCloudClientKey = "k\u0001ey"
+        assertNull(PtCloudService.account)
+        assertTrue("the record is still stored", prefs.ptCloudAccountJson != null)
+    }
+
+    // ── The stored key's check ──────────────────────────────────────────
+
+    /** A sign-out or another copy of the page can change the key during the
+     *  check's round trip: an answer for another key is about a key that is
+     *  gone, whatever it says. */
+    @Test fun `a check of a key that is no longer the stored one changes nothing`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        val state = installWith(prefs)
+        PtCloudService.saveClientKey(PtCloudTestSupport.KEY, TRIAL)
+        state.recordLadderFailure(CooldownLadder.RateLimit, "No membership", CooldownCause.BILLING)
+        val checks = listOf(
+            KeyCheck.Accepted("kofi", null), KeyCheck.Inactive("trial", 5L), KeyCheck.Refused,
+            KeyCheck.Closed("closed"), KeyCheck.NotChecked,
+        )
+        for (check in checks) {
+            PtCloudService.onStoredKeyChecked("an-older-key", check)
+            assertEquals("$check", PtCloudTestSupport.KEY, prefs.ptCloudClientKey)
+            assertEquals("$check", TRIAL, PtCloudService.account)
+            assertEquals("$check", CooldownCause.BILLING, PtCloudService.unavailableCause())
+        }
+    }
+
+    @Test fun `an Accepted check rewrites the account, keeping its email, and drops a BILLING cooldown`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        val state = installWith(prefs)
+        PtCloudService.saveClientKey(PtCloudTestSupport.KEY, ENDED_TRIAL)
+        state.recordLadderFailure(CooldownLadder.RateLimit, "No membership", CooldownCause.BILLING)
+
+        PtCloudService.onStoredKeyChecked(PtCloudTestSupport.KEY, KeyCheck.Accepted("kofi", LEASE_END_MS))
+
+        val account = PtCloudService.account!!
+        assertEquals(
+            PtCloudAccount(email = EMAIL, active = true, source = "kofi", entitledUntilMs = LEASE_END_MS, checkedAtMs = account.checkedAtMs),
+            account,
+        )
+        assertNull("a member who joined is out of the ladder", PtCloudService.unavailableUntil())
+        assertEquals(PtCloudTestSupport.KEY, prefs.ptCloudClientKey)
+    }
+
+    @Test fun `an Accepted check of a pasted key's account keeps no email`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        installWith(prefs)
+        PtCloudService.saveClientKey(PtCloudTestSupport.KEY, PtCloudAccount(active = true, source = "manual", checkedAtMs = 2L))
+
+        PtCloudService.onStoredKeyChecked(PtCloudTestSupport.KEY, KeyCheck.Accepted(null, null))
+
+        val account = PtCloudService.account!!
+        assertNull(account.email)
+        assertNull("an answer with no source says no more of the account", account.source)
+    }
+
+    @Test fun `an Inactive check rewrites the account and keeps a BILLING cooldown`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        val state = installWith(prefs)
+        PtCloudService.saveClientKey(PtCloudTestSupport.KEY, TRIAL)
+        state.recordLadderFailure(CooldownLadder.RateLimit, "No membership", CooldownCause.BILLING)
+
+        PtCloudService.onStoredKeyChecked(PtCloudTestSupport.KEY, KeyCheck.Inactive("trial", TRIAL_END_MS))
+
+        val account = PtCloudService.account!!
+        assertEquals(
+            PtCloudAccount(email = EMAIL, active = false, lastSource = "trial", endedAtMs = TRIAL_END_MS, checkedAtMs = account.checkedAtMs),
+            account,
+        )
+        assertEquals(CooldownCause.BILLING, PtCloudService.unavailableCause())
+    }
+
+    /** The HTTP 401 on the stored key, the one answer that clears it: as a
+     *  sign-out does, both switches off. */
+    @Test fun `a Refused check clears the key and the account, both switches off`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        installWith(prefs)
+        PtCloudService.saveClientKey(PtCloudTestSupport.KEY, TRIAL)
+        assertTrue(prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
+
+        PtCloudService.onStoredKeyChecked(PtCloudTestSupport.KEY, KeyCheck.Refused)
+
+        assertEquals("", prefs.ptCloudClientKey)
+        assertNull(prefs.ptCloudAccountJson)
+        assertFalse(prefs.ptCloudOcrEnabled)
+        assertFalse(prefs.ptCloudTranslateEnabled)
+    }
+
+    /** A stored key the keystore would not decrypt this once reads as blank
+     *  ([Prefs.readSecret]); a check made with that blank was never a check
+     *  of the stored key, so even its Refused clears nothing: the ciphertext,
+     *  the record and the switches stay for the next read to decrypt. */
+    @Test fun `a check of an unusable key changes nothing, a Refused included`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        installWith(prefs)
+        PtCloudService.saveClientKey(PtCloudTestSupport.KEY, TRIAL)
+        val blind = Prefs(ctx, BlindCodec())
+        installWith(blind)
+        assertEquals("the key reads blank under a codec that will not decrypt", "", blind.ptCloudClientKey)
+
+        for (check in listOf(KeyCheck.Refused, KeyCheck.Accepted("kofi", null), KeyCheck.Inactive(null, null))) {
+            PtCloudService.onStoredKeyChecked(blind.ptCloudClientKey, check)
+        }
+
+        installWith(prefs)
+        assertEquals("the ciphertext is untouched", PtCloudTestSupport.KEY, prefs.ptCloudClientKey)
+        assertEquals(TRIAL, PtCloudService.account)
+        assertTrue("nothing flipped", prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
+    }
+
+    @Test fun `a Closed or NotChecked check leaves the key, the account and the cooldown`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        val state = installWith(prefs)
+        PtCloudService.saveClientKey(PtCloudTestSupport.KEY, TRIAL)
+        state.recordLadderFailure(CooldownLadder.RateLimit, "No membership", CooldownCause.BILLING)
+        for (check in listOf(KeyCheck.Closed("closed"), KeyCheck.NotChecked)) {
+            PtCloudService.onStoredKeyChecked(PtCloudTestSupport.KEY, check)
+            assertEquals("$check", PtCloudTestSupport.KEY, prefs.ptCloudClientKey)
+            assertEquals("$check", TRIAL, PtCloudService.account)
+            assertEquals("$check", CooldownCause.BILLING, PtCloudService.unavailableCause())
+        }
+    }
+
+    /** The AndroidKeyStore refusing to encrypt, as [Prefs] meets it: nothing
+     *  is written, and what is stored still decrypts. */
+    /** Encrypts as the fake codec does and decrypts nothing: the keystore
+     *  refusing a read, which [Prefs.readSecret] answers with a blank. */
+    private class BlindCodec : SecretCodec {
+        private val inner = PtCloudTestSupport.FakeCodec()
+        override fun encrypt(context: String, plaintext: String): String? = inner.encrypt(context, plaintext)
+        override fun decrypt(context: String, stored: String): String? = null
+    }
+
+    private class RefusingCodec : SecretCodec {
+        private val inner = PtCloudTestSupport.FakeCodec()
+        override fun encrypt(context: String, plaintext: String): String? = null
+        override fun decrypt(context: String, stored: String): String? = inner.decrypt(context, stored)
+    }
+
+    private companion object {
+        const val EMAIL = "player@example.com"
+        const val TRIAL_END_MS = 1_793_707_200_000L
+        const val LEASE_END_MS = 1_797_000_000_000L
+        /** A sign-in's record: a trial, with its end. */
+        val TRIAL = PtCloudAccount(
+            email = EMAIL, active = true, source = SOURCE_TRIAL, entitledUntilMs = TRIAL_END_MS, checkedAtMs = 1L,
+        )
+        /** The same account once its trial ended. */
+        val ENDED_TRIAL = PtCloudAccount(
+            email = EMAIL, active = false, lastSource = SOURCE_TRIAL, endedAtMs = TRIAL_END_MS, checkedAtMs = 1L,
+        )
     }
 }

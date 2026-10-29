@@ -77,11 +77,88 @@ data class TranslateRequest(
 
 // ── Response, errors ───────────────────────────────────────────────────
 
-/** The edge's JSON error body (`{"error":"..."}`), read only to tell a 403
- *  `no_entitlement` (the key's account has no membership) from any other
- *  403 ([PtCloudErrors.classifyHttp]). Lenient: every field optional. */
+/**
+ * The edge's JSON error body (`{"error":"..."}`), read by [PtCloudErrors]
+ * alone: its [error] word tells one answer of a status from another (a 403
+ * `no_entitlement` from any other 403, a 410 `service_closed` from any other
+ * 410, a 502 `ocr_unavailable` from the host being off, and the sign-in
+ * routes' refusals from each other), and the fields beside it carry what
+ * that answer says. Lenient: every field optional, and absent from a Worker
+ * that predates it. Never logged but for the [error] word on a sign-in
+ * refusal ([PtCloudClient.requestCode], [PtCloudClient.verifyCode]).
+ */
 @Serializable
-data class EdgeError(val error: String? = null)
+data class EdgeError(
+    val error: String? = null,
+    /** A 410 `service_closed`'s text: the operator's plain words for the
+     *  member, at most 500 characters, shown on the cloud page as they are
+     *  and never in the pill. */
+    val message: String? = null,
+    /** A 403 `no_entitlement`'s entitlement that ended most recently:
+     *  `trial` is the free trial having run out ([SOURCE_TRIAL]); null when
+     *  none has ended, absent from an older Worker or after its read
+     *  failed. */
+    @SerialName("last_source") val lastSource: String? = null,
+    /** When [lastSource] ended, ISO 8601 UTC. */
+    @SerialName("ended_at") val endedAt: String? = null,
+    /** A verify 401 `code_invalid`'s tries left on the code; 0 when no live
+     *  code is left (expired, used, replaced, never sent, or out of tries). */
+    @SerialName("attempts_left") val attemptsLeft: Int? = null,
+)
+
+// ── Sign-in ────────────────────────────────────────────────────────────
+
+/** The body of `POST /v1/signin` ("Sign-in" in docs/api.md): the address
+ *  a code is mailed to, as the member typed it (the server trims it and
+ *  lowercases its ASCII letters). Sent to the two sign-in routes only, and
+ *  never logged. */
+@Serializable
+data class SignInRequestBody(val email: String)
+
+/** The body of `POST /v1/signin/verify`: the address the code went to, the
+ *  six digits, and the device's [label] ([deviceLabel]), which the operator
+ *  reads to tell a member's keys apart. None of it is logged. */
+@Serializable
+data class VerifyRequestBody(val email: String, val code: String, val label: String)
+
+/** A sign-in request's 200: the code works for [expiresIn] seconds, and a
+ *  new one can be asked for [resendAfter] seconds after this answer. The
+ *  defaults are the server's own, for an answer that leaves either out. */
+@Serializable
+data class SignInSentBody(
+    @SerialName("expires_in") val expiresIn: Int = 600,
+    @SerialName("resend_after") val resendAfter: Int = 60,
+)
+
+/**
+ * A verify's 200, only the fields the app reads: the client [key], answered
+ * once and never again by any route, and the account's state, which
+ * [entitled] says is active or not. Active, [source] and [entitledUntil]
+ * name the entitlement that runs longest ([entitledUntil] null beside a
+ * [source] is open-ended); inactive, [lastSource] and [endedAt] name the one
+ * that ended most recently. `trial` (whether this sign-in started the trial)
+ * is not read: the account's state is [source], never that flag. The key is
+ * never logged.
+ */
+@Serializable
+data class VerifyOkBody(
+    val key: String,
+    val entitled: Boolean,
+    val source: String? = null,
+    @SerialName("entitled_until") val entitledUntil: String? = null,
+    @SerialName("last_source") val lastSource: String? = null,
+    @SerialName("ended_at") val endedAt: String? = null,
+)
+
+/** `GET /v1/key`'s 200 from the sign-in Worker: the entitlement that runs
+ *  longest, as in [VerifyOkBody]. Both are absent from an older Worker and
+ *  after the Worker's read of them failed, the key being proven good either
+ *  way: [source] is the test for that, never a missing [entitledUntil]. */
+@Serializable
+data class KeyOkBody(
+    val source: String? = null,
+    @SerialName("entitled_until") val entitledUntil: String? = null,
+)
 
 // ── Response, part 1 ───────────────────────────────────────────────────
 

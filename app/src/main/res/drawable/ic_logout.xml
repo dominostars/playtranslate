@@ -1,0 +1,16 @@
+<!-- Material Symbols Outlined "logout" (FILL 0, wght 400, GRAD 0, opsz 24),
+     from Google's SVG, Apache License 2.0: the PlayTranslate Cloud page's
+     sign-out chip, whose layout tints it ptTextHint over this baked ptText.
+     960 viewBox per the repo convention. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960"
+    android:tint="?attr/ptText">
+    <group android:translateY="960">
+        <path
+            android:fillColor="#FF000000"
+            android:pathData="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h280v80H200v560h280v80H200Zm440-160-55-58 102-102H360v-80h327L585-622l55-58 200 200-200 200Z" />
+    </group>
+</vector>

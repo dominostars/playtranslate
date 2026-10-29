@@ -8,10 +8,13 @@ import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.AnkiManager
 import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
+import com.playtranslate.PtJson
 import com.playtranslate.R
+import com.playtranslate.cloud.PtCloudAccount
 import com.playtranslate.cloud.PtCloudConfig
 import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.cloud.PtCloudTestSupport
+import com.playtranslate.cloud.SOURCE_TRIAL
 import com.playtranslate.language.HintTextKind
 import com.playtranslate.translation.CooldownState
 import com.playtranslate.translation.Cooldownable
@@ -435,6 +438,107 @@ class RootSettingsViewModelTest {
         assertFalse("a cleared key mutes it again", vm.state.value.cloudHasKey)
     }
 
+    // ── The cloud digest's account line ───────────────────────────────────
+    // From the record kept beside the key (PtCloudService.config.account),
+    // never from the server; dates relative to the wall clock the ViewModel
+    // reads.
+
+    private fun writeRecord(cloudPrefs: Prefs, account: PtCloudAccount?) {
+        cloudPrefs.ptCloudAccountJson = account?.let { PtJson.lenient.encodeToString(PtCloudAccount.serializer(), it) }
+    }
+
+    private fun trialUntil(untilMs: Long) = PtCloudAccount(
+        email = "player@example.com", active = true, source = SOURCE_TRIAL, entitledUntilMs = untilMs, checkedAtMs = 1L,
+    )
+
+    private fun ended(lastSource: String?, endedAtMs: Long? = null) = PtCloudAccount(
+        email = "player@example.com", active = false, lastSource = lastSource, endedAtMs = endedAtMs, checkedAtMs = 1L,
+    )
+
+    @Test fun `the digest says Trial until, Trial ended or Membership inactive from the cached account`() {
+        val cloudPrefs = cloudPrefsWithKey()
+        val now = System.currentTimeMillis()
+        val until = now + 3 * DAY_MS
+        writeRecord(cloudPrefs, trialUntil(until))
+        assertEquals(
+            "Free trial until " + CooldownTimeLabel.format(ctx, until, now),
+            RootSettingsViewModel(app).state.value.cloudSummary,
+        )
+
+        writeRecord(cloudPrefs, ended(SOURCE_TRIAL, now - DAY_MS))
+        assertEquals("Trial ended", RootSettingsViewModel(app).state.value.cloudSummary)
+        writeRecord(cloudPrefs, ended("kofi", now - DAY_MS))
+        assertEquals("Membership inactive", RootSettingsViewModel(app).state.value.cloudSummary)
+        writeRecord(cloudPrefs, ended(null))
+        assertEquals("nothing ever ended", "Membership inactive", RootSettingsViewModel(app).state.value.cloudSummary)
+    }
+
+    /** The standing moves with time: an active record whose end has passed
+     *  reads as ended, never "Trial until" a date gone by. */
+    @Test fun `the digest reads an active record whose end has passed as ended`() {
+        val cloudPrefs = cloudPrefsWithKey()
+        val now = System.currentTimeMillis()
+        writeRecord(cloudPrefs, trialUntil(now - DAY_MS))
+        assertEquals("Trial ended", RootSettingsViewModel(app).state.value.cloudSummary)
+        writeRecord(cloudPrefs, trialUntil(now - DAY_MS).copy(source = "kofi"))
+        assertEquals("Membership inactive", RootSettingsViewModel(app).state.value.cloudSummary)
+    }
+
+    @Test fun `the digest is unchanged without an account record, with a member's, or one with no source or no end`() {
+        val cloudPrefs = cloudPrefsWithKey()
+        val now = System.currentTimeMillis()
+        val cases = listOf(
+            null,
+            trialUntil(now + 3 * DAY_MS).copy(source = "kofi"),
+            trialUntil(now + 3 * DAY_MS).copy(source = null),
+            trialUntil(now + 3 * DAY_MS).copy(entitledUntilMs = null),
+        )
+        for (account in cases) {
+            writeRecord(cloudPrefs, account)
+            assertEquals("$account", "Off", RootSettingsViewModel(app).state.value.cloudSummary)
+        }
+        // And the switches still name the routes beside such a record.
+        Prefs(ctx).ptCloudTranslateEnabled = true
+        assertEquals("Translation only", RootSettingsViewModel(app).state.value.cloudSummary)
+    }
+
+    @Test fun `the digest follows a write of the account record`() {
+        val cloudPrefs = cloudPrefsWithKey()
+        val vm = RootSettingsViewModel(app)
+        assertEquals("Off", vm.state.value.cloudSummary)
+
+        writeRecord(cloudPrefs, ended(SOURCE_TRIAL))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("the record is observed", "Trial ended", vm.state.value.cloudSummary)
+
+        writeRecord(cloudPrefs, null)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("Off", vm.state.value.cloudSummary)
+    }
+
+    @Test fun `a record without a key shows nothing of it`() {
+        val cloudPrefs = PtCloudTestSupport.prefs(ctx)
+        PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(cloudPrefs))
+        writeRecord(cloudPrefs, ended(SOURCE_TRIAL))
+        assertEquals("Server-grade OCR and translation", RootSettingsViewModel(app).state.value.cloudSummary)
+    }
+
+    /** No pref signal carries the clock, so a resume's refresh recomputes
+     *  the cell. Here the settings the service reads change under the
+     *  ViewModel with no pref written (a config whose key does not decrypt
+     *  on the JVM is installed), which only refresh() can see. */
+    @Test fun `refresh recomputes the cloud digest`() {
+        val cloudPrefs = cloudPrefsWithKey()
+        writeRecord(cloudPrefs, ended(SOURCE_TRIAL))
+        val vm = RootSettingsViewModel(app)
+        assertEquals("Trial ended", vm.state.value.cloudSummary)
+
+        PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(Prefs(ctx)))
+        vm.refresh()
+
+        assertEquals("Server-grade OCR and translation", vm.state.value.cloudSummary)
+    }
+
     /** The capture digest names the reader captures go to: the cloud while
      *  its OCR switch is on (the selection, whatever the key or network), else
      *  the device engine; and that pref moves it, where the rest of the
@@ -472,5 +576,9 @@ class RootSettingsViewModelTest {
             ttsTapFor(RootSettingsViewModel.TtsCell.Available("Google TTS", "Voice 1")),
         )
         assertEquals(TtsTap.OPEN_SETUP, ttsTapFor(RootSettingsViewModel.TtsCell.NoEngine))
+    }
+
+    private companion object {
+        const val DAY_MS = 24L * 60 * 60 * 1000
     }
 }
