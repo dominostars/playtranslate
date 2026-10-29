@@ -7,7 +7,10 @@ import kotlinx.serialization.Serializable
  * client key, kept beside the key as a JSON pref
  * ([com.playtranslate.Prefs.ptCloudAccountJson], read through
  * [PtCloudConfig.account]) for the cloud page, the Settings digest and the
- * Translation services row, which all need it between checks. Not a secret:
+ * Translation services row, which all need it between checks, and for the
+ * two routes and the controls, which keep a record the server wrote as
+ * inactive off the cloud ([PtCloudConfig.entitled]: the server's last
+ * word, [active]; the clock's reading, [standing], is for words). Not a secret:
  * it holds no credential, and the key stays in its encrypted slot. The
  * [email] is never logged, and is sent only to the two sign-in routes.
  *
@@ -39,28 +42,44 @@ data class PtCloudAccount(
     val checkedAtMs: Long,
 ) {
 
-    /** What the account is now, the one reading every surface shows. */
+    /** What the account is now, the one reading every surface words. Words
+     *  only: whether the cloud may serve the account is [active], the
+     *  server's last word, read through [PtCloudConfig.entitled]
+     *  (2026-10-29), so a standing the clock reached ([TRIAL_ENDED] from a
+     *  trial's end passing) refuses nothing on its own. */
     enum class Standing {
         /** On the free trial. */
         TRIAL,
-        /** A membership is active (Ko-fi, hand-issued, or a store's). */
+        /** A membership is active (Ko-fi, hand-issued, or a store's), as
+         *  the server last said: a lease whose end has passed on the clock
+         *  is still this, since a payment the device has not read renews
+         *  it. */
         MEMBER,
         /** The key is good and nothing more is known: a key with no record
          *  (one saved before records, or a record that did not decode), or
          *  an answer from a Worker that sent no [source]. */
         NO_DETAILS,
-        /** The free trial ended and nothing replaced it. */
+        /** The free trial ended and nothing replaced it, as the server
+         *  said, or as the clock reads a trial's end passing. */
         TRIAL_ENDED,
-        /** No active membership: one that ended, or never one at all. */
+        /** No active membership, as the server said: one that ended, or
+         *  never one at all. */
         INACTIVE,
     }
 
     /**
      * The account's standing at [nowMs], the one classifier of a record, so
-     * no surface says "Trial until" for a date gone by. An active record
-     * whose [entitledUntilMs] has passed reads as ended, as the server would
-     * answer by then: a trial as [Standing.TRIAL_ENDED], a membership as
-     * [Standing.INACTIVE], its end being the ended date ([endedAt]). An
+     * no surface says "Trial until" for a date gone by. An active trial
+     * whose [entitledUntilMs] has passed reads as [Standing.TRIAL_ENDED],
+     * its end being the ended date ([endedAt]): a trial never renews, so
+     * the server would answer so by then unless the member joined meanwhile,
+     * which the next check or the next answer corrects. An active membership
+     * stays [Standing.MEMBER] whatever its date reads: a Ko-fi membership is
+     * a lease of 38 days per payment, and the payment that renews it writes
+     * a lease the device has not read until the next check, so a passed end
+     * says nothing of the membership (Codex adversarial review, 2026-10-29);
+     * the page leaves such a date out, and the server's 403 is what ends an
+     * account ([PtCloudConfig.entitled] routes by [active] alone). An
      * inactive record is [Standing.TRIAL_ENDED] when the trial is what ended
      * last, else [Standing.INACTIVE], nothing having ended included. A null
      * [source] is [Standing.NO_DETAILS], however the dates read: [source] is
@@ -70,18 +89,18 @@ data class PtCloudAccount(
     fun standing(nowMs: Long): Standing = when {
         !active -> if (lastSource == SOURCE_TRIAL) Standing.TRIAL_ENDED else Standing.INACTIVE
         source == null -> Standing.NO_DETAILS
-        source == SOURCE_TRIAL -> if (expired(nowMs)) Standing.TRIAL_ENDED else Standing.TRIAL
-        else -> if (expired(nowMs)) Standing.INACTIVE else Standing.MEMBER
+        source == SOURCE_TRIAL -> if (trialOver(nowMs)) Standing.TRIAL_ENDED else Standing.TRIAL
+        else -> Standing.MEMBER
     }
 
     /** When the account's last entitlement ended, for an ended [standing]:
      *  [endedAtMs] as the server said, or [entitledUntilMs] for an active
-     *  record whose end has passed since. Null when no date is known. */
-    fun endedAt(nowMs: Long): Long? = if (expired(nowMs)) entitledUntilMs else endedAtMs
+     *  trial whose end has passed since. Null when no date is known. */
+    fun endedAt(nowMs: Long): Long? = if (trialOver(nowMs)) entitledUntilMs else endedAtMs
 
-    /** An active record with a [source] whose dated end has passed. */
-    private fun expired(nowMs: Long): Boolean =
-        active && source != null && entitledUntilMs != null && entitledUntilMs <= nowMs
+    /** An active trial whose dated end has passed. */
+    private fun trialOver(nowMs: Long): Boolean =
+        active && source == SOURCE_TRIAL && entitledUntilMs != null && entitledUntilMs <= nowMs
 
     companion object {
         /** The record of [answer], the only place a wire answer becomes one:

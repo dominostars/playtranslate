@@ -45,26 +45,41 @@ import kotlinx.coroutines.flow.update
  * ([PtCloudFrameReader.read] asks for no translation while it is off). A
  * switch means what the page it sits on is about (the OCR section's row
  * reads captures; the Translation services row translates), so no surface
- * flips both at once; the first key saved turns both on ([saveClientKey]).
+ * flips both at once. Only the account's entitlement moves both together
+ * ([PtCloudConfig.entitled]: a usable key whose trial or membership has not
+ * ended; 2026-10-29), as the key's presence alone once did: an answer that
+ * takes the account from not entitled to entitled turns both on (the first
+ * key saved, [saveClientKey]; an accepted check after an ending,
+ * [onStoredKeyChecked]), and whenever the app learns the account is not
+ * entitled both go off ([entitlementLost], and [saveClientKey] for a key
+ * cleared or saved for an account already ended). Between those the user
+ * flips them freely; "on, but not entitled" is no state, as "on, no key" is
+ * none (2026-10-25).
  *
  * One [CooldownState] covers the whole service, OCR and translation, frame
  * and translate call alike: the server counts both against one budget and
  * one rate bucket, and a client key cannot ask it to skip translation, so a
  * translation-side cooldown (the server's translator rate-limited) keeps the
  * cloud out of capture too until it expires, and out of the waterfall. A
- * stopped pod, a refused key and an account with no membership cool down
- * too ([com.playtranslate.cloud.PtCloudErrors.classifyHttp]), so every reader
+ * stopped pod and a refused key cool down too
+ * ([com.playtranslate.cloud.PtCloudErrors.classifyHttp]), so every reader
  * that reads again and again (a live tier, the camera's acquires), every
  * capture and every waterfall pass stay off the cloud together until the
- * cooldown ends or a gesture resets it. The user's gestures stay here:
+ * cooldown ends or a gesture resets it. An account with no active
+ * entitlement records no cooldown: the ending turns both switches off
+ * instead ([entitlementLost]), which keeps every reader off the cloud with
+ * no round trip to learn it again, where a cooldown asked the server at the
+ * end of each rung and raised the pill each time. The user's gestures stay here:
  * [setOcrEnabled] (the OCR section's row, the OCR picker's cloud entry and
  * the cloud page), [setTranslateEnabled] (the Translation services row and
  * the cloud page), [saveClientKey], and the cloud page's two checks,
- * [onHealthRunning] and [onStoredKeyChecked].
+ * [onHealthRunning] and [onStoredKeyChecked]; and so do the two ways the
+ * routes report an ending, [onEntitlementEnded].
  *
  * The key and the account record beside it ([account]) are written here
- * alone, by [saveClientKey] and [onStoredKeyChecked], so a record is only
- * ever written beside a key that was stored and changes with it.
+ * alone, by [saveClientKey], [onStoredKeyChecked] and a route's 403
+ * ([onEntitlementEnded] with the answer), so a record is only ever written
+ * beside a key that was stored and changes with it.
  *
  * The cooldown feeds the router's decision, which lives here ([refusal]) so
  * that every reader asks the same question: the router
@@ -88,8 +103,11 @@ object PtCloudService {
      * service's state, as a count: a switch ([setOcrEnabled],
      * [setTranslateEnabled]), the key ([saveClientKey], which can turn both
      * switches on, and which a refused stored key clears) and the cooldown
-     * those reset, and the cooldown [onHealthRunning] or an accepted key
-     * check ([onKeyAccepted]) drops. The surfaces that show the service, the
+     * those reset, the cooldown [onHealthRunning] or an accepted key
+     * check ([onKeyAccepted]) drops, both switches an accepted check turns
+     * back on after an ending ([onStoredKeyChecked]), and both switches an
+     * ending turns off ([entitlementLost], which may run off the main
+     * thread). The surfaces that show the service, the
      * cloud page, its row on the Translation services page and its row in
      * the Capture & overlay page's OCR section, repaint from it while
      * resumed, so the mutation announces itself and no caller of one has to
@@ -97,9 +115,14 @@ object PtCloudService {
      * collector, each resume repaints too. A cooldown a failed call records
      * is no gesture and is not counted: it shows at the next resume, as a
      * store instance's does. Nor is a record a check rewrites with nothing
-     * else changed ([onStoredKeyChecked]): the page that asked repaints from
-     * its own answer, the Translation services row at its next resume, and
-     * the Settings sheet observes the record's pref.
+     * else changed ([onStoredKeyChecked]): the page that asked repaints
+     * from its own answer, the Translation services row at its next resume,
+     * and the Settings sheet observes the record's pref. An ending IS
+     * counted whether or not a switch moved ([entitlementLost]): a route's
+     * 403 is no page's answer, and an open cloud page whose check is done
+     * repaints only from here (Codex review, 2026-10-29). So is a switch-on
+     * the service refuses ([setOcrEnabled], [setTranslateEnabled] while not
+     * entitled), so the face that offered it repaints to the refusal.
      */
     val changes: StateFlow<Int> = changed.asStateFlow()
 
@@ -172,6 +195,18 @@ object PtCloudService {
     @Volatile var keyStoredAtMs: Long? = null
         private set
 
+    /**
+     * Counts this process's writes of the account record ([writeAccount]),
+     * from 0 at start: a route reads it where its request is built, beside
+     * the key it sends ([PtCloudClient.postFrame], [PtCloudClient.postTranslate]),
+     * and its 403 ends the account only while the count is unchanged
+     * ([onEntitlementEnded]), so an answer about an older record loses to
+     * the record a check wrote meanwhile. Never persisted: it orders writes
+     * within one process, which is where a call and a check can race.
+     */
+    @Volatile var accountGeneration: Long = 0L
+        private set
+
     /** The one client, for every frame, warm and translate call, so a warm
      *  opens the connection both routes reuse (one connection pool). Built
      *  once, on the stored settings (never a test's: it is the process's
@@ -221,9 +256,16 @@ object PtCloudService {
      * in-memory read), where none ([InternetState.NONE], the app's one "no
      * internet" rule) is [CloudRefusal.OFFLINE], since a read sent then would
      * only fail its lookup and fall back. Only then are the key (whose read
-     * decrypts it), the source and the cooldown read, all three, and judged
-     * by [PtCloudRouting.eligible]; the first of them, in that order, that
-     * refuses is the reason.
+     * decrypts it), the account's entitlement ([PtCloudConfig.entitled], the
+     * server's last word in the record kept beside the key), the source and
+     * the cooldown read, all four, and judged by [PtCloudRouting.eligible];
+     * the first of them, in that order, that refuses is the reason. A record
+     * the server wrote as inactive is [CloudRefusal.NOT_ENTITLED], kept on
+     * the device as silently as no key: every answer that writes such a
+     * record turns both switches off as well ([entitlementLost]), so in
+     * practice the switch refuses first. A trial or a lease whose dated end
+     * has passed on the device's clock refuses nothing: the read goes out,
+     * and the server's 403, if it comes, is the ending ([onEntitlementEnded]).
      */
     fun refusal(
         config: PtCloudConfig,
@@ -237,13 +279,15 @@ object PtCloudService {
         val online = internet != InternetState.NONE
         if (!online) return CloudRefusal.OFFLINE
         val hasKey = config.hasKey
+        val entitled = config.entitled
         val sourceSupported = PtCloudRouting.isSupportedSource(srcId)
         val coolingDown = isCoolingDown()
-        if (PtCloudRouting.eligible(enabled, hasKey, sourceSupported, coolingDown, deviceOnly, online)) {
+        if (PtCloudRouting.eligible(enabled, hasKey, entitled, sourceSupported, coolingDown, deviceOnly, online)) {
             return null
         }
         return when {
             !hasKey -> CloudRefusal.NO_KEY
+            !entitled -> CloudRefusal.NOT_ENTITLED
             !sourceSupported -> CloudRefusal.SOURCE
             else -> CloudRefusal.COOLING_DOWN
         }
@@ -279,8 +323,11 @@ object PtCloudService {
      *  cache, so a frame's cached translations stay valid across the flip.
      *  The store comes first because the reset's tail re-routes a running
      *  live session and repaints the surfaces, both of which read the
-     *  switch. Main thread. */
+     *  switch. On refuses while the account is not entitled ([refusesOn]).
+     *  Main thread, under the service's monitor. */
+    @Synchronized
     fun setOcrEnabled(enabled: Boolean) {
+        if (refusesOn(enabled)) return
         config.prefs.ptCloudOcrEnabled = enabled
         resetForUserGesture(clearTranslations = false)
     }
@@ -291,10 +338,30 @@ object PtCloudService {
      *  resets the service and clears the translation cache, since the flip
      *  moves the waterfall's first backend; the store comes first because
      *  the reset's reconcile reads the switch ([PtCloudBackend.isUsable]).
-     *  Main thread. */
+     *  On refuses while the account is not entitled ([refusesOn]). Main
+     *  thread, under the service's monitor. */
+    @Synchronized
     fun setTranslateEnabled(enabled: Boolean) {
+        if (refusesOn(enabled)) return
         config.prefs.ptCloudTranslateEnabled = enabled
         resetForUserGesture(clearTranslations = true)
+    }
+
+    /**
+     * Whether a gesture asking for [enabled] is refused: on, while the
+     * account is not entitled ([PtCloudConfig.entitled]). "On, not
+     * entitled" is not a state, and every face disables its switch for such
+     * an account, but a face can be stale: a route's 403 ends the account
+     * on IO while the page's rows are live, and a tap lands before the
+     * repaint (Codex review, 2026-10-29). So the one writer refuses, under
+     * the monitor the 403 writes under, and counts the refusal on [changes]
+     * so the face repaints to the switch as stored. Off is never refused:
+     * it is the state an ending wants.
+     */
+    private fun refusesOn(enabled: Boolean): Boolean {
+        if (!enabled || config.entitled) return false
+        changed.update { it + 1 }
+        return true
     }
 
     /**
@@ -313,23 +380,34 @@ object PtCloudService {
      * not blank, stamps [keyStoredAtMs]; a refused write leaves both as
      * they were, beside the old key.
      *
-     * The key's presence moves both switches together ([PtCloudConfig.hasKey]
-     * before and after the write): the first key turns both on, since the
-     * save is the sign-up moment and the bundle, reading and translating on
-     * the cloud, is what the user came for (a sign-in's key is a first key
-     * like a pasted one); a key cleared (a blank or unusable save over a
-     * usable key) turns both off, since without a key the switches are shown
-     * off and disabled everywhere and nothing may stay stored behind them.
-     * Replacing one usable key with another leaves the switches alone, so a
-     * route the user turned off stays off across a key rotation after an
-     * auth error. A refused write leaves `hasKey` unchanged, so nothing
-     * flips. Then the reset every gesture makes, the translation cache
-     * cleared with it: the old cooldown and errors describe a configuration
-     * that is gone. Main thread.
+     * The account's entitlement moves both switches together
+     * ([PtCloudConfig.entitled] before and after the write, 2026-10-29): an
+     * account entitled after the save that was not before turns both on,
+     * since the save is the sign-up moment and the bundle, reading and
+     * translating on the cloud, is what the user came for (a sign-in's key
+     * is a first key like any other); an account not entitled after the save
+     * turns both off, since the switches are then shown off and disabled
+     * everywhere and nothing may stay stored behind them. So a key cleared
+     * (a blank or unusable save over a usable key) turns both off, and a
+     * verify's key to an account that has already ended is stored with both
+     * left off: no pill says so, the page the user is on does, and Join is
+     * next (the check that answers Accepted after it turns both on,
+     * [onStoredKeyChecked]). Replacing an entitled account's key with another
+     * entitled one leaves the switches alone, so a route the user turned off
+     * stays off across a key rotation after an auth error. A refused write
+     * leaves the key and its record, and so the entitlement, as they were:
+     * an entitled account's switches stay as the user set them. Then the
+     * reset every gesture makes, the translation cache cleared with it: the
+     * old cooldown and errors describe a configuration that is gone. Main
+     * thread; under the service's monitor, as every writer of the record
+     * and the switches is ([onStoredKeyChecked], [onEntitlementEnded],
+     * [entitlementLost]), so a route's 403 arriving on IO cannot interleave
+     * with it.
      */
+    @Synchronized
     fun saveClientKey(key: String, account: PtCloudAccount? = null): Boolean {
         val prefs = config.prefs
-        val hadKey = config.hasKey
+        val hadEntitled = config.entitled
         prefs.ptCloudClientKey = key
         val asked = key.trim()
         val stored = if (asked.isEmpty()) !config.hasKey else config.clientKey == asked
@@ -337,11 +415,8 @@ object PtCloudService {
             writeAccount(account.takeIf { asked.isNotEmpty() })
             if (asked.isNotEmpty()) keyStoredAtMs = SystemClock.elapsedRealtime()
         }
-        val hasKey = config.hasKey
-        if (hadKey != hasKey) {
-            prefs.ptCloudOcrEnabled = hasKey
-            prefs.ptCloudTranslateEnabled = hasKey
-        }
+        val entitled = config.entitled
+        if (!entitled) writeSwitches(false) else if (!hadEntitled) writeSwitches(true)
         resetForUserGesture(clearTranslations = true)
         return stored
     }
@@ -349,46 +424,161 @@ object PtCloudService {
     /**
      * The cloud page's check of the stored key ([PtCloudClient.checkKey], on
      * a resume or Check again) answered [check] for [checkedKey], the key the
-     * page read and sent. It acts only while [checkedKey] is a usable key
-     * ([PtCloudConfig.isUsableKey]) and still the stored one: a sign-out or
+     * page read and sent, with [sentGeneration] the record's generation
+     * ([accountGeneration]) the page read before sending. Returns whether
+     * the answer stood: false when it describes a key or a record that
+     * changed under the check, which the page answers by asking once more
+     * ([com.playtranslate.ui.PtCloudSettingsActivity]). A sign-out or
      * another copy of the page can change the key during the round trip,
-     * and the answer describes a key that is gone; and a stored key that
-     * read back unusable (a decryption the keystore refused this once reads
-     * as blank) was never the key checked, so no answer for it, a
-     * [KeyCheck.Refused] least of all, may touch the key that is stored.
-     * Then, each answer decided here:
+     * and a route's 403 can write the record inactive while an Accepted
+     * evaluated before the ending is still on its way (the mirror of the
+     * guard in [onEntitlementEnded]; Codex review, 2026-10-29): acted on,
+     * that Accepted would rewrite the newer record active and turn both
+     * switches back on. A stored key that read back unusable (a decryption
+     * the keystore refused this once reads as blank) was never the key
+     * checked, so no answer for it, a [KeyCheck.Refused] least of all, may
+     * touch the key that is stored; nothing was asked, and the answer
+     * stands as the page's fact (true). Then, each answer decided here:
      *  - [KeyCheck.Accepted] and [KeyCheck.Inactive]: the record is rewritten
      *    from the answer ([PtCloudAccount.of]), with the email the record had
-     *    (a check does not carry it, and a pasted key's record has none); an
-     *    Accepted then clears the account cooldown it disproves
-     *    ([onKeyAccepted]).
+     *    (a check does not carry it, and a pasted key's record has none).
+     *  - An Accepted that makes the account entitled where it was not
+     *    ([PtCloudConfig.entitled] before and after the rewrite: back from
+     *    Join, say) turns both switches on, the first key's rule
+     *    ([saveClientKey]), with the reset that rule's save makes, the
+     *    translation cache cleared and any cooldown dropped; the cloud is in
+     *    play from the next capture. An Accepted is the server's word that
+     *    the account is entitled, whatever its dates read on the device's
+     *    clock (a clock ahead of the server's reads a trial ended that the
+     *    server still serves): the record it writes is active, so it is
+     *    entitled. Any other Accepted clears the account cooldown it
+     *    disproves ([onKeyAccepted]) and leaves the switches as the user set
+     *    them.
+     *  - An Inactive turns both switches off ([entitlementLost]); no pill,
+     *    since the user is on the page, whose account line says why.
      *  - [KeyCheck.Refused], the HTTP 401 and the one answer that clears a
      *    stored key: the key and the record are cleared as a sign-out clears
      *    them ([saveClientKey] with a blank key), both switches off.
      *  - [KeyCheck.Closed] and [KeyCheck.NotChecked]: nothing; the record
      *    keeps what it last knew.
-     * Main thread.
+     * Main thread; under the service's monitor ([saveClientKey]), so a
+     * route's 403 cannot write the record between this answer's guard and
+     * its rewrite, and the record it writes counts a generation
+     * ([accountGeneration]) a 403 built against the old record loses to.
      */
-    fun onStoredKeyChecked(checkedKey: String, check: KeyCheck) {
-        if (!PtCloudConfig.isUsableKey(checkedKey) || config.clientKey != checkedKey) return
+    @Synchronized
+    fun onStoredKeyChecked(checkedKey: String, sentGeneration: Long, check: KeyCheck): Boolean {
+        if (!PtCloudConfig.isUsableKey(checkedKey)) return true
+        if (config.clientKey != checkedKey || sentGeneration != accountGeneration) return false
         when (check) {
             is KeyCheck.Accepted -> {
+                val hadEntitled = config.entitled
                 rewriteAccount(check)
-                onKeyAccepted()
+                if (!hadEntitled) {
+                    writeSwitches(true)
+                    resetForUserGesture(clearTranslations = true)
+                } else {
+                    onKeyAccepted()
+                }
             }
-            is KeyCheck.Inactive -> rewriteAccount(check)
+            is KeyCheck.Inactive -> {
+                rewriteAccount(check)
+                entitlementLost()
+            }
             KeyCheck.Refused -> saveClientKey("")
             is KeyCheck.Closed, KeyCheck.NotChecked -> Unit
         }
+        return true
     }
 
     /**
-     * A check of the stored key was accepted: the account behind it is
-     * entitled now. A cooldown whose cause that answer disproves
-     * ([clearedByAcceptedKey]: a refused key, an account with no membership)
-     * describes a state that is over; this is the way out of the ladder a
-     * 403 records ([CooldownAction.NoMembershipLadder]) once the member has
-     * joined. It is reset as a gesture resets it ([resetForUserGesture]: the
+     * A frame or a translate call that carried [sentKey] was answered 403
+     * `no_entitlement` ([PtCloudClient.postFrame], [PtCloudClient.postTranslate],
+     * through [Classified.endedAccount]): the account behind the key has no
+     * active entitlement, as [answer] describes it. The one way the server
+     * ends an account between checks (2026-10-29): the device's clock ends
+     * none ([PtCloudConfig.entitled]). Acts only while [sentKey] is a usable
+     * key and still the stored one, [onStoredKeyChecked]'s guard (a
+     * sign-out or a new sign-in during the round trip makes the answer one
+     * about a key that is gone), and while the record is the one the call
+     * was built against ([sentGeneration] equal to [accountGeneration]): a
+     * check that answered Accepted while the call was out (back from Join,
+     * say) described the account later than this 403 did, and the newer
+     * word stands (Codex adversarial review, 2026-10-29). Then the record is
+     * rewritten from [answer], keeping its email, and the ending acted on
+     * ([entitlementLost]). The pill is the route's own report of the
+     * classified failure (the frame's in [PtCloudClient.postFrame], the
+     * registry's for a translate call), never this one's. Any thread, under
+     * the service's monitor, so the guard and the rewrite are one step
+     * against the page's writers ([onStoredKeyChecked], [saveClientKey]).
+     */
+    @Synchronized
+    fun onEntitlementEnded(sentKey: String, sentGeneration: Long, answer: KeyCheck.Inactive) {
+        if (!PtCloudConfig.isUsableKey(sentKey) || config.clientKey != sentKey) return
+        if (sentGeneration != accountGeneration) return
+        rewriteAccount(answer)
+        entitlementLost()
+    }
+
+    /**
+     * The server said the stored key's account is not entitled
+     * ([PtCloudConfig.entitled]: its trial ended, or no membership is
+     * active): both switches go off (2026-10-29), so nothing asks the cloud
+     * again, and so nothing finds the ending again, until an answer makes the
+     * account entitled again ([onStoredKeyChecked], [saveClientKey]). The
+     * switch-off is the memory that the user was told: there is no flag. The
+     * one writer of the switch-off at an ending, for the two ways the app
+     * learns of one, both the server's word: a frame's or a translate call's
+     * 403 ([onEntitlementEnded]), and the cloud page's check answering
+     * Inactive ([onStoredKeyChecked]). The device's clock is not a third: a
+     * dated end passing here ends nothing ([PtCloudConfig.entitled]).
+     * Counted on [changes], so the resumed surfaces repaint.
+     *
+     * Nothing else, on purpose:
+     *  - No [TranslationErrors.forget]: the attempt that found the ending is
+     *    the one pill the user gets, and it must stay up. Its report can
+     *    arrive after this (the translate route's always does), and still
+     *    counts, since the tracker counts the cloud's reports while a key is
+     *    stored ([TranslationErrors.install]).
+     *  - No cooldown reset: an ending records no cooldown, so there is
+     *    nothing to reset.
+     *  - No translation-cache clear and no
+     *    [GroupTranslator.reconcileShared]: the routing identity reconciles
+     *    at the next waterfall call, the rule a recorded cooldown already
+     *    relies on ([afterCooldownReset]).
+     *  - No [CaptureService.refreshLiveOverlay]: the frame whose 403 found
+     *    the ending falls back to the device, and the next read finds the
+     *    switch off.
+     *
+     * Counted on [changes] whether or not a switch moved: the record moved,
+     * and an open cloud page whose check is done repaints only from the
+     * count, so with both switches already off (turned off during the
+     * call's round trip) a silent ending would leave its rows live for a
+     * tap (Codex review, 2026-10-29). Reached only after an Inactive record
+     * was written under the same monitor, so the account is never entitled
+     * here. Touches only prefs and [changes], so it is safe on any thread
+     * (a translate call's 403 arrives on IO).
+     */
+    @Synchronized
+    private fun entitlementLost() {
+        writeSwitches(false)
+        changed.update { it + 1 }
+    }
+
+    /** Both switches stored as [on], the one write behind the entitlement
+     *  rule's moves ([saveClientKey], [onStoredKeyChecked],
+     *  [entitlementLost]). */
+    private fun writeSwitches(on: Boolean) {
+        config.prefs.ptCloudOcrEnabled = on
+        config.prefs.ptCloudTranslateEnabled = on
+    }
+
+    /**
+     * A check of the stored key was accepted with no switch to turn back on
+     * ([onStoredKeyChecked]: the account was entitled before it too). A
+     * cooldown whose cause that answer disproves ([clearedByAcceptedKey]: a
+     * refused key, and an account with no membership as an older build
+     * recorded it) describes a state that is over. It is reset as a gesture resets it ([resetForUserGesture]: the
      * cooldown and its ladders dropped, the pill's errors forgotten, the
      * routing identity reconciled, the change counted on [changes]), with
      * the translation cache kept, since the configuration did not change.
@@ -407,7 +597,10 @@ object PtCloudService {
      * compile until it is):
      *  - AUTH, a refused key: yes, the edge accepts it now.
      *  - BILLING, an account with no membership: yes, the check's 200 says
-     *    the account is entitled now.
+     *    the account is entitled now. The cloud records BILLING no longer
+     *    (an ending turns both switches off instead, [entitlementLost]), but
+     *    the cause is shared with the store backends, and an older build's
+     *    persisted BILLING cooldown can still be stored.
      *  - RATE_LIMITED, DAILY_QUOTA and MONTHLY_QUOTA: no, the check spends no
      *    budget and says nothing of the limits.
      *  - SERVER_ERROR, CONNECTION_FAILED and NOT_RUNNING: no, the edge
@@ -429,10 +622,13 @@ object PtCloudService {
         writeAccount(PtCloudAccount.of(answer, config.account?.email, System.currentTimeMillis()))
 
     /** [account] stored as the record ([Prefs.ptCloudAccountJson]), or the
-     *  record cleared for null. Only [saveClientKey] and
-     *  [onStoredKeyChecked] reach it, beside a key that is stored. */
+     *  record cleared for null, and the write counted ([accountGeneration]).
+     *  Only [saveClientKey], [onStoredKeyChecked] and [onEntitlementEnded]
+     *  reach it, beside a key that is stored, each under the service's
+     *  monitor. */
     private fun writeAccount(account: PtCloudAccount?) {
         config.prefs.ptCloudAccountJson = account?.let { PtJson.lenient.encodeToString(PtCloudAccount.serializer(), it) }
+        accountGeneration++
     }
 
     /** The cloud page's health check found the service running (`GET /health`
@@ -541,15 +737,18 @@ object PtCloudService {
     }
 }
 
-/** Why a read stays on the device ([PtCloudService.refusal]). [logWord] names
- *  it in the router's log line ([com.playtranslate.ocr.FrameReaders.readerFor]);
- *  the switch has none, so a release build, where it is always off, logs
- *  nothing per read. */
+/** Why a read stays on the device ([PtCloudService.refusal]), in the order
+ *  the decision asks. [logWord] names it in the router's log line
+ *  ([com.playtranslate.ocr.FrameReaders.readerFor]); the switch has none, so
+ *  a release build, where it is always off, logs nothing per read.
+ *  [NOT_ENTITLED] is the key's account as the server last wrote it, inactive
+ *  ([PtCloudConfig.entitled]), never a date the device's clock passed. */
 enum class CloudRefusal(val logWord: String?) {
     SWITCH_OFF(null),
     DEVICE_ONLY("device-only"),
     OFFLINE("no network"),
     NO_KEY("no key"),
+    NOT_ENTITLED("not entitled"),
     SOURCE("source"),
     COOLING_DOWN("cooling down"),
 }

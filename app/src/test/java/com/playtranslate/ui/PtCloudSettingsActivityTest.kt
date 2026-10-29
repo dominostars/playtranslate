@@ -93,7 +93,9 @@ import kotlin.math.roundToInt
  * unreachable. The stored key is never on the page.
  *
  * Its two "use for" switches (Read captures, Translate), shown only while a
- * key is stored, seed from their prefs without resetting the service and
+ * key is stored and disabled and off while the account is not entitled
+ * (both turned off by a check answering 403, both on again by an Accepted
+ * check back from Join), seed from their prefs without resetting the service and
  * keep their state across a recreate, a flip writes its pref and resets the
  * service's cooldown through the service's one mutation for that switch
  * (the pref stored before the reset's reconcile of the shared cache), and
@@ -302,6 +304,19 @@ class PtCloudSettingsActivityTest {
 
     private fun ended(lastSource: String?, endedAtMs: Long?, email: String? = EMAIL) =
         PtCloudAccount(email = email, active = false, lastSource = lastSource, endedAtMs = endedAtMs, checkedAtMs = now())
+
+    /** The two "use for" rows as the page paints them for an account that
+     *  is not entitled (2026-10-29): the CONFIGURATION group still shows,
+     *  each row in it disabled with its switch off. */
+    private fun PtCloudSettingsActivity.assertRowsDisabledAndOff() {
+        assertTrue("the CONFIGURATION group stays", shown(R.id.headerCloudConfiguration) && shown(R.id.cardCloudUseFor))
+        for (row in listOf(ocrRow(), translateRow())) {
+            assertTrue("shown", row.isShown)
+            assertFalse("disabled", row.isEnabled)
+            assertFalse("disabled", row.switch().isEnabled)
+            assertFalse("off", row.switch().isChecked)
+        }
+    }
 
     /** Counts the page's health checks, each one never ending. */
     private fun countHealthChecks(): () -> Int {
@@ -1166,6 +1181,8 @@ class PtCloudSettingsActivityTest {
         page.signInWith("482913")
 
         assertEquals(KEY, cloudPrefs.ptCloudClientKey)
+        assertFalse("nothing entitled: both switches left off", cloudPrefs.ptCloudOcrEnabled || cloudPrefs.ptCloudTranslateEnabled)
+        page.assertRowsDisabledAndOff()
         assertEquals(EMAIL, page.text(R.id.tvSignedInAs))
         assertEquals("Trial ended " + CooldownTimeLabel.formatDate(endedAt), page.accountLine())
         assertTrue(page.shown(R.id.btnCloudJoin))
@@ -1459,17 +1476,24 @@ class PtCloudSettingsActivityTest {
     }
 
     @Test fun `a 403 whose last_source is trial shows Trial ended, Check again and Join in the card`() {
-        signedIn(trial(now() + 5 * DAY))
+        val cloudPrefs = signedIn(trial(now() + 5 * DAY))
         val checks = keyChecks()
         val endedAt = now() - 3 * DAY
         val page = open()
         assertEquals("the trial's line", page.themeColor(R.attr.ptWarning), page.accountLineColor())
+        assertTrue(page.ocrRow().switch().isChecked && page.translateRow().switch().isChecked)
 
         awaitCalls(checks, 1)
         checks.answer(KeyCheck.Inactive("trial", endedAt))
 
+        // The resume's check found the account ended: both switches off,
+        // the rows disabled under it, the group still there.
+        assertFalse(cloudPrefs.ptCloudOcrEnabled)
+        assertFalse(cloudPrefs.ptCloudTranslateEnabled)
+        page.assertRowsDisabledAndOff()
+
         assertEquals("Trial ended " + CooldownTimeLabel.formatDate(endedAt), page.accountLine())
-        assertEquals("ended, in the subtitle's colour", page.themeColor(R.attr.ptTextMuted), page.accountLineColor())
+        assertEquals("ended, in the alert colour", page.themeColor(R.attr.ptDanger), page.accountLineColor())
         assertTrue(page.shown(R.id.rowCloudCheckAgain))
         assertCheckAgainFree(page)
         assertTrue(page.shownTexts().contains("Already joined? It can take a few seconds to process."))
@@ -1504,23 +1528,116 @@ class PtCloudSettingsActivityTest {
         awaitCalls(checks, 1)
         checks.answer(KeyCheck.Inactive(null, null))
         assertEquals("No active membership", page.accountLine())
+        assertEquals("inactive, in the alert colour", page.themeColor(R.attr.ptDanger), page.accountLineColor())
         assertTrue(page.shown(R.id.btnCloudJoin))
         assertTrue(page.shown(R.id.rowCloudCheckAgain))
+        page.assertRowsDisabledAndOff()
 
         page.checkAgainButton().performClick()
         awaitCalls(checks, 2)
         checks.answer(KeyCheck.Inactive("kofi", endedAt))
         assertEquals("Membership inactive since " + CooldownTimeLabel.formatDate(endedAt), page.accountLine())
+        assertEquals("inactive with a date, in the alert colour", page.themeColor(R.attr.ptDanger), page.accountLineColor())
     }
 
-    @Test fun `an expired trial record shows Trial ended with the date`() {
+    /** The clock words the trial's end and ends nothing: the record is the
+     *  server's last word, active, so the switches stay on and the rows
+     *  live until the resume's check or a route's 403 says otherwise (Codex
+     *  adversarial review, 2026-10-29). */
+    @Test fun `an expired trial record shows Trial ended with the date, Join and Check again, with the rows still live`() {
         val end = now() - 2 * DAY
-        signedIn(trial(end))
+        val cloudPrefs = signedIn(trial(end))
         val page = open()
 
         assertEquals("Trial ended " + CooldownTimeLabel.formatDate(end), page.accountLine())
         assertTrue(page.shown(R.id.btnCloudJoin))
         assertTrue(page.shown(R.id.rowCloudCheckAgain))
+        assertTrue("the clock ends nothing", cloudPrefs.ptCloudOcrEnabled && cloudPrefs.ptCloudTranslateEnabled)
+        for (row in listOf(page.ocrRow(), page.translateRow())) {
+            assertTrue("live", row.isEnabled && row.switch().isEnabled)
+            assertTrue("on", row.switch().isChecked)
+        }
+    }
+
+    /** A lease's end passing on the clock says nothing of the membership
+     *  (the next payment's lease is the server's to tell): "Member", the
+     *  date left out, no Join, and the rows live. */
+    @Test fun `a member whose lease end has passed shows Member with the date left out, and no Join`() {
+        val cloudPrefs = signedIn(member(now() - 2 * DAY))
+        val page = open()
+
+        assertEquals("Member", page.accountLine())
+        assertFalse(page.shown(R.id.btnCloudJoin))
+        assertFalse(page.shown(R.id.rowCloudCheckAgain))
+        assertTrue(cloudPrefs.ptCloudOcrEnabled && cloudPrefs.ptCloudTranslateEnabled)
+        assertTrue(page.ocrRow().switch().isEnabled && page.ocrRow().switch().isChecked)
+    }
+
+    /** Both switches turned off while a call was out, and its 403 lands
+     *  with the page open and its resume check done: the page repaints
+     *  from the service's count to the ended account, its rows disabled,
+     *  so no tap can turn a switch on for it (Codex review, 2026-10-29). */
+    @Test fun `a 403 landing with both switches already off repaints the open page to the ended account`() {
+        val until = now() + 20 * DAY
+        val cloudPrefs = signedIn(member(until))
+        val checks = keyChecks(KeyCheck.Accepted("kofi", until))
+        val page = open()
+        awaitCalls(checks, 1)
+        PtCloudService.setOcrEnabled(false)
+        PtCloudService.setTranslateEnabled(false)
+        idle()
+        assertFalse(cloudPrefs.ptCloudOcrEnabled || cloudPrefs.ptCloudTranslateEnabled)
+        assertTrue("the rows stay live while entitled", page.ocrRow().isEnabled && page.ocrRow().switch().isEnabled)
+        val endedAt = now() - DAY
+
+        PtCloudService.onEntitlementEnded(KEY, PtCloudService.accountGeneration, KeyCheck.Inactive("kofi", endedAt))
+        idle()
+
+        assertEquals("Membership inactive since " + CooldownTimeLabel.formatDate(endedAt), page.accountLine())
+        page.assertRowsDisabledAndOff()
+        assertTrue(page.shown(R.id.btnCloudJoin))
+    }
+
+    /** The resume's check is out when a route's 403 ends the account: its
+     *  answer, an Accepted evaluated before the ending, is dropped by the
+     *  service and the page asks once more; the second answer stands. A
+     *  second drop reads as not checked, and Check again asks afresh
+     *  (Codex review, 2026-10-29). */
+    @Test fun `a check answered after a route's 403 is asked once more, and a second drop reads as not checked`() {
+        val until = now() + 20 * DAY
+        val cloudPrefs = signedIn(member(until))
+        val checks = keyChecks()
+        val page = open()
+        awaitCalls(checks, 1)
+        val endedAt = now() - DAY
+        PtCloudService.onEntitlementEnded(KEY, PtCloudService.accountGeneration, KeyCheck.Inactive("kofi", endedAt))
+        idle()
+        assertFalse(cloudPrefs.ptCloudOcrEnabled || cloudPrefs.ptCloudTranslateEnabled)
+
+        checks.answer(KeyCheck.Accepted("kofi", until))
+
+        awaitCalls(checks, 2)
+        assertFalse("the stale Accepted stood for nothing", cloudPrefs.ptCloudOcrEnabled || cloudPrefs.ptCloudTranslateEnabled)
+        assertEquals("Membership inactive since " + CooldownTimeLabel.formatDate(endedAt), page.accountLine())
+
+        // The record moves again under the second check: dropped too, and
+        // the page says it could not check, asking no third time.
+        PtCloudService.onEntitlementEnded(KEY, PtCloudService.accountGeneration, KeyCheck.Inactive("kofi", endedAt))
+        checks.answer(KeyCheck.Accepted("kofi", until))
+        settleIo()
+        assertEquals(2, checks.sent.size)
+        assertTrue(page.shown(R.id.tvAccountUnchecked))
+        assertFalse(cloudPrefs.ptCloudOcrEnabled || cloudPrefs.ptCloudTranslateEnabled)
+        page.assertRowsDisabledAndOff()
+
+        // Check again asks afresh, and an answer built against the current
+        // record stands.
+        page.checkAgainButton().performClick()
+        awaitCalls(checks, 3)
+        checks.answer(KeyCheck.Accepted("kofi", until))
+        assertFalse(page.shown(R.id.tvAccountUnchecked))
+        assertTrue("entitled again: both on", cloudPrefs.ptCloudOcrEnabled && cloudPrefs.ptCloudTranslateEnabled)
+        assertEquals("Member until " + CooldownTimeLabel.formatDateTime(ctx, until), page.accountLine())
     }
 
     @Test fun `the cooldown line hides while the account line says ended or inactive`() {
@@ -1542,7 +1659,14 @@ class PtCloudSettingsActivityTest {
         page.checkAgainButton().performClick()
         awaitCalls(checks, 3)
         checks.answer(KeyCheck.Accepted("kofi", now() + 30 * DAY))
-        assertTrue("a member again: a rate limit's cooldown stays, and shows", page.cooldownLine().isShown)
+        // A member again: the check that made the account entitled is the
+        // first key's twin, whose reset drops every cooldown (2026-10-29),
+        // and a cooldown recorded after it shows as on the trial.
+        assertFalse("the regaining check dropped the rate limit", page.cooldownLine().isShown)
+        assertNull(PtCloudService.unavailableUntil())
+        recordCooldown()
+        resume()
+        assertTrue("a member's cooldown shows", page.cooldownLine().isShown)
     }
 
     @Test fun `a check that could not be made says so beside the account line, which keeps the record`() {
@@ -1757,12 +1881,16 @@ class PtCloudSettingsActivityTest {
         assertEquals("one re-check only", 3, checks.sent.size)
     }
 
-    @Test fun `back from Join, a membership on the first check needs no second`() {
+    /** The Accepted check back from Join is the first key's twin: both
+     *  switches come back on, the rows live again (2026-10-29). */
+    @Test fun `back from Join, a membership on the first check needs no second and turns both switches on`() {
         val endedAt = now() - DAY
-        signedIn(ended("trial", endedAt))
+        val cloudPrefs = signedIn(ended("trial", endedAt))
         val checks = keyChecks(KeyCheck.Inactive("trial", endedAt), KeyCheck.Accepted("kofi", now() + 38 * DAY))
         val page = open()
         awaitCalls(checks, 1)
+        assertFalse(cloudPrefs.ptCloudOcrEnabled || cloudPrefs.ptCloudTranslateEnabled)
+        page.assertRowsDisabledAndOff()
 
         page.joinButton().performClick()
         resume()
@@ -1772,6 +1900,12 @@ class PtCloudSettingsActivityTest {
 
         assertEquals(2, checks.sent.size)
         assertFalse(page.shown(R.id.btnCloudJoin))
+        assertTrue(cloudPrefs.ptCloudOcrEnabled)
+        assertTrue(cloudPrefs.ptCloudTranslateEnabled)
+        for (row in listOf(page.ocrRow(), page.translateRow())) {
+            assertTrue("live", row.switch().isEnabled)
+            assertTrue("on", row.switch().isChecked)
+        }
     }
 
     @Test fun `Join opens Ko-fi, its long press copies the address, and the line under it names the email to pay with`() {

@@ -22,8 +22,9 @@ import java.io.InterruptedIOException
  * translation ([PtCloudClient.postTranslate]). The capture falls back to the
  * device reader, a waterfall pass to its next backend; [failure] is what the
  * translation-error pill words. By the time this is thrown the failure's
- * cooldown is recorded (and, on the frame route, its attempt reported; the
- * registry reports the translate route's). The message names the kind and
+ * cooldown is recorded, an ended account it carries is handed to the
+ * service ([Classified.endedAccount]), and, on the frame route, its attempt
+ * is reported (the registry reports the translate route's). The message names the kind and
  * the code only, since the registry logs it: never a text, the key, the
  * address or a body.
  */
@@ -54,8 +55,11 @@ class PtCloudRefusedException(val refusal: CloudRefusal) :
 sealed interface CooldownAction {
     fun applyTo(cooldown: CooldownState)
 
-    /** Nothing to record: a refusal the user or the developer fixes, or a
-     *  state (pod starting, deadline) that is not the service failing. */
+    /** Nothing to record: a refusal the user or the developer fixes, a
+     *  state (pod starting, deadline) that is not the service failing, or
+     *  an account with no active entitlement, whose answer turns the
+     *  service's switches off instead ([Classified.endedAccount],
+     *  [PtCloudService.onEntitlementEnded]). */
     data object None : CooldownAction {
         override fun applyTo(cooldown: CooldownState) = Unit
     }
@@ -101,17 +105,6 @@ sealed interface CooldownAction {
             cooldown.recordLadderFailure(CooldownLadder.RateLimit, BAD_KEY, CooldownCause.AUTH)
     }
 
-    /** The key is good but its account has no membership (the edge's 403
-     *  `no_entitlement`, a trial that ended or a membership inactive): the
-     *  RateLimit ladder, as billing (the account class, shown without a retry
-     *  time). Only the account fixes it; either switch, a key save and an
-     *  accepted check of the stored key ([PtCloudService.onKeyAccepted])
-     *  reset the cooldown. */
-    data object NoMembershipLadder : CooldownAction {
-        override fun applyTo(cooldown: CooldownState) =
-            cooldown.recordLadderFailure(CooldownLadder.RateLimit, NO_MEMBERSHIP, CooldownCause.BILLING)
-    }
-
     /** The service has closed for good (a `410 service_closed`): the
      *  RateLimit ladder, as closed (the account class, shown without a
      *  retry time). It is the one answer that says the service will not come
@@ -142,14 +135,19 @@ sealed interface CooldownAction {
         const val SERVER_ERROR = "Server error"
         const val NOT_RUNNING = "Not running"
         const val BAD_KEY = "Bad key"
-        const val NO_MEMBERSHIP = "No membership"
         const val CLOSED = "Closed"
     }
 }
 
-/** A classified failure: what the pill says ([failure]) and what the
- *  cooldown records ([cooldown]). */
-data class Classified(val failure: BackendFailure, val cooldown: CooldownAction) {
+/** A classified failure: what the pill says ([failure]), what the
+ *  cooldown records ([cooldown]), and for a 403 `no_entitlement` the account
+ *  the server described as ended ([endedAccount], null for every other
+ *  answer), for the service to act on ([PtCloudService.onEntitlementEnded]). */
+data class Classified(
+    val failure: BackendFailure,
+    val cooldown: CooldownAction,
+    val endedAccount: KeyCheck.Inactive? = null,
+) {
     fun record(state: CooldownState) = cooldown.applyTo(state)
 }
 
@@ -220,10 +218,15 @@ object PtCloudErrors {
      *  - 403 `no_entitlement`: the key is good but its account has no active
      *    entitlement. TRIAL_ENDED when the one that ended last is the trial
      *    ([EdgeError.lastSource] is [SOURCE_TRIAL]), else MEMBERSHIP_INACTIVE
-     *    (another, none, or a Worker that sent none), both BILLING on the
-     *    RateLimit ladder ([CooldownAction.NoMembershipLadder]), the account
-     *    class. Any other 403 (a body that is not that, or none) is
-     *    [httpStatusFailure] with no cooldown, as below.
+     *    (another, none, or a Worker that sent none), both with no cooldown
+     *    (2026-10-29): the account the body describes
+     *    ([Classified.endedAccount], its `last_source` and `ended_at`, read
+     *    as the key check reads them) goes to the service, which writes the
+     *    record and turns both switches off
+     *    ([PtCloudService.onEntitlementEnded]), so no reader asks again and
+     *    no ladder is needed to keep them off. Any other 403 (a body that is
+     *    not that, or none) is [httpStatusFailure] with no cooldown, as
+     *    below.
      *  - 404 with an empty body: the service is switched off (its pod is
      *    stopped and the edge passes the pod host's bare 404 through). The
      *    RateLimit ladder as not running ([CooldownAction.NotRunningLadder]):
@@ -257,14 +260,14 @@ object PtCloudErrors {
     fun classifyHttp(code: Int, body: String, retryAfter: String?): Classified = when (code) {
         401 -> Classified(BackendFailure(BackendFailureKind.AUTH, code), CooldownAction.BadKeyLadder)
         403 -> {
-            val error = edgeError(body)
-            if (error?.error == NO_ENTITLEMENT) {
-                val kind = if (error.lastSource == SOURCE_TRIAL) {
+            val ended = endedAccount(edgeError(body))
+            if (ended != null) {
+                val kind = if (ended.lastSource == SOURCE_TRIAL) {
                     BackendFailureKind.TRIAL_ENDED
                 } else {
                     BackendFailureKind.MEMBERSHIP_INACTIVE
                 }
-                Classified(BackendFailure(kind, code), CooldownAction.NoMembershipLadder)
+                Classified(BackendFailure(kind, code), CooldownAction.None, endedAccount = ended)
             } else {
                 Classified(httpStatusFailure(code), CooldownAction.None)
             }
@@ -313,9 +316,7 @@ object PtCloudErrors {
             KeyCheck.Accepted(ok?.source, parseIso8601(ok?.entitledUntil))
         }
         401 -> KeyCheck.Refused
-        403 -> edgeError(body())?.takeIf { it.error == NO_ENTITLEMENT }
-            ?.let { KeyCheck.Inactive(it.lastSource, parseIso8601(it.endedAt)) }
-            ?: KeyCheck.NotChecked
+        403 -> endedAccount(edgeError(body())) ?: KeyCheck.NotChecked
         410 -> edgeError(body())?.takeIf { it.error == SERVICE_CLOSED }
             ?.let { KeyCheck.Closed(it.message) }
             ?: KeyCheck.NotChecked
@@ -428,6 +429,15 @@ object PtCloudErrors {
 
     /** [body] as the edge's JSON error object, or null when it is not one. */
     private fun edgeError(body: String): EdgeError? = decoded(body)
+
+    /** A 403's [error] body as the ended account it describes: the edge's
+     *  `no_entitlement` as [KeyCheck.Inactive] with its `last_source` and
+     *  `ended_at` (both null when the Worker left them out; a date that
+     *  does not parse reads as null), anything else as null. The one reading
+     *  of that 403, for the two routes ([classifyHttp]) and the key check
+     *  ([classifyKeyCheck]), so the two cannot diverge. */
+    private fun endedAccount(error: EdgeError?): KeyCheck.Inactive? =
+        error?.takeIf { it.error == NO_ENTITLEMENT }?.let { KeyCheck.Inactive(it.lastSource, parseIso8601(it.endedAt)) }
 
     /** [body] decoded leniently as [T], or null when it does not decode. */
     private inline fun <reified T> decoded(body: String): T? = try {

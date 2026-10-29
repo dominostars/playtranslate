@@ -10,6 +10,7 @@ import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
 import com.playtranslate.PtJson
 import com.playtranslate.R
+import com.playtranslate.cloud.KeyCheck
 import com.playtranslate.cloud.PtCloudAccount
 import com.playtranslate.cloud.PtCloudConfig
 import com.playtranslate.cloud.PtCloudService
@@ -416,26 +417,78 @@ class RootSettingsViewModelTest {
         assertEquals("both routes on read as the pitch, the no-key line", "Server-grade OCR and translation", vm.state.value.cloudSummary)
     }
 
-    @Test fun `cloud cell reports the key slot for its icon tint, whatever the switches hold`() {
+    /** The tint follows the account's entitlement (2026-10-29): muted with
+     *  no key and with an ended account, accent while entitled, whatever the
+     *  switches hold. Every step is a pref the ViewModel observes (the key
+     *  slot, the record, the switches). */
+    @Test fun `cloud cell reports whether the account is entitled for its icon tint, whatever the switches hold`() {
         val cloudPrefs = PtCloudTestSupport.prefs(ctx)
         PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(cloudPrefs))
         Prefs(ctx).ptCloudOcrEnabled = true
         Prefs(ctx).ptCloudTranslateEnabled = true
         val vm = RootSettingsViewModel(app)
-        assertFalse("no key: the icon is muted under the pitch", vm.state.value.cloudHasKey)
+        assertFalse("no key: the icon is muted under the pitch", vm.state.value.cloudEntitled)
 
         cloudPrefs.ptCloudClientKey = PtCloudTestSupport.KEY
         shadowOf(Looper.getMainLooper()).idle()
-        assertTrue("the key slot is observed", vm.state.value.cloudHasKey)
+        assertTrue("a key with no record: nothing against it", vm.state.value.cloudEntitled)
+
+        val now = System.currentTimeMillis()
+        writeRecord(cloudPrefs, trialUntil(now + 3 * DAY_MS))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue("on the trial", vm.state.value.cloudEntitled)
 
         Prefs(ctx).ptCloudOcrEnabled = false
         Prefs(ctx).ptCloudTranslateEnabled = false
         shadowOf(Looper.getMainLooper()).idle()
-        assertTrue("both switches off with a key: Off is the subtitle's to say", vm.state.value.cloudHasKey)
+        assertTrue("both switches off while entitled: Off is the subtitle's to say", vm.state.value.cloudEntitled)
+
+        writeRecord(cloudPrefs, ended(SOURCE_TRIAL, now - DAY_MS))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse("the trial ended: muted, under Trial ended", vm.state.value.cloudEntitled)
+        assertEquals("Trial ended", vm.state.value.cloudSummary)
+
+        PtCloudService.onStoredKeyChecked(PtCloudTestSupport.KEY, PtCloudService.accountGeneration, KeyCheck.Accepted("kofi", now + 30 * DAY_MS))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue("an Accepted check back from Join: accent again", vm.state.value.cloudEntitled)
 
         cloudPrefs.ptCloudClientKey = ""
         shadowOf(Looper.getMainLooper()).idle()
-        assertFalse("a cleared key mutes it again", vm.state.value.cloudHasKey)
+        assertFalse("a cleared key mutes it again", vm.state.value.cloudEntitled)
+    }
+
+    /** The standing moves with the clock and no pref signal carries it, so
+     *  a resume's refresh recomputes the tint as it does the digest. Here
+     *  the settings change under the ViewModel with no pref written, as in
+     *  `refresh recomputes the cloud digest`. */
+    @Test fun `refresh recomputes the cloud cell's tint`() {
+        val cloudPrefs = cloudPrefsWithKey()
+        writeRecord(cloudPrefs, trialUntil(System.currentTimeMillis() + 3 * DAY_MS))
+        val vm = RootSettingsViewModel(app)
+        assertTrue(vm.state.value.cloudEntitled)
+
+        PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(Prefs(ctx)))
+        vm.refresh()
+
+        assertFalse(vm.state.value.cloudEntitled)
+    }
+
+    /** An account already ended when the view model is built: the seed and
+     *  refresh read the entitlement, never the key slot, so the tint is
+     *  muted while the key is still stored. The clock passing a trial's end
+     *  between two resumes is the same read, with nothing written. */
+    @Test fun `the tint seeds and refreshes muted for an ended account whose key is still stored`() {
+        val cloudPrefs = cloudPrefsWithKey()
+        writeRecord(cloudPrefs, ended(SOURCE_TRIAL, System.currentTimeMillis() - DAY_MS))
+        val vm = RootSettingsViewModel(app)
+        assertFalse("seeded from the entitlement, not the key", vm.state.value.cloudEntitled)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(vm.state.value.cloudEntitled)
+
+        vm.refresh()
+
+        assertFalse("refreshed from the entitlement, not the key", vm.state.value.cloudEntitled)
+        assertEquals("Trial ended", vm.state.value.cloudSummary)
     }
 
     // ── The cloud digest's account line ───────────────────────────────────
@@ -473,15 +526,23 @@ class RootSettingsViewModelTest {
         assertEquals("nothing ever ended", "Membership inactive", RootSettingsViewModel(app).state.value.cloudSummary)
     }
 
-    /** The standing moves with time: an active record whose end has passed
-     *  reads as ended, never "Trial until" a date gone by. */
-    @Test fun `the digest reads an active record whose end has passed as ended`() {
+    /** The standing moves with time for a trial: an active trial whose end
+     *  has passed reads as ended, never "Trial until" a date gone by. A
+     *  lease's passed end says nothing (the next payment's lease is the
+     *  server's to tell), so the digest keeps a member's silence; and the
+     *  tint stays lit for both, since the account is entitled until the
+     *  server says not (Codex adversarial review, 2026-10-29). */
+    @Test fun `the digest reads a trial whose end has passed as ended, and a lease's passed end as nothing`() {
         val cloudPrefs = cloudPrefsWithKey()
         val now = System.currentTimeMillis()
         writeRecord(cloudPrefs, trialUntil(now - DAY_MS))
-        assertEquals("Trial ended", RootSettingsViewModel(app).state.value.cloudSummary)
+        var vm = RootSettingsViewModel(app)
+        assertEquals("Trial ended", vm.state.value.cloudSummary)
+        assertTrue("the words are the clock's; the entitlement is the server's", vm.state.value.cloudEntitled)
         writeRecord(cloudPrefs, trialUntil(now - DAY_MS).copy(source = "kofi"))
-        assertEquals("Membership inactive", RootSettingsViewModel(app).state.value.cloudSummary)
+        vm = RootSettingsViewModel(app)
+        assertEquals("Off", vm.state.value.cloudSummary)
+        assertTrue(vm.state.value.cloudEntitled)
     }
 
     @Test fun `the digest is unchanged without an account record, with a member's, or one with no source or no end`() {

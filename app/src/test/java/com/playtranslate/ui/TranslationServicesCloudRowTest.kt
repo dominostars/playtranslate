@@ -38,7 +38,9 @@ import org.robolectric.android.controller.ActivityController
  * online card, ahead of the store's instances; its cooldown line and tint
  * from the registry's backend, which reads the service's cooldown at each
  * call (the state a test installs after the Application built the backend);
- * its switch through the service's one mutation; the key's tail or, with no
+ * its switch through the service's one mutation, shown off and not its own
+ * tap target while the account is not entitled (no key, or an ended trial
+ * or membership); the key's tail or, with no
  * key, the service's one-line pitch; a tap to the cloud page; and a fresh render on a
  * return from that page while the card is in edit mode, which the store
  * rows' rebind skips.
@@ -248,6 +250,32 @@ class TranslationServicesCloudRowTest {
      *  nothing is written (2026-10-25). With a key it flips in place. */
     @Test fun `with no key the switch shows off and is not its own tap target, so a tap opens the cloud page and writes nothing`() {
         PtCloudService.installForTest(cooldown, PtCloudTestSupport.config(ctx, key = ""))
+        prefs.ptCloudTranslateEnabled = true
+        recordCooldown()
+        val page = open()
+        assertTrue("looks live", page.switch().isEnabled)
+        assertFalse("shows off whatever is stored", page.switch().isChecked)
+        assertFalse("a touch on it reaches the row", page.switch().isClickable)
+
+        page.rowMain().performClick()
+
+        assertEquals(PtCloudSettingsActivity::class.java.name, shadowOf(page).nextStartedActivity.component!!.className)
+        assertTrue("nothing written", prefs.ptCloudTranslateEnabled)
+        assertNotNull("nothing reset", PtCloudService.unavailableUntil())
+    }
+
+    /** The no-key cell's twin for an account whose trial ended
+     *  (2026-10-29): the key is there, but nothing is in play, so the switch
+     *  shows off whatever is stored and a tap on it opens the cloud page,
+     *  where Join is; nothing is written or reset. */
+    @Test fun `with an ended account the switch shows off and is not its own tap target, so a tap opens the cloud page and writes nothing`() {
+        prefs.ptCloudAccountJson = PtJson.lenient.encodeToString(
+            PtCloudAccount.serializer(),
+            PtCloudAccount(
+                email = "player@example.com", active = false, lastSource = "trial",
+                endedAtMs = System.currentTimeMillis() - 24 * 3_600_000L, checkedAtMs = 1L,
+            ),
+        )
         prefs.ptCloudTranslateEnabled = true
         recordCooldown()
         val page = open()

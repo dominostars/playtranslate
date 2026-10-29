@@ -8,10 +8,13 @@ import org.junit.Test
 /**
  * The account record's one classifier, [PtCloudAccount.standing], and the one
  * place a wire answer becomes a record, [PtCloudAccount.of]: the five
- * standings, an active record whose dated end has passed reading as ended
- * with that end as its ended date, `source` (never a missing date) as the
- * test for a Worker that sent no account, and the record's JSON round trip,
- * the form it is kept in beside the key.
+ * standings, an active trial whose dated end has passed reading as ended
+ * with that end as its ended date while a membership's passed date reads
+ * nothing (the next payment's lease is the server's to tell), `source`
+ * (never a missing date) as the test for a Worker that sent no account, and
+ * the record's JSON round trip, the form it is kept in beside the key. The
+ * standing words; whether the cloud may serve the account is the record's
+ * `active`, read by [PtCloudConfig.entitled] ([PtCloudConfigTest]).
  */
 class PtCloudAccountTest {
 
@@ -42,16 +45,22 @@ class PtCloudAccountTest {
         assertNull(trial.endedAt(NOW - 2 * DAY))
     }
 
-    @Test fun `an expired member reads INACTIVE, its end the ended date`() {
-        val lease = active("kofi", NOW - DAY)
-        assertEquals(PtCloudAccount.Standing.INACTIVE, lease.standing(NOW))
-        assertEquals(NOW - DAY, lease.endedAt(NOW))
+    /** A Ko-fi membership is a lease of 38 days per payment, renewed by a
+     *  payment the device has not read: its end passing on the clock says
+     *  nothing, so the record stays a member's with nothing ended (Codex
+     *  adversarial review, 2026-10-29). */
+    @Test fun `a lease whose end has passed still reads MEMBER, with no ended date`() {
+        for (source in listOf("kofi", "manual", "play")) {
+            val lease = active(source, NOW - DAY)
+            assertEquals(source, PtCloudAccount.Standing.MEMBER, lease.standing(NOW))
+            assertNull(source, lease.endedAt(NOW))
+        }
     }
 
-    @Test fun `the end is passed at its own instant`() {
+    @Test fun `a trial's end is passed at its own instant, a lease's never`() {
         assertEquals(PtCloudAccount.Standing.TRIAL, active(SOURCE_TRIAL, NOW).standing(NOW - 1))
         assertEquals(PtCloudAccount.Standing.TRIAL_ENDED, active(SOURCE_TRIAL, NOW).standing(NOW))
-        assertEquals(PtCloudAccount.Standing.INACTIVE, active("manual", NOW).standing(NOW))
+        assertEquals(PtCloudAccount.Standing.MEMBER, active("manual", NOW).standing(NOW))
     }
 
     /** A null end beside a source is open-ended: it never passes. */

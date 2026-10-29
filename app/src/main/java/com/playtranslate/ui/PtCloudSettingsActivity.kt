@@ -87,8 +87,10 @@ import kotlinx.coroutines.withContext
  *    on the key read off the main thread, never sent when it reads back
  *    unusable) and hands the answer to the service
  *    ([PtCloudService.onStoredKeyChecked]: the record rewritten, an account
- *    cooldown it disproves dropped, a key the server no longer accepts
- *    cleared, each only while the key checked is still the stored one). A
+ *    cooldown it disproves dropped, both switches off for an account that
+ *    is not entitled and on again for one an answer makes entitled again,
+ *    a key the server no longer accepts cleared, each only while the key
+ *    checked is still the stored one). A
  *    401 that comes within about 10 s of a key's store is retried once a
  *    second later (a key just minted can meet a replica that has not seen
  *    it yet), and after Join the key is checked once more 10 s later while
@@ -106,7 +108,11 @@ import kotlinx.coroutines.withContext
  *    cooldown and the pill's errors), since either direction means "try it
  *    again now". While no usable key is saved the group, header and card,
  *    is gone: signing in is the first step, and its stored key turns both
- *    on. While the service is closed both rows show disabled and off.
+ *    on. While the service is closed both rows show disabled and off, and
+ *    so they do while the account is not entitled (the trial ended, no
+ *    membership; [com.playtranslate.cloud.PtCloudConfig.entitled]), the
+ *    group still showing: the ending turned both switches off, and the
+ *    check that answers Accepted back from Join turns both on (2026-10-29).
  *    Painted with their listeners detached, so building or restoring the
  *    page writes nothing and resets nothing, and repainted, with the rest of
  *    the page, from the service's own change signal
@@ -587,8 +593,7 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         val afterJoin = recheckAfterJoin
         keyCheckJob = lifecycleScope.launch {
             checkStoredKeyOnce()
-            val config = PtCloudService.config
-            if (afterJoin && joinDue(standing(config.hasKey, config.account, System.currentTimeMillis()))) {
+            if (afterJoin && joinDue(PtCloudService.config.standing())) {
                 delay(JOIN_RECHECK_DELAY_MS)
                 checkStoredKeyOnce()
             }
@@ -597,26 +602,19 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
     }
 
     /**
-     * One check of the stored key, read off the main thread (the read
-     * decrypts it). A key that reads back unusable is not sent and reads as
-     * not checked (a keystore that failed this once must not clear a good
-     * key). A 401 within [VERIFY_WINDOW_MS] of the key's store
-     * ([PtCloudService.keyStoredAtMs]) is asked once more a second later:
-     * a key just minted can answer 401 while the database's nearest replica
-     * catches up. The final answer goes to the service, which acts on it
-     * only while the key is still the stored one, then to the page's facts.
+     * One check of the stored key ([askStoredKey]), its answer to the
+     * page's facts. An answer the service would not take, because the key
+     * or the record changed while the check was out (a route's 403 ending
+     * the account, say; [PtCloudService.onStoredKeyChecked]), describes a
+     * state that is gone, so the key is asked once more; a second such
+     * answer reads as not checked, which the page says beside the account
+     * line, and the next resume or Check again asks afresh.
      */
     private suspend fun checkStoredKeyOnce() {
         busy = Step.KEY_CHECK
         render()
-        val key = withContext(Dispatchers.IO) { PtCloudService.config.clientKey }
-        var check = if (PtCloudConfig.isUsableKey(key)) checkKey(key) else KeyCheck.NotChecked
-        if (check == KeyCheck.Refused && storedJustNow()) {
-            delay(VERIFY_RETRY_DELAY_MS)
-            check = checkKey(key)
-        }
+        val check = askStoredKey() ?: askStoredKey() ?: KeyCheck.NotChecked
         busy = null
-        PtCloudService.onStoredKeyChecked(key, check)
         when (check) {
             is KeyCheck.Accepted, is KeyCheck.Inactive -> accountUnchecked = false
             KeyCheck.Refused -> keyRefused = true
@@ -624,6 +622,29 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
             KeyCheck.NotChecked -> accountUnchecked = true
         }
         render()
+    }
+
+    /**
+     * One `GET /v1/key` for the stored key, read off the main thread (the
+     * read decrypts it), with the record's generation read before the send
+     * ([PtCloudService.accountGeneration]). A key that reads back unusable
+     * is not sent and reads as not checked (a keystore that failed this
+     * once must not clear a good key). A 401 within [VERIFY_WINDOW_MS] of
+     * the key's store ([PtCloudService.keyStoredAtMs]) is asked once more a
+     * second later: a key just minted can answer 401 while the database's
+     * nearest replica catches up. The final answer goes to the service with
+     * the key and the generation: the answer when the service took it, null
+     * when the key or the record changed under the check.
+     */
+    private suspend fun askStoredKey(): KeyCheck? {
+        val key = withContext(Dispatchers.IO) { PtCloudService.config.clientKey }
+        val generation = PtCloudService.accountGeneration
+        var check = if (PtCloudConfig.isUsableKey(key)) checkKey(key) else KeyCheck.NotChecked
+        if (check == KeyCheck.Refused && storedJustNow()) {
+            delay(VERIFY_RETRY_DELAY_MS)
+            check = checkKey(key)
+        }
+        return check.takeIf { PtCloudService.onStoredKeyChecked(key, generation, it) }
     }
 
     /** Whether the stored key was stored within [VERIFY_WINDOW_MS]. */
@@ -684,11 +705,6 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         }
     }
 
-    /** The standing of the stored key's [account] at [nowMs], null with no
-     *  usable key ([hasKey] false): a key with no record has no details. */
-    private fun standing(hasKey: Boolean, account: PtCloudAccount?, nowMs: Long): Standing? =
-        if (!hasKey) null else account?.standing(nowMs) ?: Standing.NO_DETAILS
-
     /** Whether Join shows for [standing]: on the trial, after it, and with no
      *  active membership; never while closed. */
     private fun joinDue(standing: Standing?): Boolean =
@@ -728,11 +744,13 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
      * closed card in place of the ACCOUNT group, the switches off and
      * disabled, the cooldown line hidden), signed in (the account from the
      * record, Join while due), code sent, signed out; the CONFIGURATION group
-     * shows only with a key. Every control is painted whether or not its
+     * shows only with a key, its rows live only while the account is
+     * entitled and the service open. Every control is painted whether or not its
      * group shows. Last, the next hold's end is armed ([holdJob]).
      */
     private fun render() {
         val hasKey = PtCloudService.config.hasKey
+        val entitled = PtCloudService.config.entitled
         if (hasKey) {
             pending = null
             notice = null
@@ -745,7 +763,7 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         val signIn = pending
         val account = PtCloudService.account
         val nowMs = System.currentTimeMillis()
-        val standing = standing(hasKey, account, nowMs)
+        val standing = PtCloudService.config.standing(nowMs)
         val elapsedNow = SystemClock.elapsedRealtime()
         val service = getString(R.string.pt_cloud_display_name)
 
@@ -787,9 +805,19 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         val line = account?.let { accountLine(it, nowMs) }
         tvAccountLine.text = line
         tvAccountLine.isVisible = line != null
-        // A trial's line in the warning colour; every other standing's in
-        // its style's own.
-        tvAccountLine.setTextColor(themeColor(if (standing == Standing.TRIAL) R.attr.ptWarning else R.attr.ptTextMuted))
+        // A trial's line in the warning colour, an ended trial's and an
+        // inactive membership's in the alert colour, since each names
+        // something the member has to act on (ruled 2026-10-29); every
+        // other standing's in its style's own.
+        tvAccountLine.setTextColor(
+            themeColor(
+                when (standing) {
+                    Standing.TRIAL -> R.attr.ptWarning
+                    Standing.TRIAL_ENDED, Standing.INACTIVE -> R.attr.ptDanger
+                    else -> R.attr.ptTextMuted
+                },
+            ),
+        )
         tvAccountUnchecked.isVisible = accountUnchecked
         val joinShown = joinDue(standing)
         dividerJoin.isVisible = joinShown
@@ -810,7 +838,7 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         // The rest of the page.
         headerConfiguration.isVisible = hasKey
         cardUseFor.isVisible = hasKey
-        useForRows.forEach { it.render(live = hasKey && !closed) }
+        useForRows.forEach { it.render(live = entitled && !closed) }
         renderCooldown(hidden = closed || endedOrInactive(standing))
         tvStatus.text = if (closed) getString(R.string.pt_cloud_status_closed) else statusText()
 
@@ -827,7 +855,11 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         Standing.TRIAL -> account.entitledUntilMs?.let {
             getString(R.string.pt_cloud_trial_until, CooldownTimeLabel.formatDateTime(this, it, nowMs))
         }
-        Standing.MEMBER -> account.entitledUntilMs?.let {
+        // A lease end that has passed is left out: the payment that renews
+        // the membership wrote a lease the device has not read, and the
+        // resume's check reads it ([PtCloudAccount.standing]); until then
+        // "Member", never "until" a date gone by.
+        Standing.MEMBER -> account.entitledUntilMs?.takeIf { it > nowMs }?.let {
             getString(R.string.pt_cloud_member_until, CooldownTimeLabel.formatDateTime(this, it, nowMs))
         } ?: getString(R.string.pt_cloud_member)
         Standing.TRIAL_ENDED -> account.endedAt(nowMs)?.let {
@@ -873,10 +905,11 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
     /** One "use for" switch row: its switch, what it reads and what it
      *  writes. [render] repaints the row with the listener detached, so a
      *  repaint never writes (the services row's rule): while not [live] (no
-     *  usable key saved, or the service closed) the row is disabled and its
-     *  switch off, whatever is stored (with no key nothing is, since a
-     *  cleared key turns both switches off), so signing in is the first
-     *  step. */
+     *  usable key saved, an account that is not entitled, or the service
+     *  closed) the row is disabled and its switch off, whatever is stored
+     *  (with no key or an ended account nothing is, since a cleared key and
+     *  an ending turn both switches off), so signing in, or Join, is the
+     *  next step. */
     private class UseForRow(
         private val row: View,
         private val toggle: MaterialSwitch,

@@ -135,10 +135,12 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
          *  pitch while no key is saved and while both switches are on, else
          *  "Off" or the one route that is on ([cloudDigest]). */
         val cloudSummary: String,
-        /** Whether a usable client key is saved ([PtCloudConfig.hasKey]).
-         *  False mutes the cell's icon: the subtitle is the pitch then, so
-         *  the icon is what says the service is not set up. */
-        val cloudHasKey: Boolean,
+        /** Whether the account is entitled ([PtCloudConfig.entitled]: a
+         *  usable client key saved, its trial or membership not ended).
+         *  False mutes the cell's icon: the subtitle is then the pitch (no
+         *  key) or the ending ("Trial ended", "Membership inactive"), so
+         *  the icon is what says the service is not in play. */
+        val cloudEntitled: Boolean,
         /** Yomitan CONFIGURE cell digest: import prompt when empty,
          *  dictionary count otherwise. Null until the first [refresh]
          *  resolves it (subtitle hidden). */
@@ -176,7 +178,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
                     hotkeysSummary = hotkeysDigest(),
                     appearanceSummary = appearanceDigest(),
                     cloudSummary = cloudDigest(),
-                    cloudHasKey = PtCloudService.config.hasKey,
+                    cloudEntitled = PtCloudService.config.entitled,
                     // Names the cloud while its OCR switch is on, so that
                     // pref moves it too; the rest of it stays polled.
                     captureSummary = captureDigest(),
@@ -188,8 +190,8 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
     /** Re-poll the state no pref signal carries: the Translation digest (real
      *  backend usability — installed models / keys / pair support), the Anki
      *  permission + deck/card, the TTS engine + voice, and the Cloud digest,
-     *  whose account standing moves with the clock (a trial's end passing).
-     *  Called on resume. */
+     *  whose account standing moves with the clock (a trial's end passing),
+     *  with the icon tint beside it. Called on resume. */
     fun refresh() {
         val (online, offline) = translationDigests()
         _state.value = _state.value.copy(
@@ -198,6 +200,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
             translationOffline = offline,
             captureSummary = captureDigest(),
             cloudSummary = cloudDigest(),
+            cloudEntitled = PtCloudService.config.entitled,
         )
         // The async writers below MUST resolve their value BEFORE touching
         // _state and write via update{}: `_state.value = _state.value.copy(
@@ -230,7 +233,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
             anki = resolveAnkiCell(),
             tts = TtsCell.Loading,
             cloudSummary = cloudDigest(),
-            cloudHasKey = PtCloudService.config.hasKey,
+            cloudEntitled = PtCloudService.config.entitled,
         )
     }
 

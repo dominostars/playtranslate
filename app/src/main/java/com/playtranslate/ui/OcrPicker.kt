@@ -89,8 +89,9 @@ object OcrPicker {
      * What a surface does for PlayTranslate Cloud's entry: [onReOcr] re-reads
      * through the reader router (a re-OCR stating no device-only, which the
      * router sends to the cloud and warms), [onOpenPage] opens the cloud page
-     * the way the surface opens the OCR download page, for a pick with no
-     * usable key saved. The switch itself is flipped here, not by the surface.
+     * the way the surface opens the OCR download page, for a pick while the
+     * account is not entitled (no usable key saved, or its trial or
+     * membership ended). The switch itself is flipped here, not by the surface.
      */
     class CloudChoice(
         val onReOcr: () -> Unit,
@@ -117,10 +118,13 @@ object OcrPicker {
             val bg = if (applied) ctx.themeColor(R.attr.ptAccent) else ctx.themeColor(R.attr.ptDivider)
             val fg = if (applied) ctx.themeColor(R.attr.ptAccentOn) else ctx.themeColor(R.attr.ptText)
             builder.addButton(PtCloudService.DISPLAY_NAME, bg, fg, R.drawable.ic_cloud) {
-                // No usable key saved: nothing is switched, as on the settings
-                // rows; the cloud page is where the key goes, and its first
-                // key turns both switches on.
-                if (!PtCloudService.config.hasKey) {
+                // Not entitled (no usable key saved, or an account whose
+                // trial ended or whose membership is inactive): nothing is
+                // switched, as on the settings rows; the cloud page is where
+                // the key goes and Join is, and the answer that makes the
+                // account entitled (the first key, an accepted check after
+                // Join) turns both switches on.
+                if (!PtCloudService.config.entitled) {
                     cloudEntry.onOpenPage()
                     return@addButton
                 }

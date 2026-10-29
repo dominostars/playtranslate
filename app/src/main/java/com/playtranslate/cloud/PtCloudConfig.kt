@@ -43,9 +43,8 @@ class PtCloudConfig(
      *  ([PtCloudFrameReader.read]). */
     val translateEnabled: Boolean get() = prefs.ptCloudTranslateEnabled
 
-    /** Either switch on: the service takes part in something, so its
-     *  reports count ([com.playtranslate.translation.TranslationErrors]) and
-     *  the Settings hub describes it as on. */
+    /** Either switch on: the service takes part in something, so the
+     *  Settings hub describes it as on. */
     val anyEnabled: Boolean get() = ocrEnabled || translateEnabled
 
     /** The client key sent as the bearer token, trimmed (a pasted key often
@@ -79,6 +78,35 @@ class PtCloudConfig(
                 null
             }
         }
+
+    /** The stored key's standing at [nowMs], the one reading of [account]
+     *  every surface words: null without a usable key ([hasKey] false);
+     *  [PtCloudAccount.Standing.NO_DETAILS] with a key and no record, none
+     *  stored or one that does not decode; else the record's own
+     *  ([PtCloudAccount.standing]). Words only; the routes and the controls
+     *  read [entitled]. */
+    fun standing(nowMs: Long = System.currentTimeMillis()): PtCloudAccount.Standing? {
+        if (!hasKey) return null
+        return account?.standing(nowMs) ?: PtCloudAccount.Standing.NO_DETAILS
+    }
+
+    /** A usable key whose account the server has not written as inactive
+     *  ([PtCloudAccount.active]: on the trial or on a membership as of the
+     *  last answer, or with nothing known against it, a key with no record).
+     *  The server's last word, never the device's clock (2026-10-29, Codex
+     *  adversarial review): a Ko-fi membership is a lease per payment that
+     *  the next payment renews on the server, so a record whose dated end
+     *  has passed here still routes to the cloud, and the server's own 403
+     *  is what ends an account ([PtCloudService.onEntitlementEnded]), as a
+     *  check's Inactive does ([PtCloudService.onStoredKeyChecked]). The
+     *  precondition of both switches, which follow it
+     *  ([PtCloudService.saveClientKey], [PtCloudService.onStoredKeyChecked],
+     *  [PtCloudService.onEntitlementEnded]), and of every read
+     *  ([PtCloudService.refusal]); false with no key. Reads the key as
+     *  [hasKey] does ([Prefs] keeps its decryption, so a second read in one
+     *  decision decrypts nothing), and decodes the small record at each
+     *  call. */
+    val entitled: Boolean get() = hasKey && account?.active != false
 
     companion object {
         /** True when [key] is usable as a bearer value: non-blank, and every

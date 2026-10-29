@@ -42,20 +42,27 @@ object PtCloudRouting {
 
     /**
      * True only when every condition allows the cloud to read a frame: it is
-     * [configured] (the OCR switch on, a usable client key set), the source is one the server
+     * [configured] (the OCR switch on, a usable client key set), the key's
+     * account is [entitled] ([PtCloudConfig.entitled]: the server has not
+     * written it as inactive, its last word, never the device's clock;
+     * 2026-10-29),
+     * the source is one the server
      * reads, the service is not cooling down (a stopped pod and a refused
      * key cool it down too), the caller did not ask for the device reader
      * ([deviceOnly]: a re-OCR, and a re-read of the camera's frozen frame or
      * the import tool's page after an engine pick), and the device has a
      * network ([online]: any default network, validated or not, the app's
-     * one "no internet" rule).
+     * one "no internet" rule). [entitled] is never true without [hasKey] in
+     * production ([PtCloudConfig.entitled] is false without a key); the
+     * table holds those cells too, and they read false.
      */
     fun eligible(
         enabled: Boolean,
         hasKey: Boolean,
+        entitled: Boolean,
         sourceSupported: Boolean,
         coolingDown: Boolean,
         deviceOnly: Boolean,
         online: Boolean,
-    ): Boolean = configured(enabled) { hasKey } && sourceSupported && !coolingDown && !deviceOnly && online
+    ): Boolean = configured(enabled) { hasKey } && entitled && sourceSupported && !coolingDown && !deviceOnly && online
 }

@@ -7,8 +7,10 @@ import android.widget.FrameLayout
 import androidx.core.view.allViews
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.Prefs
+import com.playtranslate.PtJson
 import com.playtranslate.R
 import com.playtranslate.TranslationCache
+import com.playtranslate.cloud.PtCloudAccount
 import com.playtranslate.cloud.PtCloudConfig
 import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.cloud.PtCloudTestSupport
@@ -41,7 +43,8 @@ import org.robolectric.RobolectricTestRunner
  * device pick while the cloud reads persists its token, turns the switch off
  * and re-reads once (or asks for the download, the switch off at the tap), a
  * cloud pick turns the switch on and re-reads through the router with a key
- * or opens the cloud page without one, and an applied entry's tap reconciles
+ * or opens the cloud page without one (or with an account whose trial
+ * ended), and an applied entry's tap reconciles
  * the switch with the entry and re-reads nothing.
  *
  * The service's settings are a config on a reversible codec installed for
@@ -231,6 +234,31 @@ class OcrPickerTest {
             .labelled(PtCloudService.DISPLAY_NAME).performClick()
 
         assertFalse("nothing switched: the page takes the key, and the first key turns both on", ocrSwitch)
+        assertEquals(1, pagesOpened)
+        assertEquals(0, cloudReOcrs)
+        assertEquals(0, reOcrs)
+
+        show(SourceLangId.EN, applied = PtCloudService.ID, withCloud = true)
+            .labelled(PtCloudService.DISPLAY_NAME).performClick()
+        assertFalse(ocrSwitch)
+        assertEquals(2, pagesOpened)
+        assertEquals(0, cloudReOcrs)
+    }
+
+    /** The no-key cell's twin for an account whose trial ended
+     *  (2026-10-29): the key is there, nothing is in play, and the page is
+     *  where Join is; nothing is switched, applied or not. */
+    @Test fun `a cloud pick with a key but an ended account switches nothing and opens the page, applied or not`() {
+        withKey()
+        cloudPrefs.ptCloudAccountJson = PtJson.lenient.encodeToString(
+            PtCloudAccount.serializer(),
+            PtCloudAccount(active = false, lastSource = "trial", endedAtMs = System.currentTimeMillis() - 24 * 3_600_000L, checkedAtMs = 1L),
+        )
+        ocrOn(false)
+        show(SourceLangId.EN, applied = downloaded(SourceLangId.EN).selectionToken, withCloud = true)
+            .labelled(PtCloudService.DISPLAY_NAME).performClick()
+
+        assertFalse("nothing switched: Join, then an accepted check, turns both on", ocrSwitch)
         assertEquals(1, pagesOpened)
         assertEquals(0, cloudReOcrs)
         assertEquals(0, reOcrs)

@@ -969,15 +969,17 @@ class SettingsRenderer(
                 cloudRow,
                 HubCell(
                     iconRes = R.drawable.ic_cloud,
-                    // No key: the subtitle keeps the sell, so the icon is
-                    // what says the service is not set up. ptTextMuted, the
+                    // Not entitled: with no key the subtitle keeps the
+                    // sell, and once the trial ended or no membership is
+                    // active it says so, so the icon is what says the
+                    // service is not in play (2026-10-29). ptTextMuted, the
                     // power card's off glyph, not ptTextHint: hint tone with
                     // a hint title and no chevron is the inert treatment
                     // (HubCell.disabledReason), and this row stays a live
-                    // way to the page where the key goes. The glyph never
-                    // changes: ic_cloud_off means the offline half in the
-                    // Translation cell below (translationSummary).
-                    iconTint = if (state.cloudHasKey) R.attr.ptAccent else R.attr.ptTextMuted,
+                    // way to the page where the key goes and Join is. The
+                    // glyph never changes: ic_cloud_off means the offline
+                    // half in the Translation cell below (translationSummary).
+                    iconTint = if (state.cloudEntitled) R.attr.ptAccent else R.attr.ptTextMuted,
                     title = ctx.getString(R.string.pt_cloud_display_name),
                     summary = state.cloudSummary,
                     onClick = { callbacks.openCloudSettings() },

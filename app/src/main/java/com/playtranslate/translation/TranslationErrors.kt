@@ -6,8 +6,6 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.VisibleForTesting
-import com.playtranslate.Prefs
-import com.playtranslate.cloud.PtCloudConfig
 import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.net.NetworkConnectivity
 import com.playtranslate.net.NetworkConnectivity.InternetState
@@ -153,7 +151,9 @@ class TranslationErrorTracker(
      *  report arrives. A request that went out just after the user deleted
      *  or switched off its service, from a pass that had already picked its
      *  services, reports afterwards; that service won't be asked again, so
-     *  no success of it could ever take the pill down. */
+     *  no success of it could ever take the pill down. PlayTranslate Cloud
+     *  is active while a key is stored, whatever its switches say
+     *  ([TranslationErrors.install]). */
     private val isActive: (BackendId) -> Boolean = { true },
 ) {
     var presenter: TranslationErrorPresenter? = null
@@ -404,13 +404,20 @@ object TranslationErrors {
             // Read on the main thread, where OnlineServiceMutations deletes
             // and toggles. Every online backend is built from a store
             // instance; PlayTranslate Cloud, which reports without being one,
-            // is active while either of its switches is on (both always off
-            // outside debug builds): its frame route and its translate route
-            // report under the one id, and each switch alone puts one route
-            // in play.
+            // is active while a usable key is stored, read through the
+            // service's own settings: its frame route and its translate route
+            // report under the one id, and outside debug builds both switches
+            // read off, so nothing of it reports. The key, not the switches
+            // (2026-10-29): a user's switch-off still drops the reports of
+            // requests sent before it, since every gesture on the service
+            // forgets it first (PtCloudService.resetForUserGesture calls
+            // forget), while the service's own switch-off at an ended
+            // entitlement forgets nothing, and the attempt that found the
+            // ending, whose report can arrive after that switch-off, is the
+            // one pill the user gets.
             isActive = {
                 OnlineServiceStore.byId(it)?.enabled == true ||
-                    (it == PtCloudService.ID && PtCloudConfig(Prefs(app)).anyEnabled)
+                    (it == PtCloudService.ID && PtCloudService.config.hasKey)
             },
         )
         t.presenter = presenter

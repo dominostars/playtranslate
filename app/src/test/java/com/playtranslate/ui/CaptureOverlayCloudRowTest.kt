@@ -8,7 +8,9 @@ import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.Prefs
+import com.playtranslate.PtJson
 import com.playtranslate.R
+import com.playtranslate.cloud.PtCloudAccount
 import com.playtranslate.cloud.PtCloudConfig
 import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.cloud.PtCloudTestSupport
@@ -35,8 +37,10 @@ import org.robolectric.android.controller.ActivityController
  * usable key saved leaves it on and opens the cloud page, a tap anywhere else
  * on the row opens the page and flips nothing, the subtitle says what the
  * switch does while off and the service's state while on, a gesture made
- * elsewhere repaints the row from the service's change signal, and the
- * engine cells below leave the switch alone (the page is not a radio).
+ * elsewhere repaints the row from the service's change signal, the engine
+ * cells below leave the switch alone (the page is not a radio), and an
+ * account whose trial ended shows the switch off with no tap of its own, as
+ * no key does.
  *
  * The service's settings are read through [PtCloudService.config], so a cell
  * that needs a key installs a config on a reversible codec; without one no
@@ -115,6 +119,32 @@ class CaptureOverlayCloudRowTest {
         assertFalse(a.switch.isChecked)
         assertTrue("nothing written", prefs.ptCloudOcrEnabled)
         assertFalse(prefs.ptCloudTranslateEnabled)
+        assertNotNull("nothing reset", PtCloudService.unavailableUntil())
+    }
+
+    /** The no-key cell's twin for an account whose trial ended
+     *  (2026-10-29): the switch shows off whatever is stored and is not its
+     *  own tap target, and a tap opens the cloud page, where Join is;
+     *  nothing is written or reset. */
+    @Test fun `with an ended account the row shows an off switch that is not its own tap target, and a tap opens the page and writes nothing`() {
+        val cloudPrefs = PtCloudTestSupport.prefs(ctx)
+        PtCloudService.installForTest(cooldown, PtCloudTestSupport.config(ctx))
+        cloudPrefs.ptCloudAccountJson = PtJson.lenient.encodeToString(
+            PtCloudAccount.serializer(),
+            PtCloudAccount(active = false, lastSource = "trial", endedAtMs = System.currentTimeMillis() - 24 * 3_600_000L, checkedAtMs = 1L),
+        )
+        cloudPrefs.ptCloudOcrEnabled = true
+        recordCooldown()
+        val a = create()
+        assertTrue("looks live", a.switch.isEnabled)
+        assertFalse("shows off whatever is stored", a.switch.isChecked)
+        assertFalse("a touch on it reaches the row", a.switch.isClickable)
+
+        a.row.performClick()
+
+        assertEquals(PtCloudSettingsActivity::class.java.name, a.startedPage())
+        assertFalse(a.switch.isChecked)
+        assertTrue("nothing written", cloudPrefs.ptCloudOcrEnabled)
         assertNotNull("nothing reset", PtCloudService.unavailableUntil())
     }
 

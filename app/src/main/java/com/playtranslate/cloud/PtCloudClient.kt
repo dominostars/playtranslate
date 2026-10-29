@@ -110,6 +110,13 @@ sealed interface HealthStatus {
  * under [BASE_URL] (the contract: docs/api.md, docs/client-integration-brief.md
  * and docs/client-signin-handoff.md in the playtranslate-cloud repository).
  *
+ * A 403 `no_entitlement` on either route is handed to the service with the
+ * key the call carried and the account record's generation it was built
+ * against ([recordFailure], [PtCloudService.onEntitlementEnded]), which
+ * writes the account as ended and turns both switches off unless a check
+ * wrote a newer record while the call was out; the failure itself is
+ * reported as any other is, below.
+ *
  * On the frame route reporting is split at part 1. [postFrame] records the
  * cooldown and reports the [OnlineAttempt] of any failure before part 1
  * itself, then throws [PtCloudReadException]. Once part 1 is back it reports
@@ -179,9 +186,10 @@ class PtCloudClient(
      * waits for its children, so it would return only after part 2.
      *
      * Throws [PtCloudReadException] for any failure before part 1, after
-     * recording its cooldown on [PtCloudService.cooldown] and reporting its
-     * attempt through [PtCloudService.report] (the failure table:
-     * [PtCloudErrors.classifyHttp], [PtCloudErrors.classifyTransport],
+     * recording it ([recordFailure]: its cooldown on [PtCloudService.cooldown],
+     * a 403 `no_entitlement`'s ended account handed to the service) and
+     * reporting its attempt through [PtCloudService.report] (the failure
+     * table: [PtCloudErrors.classifyHttp], [PtCloudErrors.classifyTransport],
      * [PtCloudErrors.badPart1]). Throws [CancellationException], with nothing
      * recorded or reported, when the calling coroutine was cancelled.
      */
@@ -194,6 +202,11 @@ class PtCloudClient(
         // A response read to part 1 when the caller was cancelled on the way
         // back must still be closed; this holds it until it is handed off.
         var opened: Opened? = null
+        // The key the request carried and the account record's generation
+        // when it was built, for the service's guards on a 403
+        // ([recordFailure]); blank and 0 until the build reads them.
+        var sentKey = ""
+        var sentGeneration = 0L
         val sentAtMs = SystemClock.elapsedRealtime()
         val attemptStartedAtMs = System.currentTimeMillis()
         val warmAtMs = warmSentAtMs.getAndSet(0L)
@@ -202,7 +215,9 @@ class PtCloudClient(
                 // Built here, off the caller's thread and inside the failure
                 // path below: the build reads the key, and a key [bearer]
                 // refuses fails there as a transport failure.
-                val call = client.newCall(frameRequest(frame, meta, clock, config.clientKey))
+                sentKey = config.clientKey
+                sentGeneration = PtCloudService.accountGeneration
+                val call = client.newCall(frameRequest(frame, meta, clock, sentKey))
                 blockingOn(call) { openPart1(call).also { opened = it } }
             }
         } catch (e: CancellationException) {
@@ -216,7 +231,7 @@ class PtCloudClient(
             }
             val refused = e as? Refused
             val classified = refused?.classified ?: PtCloudErrors.classifyTransport(e)
-            classified.record(cooldown)
+            recordFailure(classified, cooldown, sentKey, sentGeneration)
             PtCloudService.report(
                 OnlineAttempt(
                     PtCloudService.ID, PtCloudService.DISPLAY_NAME, classified.failure, sentAtMs,
@@ -300,11 +315,13 @@ class PtCloudClient(
      * ([PtCloudErrors.classifyHttp]), a transport failure
      * ([PtCloudErrors.classifyTransport]), a 200 that does not decode
      * ([PtCloudErrors.unreadableAnswer]) and a `deferred` or `failed` answer
-     * ([PtCloudErrors.classifyTranslation]) are each recorded on
-     * [PtCloudService.cooldown] here, the state the frame route records on
-     * (the server counts frames and translate calls against one budget and
-     * one rate bucket, and a refused key or a stopped pod is one fact for
-     * both), then thrown as [PtCloudReadException]. A success records
+     * ([PtCloudErrors.classifyTranslation]) are each recorded here
+     * ([recordFailure]: on [PtCloudService.cooldown], the state the frame
+     * route records on, since the server counts frames and translate calls
+     * against one budget and one rate bucket and a refused key or a stopped
+     * pod is one fact for both; and a 403 `no_entitlement`'s ended account
+     * handed to the service, as a frame's is), then thrown as
+     * [PtCloudReadException]. A success records
      * nothing here: the registry's `recordSuccess` does, with its own
      * attempt stamp. Unlike [postFrame], this reports no [OnlineAttempt]:
      * the registry reports one for every online backend it calls, so a
@@ -319,12 +336,18 @@ class PtCloudClient(
         val callerContext = currentCoroutineContext()
         val cooldown = PtCloudService.cooldown
         val clock = HttpCallClock()
+        // The key the request carried and the record generation it was
+        // built against, as on a frame ([recordFailure]).
+        var sentKey = ""
+        var sentGeneration = 0L
         val sentAtMs = SystemClock.elapsedRealtime()
         val part: TranslationPart = try {
             withContext(Dispatchers.IO) {
                 // Built here, as a frame is: off the caller's thread, and a
                 // key [bearer] refuses fails below as a transport failure.
-                val call = translateClient.newCall(translateRequest(request, clock, config.clientKey))
+                sentKey = config.clientKey
+                sentGeneration = PtCloudService.accountGeneration
+                val call = translateClient.newCall(translateRequest(request, clock, sentKey))
                 blockingOn(call) { call.execute().use(::readTranslation) }
             }
         } catch (e: CancellationException) {
@@ -340,11 +363,11 @@ class PtCloudClient(
             val status = refused?.let { r -> r.classified.failure.httpCode?.let { "http$it" } ?: UNREADABLE }
                 ?: e.javaClass.simpleName
             logTranslate(request, sentAtMs, status, clock)
-            throw recordedFailure(classified, cooldown, e)
+            throw recordedFailure(classified, cooldown, sentKey, sentGeneration, e)
         }
         logTranslate(request, sentAtMs, part.translationStatus, clock)
         val outcome = PtCloudErrors.classifyTranslation(part)
-        if (outcome is TranslationOutcome.Failed) throw recordedFailure(outcome.classified, cooldown, null)
+        if (outcome is TranslationOutcome.Failed) throw recordedFailure(outcome.classified, cooldown, sentKey, sentGeneration, null)
         return outcome
     }
 
@@ -500,9 +523,12 @@ class PtCloudClient(
      * translator connection before a frame is uploaded (the head start not
      * yet measured on a device). Fire and forget: it returns at once, on the
      * same client (and so the same connection pool) as [postFrame], and its
-     * answer is only closed and logged. A 204, a 404 (the service off), a 401
-     * or a transport failure all record no cooldown and report no attempt:
-     * the frame that follows is what says how the service is.
+     * answer is only closed and logged. A 204, a 404 (the service off), a
+     * 401, a 403 or a transport failure all record no cooldown, report no
+     * attempt and hand the service nothing: the frame that follows is what
+     * says how the service is. A warm's 403 turning the switches off would
+     * have that frame refused silently, as the switch off, and the user
+     * would never see the pill that says the trial ended (2026-10-29).
      *
      * Reads the key once and sends nothing when it is not usable
      * ([PtCloudConfig.isUsableKey]), so it never throws. Otherwise stamps
@@ -606,14 +632,33 @@ class PtCloudClient(
         }
     }
 
-    /** Records [classified] on [cooldown] and returns the exception the
+    /** Records [classified] ([recordFailure]) and returns the exception the
      *  translate route throws for it; its message names the kind and the
      *  code only. */
-    private fun recordedFailure(classified: Classified, cooldown: CooldownState, cause: Throwable?): PtCloudReadException {
-        classified.record(cooldown)
+    private fun recordedFailure(
+        classified: Classified,
+        cooldown: CooldownState,
+        sentKey: String,
+        sentGeneration: Long,
+        cause: Throwable?,
+    ): PtCloudReadException {
+        recordFailure(classified, cooldown, sentKey, sentGeneration)
         val failure = classified.failure
         val code = failure.httpCode?.let { " $it" }.orEmpty()
         return PtCloudReadException(failure, "PlayTranslate Cloud translate ${failure.kind}$code", cause)
+    }
+
+    /** What a failed call's answer says of the service, recorded: its
+     *  cooldown on [cooldown], and the ended account a 403 `no_entitlement`
+     *  describes ([Classified.endedAccount]) handed to the service with
+     *  [sentKey], the key the call carried, and [sentGeneration], the
+     *  account record's generation when the call was built, so it acts only
+     *  while that key is still the stored one and no check has written the
+     *  record since ([PtCloudService.onEntitlementEnded]). The one recording
+     *  step of both routes. */
+    private fun recordFailure(classified: Classified, cooldown: CooldownState, sentKey: String, sentGeneration: Long) {
+        classified.record(cooldown)
+        classified.endedAccount?.let { PtCloudService.onEntitlementEnded(sentKey, sentGeneration, it) }
     }
 
     private fun logTranslate(request: TranslateRequest, sentAtMs: Long, status: String, clock: HttpCallClock) {

@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import androidx.annotation.VisibleForTesting
 import com.playtranslate.OcrManager
+import com.playtranslate.cloud.CloudRefusal
+import com.playtranslate.cloud.PtCloudConfig
 import com.playtranslate.cloud.PtCloudFrameReader
 import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.language.SourceLangId
@@ -68,15 +70,25 @@ object FrameReaders {
      * against it, else the device alone. The decision, from
      * [PtCloudService.config] read at this call:
      *
-     * | OCR switch | deviceOnly | network | usable key | source | cooling down | reader |
-     * |---|---|---|---|---|---|---|
-     * | off (always, outside debug builds) | any | any | any | any | any | device |
-     * | on | true | any | any | any | any | device |
-     * | on | false | none | any | any | any | device |
-     * | on | false | some | no | any | any | device |
-     * | on | false | some | yes | not one the server reads | any | device |
-     * | on | false | some | yes | read | yes | device |
-     * | on | false | some | yes | read | no | cloud, then device |
+     * | OCR switch | deviceOnly | network | usable key | account | source | cooling down | reader |
+     * |---|---|---|---|---|---|---|---|
+     * | off (always, outside debug builds) | any | any | any | any | any | any | device |
+     * | on | true | any | any | any | any | any | device |
+     * | on | false | none | any | any | any | any | device |
+     * | on | false | some | no | any | any | any | device |
+     * | on | false | some | yes | inactive | any | any | device |
+     * | on | false | some | yes | entitled | not one the server reads | any | device |
+     * | on | false | some | yes | entitled | read | yes | device |
+     * | on | false | some | yes | entitled | read | no | cloud, then device |
+     *
+     * "Account" is [PtCloudConfig.entitled], the server's last word in the
+     * record kept beside the key: "inactive" is a record a 403 or a check's
+     * Inactive wrote ([CloudRefusal.NOT_ENTITLED]), which comes with both
+     * switches off, so the switch answers first in practice. A trial or a
+     * lease whose dated end has passed on the device's clock is "entitled"
+     * here: the read goes out, and the server's 403 ends the account
+     * ([PtCloudService.onEntitlementEnded]), the frame's own report being
+     * the pill.
      *
      * "Network" is the default network as
      * [com.playtranslate.net.NetworkConnectivity.state] last heard it, the one
@@ -99,8 +111,10 @@ object FrameReaders {
      * and every re-read of the camera's frozen frame or the import tool's
      * page after an engine pick there, which holds for that frame's review.
      * A stopped pod and a refused key
-     * are cooldowns ([PtCloudService]), so a live tier or the camera's
-     * acquires read on the device while one runs without stating anything.
+     * are cooldowns ([PtCloudService]), and an ended account comes with the
+     * switch off ([PtCloudService.onEntitlementEnded]), so a
+     * live tier or the camera's acquires read on the device while one holds
+     * without stating anything.
      *
      * A read kept on the device logs why at debug level, except when the switch
      * is off, which is every read of every release build. [warm] asks the same
@@ -114,6 +128,7 @@ object FrameReaders {
         refusal.logWord?.let { Log.d(TAG, "PlayTranslate Cloud not used for this read: $it") }
         return device
     }
+
 
     /**
      * Sends PlayTranslate Cloud's warm call ([PtCloudClient.warm]) when a read

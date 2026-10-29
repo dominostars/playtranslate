@@ -1021,13 +1021,16 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
      * Binds the cloud row at the top of the OCR group and returns whether it
      * shows (debug builds only; the switch reads false outside them,
      * [Prefs.ptCloudOcrEnabled]). The Translation services cloud row's idiom:
-     * with a usable key saved the switch writes the service's one OCR
-     * mutation ([PtCloudService.setOcrEnabled]) and a tap anywhere else on
-     * the row opens the cloud page; with no key the switch shows off and is
-     * no tap target of its own, so a tap on it falls through to the row and
-     * opens the page, where the key goes, and nothing is written
-     * (2026-10-25). The shared row layout gives the whole row to one
-     * listener, so the switch is made its own tap target only with a key.
+     * while the account is entitled
+     * ([com.playtranslate.cloud.PtCloudConfig.entitled]: a usable key saved,
+     * its trial or membership not ended) the switch writes the service's one
+     * OCR mutation ([PtCloudService.setOcrEnabled]) and a tap anywhere else
+     * on the row opens the cloud page; otherwise (no key, or an ended
+     * account) the switch shows off and is no tap target of its own, so a
+     * tap on it falls through to the row and opens the page, where the key
+     * goes and Join is, and nothing is written (2026-10-25, 2026-10-29). The
+     * shared row layout gives the whole row to one listener, so the switch
+     * is made its own tap target only while entitled.
      * Bound once per [setupOcrSection]; [renderCloudOcrRow] repaints it from
      * the service.
      */
@@ -1053,16 +1056,16 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     private fun renderCloudOcrRow() {
         val toggle = cloudOcrSwitch ?: return
         val config = PtCloudService.config
-        val hasKey = config.hasKey
+        val entitled = config.entitled
         val row = findViewById<View>(R.id.rowPtCloudOcr)
         row.findViewById<TextView>(R.id.tvRowSubtitle).apply {
             setText(R.string.pt_cloud_ocr_row_subtitle)
             isVisible = true
         }
         toggle.setOnCheckedChangeListener(null)
-        toggle.isClickable = hasKey
-        toggle.isFocusable = hasKey
-        toggle.isChecked = hasKey && config.ocrEnabled
+        toggle.isClickable = entitled
+        toggle.isFocusable = entitled
+        toggle.isChecked = entitled && config.ocrEnabled
         toggle.setOnCheckedChangeListener { _, checked -> PtCloudService.setOcrEnabled(checked) }
     }
 

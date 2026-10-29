@@ -3,6 +3,7 @@ package com.playtranslate.cloud
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.Prefs
+import com.playtranslate.PtJson
 import com.playtranslate.cloud.PtCloudTestSupport.BASE_URL
 import com.playtranslate.cloud.PtCloudTestSupport.KEY
 import com.playtranslate.security.SecretCodec
@@ -11,7 +12,6 @@ import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.translation.BatchTranslator
 import com.playtranslate.translation.CooldownCause
 import com.playtranslate.translation.CooldownLadder
-import com.playtranslate.translation.CooldownMessageClass
 import com.playtranslate.translation.CooldownState
 import com.playtranslate.translation.FakeOnlineBackend
 import com.playtranslate.translation.HttpCallClock
@@ -64,8 +64,10 @@ import java.util.concurrent.atomic.AtomicLong
  * answer is the registry's per-text retry), the calls a batch is cut into
  * and their order, blanks and oversize texts, every row of the failure
  * table on the one cooldown with nothing reported by the client, the
- * route's own timeouts, cancellation, the wire, `isUsable`, and messages
- * free of content.
+ * server's 403 ending the account (both switches off, no cooldown, the one
+ * pill through the registry) while a record whose dated end has passed on
+ * the device's clock is still sent, the route's own timeouts, cancellation,
+ * the wire, `isUsable`, and messages free of content.
  */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudBackendTest {
@@ -485,6 +487,100 @@ class PtCloudBackendTest {
         assertTrue(seen.isEmpty())
     }
 
+    // ── An account that has ended ──────────────────────────────────────
+
+    /** Both switches on, a key and [account] stored beside it, installed as
+     *  the service's settings too, so the switch-off the ending makes lands
+     *  on the settings this backend reads. */
+    private fun configWith(account: PtCloudAccount): PtCloudConfig {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        prefs.ptCloudOcrEnabled = true
+        prefs.ptCloudTranslateEnabled = true
+        prefs.ptCloudAccountJson = PtJson.lenient.encodeToString(PtCloudAccount.serializer(), account)
+        val config = PtCloudTestSupport.config(ctx)
+        PtCloudService.installForTest(cooldown, config)
+        return config
+    }
+
+    private fun lapsedTrial() = PtCloudAccount(
+        active = true, source = SOURCE_TRIAL, entitledUntilMs = System.currentTimeMillis() - 1_000, checkedAtMs = 1L,
+    )
+
+    /** The trial's end, or a lease's, passed on the device's clock since
+     *  the server last described the account: the batch goes out all the
+     *  same, since the clock ends nothing (a Ko-fi lease renews on the
+     *  server with a payment the device has not read; Codex adversarial
+     *  review, 2026-10-29), and the server answers it. */
+    @Test fun `a record whose end has passed on this clock is sent, since only the server ends it`() {
+        for (record in listOf(lapsedTrial(), lapsedTrial().copy(source = "kofi"))) {
+            seen.clear()
+            val config = configWith(record)
+
+            val out = runBlocking { backend(server { t, _ -> 200 to echo(t) }, config).translateBatch(listOf("一", "二"), "ja", "en") }
+
+            assertEquals("$record", listOf("EN:一", "EN:二"), out)
+            assertEquals("$record", listOf(listOf("一", "二")), seen.map(::textsOf))
+            assertTrue("$record: both switches as they were", config.ocrEnabled && config.translateEnabled)
+            assertNoCooldown()
+        }
+    }
+
+    /** The one pill, on the translate route: the server's 403 fails the
+     *  batch, the registry reports it in the ending's words (the trial as
+     *  what ended last), the next backend translates the whole list, and
+     *  the switch-off the 403 made keeps the next pass from asking or
+     *  reporting the cloud again. */
+    @Test fun `through the registry a 403 reports one attempt of its kind, the next backend gets the whole list, and no later pass reaches the cloud`() {
+        val config = configWith(lapsedTrial())
+        val next = RecordingBackend()
+        val body = """{"error":"no_entitlement","last_source":"trial","ended_at":"2026-11-03T12:00:00.000Z"}"""
+        TranslationBackendRegistry.init(listOf(backend(server { _, _ -> 403 to body }, config), next))
+        val texts = listOf("一", "二", "三")
+
+        val results = runBlocking { TranslationBackendRegistry.translateBatch(texts, "ja", "en") }
+
+        assertEquals(listOf(texts), next.handed)
+        assertTrue(results.all { it.backend.id == "next" })
+        val attempt = attempts.single()
+        assertEquals(PtCloudService.ID, attempt.serviceId)
+        assertEquals(BackendFailure(BackendFailureKind.TRIAL_ENDED, 403), attempt.failure)
+        assertTrue("the server answered", attempt.reachedServer)
+        assertEquals("one request", 1, seen.size)
+        assertFalse(config.ocrEnabled)
+        assertFalse(config.translateEnabled)
+        assertFalse(config.entitled)
+        assertNoCooldown()
+
+        runBlocking { TranslationBackendRegistry.translateBatch(listOf("四"), "ja", "en") }
+        assertEquals("the cloud, switched off, is not asked again", 1, attempts.size)
+        assertEquals("nor sent to", 1, seen.size)
+        assertEquals(listOf(texts, listOf("四")), next.handed)
+    }
+
+    /** The page's check answered Accepted (back from Join, say) while the
+     *  batch was out: its 403 describes the record the call was built
+     *  against, which the check has since rewritten, so the batch still
+     *  fails and the newer word stands (Codex adversarial review,
+     *  2026-10-29). The generation is read where the request is built,
+     *  before the fake server answers. */
+    @Test fun `a 403 that comes back after a newer check changes nothing, the Accepted standing`() {
+        val config = configWith(lapsedTrial())
+        val body = """{"error":"no_entitlement","last_source":"trial","ended_at":"2026-11-03T12:00:00.000Z"}"""
+        val racing = server { _, _ ->
+            PtCloudService.onStoredKeyChecked(KEY, PtCloudService.accountGeneration, KeyCheck.Accepted("kofi", null))
+            403 to body
+        }
+
+        val e = thrownBy { backend(racing, config).translateBatch(listOf("一", "二"), "ja", "en") }
+
+        assertEquals(BackendFailure(BackendFailureKind.TRIAL_ENDED, 403), (e as PtCloudReadException).failure)
+        val account = config.account!!
+        assertTrue("the check's record stands: $account", account.active)
+        assertEquals("kofi", account.source)
+        assertTrue(config.ocrEnabled && config.translateEnabled)
+        assertNoCooldown()
+    }
+
     // ── The failure table, on the translate route ──────────────────────
 
     @Test fun `deferred is TIMEOUT with no cooldown`() {
@@ -517,13 +613,29 @@ class PtCloudBackendTest {
         assertCooldown(now + 60_000, CooldownCause.AUTH, "Bad key")
     }
 
-    @Test fun `403 no_entitlement is MEMBERSHIP_INACTIVE on the rate-limit ladder, the account class`() {
+    /** The server's word for an ending the device's clock did not see (a
+     *  key stored before records, a membership ended by hand): no cooldown,
+     *  the record written as ended beside the stored key, both switches off,
+     *  so nothing asks again. */
+    @Test fun `a 403 no_entitlement records no cooldown, writes the Inactive record beside the stored key and turns both switches off`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        prefs.ptCloudOcrEnabled = true
+        val config = config()
+        PtCloudService.installForTest(cooldown, config)
+        val body = """{"error":"no_entitlement","last_source":"kofi","ended_at":"2026-11-03T12:00:00.000Z"}"""
+
+        val e = failure(PtCloudTestSupport.cannedClient(403, body, seen = seen))
+
+        assertEquals(BackendFailure(BackendFailureKind.MEMBERSHIP_INACTIVE, 403), e.failure)
+        assertNoCooldown()
+        val account = config.account!!
         assertEquals(
-            BackendFailure(BackendFailureKind.MEMBERSHIP_INACTIVE, 403),
-            http(403, """{"error":"no_entitlement"}""").failure,
+            PtCloudAccount(active = false, lastSource = "kofi", endedAtMs = ENDED_AT_MS, checkedAtMs = account.checkedAtMs),
+            account,
         )
-        assertCooldown(now + 60_000, CooldownCause.BILLING, "No membership")
-        assertEquals(CooldownMessageClass.ACCOUNT, cooldown.unavailableCause()!!.messageClass)
+        assertEquals(KEY, config.clientKey)
+        assertFalse(config.ocrEnabled)
+        assertFalse(config.translateEnabled)
     }
 
     @Test fun `any other 403 is REJECTED with no cooldown`() {
@@ -780,5 +892,7 @@ class PtCloudBackendTest {
 
     private companion object {
         const val PERSONA = "You are a careful translator of old games."
+        /** 2026-11-03T12:00:00.000Z, the 403's `ended_at`. */
+        const val ENDED_AT_MS = 1_793_707_200_000L
     }
 }

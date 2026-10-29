@@ -2,6 +2,7 @@ package com.playtranslate.cloud
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.playtranslate.Prefs
 import com.playtranslate.PtJson
 import com.playtranslate.cloud.PtCloudTestSupport.CapturingExecutor
 import com.playtranslate.cloud.PtCloudTestSupport.onExecutor
@@ -20,6 +21,7 @@ import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -41,8 +43,10 @@ import java.util.concurrent.atomic.AtomicLong
  * ways: the thrown [PtCloudReadException]'s kind and code, the cooldown it
  * leaves, and the [OnlineAttempt] it reports. After part 1 each row goes
  * through [PtCloudErrors.classifyTranslation] / [PtCloudErrors.classifyPart2]
- * and the cooldown the outcome records. The warm call's every answer records
- * and reports nothing.
+ * and the cooldown the outcome records. A 403 `no_entitlement` records no
+ * cooldown and carries the ended account, which the client hands to the
+ * service for the key the frame carried. The warm call's every answer
+ * records, reports and hands over nothing.
  */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudFailureMappingTest {
@@ -111,29 +115,128 @@ class PtCloudFailureMappingTest {
         assertEquals(CooldownMessageClass.ACCOUNT, CooldownCause.AUTH.messageClass)
     }
 
-    @Test fun `a 403 whose last_source is trial is TRIAL_ENDED on NoMembershipLadder`() {
-        // The key is good but its free trial ran out: the account class,
-        // shown without a retry time, in the trial's own wording.
+    /** The key is good but its free trial ran out: the trial's own
+     *  wording, and no cooldown, since the service turns its switches off
+     *  instead (2026-10-29); the account the body describes rides along for
+     *  it. */
+    @Test fun `a 403 whose last_source is trial is TRIAL_ENDED with no cooldown, carrying the ended account (last_source, ended_at)`() {
         val body = """{"error":"no_entitlement","last_source":"trial","ended_at":"2026-11-03T12:00:00.000Z"}"""
         assertRow(http(403, body), BackendFailureKind.TRIAL_ENDED, 403, reachedServer = true)
-        assertCooldown(now + 60_000, CooldownCause.BILLING, "No membership")
-        assertEquals(CooldownMessageClass.ACCOUNT, CooldownCause.BILLING.messageClass)
+        assertNoCooldown()
+        assertEquals(KeyCheck.Inactive("trial", ENDED_AT_MS), PtCloudErrors.classifyHttp(403, body, null).endedAccount)
     }
 
     /** Any other last entitlement, none ended, or a Worker that sent none:
      *  no active membership, never a trial that ended. */
-    @Test fun `a 403 no_entitlement with another last_source is MEMBERSHIP_INACTIVE on NoMembershipLadder`() {
+    @Test fun `a 403 no_entitlement with another last_source is MEMBERSHIP_INACTIVE with no cooldown, carrying the ended account (last_source, ended_at)`() {
         val bodies = listOf(
-            """{"error":"no_entitlement","last_source":"kofi","ended_at":"2026-11-03T12:00:00.000Z"}""",
-            """{"error":"no_entitlement","last_source":"manual","ended_at":"2026-11-03T12:00:00.000Z"}""",
-            """{"error":"no_entitlement","last_source":null,"ended_at":null}""",
-            """{"error":"no_entitlement"}""",
+            """{"error":"no_entitlement","last_source":"kofi","ended_at":"2026-11-03T12:00:00.000Z"}""" to
+                KeyCheck.Inactive("kofi", ENDED_AT_MS),
+            """{"error":"no_entitlement","last_source":"manual","ended_at":"2026-11-03T12:00:00.000Z"}""" to
+                KeyCheck.Inactive("manual", ENDED_AT_MS),
+            """{"error":"no_entitlement","last_source":null,"ended_at":null}""" to KeyCheck.Inactive(null, null),
+            """{"error":"no_entitlement"}""" to KeyCheck.Inactive(null, null),
         )
-        for (body in bodies) {
-            cooldown.resetCooldown()
+        for ((body, ended) in bodies) {
             assertRow(http(403, body), BackendFailureKind.MEMBERSHIP_INACTIVE, 403, reachedServer = true)
-            assertCooldown(now + 60_000, CooldownCause.BILLING, "No membership")
+            assertNoCooldown()
+            assertEquals(body, ended, PtCloudErrors.classifyHttp(403, body, null).endedAccount)
         }
+    }
+
+    /** The route's 403 and the key check's are one reading of the body, so
+     *  the two cannot say different things of one account. */
+    @Test fun `a 403's ended account is the key check's Inactive for the same body, and no other answer carries one`() {
+        val body = """{"error":"no_entitlement","last_source":"trial","ended_at":"2026-11-03T12:00:00.000Z"}"""
+        assertEquals(PtCloudErrors.classifyKeyCheck(403) { body }, PtCloudErrors.classifyHttp(403, body, null).endedAccount)
+        for ((code, other) in listOf(403 to """{"error":"forbidden"}""", 401 to "", 404 to "", 410 to """{"error":"service_closed"}""")) {
+            assertNull("$code $other", PtCloudErrors.classifyHttp(code, other, null).endedAccount)
+        }
+    }
+
+    /** The service's settings over the same store the client reads, both
+     *  switches on, with the key the frame carries. */
+    private fun serviceSwitchedOn(): Prefs {
+        PtCloudService.installForTest(cooldown, PtCloudTestSupport.switchedOn(ctx))
+        return PtCloudTestSupport.prefs(ctx)
+    }
+
+    /** A frame's 403 is the server's word that the account ended, the one
+     *  way a route ends one: the record is written as ended beside the
+     *  stored key and both switches go off; the frame's own report is the
+     *  pill. */
+    @Test fun `a frame's 403 no_entitlement through the client writes the ended record and turns both switches off`() {
+        val prefs = serviceSwitchedOn()
+        val body = """{"error":"no_entitlement","last_source":"trial","ended_at":"2026-11-03T12:00:00.000Z"}"""
+
+        assertRow(http(403, body), BackendFailureKind.TRIAL_ENDED, 403, reachedServer = true)
+
+        val account = PtCloudService.account!!
+        assertEquals(
+            PtCloudAccount(active = false, lastSource = "trial", endedAtMs = ENDED_AT_MS, checkedAtMs = account.checkedAtMs),
+            account,
+        )
+        assertEquals(PtCloudTestSupport.KEY, prefs.ptCloudClientKey)
+        assertFalse(prefs.ptCloudOcrEnabled)
+        assertFalse(prefs.ptCloudTranslateEnabled)
+        assertNoCooldown()
+        assertEquals("one report, the frame's", 1, attempts.size)
+    }
+
+    /** A sign-out or a new sign-in while the frame was out makes its 403 an
+     *  answer about a key that is gone: the frame still fails and reports,
+     *  and the service changes nothing. */
+    @Test fun `a frame's 403 for a key that is no longer the stored one changes nothing`() {
+        val prefs = serviceSwitchedOn()
+        val body = """{"error":"no_entitlement","last_source":"trial"}"""
+        val swapping = PtCloudTestSupport.cannedClient(403, body).newBuilder()
+            .apply {
+                interceptors().add(
+                    0,
+                    Interceptor { chain ->
+                        prefs.ptCloudClientKey = "another-key"
+                        chain.proceed(chain.request())
+                    },
+                )
+            }
+            .build()
+
+        assertRow(post(swapping), BackendFailureKind.TRIAL_ENDED, 403, reachedServer = true)
+
+        assertEquals("another-key", prefs.ptCloudClientKey)
+        assertNull("no record written", prefs.ptCloudAccountJson)
+        assertTrue(prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
+        assertNoCooldown()
+    }
+
+    /** The page's check answered Accepted (back from Join, say) while the
+     *  frame was out: its 403 describes the record the frame was built
+     *  against, which the check has since rewritten, so the frame still
+     *  fails and reports, and the newer word stands (Codex adversarial
+     *  review, 2026-10-29). The generation is read where the request is
+     *  built, before any interceptor runs. */
+    @Test fun `a frame's 403 that comes back after a newer check changes nothing, the Accepted standing`() {
+        val prefs = serviceSwitchedOn()
+        val body = """{"error":"no_entitlement","last_source":"trial","ended_at":"2026-11-03T12:00:00.000Z"}"""
+        val racing = PtCloudTestSupport.cannedClient(403, body).newBuilder()
+            .apply {
+                interceptors().add(
+                    0,
+                    Interceptor { chain ->
+                        PtCloudService.onStoredKeyChecked(PtCloudTestSupport.KEY, PtCloudService.accountGeneration, KeyCheck.Accepted("kofi", null))
+                        chain.proceed(chain.request())
+                    },
+                )
+            }
+            .build()
+
+        assertRow(post(racing), BackendFailureKind.TRIAL_ENDED, 403, reachedServer = true)
+
+        val account = PtCloudService.account!!
+        assertTrue("the check's record stands: $account", account.active)
+        assertEquals("kofi", account.source)
+        assertTrue(prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
+        assertNoCooldown()
     }
 
     @Test fun `any other 403 is a rejected request with its code, no cooldown`() {
@@ -309,22 +412,35 @@ class PtCloudFailureMappingTest {
         return dispatcher.thrown.toList()
     }
 
-    @Test fun `a warm answered 404, 401, 500 or 429 records no cooldown, reports nothing, and throws nothing`() {
-        // 500 and 429 would cool the service down were a frame answered so;
-        // they are here so that recording anything from a warm shows up.
+    /** Nothing a warm hears turns the switches off or writes the record:
+     *  the frame right behind it would then be refused silently, as the
+     *  switch off, and the user would never see the pill (2026-10-29). */
+    private fun assertNothingHandedOver(prefs: Prefs) {
+        assertTrue("both switches still on", prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
+        assertNull("no record written", prefs.ptCloudAccountJson)
+    }
+
+    @Test fun `a warm answered 404, 401, 403, 500 or 429 records no cooldown, reports nothing, flips nothing, and throws nothing`() {
+        val prefs = serviceSwitchedOn()
+        // 500 and 429 would cool the service down were a frame answered so,
+        // and a 403 no_entitlement would turn the switches off; they are
+        // here so that recording anything from a warm shows up.
         for (client in listOf(
             PtCloudTestSupport.cannedClient(404, ""),
             PtCloudTestSupport.cannedClient(401, """{"error":"unauthorized"}"""),
+            PtCloudTestSupport.cannedClient(403, """{"error":"no_entitlement","last_source":"trial"}"""),
             PtCloudTestSupport.cannedClient(500, """{"error":"internal"}"""),
             PtCloudTestSupport.cannedClient(429, """{"error":"rate limited"}""", retryAfter = "300"),
         )) {
             assertEquals(emptyList<Throwable>(), warm(client))
             assertNoCooldown()
             assertTrue("no attempt reported: $attempts", attempts.isEmpty())
+            assertNothingHandedOver(prefs)
         }
     }
 
-    @Test fun `a warm that fails on the transport records no cooldown, reports nothing, and throws nothing`() {
+    @Test fun `a warm that fails on the transport records no cooldown, reports nothing, flips nothing, and throws nothing`() {
+        val prefs = serviceSwitchedOn()
         // Twice: a second network failure in the pair window would engage the
         // network ladder were either recorded.
         repeat(2) {
@@ -333,6 +449,7 @@ class PtCloudFailureMappingTest {
         }
         assertNoCooldown()
         assertTrue("no attempt reported: $attempts", attempts.isEmpty())
+        assertNothingHandedOver(prefs)
     }
 
     // ── After part 1 ───────────────────────────────────────────────────
@@ -488,5 +605,10 @@ class PtCloudFailureMappingTest {
             TranslationOutcome.Skipped,
             PtCloudErrors.classifyPart2(Part2Result.Line(part2(PtCloudTestSupport.part2("skipped", "[]"))), now),
         )
+    }
+
+    private companion object {
+        /** 2026-11-03T12:00:00.000Z, the 403 bodies' `ended_at`. */
+        const val ENDED_AT_MS = 1_793_707_200_000L
     }
 }

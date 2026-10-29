@@ -238,13 +238,7 @@ class PtCloudBackend(
         // cooldown, since only a gesture's forget drops such a report; the
         // frame route can refuse silently because its fallback reads on the
         // device (Codex review, 2026-10-22).
-        if (!isUsable(request.source, request.target)) {
-            throw StructuralFailureException(
-                "$displayName was switched off, or its key removed, during the batch",
-                BackendFailure(BackendFailureKind.REJECTED),
-                serverAnswered = false,
-            )
-        }
+        if (!isUsable(request.source, request.target)) throw notUsable()
         val outcome = client.postTranslate(request)
         if (outcome == TranslationOutcome.Skipped) {
             if (request.source == request.target) return emptyList()
@@ -261,6 +255,16 @@ class PtCloudBackend(
         }
         return unnamed
     }
+
+    /** The refusal of a batch or a call the service stopped being usable
+     *  for after the registry chose it (switched off, or its key removed;
+     *  [translateBatch], [ask]): REJECTED, made before any request, so no
+     *  server answered it. */
+    private fun notUsable() = StructuralFailureException(
+        "$displayName was switched off, or its key removed, during the batch",
+        BackendFailure(BackendFailureKind.REJECTED),
+        serverAnswered = false,
+    )
 
     // Cooldownable: every method reads the cooldown at the call.
 

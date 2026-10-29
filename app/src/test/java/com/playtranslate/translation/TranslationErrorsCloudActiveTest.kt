@@ -5,7 +5,9 @@ import android.os.Looper
 import android.os.SystemClock
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.Prefs
+import com.playtranslate.cloud.PtCloudConfig
 import com.playtranslate.cloud.PtCloudService
+import com.playtranslate.cloud.PtCloudTestSupport
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -18,17 +20,24 @@ import java.time.Duration
 
 /**
  * The process's error tracker, as [TranslationErrors.install] builds it,
- * counts PlayTranslate Cloud's reports while EITHER of its switches is on:
- * the frame route (the OCR switch) and the translate route (the translation
- * switch) report under the one id, and each switch alone puts one route in
- * play, so a tracker reading one switch would drop the other route's
- * failures. With both off nothing of the cloud's is counted.
+ * counts PlayTranslate Cloud's reports while a usable key is stored, whatever
+ * its switches say (2026-10-29): the frame route and the translate route
+ * report under the one id, so either switch alone puts the cloud in play,
+ * and when an ended entitlement turns BOTH off the attempt that found the
+ * ending still reports after it, and is the one pill the user gets. With no
+ * key nothing of the cloud's is counted. (A user's own switch-off drops the
+ * reports of requests sent before it through the gesture's forget, which is
+ * the tracker's rule and not read here.)
+ *
+ * The key is stored through the reversible test codec, on settings installed
+ * as the service's ([PtCloudService.installForTest]), which the tracker reads:
+ * production [Prefs] stores no key without the AndroidKeyStore.
  */
 @RunWith(RobolectricTestRunner::class)
 class TranslationErrorsCloudActiveTest {
 
     private val ctx: Context = ApplicationProvider.getApplicationContext()
-    private val prefs = Prefs(ctx)
+    private lateinit var prefs: Prefs
     private val shown = mutableListOf<String>()
 
     private val presenter = object : TranslationErrorPresenter {
@@ -39,18 +48,23 @@ class TranslationErrorsCloudActiveTest {
 
     @Before fun setUp() {
         clearPrefs()
+        prefs = PtCloudTestSupport.prefs(ctx)
+        PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(prefs))
         // Reports stamped before the session started are dropped.
         ShadowSystemClock.advanceBy(Duration.ofSeconds(1))
     }
 
     @After fun tearDown() {
         TranslationErrors.resetForTest()
+        PtCloudService.installForTest(null)
         clearPrefs()
     }
 
     private fun clearPrefs() {
         ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE).edit().clear().commit()
     }
+
+    private fun withKey() { prefs.ptCloudClientKey = PtCloudTestSupport.KEY }
 
     /** Installs the real tracker and feeds it one failed cloud frame. */
     private fun reportCloudFailure() {
@@ -68,18 +82,30 @@ class TranslationErrorsCloudActiveTest {
     }
 
     @Test fun `with the OCR switch alone the cloud's failures count`() {
+        withKey()
         prefs.ptCloudOcrEnabled = true
         reportCloudFailure()
         assertEquals(listOf(PtCloudService.ID), shown)
     }
 
     @Test fun `with the translation switch alone the cloud's failures count`() {
+        withKey()
         prefs.ptCloudTranslateEnabled = true
         reportCloudFailure()
         assertEquals(listOf(PtCloudService.ID), shown)
     }
 
-    @Test fun `with both switches off the cloud's failures are dropped`() {
+    /** The ending's case: the service turned both switches off itself, and
+     *  the attempt that found the ending reports after that. */
+    @Test fun `with a key and both switches off the cloud's failures count`() {
+        withKey()
+        reportCloudFailure()
+        assertEquals(listOf(PtCloudService.ID), shown)
+    }
+
+    @Test fun `with no key the cloud's failures are dropped, whatever the switches hold`() {
+        prefs.ptCloudOcrEnabled = true
+        prefs.ptCloudTranslateEnabled = true
         reportCloudFailure()
         assertEquals(emptyList<String>(), shown)
     }

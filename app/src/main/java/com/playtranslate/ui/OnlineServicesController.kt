@@ -140,7 +140,9 @@ class OnlineServicesController(
      * the read. The switch is the service's TRANSLATION switch, as every
      * row's switch on this page means "translate with this" (its OCR switch
      * lives with the OCR engines, on the Capture & overlay page), and writes
-     * through its one mutation, [PtCloudService.setTranslateEnabled]; the mutation announces
+     * through its one mutation, [PtCloudService.setTranslateEnabled], while
+     * the account is entitled ([com.playtranslate.cloud.PtCloudConfig.entitled]);
+     * otherwise it shows off and a tap on it opens the cloud page. The mutation announces
      * itself ([PtCloudService.changes]) and the host repaints the row from
      * that, so nothing here repaints after it.
      */
@@ -160,13 +162,14 @@ class OnlineServicesController(
         // render never fires a toggle.
         val switch = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
         switch.setOnCheckedChangeListener(null)
-        // No key saved: the switch shows off and is not a tap target of its
-        // own, so a tap on it falls through to rowMain and opens the cloud
-        // page, where the key goes; nothing is written here
-        // (2026-10-25). With a key it flips in place.
-        val hasKey = config.hasKey
-        switch.isClickable = hasKey
-        switch.isChecked = hasKey && config.translateEnabled
+        // Not entitled (no key saved, or an account whose trial ended or
+        // whose membership is inactive): the switch shows off and is not a
+        // tap target of its own, so a tap on it falls through to rowMain and
+        // opens the cloud page, where the key goes and Join is; nothing is
+        // written here (2026-10-25, 2026-10-29). Entitled, it flips in place.
+        val entitled = config.entitled
+        switch.isClickable = entitled
+        switch.isChecked = entitled && config.translateEnabled
         switch.setOnCheckedChangeListener { _, checked -> PtCloudService.setTranslateEnabled(checked) }
         // The card's rule for its last row (the adapter's, below): no
         // divider above the footer. This row is the last one only when the
