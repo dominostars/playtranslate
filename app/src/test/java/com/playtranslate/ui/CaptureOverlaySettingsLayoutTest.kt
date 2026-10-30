@@ -110,7 +110,7 @@ class CaptureOverlaySettingsLayoutTest {
             // The MangaOCR card may follow for Japanese; the next group does after it.
             assertTrue("$source: $page", page.indexOf("headerAutoTranslate") > page.indexOf("cardPtCloud"))
             assertEquals(
-                "PlayTranslate Cloud",
+                "PlayTranslate Cloud (Alpha)",
                 activity.findViewById<View>(R.id.rowPtCloudOcr)
                     .findViewById<android.widget.TextView>(R.id.tvRowTitle).text.toString(),
             )

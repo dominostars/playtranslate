@@ -22,7 +22,7 @@
         android:background="?attr/ptSurface"
         app:navigationIcon="@drawable/ic_arrow_back"
         app:navigationIconTint="?attr/ptText"
-        app:title="@string/pt_cloud_display_name"
+        app:title="@string/pt_cloud_display_name_alpha"
         app:titleTextColor="?attr/ptText" />
 
     <View

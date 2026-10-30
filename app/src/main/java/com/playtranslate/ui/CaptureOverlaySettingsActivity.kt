@@ -1041,7 +1041,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
             return false
         }
         val row = findViewById<View>(R.id.rowPtCloudOcr)
-        row.findViewById<TextView>(R.id.tvRowTitle).setText(R.string.pt_cloud_display_name)
+        row.findViewById<TextView>(R.id.tvRowTitle).setText(R.string.pt_cloud_display_name_alpha)
         cloudOcrSwitch = row.findViewById(R.id.switchRowToggle)
         renderCloudOcrRow()
         row.setOnClickListener { startActivity(Intent(this, PtCloudSettingsActivity::class.java)) }

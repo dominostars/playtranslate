@@ -101,7 +101,7 @@ class TranslationServicesCloudRowTest {
 
     /** The row's fixed parts, which edit mode leaves as they are. */
     private fun TranslationServicesActivity.assertFixedParts() {
-        assertEquals("PlayTranslate Cloud", row().findViewById<TextView>(R.id.tvRowTitle).text.toString())
+        assertEquals("PlayTranslate Cloud (Alpha)", row().findViewById<TextView>(R.id.tvRowTitle).text.toString())
         assertTrue("the LLM chip", row().findViewById<View>(R.id.tvLlmBadge).isVisible)
         assertFalse("no model sub-cell", row().findViewById<View>(R.id.sectionModel).isVisible)
         assertFalse("no drag handle", row().findViewById<View>(R.id.ivDragHandle).isVisible)

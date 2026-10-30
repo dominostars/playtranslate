@@ -1701,6 +1701,14 @@
     <!-- The app's own cloud service (OCR and translation on a server);
          a product name, not translated. -->
     <string name="pt_cloud_display_name" translatable="false">PlayTranslate Cloud</string>
+    <!-- The title form of pt_cloud_display_name while the service is in
+         alpha, on four surfaces only: the PlayTranslate Cloud page's toolbar
+         title, the CONFIGURE cell, the Translation services row and the
+         Capture &amp; overlay row. Every sentence that names the service, the
+         quick-menu strip header, the OCR picker's entry and the error pills
+         keep the bare brand (pt_cloud_display_name / PtCloudService.DISPLAY_NAME).
+         The brand stays as written; "(Alpha)" is translated. -->
+    <string name="pt_cloud_display_name_alpha"><xliff:g id="service" example="PlayTranslate Cloud">PlayTranslate Cloud</xliff:g> (Alpha)</string>
     <!-- Cell title + provider-preset pill label for an OpenAI-compatible
          service pointed at a user-entered URL (LM Studio, OpenRouter, …). -->
     <string name="llm_backend_preset_custom">Custom</string>
@@ -3364,7 +3372,9 @@
 
     <!-- PLAYTRANSLATE CLOUD — the CONFIGURE cell and its page (Settings →
          Configure → PlayTranslate Cloud). Debug builds only for now. The
-         cell and the page title use pt_cloud_display_name, a product name. -->
+         cell and the page title use pt_cloud_display_name_alpha, the brand
+         with its alpha label; the sentences below take the bare brand,
+         pt_cloud_display_name, as %1$s. -->
     <!-- Subtitle of the PlayTranslate Cloud CONFIGURE cell while both of its
          switches (OCR, translation) are off. -->
     <string name="settings_pt_cloud_summary_off">Off</string>

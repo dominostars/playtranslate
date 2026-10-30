@@ -109,7 +109,7 @@ class OnlineServicesController(
             // handle or trash in edit mode either (it is pinned first and
             // cannot be removed), and a tap opens its own page, in edit
             // mode too, since an edit changes nothing on it.
-            row.findViewById<TextView>(R.id.tvRowTitle).setText(R.string.pt_cloud_display_name)
+            row.findViewById<TextView>(R.id.tvRowTitle).setText(R.string.pt_cloud_display_name_alpha)
             row.findViewById<View>(R.id.tvLlmBadge).isVisible = true
             row.findViewById<View>(R.id.sectionModel).isGone = true
             row.findViewById<View>(R.id.ivDragHandle).isGone = true

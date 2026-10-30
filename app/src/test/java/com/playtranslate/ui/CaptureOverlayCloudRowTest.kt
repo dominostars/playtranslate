@@ -107,7 +107,7 @@ class CaptureOverlayCloudRowTest {
         recordCooldown()
         val a = create()
         assertEquals(View.VISIBLE, a.findViewById<View>(R.id.cardPtCloud).visibility)
-        assertEquals("PlayTranslate Cloud", a.row.findViewById<TextView>(R.id.tvRowTitle).text.toString())
+        assertEquals("PlayTranslate Cloud (Alpha)", a.row.findViewById<TextView>(R.id.tvRowTitle).text.toString())
         assertTrue("looks live", a.switch.isEnabled)
         assertFalse("shows off whatever is stored", a.switch.isChecked)
         assertFalse("a touch on it reaches the row", a.switch.isClickable)

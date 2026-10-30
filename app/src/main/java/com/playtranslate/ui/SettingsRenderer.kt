@@ -980,7 +980,7 @@ class SettingsRenderer(
                     // glyph never changes: ic_cloud_off means the offline
                     // half in the Translation cell below (translationSummary).
                     iconTint = if (state.cloudEntitled) R.attr.ptAccent else R.attr.ptTextMuted,
-                    title = ctx.getString(R.string.pt_cloud_display_name),
+                    title = ctx.getString(R.string.pt_cloud_display_name_alpha),
                     summary = state.cloudSummary,
                     onClick = { callbacks.openCloudSettings() },
                 ),
