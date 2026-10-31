@@ -39,8 +39,8 @@ import org.robolectric.android.controller.ActivityController
  * from the registry's backend, which reads the service's cooldown at each
  * call (the state a test installs after the Application built the backend);
  * its switch through the service's one mutation, shown off and not its own
- * tap target while the account is not entitled (no key, or an ended trial
- * or membership); the key's tail or, with no
+ * tap target while the account is not admitted (no key, an ended trial or
+ * membership, or the current terms not accepted); the key's tail or, with no
  * key, the service's one-line pitch; a tap to the cloud page; and a fresh render on a
  * return from that page while the card is in edit mode, which the store
  * rows' rebind skips.

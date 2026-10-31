@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PlayTranslate Cloud's terms page (opened for a result by the PlayTranslate
+     Cloud page, debug builds only), top to bottom: the service's terms and
+     privacy text, one card that scrolls, and under the scroll, always in
+     reach, Agree (Try for Free's shape: 56dp, bold, the accent) and Cancel.
+     PtCloudTermsActivity sets the text, rendered from the server's Markdown;
+     nothing else changes in code.
+     On the activity_pt_cloud_settings.xml skeleton. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/ptSurface"
+        app:navigationIcon="@drawable/ic_arrow_back"
+        app:navigationIconTint="?attr/ptText"
+        app:title="@string/pt_cloud_terms_title"
+        app:titleTextColor="?attr/ptText" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="?attr/ptDivider" />
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true"
+        android:paddingHorizontal="14dp"
+        android:paddingBottom="20dp"
+        android:clipToPadding="false">
+
+        <!-- The text, headings bold and larger and paragraph leads bold
+             (TermsMarkdown), in the card's row insets. -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            app:cardBackgroundColor="?attr/ptCard"
+            app:cardCornerRadius="@dimen/pt_radius"
+            app:cardElevation="0dp"
+            app:strokeColor="?attr/ptDivider"
+            app:strokeWidth="1dp">
+
+            <TextView
+                android:id="@+id/tvCloudTermsText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="@dimen/pt_row_h_padding"
+                android:paddingVertical="@dimen/pt_row_v_padding"
+                android:lineSpacingMultiplier="1.35"
+                android:textColor="?attr/ptText"
+                android:textSize="14sp" />
+        </com.google.android.material.card.MaterialCardView>
+    </androidx.core.widget.NestedScrollView>
+
+    <!-- Agree and Cancel, outside the scroll so neither waits for the end of
+         the text, inset as the page's column is. -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="14dp"
+        android:paddingBottom="20dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnCloudTermsAgree"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="@string/pt_cloud_terms_agree"
+            android:textAllCaps="false"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            app:cornerRadius="12dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnCloudTermsCancel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/btn_cancel"
+            android:textAllCaps="false"
+            style="@style/Widget.Material3.Button.TextButton" />
+    </LinearLayout>
+
+</LinearLayout>

@@ -80,12 +80,14 @@ data class TranslateRequest(
 /**
  * The edge's JSON error body (`{"error":"..."}`), read by [PtCloudErrors]
  * alone: its [error] word tells one answer of a status from another (a 403
- * `no_entitlement` from any other 403, a 410 `service_closed` from any other
+ * `no_entitlement` or `terms_required` from any other 403, a 409
+ * `terms_outdated` from any other 409, a 410 `service_closed` from any other
  * 410, a 502 `ocr_unavailable` from the host being off, and the sign-in
  * routes' refusals from each other), and the fields beside it carry what
  * that answer says. Lenient: every field optional, and absent from a Worker
- * that predates it. Never logged but for the [error] word on a sign-in
- * refusal ([PtCloudClient.requestCode], [PtCloudClient.verifyCode]).
+ * that predates it. Never logged but for the [error] word on a sign-in or
+ * terms refusal ([PtCloudClient.requestCode], [PtCloudClient.verifyCode],
+ * [PtCloudClient.fetchTerms], [PtCloudClient.acceptTerms]).
  */
 @Serializable
 data class EdgeError(
@@ -101,6 +103,10 @@ data class EdgeError(
     @SerialName("last_source") val lastSource: String? = null,
     /** When [lastSource] ended, ISO 8601 UTC. */
     @SerialName("ended_at") val endedAt: String? = null,
+    /** A 403 `terms_required`'s and a 409 `terms_outdated`'s current version
+     *  of the terms, `YYYY-MM-DD` (the date on the text's own `Version:`
+     *  line); absent from every other answer. */
+    val version: String? = null,
     /** A verify 401 `code_invalid`'s tries left on the code; 0 when no live
      *  code is left (expired, used, replaced, never sent, or out of tries). */
     @SerialName("attempts_left") val attemptsLeft: Int? = null,
@@ -159,6 +165,25 @@ data class KeyOkBody(
     val source: String? = null,
     @SerialName("entitled_until") val entitledUntil: String? = null,
 )
+
+// ── Terms ──────────────────────────────────────────────────────────────
+
+/** `GET /v1/terms`'s 200 ("Terms" in docs/api.md), only the fields the app
+ *  reads: the [version] an acceptance names (the date on the text's own
+ *  `Version:` line), the [locale] the server served, which the acceptance
+ *  echoes, and the whole [text], Markdown in the server's subset
+ *  ([com.playtranslate.ui.TermsMarkdown]). `format` (always `markdown`) is
+ *  not read. A body missing any of the three does not decode. None of it is
+ *  logged. */
+@Serializable
+data class TermsBody(val version: String, val locale: String, val text: String)
+
+/** The body of `POST /v1/terms/accept` ("Accepting the terms" in
+ *  docs/api.md): the [version] the text came with and the [locale] its
+ *  answer named ([TermsAgreement]), never a version from a 403. Never
+ *  logged. */
+@Serializable
+data class TermsAcceptBody(val version: String, val locale: String)
 
 // ── Response, part 1 ───────────────────────────────────────────────────
 

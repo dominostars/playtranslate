@@ -344,6 +344,17 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:theme="@style/Theme.PlayTranslate" />
 
+        <!-- PlayTranslate Cloud's terms sub-page (the service's terms and privacy text, with Agree and
+             Cancel), launched for a result by the PlayTranslate Cloud page, which fetches the text and
+             acts on the answer: Agree returns the version and the locale the page was given, the
+             agreement, and Cancel or back returns nothing. The page itself calls and stores nothing. -->
+        <activity
+            android:name=".ui.PtCloudTermsActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.PtCloudSettingsActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:theme="@style/Theme.PlayTranslate" />
+
         <!-- Yomitan dictionary import sub-page, launched from Settings → Configure. -->
         <activity
             android:name=".ui.YomitanSettingsActivity"

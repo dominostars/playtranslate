@@ -84,29 +84,32 @@ class PtCloudConfig(
      *  [PtCloudAccount.Standing.NO_DETAILS] with a key and no record, none
      *  stored or one that does not decode; else the record's own
      *  ([PtCloudAccount.standing]). Words only; the routes and the controls
-     *  read [entitled]. */
+     *  read [admitted]. */
     fun standing(nowMs: Long = System.currentTimeMillis()): PtCloudAccount.Standing? {
         if (!hasKey) return null
         return account?.standing(nowMs) ?: PtCloudAccount.Standing.NO_DETAILS
     }
 
-    /** A usable key whose account the server has not written as inactive
-     *  ([PtCloudAccount.active]: on the trial or on a membership as of the
-     *  last answer, or with nothing known against it, a key with no record).
-     *  The server's last word, never the device's clock (2026-10-29, Codex
-     *  adversarial review): a Ko-fi membership is a lease per payment that
-     *  the next payment renews on the server, so a record whose dated end
-     *  has passed here still routes to the cloud, and the server's own 403
-     *  is what ends an account ([PtCloudService.onEntitlementEnded]), as a
-     *  check's Inactive does ([PtCloudService.onStoredKeyChecked]). The
-     *  precondition of both switches, which follow it
-     *  ([PtCloudService.saveClientKey], [PtCloudService.onStoredKeyChecked],
-     *  [PtCloudService.onEntitlementEnded]), and of every read
-     *  ([PtCloudService.refusal]); false with no key. Reads the key as
-     *  [hasKey] does ([Prefs] keeps its decryption, so a second read in one
-     *  decision decrypts nothing), and decodes the small record at each
-     *  call. */
-    val entitled: Boolean get() = hasKey && account?.active != false
+    /** A usable key whose account the server's last word admits: an
+     *  entitlement not written as ended ([PtCloudAccount.active]: on the
+     *  trial or on a membership as of the last answer) and the current terms
+     *  not written as outstanding ([PtCloudAccount.termsRequired]), or
+     *  nothing known against it, a key with no record. The server's last
+     *  word, never the device's clock (2026-10-29, Codex adversarial review):
+     *  a Ko-fi membership is a lease per payment that the next payment renews
+     *  on the server, so a record whose dated end has passed here still
+     *  routes to the cloud, and the server's own 403s are what withhold an
+     *  account (`no_entitlement` and `terms_required`,
+     *  [PtCloudService.onAccountWithheld]), as a check's Inactive or
+     *  TermsRequired does ([PtCloudService.onStoredKeyChecked]). "Entitled"
+     *  stays the server's word for the membership alone. The precondition of
+     *  both switches, which follow it ([PtCloudService.saveClientKey],
+     *  [PtCloudService.onStoredKeyChecked], [PtCloudService.onAccountWithheld]),
+     *  and of every read ([PtCloudService.refusal]); false with no key. Reads
+     *  the key as [hasKey] does ([Prefs] keeps its decryption, so a second
+     *  read in one decision decrypts nothing), and decodes the small record
+     *  at each call. */
+    val admitted: Boolean get() = hasKey && account?.let { it.active && !it.termsRequired } != false
 
     companion object {
         /** True when [key] is usable as a bearer value: non-blank, and every

@@ -135,12 +135,13 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
          *  pitch while no key is saved and while both switches are on, else
          *  "Off" or the one route that is on ([cloudDigest]). */
         val cloudSummary: String,
-        /** Whether the account is entitled ([PtCloudConfig.entitled]: a
-         *  usable client key saved, its trial or membership not ended).
-         *  False mutes the cell's icon: the subtitle is then the pitch (no
-         *  key) or the ending ("Trial ended", "Membership inactive"), so
+        /** Whether the account is admitted ([PtCloudConfig.admitted]: a
+         *  usable client key saved, its trial or membership not ended, and
+         *  no acceptance of the current terms owed). False mutes the cell's
+         *  icon: the subtitle is then the pitch (no key) or the reason
+         *  ("Trial ended", "Membership inactive", "Terms not accepted"), so
          *  the icon is what says the service is not in play. */
-        val cloudEntitled: Boolean,
+        val cloudAdmitted: Boolean,
         /** Yomitan CONFIGURE cell digest: import prompt when empty,
          *  dictionary count otherwise. Null until the first [refresh]
          *  resolves it (subtitle hidden). */
@@ -178,7 +179,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
                     hotkeysSummary = hotkeysDigest(),
                     appearanceSummary = appearanceDigest(),
                     cloudSummary = cloudDigest(),
-                    cloudEntitled = PtCloudService.config.entitled,
+                    cloudAdmitted = PtCloudService.config.admitted,
                     // Names the cloud while its OCR switch is on, so that
                     // pref moves it too; the rest of it stays polled.
                     captureSummary = captureDigest(),
@@ -200,7 +201,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
             translationOffline = offline,
             captureSummary = captureDigest(),
             cloudSummary = cloudDigest(),
-            cloudEntitled = PtCloudService.config.entitled,
+            cloudAdmitted = PtCloudService.config.admitted,
         )
         // The async writers below MUST resolve their value BEFORE touching
         // _state and write via update{}: `_state.value = _state.value.copy(
@@ -233,7 +234,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
             anki = resolveAnkiCell(),
             tts = TtsCell.Loading,
             cloudSummary = cloudDigest(),
-            cloudEntitled = PtCloudService.config.entitled,
+            cloudAdmitted = PtCloudService.config.admitted,
         )
     }
 
@@ -332,11 +333,12 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
-    /** "Trial until {date}", "Trial ended" or "Membership inactive", from
-     *  the record kept beside the key ([PtCloudAccount.standing] now), never
-     *  from the server; null for the standings the cell leaves to the
-     *  switches: a membership, no details (no record, or one from a Worker
-     *  that sent no account), and a trial with no end date. */
+    /** "Trial until {date}", "Trial ended", "Membership inactive" or "Terms
+     *  not accepted", from the record kept beside the key
+     *  ([PtCloudAccount.standing] now), never from the server; null for the
+     *  standings the cell leaves to the switches: a membership, no details
+     *  (no record, or one from a Worker that sent no account), and a trial
+     *  with no end date. */
     private fun cloudStandingDigest(account: PtCloudAccount?): String? {
         if (account == null) return null
         val now = System.currentTimeMillis()
@@ -346,6 +348,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
             }
             PtCloudAccount.Standing.TRIAL_ENDED -> str(R.string.settings_pt_cloud_summary_trial_ended)
             PtCloudAccount.Standing.INACTIVE -> str(R.string.settings_pt_cloud_summary_inactive)
+            PtCloudAccount.Standing.TERMS_REQUIRED -> str(R.string.settings_pt_cloud_summary_terms_required)
             PtCloudAccount.Standing.MEMBER, PtCloudAccount.Standing.NO_DETAILS -> null
         }
     }

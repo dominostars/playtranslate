@@ -44,6 +44,7 @@ class TranslationErrorMessagesTest {
             BackendFailureKind.NOT_RUNNING to "Gemini: Not running",
             BackendFailureKind.TRIAL_ENDED to "Gemini: Free trial ended",
             BackendFailureKind.MEMBERSHIP_INACTIVE to "Gemini: Membership inactive",
+            BackendFailureKind.TERMS_REQUIRED to "Gemini: Terms not accepted",
             BackendFailureKind.CLOSED to "Gemini: Service closed",
         )
         // Exhaustive: a new kind without a message fails here.
@@ -75,5 +76,15 @@ class TranslationErrorMessagesTest {
         assertEquals("PlayTranslate Cloud: Service closed", service(BackendFailureKind.CLOSED, 410, cloud))
         assertEquals("Claude: Out of credits", service(BackendFailureKind.BILLING, 400, "Claude"))
         assertEquals("OpenAI: Out of credits", service(BackendFailureKind.BILLING, 429, "OpenAI"))
+    }
+
+    /** The edge's 403 `terms_required`: the account's own words, beside the
+     *  two membership kinds, never the 403's generic rejection with its
+     *  code. */
+    @Test fun `TERMS_REQUIRED reads Terms not accepted, without its 403`() {
+        assertEquals(
+            "PlayTranslate Cloud: Terms not accepted",
+            service(BackendFailureKind.TERMS_REQUIRED, 403, "PlayTranslate Cloud"),
+        )
     }
 }

@@ -105,17 +105,19 @@ sealed interface HealthStatus {
 
 /**
  * The HTTP client for PlayTranslate Cloud's `POST /v1/frame`,
- * `POST /v1/translate`, `GET /v1/warm`, `GET /v1/key`, `GET /health` and the
- * two sign-in calls, `POST /v1/signin` and `POST /v1/signin/verify`, all
- * under [BASE_URL] (the contract: docs/api.md, docs/client-integration-brief.md
+ * `POST /v1/translate`, `GET /v1/warm`, `GET /v1/key`, `GET /health`, the
+ * two sign-in calls, `POST /v1/signin` and `POST /v1/signin/verify`, and the
+ * two terms calls, `GET /v1/terms` and `POST /v1/terms/accept`, all under
+ * [BASE_URL] (the contract: docs/api.md, docs/client-integration-brief.md
  * and docs/client-signin-handoff.md in the playtranslate-cloud repository).
  *
- * A 403 `no_entitlement` on either route is handed to the service with the
+ * A 403 on either route that withholds service from the account
+ * (`no_entitlement`, `terms_required`) is handed to the service with the
  * key the call carried and the account record's generation it was built
- * against ([recordFailure], [PtCloudService.onEntitlementEnded]), which
- * writes the account as ended and turns both switches off unless a check
- * wrote a newer record while the call was out; the failure itself is
- * reported as any other is, below.
+ * against ([recordFailure], [PtCloudService.onAccountWithheld]), which
+ * writes the account as the 403 describes it and turns both switches off
+ * unless a check wrote a newer record while the call was out; the failure
+ * itself is reported as any other is, below.
  *
  * On the frame route reporting is split at part 1. [postFrame] records the
  * cooldown and reports the [OnlineAttempt] of any failure before part 1
@@ -126,10 +128,11 @@ sealed interface HealthStatus {
  * [postTranslate] records every failure and reports nothing: its caller is a
  * registry backend ([PtCloudBackend]), and the registry reports an attempt
  * for every online backend it calls and records the success. The settings
- * page's calls, [checkKey], [health], [requestCode] and [verifyCode], record
- * no cooldown, report nothing and retry nothing: none is a capture. The two
- * sign-in calls carry no bearer: their routes take none, and the stored key
- * must never ride along.
+ * page's calls, [checkKey], [health], [requestCode], [verifyCode],
+ * [fetchTerms] and [acceptTerms], record no cooldown, report nothing and
+ * retry nothing: none is a capture. The two sign-in calls and the terms'
+ * fetch carry no bearer: their routes take none, and the stored key must
+ * never ride along.
  *
  * A cancelled call (the user released the hold, a newer capture superseded
  * this one) records nothing and reports nothing: it is not a fact about the
@@ -139,8 +142,9 @@ sealed interface HealthStatus {
  *
  * Logs carry the frame id the caller chose, status codes and names, byte,
  * text and group counts, sizes, timings and exception class names only, and
- * on a sign-in refusal the server's `error` word; never the key, the URL, a
- * body, recognized or translated text, or a sign-in's email, code or label.
+ * on a sign-in or terms refusal the server's `error` word; never the key,
+ * the URL, a body, recognized or translated text, the terms' text, or a
+ * sign-in's email, code or label.
  * Each frame that reaches part 1 logs two clock lines ([PtCloudClocks]): one
  * at part 1 and one when the read after it ends, unless that read was
  * cancelled; each translate call that was not cancelled logs one.
@@ -187,7 +191,7 @@ class PtCloudClient(
      *
      * Throws [PtCloudReadException] for any failure before part 1, after
      * recording it ([recordFailure]: its cooldown on [PtCloudService.cooldown],
-     * a 403 `no_entitlement`'s ended account handed to the service) and
+     * the account a withholding 403 describes handed to the service) and
      * reporting its attempt through [PtCloudService.report] (the failure
      * table: [PtCloudErrors.classifyHttp], [PtCloudErrors.classifyTransport],
      * [PtCloudErrors.badPart1]). Throws [CancellationException], with nothing
@@ -319,8 +323,9 @@ class PtCloudClient(
      * ([recordFailure]: on [PtCloudService.cooldown], the state the frame
      * route records on, since the server counts frames and translate calls
      * against one budget and one rate bucket and a refused key or a stopped
-     * pod is one fact for both; and a 403 `no_entitlement`'s ended account
-     * handed to the service, as a frame's is), then thrown as
+     * pod is one fact for both; and the account a withholding 403
+     * (`no_entitlement`, `terms_required`) describes handed to the service,
+     * as a frame's is), then thrown as
      * [PtCloudReadException]. A success records
      * nothing here: the registry's `recordSuccess` does, with its own
      * attempt stamp. Unlike [postFrame], this reports no [OnlineAttempt]:
@@ -406,9 +411,9 @@ class PtCloudClient(
      * Answered by the edge alone, so it answers the same with the service
      * stopped. Each answer is read by [PtCloudErrors.classifyKeyCheck], which
      * reads the body (peeked up to [ERROR_BODY_LIMIT], never logged) of the
-     * answers whose body says something: the 200's account, the 403's ended
-     * entitlement, the 410's message. A transport failure is
-     * [KeyCheck.NotChecked].
+     * answers whose body says something: the 200's account, the 403's
+     * withholding (an ended entitlement, or the current terms not accepted),
+     * the 410's message. A transport failure is [KeyCheck.NotChecked].
      *
      * Not a capture: no cooldown is recorded, no attempt is reported and
      * nothing is retried. [CancellationException] when the caller was
@@ -518,6 +523,99 @@ class PtCloudClient(
     }
 
     /**
+     * `GET {BASE_URL}/v1/terms?locale=<[locale]>` ("Terms" in docs/api.md),
+     * for the cloud page: the current terms, in the text the server matches
+     * to [locale] (the device's BCP 47 tag; English for one it holds no text
+     * in). Each answer is read by [PtCloudErrors.classifyTerms] from its
+     * status and its body, peeked up to [TERMS_BODY_LIMIT] (a longer one does
+     * not decode, and reads as [TermsResult.Unavailable]); a transport
+     * failure is [TermsResult.Unreachable]. On [client], so on the shared
+     * pool and timeouts, as [checkKey]; and with no bearer ([bearer] is never
+     * called here: the route takes none, since a person reads the terms
+     * before signing in).
+     *
+     * Not a capture: no cooldown is recorded, no attempt is reported and
+     * nothing is retried. [CancellationException] when the caller was
+     * cancelled. Logs `terms status=NNN`, with the server's `error` word on a
+     * refusal ([PtCloudErrors.errorWord]), or the failure's class; never the
+     * URL or a body, the terms' text included.
+     */
+    suspend fun fetchTerms(locale: String): TermsResult = withContext(Dispatchers.IO) {
+        val url = BASE_URL.newBuilder().addPathSegments("v1/terms").addQueryParameter("locale", locale).build()
+        val call = client.newCall(Request.Builder().url(url).get().build())
+        try {
+            blockingOn(call) {
+                call.execute().use { response ->
+                    val body = response.peekBody(TERMS_BODY_LIMIT).string()
+                    val word = if (response.code == 200) null else PtCloudErrors.errorWord(body)
+                    Log.i(TAG, "terms status=${response.code}" + word?.let { " error=$it" }.orEmpty())
+                    PtCloudErrors.classifyTerms(response.code, body)
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IOException) {
+            if (!isActive) {
+                throw CancellationException("PlayTranslate Cloud terms cancelled").apply { initCause(e) }
+            }
+            Log.i(TAG, "terms unreachable (${e.javaClass.simpleName})")
+            TermsResult.Unreachable
+        }
+    }
+
+    /**
+     * `POST {BASE_URL}/v1/terms/accept` ("Accepting the terms" in
+     * docs/api.md): records that the account behind [key] accepts the terms
+     * of [version], the version the text came with, read in [locale], the
+     * locale its answer named ([TermsAgreement]). The body is
+     * [TermsAcceptBody] as JSON, typed `application/json` (anything else is
+     * a 415) and sent as a byte array, so its length is known, as
+     * [postSignIn] sends its body. [key] is the bearer ([bearer]), sent as
+     * the page gives it, as [checkKey] sends its key: a key [bearer] refuses
+     * (the page checks usability first and never sends one) fails as a
+     * transport failure. Each answer is read by
+     * [PtCloudErrors.classifyTermsAccept] from its status and its body,
+     * peeked up to [ERROR_BODY_LIMIT]; a transport failure is
+     * [TermsAcceptResult.NotRecorded]. On [client], as [checkKey].
+     *
+     * Not a capture: no cooldown is recorded, no attempt is reported and
+     * nothing is retried. [CancellationException] when the caller was
+     * cancelled. Logs `terms accept status=NNN`, with the server's `error`
+     * word on a refusal ([PtCloudErrors.errorWord]), or the failure's class;
+     * never the key or a body.
+     */
+    suspend fun acceptTerms(key: String, version: String, locale: String): TermsAcceptResult =
+        withContext(Dispatchers.IO) {
+            val json = PtJson.lenient.encodeToString(TermsAcceptBody.serializer(), TermsAcceptBody(version, locale))
+            try {
+                // Built inside the failure path: a key [bearer] refuses fails
+                // here as a transport failure.
+                val request = Request.Builder()
+                    .url(BASE_URL.newBuilder().addPathSegments("v1/terms/accept").build())
+                    .bearer(key)
+                    .post(json.toByteArray(Charsets.UTF_8).toRequestBody(JSON.toMediaType()))
+                    .build()
+                val call = client.newCall(request)
+                blockingOn(call) {
+                    call.execute().use { response ->
+                        val body = response.peekBody(ERROR_BODY_LIMIT).string()
+                        val word = if (response.code == 200) null else PtCloudErrors.errorWord(body)
+                        Log.i(TAG, "terms accept status=${response.code}" + word?.let { " error=$it" }.orEmpty())
+                        PtCloudErrors.classifyTermsAccept(response.code, body)
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: IOException) {
+                if (!isActive) {
+                    throw CancellationException("PlayTranslate Cloud terms acceptance cancelled").apply { initCause(e) }
+                }
+                Log.i(TAG, "terms accept unreachable (${e.javaClass.simpleName})")
+                TermsAcceptResult.NotRecorded
+            }
+        }
+
+    /**
      * `GET {BASE_URL}/v1/warm` ("Pre-warm" in docs/api.md): wakes the radio,
      * the pooled connection, the edge's path to the origin and the origin's
      * translator connection before a frame is uploaded (the head start not
@@ -600,17 +698,19 @@ class PtCloudClient(
 
     /**
      * [key] as the bearer token, the one place every authenticated request
-     * ([frameRequest], [translateRequest], [warm], [checkKey]) sets it; the
-     * sign-in calls ([postSignIn]) never do. Each request reads the stored
-     * key once ([PtCloudConfig.clientKey]; the key check takes the key it is
-     * given, judged by the same predicate first) and hands it here, where it
-     * is checked with the router's own predicate
+     * ([frameRequest], [translateRequest], [warm], [checkKey], [acceptTerms])
+     * sets it; the sign-in calls ([postSignIn]) and the terms' fetch
+     * ([fetchTerms]) never do. Each request reads the stored key once
+     * ([PtCloudConfig.clientKey]; the key check and the terms acceptance take
+     * the key they are given, judged by the same predicate first) and hands
+     * it here, where it is checked with the router's own predicate
      * ([PtCloudConfig.isUsableKey]): a key saved between the router's check
      * and the build can fail it, and OkHttp's `header` would throw
      * IllegalArgumentException for it, which nothing on a read's path or the
      * warm's launch catches. It throws an IOException instead, which each
      * route's failure path takes as a transport failure
-     * ([PtCloudErrors.classifyTransport]).
+     * ([PtCloudErrors.classifyTransport]), and the terms acceptance as not
+     * recorded.
      */
     private fun Request.Builder.bearer(key: String): Request.Builder {
         if (!PtCloudConfig.isUsableKey(key)) throw IOException("the stored client key is not a usable bearer value")
@@ -649,16 +749,17 @@ class PtCloudClient(
     }
 
     /** What a failed call's answer says of the service, recorded: its
-     *  cooldown on [cooldown], and the ended account a 403 `no_entitlement`
-     *  describes ([Classified.endedAccount]) handed to the service with
-     *  [sentKey], the key the call carried, and [sentGeneration], the
-     *  account record's generation when the call was built, so it acts only
-     *  while that key is still the stored one and no check has written the
-     *  record since ([PtCloudService.onEntitlementEnded]). The one recording
-     *  step of both routes. */
+     *  cooldown on [cooldown], and the account a withholding 403
+     *  (`no_entitlement`, `terms_required`) describes
+     *  ([Classified.withheldAccount]) handed to the service with [sentKey],
+     *  the key the call carried, and [sentGeneration], the account record's
+     *  generation when the call was built, so it acts only while that key is
+     *  still the stored one and no check has written the record since
+     *  ([PtCloudService.onAccountWithheld]). The one recording step of both
+     *  routes. */
     private fun recordFailure(classified: Classified, cooldown: CooldownState, sentKey: String, sentGeneration: Long) {
         classified.record(cooldown)
-        classified.endedAccount?.let { PtCloudService.onEntitlementEnded(sentKey, sentGeneration, it) }
+        classified.withheldAccount?.let { PtCloudService.onAccountWithheld(sentKey, sentGeneration, it) }
     }
 
     private fun logTranslate(request: TranslateRequest, sentAtMs: Long, status: String, clock: HttpCallClock) {
@@ -807,11 +908,18 @@ class PtCloudClient(
 
         /** A body read to classify an answer is read up to this: an error
          *  body to tell one answer of a status from another (the stopped
-         *  service's empty 404 from a routing 404, a 403 `no_entitlement`
-         *  from any other 403, a 410 `service_closed` or a 502
-         *  `ocr_unavailable` from any other), and the small JSON of the key
-         *  check's and the sign-in calls' answers. Its text is never logged. */
+         *  service's empty 404 from a routing 404, a 403 `no_entitlement` or
+         *  `terms_required` from any other 403, a 409 `terms_outdated`, a 410
+         *  `service_closed` or a 502 `ocr_unavailable` from any other), and
+         *  the small JSON of the key check's, the sign-in calls' and the
+         *  terms acceptance's answers. Its text is never logged. */
         private const val ERROR_BODY_LIMIT = 4096L
+
+        /** The terms' answer is read up to this ([fetchTerms]): the whole
+         *  text rides in it, about 4 KB in English today and more in some
+         *  locales, which [ERROR_BODY_LIMIT] would cut. A longer answer does
+         *  not decode, and reads as unavailable. Its text is never logged. */
+        private const val TERMS_BODY_LIMIT = 64L * 1024
 
         /** One client for the process, so consecutive captures reuse the
          *  connection (its TLS handshake is most of a cold call). https only

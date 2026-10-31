@@ -2,19 +2,25 @@ package com.playtranslate.cloud
 
 import com.playtranslate.PtJson
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
  * The account record's one classifier, [PtCloudAccount.standing], and the one
  * place a wire answer becomes a record, [PtCloudAccount.of]: the five
- * standings, an active trial whose dated end has passed reading as ended
+ * standings of the entitlement and the sixth, the current terms owed (an
+ * active record, whatever its dates), an active trial whose dated end has
+ * passed reading as ended
  * with that end as its ended date while a membership's passed date reads
  * nothing (the next payment's lease is the server's to tell), `source`
  * (never a missing date) as the test for a Worker that sent no account, and
- * the record's JSON round trip, the form it is kept in beside the key. The
+ * the record's JSON round trip, the form it is kept in beside the key, a
+ * record written before the terms reading as owing none. The
  * standing words; whether the cloud may serve the account is the record's
- * `active`, read by [PtCloudConfig.entitled] ([PtCloudConfigTest]).
+ * `active` and `termsRequired`, read by [PtCloudConfig.admitted]
+ * ([PtCloudConfigTest]).
  */
 class PtCloudAccountTest {
 
@@ -97,6 +103,64 @@ class PtCloudAccountTest {
             PtCloudAccount.of(KeyCheck.Inactive("kofi", NOW - DAY), null, NOW),
         )
         assertEquals(PtCloudAccount.Standing.NO_DETAILS, PtCloudAccount.of(KeyCheck.Accepted(null, null), null, NOW).standing(NOW))
+    }
+
+    /** The terms gate's 403 of a known key: the account is entitled (the
+     *  server tells an ended one first) and owes the current terms. The 403
+     *  carries no dates, so the record holds none, and its version is never
+     *  kept (the page accepts the version of the text it showed). The two
+     *  other answers owe nothing. */
+    @Test fun `of makes a TermsRequired answer an active record owing the terms, with no dates`() {
+        assertEquals(
+            PtCloudAccount(email = EMAIL, active = true, termsRequired = true, checkedAtMs = NOW),
+            PtCloudAccount.of(KeyCheck.TermsRequired("2026-10-30"), EMAIL, NOW),
+        )
+        assertEquals(
+            "the version is not kept",
+            PtCloudAccount.of(KeyCheck.TermsRequired(null), EMAIL, NOW),
+            PtCloudAccount.of(KeyCheck.TermsRequired("2026-10-30"), EMAIL, NOW),
+        )
+        assertFalse(PtCloudAccount.of(KeyCheck.Accepted(SOURCE_TRIAL, NOW + DAY), EMAIL, NOW).termsRequired)
+        assertFalse(PtCloudAccount.of(KeyCheck.Inactive("kofi", NOW - DAY), EMAIL, NOW).termsRequired)
+    }
+
+    /** The terms are the next thing to fix for an entitled account, whatever
+     *  its dates read on this clock; an inactive record words its ending
+     *  first, as the server tells that first. */
+    @Test fun `a record owing the terms reads TERMS_REQUIRED whatever its dates, after the inactive readings`() {
+        val owing = PtCloudAccount(email = EMAIL, active = true, termsRequired = true, checkedAtMs = CHECKED)
+        assertEquals(PtCloudAccount.Standing.TERMS_REQUIRED, owing.standing(NOW))
+        assertNull(owing.endedAt(NOW))
+        val records = listOf(
+            active(SOURCE_TRIAL, NOW + DAY), active(SOURCE_TRIAL, NOW - DAY), active(SOURCE_TRIAL, null),
+            active("kofi", NOW + DAY), active("kofi", NOW - DAY), active("manual", null), active(null, null),
+        )
+        for (record in records) {
+            assertEquals("$record", PtCloudAccount.Standing.TERMS_REQUIRED, record.copy(termsRequired = true).standing(NOW))
+        }
+        assertEquals(
+            PtCloudAccount.Standing.TRIAL_ENDED,
+            inactive(SOURCE_TRIAL, NOW - DAY).copy(termsRequired = true).standing(NOW),
+        )
+        assertEquals(PtCloudAccount.Standing.INACTIVE, inactive("kofi", NOW - DAY).copy(termsRequired = true).standing(NOW))
+    }
+
+    /** A record kept before the field existed has no `termsRequired` key:
+     *  it reads as owing nothing, so the update changes no account's
+     *  standing or admission. */
+    @Test fun `a record written before the terms field decodes as owing none`() {
+        val old = """{"email":"$EMAIL","active":true,"source":"trial","entitledUntilMs":${NOW + DAY},"checkedAtMs":$CHECKED}"""
+        val record = PtJson.lenient.decodeFromString(PtCloudAccount.serializer(), old)
+        assertFalse(record.termsRequired)
+        assertEquals(active(SOURCE_TRIAL, NOW + DAY), record)
+        assertEquals(PtCloudAccount.Standing.TRIAL, record.standing(NOW))
+    }
+
+    @Test fun `the record round-trips the terms owed through its JSON`() {
+        val owing = PtCloudAccount(email = EMAIL, active = true, termsRequired = true, checkedAtMs = CHECKED)
+        val json = PtJson.lenient.encodeToString(PtCloudAccount.serializer(), owing)
+        assertTrue(json, "\"termsRequired\":true" in json)
+        assertEquals(owing, PtJson.lenient.decodeFromString(PtCloudAccount.serializer(), json))
     }
 
     @Test fun `the record round-trips through its JSON`() {

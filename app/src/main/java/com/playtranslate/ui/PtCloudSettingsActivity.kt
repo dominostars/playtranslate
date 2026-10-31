@@ -1,6 +1,7 @@
 package com.playtranslate.ui
 
 import android.content.ClipData
+import android.animation.ObjectAnimator
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
@@ -8,13 +9,21 @@ import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.text.InputFilter
+import android.text.Spannable
+import android.text.SpannableString
 import android.text.Spanned
+import android.text.TextPaint
+import android.text.method.LinkMovementMethod
+import android.text.style.ClickableSpan
+import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.ActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.core.net.toUri
 import androidx.core.view.isVisible
@@ -23,6 +32,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.checkbox.MaterialCheckBox
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.R
 import com.playtranslate.cloud.CodeRequestResult
@@ -34,12 +44,18 @@ import com.playtranslate.cloud.PtCloudClient
 import com.playtranslate.cloud.PtCloudConfig
 import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.cloud.SignInAnswer
+import com.playtranslate.cloud.TermsAcceptResult
+import com.playtranslate.cloud.TermsAgreement
+import com.playtranslate.cloud.TermsResult
 import com.playtranslate.cloud.VerifyResult
 import com.playtranslate.cloud.deviceLabel
 import com.playtranslate.themeColor
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -52,9 +68,10 @@ import kotlinx.coroutines.withContext
  * is turned on with no key saved. The service's address is fixed
  * ([PtCloudClient]); the page has no field for it. The server's side is
  * docs/api.md in the playtranslate-cloud repository ("Sign-in", "Key check",
- * "Service closed"), and the page's states and transitions its
- * docs/client-signin-handoff.md, "The page", less the key card for a key
- * given by hand, which this page does not have.
+ * "Terms", "Accepting the terms", "Service closed"), and the page's states
+ * and transitions its docs/client-signin-handoff.md, "The page", less the
+ * key card for a key given by hand, which this page does not have, and its
+ * docs/client-integration-brief.md, the terms gate (2026-10-30).
  *
  *  - The intro paragraph, above everything and in every state, says what
  *    the service is for.
@@ -88,13 +105,42 @@ import kotlinx.coroutines.withContext
  *    unusable) and hands the answer to the service
  *    ([PtCloudService.onStoredKeyChecked]: the record rewritten, an account
  *    cooldown it disproves dropped, both switches off for an account that
- *    is not entitled and on again for one an answer makes entitled again,
- *    a key the server no longer accepts cleared, each only while the key
- *    checked is still the stored one). A
+ *    is not admitted (an entitlement ended, the terms not accepted) and on
+ *    again for one an answer admits again, a key the server no longer
+ *    accepts cleared, each only while the key checked is still the stored
+ *    one), except while a terms call runs, whose acceptance checks the key
+ *    itself once answered. A
  *    401 that comes within about 10 s of a key's store is retried once a
  *    second later (a key just minted can meet a replica that has not seen
  *    it yet), and after Join the key is checked once more 10 s later while
  *    Join is still due (the payment's webhook lands seconds after it).
+ *  - The terms ("Terms" and "Accepting the terms"), one text the server
+ *    serves by locale and versions by date, shown on the terms page
+ *    ([PtCloudTermsActivity]), which this page launches for its answer
+ *    while it is resumed, never from behind another screen. Signed out,
+ *    the box under the address field is the agreement (ruled 2026-10-30):
+ *    a tap on its row off the sentence's link toggles it, and the link
+ *    opens the terms to read, Agree there ticking the box and sending
+ *    nothing, Cancel leaving it as it was. Try for Free with the box
+ *    unticked lights it in its error state and sends nothing, as a refused
+ *    address is told on its field; with it ticked, Try for Free fetches the
+ *    terms ([PtCloudClient.fetchTerms], for the device's locale) and asks
+ *    for the code at once, the version and the locale served being what
+ *    was agreed to ([agreedTerms]). A server from before the terms (a 404)
+ *    asks for the code with nothing to accept, and a fetch that fails asks
+ *    for none and says why under the button. The agreement rides the
+ *    sign-in and is sent once the verify stored the key
+ *    ([PtCloudClient.acceptTerms], with the key check's one retry for a
+ *    replica's lag), the page waiting on nothing: the server holds the
+ *    record, and its gate asks again if the send failed; the stored key
+ *    unticks the box for the next sign-in. Signed in, a check that answers
+ *    the terms not accepted (the service turned both switches off) shows
+ *    "Terms not accepted" in the alert colour with the terms row in Already
+ *    joined?'s place and no Join, the cooldown line hidden, and opens the
+ *    terms by itself once per episode ([termsShown]); the row's Show terms
+ *    chip opens them again. Agree there sends the acceptance with the
+ *    stored key and then checks the key, whose Accepted turns both switches
+ *    back on.
  *  - A 410 `service_closed` from any call shows the closed card in place of
  *    the ACCOUNT group, with the server's message verbatim and the switches
  *    off, until a health answer that is neither closed nor unreachable says
@@ -109,10 +155,12 @@ import kotlinx.coroutines.withContext
  *    again now". While no usable key is saved the group, header and card,
  *    is gone: signing in is the first step, and its stored key turns both
  *    on. While the service is closed both rows show disabled and off, and
- *    so they do while the account is not entitled (the trial ended, no
- *    membership; [com.playtranslate.cloud.PtCloudConfig.entitled]), the
- *    group still showing: the ending turned both switches off, and the
- *    check that answers Accepted back from Join turns both on (2026-10-29).
+ *    so they do while the account is not admitted (the trial ended, no
+ *    membership, the terms not accepted;
+ *    [com.playtranslate.cloud.PtCloudConfig.admitted]), the group still
+ *    showing: the withholding turned both switches off, and the check that
+ *    answers Accepted, back from Join or after the terms' acceptance, turns
+ *    both on (2026-10-29).
  *    Painted with their listeners detached, so building or restoring the
  *    page writes nothing and resets nothing, and repainted, with the rest of
  *    the page, from the service's own change signal
@@ -132,16 +180,24 @@ import kotlinx.coroutines.withContext
  *
  * What the page knows of its own lives in a few facts ([pending],
  * [closedMessage], [hold], [notice], [keyRefused], [accountUnchecked],
- * [recheckAfterJoin], [busy], [status]), each set by the event that learns
+ * [recheckAfterJoin], [agreedTerms], [termsFlow], [termsShown],
+ * [termsNotice], [busy], [status]), each set by the event that learns
  * it; [render] is the only painter: every event sets its facts and calls
  * it, and it derives every visibility, every text that changes, the
  * account line's colour and every enabled state from them, the stored key
  * and its record (the fixed texts are set once, when the page is built).
+ * What is typed and ticked is input, the views' own and kept by them
+ * across a recreate (the address, the code, the agreement box), which
+ * render never paints: a few events reset it (a stored key clears the
+ * fields and unticks the box, Agree on the terms opened from the link
+ * ticks it).
  * One job per kind of call ([requestJob], [verifyJob], [keyCheckJob],
- * [healthJob], and [holdJob] for the next hold's end), each cancelling its
- * predecessor, all on lifecycleScope, as the health check always was.
+ * [termsJob], [verifyAcceptJob], [healthJob], and [holdJob] for the next
+ * hold's end), each cancelling its predecessor, all on lifecycleScope, as
+ * the health check always was.
  *
- * Neither the email address, the code nor the key is logged here.
+ * Neither the email address, the code, the key nor the terms' text is
+ * logged here.
  */
 class PtCloudSettingsActivity : SettingsSubPageActivity() {
 
@@ -155,6 +211,9 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
     private lateinit var groupSignedOut: View
     private lateinit var tvKeyRefused: View
     private lateinit var etEmail: EditText
+    private lateinit var rowAgree: View
+    private lateinit var cbAgree: MaterialCheckBox
+    private lateinit var tvAgree: TextView
     private lateinit var sendCodeButton: BusyButton
     private lateinit var tvSignInNotice: TextView
     private lateinit var groupCodeSent: View
@@ -176,6 +235,13 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
     private lateinit var btnCheckAgain: View
     private lateinit var ivCheckAgain: View
     private lateinit var progressCheckAgain: View
+    private lateinit var dividerTerms: View
+    private lateinit var rowTerms: View
+    private lateinit var tvTermsPending: TextView
+    private lateinit var btnShowTerms: View
+    private lateinit var ivShowTerms: View
+    private lateinit var progressShowTerms: View
+    private lateinit var tvTermsNotice: TextView
     private lateinit var headerConfiguration: View
     private lateinit var cardUseFor: View
     private lateinit var tvStatus: TextView
@@ -214,7 +280,8 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
      *  by a request's 200, and kept across a recreate ([onSaveInstanceState]). */
     private var hold: Hold? = null
 
-    /** The wording of the last sign-in step's answer, under its button in
+    /** The wording of the last sign-in step's answer (a terms fetch's
+     *  signed out too, Try for Free's or the link's), under its button in
      *  whichever sign-in group shows; formatted with the display name, which
      *  the strings that name the service take as `%1$s` and the others
      *  ignore. Dropped by a stored key ([render]): it describes the sign-in
@@ -241,10 +308,48 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
      *  the page can be rebuilt behind the browser ([onSaveInstanceState]). */
     private var recheckAfterJoin = false
 
+    /** The agreement to the terms, given by ticking the box ([cbAgree]):
+     *  the version and the locale of the text the server served when Try
+     *  for Free was tapped with the box ticked ([requestCodeAfterTerms], its
+     *  one writer), sent once the verify has stored the key
+     *  ([acceptAfterVerify]). It is the person's, not the address's, so Use
+     *  a different email and Send a new code keep it, and the next tap
+     *  replaces it. Dropped by a stored key ([render]): the verify that
+     *  stored it read it first. Kept across a recreate ([onSaveInstanceState]). */
+    private var agreedTerms: TermsAgreement? = null
+
+    /** The flow the terms page in front was opened for, null while none is:
+     *  set when it is launched ([launchTerms]) and consumed by its answer
+     *  ([onTermsResult]), which acts only while the flow still matches the
+     *  key (the link's with no key stored, the account's with one). Kept
+     *  across a recreate ([onSaveInstanceState]): the page can be rebuilt
+     *  behind the terms page, and the answer reaches the new one. */
+    private var termsFlow: TermsFlow? = null
+
+    /** The terms page was opened for the signed-in account in this episode
+     *  of the terms being outstanding (by itself after a check's
+     *  TermsRequired, by the Show terms chip, after a verify's acceptance met
+     *  a newer text), so a check's TermsRequired opens it by itself no more;
+     *  the chip still does. Set by every such launch ([launchTerms]); cleared
+     *  only by a check's Accepted ([checkStoredKeyOnce], never by an
+     *  acceptance's 200, so a later change of the terms opens them once
+     *  again) and with the key ([render]). Kept across a recreate
+     *  ([onSaveInstanceState]). */
+    private var termsShown = false
+
+    /** The wording of the last terms call that failed while signed in (a
+     *  fetch's 429, 503 or no answer, an acceptance not recorded), shown
+     *  under the terms row, so only while the terms are not accepted;
+     *  formatted with the display name, as [notice] is. Cleared by a fetch
+     *  that opens the terms page, by an acceptance's 200, and with the key
+     *  ([render]). Not kept across a recreate: the next call says it again. */
+    @StringRes private var termsNotice: Int? = null
+
     /** The step whose call is in flight, whose button shows the spinner;
      *  while one runs every other step's button waits, so one sign-in step,
-     *  or one key check, runs at a time. Set and cleared by the step's job
-     *  (and by Sign out, which cancels the key check). */
+     *  one key check or one terms call runs at a time. Set and cleared by
+     *  the step's job (and by Sign out, which cancels the key check and the
+     *  terms calls). */
     private var busy: Step? = null
 
     /** The status row outside the closed state ([ServiceStatus]). */
@@ -262,6 +367,18 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
      *  and the re-check after Join. */
     private var keyCheckJob: Job? = null
 
+    /** A terms call the page waits on ([Step.TERMS]): Try for Free's fetch
+     *  before the code is asked for, the agreement link's fetch, a signed-in
+     *  fetch (the chip's, a check's, after a verify's acceptance met a newer
+     *  text), and the acceptance after a signed-in Agree with the check it
+     *  leads to. */
+    private var termsJob: Job? = null
+
+    /** The acceptance sent after a verify stored the key
+     *  ([acceptAfterVerify]), with no busy step: the page is signed in and
+     *  waits on nothing. Its own job, so that a fetch cannot cancel it. */
+    private var verifyAcceptJob: Job? = null
+
     /** The health check in flight. A new check cancels it, so only the
      *  latest check writes the status row. */
     private var healthJob: Job? = null
@@ -269,6 +386,15 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
     /** Re-renders when the hold [render] found ends, so a held button comes
      *  back by itself (and after a recreate). */
     private var holdJob: Job? = null
+
+    /** The terms page, launched for its answer ([launchTerms]) and answered
+     *  in [onTermsResult]. Registered at construction, as the result API
+     *  requires before the page starts, so an answer that arrives at the
+     *  start of a page rebuilt behind the terms page (a theme or locale
+     *  change) reaches the new one. */
+    private val termsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        onTermsResult(it)
+    }
 
     override fun onContentCreated(savedInstanceState: Bundle?) {
         val service = getString(R.string.pt_cloud_display_name)
@@ -280,6 +406,9 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         groupSignedOut = findViewById(R.id.groupSignedOut)
         tvKeyRefused = findViewById(R.id.tvKeyRefused)
         etEmail = findViewById(R.id.etCloudEmail)
+        rowAgree = findViewById(R.id.rowCloudAgree)
+        cbAgree = findViewById(R.id.cbCloudAgree)
+        tvAgree = findViewById(R.id.tvCloudAgree)
         // Try for Free's label names the service, so the page sets it, and
         // before its BusyButton, which keeps the label the button has then.
         val sendCode = findViewById<MaterialButton>(R.id.btnCloudSendCode)
@@ -305,6 +434,13 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         btnCheckAgain = findViewById(R.id.btnCloudCheckAgain)
         ivCheckAgain = findViewById(R.id.ivCloudCheckAgain)
         progressCheckAgain = findViewById(R.id.progressCloudCheckAgain)
+        dividerTerms = findViewById(R.id.dividerCloudTerms)
+        rowTerms = findViewById(R.id.rowCloudTerms)
+        tvTermsPending = findViewById(R.id.tvTermsPending)
+        btnShowTerms = findViewById(R.id.btnCloudShowTerms)
+        ivShowTerms = findViewById(R.id.ivCloudShowTerms)
+        progressShowTerms = findViewById(R.id.progressCloudShowTerms)
+        tvTermsNotice = findViewById(R.id.tvTermsNotice)
         headerConfiguration = findViewById(R.id.headerCloudConfiguration)
         cardUseFor = findViewById(R.id.cardCloudUseFor)
         tvStatus = findViewById(R.id.tvCloudStatus)
@@ -315,6 +451,7 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         findViewById<TextView>(R.id.tvCloudIntro).text = getString(R.string.pt_cloud_intro, service)
         headerAccount.findViewById<TextView>(R.id.tvGroupTitle).setText(R.string.pt_cloud_account_title)
         headerConfiguration.findViewById<TextView>(R.id.tvGroupTitle).setText(R.string.pt_cloud_configuration_title)
+        bindAgreeSentence()
 
         useForRows = listOf(
             bindUseForRow(
@@ -347,7 +484,21 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
             false
         }
 
-        sendCodeButton.button.setOnClickListener { requestCode(etEmail.text.toString().trim()) }
+        // Ticking the box is the agreement: with it unticked Try for Free,
+        // never held for it, lights it in its error state, shakes it and
+        // sends nothing, as a refused address is told on its field. The box
+        // is input, as the address is (its tick kept across a recreate by
+        // its id); the row toggles it, and a tick answers the error it showed.
+        sendCodeButton.button.setOnClickListener {
+            if (!cbAgree.isChecked) {
+                cbAgree.isErrorShown = true
+                shakeAgreeBox()
+            } else {
+                requestCodeAfterTerms(etEmail.text.toString().trim())
+            }
+        }
+        rowAgree.setOnClickListener { cbAgree.toggle() }
+        cbAgree.setOnCheckedChangeListener { _, checked -> if (checked) cbAgree.isErrorShown = false }
         signInButton.button.setOnClickListener { signIn() }
         btnSendNewCode.setOnClickListener { pending?.let { requestCode(it.email) } }
         btnChangeEmail.setOnClickListener {
@@ -357,12 +508,16 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
             render()
         }
         btnCheckAgain.setOnClickListener { checkStoredKey() }
+        btnShowTerms.setOnClickListener { showTerms() }
         findViewById<View>(R.id.btnCloudSignOut).setOnClickListener { confirmSignOut() }
 
         pending = savedInstanceState?.let(::restorePending)
         hold = savedInstanceState?.let(::restoreHold)
         notice = savedInstanceState?.getInt(STATE_NOTICE)?.takeIf { it != 0 }
         recheckAfterJoin = savedInstanceState?.getBoolean(STATE_RECHECK_AFTER_JOIN) == true
+        agreedTerms = savedInstanceState?.let(::restoreAgreedTerms)
+        termsFlow = savedInstanceState?.let(::restoreTermsFlow)
+        termsShown = savedInstanceState?.getBoolean(STATE_TERMS_SHOWN) == true
 
         // The page follows the service: each gesture (a switch here or on
         // another surface, a stored or cleared key, a running health check)
@@ -379,13 +534,23 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
     override fun onResume() {
         super.onResume()
         checkHealth()
-        if (PtCloudService.config.hasKey) checkStoredKey()
+        // Not while a terms call runs: the acceptance after a signed-in
+        // Agree, whose answer arrives at this page's start, checks the key
+        // itself once it is answered, and a check sent now could reach the
+        // server before the acceptance's write and find the terms owed. Nor
+        // while the acceptance after a verify is in flight, for the same
+        // reason: a stale 403 would turn both switches off, and that
+        // acceptance's 200 asks for no check (the verify's record is fresh).
+        if (PtCloudService.config.hasKey && busy != Step.TERMS && verifyAcceptJob?.isActive != true) checkStoredKey()
     }
 
-    /** The pending sign-in, the hold and its notice, and the re-check due
-     *  after Join: the facts no view keeps for itself (the hold's moment is
-     *  on [SystemClock.elapsedRealtime], which a recreate does not move);
-     *  the fields keep their own text (the address, the code typed so far). */
+    /** The pending sign-in, the hold and its notice, the re-check due after
+     *  Join, the agreement to the terms, the flow the terms page in front
+     *  was opened for and whether the terms were shown: the facts no view
+     *  keeps for itself (the hold's moment is on
+     *  [SystemClock.elapsedRealtime], which a recreate does not move); the
+     *  fields keep their own text (the address, the code typed so far), and
+     *  the agreement box its tick. */
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         pending?.let {
@@ -400,6 +565,16 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         }
         notice?.let { outState.putInt(STATE_NOTICE, it) }
         if (recheckAfterJoin) outState.putBoolean(STATE_RECHECK_AFTER_JOIN, true)
+        agreedTerms?.let {
+            outState.putString(STATE_AGREED_TERMS_VERSION, it.version)
+            outState.putString(STATE_AGREED_TERMS_LOCALE, it.locale)
+        }
+        when (termsFlow) {
+            TermsFlow.SignIn -> outState.putString(STATE_TERMS_FLOW, TERMS_FLOW_SIGN_IN)
+            TermsFlow.Account -> outState.putString(STATE_TERMS_FLOW, TERMS_FLOW_ACCOUNT)
+            null -> Unit
+        }
+        if (termsShown) outState.putBoolean(STATE_TERMS_SHOWN, true)
     }
 
     private fun restoreHold(state: Bundle): Hold? =
@@ -414,13 +589,27 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         )
     }
 
+    private fun restoreAgreedTerms(state: Bundle): TermsAgreement? {
+        val version = state.getString(STATE_AGREED_TERMS_VERSION) ?: return null
+        val locale = state.getString(STATE_AGREED_TERMS_LOCALE) ?: return null
+        return TermsAgreement(version, locale)
+    }
+
+    private fun restoreTermsFlow(state: Bundle): TermsFlow? = when (state.getString(STATE_TERMS_FLOW)) {
+        TERMS_FLOW_SIGN_IN -> TermsFlow.SignIn
+        TERMS_FLOW_ACCOUNT -> TermsFlow.Account
+        else -> null
+    }
+
     // ── Sign-in ─────────────────────────────────────────────────────────
 
-    /** Asks for a code to be mailed to [email]: Try for Free from the
-     *  signed-out form (the field, trimmed), or Send a new code while one is
-     *  pending (its address). A refused Send a new code keeps the pending
-     *  sign-in, since the code before it still works (only a 200 replaces
-     *  it), and only a 410 leaves for the closed card. */
+    /** Asks for a code to be mailed to [email]: Try for Free once the terms
+     *  were fetched for the agreement ([requestCodeAfterTerms]: the field,
+     *  trimmed, when it was tapped with the box ticked), or Send a new code
+     *  while one is pending (its address went through Try for Free
+     *  already). A refused Send a new code keeps the pending sign-in, since
+     *  the code before it still works (only a 200 replaces it), and only a
+     *  410 leaves for the closed card. */
     private fun requestCode(email: String) {
         val resend = pending != null
         requestJob?.cancel()
@@ -489,11 +678,17 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
      *  with the record of the verify's own fields, and the page is drawn
      *  from that record with no key check (the verify is the check, and a
      *  check sent at once can meet a replica that has not seen the key yet).
-     *  The key cannot be fetched again, so a write the keystore refused
-     *  ([PtCloudService.saveClientKey] false) returns to the signed-out form
-     *  and says so; the lost key is harmless on the server. */
+     *  Once it is stored, the agreement to the terms given before the code
+     *  was asked for, if any, is sent with it ([acceptAfterVerify]), the page
+     *  waiting on nothing. The key cannot be fetched again, so a write the
+     *  keystore refused ([PtCloudService.saveClientKey] false) returns to the
+     *  signed-out form and says so; the lost key is harmless on the server. */
     private fun signIn() {
         val signIn = pending ?: return
+        // Read before the store: the store counts on the service's change
+        // signal, whose collector can repaint inside it, and the repaint
+        // drops the agreement once a key is stored.
+        val agreed = agreedTerms
         val code = etCode.text.toString()
         verifyJob?.cancel()
         busy = Step.VERIFY
@@ -511,11 +706,14 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
                     pending = null
                     if (stored) {
                         notice = null
-                        // The code is spent; neither field is wanted at the
-                        // next sign-in.
+                        // The code is spent; neither field nor the box is
+                        // wanted at the next sign-in, which may be another
+                        // person's on this device.
                         etEmail.text.clear()
                         etCode.text.clear()
+                        cbAgree.isChecked = false
                         checkHealth()
+                        if (agreed != null) acceptAfterVerify(answer.key, agreed)
                     } else {
                         notice = R.string.pt_cloud_key_not_stored
                     }
@@ -560,7 +758,9 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
      *  key, both switches off), and nothing is sent (the key stays valid on
      *  the server, where the operator can revoke it). A key check in flight
      *  is cancelled, so its answer cannot write a record for the key that
-     *  is gone. */
+     *  is gone, and so are the terms calls (a fetch, an acceptance and the
+     *  check it leads to, the acceptance after a verify), whose answers
+     *  would act for that key. */
     private fun confirmSignOut() {
         OverlayAlert.Builder(this)
             .setTitle(getString(R.string.pt_cloud_sign_out_title, getString(R.string.pt_cloud_display_name)))
@@ -571,7 +771,9 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
                 themeColor(R.attr.ptAccentOn),
             ) {
                 keyCheckJob?.cancel()
-                if (busy == Step.KEY_CHECK) busy = null
+                termsJob?.cancel()
+                verifyAcceptJob?.cancel()
+                if (busy == Step.KEY_CHECK || busy == Step.TERMS) busy = null
                 PtCloudService.saveClientKey("")
                 render()
             }
@@ -608,7 +810,10 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
      * the account, say; [PtCloudService.onStoredKeyChecked]), describes a
      * state that is gone, so the key is asked once more; a second such
      * answer reads as not checked, which the page says beside the account
-     * line, and the next resume or Check again asks afresh.
+     * line, and the next resume or Check again asks afresh. A TermsRequired
+     * opens the terms by itself unless they were opened in this episode
+     * ([termsShown]), and an Accepted ends the episode. Also the check that
+     * follows an acceptance of the terms ([acceptStored]).
      */
     private suspend fun checkStoredKeyOnce() {
         busy = Step.KEY_CHECK
@@ -616,7 +821,19 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         val check = askStoredKey() ?: askStoredKey() ?: KeyCheck.NotChecked
         busy = null
         when (check) {
-            is KeyCheck.Accepted, is KeyCheck.Inactive -> accountUnchecked = false
+            // The server's word that the terms are accepted ends the episode
+            // of their being owed: a later change opens them again.
+            is KeyCheck.Accepted -> {
+                accountUnchecked = false
+                termsShown = false
+            }
+            is KeyCheck.Inactive -> accountUnchecked = false
+            // The service turned both switches off; the terms open by
+            // themselves once an episode, and the chip opens them again.
+            is KeyCheck.TermsRequired -> {
+                accountUnchecked = false
+                if (!termsShown) showTerms()
+            }
             KeyCheck.Refused -> keyRefused = true
             is KeyCheck.Closed -> closedMessage = check.message.orEmpty()
             KeyCheck.NotChecked -> accountUnchecked = true
@@ -654,6 +871,245 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
     /** `GET /v1/key` for the stored [key]: a resume's check, Check again's. */
     private suspend fun checkKey(key: String): KeyCheck =
         keyCheckOverrideForTest?.invoke(key) ?: PtCloudService.client.checkKey(key)
+
+    // ── The terms ───────────────────────────────────────────────────────
+
+    /** The agreement's sentence beside the box, its link the words that
+     *  open the terms to read ([openTermsToRead]), wherever a locale puts
+     *  them: in the accent colour with no underline, as the app's links in
+     *  text are. Its movement takes a press on the link alone
+     *  ([LinkOnlyMovement]) and makes the sentence clickable and
+     *  long-clickable; it is neither, so a press off the link falls through
+     *  to the row, which toggles the box. It stays focusable, so a
+     *  controller reaches it (its background shows the focus), selects the
+     *  link with a press down (the text highlight shows the selection; a
+     *  touch never draws it, the sentence being neither focused nor pressed
+     *  in touch mode) and opens it with the centre press. */
+    private fun bindAgreeSentence() {
+        val link = getString(R.string.pt_cloud_terms_link)
+        val sentence = getString(R.string.pt_cloud_agree_terms, link)
+        val linkAt = sentence.indexOf(link)
+        val accent = themeColor(R.attr.ptAccent)
+        tvAgree.text = SpannableString(sentence).apply {
+            setSpan(
+                object : ClickableSpan() {
+                    override fun onClick(widget: View) = openTermsToRead()
+
+                    override fun updateDrawState(ds: TextPaint) {
+                        ds.color = accent
+                        ds.isUnderlineText = false
+                    }
+                },
+                linkAt, linkAt + link.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
+        tvAgree.movementMethod = LinkOnlyMovement
+        tvAgree.isClickable = false
+        tvAgree.isLongClickable = false
+    }
+
+    /** The box shaken once where it stands as its error colour comes on
+     *  (Try for Free tapped with it unticked): a short sideways wobble that
+     *  settles where it was, taking the eye to the box the tap needs. A tap
+     *  while it still wobbles starts it again from rest. Off, like every
+     *  animator, where the system's animations are. */
+    private fun shakeAgreeBox() {
+        val reach = 6 * resources.displayMetrics.density
+        ObjectAnimator.ofFloat(cbAgree, View.TRANSLATION_X, 0f, -reach, reach, -reach, reach, -reach / 2, reach / 2, 0f).apply {
+            duration = 400
+            start()
+        }
+    }
+
+    /** Try for Free with the box ticked: the terms fetched for the version
+     *  and the locale the agreement names ([agreedTerms]), then the code for
+     *  [email] (the field, trimmed, when it was tapped) at once, with no
+     *  page: the box is the agreement. A server from before the terms (a
+     *  404) asks for the code with nothing to accept after the verify; a
+     *  fetch that fails asks for no code, which would fail the same way. */
+    private fun requestCodeAfterTerms(email: String) {
+        fetchTermsThen(TermsFlow.SignIn, onNotAvailable = { requestCode(email) }) { terms ->
+            agreedTerms = TermsAgreement(terms.version, terms.locale)
+            requestCode(email)
+        }
+    }
+
+    /** The agreement's link, signed out: the terms fetched and opened to
+     *  read on the terms page, whose Agree ticks the box ([onTermsResult]).
+     *  A server from before the terms (a 404) has nothing to show, and the
+     *  form stays as it is. */
+    private fun openTermsToRead() {
+        fetchTermsThen(TermsFlow.SignIn) { launchTerms(it, TermsFlow.SignIn) }
+    }
+
+    /**
+     * The terms fetched for [flow] ([fetchTerms]) while the page waits
+     * ([Step.TERMS], a terms call before it cancelled): their text to
+     * [onText], a server from before them (a 404) to [onNotAvailable]. The
+     * one fetch of Try for Free and the link, signed out, and of the
+     * account's [showTerms]. A 410 leaves for the closed card; a fetch that
+     * fails says why where its flow's tap was, under Try for Free signed out
+     * ([notice]) and under the terms row signed in ([termsNotice]), and the
+     * text clears what a failed fetch said there before it.
+     */
+    private fun fetchTermsThen(
+        flow: TermsFlow,
+        onNotAvailable: () -> Unit = {},
+        onText: (TermsResult.Text) -> Unit,
+    ) {
+        fun say(@StringRes text: Int?) {
+            when (flow) {
+                TermsFlow.SignIn -> notice = text
+                TermsFlow.Account -> termsNotice = text
+            }
+        }
+        termsJob?.cancel()
+        busy = Step.TERMS
+        render()
+        termsJob = lifecycleScope.launch {
+            val terms = fetchTerms()
+            busy = null
+            when (terms) {
+                is TermsResult.Text -> {
+                    say(null)
+                    onText(terms)
+                }
+                TermsResult.NotAvailable -> onNotAvailable()
+                is TermsResult.Closed -> closedMessage = terms.message.orEmpty()
+                TermsResult.Unavailable -> say(R.string.pt_cloud_terms_unavailable)
+                TermsResult.Unreachable -> say(R.string.pt_cloud_signin_unreachable)
+            }
+            render()
+        }
+    }
+
+    /** Opens the terms page with [terms] for [flow], only while this page is
+     *  resumed: a fetch started here outlives a pause, and a launch from a
+     *  page behind another screen would put the terms over it, over the
+     *  game even (the app's overlay windows exempt it from the limits on
+     *  starts from the background). A launch dropped so leaves the facts as
+     *  they were: signed in, the next resume's check opens the terms then;
+     *  signed out, the link is there to tap again. Notes the flow the
+     *  answer is for ([termsFlow]) and, for the account, that the terms were
+     *  shown in this episode ([termsShown]). */
+    private fun launchTerms(terms: TermsResult.Text, flow: TermsFlow) {
+        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
+        termsFlow = flow
+        if (flow == TermsFlow.Account) termsShown = true
+        termsLauncher.launch(PtCloudTermsActivity.intent(this, terms.version, terms.locale, terms.markdown))
+    }
+
+    /** The terms page's answer, delivered at this page's start, before its
+     *  resume. An agreement acts only for the flow that opened the page, and
+     *  only while that flow still matches the key: the link's (no key
+     *  stored) ticks the box, which is the agreement, and sends nothing, the
+     *  box's error going with the tick; the account's (a key stored) sends
+     *  the acceptance ([acceptStored]). Cancel, back, or a flow the key no
+     *  longer matches (another copy of this page signed out or in meanwhile:
+     *  the pill's gear opens one with NEW_TASK | SINGLE_TOP, which finds no
+     *  copy under the terms page) leaves the state as it is, repainted. */
+    private fun onTermsResult(result: ActivityResult) {
+        val flow = termsFlow
+        termsFlow = null
+        val agreement = PtCloudTermsActivity.agreement(result)
+        val hasKey = PtCloudService.config.hasKey
+        when {
+            agreement != null && flow == TermsFlow.SignIn && !hasKey -> {
+                cbAgree.isChecked = true
+                render()
+            }
+            agreement != null && flow == TermsFlow.Account && hasKey -> acceptStored(agreement)
+            else -> render()
+        }
+    }
+
+    /** Agree while signed in: the acceptance of [agreement] with the stored
+     *  key, read off the main thread and sent only when usable (one that
+     *  reads back unusable is not sent, and the acceptance reads as not
+     *  recorded), then the key's check, the server's next word: its Accepted
+     *  turns both switches on through the service and ends the episode
+     *  ([termsShown]), which the acceptance's 200 itself never does. A 409
+     *  means the text changed since it was fetched, so it is fetched and
+     *  shown again; a 401 acts only through the check, as every 401 does. */
+    private fun acceptStored(agreement: TermsAgreement) {
+        termsJob?.cancel()
+        busy = Step.TERMS
+        render()
+        termsJob = lifecycleScope.launch {
+            val key = withContext(Dispatchers.IO) { PtCloudService.config.clientKey }
+            val answer = if (PtCloudConfig.isUsableKey(key)) acceptTerms(key, agreement) else TermsAcceptResult.NotRecorded
+            busy = null
+            when (answer) {
+                TermsAcceptResult.Accepted -> {
+                    termsNotice = null
+                    checkStoredKeyOnce()
+                }
+                is TermsAcceptResult.Outdated -> showTerms()
+                TermsAcceptResult.Refused -> checkStoredKeyOnce()
+                is TermsAcceptResult.Closed -> closedMessage = answer.message.orEmpty()
+                TermsAcceptResult.NotRecorded -> termsNotice = R.string.pt_cloud_terms_not_recorded
+            }
+            render()
+        }
+    }
+
+    /** The terms fetched for the signed-in account and opened on the terms
+     *  page ([launchTerms]): the Show terms chip, a check's TermsRequired
+     *  while they were not opened in this episode, and an acceptance that
+     *  met a newer text (a 409). A 404 has nothing to show; a fetch that
+     *  fails says why under the terms row. */
+    private fun showTerms() {
+        fetchTermsThen(TermsFlow.Account) { launchTerms(it, TermsFlow.Account) }
+    }
+
+    /** The agreement given before the code was asked for, sent once the
+     *  verify stored [key], whatever the verify said of the entitlement (the
+     *  server records an acceptance for an account with none), with the key
+     *  check's one retry for a replica's lag: a 401 within
+     *  [VERIFY_WINDOW_MS] of the store is asked once more a second later.
+     *  No busy step and a job of its own ([verifyAcceptJob]): the page is
+     *  signed in and waits on nothing. A 200, a 401 after the retry and an
+     *  acceptance not recorded (a 429, a 503, no answer) change nothing here:
+     *  the server holds the record, and its gate asks again at the next check
+     *  or capture. A 409 (the text changed since it was fetched) opens the
+     *  newer text, for the signed-in account now. */
+    private fun acceptAfterVerify(key: String, agreement: TermsAgreement) {
+        verifyAcceptJob?.cancel()
+        verifyAcceptJob = lifecycleScope.launch {
+            // The send outlives this page: a back press or a recreate inside
+            // its round trip would otherwise drop the agreement unrecorded,
+            // for the gate's 403 to meet the first capture. The page acts on
+            // the answer only while it is still here (a sign-out cancels the
+            // job too, and the send still completes for the key it was for).
+            val answer = withContext(NonCancellable) {
+                var answer = acceptTerms(key, agreement)
+                if (answer == TermsAcceptResult.Refused && storedJustNow()) {
+                    delay(VERIFY_RETRY_DELAY_MS)
+                    answer = acceptTerms(key, agreement)
+                }
+                answer
+            }
+            if (!isActive) return@launch
+            when (answer) {
+                TermsAcceptResult.Accepted, TermsAcceptResult.Refused, TermsAcceptResult.NotRecorded -> Unit
+                is TermsAcceptResult.Outdated -> showTerms()
+                is TermsAcceptResult.Closed -> closedMessage = answer.message.orEmpty()
+            }
+            render()
+        }
+    }
+
+    /** `GET /v1/terms` for the device's locale, as its BCP 47 tag (`pt-BR`,
+     *  `zh-Hant-HK`), which the server matches to the texts it holds. */
+    private suspend fun fetchTerms(): TermsResult {
+        val locale = Locale.getDefault().toLanguageTag()
+        return termsOverrideForTest?.invoke(locale) ?: PtCloudService.client.fetchTerms(locale)
+    }
+
+    /** `POST /v1/terms/accept` of [agreement] with [key]. */
+    private suspend fun acceptTerms(key: String, agreement: TermsAgreement): TermsAcceptResult =
+        acceptTermsOverrideForTest?.invoke(key, agreement.version, agreement.locale)
+            ?: PtCloudService.client.acceptTerms(key, agreement.version, agreement.locale)
 
     // ── Health ──────────────────────────────────────────────────────────
 
@@ -729,7 +1185,7 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         } else {
             getString(R.string.pt_cloud_join_subtitle_inactive_no_email, service)
         }
-        Standing.MEMBER, Standing.NO_DETAILS, null -> null
+        Standing.MEMBER, Standing.NO_DETAILS, Standing.TERMS_REQUIRED, null -> null
     }
 
     // ── The one painter ─────────────────────────────────────────────────
@@ -739,25 +1195,31 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
      * First the facts that would contradict the key: a stored key (signed in
      * here or through another copy of the page) drops the sign-in under way,
      * its notice and the refused-key line, which belong to the signed-out
-     * form; no key drops what describes a stored key, the unchecked line and
-     * the re-check after Join. Then the state, in this order: closed (the
-     * closed card in place of the ACCOUNT group, the switches off and
-     * disabled, the cooldown line hidden), signed in (the account from the
-     * record, Join while due), code sent, signed out; the CONFIGURATION group
-     * shows only with a key, its rows live only while the account is
-     * entitled and the service open. Every control is painted whether or not its
-     * group shows. Last, the next hold's end is armed ([holdJob]).
+     * form, and the agreement to the terms, which the verify that stored the
+     * key read first; no key drops what describes a stored key, the
+     * unchecked line, the re-check after Join, and the terms' shown fact and
+     * notice. Then the state, in this order: closed (the closed card in place
+     * of the ACCOUNT group, the switches off and disabled, the cooldown line
+     * hidden), signed in (the account from the record, Join while due,
+     * Already joined? once it ended, the terms row while the terms are not
+     * accepted), code sent, signed out; the CONFIGURATION group shows only
+     * with a key, its rows live only while the account is admitted and the
+     * service open. Every control is painted whether or not its group shows.
+     * Last, the next hold's end is armed ([holdJob]).
      */
     private fun render() {
         val hasKey = PtCloudService.config.hasKey
-        val entitled = PtCloudService.config.entitled
+        val admitted = PtCloudService.config.admitted
         if (hasKey) {
             pending = null
             notice = null
             keyRefused = false
+            agreedTerms = null
         } else {
             accountUnchecked = false
             recheckAfterJoin = false
+            termsShown = false
+            termsNotice = null
         }
         val closed = closedMessage != null
         val signIn = pending
@@ -783,10 +1245,17 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
             view.text = noticeText
             view.isVisible = noticeText != null
         }
-        etEmail.isEnabled = busy == null
+        // The field and the agreement wait while a step runs; the box's tick
+        // is its own, as the field's text is, and never painted here.
+        for (view in listOf(etEmail, rowAgree, cbAgree, tvAgree)) view.isEnabled = busy == null
         val typed = etEmail.text.toString().trim()
         val sendCodeHold = hold?.takeIf { it.email == typed && it.untilMs > elapsedNow }?.untilMs
-        sendCodeButton.render(busy = busy == Step.REQUEST && signIn == null, enabled = busy == null && sendCodeHold == null)
+        // Busy for its request and for a terms fetch signed out: its own
+        // before the request, or the link's.
+        sendCodeButton.render(
+            busy = (busy == Step.REQUEST || busy == Step.TERMS) && !hasKey && signIn == null,
+            enabled = busy == null && sendCodeHold == null,
+        )
         if (signIn != null) {
             val minutes = (signIn.expiresInS + 59) / 60
             tvCodeSentTo.text =
@@ -805,15 +1274,15 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         val line = account?.let { accountLine(it, nowMs) }
         tvAccountLine.text = line
         tvAccountLine.isVisible = line != null
-        // A trial's line in the warning colour, an ended trial's and an
-        // inactive membership's in the alert colour, since each names
-        // something the member has to act on (ruled 2026-10-29); every
-        // other standing's in its style's own.
+        // A trial's line in the warning colour, an ended trial's, an
+        // inactive membership's and terms not accepted in the alert colour,
+        // since each names something the member has to act on (ruled
+        // 2026-10-29); every other standing's in its style's own.
         tvAccountLine.setTextColor(
             themeColor(
                 when (standing) {
                     Standing.TRIAL -> R.attr.ptWarning
-                    Standing.TRIAL_ENDED, Standing.INACTIVE -> R.attr.ptDanger
+                    Standing.TRIAL_ENDED, Standing.INACTIVE, Standing.TERMS_REQUIRED -> R.attr.ptDanger
                     else -> R.attr.ptTextMuted
                 },
             ),
@@ -834,12 +1303,27 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         btnCheckAgain.isEnabled = busy == null
         ivCheckAgain.isVisible = !checking
         progressCheckAgain.isVisible = checking
+        // The terms row, in Already joined?'s place while the terms are not
+        // accepted: its line naming the service, a failed terms call's
+        // notice under it, and the Show terms chip's spinner in its glyph's
+        // place while a terms call runs.
+        val termsDue = standing == Standing.TERMS_REQUIRED
+        dividerTerms.isVisible = termsDue
+        rowTerms.isVisible = termsDue
+        tvTermsPending.text = getString(R.string.pt_cloud_terms_pending, service)
+        val termsNoticeText = termsNotice?.let { getString(it, service) }
+        tvTermsNotice.text = termsNoticeText
+        tvTermsNotice.isVisible = termsDue && termsNoticeText != null
+        val termsCalling = busy == Step.TERMS
+        btnShowTerms.isEnabled = busy == null
+        ivShowTerms.isVisible = !termsCalling
+        progressShowTerms.isVisible = termsCalling
 
         // The rest of the page.
         headerConfiguration.isVisible = hasKey
         cardUseFor.isVisible = hasKey
-        useForRows.forEach { it.render(live = entitled && !closed) }
-        renderCooldown(hidden = closed || endedOrInactive(standing))
+        useForRows.forEach { it.render(live = admitted && !closed) }
+        renderCooldown(hidden = closed || endedOrInactive(standing) || termsDue)
         tvStatus.text = if (closed) getString(R.string.pt_cloud_status_closed) else statusText()
 
         armHold((if (signIn != null) resendHold else sendCodeHold)?.let { it - elapsedNow })
@@ -868,6 +1352,7 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         Standing.INACTIVE -> account.endedAt(nowMs)?.let {
             getString(R.string.pt_cloud_inactive_since, CooldownTimeLabel.formatDate(it, nowMs))
         } ?: getString(R.string.pt_cloud_inactive)
+        Standing.TERMS_REQUIRED -> getString(R.string.pt_cloud_terms_required)
     }
 
     private fun statusText(): String = when (val s = status) {
@@ -879,7 +1364,7 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
     /** The cooldown line: shown while the service's cooldown runs (an
      *  expired one reads as null), unless [hidden]: while the service is
      *  closed, and while the account line says why the service refuses (the
-     *  trial ended, no membership). */
+     *  trial ended, no membership, the terms not accepted). */
     private fun renderCooldown(hidden: Boolean) {
         val until = PtCloudService.unavailableUntil()
         if (hidden || until == null) {
@@ -905,11 +1390,11 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
     /** One "use for" switch row: its switch, what it reads and what it
      *  writes. [render] repaints the row with the listener detached, so a
      *  repaint never writes (the services row's rule): while not [live] (no
-     *  usable key saved, an account that is not entitled, or the service
+     *  usable key saved, an account that is not admitted, or the service
      *  closed) the row is disabled and its switch off, whatever is stored
-     *  (with no key or an ended account nothing is, since a cleared key and
-     *  an ending turn both switches off), so signing in, or Join, is the
-     *  next step. */
+     *  (with no key or a withheld account nothing is, since a cleared key
+     *  and a withholding turn both switches off), so signing in, Join or the
+     *  terms is the next step. */
     private class UseForRow(
         private val row: View,
         private val toggle: MaterialSwitch,
@@ -984,6 +1469,17 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         val untilMs: Long,
     )
 
+    /** The flow the terms page was opened for ([termsFlow]), which its
+     *  Agree answers ([onTermsResult]). */
+    private sealed interface TermsFlow {
+        /** The agreement's link, signed out: Agree ticks the box. */
+        data object SignIn : TermsFlow
+
+        /** The signed-in account's: Agree sends the acceptance with the
+         *  stored key. */
+        data object Account : TermsFlow
+    }
+
     /** The step a call in flight belongs to ([busy]). */
     private enum class Step {
         /** Try for Free, or Send a new code. */
@@ -993,6 +1489,12 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         /** The stored key's check, a resume's or Check again's (the chip's
          *  spinner in its glyph's place while it runs). */
         KEY_CHECK,
+        /** A terms call the page waits on: signed out, the fetch of Try for
+         *  Free or of the agreement's link (Try for Free's spinner); signed
+         *  in, a fetch or the acceptance after Agree (the Show terms chip's
+         *  spinner in its glyph's place). A resume does not check the key
+         *  while one runs ([onResume]). */
+        TERMS,
     }
 
     /** What the status row says outside the closed state. */
@@ -1026,6 +1528,15 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
          *  device's label. Never set in production. */
         @Volatile internal var verifyOverrideForTest: (suspend (String, String, String) -> VerifyResult)? = null
 
+        /** Test seam: answers the terms' fetch in place of `GET /v1/terms`,
+         *  given the locale. Never set in production. */
+        @Volatile internal var termsOverrideForTest: (suspend (String) -> TermsResult)? = null
+
+        /** Test seam: answers an acceptance of the terms in place of
+         *  `POST /v1/terms/accept`, given the key, the version and the
+         *  locale. Never set in production. */
+        @Volatile internal var acceptTermsOverrideForTest: (suspend (String, String, String) -> TermsAcceptResult)? = null
+
         /** Ko-fi's page of the service's membership tiers. */
         private const val JOIN_URL = "https://ko-fi.com/playtranslate/tiers"
 
@@ -1053,6 +1564,14 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         private const val STATE_HOLD_UNTIL = "state_hold_until"
         private const val STATE_NOTICE = "state_notice"
         private const val STATE_RECHECK_AFTER_JOIN = "state_recheck_after_join"
+        private const val STATE_AGREED_TERMS_VERSION = "state_agreed_terms_version"
+        private const val STATE_AGREED_TERMS_LOCALE = "state_agreed_terms_locale"
+        private const val STATE_TERMS_FLOW = "state_terms_flow"
+        private const val STATE_TERMS_SHOWN = "state_terms_shown"
+
+        /** [STATE_TERMS_FLOW]'s values, one per [TermsFlow]. */
+        private const val TERMS_FLOW_SIGN_IN = "signin"
+        private const val TERMS_FLOW_ACCOUNT = "account"
 
         /** A "use for" row's alpha while it is not live, which shows only
          *  while the service is closed (with no key the rows' card is gone):
@@ -1076,6 +1595,31 @@ private class DigitsFilter(private val max: Int) : InputFilter {
         val digits = source.subSequence(start, end).filter { it in '0'..'9' }.take(room.coerceAtLeast(0))
         // Null keeps the source as given, when nothing was dropped.
         return if (digits.length == end - start) null else digits
+    }
+}
+
+/** The agreement sentence's movement: [LinkMovementMethod] for its link,
+ *  and nothing for the rest of the sentence. The framework's takes every
+ *  press on the text (its scrolling fallback answers each one), so a tap
+ *  off the link would never reach the row that toggles the box; this one
+ *  declines a press that is not on a link, tested as [LinkMovementMethod]
+ *  tests a touch against the text, and the row takes it. Keys are the
+ *  framework's: a controller selects the link and opens it. */
+private object LinkOnlyMovement : LinkMovementMethod() {
+    override fun onTouchEvent(widget: TextView, buffer: Spannable, event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && !onLink(widget, buffer, event)) return false
+        return super.onTouchEvent(widget, buffer, event)
+    }
+
+    private fun onLink(widget: TextView, buffer: Spannable, event: MotionEvent): Boolean {
+        val layout = widget.layout ?: return false
+        val x = event.x.toInt() - widget.totalPaddingLeft + widget.scrollX
+        val y = event.y.toInt() - widget.totalPaddingTop + widget.scrollY
+        if (y < 0 || y > layout.height) return false
+        val line = layout.getLineForVertical(y)
+        if (x < layout.getLineLeft(line) || x > layout.getLineRight(line)) return false
+        val offset = layout.getOffsetForHorizontal(line, x.toFloat())
+        return buffer.getSpans(offset, offset, ClickableSpan::class.java).isNotEmpty()
     }
 }
 

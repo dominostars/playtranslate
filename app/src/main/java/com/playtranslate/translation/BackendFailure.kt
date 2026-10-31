@@ -51,6 +51,11 @@ enum class BackendFailureKind {
      *  403 `no_entitlement` for any other last entitlement, or none. Only the
      *  account fixes it. */
     MEMBERSHIP_INACTIVE,
+    /** PlayTranslate Cloud's account has not accepted the current terms:
+     *  the edge's 403 `terms_required`. The key is good and the account
+     *  entitled; the terms are accepted on the cloud page (the pill's gear
+     *  opens it), so its own words, and no cooldown. */
+    TERMS_REQUIRED,
     /** PlayTranslate Cloud has closed for good: a `410 service_closed`, the
      *  one answer that says the service will not come back by itself. The
      *  operator's message is the cloud page's to show, never the pill's. */

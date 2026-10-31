@@ -56,6 +56,8 @@ object TranslationErrorMessages {
                     context.getString(R.string.translation_error_trial_ended, name)
                 BackendFailureKind.MEMBERSHIP_INACTIVE ->
                     context.getString(R.string.translation_error_membership_inactive, name)
+                BackendFailureKind.TERMS_REQUIRED ->
+                    context.getString(R.string.translation_error_terms_required, name)
                 BackendFailureKind.CLOSED ->
                     context.getString(R.string.translation_error_closed, name)
             }

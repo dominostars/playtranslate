@@ -64,8 +64,9 @@ import java.util.concurrent.atomic.AtomicLong
  * answer is the registry's per-text retry), the calls a batch is cut into
  * and their order, blanks and oversize texts, every row of the failure
  * table on the one cooldown with nothing reported by the client, the
- * server's 403 ending the account (both switches off, no cooldown, the one
- * pill through the registry) while a record whose dated end has passed on
+ * server's 403s withholding the account, an ended entitlement or the
+ * current terms not accepted (both switches off, no cooldown, the one pill
+ * through the registry), while a record whose dated end has passed on
  * the device's clock is still sent, the route's own timeouts, cancellation,
  * the wire, `isUsable`, and messages free of content.
  */
@@ -548,7 +549,7 @@ class PtCloudBackendTest {
         assertEquals("one request", 1, seen.size)
         assertFalse(config.ocrEnabled)
         assertFalse(config.translateEnabled)
-        assertFalse(config.entitled)
+        assertFalse(config.admitted)
         assertNoCooldown()
 
         runBlocking { TranslationBackendRegistry.translateBatch(listOf("四"), "ja", "en") }
@@ -633,6 +634,31 @@ class PtCloudBackendTest {
             PtCloudAccount(active = false, lastSource = "kofi", endedAtMs = ENDED_AT_MS, checkedAtMs = account.checkedAtMs),
             account,
         )
+        assertEquals(KEY, config.clientKey)
+        assertFalse(config.ocrEnabled)
+        assertFalse(config.translateEnabled)
+    }
+
+    /** The server's word that the account owes the current terms: the call
+     *  fails in the terms' own words, with no cooldown, the record written
+     *  as owing them beside the stored key (active, no dates) and both
+     *  switches off, so nothing asks again until the page's check answers
+     *  Accepted after the acceptance. */
+    @Test fun `a 403 terms_required throws TERMS_REQUIRED, records no cooldown, writes the record as owing the terms and turns both switches off`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        prefs.ptCloudOcrEnabled = true
+        val config = config()
+        PtCloudService.installForTest(cooldown, config)
+        val body = """{"error":"terms_required","version":"2026-10-30"}"""
+
+        val e = failure(PtCloudTestSupport.cannedClient(403, body, seen = seen))
+
+        assertEquals(BackendFailure(BackendFailureKind.TERMS_REQUIRED, 403), e.failure)
+        assertNoCooldown()
+        val account = config.account!!
+        assertEquals(PtCloudAccount(active = true, termsRequired = true, checkedAtMs = account.checkedAtMs), account)
+        assertEquals(PtCloudAccount.Standing.TERMS_REQUIRED, config.standing())
+        assertFalse(config.admitted)
         assertEquals(KEY, config.clientKey)
         assertFalse(config.ocrEnabled)
         assertFalse(config.translateEnabled)

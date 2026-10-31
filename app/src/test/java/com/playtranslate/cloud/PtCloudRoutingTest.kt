@@ -8,12 +8,13 @@ import org.junit.Test
 
 /**
  * The eligibility table, one row per test: the cloud reads a frame only
- * when it is switched on, has a usable key, its account is entitled (its
- * trial or membership not ended), it supports the source, is not cooling
- * down, the caller did not ask for the device, and the device has a
- * network. "any" columns are iterated, so a row holds whatever the others
- * say. The cells with an entitled account and no key cannot happen in
- * production (no key has no standing); they read false with the rest.
+ * when it is switched on, has a usable key, its account is admitted (its
+ * trial or membership not ended, the current terms not owed), it supports
+ * the source, is not cooling down, the caller did not ask for the device,
+ * and the device has a network. "any" columns are iterated, so a row holds
+ * whatever the others say. The cells with an admitted account and no key
+ * cannot happen in production (no key has no standing); they read false
+ * with the rest.
  */
 class PtCloudRoutingTest {
 
@@ -22,30 +23,30 @@ class PtCloudRoutingTest {
     private fun eligible(
         enabled: Boolean,
         key: Boolean,
-        entitled: Boolean,
+        admitted: Boolean,
         source: Boolean,
         cooling: Boolean,
         deviceOnly: Boolean,
         online: Boolean,
     ) = PtCloudRouting.eligible(
-        enabled = enabled, hasKey = key, entitled = entitled, sourceSupported = source, coolingDown = cooling,
+        enabled = enabled, hasKey = key, admitted = admitted, sourceSupported = source, coolingDown = cooling,
         deviceOnly = deviceOnly, online = online,
     )
 
     @Test fun `switched off, the device reads whatever else holds`() {
-        for (key in bools) for (entitled in bools) for (source in bools) for (cooling in bools)
+        for (key in bools) for (admitted in bools) for (source in bools) for (cooling in bools)
             for (deviceOnly in bools) for (online in bools) {
-                assertFalse(eligible(false, key, entitled, source, cooling, deviceOnly, online))
+                assertFalse(eligible(false, key, admitted, source, cooling, deviceOnly, online))
             }
     }
 
     @Test fun `no usable key, the device reads`() {
-        for (entitled in bools) for (source in bools) for (cooling in bools) for (deviceOnly in bools) for (online in bools) {
-            assertFalse(eligible(true, false, entitled, source, cooling, deviceOnly, online))
+        for (admitted in bools) for (source in bools) for (cooling in bools) for (deviceOnly in bools) for (online in bools) {
+            assertFalse(eligible(true, false, admitted, source, cooling, deviceOnly, online))
         }
     }
 
-    @Test fun `an account whose trial or membership ended, the device reads`() {
+    @Test fun `an account not admitted (its trial or membership ended, or the terms not accepted), the device reads`() {
         for (source in bools) for (cooling in bools) for (deviceOnly in bools) for (online in bools) {
             assertFalse(eligible(true, true, false, source, cooling, deviceOnly, online))
         }

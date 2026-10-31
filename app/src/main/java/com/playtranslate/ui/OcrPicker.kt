@@ -90,8 +90,9 @@ object OcrPicker {
      * through the reader router (a re-OCR stating no device-only, which the
      * router sends to the cloud and warms), [onOpenPage] opens the cloud page
      * the way the surface opens the OCR download page, for a pick while the
-     * account is not entitled (no usable key saved, or its trial or
-     * membership ended). The switch itself is flipped here, not by the surface.
+     * account is not admitted (no usable key saved, its trial or membership
+     * ended, or the current terms not accepted). The switch itself is flipped
+     * here, not by the surface.
      */
     class CloudChoice(
         val onReOcr: () -> Unit,
@@ -118,13 +119,14 @@ object OcrPicker {
             val bg = if (applied) ctx.themeColor(R.attr.ptAccent) else ctx.themeColor(R.attr.ptDivider)
             val fg = if (applied) ctx.themeColor(R.attr.ptAccentOn) else ctx.themeColor(R.attr.ptText)
             builder.addButton(PtCloudService.DISPLAY_NAME, bg, fg, R.drawable.ic_cloud) {
-                // Not entitled (no usable key saved, or an account whose
-                // trial ended or whose membership is inactive): nothing is
-                // switched, as on the settings rows; the cloud page is where
-                // the key goes and Join is, and the answer that makes the
-                // account entitled (the first key, an accepted check after
-                // Join) turns both switches on.
-                if (!PtCloudService.config.entitled) {
+                // Not admitted (no usable key saved, an account whose trial
+                // ended or whose membership is inactive, or one that has not
+                // accepted the current terms): nothing is switched, as on
+                // the settings rows; the cloud page is where the key goes and
+                // Join and the terms are, and the answer that makes the
+                // account admitted (the first key, an accepted check after
+                // Join or after the terms) turns both switches on.
+                if (!PtCloudService.config.admitted) {
                     cloudEntry.onOpenPage()
                     return@addButton
                 }

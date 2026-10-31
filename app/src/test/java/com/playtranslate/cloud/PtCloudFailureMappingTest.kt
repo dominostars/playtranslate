@@ -43,10 +43,10 @@ import java.util.concurrent.atomic.AtomicLong
  * ways: the thrown [PtCloudReadException]'s kind and code, the cooldown it
  * leaves, and the [OnlineAttempt] it reports. After part 1 each row goes
  * through [PtCloudErrors.classifyTranslation] / [PtCloudErrors.classifyPart2]
- * and the cooldown the outcome records. A 403 `no_entitlement` records no
- * cooldown and carries the ended account, which the client hands to the
- * service for the key the frame carried. The warm call's every answer
- * records, reports and hands over nothing.
+ * and the cooldown the outcome records. A 403 `no_entitlement` or
+ * `terms_required` records no cooldown and carries the account it withholds,
+ * which the client hands to the service for the key the frame carried. The
+ * warm call's every answer records, reports and hands over nothing.
  */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudFailureMappingTest {
@@ -123,7 +123,7 @@ class PtCloudFailureMappingTest {
         val body = """{"error":"no_entitlement","last_source":"trial","ended_at":"2026-11-03T12:00:00.000Z"}"""
         assertRow(http(403, body), BackendFailureKind.TRIAL_ENDED, 403, reachedServer = true)
         assertNoCooldown()
-        assertEquals(KeyCheck.Inactive("trial", ENDED_AT_MS), PtCloudErrors.classifyHttp(403, body, null).endedAccount)
+        assertEquals(KeyCheck.Inactive("trial", ENDED_AT_MS), PtCloudErrors.classifyHttp(403, body, null).withheldAccount)
     }
 
     /** Any other last entitlement, none ended, or a Worker that sent none:
@@ -140,7 +140,7 @@ class PtCloudFailureMappingTest {
         for ((body, ended) in bodies) {
             assertRow(http(403, body), BackendFailureKind.MEMBERSHIP_INACTIVE, 403, reachedServer = true)
             assertNoCooldown()
-            assertEquals(body, ended, PtCloudErrors.classifyHttp(403, body, null).endedAccount)
+            assertEquals(body, ended, PtCloudErrors.classifyHttp(403, body, null).withheldAccount)
         }
     }
 
@@ -148,9 +148,9 @@ class PtCloudFailureMappingTest {
      *  the two cannot say different things of one account. */
     @Test fun `a 403's ended account is the key check's Inactive for the same body, and no other answer carries one`() {
         val body = """{"error":"no_entitlement","last_source":"trial","ended_at":"2026-11-03T12:00:00.000Z"}"""
-        assertEquals(PtCloudErrors.classifyKeyCheck(403) { body }, PtCloudErrors.classifyHttp(403, body, null).endedAccount)
+        assertEquals(PtCloudErrors.classifyKeyCheck(403) { body }, PtCloudErrors.classifyHttp(403, body, null).withheldAccount)
         for ((code, other) in listOf(403 to """{"error":"forbidden"}""", 401 to "", 404 to "", 410 to """{"error":"service_closed"}""")) {
-            assertNull("$code $other", PtCloudErrors.classifyHttp(code, other, null).endedAccount)
+            assertNull("$code $other", PtCloudErrors.classifyHttp(code, other, null).withheldAccount)
         }
     }
 
@@ -239,8 +239,107 @@ class PtCloudFailureMappingTest {
         assertNoCooldown()
     }
 
+    /** The terms gate's 403: the key is good and the account entitled, and
+     *  the current terms are not accepted. Its own kind and no cooldown, the
+     *  account the body describes riding along for the service, read as the
+     *  key check reads the same body. */
+    @Test fun `a 403 terms_required is TERMS_REQUIRED with no cooldown, carrying the account as owing the terms`() {
+        val body = """{"error":"terms_required","version":"2026-10-30"}"""
+        assertRow(http(403, body), BackendFailureKind.TERMS_REQUIRED, 403, reachedServer = true)
+        assertNoCooldown()
+        assertEquals(KeyCheck.TermsRequired("2026-10-30"), PtCloudErrors.classifyHttp(403, body, null).withheldAccount)
+        assertEquals(PtCloudErrors.classifyKeyCheck(403) { body }, PtCloudErrors.classifyHttp(403, body, null).withheldAccount)
+        assertEquals(
+            "a body that left the version out",
+            KeyCheck.TermsRequired(null),
+            PtCloudErrors.classifyHttp(403, """{"error":"terms_required"}""", null).withheldAccount,
+        )
+    }
+
+    /** The server's word that the account owes the current terms: the
+     *  record is written as owing them beside the stored key (active, no
+     *  dates) and both switches go off, so nothing asks again until the
+     *  page's check answers Accepted after the acceptance; the frame's own
+     *  report is the one pill. */
+    @Test fun `a frame's 403 terms_required through the client writes the record as owing the terms and turns both switches off`() {
+        val prefs = serviceSwitchedOn()
+        val body = """{"error":"terms_required","version":"2026-10-30"}"""
+
+        assertRow(http(403, body), BackendFailureKind.TERMS_REQUIRED, 403, reachedServer = true)
+
+        val account = PtCloudService.account!!
+        assertEquals(PtCloudAccount(active = true, termsRequired = true, checkedAtMs = account.checkedAtMs), account)
+        assertEquals(PtCloudAccount.Standing.TERMS_REQUIRED, PtCloudService.config.standing())
+        assertFalse(PtCloudService.config.admitted)
+        assertEquals(PtCloudTestSupport.KEY, prefs.ptCloudClientKey)
+        assertFalse(prefs.ptCloudOcrEnabled)
+        assertFalse(prefs.ptCloudTranslateEnabled)
+        assertNoCooldown()
+        assertEquals("one report, the frame's", 1, attempts.size)
+    }
+
+    /** A sign-out or a new sign-in while the frame was out: its 403 is an
+     *  answer about a key that is gone, so the frame fails and reports, and
+     *  the service changes nothing, as for a no_entitlement. */
+    @Test fun `a frame's 403 terms_required for a key that is no longer the stored one changes nothing`() {
+        val prefs = serviceSwitchedOn()
+        val body = """{"error":"terms_required","version":"2026-10-30"}"""
+        val swapping = PtCloudTestSupport.cannedClient(403, body).newBuilder()
+            .apply {
+                interceptors().add(
+                    0,
+                    Interceptor { chain ->
+                        prefs.ptCloudClientKey = "another-key"
+                        chain.proceed(chain.request())
+                    },
+                )
+            }
+            .build()
+
+        assertRow(post(swapping), BackendFailureKind.TERMS_REQUIRED, 403, reachedServer = true)
+
+        assertEquals("another-key", prefs.ptCloudClientKey)
+        assertNull("no record written", prefs.ptCloudAccountJson)
+        assertTrue(prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
+        assertNoCooldown()
+    }
+
+    /** The page's check answered Accepted (after the acceptance, say) while
+     *  the frame was out: its 403 describes the record the frame was built
+     *  against, which the check has since rewritten, so the newer word
+     *  stands, as for a no_entitlement. */
+    @Test fun `a frame's 403 terms_required that comes back after a newer check changes nothing, the Accepted standing`() {
+        val prefs = serviceSwitchedOn()
+        val body = """{"error":"terms_required","version":"2026-10-30"}"""
+        val racing = PtCloudTestSupport.cannedClient(403, body).newBuilder()
+            .apply {
+                interceptors().add(
+                    0,
+                    Interceptor { chain ->
+                        PtCloudService.onStoredKeyChecked(PtCloudTestSupport.KEY, PtCloudService.accountGeneration, KeyCheck.Accepted("kofi", null))
+                        chain.proceed(chain.request())
+                    },
+                )
+            }
+            .build()
+
+        assertRow(post(racing), BackendFailureKind.TERMS_REQUIRED, 403, reachedServer = true)
+
+        val account = PtCloudService.account!!
+        assertTrue("the check's record stands: $account", account.active && !account.termsRequired)
+        assertEquals("kofi", account.source)
+        assertTrue(PtCloudService.config.admitted)
+        assertTrue(prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
+        assertNoCooldown()
+    }
+
     @Test fun `any other 403 is a rejected request with its code, no cooldown`() {
-        for (body in listOf("""{"error":"forbidden"}""", """{"error":null}""", "{}", "", "<html>403 Forbidden</html>")) {
+        for (body in listOf(
+            """{"error":"forbidden"}""", """{"error":null}""", "{}", "", "<html>403 Forbidden</html>",
+            // The acceptance's 409 word, and a version with no word: neither
+            // is the gate's 403.
+            """{"error":"terms_outdated","version":"2026-10-30"}""", """{"version":"2026-10-30"}""",
+        )) {
             assertRow(http(403, body), BackendFailureKind.REJECTED, 403, reachedServer = true)
             assertNoCooldown()
         }
@@ -423,12 +522,13 @@ class PtCloudFailureMappingTest {
     @Test fun `a warm answered 404, 401, 403, 500 or 429 records no cooldown, reports nothing, flips nothing, and throws nothing`() {
         val prefs = serviceSwitchedOn()
         // 500 and 429 would cool the service down were a frame answered so,
-        // and a 403 no_entitlement would turn the switches off; they are
-        // here so that recording anything from a warm shows up.
+        // and a 403 no_entitlement or terms_required would turn the switches
+        // off; they are here so that recording anything from a warm shows up.
         for (client in listOf(
             PtCloudTestSupport.cannedClient(404, ""),
             PtCloudTestSupport.cannedClient(401, """{"error":"unauthorized"}"""),
             PtCloudTestSupport.cannedClient(403, """{"error":"no_entitlement","last_source":"trial"}"""),
+            PtCloudTestSupport.cannedClient(403, """{"error":"terms_required","version":"2026-10-30"}"""),
             PtCloudTestSupport.cannedClient(500, """{"error":"internal"}"""),
             PtCloudTestSupport.cannedClient(429, """{"error":"rate limited"}""", retryAfter = "300"),
         )) {

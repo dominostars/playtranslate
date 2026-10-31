@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A checkbox's box (MaterialCheckBox's buttonTint, which takes the place of
+     the Material 3 style's own): the alert colour in its error state, the
+     accent when ticked, the hint colour otherwise. The tick inside keeps
+     Material's colour, the accent's ink. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item app:state_error="true" android:color="?attr/ptDanger" />
+    <item android:state_checked="true" android:color="?attr/ptAccent" />
+    <item android:color="?attr/ptTextHint" />
+</selector>

@@ -17,12 +17,13 @@ const val SOURCE_TRIAL = "trial"
  * What `GET /v1/key` said of a key ([PtCloudClient.checkKey], each answer
  * read by [PtCloudErrors.classifyKeyCheck]). Cloud-only, in place of the
  * shared [com.playtranslate.translation.KeyStatus], which has no room for the
- * account: the two answers that describe the account ([Account]) become the
+ * account: the answers that describe the account ([Account]) become the
  * record kept beside the key ([PtCloudAccount.of]).
  */
 sealed interface KeyCheck {
 
-    /** The two answers that describe the account. */
+    /** The answers that describe the account: the 200 ([Accepted]) and the
+     *  two 403s of a known, good key ([Withheld]). */
     sealed interface Account : KeyCheck
 
     /** The 200: the key is known, not revoked, its user active and entitled.
@@ -33,12 +34,28 @@ sealed interface KeyCheck {
      *  good, and nothing is known of the account. */
     data class Accepted(val source: String?, val entitledUntilMs: Long?) : Account
 
+    /** The two 403s of a known, good key: the server withholds service from
+     *  the account now, and says why ([Inactive], [TermsRequired]). Read from
+     *  the body in one place ([PtCloudErrors.withheldAccount]) for the two
+     *  routes and the key check, handed to the service in one
+     *  ([PtCloudService.onAccountWithheld], [PtCloudService.onStoredKeyChecked])
+     *  and made a record in one ([PtCloudAccount.of]). */
+    sealed interface Withheld : Account
+
     /** The 403 `no_entitlement`: a known key whose account has no active
      *  entitlement. [lastSource] and [endedAtMs] name the one that ended most
      *  recently ([SOURCE_TRIAL] is the free trial having run out); both null
      *  when none has ended or the Worker left them out, which reads as no
      *  active membership, never as a trial that ended. */
-    data class Inactive(val lastSource: String?, val endedAtMs: Long?) : Account
+    data class Inactive(val lastSource: String?, val endedAtMs: Long?) : Withheld
+
+    /** The 403 `terms_required`: a known key whose account is entitled and
+     *  has not accepted the current terms, whose [version] the body names
+     *  (null when it left it out). The server tells an ended entitlement
+     *  first ([Inactive]), so this answer says the account is entitled.
+     *  [version] is carried for logs and tests only: the cloud page accepts
+     *  the version of the text it fetched and showed, never one from a 403. */
+    data class TermsRequired(val version: String?) : Withheld
 
     /** The HTTP 401: the key is unknown, revoked, or its user disabled or
      *  deleted. */
@@ -49,8 +66,9 @@ sealed interface KeyCheck {
     data class Closed(val message: String?) : KeyCheck
 
     /** No verdict on the key: the per-address 429, the 503 while the
-     *  accounts database did not answer, any other answer (a 403 or a 410
-     *  without its word among them), and no answer at all. */
+     *  accounts database did not answer, any other answer (a 403 without
+     *  either of its words and a 410 without its word among them), and no
+     *  answer at all. */
     data object NotChecked : KeyCheck
 }
 

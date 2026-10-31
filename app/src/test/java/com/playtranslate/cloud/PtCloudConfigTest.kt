@@ -22,8 +22,8 @@ import org.robolectric.RobolectricTestRunner
  * the cleaned-up values the client sends, refusing a stored key that
  * request building would throw on; and the account record beside the key,
  * read only with a usable key and as nothing when it does not decode, with
- * the standing and the entitlement read from it ([PtCloudConfig.standing],
- * [PtCloudConfig.entitled]).
+ * the standing and the admission read from it ([PtCloudConfig.standing],
+ * [PtCloudConfig.admitted]).
  */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudConfigTest {
@@ -123,7 +123,7 @@ class PtCloudConfigTest {
         }
     }
 
-    // ── The standing and the entitlement ────────────────────────────────
+    // ── The standing and the admission ──────────────────────────────────
 
     private fun write(prefs: Prefs, account: PtCloudAccount?) {
         prefs.ptCloudAccountJson = account?.let { PtJson.lenient.encodeToString(PtCloudAccount.serializer(), it) }
@@ -132,30 +132,30 @@ class PtCloudConfigTest {
     private fun active(source: String, untilMs: Long?) =
         PtCloudAccount(email = "player@example.com", active = true, source = source, entitledUntilMs = untilMs, checkedAtMs = 1L)
 
-    @Test fun `no key has no standing and is not entitled, whatever record is stored`() {
+    @Test fun `no key has no standing and is not admitted, whatever record is stored`() {
         val prefs = PtCloudTestSupport.prefs(ctx)
         write(prefs, active("kofi", null))
         val config = PtCloudConfig(prefs)
         assertNull(config.standing(NOW))
-        assertFalse(config.entitled)
+        assertFalse(config.admitted)
         prefs.ptCloudClientKey = "abc\ndef"
         assertNull("a key that is no key", config.standing(NOW))
-        assertFalse(config.entitled)
+        assertFalse(config.admitted)
     }
 
     /** A key with no record passes: the app knows nothing against it. */
-    @Test fun `a key with no record, or one that does not decode, is NO_DETAILS and entitled`() {
+    @Test fun `a key with no record, or one that does not decode, is NO_DETAILS and admitted`() {
         val prefs = PtCloudTestSupport.prefs(ctx)
         prefs.ptCloudClientKey = "pt-key-123"
         val config = PtCloudConfig(prefs)
         assertEquals(PtCloudAccount.Standing.NO_DETAILS, config.standing(NOW))
-        assertTrue(config.entitled)
+        assertTrue(config.admitted)
         prefs.ptCloudAccountJson = "not json"
         assertEquals(PtCloudAccount.Standing.NO_DETAILS, config.standing(NOW))
-        assertTrue(config.entitled)
+        assertTrue(config.admitted)
     }
 
-    @Test fun `a trial and a membership are entitled, an inactive record is not`() {
+    @Test fun `a trial and a membership are admitted, an inactive record is not`() {
         val prefs = PtCloudTestSupport.prefs(ctx)
         prefs.ptCloudClientKey = "pt-key-123"
         val config = PtCloudConfig(prefs)
@@ -163,28 +163,53 @@ class PtCloudConfigTest {
 
         write(prefs, active(SOURCE_TRIAL, now + DAY))
         assertEquals(PtCloudAccount.Standing.TRIAL, config.standing())
-        assertTrue(config.entitled)
+        assertTrue(config.admitted)
 
         write(prefs, active("kofi", null))
         assertEquals(PtCloudAccount.Standing.MEMBER, config.standing())
-        assertTrue(config.entitled)
+        assertTrue(config.admitted)
 
         write(prefs, PtCloudAccount(active = false, lastSource = SOURCE_TRIAL, endedAtMs = now - DAY, checkedAtMs = 1L))
         assertEquals(PtCloudAccount.Standing.TRIAL_ENDED, config.standing())
-        assertFalse(config.entitled)
+        assertFalse(config.admitted)
 
         write(prefs, PtCloudAccount(active = false, checkedAtMs = 1L))
         assertEquals(PtCloudAccount.Standing.INACTIVE, config.standing())
-        assertFalse(config.entitled)
+        assertFalse(config.admitted)
+    }
+
+    /** The current terms owed withhold an account its entitlement would
+     *  serve: [PtCloudConfig.admitted] is false for a record owing them,
+     *  whatever its dates and source, and true for every other active record,
+     *  as before; an inactive record stays out either way. */
+    @Test fun `a record owing the terms is not admitted, and every other active record is`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        prefs.ptCloudClientKey = "pt-key-123"
+        val config = PtCloudConfig(prefs)
+        val now = System.currentTimeMillis()
+        val records = listOf(
+            active(SOURCE_TRIAL, now + DAY), active(SOURCE_TRIAL, now - 1_000), active("kofi", null),
+            active("kofi", now - 1_000), PtCloudAccount(active = true, checkedAtMs = 1L),
+        )
+        for (record in records) {
+            write(prefs, record)
+            assertTrue("$record", config.admitted)
+            write(prefs, record.copy(termsRequired = true))
+            assertFalse("$record, owing the terms", config.admitted)
+            assertEquals("$record, owing the terms", PtCloudAccount.Standing.TERMS_REQUIRED, config.standing())
+        }
+        write(prefs, PtCloudAccount(active = false, lastSource = "kofi", termsRequired = true, checkedAtMs = 1L))
+        assertFalse(config.admitted)
+        assertEquals(PtCloudAccount.Standing.INACTIVE, config.standing())
     }
 
     /** The device's clock words a trial's end ([PtCloudConfig.standing])
-     *  and ends nothing: [PtCloudConfig.entitled] is the server's last word,
-     *  the record's `active`, so a trial or a lease whose dated end has
-     *  passed here still routes to the cloud, whose 403 is the ending (Codex
-     *  adversarial review, 2026-10-29: a Ko-fi lease renews on the server
-     *  with a payment the device has not read). */
-    @Test fun `an active record whose end has passed stays entitled, a trial reading TRIAL_ENDED for its words and a lease MEMBER`() {
+     *  and ends nothing: [PtCloudConfig.admitted] is the server's last word,
+     *  the record's `active` and `termsRequired`, so a trial or a lease whose
+     *  dated end has passed here still routes to the cloud, whose 403 is the
+     *  ending (Codex adversarial review, 2026-10-29: a Ko-fi lease renews on
+     *  the server with a payment the device has not read). */
+    @Test fun `an active record whose end has passed stays admitted, a trial reading TRIAL_ENDED for its words and a lease MEMBER`() {
         val prefs = PtCloudTestSupport.prefs(ctx)
         prefs.ptCloudClientKey = "pt-key-123"
         val config = PtCloudConfig(prefs)
@@ -194,12 +219,12 @@ class PtCloudConfigTest {
 
         val now = System.currentTimeMillis()
         write(prefs, active(SOURCE_TRIAL, now + DAY))
-        assertTrue(config.entitled)
+        assertTrue(config.admitted)
         write(prefs, active(SOURCE_TRIAL, now - 1_000))
-        assertTrue("ended on the device's clock a second ago: the server's to end", config.entitled)
+        assertTrue("ended on the device's clock a second ago: the server's to end", config.admitted)
         assertEquals(PtCloudAccount.Standing.TRIAL_ENDED, config.standing())
         write(prefs, active("kofi", now - 1_000))
-        assertTrue("a lease's end passing says nothing", config.entitled)
+        assertTrue("a lease's end passing says nothing", config.admitted)
         assertEquals(PtCloudAccount.Standing.MEMBER, config.standing())
     }
 

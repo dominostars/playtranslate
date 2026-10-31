@@ -28,8 +28,9 @@ import org.robolectric.shadows.ShadowNetwork
  * the header's question built on it ([PtCloudService.wouldTakeNextCapture]):
  * a read the router would send to the cloud, the next capture never
  * stating device-only (a stopped pod and a refused key are cooldowns), and
- * an account whose trial or membership ended kept off the cloud after the
- * key and before the cooldown ([CloudRefusal.NOT_ENTITLED]).
+ * an account the server withholds (its trial or membership ended, or the
+ * current terms not accepted) kept off the cloud after the key and before
+ * the cooldown ([CloudRefusal.NOT_ADMITTED]).
  *
  * The key is stored through the reversible test codec (the AndroidKeyStore
  * is instrumented-only); the cooldown runs on the wall clock, the one
@@ -150,7 +151,7 @@ class PtCloudNextCaptureTest {
         assertEquals(CloudRefusal.COOLING_DOWN, refusal(config()))
     }
 
-    /** NOT_ENTITLED's place in the reasons: the key comes first (no key has
+    /** NOT_ADMITTED's place in the reasons: the key comes first (no key has
      *  no account to judge), and a record the server wrote as inactive
      *  outranks a cooldown. A trial or a lease whose dated end has passed on
      *  this clock is no refusal: the clock ends nothing, and the server's
@@ -158,14 +159,31 @@ class PtCloudNextCaptureTest {
      *  put before it here: every source language is one the server reads
      *  ([PtCloudRoutingTest]). */
     @Test fun `an inactive record keeps the read on the device, after the key and before the source and the cooldown`() {
-        assertEquals(CloudRefusal.NOT_ENTITLED, refusal(config(account = endedTrial())))
+        assertEquals(CloudRefusal.NOT_ADMITTED, refusal(config(account = endedTrial())))
         val lapsed = onTrial().copy(entitledUntilMs = System.currentTimeMillis() - 1_000)
         assertNull("a trial's end passing on this clock refuses nothing", refusal(config(account = lapsed)))
         assertNull("nor a lease's", refusal(config(account = lapsed.copy(source = "kofi"))))
         assertEquals("the key first", CloudRefusal.NO_KEY, refusal(config(key = "", account = endedTrial())))
         coolDown()
-        assertEquals("before the cooldown", CloudRefusal.NOT_ENTITLED, refusal(config(account = endedTrial())))
+        assertEquals("before the cooldown", CloudRefusal.NOT_ADMITTED, refusal(config(account = endedTrial())))
         assertEquals("a trial still on is judged on", CloudRefusal.COOLING_DOWN, refusal(config(account = onTrial())))
+    }
+
+    /** A record owing the current terms: the server would answer the read
+     *  403 `terms_required`, so it stays on the device as an inactive
+     *  record's does, as NOT_ADMITTED and in the same place among the
+     *  reasons: after the key, before the cooldown (and, as above, the
+     *  source cannot be put before it). The same record owing nothing goes
+     *  to the cloud. */
+    @Test fun `a record owing the terms keeps the read on the device, as NOT_ADMITTED after the key and before the cooldown`() {
+        val owing = PtCloudAccount(active = true, termsRequired = true, checkedAtMs = 1L)
+        assertEquals(CloudRefusal.NOT_ADMITTED, refusal(config(account = owing)))
+        assertFalse("nor does the next capture go", next(config(account = owing)))
+        assertNull("owing nothing, it goes", refusal(config(account = owing.copy(termsRequired = false))))
+        assertEquals("the key first", CloudRefusal.NO_KEY, refusal(config(key = "", account = owing)))
+        coolDown()
+        assertEquals("before the cooldown", CloudRefusal.NOT_ADMITTED, refusal(config(account = owing)))
+        assertEquals("owing nothing, the cooldown is the reason", CloudRefusal.COOLING_DOWN, refusal(config(account = owing.copy(termsRequired = false))))
     }
 
     @Test fun `with nothing against it the read goes to the cloud`() {

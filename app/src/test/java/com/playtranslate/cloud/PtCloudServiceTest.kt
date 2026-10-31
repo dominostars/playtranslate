@@ -47,8 +47,8 @@ import java.util.concurrent.atomic.AtomicLong
  *  older build's no-membership cooldown); the settings a test installs; the
  *  key and the account record written together, only beside a key that was
  *  stored, and the stored key's check acting only on the key it checked;
- *  the two switches following the account's entitlement (2026-10-29: on
- *  when an answer makes it entitled, off whenever the app learns it is not,
+ *  the two switches following the account's admission (2026-10-29: on
+ *  when an answer makes it admitted, off whenever the app learns it is not,
  *  the ending forgetting no pill and resetting nothing); and the reconcile
  *  of the shared cache's routing identity that follows every reset, a
  *  gesture's and the health check's.
@@ -193,9 +193,9 @@ class PtCloudServiceTest {
     // ── The key save ────────────────────────────────────────────────────
 
     /** The first key is the sign-up moment: the account it opens is
-     *  entitled, so both switches go on, for a key with no record (the app
+     *  admitted, so both switches go on, for a key with no record (the app
      *  knows nothing against it) as for a sign-in's with its trial. */
-    @Test fun `the first key saved for an entitled account, or with no record, turns both switches on`() {
+    @Test fun `the first key saved for an admitted account, or with no record, turns both switches on`() {
         val prefs = PtCloudTestSupport.prefs(ctx)
         PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(prefs))
         assertFalse(prefs.ptCloudOcrEnabled)
@@ -213,7 +213,7 @@ class PtCloudServiceTest {
     }
 
     /** A verify's key to an account that has already ended is stored, and
-     *  nothing about it is entitled: both switches stay off, and nothing is
+     *  it is not admitted: both switches stay off, and nothing is
      *  reported (no pill: the page the user is on says it, and Join is
      *  next). */
     @Test fun `a sign-in's key to an ended account is stored with both switches left off and nothing reported`() {
@@ -231,7 +231,7 @@ class PtCloudServiceTest {
         assertTrue("no pill", seen.isEmpty())
     }
 
-    @Test fun `a replacement key for an entitled account leaves the switches as the user set them`() {
+    @Test fun `a replacement key for an admitted account leaves the switches as the user set them`() {
         val prefs = PtCloudTestSupport.prefs(ctx)
         PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(prefs))
         prefs.ptCloudClientKey = PtCloudTestSupport.KEY
@@ -246,8 +246,8 @@ class PtCloudServiceTest {
     }
 
     /** The first key's rule, for a key over an ended account's: the account
-     *  the new key opens is entitled where the old one was not. */
-    @Test fun `a key saved over an ended account's, for an entitled one, turns both switches on`() {
+     *  the new key opens is admitted where the old one was not. */
+    @Test fun `a key saved over an ended account's, for an admitted one, turns both switches on`() {
         val prefs = PtCloudTestSupport.prefs(ctx)
         installWith(prefs)
         PtCloudService.saveClientKey(PtCloudTestSupport.KEY, ENDED_TRIAL)
@@ -258,7 +258,7 @@ class PtCloudServiceTest {
         assertTrue(prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
     }
 
-    @Test fun `a cleared key turns both switches off, no key being entitled`() {
+    @Test fun `a cleared key turns both switches off, no key being admitted`() {
         val prefs = PtCloudTestSupport.prefs(ctx)
         PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(prefs))
         prefs.ptCloudClientKey = PtCloudTestSupport.KEY
@@ -272,7 +272,7 @@ class PtCloudServiceTest {
         assertFalse(prefs.ptCloudTranslateEnabled)
     }
 
-    @Test fun `a blank or unusable key saved turns nothing on, no key being entitled`() {
+    @Test fun `a blank or unusable key saved turns nothing on, no key being admitted`() {
         val prefs = PtCloudTestSupport.prefs(ctx)
         PtCloudService.installForTest(CooldownState(null, PtCloudService.ID), PtCloudConfig(prefs))
 
@@ -603,7 +603,7 @@ class PtCloudServiceTest {
         assertEquals(PtCloudTestSupport.KEY, prefs.ptCloudClientKey)
     }
 
-    /** Back from Join: an Accepted check of an account that was not entitled
+    /** Back from Join: an Accepted check of an account that was not admitted
      *  is the first key's twin, both switches on with the reset a key save
      *  makes (the translation cache cleared, any cooldown dropped) and the
      *  change counted, so the cloud is in play at the next capture. */
@@ -625,10 +625,10 @@ class PtCloudServiceTest {
         assertEquals(before + 1, PtCloudService.changes.value)
     }
 
-    /** Entitled before and after: the check moves no switch, so a route the
+    /** Admitted before and after: the check moves no switch, so a route the
      *  user turned off stays off, and with no cooldown to drop nothing is
      *  reset or counted. */
-    @Test fun `an Accepted check after an entitled record leaves the switches as the user set them`() {
+    @Test fun `an Accepted check after an admitted record leaves the switches as the user set them`() {
         val prefs = PtCloudTestSupport.prefs(ctx)
         installWith(prefs)
         PtCloudService.saveClientKey(PtCloudTestSupport.KEY, TRIAL)
@@ -647,11 +647,11 @@ class PtCloudServiceTest {
 
     /** The device's clock ahead of the server's: the server accepts the key
      *  with a trial end that has already passed here. An Accepted is the
-     *  server's word that the account is entitled, whatever the dates read
-     *  on this clock, so the record it writes is active and both switches
-     *  come on from off (the page's account line still words the trial as
-     *  ended, which the next answer corrects). */
-    @Test fun `an Accepted check whose dates already read ended on this clock is entitled, the server's word`() {
+     *  server's word that the account is entitled and owes no terms, whatever
+     *  the dates read on this clock, so the record it writes is admitted and
+     *  both switches come on from off (the page's account line still words
+     *  the trial as ended, which the next answer corrects). */
+    @Test fun `an Accepted check whose dates already read ended on this clock is admitted, the server's word`() {
         val prefs = PtCloudTestSupport.prefs(ctx)
         installWith(prefs)
         PtCloudService.saveClientKey(PtCloudTestSupport.KEY, ENDED_TRIAL)
@@ -661,7 +661,7 @@ class PtCloudServiceTest {
         PtCloudService.onStoredKeyChecked(PtCloudTestSupport.KEY, PtCloudService.accountGeneration, KeyCheck.Accepted(SOURCE_TRIAL, ENDED_AT_MS))
 
         assertTrue(prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
-        assertTrue(PtCloudService.config.entitled)
+        assertTrue(PtCloudService.config.admitted)
         assertEquals("the words", PtCloudAccount.Standing.TRIAL_ENDED, PtCloudService.config.standing())
         assertEquals(before + 1, PtCloudService.changes.value)
     }
@@ -700,6 +700,59 @@ class PtCloudServiceTest {
         assertFalse(prefs.ptCloudTranslateEnabled)
         assertEquals(before + 1, PtCloudService.changes.value)
         assertEquals(CooldownCause.BILLING, PtCloudService.unavailableCause())
+    }
+
+    /** The page's check finding the current terms not accepted: the record
+     *  is rewritten as owing them (active, the email kept, no dates), both
+     *  switches go off and the change is counted, and no cooldown is reset;
+     *  no pill, the user being on the page that says why. */
+    @Test fun `a TermsRequired check rewrites the account as owing the terms and turns both switches off, resetting no cooldown`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        val state = installWith(prefs)
+        PtCloudService.saveClientKey(PtCloudTestSupport.KEY, TRIAL)
+        assertTrue(prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
+        state.recordLadderFailure(CooldownLadder.RateLimit, "Rate limited")
+        val before = PtCloudService.changes.value
+
+        assertTrue(
+            PtCloudService.onStoredKeyChecked(PtCloudTestSupport.KEY, PtCloudService.accountGeneration, KeyCheck.TermsRequired(TERMS_VERSION)),
+        )
+
+        val account = PtCloudService.account!!
+        assertEquals(PtCloudAccount(email = EMAIL, active = true, termsRequired = true, checkedAtMs = account.checkedAtMs), account)
+        assertEquals(PtCloudAccount.Standing.TERMS_REQUIRED, PtCloudService.config.standing())
+        assertFalse(PtCloudService.config.admitted)
+        assertFalse(prefs.ptCloudOcrEnabled)
+        assertFalse(prefs.ptCloudTranslateEnabled)
+        assertEquals(before + 1, PtCloudService.changes.value)
+        assertEquals("no cooldown reset", CooldownCause.RATE_LIMITED, PtCloudService.unavailableCause())
+    }
+
+    /** After the acceptance, the check that answers Accepted is the first
+     *  key's twin, as back from Join: both switches on with the reset a key
+     *  save makes (the translation cache cleared, any cooldown dropped), the
+     *  change counted, and the record admitted again with the answer's own
+     *  dates. */
+    @Test fun `an Accepted check after a terms-required record turns both switches on with the first key's reset`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        val state = installWith(prefs)
+        PtCloudService.saveClientKey(PtCloudTestSupport.KEY, TRIAL)
+        PtCloudService.onStoredKeyChecked(PtCloudTestSupport.KEY, PtCloudService.accountGeneration, KeyCheck.TermsRequired(TERMS_VERSION))
+        assertFalse(prefs.ptCloudOcrEnabled || prefs.ptCloudTranslateEnabled)
+        val key = TranslationCache.Key("一", "ja", "en")
+        TranslationCache.shared[key] = "one" to "Fallback"
+        state.recordLadderFailure(CooldownLadder.RateLimit, "Rate limited")
+        val before = PtCloudService.changes.value
+
+        PtCloudService.onStoredKeyChecked(PtCloudTestSupport.KEY, PtCloudService.accountGeneration, KeyCheck.Accepted(SOURCE_TRIAL, TRIAL_END_MS))
+
+        assertTrue(prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
+        assertTrue(PtCloudService.config.admitted)
+        val account = PtCloudService.account!!
+        assertEquals("the terms no longer owed", TRIAL.copy(checkedAtMs = account.checkedAtMs), account)
+        assertNull("cleared, as the first key's save clears it", TranslationCache.shared[key])
+        assertNull("any cooldown dropped", PtCloudService.unavailableUntil())
+        assertEquals(before + 1, PtCloudService.changes.value)
     }
 
     /** The HTTP 401 on the stored key, the one answer that clears it: as a
@@ -757,14 +810,14 @@ class PtCloudServiceTest {
 
     /** A key, both switches on, and a trial record whose end has passed on
      *  this clock since the server last described it: the clock ends
-     *  nothing ([PtCloudConfig.entitled] is the server's word), so the next
+     *  nothing ([PtCloudConfig.admitted] is the server's word), so the next
      *  read goes out, and the 403 it meets is the ending. */
     private fun lapsedTrial(prefs: Prefs) {
         PtCloudService.saveClientKey(PtCloudTestSupport.KEY, TRIAL)
         prefs.ptCloudAccountJson =
             PtJson.lenient.encodeToString(PtCloudAccount.serializer(), TRIAL.copy(entitledUntilMs = ENDED_AT_MS))
         assertTrue(prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
-        assertTrue("the clock ends nothing", PtCloudService.config.entitled)
+        assertTrue("the clock ends nothing", PtCloudService.config.admitted)
         assertEquals(PtCloudAccount.Standing.TRIAL_ENDED, PtCloudService.config.standing())
     }
 
@@ -777,13 +830,13 @@ class PtCloudServiceTest {
         lapsedTrial(prefs)
         val before = PtCloudService.changes.value
 
-        PtCloudService.onEntitlementEnded(
+        PtCloudService.onAccountWithheld(
             PtCloudTestSupport.KEY, PtCloudService.accountGeneration, KeyCheck.Inactive("trial", ENDED_AT_MS),
         )
 
         assertFalse(prefs.ptCloudOcrEnabled)
         assertFalse(prefs.ptCloudTranslateEnabled)
-        assertFalse(PtCloudService.config.entitled)
+        assertFalse(PtCloudService.config.admitted)
         assertEquals(before + 1, PtCloudService.changes.value)
 
         PtCloudService.onStoredKeyChecked(PtCloudTestSupport.KEY, PtCloudService.accountGeneration, KeyCheck.Inactive("trial", ENDED_AT_MS))
@@ -805,16 +858,16 @@ class PtCloudServiceTest {
         assertTrue(prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
         val before = PtCloudService.changes.value
 
-        PtCloudService.onEntitlementEnded(PtCloudTestSupport.KEY, sentGeneration, KeyCheck.Inactive("trial", ENDED_AT_MS))
+        PtCloudService.onAccountWithheld(PtCloudTestSupport.KEY, sentGeneration, KeyCheck.Inactive("trial", ENDED_AT_MS))
 
         assertEquals("kofi", PtCloudService.account!!.source)
-        assertTrue(PtCloudService.config.entitled)
+        assertTrue(PtCloudService.config.admitted)
         assertTrue(prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
         assertEquals(before, PtCloudService.changes.value)
 
         // Built against the record the check wrote, the next 403 is the
         // server's newer word, and ends it.
-        PtCloudService.onEntitlementEnded(
+        PtCloudService.onAccountWithheld(
             PtCloudTestSupport.KEY, PtCloudService.accountGeneration, KeyCheck.Inactive("kofi", ENDED_AT_MS),
         )
         assertFalse(prefs.ptCloudOcrEnabled || prefs.ptCloudTranslateEnabled)
@@ -836,7 +889,7 @@ class PtCloudServiceTest {
         assertEquals(start + 2, PtCloudService.accountGeneration)
         PtCloudService.onStoredKeyChecked(PtCloudTestSupport.KEY, PtCloudService.accountGeneration, KeyCheck.NotChecked)
         assertEquals("no record written", start + 2, PtCloudService.accountGeneration)
-        PtCloudService.onEntitlementEnded(PtCloudTestSupport.KEY, start + 2, KeyCheck.Inactive("kofi", ENDED_AT_MS))
+        PtCloudService.onAccountWithheld(PtCloudTestSupport.KEY, start + 2, KeyCheck.Inactive("kofi", ENDED_AT_MS))
         assertEquals(start + 3, PtCloudService.accountGeneration)
         PtCloudService.saveClientKey("")
         assertEquals("the clear is a write", start + 4, PtCloudService.accountGeneration)
@@ -855,17 +908,17 @@ class PtCloudServiceTest {
         PtCloudService.setTranslateEnabled(false)
         val before = PtCloudService.changes.value
 
-        PtCloudService.onEntitlementEnded(PtCloudTestSupport.KEY, sent, KeyCheck.Inactive("trial", ENDED_AT_MS))
+        PtCloudService.onAccountWithheld(PtCloudTestSupport.KEY, sent, KeyCheck.Inactive("trial", ENDED_AT_MS))
 
-        assertFalse(PtCloudService.config.entitled)
+        assertFalse(PtCloudService.config.admitted)
         assertEquals(before + 1, PtCloudService.changes.value)
     }
 
-    /** "On, not entitled" is not a state: a face can be stale (a 403 ended
+    /** "On, not admitted" is not a state: a face can be stale (a 403 ended
      *  the account on IO while the page's rows were live), so the one
      *  writer refuses the switch-on and counts the refusal, so the face
      *  repaints to the switch as stored; off is never refused. */
-    @Test fun `a switch cannot be turned on while the account is not entitled, and the refusal counts a change`() {
+    @Test fun `a switch cannot be turned on while the account is not admitted, and the refusal counts a change`() {
         val prefs = PtCloudTestSupport.prefs(ctx)
         installWith(prefs)
         PtCloudService.saveClientKey(PtCloudTestSupport.KEY, ENDED_TRIAL)
@@ -884,7 +937,7 @@ class PtCloudServiceTest {
         assertEquals("off is never refused, and is a gesture", before + 4, PtCloudService.changes.value)
 
         PtCloudService.onStoredKeyChecked(PtCloudTestSupport.KEY, PtCloudService.accountGeneration, KeyCheck.Accepted("kofi", LEASE_END_MS))
-        assertTrue("entitled again: both on", prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
+        assertTrue("admitted again: both on", prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
         PtCloudService.setOcrEnabled(false)
         PtCloudService.setOcrEnabled(true)
         assertTrue("and on is a gesture again", prefs.ptCloudOcrEnabled)
@@ -900,19 +953,19 @@ class PtCloudServiceTest {
         installWith(prefs)
         PtCloudService.saveClientKey(PtCloudTestSupport.KEY, TRIAL)
         val sent = PtCloudService.accountGeneration
-        PtCloudService.onEntitlementEnded(PtCloudTestSupport.KEY, sent, KeyCheck.Inactive("trial", ENDED_AT_MS))
+        PtCloudService.onAccountWithheld(PtCloudTestSupport.KEY, sent, KeyCheck.Inactive("trial", ENDED_AT_MS))
         assertFalse(prefs.ptCloudOcrEnabled || prefs.ptCloudTranslateEnabled)
         val before = PtCloudService.changes.value
 
         assertFalse(PtCloudService.onStoredKeyChecked(PtCloudTestSupport.KEY, sent, KeyCheck.Accepted("kofi", LEASE_END_MS)))
 
-        assertFalse("the 403's record stands", PtCloudService.config.entitled)
+        assertFalse("the 403's record stands", PtCloudService.config.admitted)
         assertFalse(prefs.ptCloudOcrEnabled || prefs.ptCloudTranslateEnabled)
         assertEquals(before, PtCloudService.changes.value)
 
         // Asked again against the record the 403 wrote, the answer stands.
         assertTrue(PtCloudService.onStoredKeyChecked(PtCloudTestSupport.KEY, PtCloudService.accountGeneration, KeyCheck.Accepted("kofi", LEASE_END_MS)))
-        assertTrue(PtCloudService.config.entitled)
+        assertTrue(PtCloudService.config.admitted)
         assertTrue(prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
 
         // A key that changed under the check is dropped too; an unusable
@@ -950,7 +1003,7 @@ class PtCloudServiceTest {
         val key = TranslationCache.Key("一", "ja", "en")
         TranslationCache.shared[key] = "one" to PtCloudService.DISPLAY_NAME
 
-        PtCloudService.onEntitlementEnded(
+        PtCloudService.onAccountWithheld(
             PtCloudTestSupport.KEY, PtCloudService.accountGeneration, KeyCheck.Inactive("trial", ENDED_AT_MS),
         )
 
@@ -979,8 +1032,8 @@ class PtCloudServiceTest {
         val before = PtCloudService.changes.value
 
         val generation = PtCloudService.accountGeneration
-        PtCloudService.onEntitlementEnded("an-older-key", generation, KeyCheck.Inactive("trial", ENDED_AT_MS))
-        PtCloudService.onEntitlementEnded("", generation, KeyCheck.Inactive("trial", ENDED_AT_MS))
+        PtCloudService.onAccountWithheld("an-older-key", generation, KeyCheck.Inactive("trial", ENDED_AT_MS))
+        PtCloudService.onAccountWithheld("", generation, KeyCheck.Inactive("trial", ENDED_AT_MS))
 
         assertEquals(TRIAL, PtCloudService.account)
         assertTrue(prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
@@ -993,7 +1046,7 @@ class PtCloudServiceTest {
         PtCloudService.saveClientKey(PtCloudTestSupport.KEY, TRIAL)
         val before = PtCloudService.changes.value
 
-        PtCloudService.onEntitlementEnded(
+        PtCloudService.onAccountWithheld(
             PtCloudTestSupport.KEY, PtCloudService.accountGeneration, KeyCheck.Inactive("kofi", ENDED_AT_MS),
         )
 
@@ -1007,6 +1060,89 @@ class PtCloudServiceTest {
         assertFalse(prefs.ptCloudTranslateEnabled)
         assertEquals(before + 1, PtCloudService.changes.value)
         assertNull("no cooldown recorded", PtCloudService.unavailableUntil())
+    }
+
+    // ── The terms owed ──────────────────────────────────────────────────
+
+    /** A route's 403 `terms_required` meets the guards a `no_entitlement`
+     *  meets, the one writer's: one for a key that is no longer the stored
+     *  one, or built against a record a check rewrote since, changes
+     *  nothing; one for the stored key against the current record writes it
+     *  as owing the terms, keeping its email, and turns both switches off,
+     *  with the change counted and no cooldown recorded. */
+    @Test fun `a 403 terms_required acts under the same key and generation guards as a no_entitlement`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        installWith(prefs)
+        PtCloudService.saveClientKey(PtCloudTestSupport.KEY, TRIAL)
+        val sent = PtCloudService.accountGeneration
+        val terms = KeyCheck.TermsRequired(TERMS_VERSION)
+        val before = PtCloudService.changes.value
+
+        PtCloudService.onAccountWithheld("an-older-key", sent, terms)
+        PtCloudService.onAccountWithheld("", sent, terms)
+        assertEquals("another key's 403", TRIAL, PtCloudService.account)
+        assertTrue(prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
+        assertEquals(before, PtCloudService.changes.value)
+
+        PtCloudService.onStoredKeyChecked(PtCloudTestSupport.KEY, PtCloudService.accountGeneration, KeyCheck.Accepted("kofi", LEASE_END_MS))
+        val checked = PtCloudService.changes.value
+        PtCloudService.onAccountWithheld(PtCloudTestSupport.KEY, sent, terms)
+        assertEquals("an older record's 403: the check's record stands", "kofi", PtCloudService.account!!.source)
+        assertTrue(PtCloudService.config.admitted)
+        assertTrue(prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
+        assertEquals(checked, PtCloudService.changes.value)
+
+        PtCloudService.onAccountWithheld(PtCloudTestSupport.KEY, PtCloudService.accountGeneration, terms)
+        val account = PtCloudService.account!!
+        assertEquals(PtCloudAccount(email = EMAIL, active = true, termsRequired = true, checkedAtMs = account.checkedAtMs), account)
+        assertFalse(PtCloudService.config.admitted)
+        assertFalse(prefs.ptCloudOcrEnabled || prefs.ptCloudTranslateEnabled)
+        assertEquals(checked + 1, PtCloudService.changes.value)
+        assertNull("no cooldown recorded", PtCloudService.unavailableUntil())
+    }
+
+    /** "On, not admitted" is no state for an account owing the terms
+     *  either: the one writer refuses the switch-on and counts the refusal,
+     *  so the face repaints to the switch as stored. */
+    @Test fun `a switch cannot be turned on while the terms are owed, and the refusal counts a change`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        installWith(prefs)
+        PtCloudService.saveClientKey(PtCloudTestSupport.KEY, TRIAL)
+        PtCloudService.onStoredKeyChecked(PtCloudTestSupport.KEY, PtCloudService.accountGeneration, KeyCheck.TermsRequired(TERMS_VERSION))
+        assertFalse(prefs.ptCloudOcrEnabled || prefs.ptCloudTranslateEnabled)
+        val before = PtCloudService.changes.value
+
+        PtCloudService.setOcrEnabled(true)
+        assertFalse("refused", prefs.ptCloudOcrEnabled)
+        assertEquals("counted, so the face repaints", before + 1, PtCloudService.changes.value)
+        PtCloudService.setTranslateEnabled(true)
+        assertFalse("refused", prefs.ptCloudTranslateEnabled)
+        assertEquals(before + 2, PtCloudService.changes.value)
+    }
+
+    /** A key saved with a record the server wrote as owing the terms is
+     *  stored and is not admitted: both switches are left off when they
+     *  were, and turned off over an admitted key's, and nothing is reported;
+     *  the page the user is on asks for the terms. */
+    @Test fun `a key saved with a record owing the terms is stored with both switches off`() {
+        val prefs = PtCloudTestSupport.prefs(ctx)
+        installWith(prefs)
+        val reported = mutableListOf<List<OnlineAttempt>>()
+        TranslationBackendRegistry.onlineAttemptListener = { reported += it }
+        val owing = PtCloudAccount(email = EMAIL, active = true, termsRequired = true, checkedAtMs = 1L)
+
+        assertTrue(PtCloudService.saveClientKey(PtCloudTestSupport.KEY, owing))
+
+        assertEquals(PtCloudTestSupport.KEY, prefs.ptCloudClientKey)
+        assertEquals(owing, PtCloudService.account)
+        assertFalse(PtCloudService.config.admitted)
+        assertFalse(prefs.ptCloudOcrEnabled || prefs.ptCloudTranslateEnabled)
+
+        PtCloudService.saveClientKey(PtCloudTestSupport.KEY, TRIAL)
+        assertTrue("an admitted key: both on", prefs.ptCloudOcrEnabled && prefs.ptCloudTranslateEnabled)
+        assertTrue(PtCloudService.saveClientKey("another-key", owing))
+        assertFalse("over an admitted key's: both off", prefs.ptCloudOcrEnabled || prefs.ptCloudTranslateEnabled)
+        assertTrue("no pill", reported.isEmpty())
     }
 
     /** The AndroidKeyStore refusing to encrypt, as [Prefs] meets it: nothing
@@ -1034,6 +1170,8 @@ class PtCloudServiceTest {
         const val LEASE_END_MS = 4_133_980_800_000L
         /** 2025-10-28 12:00 UTC: an end long gone by. */
         const val ENDED_AT_MS = 1_761_652_800_000L
+        /** The current terms' version, as a 403 `terms_required` names it. */
+        const val TERMS_VERSION = "2026-10-30"
         /** A sign-in's record: a trial, with its end. */
         val TRIAL = PtCloudAccount(
             email = EMAIL, active = true, source = SOURCE_TRIAL, entitledUntilMs = TRIAL_END_MS, checkedAtMs = 1L,

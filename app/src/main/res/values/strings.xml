@@ -2579,6 +2579,13 @@
          on the account.  %1$s = service name (PlayTranslate Cloud, a product
          name). -->
     <string name="translation_error_membership_inactive"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: Membership inactive</string>
+    <!-- Translation error pill: the user's account with the service has not
+         accepted the service's current terms of use and privacy notice (they
+         are new, or they changed), so its server refuses requests until the
+         user reads and accepts them on the service's settings page.  Not
+         about payment or the membership.  %1$s = service name (PlayTranslate
+         Cloud, a product name). -->
+    <string name="translation_error_terms_required"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: Terms not accepted</string>
     <!-- Translation error pill: the service has shut down for good, so its
          server refuses every request; it will not come back by itself.
          %1$s = service name (PlayTranslate Cloud, a product name). -->
@@ -3403,6 +3410,11 @@
     <!-- Subtitle of the PlayTranslate Cloud CONFIGURE cell when the user's
          account has no active membership (it lapsed, or there never was one). -->
     <string name="settings_pt_cloud_summary_inactive">Membership inactive</string>
+    <!-- Subtitle of the PlayTranslate Cloud CONFIGURE cell when the user has
+         not accepted the service's current terms of use and privacy notice,
+         so the service is off until they read and accept them on its page.
+         Not about payment or the membership. -->
+    <string name="settings_pt_cloud_summary_terms_required">Terms not accepted</string>
     <!-- Paragraph at the top of the PlayTranslate Cloud page, above the
          account, in every state: why the service exists. "Text recognition"
          is reading the text on the screen (OCR); "the work" is that reading
@@ -3540,6 +3552,12 @@
          has no active membership and no end date is known (it may never have
          had one). -->
     <string name="pt_cloud_inactive">No active membership</string>
+    <!-- Account line on the PlayTranslate Cloud account card when the user
+         has not accepted the service's current terms of use and privacy
+         notice (they are new, or they changed), so the service is off until
+         they read and accept them; shown in the alert colour. Not about
+         payment or the membership. -->
+    <string name="pt_cloud_terms_required">Terms not accepted</string>
     <!-- Button on the PlayTranslate Cloud account card after the free trial
          ended or the membership lapsed: asks the server again whether the
          account is active, for example right after paying. The description
@@ -3550,6 +3568,18 @@
          card: a payment made a moment ago reaches the account a few seconds
          later; left of the Check again chip. -->
     <string name="pt_cloud_join_pending">Already joined? It can take a few seconds to process.</string>
+    <!-- Line on the PlayTranslate Cloud account card, under a divider and
+         left of the Show terms button (an icon), while the user has not
+         accepted the service's current terms of use and privacy notice: the
+         service is off until they open the terms and accept them. %1$s =
+         pt_cloud_display_name, a product name. -->
+    <string name="pt_cloud_terms_pending">Read and accept the terms to keep using <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>.</string>
+    <!-- Button on the PlayTranslate Cloud account card, right of the line
+         that asks the user to accept the terms: opens the service's terms of
+         use and privacy notice to read and accept. The description of a
+         square icon chip (a document glyph, no text), read by a screen
+         reader, so it names the action. -->
+    <string name="pt_cloud_show_terms">Show terms</string>
     <!-- Label of the button on the PlayTranslate Cloud account card that opens
          the service's membership page on the Ko-fi website. %1$s =
          pt_cloud_display_name, a product name. -->
@@ -3644,6 +3674,17 @@
          when the server stopped accepting this device's key (it was revoked,
          or the account was removed), so the device was signed out. -->
     <string name="pt_cloud_key_no_longer_accepted">This device\'s key is no longer accepted. Sign in again.</string>
+    <!-- Notice on the PlayTranslate Cloud page when the service's terms of
+         use and privacy notice could not be fetched from its server just now
+         (too many requests, or a temporary problem on the server), so they
+         cannot be shown: under the sign-in button, or under the terms line on
+         the account card. -->
+    <string name="pt_cloud_terms_unavailable">Couldn\'t load the terms. Try again in a minute.</string>
+    <!-- Notice under the terms line on the PlayTranslate Cloud account card
+         when the user agreed to the service's terms but its server could not
+         record the agreement just now; the user can open the terms and agree
+         again. -->
+    <string name="pt_cloud_terms_not_recorded">Couldn\'t record your acceptance. Try again.</string>
     <!-- Title of the card shown on the PlayTranslate Cloud page when the
          service has shut down for good. %1$s = pt_cloud_display_name, a
          product name. -->
@@ -3654,6 +3695,31 @@
     <!-- Privacy note at the bottom of the sign-in form on the PlayTranslate
          Cloud account card: what the email address is used for. -->
     <string name="pt_cloud_privacy_signin">Your email address is used to send you a sign-in code.</string>
+    <!-- Title of the page that shows PlayTranslate Cloud's terms of use and
+         its privacy notice, one text the user reads and agrees to before
+         using the service; in the page's top bar. -->
+    <string name="pt_cloud_terms_title">Terms and Privacy</string>
+    <!-- Button at the bottom of the PlayTranslate Cloud terms page: the user
+         agrees to the terms of use and the privacy notice shown above it (a
+         Cancel button is under it). Short: it fills a wide button. -->
+    <string name="pt_cloud_terms_agree">Agree</string>
+    <!-- The sentence beside the agreement checkbox on the PlayTranslate Cloud
+         account card, between the email address field and the sign-in
+         button: ticking the box is the user's agreement to the service's
+         terms of use and privacy notice, which the sign-in button needs.
+         %1$s = pt_cloud_terms_link, the words that open those terms to read
+         (shown in the accent colour and tappable). -->
+    <string name="pt_cloud_agree_terms">I agree to the <xliff:g id="terms" example="Terms and Privacy">%1$s</xliff:g></string>
+    <!-- The tappable words inside pt_cloud_agree_terms on the PlayTranslate
+         Cloud account card: they open the page with the service's terms of
+         use and privacy notice, which is titled pt_cloud_terms_title (the
+         same words in English). A string of its own so the words can take
+         the form the sentence needs. -->
+    <string name="pt_cloud_terms_link">Terms and Privacy</string>
+    <!-- Read by screen readers on the agreement checkbox of the PlayTranslate
+         Cloud account card after the sign-in button was pressed with the box
+         unticked: the box shows in the alert colour and nothing is sent. -->
+    <string name="pt_cloud_agree_required">Agree to the terms to continue.</string>
     <!-- Screen-reader label of the strip at the top of the floating icon's quick
          menu while PlayTranslate Cloud's OCR switch is on, when its wifi glyph
          shows: the device is online and the next capture would be read on

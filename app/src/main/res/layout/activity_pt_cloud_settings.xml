@@ -3,7 +3,8 @@
      bottom: the intro paragraph, what the service is; the closed card while
      the service has closed; the ACCOUNT group, whose card is where sign-in
      happens (signed out, code sent, signed in: one group at a time; signed
-     in, it holds Join while Join is due); the CONFIGURATION group, the two
+     in, it holds Join while Join is due, and the terms row while the
+     current terms are not accepted); the CONFIGURATION group, the two
      "use for" switches, while a key is stored; and the service status.
      PtCloudSettingsActivity.render sets every visibility, every dynamic text
      and the account line's colour. The service's address is fixed in the
@@ -116,8 +117,8 @@
                     android:paddingHorizontal="@dimen/pt_row_h_padding"
                     android:paddingVertical="@dimen/pt_row_v_padding">
 
-                    <!-- Signed out: the email field and Try for Free, which
-                         sends the code. -->
+                    <!-- Signed out: the email field, the agreement box and
+                         Try for Free, which sends the code. -->
                     <LinearLayout
                         android:id="@+id/groupSignedOut"
                         android:layout_width="match_parent"
@@ -161,6 +162,45 @@
                             android:importantForAutofill="yes"
                             android:background="?attr/ptSurface"
                             android:padding="10dp" />
+
+                        <!-- The agreement: the box is the agreement itself, the
+                             sentence's last words a link that opens the terms
+                             page to read. The row toggles the box (a tap off
+                             the link falls through to it); the box lights in
+                             its error state when Try for Free is tapped with it
+                             unticked. The sentence's text and its link are the
+                             page's; the sentence labels the box and shows a
+                             controller's focus by its background. -->
+                        <LinearLayout
+                            android:id="@+id/rowCloudAgree"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:minHeight="48dp"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:background="?attr/selectableItemBackground"
+                            android:clickable="true"
+                            android:focusable="false">
+
+                            <com.google.android.material.checkbox.MaterialCheckBox
+                                android:id="@+id/cbCloudAgree"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                app:buttonTint="@color/checkbox_button"
+                                app:errorAccessibilityLabel="@string/pt_cloud_agree_required" />
+
+                            <TextView
+                                android:id="@+id/tvCloudAgree"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:labelFor="@id/cbCloudAgree"
+                                android:background="?attr/selectableItemBackground"
+                                android:paddingVertical="12dp"
+                                android:textColor="?attr/ptText"
+                                android:textSize="13sp" />
+                        </LinearLayout>
 
                         <!-- The LLM page's Save pattern: the spinner overlays
                              the blanked, disabled button while the request
@@ -311,7 +351,8 @@
                     <!-- Signed in: the account (its address as the title, the
                          account line under it) beside the sign-out chip; Join,
                          under a divider, while it is due; Check again once the
-                         trial ended or no membership is active. -->
+                         trial ended or no membership is active; Show terms
+                         while the current terms are not accepted. -->
                     <LinearLayout
                         android:id="@+id/groupSignedIn"
                         android:layout_width="match_parent"
@@ -479,6 +520,79 @@
                                     android:indeterminateTint="?attr/ptTextHint" />
                             </FrameLayout>
                         </LinearLayout>
+
+                        <!-- The terms, a section of its own under a divider
+                             while the server says the current terms are not
+                             accepted, in Already joined?'s place: the line
+                             (it names the service, so the page sets it) and,
+                             at the row's right end, Show terms as the Check
+                             again chip's twin (the description glyph, no
+                             text, described as Show terms), whose spinner
+                             takes the glyph's place while a terms call runs;
+                             under the row, a failed terms call's notice. -->
+                        <View
+                            android:id="@+id/dividerCloudTerms"
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:layout_marginTop="14dp"
+                            android:background="?attr/ptDivider"
+                            android:visibility="gone" />
+
+                        <LinearLayout
+                            android:id="@+id/rowCloudTerms"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:visibility="gone">
+
+                            <TextView
+                                android:id="@+id/tvTermsPending"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                style="@style/Text.PT.RowSubtitle" />
+
+                            <FrameLayout
+                                android:id="@+id/btnCloudShowTerms"
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:layout_marginStart="12dp"
+                                android:background="@drawable/bg_hub_chip"
+                                android:foreground="?attr/selectableItemBackground"
+                                android:clickable="true"
+                                android:focusable="true"
+                                android:contentDescription="@string/pt_cloud_show_terms">
+
+                                <ImageView
+                                    android:id="@+id/ivCloudShowTerms"
+                                    android:layout_width="22dp"
+                                    android:layout_height="22dp"
+                                    android:layout_gravity="center"
+                                    android:src="@drawable/ic_description"
+                                    android:importantForAccessibility="no"
+                                    app:tint="?attr/ptTextHint" />
+
+                                <ProgressBar
+                                    android:id="@+id/progressCloudShowTerms"
+                                    android:layout_width="20dp"
+                                    android:layout_height="20dp"
+                                    android:layout_gravity="center"
+                                    android:indeterminate="true"
+                                    android:visibility="gone"
+                                    android:indeterminateTint="?attr/ptTextHint" />
+                            </FrameLayout>
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/tvTermsNotice"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:textColor="?attr/ptWarning"
+                            android:visibility="gone"
+                            style="@style/Text.PT.RowSubtitle" />
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
@@ -520,8 +634,9 @@
             <!-- Service status (GET /health), refreshed on resume and when a
                  key is stored, with the cooldown line below it while one runs
                  (hidden while closed, and while the account line says the
-                 trial ended or no membership is active). Not tappable; no
-                 header, it reads under whichever group precedes it. -->
+                 trial ended, no membership is active or the terms are not
+                 accepted). Not tappable; no header, it reads under whichever
+                 group precedes it. -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

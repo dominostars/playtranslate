@@ -50,7 +50,11 @@ import java.util.Collections
  * can carry never sent; the two sign-in calls, `POST /v1/signin` and
  * `POST /v1/signin/verify`: what they send (JSON, no bearer), their reading
  * of every answer in the brief's two tables, nothing recorded or reported,
- * and logs with no email, code or key; and `GET /v1/warm`: what it sends,
+ * and logs with no email, code or key; the two terms calls, `GET /v1/terms`
+ * and `POST /v1/terms/accept`: what they send (the locale as a query and no
+ * bearer; the key given, as JSON), their reading of every answer, a text
+ * longer than an error body read whole, nothing recorded or reported, and
+ * logs with no key or body; and `GET /v1/warm`: what it sends,
  * when it sends nothing, and the head start it hands the next frame's clock
  * line. And a stored key no request can carry, refused at the build on both
  * routes.
@@ -299,6 +303,16 @@ class PtCloudRequestTest {
             checkKey(403, """{"error":"no_entitlement","last_source":null,"ended_at":null}"""),
         )
         assertEquals(KeyCheck.Inactive(null, null), checkKey(403, """{"error":"no_entitlement"}"""))
+    }
+
+    /** The terms gate's 403: a known key whose account is entitled and owes
+     *  the current terms, the version the body names carried as it is. */
+    @Test fun `checkKey reads a 403 terms_required as TermsRequired with its version`() {
+        assertEquals(
+            KeyCheck.TermsRequired(TERMS_VERSION),
+            checkKey(403, """{"error":"terms_required","version":"2026-10-30"}"""),
+        )
+        assertEquals("a body that left the version out", KeyCheck.TermsRequired(null), checkKey(403, """{"error":"terms_required"}"""))
     }
 
     @Test fun `checkKey reads a 410 service_closed as closed, with its message`() {
@@ -569,6 +583,200 @@ class PtCloudRequestTest {
         }
     }
 
+    // ── GET /v1/terms and POST /v1/terms/accept ────────────────────────
+
+    private fun termsClient(
+        code: Int,
+        body: String,
+        retryAfter: String? = null,
+        seen: MutableList<Request> = mutableListOf(),
+    ) = PtCloudClient(
+        PtCloudTestSupport.config(ctx),
+        clientFactory = { PtCloudTestSupport.cannedClient(code, body, retryAfter, seen) },
+    )
+
+    private fun fetchTerms(code: Int, body: String, retryAfter: String? = null, seen: MutableList<Request> = mutableListOf()) =
+        runBlocking { termsClient(code, body, retryAfter, seen).fetchTerms(LOCALE) }
+
+    /** An acceptance carrying [MINTED_KEY], where [KEY] is the one stored. */
+    private fun acceptTerms(code: Int, body: String, retryAfter: String? = null, seen: MutableList<Request> = mutableListOf()) =
+        runBlocking { termsClient(code, body, retryAfter, seen).acceptTerms(MINTED_KEY, TERMS_VERSION, "en") }
+
+    /** The text the Worker serves today, as the fixture holds it. */
+    private fun shippedTerms(): String =
+        PtCloudRequestTest::class.java.getResourceAsStream("/ptcloud/terms_en.md")!!
+            .bufferedReader(Charsets.UTF_8).use { it.readText() }
+
+    /** A key is stored, so a bearer riding along would show: a person reads
+     *  the terms before signing in, and the route takes none. */
+    @Test fun `fetchTerms is a GET on v1 terms with the locale as a query and no bearer`() {
+        val seen = mutableListOf<Request>()
+        fetchTerms(200, terms(), seen = seen)
+        val request = seen.single()
+        assertEquals("GET", request.method)
+        assertEquals("$BASE_URL/v1/terms?locale=pt-BR", request.url.toString())
+        assertEquals(LOCALE, request.url.queryParameter("locale"))
+        assertNull(request.header("Authorization"))
+        assertNull(request.body)
+    }
+
+    /** "Terms" in docs/api.md, row for row: the text with its version and
+     *  the locale served, a Worker from before the route as nothing to
+     *  show, the closed service with its message, and every other answer,
+     *  a 200 the app cannot read included, as unavailable. */
+    @Test fun `fetchTerms maps every answer`() {
+        val rows = listOf(
+            Triple(200, terms(), null) to TermsResult.Text(TERMS_VERSION, "en", TERMS_TEXT),
+            Triple(200, terms(locale = "pt-br"), null) to TermsResult.Text(TERMS_VERSION, "pt-br", TERMS_TEXT),
+            Triple(200, """{"version":"2026-10-30","locale":"en","format":"markdown"}""", null) to TermsResult.Unavailable,
+            Triple(200, """{"locale":"en","format":"markdown","text":"# T"}""", null) to TermsResult.Unavailable,
+            Triple(200, """{"version":"2026-10-30","format":"markdown","text":"# T"}""", null) to TermsResult.Unavailable,
+            Triple(200, "<html>ok</html>", null) to TermsResult.Unavailable,
+            Triple(200, "", null) to TermsResult.Unavailable,
+            Triple(404, """{"error":"not found"}""", null) to TermsResult.NotAvailable,
+            Triple(410, """{"error":"service_closed","message":"Closed for good."}""", null) to TermsResult.Closed("Closed for good."),
+            Triple(410, """{"error":"service_closed"}""", null) to TermsResult.Closed(null),
+            Triple(410, """{"error":"gone"}""", null) to TermsResult.Unavailable,
+            Triple(410, "", null) to TermsResult.Unavailable,
+            Triple(429, """{"error":"rate limited"}""", "60") to TermsResult.Unavailable,
+            Triple(503, """{"error":"terms_misconfigured"}""", null) to TermsResult.Unavailable,
+            Triple(500, "", null) to TermsResult.Unavailable,
+        )
+        for ((answer, result) in rows) {
+            val (code, body, retryAfter) = answer
+            assertEquals("$code $body", result, fetchTerms(code, body, retryAfter))
+        }
+    }
+
+    @Test fun `fetchTerms with no connection is unreachable`() {
+        val client = PtCloudClient(
+            PtCloudTestSupport.config(ctx),
+            clientFactory = { PtCloudTestSupport.failingClient(IOException("refused")) },
+        )
+        assertEquals(TermsResult.Unreachable, runBlocking { client.fetchTerms(LOCALE) })
+    }
+
+    /** The whole text rides in the answer, which an error body's 4,096-byte
+     *  read would cut: the shipped text's answer is longer than that and
+     *  reads whole, as does a much longer one, while an answer past the
+     *  terms' own 64 KiB read does not decode and reads as unavailable. */
+    @Test fun `a terms answer over 4 KB is read whole, and one over 64 KiB reads as unavailable`() {
+        val shipped = shippedTerms()
+        assertTrue("the premise: ${terms(text = shipped).length}", terms(text = shipped).length > 4_096)
+        assertEquals(TermsResult.Text(TERMS_VERSION, "en", shipped), fetchTerms(200, terms(text = shipped)))
+        val long = "Terms. ".repeat(3_000)
+        assertEquals(TermsResult.Text(TERMS_VERSION, "en", long), fetchTerms(200, terms(text = long)))
+        assertEquals(TermsResult.Unavailable, fetchTerms(200, terms(text = "x".repeat(70_000))))
+    }
+
+    /** The key it is given, not the stored one, and the agreement as the
+     *  route reads it. */
+    @Test fun `acceptTerms is a JSON POST on v1 terms accept with the bearer, the version and the locale`() {
+        val seen = mutableListOf<Request>()
+        acceptTerms(200, ACCEPTED, seen = seen)
+        val request = seen.single()
+        assertEquals("POST", request.method)
+        assertEquals("$BASE_URL/v1/terms/accept", request.url.toString())
+        assertEquals("Bearer $MINTED_KEY", request.header("Authorization"))
+        val type = request.body!!.contentType()!!
+        assertEquals("application/json", "${type.type}/${type.subtype}")
+        assertTrue("its length is known", request.body!!.contentLength() > 0)
+        assertEquals(
+            JsonObject(mapOf("version" to JsonPrimitive(TERMS_VERSION), "locale" to JsonPrimitive("en"))),
+            request.bodyJson(),
+        )
+    }
+
+    /** "Accepting the terms" in docs/api.md, row for row: recorded, a newer
+     *  text with its version, a refused key, the closed service, and every
+     *  other answer as not recorded. */
+    @Test fun `acceptTerms maps every answer`() {
+        val rows = listOf(
+            Triple(200, ACCEPTED, null) to TermsAcceptResult.Accepted,
+            Triple(200, "", null) to TermsAcceptResult.Accepted,
+            Triple(409, """{"error":"terms_outdated","version":"2026-11-15"}""", null) to TermsAcceptResult.Outdated("2026-11-15"),
+            Triple(409, """{"error":"terms_outdated"}""", null) to TermsAcceptResult.Outdated(null),
+            Triple(409, """{"error":"conflict"}""", null) to TermsAcceptResult.NotRecorded,
+            Triple(409, "", null) to TermsAcceptResult.NotRecorded,
+            Triple(401, """{"error":"unauthorized"}""", null) to TermsAcceptResult.Refused,
+            Triple(401, "", null) to TermsAcceptResult.Refused,
+            Triple(410, """{"error":"service_closed","message":"Closed for good."}""", null) to TermsAcceptResult.Closed("Closed for good."),
+            Triple(410, """{"error":"gone"}""", null) to TermsAcceptResult.NotRecorded,
+            Triple(503, """{"error":"terms_unavailable"}""", "10") to TermsAcceptResult.NotRecorded,
+            Triple(503, """{"error":"auth unavailable"}""", "10") to TermsAcceptResult.NotRecorded,
+            Triple(503, """{"error":"terms_misconfigured"}""", null) to TermsAcceptResult.NotRecorded,
+            Triple(429, """{"error":"rate limited"}""", "60") to TermsAcceptResult.NotRecorded,
+            Triple(400, """{"error":"bad request","detail":"version must be YYYY-MM-DD"}""", null) to TermsAcceptResult.NotRecorded,
+            Triple(413, """{"error":"payload too large"}""", null) to TermsAcceptResult.NotRecorded,
+            Triple(415, """{"error":"unsupported media type"}""", null) to TermsAcceptResult.NotRecorded,
+            Triple(404, """{"error":"not found"}""", null) to TermsAcceptResult.NotRecorded,
+            Triple(500, "", null) to TermsAcceptResult.NotRecorded,
+        )
+        for ((answer, result) in rows) {
+            val (code, body, retryAfter) = answer
+            assertEquals("$code $body", result, acceptTerms(code, body, retryAfter))
+        }
+    }
+
+    /** No answer, and a key no request can carry (the page checks the key
+     *  first and never sends one), both read as not recorded; the second
+     *  sends nothing. */
+    @Test fun `acceptTerms with no connection, or with a key no request can carry, is not recorded`() {
+        val failing = PtCloudClient(
+            PtCloudTestSupport.config(ctx),
+            clientFactory = { PtCloudTestSupport.failingClient(IOException("refused")) },
+        )
+        assertEquals(TermsAcceptResult.NotRecorded, runBlocking { failing.acceptTerms(MINTED_KEY, TERMS_VERSION, "en") })
+        val seen = mutableListOf<Request>()
+        assertEquals(
+            TermsAcceptResult.NotRecorded,
+            runBlocking { termsClient(200, ACCEPTED, seen = seen).acceptTerms("abc\ndef", TERMS_VERSION, "en") },
+        )
+        assertTrue(seen.isEmpty())
+    }
+
+    /** Not a capture: each of these answers records a cooldown on a frame,
+     *  and two transport failures in a row would engage the network ladder. */
+    @Test fun `the terms calls record no cooldown and report no attempt`() {
+        val reported = mutableListOf<OnlineAttempt>()
+        TranslationBackendRegistry.onlineAttemptListener = { reported += it }
+        fetchTerms(200, terms())
+        fetchTerms(429, """{"error":"rate limited"}""", "60")
+        fetchTerms(410, """{"error":"service_closed","message":"closed"}""")
+        fetchTerms(500, "")
+        acceptTerms(200, ACCEPTED)
+        acceptTerms(401, """{"error":"unauthorized"}""")
+        acceptTerms(429, """{"error":"rate limited"}""", "60")
+        acceptTerms(503, """{"error":"terms_unavailable"}""", "10")
+        acceptTerms(410, """{"error":"service_closed","message":"closed"}""")
+        val failing = PtCloudClient(
+            PtCloudTestSupport.config(ctx),
+            clientFactory = { PtCloudTestSupport.failingClient(IOException("refused")) },
+        )
+        repeat(2) {
+            runBlocking { failing.fetchTerms(LOCALE) }
+            runBlocking { failing.acceptTerms(MINTED_KEY, TERMS_VERSION, "en") }
+        }
+        assertNull(PtCloudService.unavailableUntil())
+        assertTrue(reported.isEmpty())
+    }
+
+    @Test fun `the terms logs carry the status and the server's word, never the key, the locale or a body`() {
+        ShadowLog.clear()
+        fetchTerms(200, terms(text = shippedTerms()))
+        fetchTerms(429, """{"error":"rate limited"}""", "60")
+        acceptTerms(200, ACCEPTED)
+        acceptTerms(409, """{"error":"terms_outdated","version":"2026-11-15"}""")
+        val lines = ShadowLog.getLogsForTag("PtCloud").map { it.msg }
+        assertTrue(lines.toString(), "terms status=200" in lines)
+        assertTrue("a refusal names its word: $lines", "terms status=429 error=rate limited" in lines)
+        assertTrue(lines.toString(), "terms accept status=200" in lines)
+        assertTrue(lines.toString(), "terms accept status=409 error=terms_outdated" in lines)
+        for (secret in listOf(MINTED_KEY, KEY, LOCALE, TERMS_VERSION, "2026-11-15", "Version:", "Terms and Privacy", "**")) {
+            assertFalse("$secret in $lines", lines.any { secret in it })
+        }
+    }
+
     // ── GET /v1/warm ───────────────────────────────────────────────────
 
     @Test fun `warm is a GET on v1 warm with the key and no body, on the frame's own client`() {
@@ -709,6 +917,19 @@ class PtCloudRequestTest {
         const val SENT = """{"ok":true,"expires_in":600,"resend_after":60}"""
         /** 2026-11-03T12:00:00.000Z, the brief's trial end. */
         const val TRIAL_END_MS = 1_793_707_200_000L
+        /** The device's locale as the cloud page sends it
+         *  (`Locale.toLanguageTag`). */
+        const val LOCALE = "pt-BR"
+        /** The terms' version, the date on the text's `Version:` line. */
+        const val TERMS_VERSION = "2026-10-30"
+        /** The acceptance's 200. */
+        const val ACCEPTED = """{"ok":true,"version":"2026-10-30"}"""
+        /** A short text in the server's subset. */
+        const val TERMS_TEXT = "# PlayTranslate Cloud: Terms and Privacy\n\nVersion: 2026-10-30\n\n**Your account.** One per person."
+
+        /** The terms' 200 in the route's shape, [text] escaped as JSON. */
+        fun terms(version: String = TERMS_VERSION, locale: String = "en", text: String = TERMS_TEXT) =
+            """{"version":"$version","locale":"$locale","format":"markdown","text":${JsonPrimitive(text)}}"""
 
         /** A verify 200 in the brief's shape; each JSON value as written. */
         fun signedIn(

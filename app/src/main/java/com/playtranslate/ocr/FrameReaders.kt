@@ -76,18 +76,19 @@ object FrameReaders {
      * | on | true | any | any | any | any | any | device |
      * | on | false | none | any | any | any | any | device |
      * | on | false | some | no | any | any | any | device |
-     * | on | false | some | yes | inactive | any | any | device |
-     * | on | false | some | yes | entitled | not one the server reads | any | device |
-     * | on | false | some | yes | entitled | read | yes | device |
-     * | on | false | some | yes | entitled | read | no | cloud, then device |
+     * | on | false | some | yes | withheld | any | any | device |
+     * | on | false | some | yes | admitted | not one the server reads | any | device |
+     * | on | false | some | yes | admitted | read | yes | device |
+     * | on | false | some | yes | admitted | read | no | cloud, then device |
      *
-     * "Account" is [PtCloudConfig.entitled], the server's last word in the
-     * record kept beside the key: "inactive" is a record a 403 or a check's
-     * Inactive wrote ([CloudRefusal.NOT_ENTITLED]), which comes with both
+     * "Account" is [PtCloudConfig.admitted], the server's last word in the
+     * record kept beside the key: "withheld" is a record a 403 or a check's
+     * Inactive or TermsRequired wrote, an ended entitlement or the current
+     * terms not accepted ([CloudRefusal.NOT_ADMITTED]), which comes with both
      * switches off, so the switch answers first in practice. A trial or a
-     * lease whose dated end has passed on the device's clock is "entitled"
+     * lease whose dated end has passed on the device's clock is "admitted"
      * here: the read goes out, and the server's 403 ends the account
-     * ([PtCloudService.onEntitlementEnded]), the frame's own report being
+     * ([PtCloudService.onAccountWithheld]), the frame's own report being
      * the pill.
      *
      * "Network" is the default network as
@@ -111,8 +112,9 @@ object FrameReaders {
      * and every re-read of the camera's frozen frame or the import tool's
      * page after an engine pick there, which holds for that frame's review.
      * A stopped pod and a refused key
-     * are cooldowns ([PtCloudService]), and an ended account comes with the
-     * switch off ([PtCloudService.onEntitlementEnded]), so a
+     * are cooldowns ([PtCloudService]), and a withheld account (ended, or
+     * owing the current terms) comes with the switch off
+     * ([PtCloudService.onAccountWithheld]), so a
      * live tier or the camera's acquires read on the device while one holds
      * without stating anything.
      *

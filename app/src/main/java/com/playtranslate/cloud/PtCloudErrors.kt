@@ -22,8 +22,9 @@ import java.io.InterruptedIOException
  * translation ([PtCloudClient.postTranslate]). The capture falls back to the
  * device reader, a waterfall pass to its next backend; [failure] is what the
  * translation-error pill words. By the time this is thrown the failure's
- * cooldown is recorded, an ended account it carries is handed to the
- * service ([Classified.endedAccount]), and, on the frame route, its attempt
+ * cooldown is recorded, an account it says the server withholds service
+ * from is handed to the service ([Classified.withheldAccount]), and, on the
+ * frame route, its attempt
  * is reported (the registry reports the translate route's). The message names the kind and
  * the code only, since the registry logs it: never a text, the key, the
  * address or a body.
@@ -57,9 +58,10 @@ sealed interface CooldownAction {
 
     /** Nothing to record: a refusal the user or the developer fixes, a
      *  state (pod starting, deadline) that is not the service failing, or
-     *  an account with no active entitlement, whose answer turns the
-     *  service's switches off instead ([Classified.endedAccount],
-     *  [PtCloudService.onEntitlementEnded]). */
+     *  an account the server withholds service from (no active entitlement,
+     *  or the current terms not accepted), whose answer turns the service's
+     *  switches off instead ([Classified.withheldAccount],
+     *  [PtCloudService.onAccountWithheld]). */
     data object None : CooldownAction {
         override fun applyTo(cooldown: CooldownState) = Unit
     }
@@ -140,13 +142,14 @@ sealed interface CooldownAction {
 }
 
 /** A classified failure: what the pill says ([failure]), what the
- *  cooldown records ([cooldown]), and for a 403 `no_entitlement` the account
- *  the server described as ended ([endedAccount], null for every other
- *  answer), for the service to act on ([PtCloudService.onEntitlementEnded]). */
+ *  cooldown records ([cooldown]), and for a 403 that withholds service from
+ *  a known account (`no_entitlement`, `terms_required`) the account as the
+ *  server described it ([withheldAccount], null for every other answer), for
+ *  the service to act on ([PtCloudService.onAccountWithheld]). */
 data class Classified(
     val failure: BackendFailure,
     val cooldown: CooldownAction,
-    val endedAccount: KeyCheck.Inactive? = null,
+    val withheldAccount: KeyCheck.Withheld? = null,
 ) {
     fun record(state: CooldownState) = cooldown.applyTo(state)
 }
@@ -191,8 +194,9 @@ sealed interface TranslationOutcome {
  * `POST /v1/frame` ([PtCloudClient.postFrame]) and `POST /v1/translate`
  * ([PtCloudClient.postTranslate], the registry backend [PtCloudBackend]'s
  * call), and the one reading of the cloud page's calls: the key check
- * ([classifyKeyCheck]), the health check ([classifyHealth]) and the two
- * sign-in calls ([classifyRequestCode], [classifyVerifyCode]). Every row of
+ * ([classifyKeyCheck]), the health check ([classifyHealth]), the two
+ * sign-in calls ([classifyRequestCode], [classifyVerifyCode]) and the two
+ * terms calls ([classifyTerms], [classifyTermsAccept]). Every row of
  * the plan's tables is one branch of one of these pure functions, so each is
  * reachable by a test that asserts what it maps to (on the two routes, the
  * kind, the status code and the cooldown it records).
@@ -215,18 +219,22 @@ object PtCloudErrors {
      *    bad key ([CooldownAction.BadKeyLadder]): a key does not fix itself,
      *    and a read per capture or per camera scene while it holds would be
      *    waste; saving a key resets the cooldown.
-     *  - 403 `no_entitlement`: the key is good but its account has no active
-     *    entitlement. TRIAL_ENDED when the one that ended last is the trial
+     *  - 403 `no_entitlement` and 403 `terms_required`, the server
+     *    withholding service from a known account and saying why, both with
+     *    no cooldown (2026-10-29): the account the body describes
+     *    ([Classified.withheldAccount], read as the key check reads it,
+     *    [withheldAccount]) goes to the service, which writes the record and
+     *    turns both switches off ([PtCloudService.onAccountWithheld]), so no
+     *    reader asks again and no ladder is needed to keep them off.
+     *    `no_entitlement`: the key is good but its account has no active
+     *    entitlement; TRIAL_ENDED when the one that ended last is the trial
      *    ([EdgeError.lastSource] is [SOURCE_TRIAL]), else MEMBERSHIP_INACTIVE
-     *    (another, none, or a Worker that sent none), both with no cooldown
-     *    (2026-10-29): the account the body describes
-     *    ([Classified.endedAccount], its `last_source` and `ended_at`, read
-     *    as the key check reads them) goes to the service, which writes the
-     *    record and turns both switches off
-     *    ([PtCloudService.onEntitlementEnded]), so no reader asks again and
-     *    no ladder is needed to keep them off. Any other 403 (a body that is
-     *    not that, or none) is [httpStatusFailure] with no cooldown, as
-     *    below.
+     *    (another, none, or a Worker that sent none). `terms_required`: the
+     *    key is good and the account entitled, and it has not accepted the
+     *    current terms ([EdgeError.version] names them); TERMS_REQUIRED, the
+     *    terms being accepted on the cloud page, which the pill's gear opens.
+     *    Any other 403 (a body that is neither of those, or none) is
+     *    [httpStatusFailure] with no cooldown, as below.
      *  - 404 with an empty body: the service is switched off (its pod is
      *    stopped and the edge passes the pod host's bare 404 through). The
      *    RateLimit ladder as not running ([CooldownAction.NotRunningLadder]):
@@ -259,18 +267,19 @@ object PtCloudErrors {
      */
     fun classifyHttp(code: Int, body: String, retryAfter: String?): Classified = when (code) {
         401 -> Classified(BackendFailure(BackendFailureKind.AUTH, code), CooldownAction.BadKeyLadder)
-        403 -> {
-            val ended = endedAccount(edgeError(body))
-            if (ended != null) {
-                val kind = if (ended.lastSource == SOURCE_TRIAL) {
+        403 -> when (val withheld = withheldAccount(edgeError(body))) {
+            is KeyCheck.Inactive -> {
+                val kind = if (withheld.lastSource == SOURCE_TRIAL) {
                     BackendFailureKind.TRIAL_ENDED
                 } else {
                     BackendFailureKind.MEMBERSHIP_INACTIVE
                 }
-                Classified(BackendFailure(kind, code), CooldownAction.None, endedAccount = ended)
-            } else {
-                Classified(httpStatusFailure(code), CooldownAction.None)
+                Classified(BackendFailure(kind, code), CooldownAction.None, withheldAccount = withheld)
             }
+            is KeyCheck.TermsRequired -> Classified(
+                BackendFailure(BackendFailureKind.TERMS_REQUIRED, code), CooldownAction.None, withheldAccount = withheld,
+            )
+            null -> Classified(httpStatusFailure(code), CooldownAction.None)
         }
         404 -> if (body.isBlank()) {
             Classified(BackendFailure(BackendFailureKind.NOT_RUNNING, code), CooldownAction.NotRunningLadder)
@@ -305,10 +314,12 @@ object PtCloudErrors {
      *    status alone proves the key good.
      *  - 401: [KeyCheck.Refused], whatever the body.
      *  - 403 `no_entitlement`: [KeyCheck.Inactive] with its `last_source` and
-     *    `ended_at`, both null when the Worker left them out.
+     *    `ended_at`, both null when the Worker left them out; 403
+     *    `terms_required`: [KeyCheck.TermsRequired] with the version the body
+     *    names. Read as the routes read the same 403 ([withheldAccount]).
      *  - 410 `service_closed`: [KeyCheck.Closed] with the operator's message.
-     *  - anything else, a 403 or a 410 without its word included:
-     *    [KeyCheck.NotChecked], no verdict on the key.
+     *  - anything else, a 403 without either word or a 410 without its word
+     *    included: [KeyCheck.NotChecked], no verdict on the key.
      * Dates that do not parse ([parseIso8601]) read as null.
      */
     fun classifyKeyCheck(code: Int, body: () -> String): KeyCheck = when (code) {
@@ -316,7 +327,7 @@ object PtCloudErrors {
             KeyCheck.Accepted(ok?.source, parseIso8601(ok?.entitledUntil))
         }
         401 -> KeyCheck.Refused
-        403 -> endedAccount(edgeError(body())) ?: KeyCheck.NotChecked
+        403 -> withheldAccount(edgeError(body())) ?: KeyCheck.NotChecked
         410 -> edgeError(body())?.takeIf { it.error == SERVICE_CLOSED }
             ?.let { KeyCheck.Closed(it.message) }
             ?: KeyCheck.NotChecked
@@ -418,26 +429,84 @@ object PtCloudErrors {
         return VerifyResult.SignedIn(ok.key, account)
     }
 
+    /**
+     * `GET /v1/terms`'s answer ("Terms" in docs/api.md), for the cloud page:
+     *  - 200: [TermsResult.Text] with the body's version, locale and text
+     *    ([TermsBody]); a 200 that does not decode (a field missing, or a
+     *    body cut at the client's read limit) is [TermsResult.Unavailable].
+     *  - 404: [TermsResult.NotAvailable], a Worker from before the route: no
+     *    terms to show, never a refusal.
+     *  - 410 `service_closed`: [TermsResult.Closed] with the operator's
+     *    message; any other 410 is [TermsResult.Unavailable].
+     *  - anything else, the per-address 429 and the 503
+     *    `terms_misconfigured` included: [TermsResult.Unavailable].
+     * No answer at all is the client's to read ([TermsResult.Unreachable]).
+     */
+    fun classifyTerms(code: Int, body: String): TermsResult = when (code) {
+        200 -> decoded<TermsBody>(body)?.let { TermsResult.Text(it.version, it.locale, it.text) }
+            ?: TermsResult.Unavailable
+        404 -> TermsResult.NotAvailable
+        410 -> edgeError(body)?.takeIf { it.error == SERVICE_CLOSED }
+            ?.let { TermsResult.Closed(it.message) }
+            ?: TermsResult.Unavailable
+        else -> TermsResult.Unavailable
+    }
+
+    /**
+     * `POST /v1/terms/accept`'s answer ("Accepting the terms" in
+     * docs/api.md), row for row:
+     *  - 200: [TermsAcceptResult.Accepted], recorded now or before.
+     *  - 409 `terms_outdated`: [TermsAcceptResult.Outdated] with the current
+     *    version the body names; any other 409 is
+     *    [TermsAcceptResult.NotRecorded].
+     *  - 401: [TermsAcceptResult.Refused], whatever the body.
+     *  - 410 `service_closed`: [TermsAcceptResult.Closed] with the operator's
+     *    message; any other 410 is [TermsAcceptResult.NotRecorded].
+     *  - anything else: [TermsAcceptResult.NotRecorded], the per-address 429,
+     *    every 503 (`terms_unavailable`, `auth unavailable`,
+     *    `terms_misconfigured`) and a 400, 413 or 415 (a request the app
+     *    never sends) among them.
+     * No answer at all is the client's to read, as not recorded.
+     */
+    fun classifyTermsAccept(code: Int, body: String): TermsAcceptResult {
+        val error = edgeError(body)
+        return when {
+            code == 200 -> TermsAcceptResult.Accepted
+            code == 409 && error?.error == TERMS_OUTDATED -> TermsAcceptResult.Outdated(error.version)
+            code == 401 -> TermsAcceptResult.Refused
+            code == 410 && error?.error == SERVICE_CLOSED -> TermsAcceptResult.Closed(error.message)
+            else -> TermsAcceptResult.NotRecorded
+        }
+    }
+
     /** A `Retry-After` header as the sign-in routes send it, whole seconds,
      *  read as given; null when it is missing or not a number. */
     fun retryAfterSeconds(header: String?): Int? = header?.toIntOrNull()
 
     /** The `error` word of the edge's JSON error body, or null when [body]
      *  is not one; the only part of a body a log line may carry (a sign-in
-     *  refusal's, [PtCloudClient]). */
+     *  call's or a terms call's refusal, [PtCloudClient]). */
     fun errorWord(body: String): String? = edgeError(body)?.error
 
     /** [body] as the edge's JSON error object, or null when it is not one. */
     private fun edgeError(body: String): EdgeError? = decoded(body)
 
-    /** A 403's [error] body as the ended account it describes: the edge's
-     *  `no_entitlement` as [KeyCheck.Inactive] with its `last_source` and
-     *  `ended_at` (both null when the Worker left them out; a date that
-     *  does not parse reads as null), anything else as null. The one reading
-     *  of that 403, for the two routes ([classifyHttp]) and the key check
-     *  ([classifyKeyCheck]), so the two cannot diverge. */
-    private fun endedAccount(error: EdgeError?): KeyCheck.Inactive? =
-        error?.takeIf { it.error == NO_ENTITLEMENT }?.let { KeyCheck.Inactive(it.lastSource, parseIso8601(it.endedAt)) }
+    /** A 403's [error] body as the account the server withholds service
+     *  from, and why: the edge's `no_entitlement` as [KeyCheck.Inactive] with
+     *  its `last_source` and `ended_at` (both null when the Worker left them
+     *  out; a date that does not parse reads as null), its `terms_required`
+     *  as [KeyCheck.TermsRequired] with the version it names, anything else
+     *  as null. The one reading of a withholding 403, for the two routes
+     *  ([classifyHttp]) and the key check ([classifyKeyCheck]), so the two
+     *  cannot diverge. */
+    private fun withheldAccount(error: EdgeError?): KeyCheck.Withheld? {
+        if (error == null) return null
+        return when (error.error) {
+            NO_ENTITLEMENT -> KeyCheck.Inactive(error.lastSource, parseIso8601(error.endedAt))
+            TERMS_REQUIRED -> KeyCheck.TermsRequired(error.version)
+            else -> null
+        }
+    }
 
     /** [body] decoded leniently as [T], or null when it does not decode. */
     private inline fun <reified T> decoded(body: String): T? = try {
@@ -571,6 +640,14 @@ object PtCloudErrors {
 
     /** The edge's 403 `error` for a key whose account has no membership. */
     private const val NO_ENTITLEMENT = "no_entitlement"
+
+    /** The edge's 403 `error` for a key whose account is entitled and has
+     *  not accepted the current terms. */
+    private const val TERMS_REQUIRED = "terms_required"
+
+    /** The terms acceptance's 409 `error` for a version that is not the
+     *  current one. */
+    private const val TERMS_OUTDATED = "terms_outdated"
 
     /** Any route's 410 `error` while the service is closed. */
     private const val SERVICE_CLOSED = "service_closed"

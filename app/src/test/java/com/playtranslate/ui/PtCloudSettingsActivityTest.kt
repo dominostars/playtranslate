@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import android.app.Activity
 import android.app.Application
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -8,8 +9,13 @@ import android.content.Intent
 import android.graphics.Typeface
 import android.os.Build
 import android.os.Looper
+import android.os.SystemClock
 import android.text.InputType
+import android.text.Spanned
+import android.text.TextPaint
+import android.text.style.ClickableSpan
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
@@ -23,6 +29,7 @@ import androidx.core.view.children
 import androidx.core.view.isVisible
 import androidx.test.core.app.ApplicationProvider
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.checkbox.MaterialCheckBox
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.Prefs
 import com.playtranslate.R
@@ -36,6 +43,8 @@ import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.cloud.PtCloudTestSupport
 import com.playtranslate.cloud.PtCloudTestSupport.KEY
 import com.playtranslate.cloud.SignInAnswer
+import com.playtranslate.cloud.TermsAcceptResult
+import com.playtranslate.cloud.TermsResult
 import com.playtranslate.cloud.VerifyResult
 import com.playtranslate.cloud.deviceLabel
 import com.playtranslate.security.SecretCodec
@@ -45,8 +54,10 @@ import com.playtranslate.translation.CooldownState
 import com.playtranslate.translation.GroupTranslator
 import com.playtranslate.translation.TranslationBackendRegistry
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -62,8 +73,11 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
+import org.robolectric.shadows.ShadowActivity
+import org.robolectric.shadows.ShadowChoreographer
 import org.robolectric.shadows.ShadowToast
 import java.time.Duration
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -72,9 +86,10 @@ import kotlin.math.roundToInt
  * Above everything, in every state, the intro paragraph naming the service;
  * the ACCOUNT and CONFIGURATION group headers title the cards under them;
  * Try for Free, Start Free Trial and Join share one shape, 56dp and bold.
- * The account card: signed out it shows the email field, Try for Free and
- * the privacy sentence; a request's answers move it to the code field or
- * hold Try for Free, each in its wording and for the address it answered,
+ * The account card: signed out it shows the email field, the agreement box
+ * with its sentence, Try for Free and the privacy sentence; a request's
+ * answers move it to the code field or hold Try for Free, each in its
+ * wording and for the address it answered,
  * a refused Send a new code staying where it is; the hold and its notice
  * outlive a recreate, as the pending sign-in does; the code field keeps
  * six digits of whatever is pasted, and
@@ -102,13 +117,38 @@ import kotlin.math.roundToInt
  * they repaint from the service's change signal when flipped elsewhere; and
  * the status row shows the health check's answer.
  *
+ * The terms: signed out, the box under the address field is the
+ * agreement. Try for Free with it unticked lights it in its error state and
+ * sends nothing; a press on its row off the sentence's link toggles it, and
+ * the link opens the terms page to read, whose Agree ticks the box and
+ * sends nothing and whose Cancel leaves it. With the box ticked, Try for
+ * Free fetches the terms for the device's locale and asks for the code at
+ * once, the version served at that tap being what the acceptance names; a
+ * 404 asks for the code with nothing to accept, a fetch that fails says
+ * why (the link's too) and a 410 closes. The box keeps its tick across a
+ * recreate and is unticked once a key is stored. The agreement is sent
+ * once the verify stored the key, read before the store, a 401 within 10 s
+ * asked once more and a 409 opening the newer text. Signed in, a check's
+ * 403 terms_required shows Terms not accepted with the terms row in place
+ * of Join and Already joined?, and opens the terms once an episode, which
+ * only a check's Accepted ends; Agree there sends the acceptance, the
+ * resume skipping its check meanwhile, and the check after it turns both
+ * switches on. The terms page opens only while the page is resumed, an
+ * answer for a flow the key no longer matches is dropped, and Sign out
+ * cancels a terms call in flight.
+ * The terms page's answers arrive through the page's result registry, in
+ * production's order: the page stopped behind it, the answer at its start,
+ * then its resume ([answerTerms]).
+ *
  * A stored key is asserted through a fake codec installed on the service:
  * the page's own [Prefs] uses the AndroidKeyStore codec, which a JVM test has
  * none of. No call reaches the service: every test answers them through the
- * page's four seams, by default with calls that never end, which [tearDown]
- * cancels with the page. The stored key's check reads the key on the IO
- * dispatcher, a real thread, before it asks, so a test waits for that check
- * to arrive ([awaitCalls]).
+ * page's six seams, by default with calls that never end, which [tearDown]
+ * cancels with the page, but for the terms' fetch, which answers 404 (a
+ * server from before the terms), so Try for Free, which [sendCodeTo] taps
+ * with the box ticked, asks for the code as it did before them. The stored
+ * key's check reads the key on the IO dispatcher, a real thread, before it
+ * asks, so a test waits for that check to arrive ([awaitCalls]).
  */
 @RunWith(RobolectricTestRunner::class)
 class PtCloudSettingsActivityTest {
@@ -125,6 +165,8 @@ class PtCloudSettingsActivityTest {
         PtCloudSettingsActivity.keyCheckOverrideForTest = { awaitCancellation() }
         PtCloudSettingsActivity.requestCodeOverrideForTest = { awaitCancellation() }
         PtCloudSettingsActivity.verifyOverrideForTest = { _, _, _ -> awaitCancellation() }
+        PtCloudSettingsActivity.termsOverrideForTest = { TermsResult.NotAvailable }
+        PtCloudSettingsActivity.acceptTermsOverrideForTest = { _, _, _ -> awaitCancellation() }
     }
 
     @After fun tearDown() {
@@ -134,6 +176,8 @@ class PtCloudSettingsActivityTest {
         PtCloudSettingsActivity.keyCheckOverrideForTest = null
         PtCloudSettingsActivity.requestCodeOverrideForTest = null
         PtCloudSettingsActivity.verifyOverrideForTest = null
+        PtCloudSettingsActivity.termsOverrideForTest = null
+        PtCloudSettingsActivity.acceptTermsOverrideForTest = null
         // A flip reconciles the shared cache's routing identity.
         TranslationCache.shared.resetForTest()
         PtCloudService.installForTest(null)
@@ -169,6 +213,9 @@ class PtCloudSettingsActivityTest {
     private fun View.switch() = findViewById<MaterialSwitch>(R.id.switchRowToggle)
     private fun View.title() = findViewById<TextView>(R.id.tvRowTitle).text.toString()
     private fun PtCloudSettingsActivity.emailField() = findViewById<EditText>(R.id.etCloudEmail)
+    private fun PtCloudSettingsActivity.agreeRow() = findViewById<View>(R.id.rowCloudAgree)
+    private fun PtCloudSettingsActivity.agreeBox() = findViewById<MaterialCheckBox>(R.id.cbCloudAgree)
+    private fun PtCloudSettingsActivity.agreeSentence() = findViewById<TextView>(R.id.tvCloudAgree)
     private fun PtCloudSettingsActivity.codeField() = findViewById<EditText>(R.id.etCloudCode)
     private fun PtCloudSettingsActivity.sendCodeButton() = findViewById<MaterialButton>(R.id.btnCloudSendCode)
     private fun PtCloudSettingsActivity.signInButton() = findViewById<MaterialButton>(R.id.btnCloudSignIn)
@@ -219,9 +266,11 @@ class PtCloudSettingsActivityTest {
         window.decorView.allViews.filterIsInstance<Button>()
             .single { it.id == View.NO_ID && it.text.toString() == label }
 
-    /** Types [email] and taps Send code (Try for Free). */
-    private fun PtCloudSettingsActivity.sendCodeTo(email: String = EMAIL) {
+    /** Types [email], ticks the agreement box unless [agreed] is false (a
+     *  box ticked already stays so), and taps Send code (Try for Free). */
+    private fun PtCloudSettingsActivity.sendCodeTo(email: String = EMAIL, agreed: Boolean = true) {
         emailField().setText(email)
+        if (agreed) agreeBox().isChecked = true
         sendCodeButton().performClick()
         idle()
     }
@@ -716,11 +765,13 @@ class PtCloudSettingsActivityTest {
 
     // ── Signed out ────────────────────────────────────────────────────────
 
-    /** The form is the email field, Try for Free (which sends the code) and
-     *  the one privacy sentence, centred under the button as a notice there
-     *  and Join's line are: no intro line of its own, no device clause,
-     *  no usage sentence and no way to paste a key, shown or hidden. */
-    @Test fun `signed out shows the email field, Try for Free and the privacy sentence centred under it, with no intro line and no paste link`() {
+    /** The form is the email field, the agreement (the box, unticked, and
+     *  its sentence, whose last words are the one link, in the accent colour
+     *  with no underline), Try for Free (which sends the code) and the one
+     *  privacy sentence, centred under the button as a notice there and
+     *  Join's line are: no intro line of its own, no device clause, no usage
+     *  sentence and no way to paste a key, shown or hidden. */
+    @Test fun `signed out shows the email field, the agreement box, Try for Free and the privacy sentence centred under it, with no intro line and no paste link`() {
         val page = open()
 
         assertTrue(page.shown(R.id.groupSignedOut))
@@ -728,7 +779,30 @@ class PtCloudSettingsActivityTest {
         assertFree(page, page.sendCodeButton(), R.id.progressCloudSendCode, "Try PlayTranslate Cloud for Free")
         val texts = page.shownTexts()
         assertTrue(texts.toString(), "Email address" in texts)
+        assertTrue(texts.toString(), "I agree to the Terms and Privacy" in texts)
         assertTrue(texts.toString(), "Your email address is used to send you a sign-in code." in texts)
+        // The agreement's row, between the field and Try for Free.
+        val group = page.findViewById<ViewGroup>(R.id.groupSignedOut)
+        val row = page.agreeRow()
+        assertTrue(row.isShown)
+        assertEquals("under the field", group.indexOfChild(page.emailField()) + 1, group.indexOfChild(row))
+        assertEquals("above Try for Free", group.indexOfChild(row) + 1, group.indexOfChild(page.sendCodeButton().parent as View))
+        val box = page.agreeBox()
+        assertSame(row, box.parent)
+        assertFalse("unticked", box.isChecked)
+        assertFalse("not in error", box.isErrorShown)
+        assertTrue(box.isEnabled)
+        assertEquals("", box.text.toString())
+        assertEquals("Agree to the terms to continue.", box.errorAccessibilityLabel.toString())
+        val sentence = page.agreeSentence()
+        assertSame(row, sentence.parent)
+        assertEquals("I agree to the Terms and Privacy", sentence.text.toString())
+        val text = sentence.text as Spanned
+        val link = page.termsLink()
+        assertEquals("Terms and Privacy", text.subSequence(text.getSpanStart(link), text.getSpanEnd(link)).toString())
+        val paint = TextPaint().also { link.updateDrawState(it) }
+        assertEquals("in the accent colour", page.themeColor(R.attr.ptAccent), paint.color)
+        assertFalse("not underlined", paint.isUnderlineText)
         for (line in listOf(R.id.tvSignInPrivacy, R.id.tvSignInNotice)) {
             assertEquals(
                 page.resources.getResourceEntryName(line) + " centred",
@@ -1590,7 +1664,7 @@ class PtCloudSettingsActivityTest {
         assertTrue("the rows stay live while entitled", page.ocrRow().isEnabled && page.ocrRow().switch().isEnabled)
         val endedAt = now() - DAY
 
-        PtCloudService.onEntitlementEnded(KEY, PtCloudService.accountGeneration, KeyCheck.Inactive("kofi", endedAt))
+        PtCloudService.onAccountWithheld(KEY, PtCloudService.accountGeneration, KeyCheck.Inactive("kofi", endedAt))
         idle()
 
         assertEquals("Membership inactive since " + CooldownTimeLabel.formatDate(endedAt), page.accountLine())
@@ -1610,7 +1684,7 @@ class PtCloudSettingsActivityTest {
         val page = open()
         awaitCalls(checks, 1)
         val endedAt = now() - DAY
-        PtCloudService.onEntitlementEnded(KEY, PtCloudService.accountGeneration, KeyCheck.Inactive("kofi", endedAt))
+        PtCloudService.onAccountWithheld(KEY, PtCloudService.accountGeneration, KeyCheck.Inactive("kofi", endedAt))
         idle()
         assertFalse(cloudPrefs.ptCloudOcrEnabled || cloudPrefs.ptCloudTranslateEnabled)
 
@@ -1622,7 +1696,7 @@ class PtCloudSettingsActivityTest {
 
         // The record moves again under the second check: dropped too, and
         // the page says it could not check, asking no third time.
-        PtCloudService.onEntitlementEnded(KEY, PtCloudService.accountGeneration, KeyCheck.Inactive("kofi", endedAt))
+        PtCloudService.onAccountWithheld(KEY, PtCloudService.accountGeneration, KeyCheck.Inactive("kofi", endedAt))
         checks.answer(KeyCheck.Accepted("kofi", until))
         settleIo()
         assertEquals(2, checks.sent.size)
@@ -2074,6 +2148,963 @@ class PtCloudSettingsActivityTest {
         assertTrue(page.shown(R.id.groupSignedOut))
     }
 
+    // ── The terms ─────────────────────────────────────────────────────────
+
+    private fun termsFetches(vararg answers: TermsResult) = Calls<String, TermsResult>(*answers)
+        .also { c -> PtCloudSettingsActivity.termsOverrideForTest = { c.take(it) } }
+
+    private fun accepts(vararg answers: TermsAcceptResult) = Calls<List<String>, TermsAcceptResult>(*answers)
+        .also { c ->
+            PtCloudSettingsActivity.acceptTermsOverrideForTest = { key, version, locale -> c.take(listOf(key, version, locale)) }
+        }
+
+    /** The terms as the server serves them at [version], in English. */
+    private fun terms(version: String = TERMS_VERSION) = TermsResult.Text(version, "en", TERMS_MARKDOWN)
+
+    /** The terms page's launches since the last look, oldest first (the
+     *  instrumentation hands every launch back newest first). */
+    private fun PtCloudSettingsActivity.termsLaunches(): List<ShadowActivity.IntentForResult> =
+        generateSequence { shadowOf(this).nextStartedActivityForResult }.toList().reversed()
+            .filter { it.intent.component?.className == PtCloudTermsActivity::class.java.name }
+
+    /** The terms page's Agree for [launch]: the version and the locale it was
+     *  given, echoed. */
+    private fun agreement(launch: ShadowActivity.IntentForResult): Intent = Intent()
+        .putExtra(PtCloudTermsActivity.EXTRA_VERSION, launch.intent.getStringExtra(PtCloudTermsActivity.EXTRA_VERSION))
+        .putExtra(PtCloudTermsActivity.EXTRA_LOCALE, launch.intent.getStringExtra(PtCloudTermsActivity.EXTRA_LOCALE))
+
+    /** The terms page answers [launch] in production's order: this page
+     *  paused and stopped behind it, the answer dispatched, then this page
+     *  started (where the registry delivers it) and resumed. */
+    private fun answerTerms(launch: ShadowActivity.IntentForResult, resultCode: Int, data: Intent?) {
+        val c = controller!!
+        c.pause().stop()
+        c.get().activityResultRegistry.dispatchResult(launch.requestCode, resultCode, data)
+        c.start().resume()
+        idle()
+    }
+
+    private fun agreeTo(launch: ShadowActivity.IntentForResult) =
+        answerTerms(launch, Activity.RESULT_OK, agreement(launch))
+
+    private fun cancelTerms(launch: ShadowActivity.IntentForResult) =
+        answerTerms(launch, Activity.RESULT_CANCELED, null)
+
+    /** Try for Free with the box ticked, the terms served and the code
+     *  request answered 200: the page in code sent, holding the agreement to
+     *  the version served, with no terms page opened (the box is the
+     *  agreement). */
+    private fun PtCloudSettingsActivity.agreedAndCodeSent() {
+        sendCodeTo()
+        assertTrue("no page", termsLaunches().isEmpty())
+        assertTrue(shown(R.id.groupCodeSent))
+    }
+
+    /** The agreement sentence's one link. */
+    private fun PtCloudSettingsActivity.termsLink(): ClickableSpan {
+        val text = agreeSentence().text as Spanned
+        return text.getSpans(0, text.length, ClickableSpan::class.java).single()
+    }
+
+    /** Taps the agreement sentence's link, as its movement does. */
+    private fun PtCloudSettingsActivity.tapTermsLink() {
+        termsLink().onClick(agreeSentence())
+        idle()
+    }
+
+    private fun PtCloudSettingsActivity.showTermsChip() = findViewById<View>(R.id.btnCloudShowTerms)
+
+    /** Ticking the box is the agreement: Try for Free with it unticked,
+     *  never held for it, lights the box in its error state, shakes it (a
+     *  sideways wobble that settles where it was) and sends nothing, as a
+     *  refused address is told on its field; a tap on the row ticks it and
+     *  clears the error, and the next Try for Free goes. */
+    @Test fun `Try for Free with the box unticked lights and shakes the box and sends nothing, and ticking it clears the error`() {
+        val fetches = termsFetches(TermsResult.NotAvailable)
+        val requests = requests()
+        val page = open()
+
+        // The shake plays out frame by frame as the looper's clock moves
+        // only while Robolectric's Choreographer is paused (otherwise its
+        // frames never come, and an animator stays at its first value).
+        ShadowChoreographer.setPaused(true)
+        ShadowChoreographer.setFrameDelay(Duration.ofMillis(16))
+        val shake = try {
+            page.sendCodeTo(agreed = false)
+            (1..20).map {
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(30))
+                page.agreeBox().translationX
+            }
+        } finally {
+            ShadowChoreographer.setPaused(false)
+        }
+        assertTrue("the box shook: $shake", shake.any { it != 0f })
+        assertEquals("and settled where it was", 0f, shake.last())
+        assertTrue("the box in its error state", page.agreeBox().isErrorShown)
+        assertFalse(page.agreeBox().isChecked)
+        assertTrue("nothing fetched", fetches.sent.isEmpty())
+        assertTrue("nothing asked", requests.sent.isEmpty())
+        assertTrue(page.termsLaunches().isEmpty())
+        assertTrue(page.shown(R.id.groupSignedOut))
+        assertNull(page.notice())
+        assertFree(page, page.sendCodeButton(), R.id.progressCloudSendCode, "Try PlayTranslate Cloud for Free")
+
+        page.agreeRow().performClick()
+        idle()
+
+        assertTrue("the row ticks it", page.agreeBox().isChecked)
+        assertFalse("the tick clears the error", page.agreeBox().isErrorShown)
+        page.sendCodeTo(agreed = false)
+        assertEquals(1, fetches.sent.size)
+        assertEquals(listOf(EMAIL), requests.sent)
+    }
+
+    /** A press as the window delivers one, through the row: off the
+     *  sentence's link, and beside the text, the row takes it and toggles
+     *  the box (the framework's link movement alone would take every press
+     *  on the text); on the link it opens the terms and leaves the box
+     *  alone. */
+    @Test fun `a press on the sentence off the link toggles the box, and one on the link opens the terms without toggling it`() {
+        val fetches = termsFetches()
+        val page = open()
+        val row = page.agreeRow() as ViewGroup
+        val sentence = page.agreeSentence()
+        val layout = sentence.layout
+        val linkAt = sentence.text.toString().indexOf("Terms and Privacy")
+        // In the row's coordinates: the middle of the character at an
+        // offset, on the sentence's one line.
+        fun xOf(offset: Int) = sentence.left + sentence.totalPaddingLeft +
+            (layout.getPrimaryHorizontal(offset) + layout.getPrimaryHorizontal(offset + 1)) / 2
+        val y = sentence.top + sentence.totalPaddingTop + (layout.getLineTop(0) + layout.getLineBottom(0)) / 2f
+        fun press(x: Float) {
+            val at = SystemClock.uptimeMillis()
+            row.dispatchTouchEvent(MotionEvent.obtain(at, at, MotionEvent.ACTION_DOWN, x, y, 0))
+            row.dispatchTouchEvent(MotionEvent.obtain(at, at + 50, MotionEvent.ACTION_UP, x, y, 0))
+            idle()
+        }
+        assertEquals("one line", 1, layout.lineCount)
+
+        press(xOf(2))
+        assertTrue("off the link: ticked", page.agreeBox().isChecked)
+        press(sentence.left + sentence.width - 1f)
+        assertFalse("beside the text: unticked", page.agreeBox().isChecked)
+        assertTrue(fetches.sent.isEmpty())
+
+        press(xOf(linkAt + 3))
+        assertEquals("on the link: the terms fetched", 1, fetches.sent.size)
+        assertFalse("the box left alone", page.agreeBox().isChecked)
+    }
+
+    /** With the box ticked, the terms are fetched for the device's locale
+     *  with Try for Free busy and the field and the agreement locked, then
+     *  the code is asked for at once, with no page: the version and the
+     *  locale served are what the acceptance after the verify names. */
+    @Test fun `Try for Free fetches the terms for the device locale with Try for Free busy, then requests the code with the version served`() {
+        cloudPrefs()
+        val fetches = termsFetches()
+        val requests = requests(CodeRequestResult.Sent(600, 60))
+        val accepts = accepts()
+        val page = open()
+
+        page.sendCodeTo()
+
+        assertEquals(listOf(Locale.getDefault().toLanguageTag()), fetches.sent)
+        assertBusy(page, page.sendCodeButton(), R.id.progressCloudSendCode)
+        assertFalse("the field locked while it runs", page.emailField().isEnabled)
+        for (view in listOf(page.agreeRow(), page.agreeBox(), page.agreeSentence())) {
+            assertFalse("the agreement locked too", view.isEnabled)
+        }
+        assertTrue("no code before the terms", requests.sent.isEmpty())
+
+        fetches.answer(terms())
+
+        assertEquals(listOf(EMAIL), requests.sent)
+        assertTrue("no page", page.termsLaunches().isEmpty())
+        assertTrue(page.shown(R.id.groupCodeSent))
+        verifies(VerifyResult.SignedIn(KEY, KeyCheck.Accepted("trial", now() + 7 * DAY)))
+        page.signInWith("482913")
+        assertEquals(listOf(listOf(KEY, TERMS_VERSION, "en")), accepts.sent)
+    }
+
+    /** The link opens the terms to read: fetched for the device's locale
+     *  (Try for Free busy meanwhile, the form's one spinner), then the terms
+     *  page with the text. Agree there ticks the box and sends nothing, and
+     *  reaches a page rebuilt behind the terms page (a theme change); Cancel
+     *  leaves the box as it was, ticked or not. */
+    @Test fun `the link opens the terms page to read, Agree there ticks the box and sends nothing, and Cancel leaves it unticked`() {
+        val fetches = termsFetches()
+        val requests = requests()
+        val accepts = accepts()
+        val page = open()
+
+        page.tapTermsLink()
+
+        assertEquals(listOf(Locale.getDefault().toLanguageTag()), fetches.sent)
+        assertBusy(page, page.sendCodeButton(), R.id.progressCloudSendCode)
+        assertTrue(page.termsLaunches().isEmpty())
+        fetches.answer(terms())
+        val launch = page.termsLaunches().single()
+        assertEquals(TERMS_VERSION, launch.intent.getStringExtra(PtCloudTermsActivity.EXTRA_VERSION))
+        assertEquals("en", launch.intent.getStringExtra(PtCloudTermsActivity.EXTRA_LOCALE))
+        assertEquals(TERMS_MARKDOWN, launch.intent.getStringExtra(PtCloudTermsActivity.EXTRA_TEXT))
+        assertFree(page, page.sendCodeButton(), R.id.progressCloudSendCode, "Try PlayTranslate Cloud for Free")
+        assertFalse(page.agreeBox().isChecked)
+
+        controller!!.recreate()
+        idle()
+        agreeTo(launch)
+
+        val rebuilt = controller!!.get()
+        assertTrue("Agree ticks the box", rebuilt.agreeBox().isChecked)
+        assertTrue(rebuilt.shown(R.id.groupSignedOut))
+        assertNull(rebuilt.notice())
+        settleIo()
+        assertTrue("nothing asked", requests.sent.isEmpty())
+        assertTrue("nothing accepted", accepts.sent.isEmpty())
+
+        rebuilt.tapTermsLink()
+        fetches.answer(terms())
+        cancelTerms(rebuilt.termsLaunches().single())
+        assertTrue("Cancel leaves it ticked", rebuilt.agreeBox().isChecked)
+
+        rebuilt.agreeRow().performClick()
+        idle()
+        assertFalse("the row unticks it", rebuilt.agreeBox().isChecked)
+        rebuilt.tapTermsLink()
+        fetches.answer(terms())
+        cancelTerms(rebuilt.termsLaunches().single())
+
+        assertFalse("Cancel leaves it unticked", rebuilt.agreeBox().isChecked)
+        assertTrue(rebuilt.shown(R.id.groupSignedOut))
+        assertEquals(3, fetches.sent.size)
+        settleIo()
+        assertTrue(requests.sent.isEmpty())
+        assertTrue(accepts.sent.isEmpty())
+    }
+
+    /** The terms are fetched at every Try for Free and never skipped, and
+     *  the agreement is the version served at the last tap: a newer text
+     *  served at the second tap is the one the acceptance names. */
+    @Test fun `each Try for Free fetches the terms and the acceptance after the verify carries the version served at the last tap`() {
+        cloudPrefs()
+        val fetches = termsFetches(terms(), terms(NEWER_TERMS))
+        val requests = requests(CodeRequestResult.Sent(600, 60), CodeRequestResult.Sent(600, 60))
+        val accepts = accepts()
+        val page = open()
+        page.agreedAndCodeSent()
+        page.findViewById<View>(R.id.btnCloudChangeEmail).performClick()
+        idle()
+
+        page.sendCodeTo("other@example.com")
+
+        assertEquals("fetched at each tap", 2, fetches.sent.size)
+        assertTrue("no page either time", page.termsLaunches().isEmpty())
+        assertEquals(listOf(EMAIL, "other@example.com"), requests.sent)
+        assertTrue(page.shown(R.id.groupCodeSent))
+        verifies(VerifyResult.SignedIn(KEY, KeyCheck.Accepted("trial", now() + 7 * DAY)))
+        page.signInWith("482913")
+        assertEquals("the version served at the last tap", listOf(listOf(KEY, NEWER_TERMS, "en")), accepts.sent)
+    }
+
+    /** The box keeps its tick across a recreate as the address field keeps
+     *  its text, by its id with no fact of the page's (its error is not
+     *  kept, as the field's error is not), and Use a different email leaves
+     *  it, so the next Try for Free asks with no page; the agreement held
+     *  for the verify rides the recreate with the pending sign-in. */
+    @Test fun `the box and the pending sign-in survive a recreate and Use a different email`() {
+        cloudPrefs()
+        val fetches = termsFetches(terms(), terms(NEWER_TERMS))
+        val requests = requests(CodeRequestResult.Sent(600, 60), CodeRequestResult.Sent(600, 60))
+        val accepts = accepts()
+        val page = open()
+        page.sendCodeTo(agreed = false)
+        assertTrue(page.agreeBox().isErrorShown)
+
+        controller!!.recreate()
+        idle()
+        val rebuilt = controller!!.get()
+        assertFalse("the error is not kept", rebuilt.agreeBox().isErrorShown)
+        assertFalse(rebuilt.agreeBox().isChecked)
+        rebuilt.agreedAndCodeSent()
+
+        controller!!.recreate()
+        idle()
+        val again = controller!!.get()
+        assertTrue("the pending sign-in", again.shown(R.id.groupCodeSent))
+        again.findViewById<View>(R.id.btnCloudChangeEmail).performClick()
+        idle()
+        assertTrue("the box kept its tick", again.agreeBox().isChecked)
+        again.sendCodeTo(agreed = false)
+
+        assertEquals(2, fetches.sent.size)
+        assertEquals(listOf(EMAIL, EMAIL), requests.sent)
+        assertTrue("no page", again.termsLaunches().isEmpty())
+        assertTrue(again.shown(R.id.groupCodeSent))
+
+        controller!!.recreate()
+        idle()
+        verifies(VerifyResult.SignedIn(KEY, KeyCheck.Accepted("trial", now() + 7 * DAY)))
+        controller!!.get().signInWith("482913")
+        assertEquals("the agreement rode the recreate", listOf(listOf(KEY, NEWER_TERMS, "en")), accepts.sent)
+    }
+
+    /** The link's fetch says what Try for Free's says, under the button: a
+     *  503 and no answer each their notice, which the text clears; a server
+     *  from before the terms (a 404) has nothing to show, and the form stays
+     *  as it is with nothing asked; a 410 shows the closed card. */
+    @Test fun `a link's fetch that fails says why under the button, its 404 shows nothing, and its 410 the closed card`() {
+        termsFetches(
+            TermsResult.Unavailable, TermsResult.Unreachable, terms(), TermsResult.NotAvailable,
+            TermsResult.Closed("PlayTranslate Cloud closed on Nov 30. Thank you for using it."),
+        )
+        val requests = requests()
+        val page = open()
+
+        page.tapTermsLink()
+        assertEquals("Couldn't load the terms. Try again in a minute.", page.notice())
+        page.tapTermsLink()
+        assertEquals("Couldn't reach PlayTranslate Cloud. Make sure you're online and try again.", page.notice())
+        assertTrue(page.termsLaunches().isEmpty())
+        assertFree(page, page.sendCodeButton(), R.id.progressCloudSendCode, "Try PlayTranslate Cloud for Free")
+
+        page.tapTermsLink()
+        assertNull("the text came: the notice is gone", page.notice())
+        cancelTerms(page.termsLaunches().single())
+
+        page.tapTermsLink()
+        assertNull("a 404 says nothing", page.notice())
+        assertTrue("and opens nothing", page.termsLaunches().isEmpty())
+        assertTrue(page.shown(R.id.groupSignedOut))
+        assertFalse(page.agreeBox().isChecked)
+        assertFree(page, page.sendCodeButton(), R.id.progressCloudSendCode, "Try PlayTranslate Cloud for Free")
+
+        page.tapTermsLink()
+        assertTrue(page.shown(R.id.cardCloudClosed))
+        assertEquals("PlayTranslate Cloud closed on Nov 30. Thank you for using it.", page.text(R.id.tvCloudClosedMessage))
+        assertFalse(page.shown(R.id.cardCloudAccount))
+        settleIo()
+        assertTrue("no code asked for", requests.sent.isEmpty())
+    }
+
+    /** The box, like the fields, is not wanted at the next sign-in, which
+     *  may be another person's on this device: the verify's stored key
+     *  unticks it, so Sign out shows the form empty and unticked. */
+    @Test fun `storing the key unticks the box`() {
+        cloudPrefs()
+        val page = open()
+        page.codeSent()
+        assertTrue(page.agreeBox().isChecked)
+        verifies(VerifyResult.SignedIn(KEY, KeyCheck.Accepted("trial", now() + 7 * DAY)))
+        page.signInWith("482913")
+        assertTrue(page.shown(R.id.groupSignedIn))
+
+        page.signOut()
+
+        assertTrue(page.shown(R.id.groupSignedOut))
+        assertFalse("the box unticked", page.agreeBox().isChecked)
+        assertFalse(page.agreeBox().isErrorShown)
+        assertEquals("the address empty", "", page.emailField().text.toString())
+    }
+
+    /** A server from before the terms answers their route 404: there is
+     *  nothing to show, so the code is asked for at once, and nothing to
+     *  accept after the verify. */
+    @Test fun `a 404 from the terms proceeds to the code request and sends no acceptance after the verify`() {
+        cloudPrefs()
+        val fetches = termsFetches(TermsResult.NotAvailable)
+        val accepts = accepts()
+        val page = open()
+        val requests = page.codeSent()
+        assertEquals(1, fetches.sent.size)
+        assertEquals(listOf(EMAIL), requests.sent)
+        assertTrue("no page", page.termsLaunches().isEmpty())
+        verifies(VerifyResult.SignedIn(KEY, KeyCheck.Accepted("trial", now() + 7 * DAY)))
+
+        page.signInWith("482913")
+
+        assertTrue(page.shown(R.id.groupSignedIn))
+        settleIo()
+        assertTrue("nothing to accept", accepts.sent.isEmpty())
+    }
+
+    /** The code request would fail as the fetch did, so none is sent; the
+     *  notice says why, and Try for Free is not held. The notice is the
+     *  fetch's own: the fetch that brings the text clears it as the code is
+     *  asked for. */
+    @Test fun `an unavailable or unreachable terms fetch shows its notice and sends no code request, and the fetch that brings the text clears it`() {
+        termsFetches(TermsResult.Unavailable, TermsResult.Unreachable, terms())
+        val requests = requests()
+        val page = open()
+
+        page.sendCodeTo()
+        assertEquals("Couldn't load the terms. Try again in a minute.", page.notice())
+        assertTrue(page.shown(R.id.groupSignedOut))
+        assertFree(page, page.sendCodeButton(), R.id.progressCloudSendCode, "Try PlayTranslate Cloud for Free")
+
+        page.sendCodeTo()
+        assertEquals("Couldn't reach PlayTranslate Cloud. Make sure you're online and try again.", page.notice())
+        assertTrue("no hold", page.sendCodeButton().isEnabled)
+
+        assertTrue(requests.sent.isEmpty())
+        assertTrue(page.termsLaunches().isEmpty())
+
+        page.sendCodeTo()
+        assertNull("the text came: the failed fetch's notice is gone", page.notice())
+        assertEquals("the code asked for", listOf(EMAIL), requests.sent)
+        assertTrue("no page", page.termsLaunches().isEmpty())
+    }
+
+    @Test fun `a 410 from the terms shows the closed card`() {
+        termsFetches(TermsResult.Closed("PlayTranslate Cloud closed on Nov 30. Thank you for using it."))
+        val requests = requests()
+        val page = open()
+
+        page.sendCodeTo()
+
+        assertTrue(page.shown(R.id.cardCloudClosed))
+        assertEquals("PlayTranslate Cloud closed on Nov 30. Thank you for using it.", page.text(R.id.tvCloudClosedMessage))
+        assertFalse(page.shown(R.id.cardCloudAccount))
+        assertTrue(requests.sent.isEmpty())
+        assertTrue(page.termsLaunches().isEmpty())
+    }
+
+    /** The acceptance goes with the key the verify answered, the version and
+     *  the locale the text came with, and the page is signed in at once.
+     *  The verify answers off the main thread, as the client does, so its
+     *  answer comes back through the main looper and the store's change
+     *  signal repaints inside the store, as in production: an agreement read
+     *  after the store would be gone, and nothing would be sent. */
+    @Test fun `a verify 200 after a ticked Try for Free sends the acceptance with the new key, the version and the locale, and shows the signed-in card without waiting on it`() {
+        val cloudPrefs = cloudPrefs()
+        termsFetches(terms())
+        requests(CodeRequestResult.Sent(600, 60))
+        val accepts = accepts()
+        val page = open()
+        page.agreedAndCodeSent()
+        PtCloudSettingsActivity.verifyOverrideForTest = { _, _, _ ->
+            withContext(Dispatchers.IO) { VerifyResult.SignedIn(KEY, KeyCheck.Accepted("trial", now() + 7 * DAY)) }
+        }
+
+        page.codeField().setText("482913")
+        page.signInButton().performClick()
+        awaitCalls(accepts, 1)
+
+        assertEquals(listOf(listOf(KEY, TERMS_VERSION, "en")), accepts.sent)
+        assertEquals(KEY, cloudPrefs.ptCloudClientKey)
+        assertTrue("signed in, the acceptance still out", page.shown(R.id.groupSignedIn))
+        assertTrue(page.accountLine()!!.startsWith("Free trial until "))
+        assertTrue(page.ocrRow().switch().isEnabled && page.ocrRow().switch().isChecked)
+        assertFalse("no terms row", page.shown(R.id.rowCloudTerms))
+        assertFalse(page.shown(R.id.progressCloudSignIn))
+    }
+
+    /** A key just minted can answer 401 while the nearest replica catches
+     *  up, so the acceptance has the key check's one retry, a second later,
+     *  and no more. */
+    @Test fun `a 401 on that acceptance within 10 s of the store is retried once`() {
+        cloudPrefs()
+        termsFetches(terms())
+        requests(CodeRequestResult.Sent(600, 60))
+        val accepts = accepts(TermsAcceptResult.Refused, TermsAcceptResult.Refused)
+        val page = open()
+        page.agreedAndCodeSent()
+        verifies(VerifyResult.SignedIn(KEY, KeyCheck.Accepted("trial", now() + 7 * DAY)))
+
+        page.signInWith("482913")
+        assertEquals(1, accepts.sent.size)
+        idleFor(1)
+
+        assertEquals("asked once more a second later", listOf(listOf(KEY, TERMS_VERSION, "en"), listOf(KEY, TERMS_VERSION, "en")), accepts.sent)
+        idleFor(30)
+        settleIo()
+        assertEquals("and no more", 2, accepts.sent.size)
+        assertEquals("a 401 there clears nothing", KEY, PtCloudService.config.clientKey)
+        assertTrue(page.shown(R.id.groupSignedIn))
+    }
+
+    /** The send outlives the page: a back press or a recreate inside the
+     *  acceptance's round trip (here, inside its retry's second) would
+     *  otherwise drop the agreement unrecorded, for the gate's 403 to meet
+     *  the first capture. The answer that comes to a page gone acts on
+     *  nothing. */
+    @Test fun `the acceptance after a verify completes after the page is destroyed`() {
+        cloudPrefs()
+        termsFetches(terms())
+        requests(CodeRequestResult.Sent(600, 60))
+        val accepts = accepts(TermsAcceptResult.Refused)
+        val page = open()
+        page.agreedAndCodeSent()
+        verifies(VerifyResult.SignedIn(KEY, KeyCheck.Accepted("trial", now() + 7 * DAY)))
+        page.signInWith("482913")
+        assertEquals(1, accepts.sent.size)
+
+        controller!!.pause().stop().destroy()
+        controller = null
+        idleFor(1)
+
+        assertEquals("the retry sent after the page is gone", 2, accepts.sent.size)
+        accepts.answer(TermsAcceptResult.Accepted)
+        assertEquals("the key stays stored", KEY, PtCloudService.config.clientKey)
+    }
+
+    /** A resume inside the acceptance's round trip after a verify checks no
+     *  key: a check sent then could reach the server before the acceptance's
+     *  write and answer the terms owed, turning both switches off with
+     *  nothing to turn them on again, since that acceptance asks for no
+     *  check. The next resume checks as ever. */
+    @Test fun `a pause and resume during the acceptance after a verify sends no key check, and the next resume does`() {
+        cloudPrefs()
+        termsFetches(terms())
+        requests(CodeRequestResult.Sent(600, 60))
+        val accepts = accepts()
+        val checks = keyChecks(KeyCheck.Accepted("trial", now() + 7 * DAY))
+        val page = open()
+        page.agreedAndCodeSent()
+        verifies(VerifyResult.SignedIn(KEY, KeyCheck.Accepted("trial", now() + 7 * DAY)))
+        page.signInWith("482913")
+        assertEquals(1, accepts.sent.size)
+
+        resume()
+        settleIo()
+        assertTrue("no check while the acceptance runs", checks.sent.isEmpty())
+        assertTrue(page.shown(R.id.groupSignedIn))
+
+        accepts.answer(TermsAcceptResult.Accepted)
+        resume()
+        awaitCalls(checks, 1)
+        assertEquals(listOf(KEY), checks.sent)
+    }
+
+    /** The text changed between the fetch and the verify: the newer one is
+     *  fetched and opened, for the signed-in account now. A Cancel there
+     *  leaves the terms owed, and the next resume's 403 says so without
+     *  opening them again. */
+    @Test fun `a 409 on that acceptance fetches the text and opens the page again, and a Cancel there does not reopen them on the next resume's 403`() {
+        val cloudPrefs = cloudPrefs()
+        val fetches = termsFetches(terms(), terms(NEWER_TERMS))
+        requests(CodeRequestResult.Sent(600, 60))
+        accepts(TermsAcceptResult.Outdated(NEWER_TERMS))
+        val checks = keyChecks(KeyCheck.TermsRequired(NEWER_TERMS))
+        val page = open()
+        page.agreedAndCodeSent()
+        verifies(VerifyResult.SignedIn(KEY, KeyCheck.Accepted("trial", now() + 7 * DAY)))
+
+        page.signInWith("482913")
+
+        assertEquals("the newer text fetched", 2, fetches.sent.size)
+        val newer = page.termsLaunches().single()
+        assertEquals(NEWER_TERMS, newer.intent.getStringExtra(PtCloudTermsActivity.EXTRA_VERSION))
+
+        cancelTerms(newer)
+        awaitCalls(checks, 1)
+
+        assertFalse("the 403 turned both switches off", cloudPrefs.ptCloudOcrEnabled || cloudPrefs.ptCloudTranslateEnabled)
+        assertEquals("Terms not accepted", page.accountLine())
+        assertTrue(page.shown(R.id.rowCloudTerms))
+        settleIo()
+        assertEquals("not fetched again", 2, fetches.sent.size)
+        assertTrue("not opened again", page.termsLaunches().isEmpty())
+    }
+
+    /** An acceptance the server did not record after the verify changes
+     *  nothing here: the page is signed in, the switches on, nothing is
+     *  shown, fetched or sent again; the server's gate asks at the next
+     *  check or capture. */
+    @Test fun `a failed acceptance after the verify changes nothing on the page`() {
+        val cloudPrefs = cloudPrefs()
+        val fetches = termsFetches(terms())
+        requests(CodeRequestResult.Sent(600, 60))
+        val accepts = accepts(TermsAcceptResult.NotRecorded)
+        val page = open()
+        page.agreedAndCodeSent()
+        verifies(VerifyResult.SignedIn(KEY, KeyCheck.Accepted("trial", now() + 7 * DAY)))
+
+        page.signInWith("482913")
+
+        assertEquals(1, accepts.sent.size)
+        assertTrue(page.shown(R.id.groupSignedIn))
+        assertTrue(page.accountLine()!!.startsWith("Free trial until "))
+        assertFalse(page.shown(R.id.rowCloudTerms))
+        assertFalse(page.shown(R.id.tvTermsNotice))
+        assertTrue("both switches on", cloudPrefs.ptCloudOcrEnabled && cloudPrefs.ptCloudTranslateEnabled)
+        idleFor(30)
+        settleIo()
+        assertEquals("not sent again", 1, accepts.sent.size)
+        assertEquals("nothing fetched again", 1, fetches.sent.size)
+        assertTrue(page.termsLaunches().isEmpty())
+    }
+
+    /** The service turns both switches off for the 403 (the check's answer
+     *  is its word); the page says Terms not accepted in the alert colour,
+     *  with the terms row and its chip in place of Join and Already joined?,
+     *  hides the cooldown line, and opens the terms by itself, once: a
+     *  second resume's same answer opens nothing more. */
+    @Test fun `a resume's 403 terms_required turns both switches off, shows Terms not accepted in the alert colour with the terms row and no Join, and opens the terms once`() {
+        val cloudPrefs = signedIn(trial(now() + 5 * DAY))
+        recordCooldown()
+        val fetches = termsFetches(terms())
+        val checks = keyChecks()
+        val page = open()
+        assertTrue("on the trial, Join", page.shown(R.id.btnCloudJoin))
+        assertTrue(page.cooldownLine().isShown)
+
+        awaitCalls(checks, 1)
+        checks.answer(KeyCheck.TermsRequired(TERMS_VERSION))
+
+        assertFalse(cloudPrefs.ptCloudOcrEnabled || cloudPrefs.ptCloudTranslateEnabled)
+        page.assertRowsDisabledAndOff()
+        assertEquals("Terms not accepted", page.accountLine())
+        assertEquals("in the alert colour", page.themeColor(R.attr.ptDanger), page.accountLineColor())
+        assertTrue(page.shown(R.id.dividerCloudTerms))
+        assertTrue(page.shown(R.id.rowCloudTerms))
+        assertEquals("Read and accept the terms to keep using PlayTranslate Cloud.", page.text(R.id.tvTermsPending))
+        assertFalse("no notice", page.shown(R.id.tvTermsNotice))
+        assertFalse("no Join", page.shown(R.id.btnCloudJoin))
+        assertFalse(page.shown(R.id.dividerCloudJoin))
+        assertFalse("no Already joined?", page.shown(R.id.rowCloudCheckAgain))
+        assertFalse("the cooldown line hidden", page.cooldownLine().isShown)
+        // The chip is the Check again chip's twin, at the right end of its
+        // row, the row under Already joined?'s place in the account card.
+        val chip = page.findViewById<ViewGroup>(R.id.btnCloudShowTerms)
+        val signOut = page.findViewById<ViewGroup>(R.id.btnCloudSignOut)
+        assertEquals("Show terms", chip.contentDescription.toString())
+        assertTrue("no text on it", chip.allViews.none { it is TextView })
+        assertEquals("the sign-out chip's size", signOut.layoutParams.width, chip.layoutParams.width)
+        assertEquals(signOut.layoutParams.height, chip.layoutParams.height)
+        val glyph = chip.allViews.filterIsInstance<ImageView>().single()
+        assertEquals(page.themeColor(R.attr.ptTextHint), glyph.imageTintList!!.defaultColor)
+        val row = chip.parent as LinearLayout
+        assertSame(chip, row.getChildAt(row.childCount - 1))
+        val group = page.findViewById<ViewGroup>(R.id.groupSignedIn)
+        val afterCheckAgain = group.indexOfChild(page.findViewById(R.id.rowCloudCheckAgain))
+        assertEquals(afterCheckAgain + 1, group.indexOfChild(page.findViewById(R.id.dividerCloudTerms)))
+        assertEquals(afterCheckAgain + 2, group.indexOfChild(row))
+        assertEquals(afterCheckAgain + 3, group.indexOfChild(page.findViewById(R.id.tvTermsNotice)))
+        // Opened by itself, with the text fetched for the device's locale.
+        assertEquals(listOf(Locale.getDefault().toLanguageTag()), fetches.sent)
+        assertEquals(TERMS_MARKDOWN, page.termsLaunches().single().intent.getStringExtra(PtCloudTermsActivity.EXTRA_TEXT))
+
+        resume()
+        awaitCalls(checks, 2)
+        checks.answer(KeyCheck.TermsRequired(TERMS_VERSION))
+        settleIo()
+        assertEquals("once", 1, fetches.sent.size)
+        assertTrue(page.termsLaunches().isEmpty())
+    }
+
+    /** Opened once an episode by itself: after a Cancel the resume's same
+     *  403 shows the row and opens nothing, the chip opens the terms on
+     *  demand, and a Cancel after the chip opens nothing by itself either. */
+    @Test fun `Cancel then a resume's same 403 does not reopen the terms, the chip does, and a Cancel after the chip does not reopen them either`() {
+        signedIn(trial(now() + 5 * DAY))
+        val fetches = termsFetches(terms(), terms())
+        val checks = keyChecks(
+            KeyCheck.TermsRequired(TERMS_VERSION), KeyCheck.TermsRequired(TERMS_VERSION), KeyCheck.TermsRequired(TERMS_VERSION),
+        )
+        val accepts = accepts()
+        val page = open()
+        awaitCalls(checks, 1)
+
+        cancelTerms(page.termsLaunches().single())
+        awaitCalls(checks, 2)
+        settleIo()
+        assertEquals(1, fetches.sent.size)
+        assertTrue("not reopened", page.termsLaunches().isEmpty())
+        assertTrue(page.shown(R.id.rowCloudTerms))
+        assertTrue(page.showTermsChip().isEnabled)
+
+        page.showTermsChip().performClick()
+        idle()
+        assertEquals(2, fetches.sent.size)
+        cancelTerms(page.termsLaunches().single())
+        awaitCalls(checks, 3)
+        settleIo()
+
+        assertEquals(2, fetches.sent.size)
+        assertTrue("not reopened", page.termsLaunches().isEmpty())
+        assertTrue(accepts.sent.isEmpty())
+    }
+
+    /** The answer arrives at the page's start, so the acceptance is out when
+     *  the resume would check the key: that check could reach the server
+     *  before the acceptance's write and answer the terms owed, so the resume
+     *  asks nothing, and the acceptance's own check is the next word. */
+    @Test fun `Agree while signed in, delivered before the resume, sends one acceptance and one check and no second launch, the resume skipping its key check while the acceptance runs`() {
+        val cloudPrefs = signedIn(trial(now() + 5 * DAY))
+        val fetches = termsFetches(terms())
+        val checks = keyChecks(KeyCheck.TermsRequired(TERMS_VERSION))
+        val accepts = accepts()
+        val page = open()
+        awaitCalls(checks, 1)
+
+        agreeTo(page.termsLaunches().single())
+        awaitCalls(accepts, 1)
+        settleIo()
+
+        assertEquals(listOf(listOf(KEY, TERMS_VERSION, "en")), accepts.sent)
+        assertEquals("the resume asked nothing", 1, checks.sent.size)
+        assertFalse("the chip waits on the acceptance", page.showTermsChip().isEnabled)
+        assertTrue(page.shown(R.id.progressCloudShowTerms))
+
+        accepts.answer(TermsAcceptResult.Accepted)
+        awaitCalls(checks, 2)
+        checks.answer(KeyCheck.Accepted("trial", now() + 5 * DAY))
+        settleIo()
+
+        assertEquals("one acceptance", 1, accepts.sent.size)
+        assertEquals("one check after it", 2, checks.sent.size)
+        assertEquals(1, fetches.sent.size)
+        assertTrue("no second launch", page.termsLaunches().isEmpty())
+        assertTrue(cloudPrefs.ptCloudOcrEnabled && cloudPrefs.ptCloudTranslateEnabled)
+    }
+
+    /** The acceptance's 200 does not end the episode; its check's Accepted
+     *  does. A stale 403 to that check (a word from before the write) opens
+     *  nothing; the next check's Accepted turns both switches on through the
+     *  service, the row goes and Join is back for the trial; and a later
+     *  change of the terms opens them once again. */
+    @Test fun `an Accepted check after the acceptance turns both switches on, hides the row and clears the shown fact`() {
+        val cloudPrefs = signedIn(trial(now() + 5 * DAY))
+        val fetches = termsFetches(terms(), terms(NEWER_TERMS))
+        val checks = keyChecks(KeyCheck.TermsRequired(TERMS_VERSION))
+        accepts(TermsAcceptResult.Accepted)
+        val page = open()
+        awaitCalls(checks, 1)
+        agreeTo(page.termsLaunches().single())
+
+        awaitCalls(checks, 2)
+        checks.answer(KeyCheck.TermsRequired(TERMS_VERSION))
+        settleIo()
+        assertTrue("a stale 403 opens nothing", page.termsLaunches().isEmpty())
+        assertEquals(1, fetches.sent.size)
+        assertTrue(page.shown(R.id.rowCloudTerms))
+
+        resume()
+        awaitCalls(checks, 3)
+        checks.answer(KeyCheck.Accepted("trial", now() + 5 * DAY))
+
+        assertTrue("both on again", cloudPrefs.ptCloudOcrEnabled && cloudPrefs.ptCloudTranslateEnabled)
+        for (row in listOf(page.ocrRow(), page.translateRow())) {
+            assertTrue("live", row.switch().isEnabled)
+            assertTrue("on", row.switch().isChecked)
+        }
+        assertFalse(page.shown(R.id.rowCloudTerms))
+        assertFalse(page.shown(R.id.dividerCloudTerms))
+        assertTrue(page.accountLine()!!.startsWith("Free trial until "))
+        assertTrue("Join is back for the trial", page.shown(R.id.btnCloudJoin))
+
+        resume()
+        awaitCalls(checks, 4)
+        checks.answer(KeyCheck.TermsRequired(NEWER_TERMS))
+        assertEquals(2, fetches.sent.size)
+        assertEquals(NEWER_TERMS, page.termsLaunches().single().intent.getStringExtra(PtCloudTermsActivity.EXTRA_VERSION))
+    }
+
+    /** Each answer of a signed-in terms call, under the terms row: a 409 on
+     *  the acceptance fetches the newer text and opens it; an acceptance not
+     *  recorded, a fetch's 503 and a fetch with no answer each say so, the
+     *  last naming the service, and a fetch that opens the page clears the
+     *  notice; a 401 on the acceptance acts only through the check that
+     *  follows it, which clears the key. */
+    @Test fun `a 409 while signed in fetches and reopens, a 503 shows its notice under the row, an unreachable fetch shows the unreachable notice with the service's name, and a 401 clears the key through the check`() {
+        val cloudPrefs = signedIn(trial(now() + 5 * DAY))
+        val fetches = termsFetches(
+            terms(), terms(NEWER_TERMS), TermsResult.Unavailable, TermsResult.Unreachable, terms(NEWER_TERMS),
+        )
+        val checks = keyChecks(KeyCheck.TermsRequired(TERMS_VERSION), KeyCheck.Refused)
+        val accepts = accepts(TermsAcceptResult.Outdated(NEWER_TERMS), TermsAcceptResult.NotRecorded, TermsAcceptResult.Refused)
+        val page = open()
+        awaitCalls(checks, 1)
+
+        agreeTo(page.termsLaunches().single())
+        awaitCalls(accepts, 1)
+        assertEquals("the newer text fetched", 2, fetches.sent.size)
+        val newer = page.termsLaunches().single()
+        assertEquals(NEWER_TERMS, newer.intent.getStringExtra(PtCloudTermsActivity.EXTRA_VERSION))
+
+        agreeTo(newer)
+        awaitCalls(accepts, 2)
+        assertEquals(listOf(KEY, NEWER_TERMS, "en"), accepts.sent[1])
+        assertTrue(page.shown(R.id.tvTermsNotice))
+        assertEquals("Couldn't record your acceptance. Try again.", page.text(R.id.tvTermsNotice))
+        assertTrue(page.shown(R.id.rowCloudTerms))
+        settleIo()
+        assertEquals("no check after it", 1, checks.sent.size)
+
+        page.showTermsChip().performClick()
+        idle()
+        assertEquals("Couldn't load the terms. Try again in a minute.", page.text(R.id.tvTermsNotice))
+        assertTrue(page.shown(R.id.tvTermsNotice))
+        page.showTermsChip().performClick()
+        idle()
+        assertEquals("Couldn't reach PlayTranslate Cloud. Make sure you're online and try again.", page.text(R.id.tvTermsNotice))
+        assertTrue(page.termsLaunches().isEmpty())
+
+        page.showTermsChip().performClick()
+        idle()
+        assertFalse("the fetch that opens the page clears the notice", page.shown(R.id.tvTermsNotice))
+        agreeTo(page.termsLaunches().single())
+        awaitCalls(accepts, 3)
+        awaitCalls(checks, 2)
+
+        assertEquals("", cloudPrefs.ptCloudClientKey)
+        assertTrue(page.shown(R.id.groupSignedOut))
+        assertTrue(page.shown(R.id.tvKeyRefused))
+    }
+
+    /** A fetch that completes while the page is not in front (a fetch
+     *  outlives a pause) launches nothing, so the terms never open over
+     *  another screen, and leaves the shown fact as it was: the next
+     *  resume's 403 opens them. */
+    @Test fun `a fetch that completes while the page is paused launches nothing, and the next resume's 403 opens the terms`() {
+        signedIn(trial(now() + 5 * DAY))
+        val fetches = termsFetches()
+        val checks = keyChecks(KeyCheck.TermsRequired(TERMS_VERSION), KeyCheck.TermsRequired(TERMS_VERSION))
+        val page = open()
+        awaitCalls(checks, 1)
+        assertEquals("the fetch is out", 1, fetches.sent.size)
+        assertTrue(page.shown(R.id.progressCloudShowTerms))
+
+        controller!!.pause()
+        fetches.answer(terms())
+
+        assertTrue("nothing launched while paused", page.termsLaunches().isEmpty())
+
+        controller!!.resume()
+        idle()
+        awaitCalls(checks, 2)
+        assertEquals(2, fetches.sent.size)
+        fetches.answer(terms())
+        assertEquals(TERMS_VERSION, page.termsLaunches().single().intent.getStringExtra(PtCloudTermsActivity.EXTRA_VERSION))
+    }
+
+    /** An answer acts only for the flow that opened the terms page while
+     *  that flow still matches the key: the account's Agree after another
+     *  copy signed out sends nothing (and nothing waits on it), and the
+     *  link's Agree after another copy signed in ticks no box and asks for
+     *  nothing. */
+    @Test fun `an agreement whose flow no longer matches the key (a sign-out in another copy while the terms were up) is dropped`() {
+        signedIn(trial(now() + 5 * DAY))
+        termsFetches(terms(), terms())
+        val checks = keyChecks(KeyCheck.TermsRequired(TERMS_VERSION))
+        val accepts = accepts()
+        val requests = requests()
+        val page = open()
+        awaitCalls(checks, 1)
+        val account = page.termsLaunches().single()
+        PtCloudService.saveClientKey("")
+        idle()
+
+        page.activityResultRegistry.dispatchResult(account.requestCode, Activity.RESULT_OK, agreement(account))
+
+        assertFree(page, page.sendCodeButton(), R.id.progressCloudSendCode, "Try PlayTranslate Cloud for Free")
+        idle()
+        settleIo()
+        assertTrue("no acceptance for a key that is gone", accepts.sent.isEmpty())
+        assertTrue(page.shown(R.id.groupSignedOut))
+
+        page.tapTermsLink()
+        val signIn = page.termsLaunches().single()
+        assertTrue(PtCloudService.saveClientKey(KEY, trial(now() + 5 * DAY)))
+        idle()
+
+        page.activityResultRegistry.dispatchResult(signIn.requestCode, Activity.RESULT_OK, agreement(signIn))
+        idle()
+        settleIo()
+
+        assertFalse("no box ticked for a page signed in", page.agreeBox().isChecked)
+        assertTrue("no code asked for while signed in", requests.sent.isEmpty())
+        assertTrue(accepts.sent.isEmpty())
+        assertTrue(page.shown(R.id.groupSignedIn))
+    }
+
+    /** Sign out cancels the terms calls for the key it forgets, a fetch and
+     *  an acceptance after a signed-in Agree, whose answers would otherwise
+     *  act for a key that is gone; the acceptance after a verify completes
+     *  for the key it was for (the agreement is the person's, recorded
+     *  whatever the page does next), its answer acting on nothing here. */
+    @Test fun `Sign out cancels a terms call in flight, and the acceptance after a verify completes with its answer acting on nothing`() {
+        val cancelled = mutableListOf<String>()
+        val fetches = Calls<String, TermsResult>()
+        PtCloudSettingsActivity.termsOverrideForTest = { locale ->
+            try {
+                fetches.take(locale)
+            } catch (e: CancellationException) {
+                cancelled += "fetch"
+                throw e
+            }
+        }
+        val accepts = Calls<List<String>, TermsAcceptResult>()
+        PtCloudSettingsActivity.acceptTermsOverrideForTest = { key, version, locale ->
+            try {
+                accepts.take(listOf(key, version, locale))
+            } catch (e: CancellationException) {
+                cancelled += "acceptance"
+                throw e
+            }
+        }
+        val cloudPrefs = signedIn(trial(now() + 5 * DAY))
+        val checks = keyChecks(KeyCheck.TermsRequired(TERMS_VERSION), KeyCheck.TermsRequired(TERMS_VERSION))
+        val page = open()
+        awaitCalls(checks, 1)
+        assertEquals("a fetch is out", 1, fetches.sent.size)
+
+        page.signOut()
+
+        assertEquals(listOf("fetch"), cancelled)
+        assertTrue(page.shown(R.id.groupSignedOut))
+        assertFree(page, page.sendCodeButton(), R.id.progressCloudSendCode, "Try PlayTranslate Cloud for Free")
+
+        // Signed in again: the acceptance after Agree.
+        assertTrue(PtCloudService.saveClientKey(KEY, trial(now() + 5 * DAY)))
+        idleFor(11)
+        resume()
+        awaitCalls(checks, 2)
+        fetches.answer(terms())
+        agreeTo(page.termsLaunches().single())
+        awaitCalls(accepts, 1)
+
+        page.signOut()
+
+        assertEquals(listOf("fetch", "acceptance"), cancelled)
+        assertTrue(page.shown(R.id.groupSignedOut))
+        assertFree(page, page.sendCodeButton(), R.id.progressCloudSendCode, "Try PlayTranslate Cloud for Free")
+
+        // The acceptance after a verify, agreed by the ticked tap.
+        requests(CodeRequestResult.Sent(600, 60))
+        page.sendCodeTo()
+        fetches.answer(terms())
+        assertTrue(page.shown(R.id.groupCodeSent))
+        verifies(VerifyResult.SignedIn(KEY, KeyCheck.Accepted("trial", now() + 7 * DAY)))
+        page.signInWith("482913")
+        awaitCalls(accepts, 2)
+
+        page.signOut()
+
+        assertEquals("the send after a verify completes for the key it was for", listOf("fetch", "acceptance"), cancelled)
+        assertEquals("", cloudPrefs.ptCloudClientKey)
+        assertTrue(page.shown(R.id.groupSignedOut))
+        // Its answer, to a page signed out meanwhile, acts on nothing: a
+        // newer text fetches and opens no terms.
+        val fetchesBefore = fetches.sent.size
+        page.termsLaunches()
+        accepts.answer(TermsAcceptResult.Outdated(NEWER_TERMS))
+        settleIo()
+        assertEquals("no fetch for a key that is gone", fetchesBefore, fetches.sent.size)
+        assertTrue(page.termsLaunches().isEmpty())
+        assertTrue(page.shown(R.id.groupSignedOut))
+    }
+
+    @Test fun `the hub digest and the account line agree on Terms not accepted`() {
+        signedIn(PtCloudAccount(email = EMAIL, active = true, termsRequired = true, checkedAtMs = now()))
+        val page = open()
+
+        assertEquals("Terms not accepted", page.accountLine())
+        assertEquals("Terms not accepted", RootSettingsViewModel(ctx as Application).state.value.cloudSummary)
+        assertTrue(page.shown(R.id.rowCloudTerms))
+        page.assertRowsDisabledAndOff()
+    }
+
     // ── Closed ────────────────────────────────────────────────────────────
 
     @Test fun `a 410 shows the closed card with the server's message and hides sign-in`() {
@@ -2165,6 +3196,10 @@ class PtCloudSettingsActivityTest {
     private companion object {
         const val EMAIL = "you@example.com"
         const val DAY = 24L * 60 * 60 * 1000
+        const val TERMS_VERSION = "2026-10-30"
+        const val NEWER_TERMS = "2026-11-15"
+        const val TERMS_MARKDOWN = "# PlayTranslate Cloud: Terms and Privacy\n\nVersion: 2026-10-30\n\n" +
+            "**Your account.** One account per person."
     }
 
     /** A codec whose every encryption fails, as a keystore that refuses the
