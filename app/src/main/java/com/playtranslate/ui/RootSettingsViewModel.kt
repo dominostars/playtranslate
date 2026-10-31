@@ -137,10 +137,12 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
         val cloudSummary: String,
         /** Whether the account is admitted ([PtCloudConfig.admitted]: a
          *  usable client key saved, its trial or membership not ended, and
-         *  no acceptance of the current terms owed). False mutes the cell's
-         *  icon: the subtitle is then the pitch (no key) or the reason
-         *  ("Trial ended", "Membership inactive", "Terms not accepted"), so
-         *  the icon is what says the service is not in play. */
+         *  no acceptance of the current terms owed). True lights the cell's
+         *  chip (an accent rim and a breathing glow on the accent glyph,
+         *  SettingsRenderer.HubCell.lit), whatever the switches say. False
+         *  mutes the cell's icon: the subtitle is then the pitch (no key) or
+         *  the reason ("Trial ended", "Membership inactive", "Terms not
+         *  accepted"), so the icon is what says the service is not in play. */
         val cloudAdmitted: Boolean,
         /** Yomitan CONFIGURE cell digest: import prompt when empty,
          *  dictionary count otherwise. Null until the first [refresh]
@@ -192,7 +194,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
      *  backend usability — installed models / keys / pair support), the Anki
      *  permission + deck/card, the TTS engine + voice, and the Cloud digest,
      *  whose account standing moves with the clock (a trial's end passing),
-     *  with the icon tint beside it. Called on resume. */
+     *  with the icon's tint and lit chip beside it. Called on resume. */
     fun refresh() {
         val (online, offline) = translationDigests()
         _state.value = _state.value.copy(

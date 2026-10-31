@@ -14,26 +14,35 @@
     android:clickable="true"
     android:focusable="true">
 
+    <!-- Clipping off so a lit chip's glow (GlowImageView) can overhang the
+         chip and spread into this row's padding, as the design's does; it
+         stays inside the row, whose root clips. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:paddingHorizontal="16dp"
-        android:paddingVertical="14dp">
+        android:paddingVertical="14dp"
+        android:clipChildren="false"
+        android:clipToPadding="false">
 
-        <!-- Slot 1: icon chip -->
+        <!-- Slot 1: icon chip (bg_hub_chip, or bg_hub_chip_lit for a lit cell) -->
         <FrameLayout
             android:id="@+id/hubRowChip"
             android:layout_width="36dp"
             android:layout_height="36dp"
             android:background="@drawable/bg_hub_chip">
 
-            <ImageView
+            <!-- The 22dp glyph inside 17dp of padding: the view is the size
+                 of a lit glyph's glow (it reaches ~25dp from the centre at
+                 its peak), centred on the chip and overhanging it. -->
+            <com.playtranslate.ui.GlowImageView
                 android:id="@+id/hubRowIcon"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
                 android:layout_gravity="center"
+                android:padding="17dp"
                 android:importantForAccessibility="no"
                 app:tint="?attr/ptAccent" />
         </FrameLayout>

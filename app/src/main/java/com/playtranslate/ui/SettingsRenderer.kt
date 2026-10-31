@@ -984,6 +984,11 @@ class SettingsRenderer(
                     title = ctx.getString(R.string.pt_cloud_display_name_alpha),
                     summary = state.cloudSummary,
                     onClick = { callbacks.openCloudSettings() },
+                    // Admitted (member or trial) lights the chip: an accent
+                    // rim and the accent glyph breathing a glow, whether or
+                    // not either route is switched on, since standing, not
+                    // routing, is what the cell's icon reports.
+                    lit = state.cloudAdmitted,
                 ),
             )
         } else {
@@ -1360,6 +1365,13 @@ class SettingsRenderer(
          *  reason replacing the summary, no trailing affordance, no
          *  interaction. */
         val disabledReason: String? = null,
+        /** The lit chip, for a service that is live for this user (the
+         *  PlayTranslate Cloud cell while the account is admitted): the
+         *  chip's rim in ptAccent (bg_hub_chip_lit) and the glyph breathing
+         *  a glow of its own colour (GlowImageView). The rest of the cell is
+         *  unchanged. A disabled cell is never lit. See
+         *  design_handoff_cloud_chip_admitted (option 4b). */
+        val lit: Boolean = false,
     )
 
     private fun bindHubCell(row: View, cell: HubCell) {
@@ -1368,11 +1380,16 @@ class SettingsRenderer(
         // branches set colors explicitly — rows are re-bound on refresh, so
         // an earlier disabled pass must not leak into an enabled one.
         val disabled = cell.disabledReason != null
-        val icon = row.findViewById<ImageView>(R.id.hubRowIcon)
+        val lit = cell.lit && !disabled
+        val icon = row.findViewById<GlowImageView>(R.id.hubRowIcon)
         icon.setImageResource(cell.iconRes)
         icon.imageTintList = ColorStateList.valueOf(
             ctx.themeColor(if (disabled) R.attr.ptTextHint else cell.iconTint)
         )
+        row.findViewById<View>(R.id.hubRowChip).setBackgroundResource(
+            if (lit) R.drawable.bg_hub_chip_lit else R.drawable.bg_hub_chip
+        )
+        icon.glowing = lit
         val title = row.findViewById<TextView>(R.id.hubRowTitle)
         title.text = cell.title
         title.setTextColor(
