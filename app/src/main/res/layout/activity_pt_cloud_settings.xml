@@ -4,7 +4,8 @@
      describes the service, signed in its rows are the two switches, and when
      the account lapses the Join card under it points back at them. Top to
      bottom: the terms banner while the current terms are not accepted; signed
-     out, the headline and the intro paragraph; the closed card while the
+     out, the hero while the sign-in form shows, then the headline and the
+     intro paragraph; the closed card while the
      service has closed, in the place of the sign-in card or of the ACCOUNT
      group; the sign-in card while signed out (the email form, then the code);
      the ACCOUNT group while signed in; the FEATURES group; signed out, the
@@ -143,8 +144,64 @@
                 android:visibility="gone"
                 style="@style/Text.PT.RowSubtitle" />
 
+            <!-- Signed out, while the sign-in form shows (not while a code is
+                 on its way, nor while closed): the hero, the service's logo
+                 over two lanes of traffic that flow into the cloud on the
+                 outer lanes and out of it on the middle one. Each lanes view
+                 runs from its outer edge to the row's centre, under the
+                 cloud, so the traffic shows through the PNG's transparent
+                 parts and goes behind the cloud itself; the right one is the
+                 left one mirrored. Left to right in every locale. The cloud
+                 at 156dp is 87dp tall, so the row is, the lanes' 84dp centred
+                 on it (the cloud reaches the PNG's top and bottom edges, so
+                 an 84dp row would cut its outline). 20dp under the toolbar,
+                 and 14dp over the headline: its own 26dp less the 12dp this
+                 row takes back, so with the row gone the headline keeps its
+                 26dp. -->
+            <FrameLayout
+                android:id="@+id/rowCloudHero"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:layout_marginBottom="-12dp"
+                android:layoutDirection="ltr"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="84dp"
+                    android:layout_gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <com.playtranslate.ui.TrafficLanesView
+                        android:id="@+id/viewTrafficLeft"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1" />
+
+                    <com.playtranslate.ui.TrafficLanesView
+                        android:id="@+id/viewTrafficRight"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:scaleX="-1" />
+                </LinearLayout>
+
+                <ImageView
+                    android:id="@+id/imgCloudHero"
+                    android:layout_width="@dimen/pt_cloud_hero_width"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:adjustViewBounds="true"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/pt_cloud_hero"
+                    android:contentDescription="@string/pt_cloud_display_name" />
+            </FrameLayout>
+
             <!-- Signed out: what the service is, inset as the group headers
-                 are. The paragraph names the service, so the page sets it. -->
+                 are. The paragraph names the service, so the page sets it.
+                 The top margin is the gap under the toolbar, and under the
+                 hero with the hero's negative margin. -->
             <TextView
                 android:id="@+id/tvCloudHeadline"
                 android:layout_width="match_parent"

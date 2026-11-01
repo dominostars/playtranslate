@@ -25,4 +25,9 @@
          (the Add row's "+") has to claim the same floor explicitly, or it sits
          short of the switch rows it shares a card with. -->
     <dimen name="pt_touch_target">48dp</dimen>
+
+    <!-- The cloud logo's width in the PlayTranslate Cloud page's hero. The
+         traffic lanes beside it (TrafficLanesView) run on under it to the
+         row's centre, and read this to know where it begins. -->
+    <dimen name="pt_cloud_hero_width">156dp</dimen>
 </resources>

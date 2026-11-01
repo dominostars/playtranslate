@@ -228,6 +228,7 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
     private lateinit var cardTerms: View
     private lateinit var showTermsButton: BusyButton
     private lateinit var tvTermsNotice: TextView
+    private lateinit var rowHero: View
     private lateinit var tvHeadline: View
     private lateinit var tvIntro: View
     private lateinit var cardClosed: View
@@ -433,6 +434,7 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         cardTerms = findViewById(R.id.cardCloudTerms)
         showTermsButton = BusyButton(findViewById(R.id.btnCloudShowTerms), findViewById(R.id.progressCloudShowTerms))
         tvTermsNotice = findViewById(R.id.tvTermsNotice)
+        rowHero = findViewById(R.id.rowCloudHero)
         tvHeadline = findViewById(R.id.tvCloudHeadline)
         tvIntro = findViewById(R.id.tvCloudIntro)
         cardClosed = findViewById(R.id.cardCloudClosed)
@@ -1295,10 +1297,11 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
      * key read first; no key drops what describes a stored key, the
      * unchecked line, the re-check after Join, and the terms' shown fact and
      * notice. Then the page, top to bottom: the terms banner while the terms
-     * are owed; signed out, the headline and the intro; the closed card while
-     * closed, in place of the sign-in card or of the ACCOUNT group; the
-     * sign-in card (the form, or the code) signed out; the ACCOUNT group
-     * signed in; the features in every state, a description signed out, live
+     * are owed; the hero while the sign-in form shows; signed out, the
+     * headline and the intro; the closed card while closed, in place of the
+     * sign-in card or of the ACCOUNT group; the sign-in card (the form, or
+     * the code) signed out; the ACCOUNT group signed in; the features in
+     * every state, a description signed out, live
      * while the account is admitted and the service open, else disabled and
      * off; signed out the privacy footnote, with the terms owed the paused
      * line; the lapsed Join card once the trial ended or no membership is
@@ -1343,7 +1346,10 @@ class PtCloudSettingsActivity : SettingsSubPageActivity() {
         tvTermsNotice.isVisible = termsDue && termsNoticeText != null
         showTermsButton.render(busy = busy == Step.TERMS, enabled = busy == null)
 
-        // Signed out: what the service is.
+        // Signed out: what the service is, under the hero while the sign-in
+        // form shows (the sign-in card's first step: not while a code is on
+        // its way, nor while closed).
+        rowHero.isVisible = !hasKey && !closed && signIn == null
         tvHeadline.isVisible = !hasKey
         tvIntro.isVisible = !hasKey
         cardClosed.isVisible = closed

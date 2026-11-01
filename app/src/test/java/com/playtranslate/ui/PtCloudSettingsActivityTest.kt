@@ -279,10 +279,11 @@ class PtCloudSettingsActivityTest {
         findViewById<ViewGroup>(R.id.columnCloud).children
             .filter { it.isVisible }.map { it.id }.toList()
 
-    /** The signed-out page's sections: what the service is, the sign-in
-     *  card, the features as a description and the privacy footnote. */
+    /** The signed-out page's sections with the sign-in form: the hero, what
+     *  the service is, the sign-in card, the features as a description and
+     *  the privacy footnote. */
     private val signedOutSections = listOf(
-        R.id.tvCloudHeadline, R.id.tvCloudIntro, R.id.cardCloudSignIn,
+        R.id.rowCloudHero, R.id.tvCloudHeadline, R.id.tvCloudIntro, R.id.cardCloudSignIn,
         R.id.headerCloudFeatures, R.id.cardCloudFeatures, R.id.rowCloudPrivacy,
     )
 
@@ -505,7 +506,7 @@ class PtCloudSettingsActivityTest {
         assertEquals("signed out", signedOutSections, page.sections())
 
         page.codeSent()
-        assertEquals("code sent, the same page", signedOutSections, page.sections())
+        assertEquals("code sent, the same page without the hero", signedOutSections - R.id.rowCloudHero, page.sections())
 
         verifies(VerifyResult.SignedIn(KEY, KeyCheck.Accepted("trial", now() + 7 * DAY)))
         page.signInWith("482913")
