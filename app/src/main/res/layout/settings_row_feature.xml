@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Feature row: an icon, a title over a subtitle, and an optional
+     MaterialSwitch at the right end. The host shows the row three ways
+     (PtCloudSettingsActivity's feature list): a description with the switch
+     gone and the row not clickable; live, the whole row the switch's tap
+     target (the switch is not clickable by itself, as on
+     settings_row_switch); and disabled, whose colours (the icon and both
+     texts duplicate the row's state) come from the feature_row_* colour
+     lists rather than an alpha. Divide two rows with a 1dp ptDivider inset
+     52dp, under the texts (16dp padding, the 22dp icon, its 14dp gap).
+     android:background is the ripple state-list, not a static fill; see
+     settings_row_hotkey for the full Overdraw note. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="@dimen/pt_row_min_height"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:baselineAligned="false"
+    android:paddingHorizontal="@dimen/pt_row_h_padding"
+    android:paddingVertical="@dimen/pt_row_v_padding"
+    android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true"
+    tools:ignore="Overdraw">
+
+    <ImageView
+        android:id="@+id/ivRowIcon"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:duplicateParentState="true"
+        android:importantForAccessibility="no"
+        app:tint="@color/feature_row_icon" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="14dp"
+        android:orientation="vertical"
+        android:duplicateParentState="true">
+
+        <TextView
+            android:id="@+id/tvRowTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:duplicateParentState="true"
+            android:textColor="@color/feature_row_title"
+            style="@style/Text.PT.RowTitle" />
+
+        <TextView
+            android:id="@+id/tvRowSubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:duplicateParentState="true"
+            android:textColor="@color/feature_row_subtitle"
+            style="@style/Text.PT.RowSubtitle" />
+    </LinearLayout>
+
+    <!-- saveEnabled="false" for the reason settings_row_switch gives: every
+         copy of the row uses this id, and view state is saved by id. -->
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/switchRowToggle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="14dp"
+        android:clickable="false"
+        android:focusable="false"
+        android:saveEnabled="false"
+        app:materialThemeOverlay="@style/Widget.PlayTranslate.MaterialSwitch" />
+
+</LinearLayout>

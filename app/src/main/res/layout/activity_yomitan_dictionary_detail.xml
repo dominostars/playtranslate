@@ -84,7 +84,7 @@
                         android:paddingVertical="@dimen/pt_row_v_padding">
 
                         <TextView
-                            style="@style/Text.PT.RowTitle"
+                            style="@style/Text.PT.FieldLabel"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/yomitan_alias_label" />
@@ -94,16 +94,13 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="8dp"
-                            android:background="?attr/ptSurface"
                             android:hint="@string/yomitan_alias_hint"
                             android:importantForAutofill="no"
                             android:imeOptions="actionDone|flagNoFullscreen|flagNoExtractUi"
                             android:inputType="text"
-                            android:padding="10dp"
                             android:singleLine="true"
-                            android:textColor="?attr/ptText"
-                            android:textColorHint="?attr/ptTextHint"
-                            android:textSize="15sp" />
+                            android:textSize="15sp"
+                            style="@style/Widget.PlayTranslate.TextField" />
                     </LinearLayout>
 
                     <!-- The two rows below can each be hidden (language: only for

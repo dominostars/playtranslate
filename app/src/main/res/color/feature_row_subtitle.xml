@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A feature row's subtitle (settings_row_feature): muted, the hint colour
+     while the row is disabled. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="false" android:color="?attr/ptTextHint" />
+    <item android:color="?attr/ptTextMuted" />
+</selector>

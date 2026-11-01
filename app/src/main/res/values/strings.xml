@@ -3415,31 +3415,55 @@
          so the service is off until they read and accept them on its page.
          Not about payment or the membership. -->
     <string name="settings_pt_cloud_summary_terms_required">Terms not accepted</string>
-    <!-- Paragraph at the top of the PlayTranslate Cloud page, above the
-         account, in every state: why the service exists. "Text recognition"
-         is reading the text on the screen (OCR); "the work" is that reading
-         and the translating. %1$s = pt_cloud_display_name, a product name. -->
-    <string name="pt_cloud_intro">The most accurate text recognition and translation models are too heavy to run on a mobile device. <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> runs them on a server instead for better results, and your device does none of the work!</string>
-    <!-- Group header above the two switch rows on the PlayTranslate Cloud
-         page (whether the service reads the screen, whether it translates),
-         shown while signed in. Rendered ALL CAPS by the Text.PT.GroupHeader
-         style; keep normal case here. -->
-    <string name="pt_cloud_configuration_title">Configuration</string>
-    <!-- Title of the first switch row on the PlayTranslate Cloud page: whether the
-         screen captures are read, that is OCR'd, on PlayTranslate's server. -->
-    <string name="pt_cloud_ocr_toggle_title">Read the screen</string>
-    <!-- Subtitle under the "Read the screen" switch on the PlayTranslate Cloud page:
-         why to turn it on. "Stronger OCR" is the server's larger text recognition
-         model; the second sentence says the device does no OCR work itself. -->
-    <string name="pt_cloud_ocr_toggle_subtitle">Stronger OCR on a server GPU. All your device\'s power goes to the game.</string>
-    <!-- Title of the second switch row on the PlayTranslate Cloud page: whether
-         PlayTranslate's server translates the recognized text, ahead of the user's
-         own translation services. -->
-    <string name="pt_cloud_translate_toggle_title">Translate the text</string>
-    <!-- Subtitle under the "Translate the text" switch on the PlayTranslate Cloud
-         page: why to turn it on. The server holds subscriptions to several paid
-         translation models and routes each request to the one suited to it. -->
+    <!-- Headline at the top of the PlayTranslate Cloud page while signed out,
+         in large bold type above the intro paragraph: what the service does.
+         "Image processing" is reading the text in screenshots (OCR);
+         "server-grade" means done on PlayTranslate's server rather than on
+         the device. -->
+    <string name="pt_cloud_headline">Server-grade image processing and translation</string>
+    <!-- Paragraph under the headline at the top of the PlayTranslate Cloud
+         page while signed out, above the sign-in form: why the service
+         exists. "Text recognition" is reading the text on the screen (OCR);
+         "the work" is that reading and the translating. %1$s =
+         pt_cloud_display_name, a product name. -->
+    <string name="pt_cloud_intro">The most accurate text recognition and translation models are too heavy to run on a mobile device. <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> runs them on a server instead, so you get better results and your device does none of the work.</string>
+    <!-- Group header above the PlayTranslate Cloud page's list of what the
+         service does (reading the screen, translating), in every state:
+         signed out the list describes the service; signed in each row has a
+         switch to turn that part on or off. Rendered ALL CAPS by the
+         Text.PT.GroupHeader style; keep normal case here. -->
+    <string name="pt_cloud_features_title">Features</string>
+    <!-- Title of the first row in the PlayTranslate Cloud page's feature list
+         (a switch once signed in): screen captures read, that is OCR'd, on
+         PlayTranslate's server. "Image processing" is reading the text in
+         the screenshots. -->
+    <string name="pt_cloud_ocr_toggle_title">Powerful image processing</string>
+    <!-- Subtitle under "Powerful image processing" in the PlayTranslate Cloud
+         page's feature list: what it gives. "Stronger OCR" is the server's
+         larger text recognition model, run on the server's graphics card
+         (GPU), so the device spends none of its own power on reading the
+         text. -->
+    <string name="pt_cloud_ocr_toggle_subtitle">Stronger OCR on a server GPU, without using your device\'s power.</string>
+    <!-- Title of the second row in the PlayTranslate Cloud page's feature
+         list (a switch once signed in): PlayTranslate's server translates
+         the recognized text with paid translation models, ahead of the
+         user's own translation services. -->
+    <string name="pt_cloud_translate_toggle_title">Premium translations</string>
+    <!-- Subtitle under "Premium translations" in the PlayTranslate Cloud
+         page's feature list: what it gives. The server holds subscriptions
+         to several paid translation models and routes each request to the
+         one suited to it. -->
     <string name="pt_cloud_translate_toggle_subtitle">Paid translation models bundled in, the best one picked for each job.</string>
+    <!-- Footnote under the PlayTranslate Cloud page's feature list while
+         signed out, beside a lock icon: the server does not keep the
+         screenshots it reads or the text it translates, and does not sell
+         them. -->
+    <string name="pt_cloud_privacy_features">Screenshots and text are never stored or sold.</string>
+    <!-- Note under the PlayTranslate Cloud page's feature list, whose
+         switches are greyed out, while the user has not accepted the
+         service's current terms of use and privacy notice: both features
+         are off until they accept them. Not about payment. -->
+    <string name="pt_cloud_features_paused_terms">Paused until the terms are accepted.</string>
     <!-- Subtitle of the PlayTranslate Cloud row in the Capture &amp; overlay page's
          OCR section, in every state of the switch: a one-line pitch of reading
          the screen on PlayTranslate's server (no OCR work on the device). -->
@@ -3474,10 +3498,10 @@
     <string name="pt_cloud_status_checking">Checking</string>
     <!-- Status row value before any health check has run on this page. -->
     <string name="pt_cloud_status_unchecked">Not checked</string>
-    <!-- Group header above the account card on the PlayTranslate Cloud page,
-         where the user signs in with an email address and then sees the
-         state of the account (free trial, membership). Rendered ALL CAPS by
-         the Text.PT.GroupHeader style; keep normal case here. -->
+    <!-- Group header above the account card on the PlayTranslate Cloud page
+         while signed in, where the user sees the state of the account (free
+         trial, membership) and its email address. Rendered ALL CAPS by the
+         Text.PT.GroupHeader style; keep normal case here. -->
     <string name="pt_cloud_account_title">Account</string>
     <!-- Label above the email address field on the PlayTranslate Cloud
          account card. -->
@@ -3519,98 +3543,104 @@
     <!-- Button on the PlayTranslate Cloud account card after a code was sent:
          goes back to the email field to type another address. -->
     <string name="pt_cloud_change_email">Use a different email</string>
-    <!-- Title of the PlayTranslate Cloud account card while signed in, in
-         place of the account's email address, when this device holds a
-         client key given by hand, whose email address the app was never
-         told. -->
+    <!-- On the PlayTranslate Cloud account card, in place of the account's
+         email address, when this device holds a client key given by hand,
+         whose email address the app was never told: under the account's
+         standing (Free trial until, Member until), or as the card's title
+         when no standing is known. -->
     <string name="pt_cloud_signed_in_with_key">Signed in with a key</string>
-    <!-- Account line on the PlayTranslate Cloud account card, under the
-         account's email address, during the free trial. %1$s = when the trial
-         ends: a date and time of day in the device's time zone, already
-         formatted for the user's locale (e.g. Nov 3, 3:42 PM). -->
+    <!-- Title of the PlayTranslate Cloud account card during the free trial,
+         above the account's email address. %1$s = when the trial ends: a
+         date and time of day in the device's time zone, already formatted
+         for the user's locale (e.g. Nov 3, 3:42 PM). -->
     <string name="pt_cloud_trial_until">Free trial until <xliff:g id="end" example="Nov 3, 3:42 PM">%1$s</xliff:g></string>
-    <!-- Account line on the PlayTranslate Cloud account card, under the
-         account's email address, while a paid membership runs. %1$s = when it
+    <!-- Title of the PlayTranslate Cloud account card while a paid
+         membership runs, above the account's email address. %1$s = when it
          ends: a date and time of day in the device's time zone, already
          formatted for the user's locale (e.g. Dec 5, 3:42 PM). -->
     <string name="pt_cloud_member_until">Member until <xliff:g id="end" example="Dec 5, 3:42 PM">%1$s</xliff:g></string>
-    <!-- Account line on the PlayTranslate Cloud account card for a membership
-         with no end date. -->
+    <!-- Title of the PlayTranslate Cloud account card, above the account's
+         email address, for a membership with no end date. -->
     <string name="pt_cloud_member">Member</string>
-    <!-- Account line on the PlayTranslate Cloud account card after the free
-         trial ran out. %1$s = the date it ended, already formatted for the
-         user's locale (e.g. Nov 3, or Nov 3, 2025 in another year). -->
+    <!-- Title of the PlayTranslate Cloud account card, above the account's
+         email address, after the free trial ran out. %1$s = the date it
+         ended, already formatted for the user's locale (e.g. Nov 3, or Nov 3,
+         2025 in another year). -->
     <string name="pt_cloud_trial_ended_on">Trial ended <xliff:g id="date" example="Nov 3">%1$s</xliff:g></string>
-    <!-- Account line on the PlayTranslate Cloud account card after the free
-         trial ran out, when the date it ended is not known. -->
+    <!-- Title of the PlayTranslate Cloud account card, above the account's
+         email address, after the free trial ran out, when the date it ended
+         is not known. -->
     <string name="pt_cloud_trial_ended">Trial ended</string>
-    <!-- Account line on the PlayTranslate Cloud account card after a paid
-         membership ended. %1$s = the date it ended, already formatted for the
-         user's locale (e.g. Nov 3, or Nov 3, 2025 in another year). -->
+    <!-- Title of the PlayTranslate Cloud account card, above the account's
+         email address, after a paid membership ended. %1$s = the date it
+         ended, already formatted for the user's locale (e.g. Nov 3, or Nov 3,
+         2025 in another year). -->
     <string name="pt_cloud_inactive_since">Membership inactive since <xliff:g id="date" example="Nov 3">%1$s</xliff:g></string>
-    <!-- Account line on the PlayTranslate Cloud account card when the account
-         has no active membership and no end date is known (it may never have
-         had one). -->
+    <!-- Title of the PlayTranslate Cloud account card, above the account's
+         email address, when the account has no active membership and no end
+         date is known (it may never have had one). -->
     <string name="pt_cloud_inactive">No active membership</string>
-    <!-- Account line on the PlayTranslate Cloud account card when the user
-         has not accepted the service's current terms of use and privacy
-         notice (they are new, or they changed), so the service is off until
-         they read and accept them; shown in the alert colour. Not about
-         payment or the membership. -->
+    <!-- Title of the notice card at the top of the PlayTranslate Cloud page,
+         in the warning colour, when the user has not accepted the service's
+         current terms of use and privacy notice (they are new, or they
+         changed), so the service is off until they read and accept them.
+         Not about payment or the membership. -->
     <string name="pt_cloud_terms_required">Terms not accepted</string>
-    <!-- Button on the PlayTranslate Cloud account card after the free trial
-         ended or the membership lapsed: asks the server again whether the
-         account is active, for example right after paying. The description
-         of a square icon chip (a sync glyph, no text), read by a screen
-         reader, so it names the action. -->
+    <!-- Button on the PlayTranslate Cloud page's membership card after the
+         free trial ended or the membership lapsed: asks the server again
+         whether the account is active, for example right after paying. The
+         description of a square icon chip (a sync glyph, no text), read by a
+         screen reader, so it names the action. -->
     <string name="pt_cloud_check_again">Check again</string>
-    <!-- Hint beside the Check again button on the PlayTranslate Cloud account
-         card: a payment made a moment ago reaches the account a few seconds
-         later; left of the Check again chip. -->
+    <!-- Hint on the PlayTranslate Cloud page's membership card, left of the
+         Check again chip, after the free trial ended or the membership
+         lapsed: a payment made a moment ago reaches the account a few
+         seconds later. -->
     <string name="pt_cloud_join_pending">Already joined? It can take a few seconds to process.</string>
-    <!-- Line on the PlayTranslate Cloud account card, under a divider and
-         left of the Show terms button (an icon), while the user has not
-         accepted the service's current terms of use and privacy notice: the
-         service is off until they open the terms and accept them. %1$s =
-         pt_cloud_display_name, a product name. -->
+    <!-- Line under "Terms not accepted" in the notice card at the top of the
+         PlayTranslate Cloud page, left of the Show terms button, while the
+         user has not accepted the service's current terms of use and privacy
+         notice: the service is off until they open the terms and accept
+         them. %1$s = pt_cloud_display_name, a product name. -->
     <string name="pt_cloud_terms_pending">Read and accept the terms to keep using <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>.</string>
-    <!-- Button on the PlayTranslate Cloud account card, right of the line
-         that asks the user to accept the terms: opens the service's terms of
-         use and privacy notice to read and accept. The description of a
-         square icon chip (a document glyph, no text), read by a screen
-         reader, so it names the action. -->
+    <!-- Button in the notice card at the top of the PlayTranslate Cloud page,
+         right of the line that asks the user to accept the terms: opens the
+         service's terms of use and privacy notice to read and accept. Short:
+         it is a small button beside the line. -->
     <string name="pt_cloud_show_terms">Show terms</string>
-    <!-- Label of the button on the PlayTranslate Cloud account card that opens
-         the service's membership page on the Ko-fi website. %1$s =
-         pt_cloud_display_name, a product name. -->
+    <!-- Label of the button on the PlayTranslate Cloud page's membership card
+         that opens the service's membership page on the Ko-fi website.
+         %1$s = pt_cloud_display_name, a product name. -->
     <string name="pt_cloud_join_title">Join <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g></string>
-    <!-- Line under the Join button on the PlayTranslate Cloud account card
-         during the free trial and after it ended. Ko-fi is the name of the
-         payment website, spelled as the brand spells it, and is not
-         translated. A payment reaches the account only when it is made with
-         the account's email address. %1$s = pt_cloud_display_name, a product
-         name; %2$s = that email address. -->
-    <string name="pt_cloud_join_subtitle_trial">Add a Ko-fi membership to keep <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> going beyond the trial. For convenience, subscribe with <xliff:g id="email" example="you@example.com">%2$s</xliff:g> so it automatically reaches this account.</string>
-    <!-- The line of pt_cloud_join_subtitle_trial when this device holds a
-         client key given by hand, so the app does not know the account's
-         email address. Ko-fi is the name of the payment website, spelled as
-         the brand spells it, and is not translated. %1$s =
-         pt_cloud_display_name, a product name. -->
-    <string name="pt_cloud_join_subtitle_trial_no_email">Add a Ko-fi membership to keep <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> going beyond the trial. For convenience, subscribe with the email address your key belongs to so it automatically reaches this account.</string>
-    <!-- Line under the Join button on the PlayTranslate Cloud account card
-         when the account has no active membership (a membership lapsed, or
-         there never was one), where the trial is not the point. Ko-fi is the
-         name of the payment website, spelled as the brand spells it, and is
-         not translated. A payment reaches the account only when it is made
-         with the account's email address. %1$s = pt_cloud_display_name, a
-         product name; %2$s = that email address. -->
-    <string name="pt_cloud_join_subtitle_inactive">Add a Ko-fi membership to keep <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> going. For convenience, subscribe with <xliff:g id="email" example="you@example.com">%2$s</xliff:g> so it automatically reaches this account.</string>
-    <!-- The line of pt_cloud_join_subtitle_inactive when this device holds a
-         client key given by hand, so the app does not know the account's
-         email address. Ko-fi is the name of the payment website, spelled as
-         the brand spells it, and is not translated. %1$s =
-         pt_cloud_display_name, a product name. -->
-    <string name="pt_cloud_join_subtitle_inactive_no_email">Add a Ko-fi membership to keep <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> going. For convenience, subscribe with the email address your key belongs to so it automatically reaches this account.</string>
+    <!-- Group header above the PlayTranslate Cloud page's membership card
+         during the free trial: what to do for the service to keep working
+         once the trial is over. Rendered ALL CAPS by the Text.PT.GroupHeader
+         style; keep normal case here. -->
+    <string name="pt_cloud_after_trial_title">After the trial</string>
+    <!-- Line on the PlayTranslate Cloud page's membership card during the
+         free trial, above the Join button. Ko-fi is the name of the payment
+         website, spelled as the brand spells it, and is not translated.
+         %1$s = pt_cloud_display_name, a product name. -->
+    <string name="pt_cloud_join_nudge_trial">Add a Ko-fi membership to keep <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> going after the trial.</string>
+    <!-- Title of the PlayTranslate Cloud page's membership card after the
+         free trial ended or the membership lapsed, right under the feature
+         list whose switches are greyed out. %1$s = pt_cloud_display_name, a
+         product name. -->
+    <string name="pt_cloud_join_title_lapsed">Keep <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> going</string>
+    <!-- Line under pt_cloud_join_title_lapsed on the PlayTranslate Cloud
+         page's membership card, above the Join button: "these features" are
+         the two in the list right above the card (reading the screen,
+         translating), which are off. Ko-fi is the name of the payment
+         website, spelled as the brand spells it, and is not translated. -->
+    <string name="pt_cloud_join_nudge_lapsed">Add a Ko-fi membership to turn these features back on.</string>
+    <!-- Centred line under the Join button on the PlayTranslate Cloud page's
+         membership card: a payment reaches the account only when it is made
+         with the account's email address. %1$s = that email address. -->
+    <string name="pt_cloud_join_email_hint">Subscribe with <xliff:g id="email" example="you@example.com">%1$s</xliff:g> so it reaches this account automatically.</string>
+    <!-- The line of pt_cloud_join_email_hint when this device holds a client
+         key given by hand, so the app does not know the account's email
+         address. -->
+    <string name="pt_cloud_join_email_hint_no_email">Subscribe with the email address your key belongs to so it reaches this account automatically.</string>
     <!-- Screen-reader label of the sign-out button beside the account on the
          PlayTranslate Cloud account card (an icon with no text), which signs
          this device out after a confirmation; also the confirmation's
@@ -3666,9 +3696,10 @@
          but this device could not store its key securely, so the user has to
          ask for a new code. -->
     <string name="pt_cloud_key_not_stored">Couldn\'t store the key on this device. Send a new code.</string>
-    <!-- Note under the account line on the PlayTranslate Cloud account card
-         when the server could not be asked about the account just now; the
-         line above it shows what was known last. -->
+    <!-- Note on the PlayTranslate Cloud account card, in place of the
+         account's email address under its title, when the server could not
+         be asked about the account just now; the title above it shows what
+         was known last. -->
     <string name="pt_cloud_account_unchecked">Couldn\'t check the account just now.</string>
     <!-- Notice above the sign-in form on the PlayTranslate Cloud account card
          when the server stopped accepting this device's key (it was revoked,
@@ -3677,13 +3708,13 @@
     <!-- Notice on the PlayTranslate Cloud page when the service's terms of
          use and privacy notice could not be fetched from its server just now
          (too many requests, or a temporary problem on the server), so they
-         cannot be shown: under the sign-in button, or under the terms line on
-         the account card. -->
+         cannot be shown: under the sign-in button, or under the "Terms not
+         accepted" notice card at the top of the page. -->
     <string name="pt_cloud_terms_unavailable">Couldn\'t load the terms. Try again in a minute.</string>
-    <!-- Notice under the terms line on the PlayTranslate Cloud account card
-         when the user agreed to the service's terms but its server could not
-         record the agreement just now; the user can open the terms and agree
-         again. -->
+    <!-- Notice under the "Terms not accepted" notice card at the top of the
+         PlayTranslate Cloud page when the user agreed to the service's terms
+         but its server could not record the agreement just now; the user can
+         open the terms and agree again. -->
     <string name="pt_cloud_terms_not_recorded">Couldn\'t record your acceptance. Try again.</string>
     <!-- Title of the card shown on the PlayTranslate Cloud page when the
          service has shut down for good. %1$s = pt_cloud_display_name, a

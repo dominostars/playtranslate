@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A checkbox's tick (MaterialCheckBox's buttonIcon over
+     @drawable/checkbox_box): ic_check at 16dp, which MaterialCheckBox
+     centres in the 20dp box, so the tick clears the box's 2dp outline. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="16dp"
+        android:height="16dp"
+        android:drawable="@drawable/ic_check" />
+</layer-list>

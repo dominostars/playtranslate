@@ -86,22 +86,19 @@
                                 android:layout_height="wrap_content"
                                 android:labelFor="@+id/etBaseUrl"
                                 android:text="@string/llm_backend_base_url_label"
-                                style="@style/Text.PT.RowTitle" />
+                                style="@style/Text.PT.FieldLabel" />
 
                             <EditText
                                 android:id="@+id/etBaseUrl"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="8dp"
-                                android:textColorHint="?attr/ptTextHint"
-                                android:textColor="?attr/ptText"
                                 android:textSize="13sp"
                                 android:fontFamily="monospace"
                                 android:singleLine="true"
                                 android:inputType="textUri"
-                                android:background="?attr/ptSurface"
-                                android:padding="10dp"
-                                android:importantForAutofill="no" />
+                                android:importantForAutofill="no"
+                                style="@style/Widget.PlayTranslate.TextField" />
                         </LinearLayout>
 
                         <include layout="@layout/settings_row_divider" />
@@ -130,22 +127,19 @@
                                 android:layout_height="wrap_content"
                                 android:labelFor="@+id/etApiKey"
                                 android:text="@string/llm_backend_api_key_label"
-                                style="@style/Text.PT.RowTitle" />
+                                style="@style/Text.PT.FieldLabel" />
 
                             <EditText
                                 android:id="@+id/etApiKey"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="8dp"
-                                android:textColorHint="?attr/ptTextHint"
-                                android:textColor="?attr/ptText"
                                 android:textSize="13sp"
                                 android:fontFamily="monospace"
                                 android:singleLine="true"
                                 android:inputType="textVisiblePassword"
-                                android:background="?attr/ptSurface"
-                                android:padding="10dp"
-                                android:importantForAutofill="no" />
+                                android:importantForAutofill="no"
+                                style="@style/Widget.PlayTranslate.TextField" />
                         </LinearLayout>
 
                         <include layout="@layout/settings_row_divider" />

@@ -1,7 +1,5 @@
 package com.playtranslate.ui
 
-import android.animation.Animator
-import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
@@ -21,7 +19,6 @@ import android.view.TouchDelegate
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewParent
-import android.view.animation.LinearInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
@@ -451,30 +448,22 @@ class SentenceAnkiContentView(
         return null
     }
 
-    /** Three accent pulses over the cell background, each fading up then back
-     *  down; the background is cleared on completion so the cell returns to
-     *  the card surface. */
+    /** Three accent pulses over the cell background ([startAttentionFlash]),
+     *  each fading up then back down; the background is cleared on
+     *  completion so the cell returns to the card surface. */
     private fun flashGameAudioCell(panel: View) {
         gameAudioFlashAnimator?.cancel()
         val accentRgb = ctx.themeColor(R.attr.ptAccent) and 0x00FFFFFF
-        gameAudioFlashAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 400L          // one fade-up/down; repeatCount 2 ⇒ three flashes
-            repeatCount = 2
-            interpolator = LinearInterpolator()
-            addUpdateListener { anim ->
-                // Triangle 0 → 1 → 0 so each run is a full pulse, not a step.
-                val intensity = 1f - kotlin.math.abs(2f * anim.animatedFraction - 1f)
+        gameAudioFlashAnimator = startAttentionFlash(
+            onIntensity = { intensity ->
                 val alpha = (0x4D * intensity).toInt() shl 24  // peak ~30% accent
                 panel.setBackgroundColor(alpha or accentRgb)
-            }
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    panel.background = null
-                    gameAudioFlashAnimator = null
-                }
-            })
-            start()
-        }
+            },
+            onEnd = {
+                panel.background = null
+                gameAudioFlashAnimator = null
+            },
+        )
     }
 
     /** The sentence audio row's title: the sentence text normally, a

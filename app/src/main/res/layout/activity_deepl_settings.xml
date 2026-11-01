@@ -58,7 +58,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/deepl_api_key_field_label"
-                            style="@style/Text.PT.RowTitle" />
+                            style="@style/Text.PT.FieldLabel" />
 
                         <EditText
                             android:id="@+id/etDeeplKey"
@@ -66,15 +66,12 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="8dp"
                             android:hint="@string/hint_deepl_key"
-                            android:textColorHint="?attr/ptTextHint"
-                            android:textColor="?attr/ptText"
                             android:textSize="13sp"
                             android:fontFamily="monospace"
                             android:singleLine="true"
                             android:inputType="textVisiblePassword"
-                            android:background="?attr/ptSurface"
-                            android:padding="10dp"
-                            android:importantForAutofill="no" />
+                            android:importantForAutofill="no"
+                            style="@style/Widget.PlayTranslate.TextField" />
                     </LinearLayout>
 
                     <include layout="@layout/settings_row_divider" />

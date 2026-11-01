@@ -6,7 +6,11 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.StateListDrawable
 import android.os.Build
 import android.os.Looper
 import android.os.SystemClock
@@ -14,6 +18,8 @@ import android.text.InputType
 import android.text.Spanned
 import android.text.TextPaint
 import android.text.style.ClickableSpan
+import android.text.style.TypefaceSpan
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -27,8 +33,10 @@ import android.widget.TextView
 import androidx.core.view.allViews
 import androidx.core.view.children
 import androidx.core.view.isVisible
+import androidx.core.widget.NestedScrollView
 import androidx.test.core.app.ApplicationProvider
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.card.MaterialCardView
 import com.google.android.material.checkbox.MaterialCheckBox
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.Prefs
@@ -83,10 +91,13 @@ import kotlin.math.roundToInt
 /**
  * The PlayTranslate Cloud page.
  *
- * Above everything, in every state, the intro paragraph naming the service;
- * the ACCOUNT and CONFIGURATION group headers title the cards under them;
- * Try for Free, Start Free Trial and Join share one shape, 56dp and bold.
- * The account card: signed out it shows the email field, the agreement box
+ * One feature list in every state, under its FEATURES header: signed out a
+ * description (no switches, no tap) under the headline, the intro and the
+ * sign-in card, with the privacy footnote under it and no ACCOUNT header and
+ * no service status; signed in the two switches, under the ACCOUNT card,
+ * with no headline and no intro. Try for Free, Start Free Trial and both Join
+ * buttons share one shape, 56dp and bold.
+ * The sign-in card: signed out it shows the email field, the agreement box
  * with its sentence, Try for Free and the privacy sentence; a request's
  * answers move it to the code field or hold Try for Free, each in its
  * wording and for the address it answered,
@@ -96,26 +107,30 @@ import kotlin.math.roundToInt
  * the keyboard's Done is Start Free Trial; a verify's 200 stores the key
  * first and draws the page from its own fields with no key check, a
  * refused keystore write saying the key was not stored; the pending
- * sign-in survives a recreate. Signed in, its title is the account's
- * address and under it the account from the record (trial, in the warning
- * colour, and member until a date and a time of day, no details, trial
- * ended, inactive), with Join in the card under a divider where it is due
- * and the line under Join, centred, for the standing, and the sign-out
- * chip, which confirms, forgets the key and the record and sends nothing;
- * each resume checks the stored key (a 401 clears it, retried once within
- * 10 s of a verify; back from Join, once more 10 s later). A 410 shows the
- * closed card until a health answer that is neither closed nor
+ * sign-in survives a recreate. Signed in, the account card's title is the
+ * account's standing from the record (trial and member until a date and a
+ * time of day, trial ended, inactive) with its address under it, or the
+ * address itself with no standing to say, and the sign-out chip, which
+ * confirms, forgets the key and the record and sends nothing; Join is a
+ * card of its own: on the trial under AFTER THE TRIAL below the service
+ * status, the outlined button; once the trial ended or no membership is
+ * active right under the features, the accent button with Already joined?
+ * and Check again, the service status hidden; its line names the address to
+ * pay with. Each resume checks the stored key (a 401 clears it, retried
+ * once within 10 s of a verify; back from Join, once more 10 s later). A 410
+ * shows the closed card until a health answer that is neither closed nor
  * unreachable. The stored key is never on the page.
  *
- * Its two "use for" switches (Read captures, Translate), shown only while a
- * key is stored and disabled and off while the account is not entitled
- * (both turned off by a check answering 403, both on again by an Accepted
- * check back from Join), seed from their prefs without resetting the service and
- * keep their state across a recreate, a flip writes its pref and resets the
- * service's cooldown through the service's one mutation for that switch
- * (the pref stored before the reset's reconcile of the shared cache), and
- * they repaint from the service's change signal when flipped elsewhere; and
- * the status row shows the health check's answer.
+ * Its two switches (one per feature row), shown only while a key is stored
+ * and disabled and off, in the disabled colours, while the account is not
+ * admitted (both turned off by a check answering 403, both on again by an
+ * Accepted check back from Join), seed from their prefs without resetting
+ * the service and keep their state across a recreate, a flip writes its pref
+ * and resets the service's cooldown through the service's one mutation for
+ * that switch (the pref stored before the reset's reconcile of the shared
+ * cache), and they repaint from the service's change signal when flipped
+ * elsewhere; and the status row shows the health check's answer, its dot the
+ * accent while the service runs.
  *
  * The terms: signed out, the box under the address field is the
  * agreement. Try for Free with it unticked lights it in its error state and
@@ -129,13 +144,13 @@ import kotlin.math.roundToInt
  * recreate and is unticked once a key is stored. The agreement is sent
  * once the verify stored the key, read before the store, a 401 within 10 s
  * asked once more and a 409 opening the newer text. Signed in, a check's
- * 403 terms_required shows Terms not accepted with the terms row in place
- * of Join and Already joined?, and opens the terms once an episode, which
- * only a check's Accepted ends; Agree there sends the acceptance, the
- * resume skipping its check meanwhile, and the check after it turns both
- * switches on. The terms page opens only while the page is resumed, an
- * answer for a flow the key no longer matches is dropped, and Sign out
- * cancels a terms call in flight.
+ * 403 terms_required shows the terms banner above everything with no Join
+ * and no service status, and the paused line under the greyed features, and
+ * opens the terms once an episode, which only a check's Accepted ends; Agree
+ * there sends the acceptance, the resume skipping its check meanwhile, and
+ * the check after it turns both switches on. The terms page opens only while
+ * the page is resumed, an answer for a flow the key no longer matches is
+ * dropped, and Sign out cancels a terms call in flight.
  * The terms page's answers arrive through the page's result registry, in
  * production's order: the page stopped behind it, the answer at its start,
  * then its resume ([answerTerms]).
@@ -221,30 +236,55 @@ class PtCloudSettingsActivityTest {
     private fun PtCloudSettingsActivity.signInButton() = findViewById<MaterialButton>(R.id.btnCloudSignIn)
     private fun PtCloudSettingsActivity.sendNewCodeButton() = findViewById<MaterialButton>(R.id.btnCloudSendNewCode)
     private fun PtCloudSettingsActivity.checkAgainButton() = findViewById<View>(R.id.btnCloudCheckAgain)
-    private fun PtCloudSettingsActivity.joinButton() = findViewById<MaterialButton>(R.id.btnCloudJoin)
+    private fun PtCloudSettingsActivity.trialJoinButton() = findViewById<MaterialButton>(R.id.btnCloudJoinTrial)
+    private fun PtCloudSettingsActivity.lapsedJoinButton() = findViewById<MaterialButton>(R.id.btnCloudJoinLapsed)
     private fun PtCloudSettingsActivity.status() = findViewById<TextView>(R.id.tvCloudStatus).text.toString()
     private fun PtCloudSettingsActivity.cooldownLine() = findViewById<TextView>(R.id.tvCloudCooldown)
     private fun PtCloudSettingsActivity.text(id: Int) = findViewById<TextView>(id).text.toString()
     private fun PtCloudSettingsActivity.shown(id: Int) = findViewById<View>(id).isShown
 
-    /** The account line, null while it does not show. */
-    private fun PtCloudSettingsActivity.accountLine(): String? =
-        findViewById<TextView>(R.id.tvAccountLine).takeIf { it.isShown }?.text?.toString()
+    /** The Join button that shows, the trial card's or the lapsed one's;
+     *  fails unless exactly one does. */
+    private fun PtCloudSettingsActivity.joinButton(): MaterialButton =
+        listOf(trialJoinButton(), lapsedJoinButton()).single { it.isShown }
 
-    /** The account line's text colour. */
-    private fun PtCloudSettingsActivity.accountLineColor(): Int =
-        findViewById<TextView>(R.id.tvAccountLine).currentTextColor
+    /** Whether either Join card shows. */
+    private fun PtCloudSettingsActivity.joinShown(): Boolean =
+        shown(R.id.cardCloudJoinTrial) || shown(R.id.cardCloudJoinLapsed)
 
-    /** The line under Join, null while it does not show. */
-    private fun PtCloudSettingsActivity.joinSubtitle(): String? =
-        findViewById<TextView>(R.id.tvJoinSubtitle).takeIf { it.isShown }?.text?.toString()
+    /** The account card's title (the standing, or the address with no
+     *  standing to say), null while the card does not show. */
+    private fun PtCloudSettingsActivity.accountTitle(): String? =
+        findViewById<TextView>(R.id.tvAccountTitle).takeIf { it.isShown }?.text?.toString()
+
+    /** The account card's title colour. */
+    private fun PtCloudSettingsActivity.accountTitleColor(): Int =
+        findViewById<TextView>(R.id.tvAccountTitle).currentTextColor
+
+    /** The line under the account card's title (the address), null while it
+     *  does not show. */
+    private fun PtCloudSettingsActivity.accountSubtitle(): String? =
+        findViewById<TextView>(R.id.tvAccountSubtitle).takeIf { it.isShown }?.text?.toString()
+
+    /** The line under the Join button that shows, null while none does. */
+    private fun PtCloudSettingsActivity.joinHint(): String? =
+        listOf(R.id.tvJoinHintTrial, R.id.tvJoinHintLapsed).map { findViewById<TextView>(it) }
+            .singleOrNull { it.isShown }?.text?.toString()
 
     /** The ids of the page column's children that show, top to bottom: the
-     *  intro, the closed card, each group's header and card, and the status
-     *  card, which has no id ([View.NO_ID]). */
+     *  terms banner and its notice, the headline and the intro, the closed
+     *  card, the sign-in card, each group's header and card, the footnotes,
+     *  the Join cards and the status card. */
     private fun PtCloudSettingsActivity.sections(): List<Int> =
-        (findViewById<View>(R.id.cardCloudAccount).parent as ViewGroup).children
+        findViewById<ViewGroup>(R.id.columnCloud).children
             .filter { it.isVisible }.map { it.id }.toList()
+
+    /** The signed-out page's sections: what the service is, the sign-in
+     *  card, the features as a description and the privacy footnote. */
+    private val signedOutSections = listOf(
+        R.id.tvCloudHeadline, R.id.tvCloudIntro, R.id.cardCloudSignIn,
+        R.id.headerCloudFeatures, R.id.cardCloudFeatures, R.id.rowCloudPrivacy,
+    )
 
     /** The sign-in notice showing under its step's button, null for none. */
     private fun PtCloudSettingsActivity.notice(): String? =
@@ -299,17 +339,18 @@ class PtCloudSettingsActivityTest {
         idle()
     }
 
-    /** A step's button while its call runs: blanked and disabled under its
-     *  spinner. */
+    /** A step's button while its call runs: disabled under its spinner,
+     *  its label kept but drawn in no colour. */
     private fun assertBusy(page: PtCloudSettingsActivity, button: MaterialButton, progressId: Int) {
         assertFalse(button.isEnabled)
-        assertEquals("", button.text.toString())
+        assertEquals("the label hidden", Color.TRANSPARENT, button.currentTextColor)
         assertTrue(page.findViewById<View>(progressId).isVisible)
     }
 
     private fun assertFree(page: PtCloudSettingsActivity, button: MaterialButton, progressId: Int, label: String) {
         assertTrue(button.isEnabled)
         assertEquals(label, button.text.toString())
+        assertNotEquals("the label drawn", Color.TRANSPARENT, button.currentTextColor)
         assertFalse(page.findViewById<View>(progressId).isVisible)
     }
 
@@ -345,6 +386,9 @@ class PtCloudSettingsActivityTest {
 
     private fun now() = System.currentTimeMillis()
 
+    /** This many dp in [page]'s pixels. */
+    private fun Int.dpIn(page: PtCloudSettingsActivity): Int = (this * page.resources.displayMetrics.density).roundToInt()
+
     private fun trial(untilMs: Long?, email: String? = EMAIL) =
         PtCloudAccount(email = email, active = true, source = "trial", entitledUntilMs = untilMs, checkedAtMs = now())
 
@@ -354,17 +398,30 @@ class PtCloudSettingsActivityTest {
     private fun ended(lastSource: String?, endedAtMs: Long?, email: String? = EMAIL) =
         PtCloudAccount(email = email, active = false, lastSource = lastSource, endedAtMs = endedAtMs, checkedAtMs = now())
 
-    /** The two "use for" rows as the page paints them for an account that
-     *  is not entitled (2026-10-29): the CONFIGURATION group still shows,
-     *  each row in it disabled with its switch off. */
+    /** The two feature rows as the page paints them for an account that is
+     *  not admitted (2026-10-29) or a closed service: the FEATURES group still
+     *  shows, each row in it disabled with its switch showing, disabled and
+     *  off, the icon and the texts in the disabled colours and no alpha. */
     private fun PtCloudSettingsActivity.assertRowsDisabledAndOff() {
-        assertTrue("the CONFIGURATION group stays", shown(R.id.headerCloudConfiguration) && shown(R.id.cardCloudUseFor))
+        assertTrue("the FEATURES group stays", shown(R.id.headerCloudFeatures) && shown(R.id.cardCloudFeatures))
         for (row in listOf(ocrRow(), translateRow())) {
             assertTrue("shown", row.isShown)
             assertFalse("disabled", row.isEnabled)
+            assertTrue("its switch shows", row.switch().isShown)
             assertFalse("disabled", row.switch().isEnabled)
             assertFalse("off", row.switch().isChecked)
+            assertRowColours(row, icon = R.attr.ptTextHint, title = R.attr.ptTextMuted, subtitle = R.attr.ptTextHint)
+            assertEquals("no alpha", 1f, row.alpha)
         }
+    }
+
+    /** A feature row's icon tint and text colours, as the theme's [icon],
+     *  [title] and [subtitle] colours. */
+    private fun PtCloudSettingsActivity.assertRowColours(row: View, icon: Int, title: Int, subtitle: Int) {
+        val iv = row.findViewById<ImageView>(R.id.ivRowIcon)
+        assertEquals("icon", themeColor(icon), iv.imageTintList!!.getColorForState(iv.drawableState, 0))
+        assertEquals("title", themeColor(title), row.findViewById<TextView>(R.id.tvRowTitle).currentTextColor)
+        assertEquals("subtitle", themeColor(subtitle), row.findViewById<TextView>(R.id.tvRowSubtitle).currentTextColor)
     }
 
     /** Counts the page's health checks, each one never ending. */
@@ -423,48 +480,65 @@ class PtCloudSettingsActivityTest {
 
     // ── The page ──────────────────────────────────────────────────────────
 
-    /** The intro says what the service is before anything else, whatever
-     *  the state: the page column's first child, in no card. */
-    @Test fun `the intro paragraph shows in every state, outside the cards, naming the service`() {
+    /** Signed out, the headline and the intro say what the service is, in
+     *  no card, first in the page's column, the sign-in card under them with
+     *  no ACCOUNT header; they stay while the code is on its way (the
+     *  sign-in card's second step) and while the service is closed, and go
+     *  once signed in. */
+    @Test fun `the headline and the intro show signed out only, outside the cards, naming the service`() {
         cloudPrefs()
         var health: HealthStatus = HealthStatus.Running
         PtCloudSettingsActivity.healthOverrideForTest = { health }
         val page = open()
+        val headline = page.findViewById<TextView>(R.id.tvCloudHeadline)
         val intro = page.findViewById<TextView>(R.id.tvCloudIntro)
-        val column = page.findViewById<View>(R.id.cardCloudAccount).parent as ViewGroup
-        assertSame("in the page's column, in no card", column, intro.parent)
-        assertEquals("first in it", 0, column.indexOfChild(intro))
+        val column = page.findViewById<ViewGroup>(R.id.columnCloud)
+        assertSame("in the page's column, in no card", column, headline.parent)
+        assertSame(column, intro.parent)
+        assertEquals("Server-grade image processing and translation", headline.text.toString())
         assertEquals(
             "The most accurate text recognition and translation models are too heavy to run on a mobile " +
-                "device. PlayTranslate Cloud runs them on a server instead for better results, and your " +
-                "device does none of the work!",
+                "device. PlayTranslate Cloud runs them on a server instead, so you get better results and your " +
+                "device does none of the work.",
             intro.text.toString(),
         )
-        assertTrue("signed out", intro.isShown)
+        assertEquals("signed out", signedOutSections, page.sections())
 
         page.codeSent()
-        assertTrue("code sent", intro.isShown)
+        assertEquals("code sent, the same page", signedOutSections, page.sections())
 
         verifies(VerifyResult.SignedIn(KEY, KeyCheck.Accepted("trial", now() + 7 * DAY)))
         page.signInWith("482913")
         assertTrue(page.shown(R.id.groupSignedIn))
-        assertTrue("signed in", intro.isShown)
+        assertFalse("signed in, no headline", headline.isShown)
+        assertFalse("and no intro", intro.isShown)
 
         health = HealthStatus.Closed(null)
         resume()
         assertTrue(page.shown(R.id.cardCloudClosed))
-        assertTrue("closed", intro.isShown)
+        assertFalse("closed with a key, still signed in", intro.isShown)
+        PtCloudService.saveClientKey("")
+        idle()
+        assertEquals(
+            "closed and signed out, the closed card in the sign-in card's place",
+            listOf(
+                R.id.tvCloudHeadline, R.id.tvCloudIntro, R.id.cardCloudClosed,
+                R.id.headerCloudFeatures, R.id.cardCloudFeatures, R.id.rowCloudPrivacy,
+            ),
+            page.sections(),
+        )
     }
 
     /** Each header is right above the card it titles (its style shows it in
      *  capitals), and the account card has no title of its own. */
-    @Test fun `ACCOUNT and CONFIGURATION are group headers above their cards, and the account card has no title of its own`() {
-        withKey()
+    @Test fun `ACCOUNT, FEATURES and AFTER THE TRIAL are group headers above their cards, and the account card has no title of its own`() {
+        signedIn(trial(now() + 5 * DAY))
         val page = open()
-        val column = page.findViewById<View>(R.id.cardCloudAccount).parent as ViewGroup
+        val column = page.findViewById<ViewGroup>(R.id.columnCloud)
         for ((headerId, title, cardId) in listOf(
             Triple(R.id.headerCloudAccount, "Account", R.id.cardCloudAccount),
-            Triple(R.id.headerCloudConfiguration, "Configuration", R.id.cardCloudUseFor),
+            Triple(R.id.headerCloudFeatures, "Features", R.id.cardCloudFeatures),
+            Triple(R.id.headerCloudJoin, "After the trial", R.id.cardCloudJoinTrial),
         )) {
             val header = page.findViewById<View>(headerId)
             assertTrue(title, header.isShown)
@@ -476,24 +550,37 @@ class PtCloudSettingsActivityTest {
         assertFalse(inCard.toString(), "Account" in inCard)
     }
 
-    /** The page's three calls to action share one shape: 56dp tall (Try
-     *  for Free and Start Free Trial fill the box that holds each with its
-     *  spinner, so the box carries the height) and bold. */
-    @Test fun `Try for Free, Start Free Trial and Join are 56dp tall and bold`() {
+    /** The page's calls to action share one shape: 56dp tall (Try for Free
+     *  and Start Free Trial fill the box that holds each with its spinner,
+     *  so the box carries the height) and bold, the trial's Join outlined
+     *  and the lapsed one filled; Show terms, the banner's, is 40dp. */
+    @Test fun `Try for Free, Start Free Trial and both Joins are 56dp tall and bold, and Show terms 40dp`() {
         val page = open()
-        val height = (56 * page.resources.displayMetrics.density).roundToInt()
-        assertEquals("Join", height, page.joinButton().layoutParams.height)
+        val density = page.resources.displayMetrics.density
+        val height = (56 * density).roundToInt()
+        for (join in listOf(page.trialJoinButton(), page.lapsedJoinButton())) {
+            assertEquals(page.resources.getResourceEntryName(join.id), height, join.layoutParams.height)
+        }
         for (button in listOf(page.sendCodeButton(), page.signInButton())) {
             val name = page.resources.getResourceEntryName(button.id)
             assertEquals("$name's box", height, (button.parent as View).layoutParams.height)
             assertEquals("$name fills it", ViewGroup.LayoutParams.MATCH_PARENT, button.layoutParams.height)
         }
+        val showTerms = page.findViewById<MaterialButton>(R.id.btnCloudShowTerms)
+        assertEquals("Show terms' box", (40 * density).roundToInt(), (showTerms.parent as View).layoutParams.height)
         // Robolectric answers Typeface.isBold false for every face, a bold one
         // too; the style it does answer carries the same bit.
-        for (button in listOf(page.sendCodeButton(), page.signInButton(), page.joinButton())) {
+        for (button in listOf(page.sendCodeButton(), page.signInButton(), page.trialJoinButton(), page.lapsedJoinButton())) {
             val name = page.resources.getResourceEntryName(button.id)
             assertEquals("$name is bold", Typeface.BOLD, button.typeface.style and Typeface.BOLD)
         }
+        assertEquals("the trial's Join outlined", (1 * density).roundToInt(), page.trialJoinButton().strokeWidth)
+        assertEquals(page.themeColor(R.attr.ptText), page.trialJoinButton().currentTextColor)
+        assertEquals("the lapsed Join filled", 0, page.lapsedJoinButton().strokeWidth)
+        assertEquals(
+            page.themeColor(R.attr.ptAccent),
+            page.lapsedJoinButton().backgroundTintList!!.getColorForState(page.lapsedJoinButton().drawableState, 0),
+        )
     }
 
     // ── The two switches ──────────────────────────────────────────────────
@@ -511,8 +598,8 @@ class PtCloudSettingsActivityTest {
         assertTrue(page.ocrRow().switch().isChecked)
         assertFalse(page.translateRow().switch().isChecked)
         assertTrue(page.ocrRow().switch().isEnabled)
-        assertEquals("Read the screen", page.ocrRow().title())
-        assertEquals("Translate the text", page.translateRow().title())
+        assertEquals("Powerful image processing", page.ocrRow().title())
+        assertEquals("Premium translations", page.translateRow().title())
 
         controller!!.recreate()
         idle()
@@ -534,34 +621,46 @@ class PtCloudSettingsActivityTest {
         assertFalse(prefs.ptCloudTranslateEnabled)
     }
 
-    /** No usable key saved: the CONFIGURATION group, header and card, is
-     *  gone, signing in being the first step. Closed with a key it shows,
-     *  the rows disabled and their switches off whatever is stored, and a
-     *  tap on them writes and resets nothing. */
-    @Test fun `with no key the CONFIGURATION group is gone, and closed with a key its rows show disabled and off and a tap does nothing`() {
+    /** No usable key saved: the FEATURES group describes the service, each
+     *  row with its icon and texts in the live colours, no switch and no tap
+     *  (the row neither clickable nor focusable, and a click writes nothing).
+     *  A stored key shows the switches, live. Closed with a key the rows show
+     *  disabled and off whatever is stored, and a tap on them writes and
+     *  resets nothing. */
+    @Test fun `signed out the features describe the service with no switch, and closed with a key the rows show disabled and off and a tap does nothing`() {
         val cloudPrefs = cloudPrefs()
         var health: HealthStatus = HealthStatus.Running
         PtCloudSettingsActivity.healthOverrideForTest = { health }
         val page = open()
-        assertFalse(page.shown(R.id.headerCloudConfiguration))
-        assertFalse(page.shown(R.id.cardCloudUseFor))
+        assertTrue(page.shown(R.id.headerCloudFeatures))
+        assertTrue(page.shown(R.id.cardCloudFeatures))
+        assertEquals("Powerful image processing", page.ocrRow().title())
+        assertEquals("Premium translations", page.translateRow().title())
+        for (row in listOf(page.ocrRow(), page.translateRow())) {
+            assertTrue(row.isShown)
+            assertFalse("no switch", row.switch().isShown)
+            assertFalse("no tap", row.isClickable)
+            assertFalse(row.isFocusable)
+            assertTrue("in the live colours", row.isEnabled)
+            page.assertRowColours(row, icon = R.attr.ptAccent, title = R.attr.ptText, subtitle = R.attr.ptTextMuted)
+            row.performClick()
+        }
+        idle()
+        assertFalse("nothing written", cloudPrefs.ptCloudOcrEnabled || cloudPrefs.ptCloudTranslateEnabled)
 
         assertTrue(PtCloudService.saveClientKey(KEY, trial(now() + 5 * DAY)))
         idle()
-        assertTrue(page.shown(R.id.headerCloudConfiguration))
-        assertTrue(page.shown(R.id.cardCloudUseFor))
+        for (row in listOf(page.ocrRow(), page.translateRow())) {
+            assertTrue("a switch, live", row.switch().isShown && row.switch().isEnabled)
+            assertTrue(row.isClickable)
+            page.assertRowColours(row, icon = R.attr.ptAccent, title = R.attr.ptText, subtitle = R.attr.ptTextMuted)
+        }
 
         health = HealthStatus.Closed(null)
         resume()
         assertTrue(page.shown(R.id.cardCloudClosed))
-        assertTrue("closed with a key, the group stays", page.shown(R.id.cardCloudUseFor))
         recordCooldown()
-        for (row in listOf(page.ocrRow(), page.translateRow())) {
-            assertFalse(row.switch().isEnabled)
-            assertFalse(row.switch().isChecked)
-            assertFalse(row.isEnabled)
-            assertEquals(0.5f, row.alpha)
-        }
+        page.assertRowsDisabledAndOff()
 
         page.ocrRow().performClick()
         page.translateRow().performClick()
@@ -669,13 +768,13 @@ class PtCloudSettingsActivityTest {
     }
 
     /** The first key, a verify's, turns both switches on through the
-     *  service ([PtCloudService.saveClientKey]); its group shows them at
-     *  once, live, from the change signal, with no resume. Sign out turns
-     *  them off, and the group goes. */
-    @Test fun `a verify 200 turns both switches on and live, shown at once, and Sign out turns them off and hides their group`() {
+     *  service ([PtCloudService.saveClientKey]); the feature rows show them
+     *  at once, live, from the change signal, with no resume. Sign out turns
+     *  them off, and the rows describe the service again. */
+    @Test fun `a verify 200 turns both switches on and live, shown at once, and Sign out turns them off and the rows describe again`() {
         val cloudPrefs = cloudPrefs()
         val page = open()
-        assertFalse(page.shown(R.id.cardCloudUseFor))
+        assertFalse(page.ocrRow().switch().isShown)
         page.codeSent()
         verifies(VerifyResult.SignedIn(KEY, KeyCheck.Accepted("trial", now() + 7 * DAY)))
 
@@ -684,8 +783,7 @@ class PtCloudSettingsActivityTest {
         assertEquals(KEY, cloudPrefs.ptCloudClientKey)
         assertTrue(cloudPrefs.ptCloudOcrEnabled)
         assertTrue(cloudPrefs.ptCloudTranslateEnabled)
-        assertTrue(page.shown(R.id.headerCloudConfiguration))
-        assertTrue(page.shown(R.id.cardCloudUseFor))
+        assertTrue(page.ocrRow().switch().isShown)
         assertTrue(page.ocrRow().switch().isEnabled)
         assertTrue(page.ocrRow().switch().isChecked)
         assertTrue(page.translateRow().switch().isChecked)
@@ -694,8 +792,8 @@ class PtCloudSettingsActivityTest {
 
         assertFalse(cloudPrefs.ptCloudOcrEnabled)
         assertFalse(cloudPrefs.ptCloudTranslateEnabled)
-        assertFalse(page.shown(R.id.headerCloudConfiguration))
-        assertFalse(page.shown(R.id.cardCloudUseFor))
+        assertTrue("the features stay", page.shown(R.id.cardCloudFeatures))
+        assertFalse("with no switches", page.ocrRow().switch().isShown || page.translateRow().switch().isShown)
         assertFalse("painted off behind it", page.ocrRow().switch().isChecked)
         assertFalse(page.translateRow().switch().isChecked)
     }
@@ -801,8 +899,12 @@ class PtCloudSettingsActivityTest {
         val link = page.termsLink()
         assertEquals("Terms and Privacy", text.subSequence(text.getSpanStart(link), text.getSpanEnd(link)).toString())
         val paint = TextPaint().also { link.updateDrawState(it) }
-        assertEquals("in the accent colour", page.themeColor(R.attr.ptAccent), paint.color)
+        assertEquals("in the link colour", page.themeColor(R.attr.ptTextLink), paint.color)
         assertFalse("not underlined", paint.isUnderlineText)
+        val weight = text.getSpans(0, text.length, TypefaceSpan::class.java).single()
+        assertEquals("medium, over the link", "sans-serif-medium", weight.family)
+        assertEquals(text.getSpanStart(link), text.getSpanStart(weight))
+        assertEquals(text.getSpanEnd(link), text.getSpanEnd(weight))
         for (line in listOf(R.id.tvSignInPrivacy, R.id.tvSignInNotice)) {
             assertEquals(
                 page.resources.getResourceEntryName(line) + " centred",
@@ -814,13 +916,137 @@ class PtCloudSettingsActivityTest {
         for (gone in listOf("A new account starts with a free trial", "model name", "usage record", "Paste")) {
             assertFalse(gone, all.any { gone in it })
         }
+        assertFalse("no free trial or Ko-fi note signed out", page.shownTexts().any { "Ko-fi" in it })
         for (hidden in listOf(
             R.id.groupCodeSent, R.id.groupSignedIn, R.id.cardCloudClosed, R.id.tvKeyRefused,
-            R.id.headerCloudConfiguration, R.id.cardCloudUseFor,
+            R.id.headerCloudAccount, R.id.cardCloudAccount, R.id.cardCloudStatus, R.id.cardCloudTerms,
+            R.id.cardCloudJoinTrial, R.id.cardCloudJoinLapsed, R.id.headerCloudJoin, R.id.tvFeaturesPaused,
         )) {
             assertFalse(page.resources.getResourceEntryName(hidden), page.shown(hidden))
         }
+        val footnote = page.findViewById<LinearLayout>(R.id.rowCloudPrivacy)
+        val footnoteText = footnote.allViews.filterIsInstance<TextView>().single()
+        assertEquals("the privacy footnote under the features", "Screenshots and text are never stored or sold.", footnoteText.text.toString())
+        assertEquals("centred", Gravity.CENTER_HORIZONTAL, footnote.gravity and Gravity.HORIZONTAL_GRAVITY_MASK)
+        assertEquals("the text as wide as it is", ViewGroup.LayoutParams.WRAP_CONTENT, footnoteText.layoutParams.width)
+        assertEquals("a line that wraps centred too", Gravity.CENTER_HORIZONTAL, footnoteText.gravity and Gravity.HORIZONTAL_GRAVITY_MASK)
+        assertEquals(signedOutSections, page.sections())
         assertNull(page.notice())
+    }
+
+    /** The agreement box is the page's own: a 20dp square with 4dp corners
+     *  and a 2dp outline in every state, never filled (checkbox_box), muted
+     *  at rest, the accent with an accent tick (16dp, inside the outline)
+     *  once ticked, the alert colour in its error state, 12dp from its
+     *  sentence. */
+    @Test fun `the agreement box is a 20dp outline, muted at rest, accent with an accent tick ticked and the alert colour in error`() {
+        val page = open()
+        val box = page.agreeBox()
+        val density = page.resources.displayMetrics.density
+        // MaterialCheckBox draws its buttonIcon over the box it reports as
+        // its button drawable (the two composited for the framework).
+        val tick = box.buttonIconDrawable
+        assertNotNull("the tick over the box", tick)
+        assertEquals("16dp, inside the outline", 16.dpIn(page), tick!!.intrinsicWidth)
+        // The box is tinted (buttonTint), and a tinted GradientDrawable with
+        // no fill colour of its own fills its whole shape: only a transparent
+        // fill of its own keeps it an outline.
+        fun fill() = (box.buttonDrawable as GradientDrawable).color?.defaultColor
+        assertEquals("an outline: its own fill transparent", Color.TRANSPARENT, fill())
+        assertEquals("20dp", (20 * density).roundToInt(), box.buttonDrawable!!.intrinsicWidth)
+        assertEquals((20 * density).roundToInt(), box.buttonDrawable!!.intrinsicHeight)
+        assertEquals("12dp to the sentence", (12 * density).roundToInt(),
+            (page.agreeSentence().layoutParams as ViewGroup.MarginLayoutParams).marginStart)
+        fun boxColor() = box.buttonTintList!!.getColorForState(box.drawableState, 0)
+        fun tickColor() = box.buttonIconTintList!!.getColorForState(box.drawableState, 0)
+        assertEquals("at rest", page.themeColor(R.attr.ptTextMuted), boxColor())
+        assertEquals("no tick", Color.TRANSPARENT, tickColor())
+        box.isErrorShown = true
+        assertEquals("in error", page.themeColor(R.attr.ptDanger), boxColor())
+        box.isChecked = true
+        assertFalse("a tick answers the error", box.isErrorShown)
+        assertEquals("ticked", page.themeColor(R.attr.ptAccent), boxColor())
+        assertEquals("the tick in the accent", page.themeColor(R.attr.ptAccent), tickColor())
+        assertEquals("still an outline", Color.TRANSPARENT, fill())
+    }
+
+    /** The agreement row reaches 12dp to the left into the form's padding
+     *  (a negative margin its padding gives back), so a press just left of
+     *  the box toggles it, while the box stays flush with the field; the
+     *  box's 6dp shake stays inside that padding, which neither the row nor
+     *  the form clips to, so it is not cut off. Further left, past the row,
+     *  a press does nothing. */
+    @Test fun `the agreement row reaches 12dp left of the box, which stays flush with the field and shakes uncut`() {
+        val page = open()
+        val form = page.findViewById<ViewGroup>(R.id.groupSignedOut)
+        val row = page.agreeRow() as ViewGroup
+        val box = page.agreeBox()
+        val field = page.emailField()
+        assertEquals("12dp into the form's padding", field.left - 12.dpIn(page), row.left)
+        assertEquals(12.dpIn(page), row.paddingStart)
+        assertEquals("the box flush with the field", field.left, row.left + box.left)
+        assertTrue("the shake's 6dp inside the row's padding", box.left >= 6.dpIn(page))
+        assertFalse("which the row does not clip to", row.clipToPadding)
+        assertFalse("nor the form to its own", form.clipToPadding)
+
+        fun press(x: Float) {
+            val y = row.top + row.height / 2f
+            val at = SystemClock.uptimeMillis()
+            form.dispatchTouchEvent(MotionEvent.obtain(at, at, MotionEvent.ACTION_DOWN, x, y, 0))
+            form.dispatchTouchEvent(MotionEvent.obtain(at, at + 50, MotionEvent.ACTION_UP, x, y, 0))
+            idle()
+        }
+        press(field.left - 8.dpIn(page).toFloat())
+        assertTrue("just left of the box: ticked", box.isChecked)
+        press(field.left - 14.dpIn(page).toFloat())
+        assertTrue("past the row: nothing", box.isChecked)
+    }
+
+    /** The agreement row's touch target: 48dp of content, with the 6dp gap
+     *  above (to the field) and the 10dp below (to Try for Free) as its
+     *  padding, so the gaps take taps too, and nothing moved; the sentence
+     *  fills the row's content height. */
+    @Test fun `the agreement row takes the gaps around it as its touch target, the sentence filling its height`() {
+        val page = open()
+        val row = page.agreeRow()
+        assertEquals(64.dpIn(page), row.minimumHeight)
+        assertEquals(6.dpIn(page), row.paddingTop)
+        assertEquals(10.dpIn(page), row.paddingBottom)
+        assertEquals("no margin above the row", 0, (row.layoutParams as ViewGroup.MarginLayoutParams).topMargin)
+        val ctaBox = page.sendCodeButton().parent as View
+        assertEquals("nor above Try for Free", 0, (ctaBox.layoutParams as ViewGroup.MarginLayoutParams).topMargin)
+        assertEquals("right under the row", row.bottom, ctaBox.top)
+        assertTrue(row.height >= 64.dpIn(page))
+        assertEquals("the sentence fills it", row.height - row.paddingTop - row.paddingBottom, page.agreeSentence().height)
+    }
+
+    /** The page's text fields share the settings field look (bg_text_field:
+     *  the ptSurface well, a 1dp outline in ptOutline, the accent while
+     *  focused, 12dp corners; 48dp tall at the least) and their labels the
+     *  field label's (a row title's size, muted). */
+    @Test fun `the email and code fields share the outlined field look, and their labels the muted field label`() {
+        val page = open()
+        page.codeSent()
+        for (field in listOf(page.emailField(), page.codeField())) {
+            val name = page.resources.getResourceEntryName(field.id)
+            assertEquals("$name: 48dp at the least", 48.dpIn(page), field.minimumHeight)
+            assertEquals(14.dpIn(page), field.paddingStart)
+            assertEquals(12.dpIn(page), field.paddingTop)
+            val background = field.background as StateListDrawable
+            fun stroke(focused: Boolean): GradientDrawable {
+                background.state = if (focused) intArrayOf(android.R.attr.state_focused) else intArrayOf()
+                return background.current as GradientDrawable
+            }
+            assertEquals("$name: 12dp corners", 12f * page.resources.displayMetrics.density, stroke(false).cornerRadius)
+            assertEquals(page.themeColor(R.attr.ptSurface), stroke(false).color!!.defaultColor)
+            val label = (field.parent as ViewGroup).allViews.filterIsInstance<TextView>()
+                .single { it.labelFor == field.id }
+            assertEquals("$name's label muted", page.themeColor(R.attr.ptTextMuted), label.currentTextColor)
+            assertEquals(
+                "a row title's size",
+                TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 15f, page.resources.displayMetrics), label.textSize,
+            )
+        }
     }
 
     // ── Send code ─────────────────────────────────────────────────────────
@@ -977,13 +1203,14 @@ class PtCloudSettingsActivityTest {
 
     /** "Offline" modifies the state: the request's own wording, Send code
      *  held for the Retry-After, and the status row offline until the next
-     *  health answer. */
+     *  health answer (painted while signed out, where the row hides). */
     @Test fun `service_offline on the request holds Send code and says Offline in the status until the next health answer`() {
         requests(SignInAnswer.Offline(60))
         var health: HealthStatus = HealthStatus.NotRunning
         PtCloudSettingsActivity.healthOverrideForTest = { health }
         val page = open()
         assertEquals("Not running", page.status())
+        assertFalse("no status row signed out", page.shown(R.id.cardCloudStatus))
 
         page.sendCodeTo()
 
@@ -1000,16 +1227,49 @@ class PtCloudSettingsActivityTest {
         assertEquals("Running", page.status())
     }
 
-    @Test fun `an address the server refuses is told on the field`() {
+    /** Try for Free's own check comes first: an address, trimmed, not in
+     *  the shape x@y.z (blank, no @, no dot in the domain, a space) is told
+     *  under the button and nothing is fetched or asked, before the box's
+     *  check (the box ticked or not, it does not light); typing answers the
+     *  notice. Addresses of the shape pass. */
+    @Test fun `an address not in the shape x@y_z is told under the button before the box's check, and typing answers it`() {
+        val fetches = termsFetches()
+        val requests = requests()
+        val page = open()
+
+        for (address in listOf("", "   ", "not an address", "you@example", "you@.com", "you@example.", "y ou@example.com", "a@b@c.d")) {
+            page.sendCodeTo(address, agreed = false)
+            assertEquals("'$address'", "That doesn't look like an email address.", page.notice())
+            assertFalse("'$address': the box's check not reached", page.agreeBox().isErrorShown)
+        }
+        page.sendCodeTo("you@example", agreed = true)
+        assertEquals("ticked, the same", "That doesn't look like an email address.", page.notice())
+        assertNull("not on the field", page.emailField().error)
+        assertTrue("nothing fetched", fetches.sent.isEmpty())
+        assertTrue("nothing asked", requests.sent.isEmpty())
+        assertEquals("the address kept for editing", "you@example", page.emailField().text.toString())
+
+        page.emailField().text.append(".com")
+        idle()
+        assertNull("typing answers it", page.notice())
+
+        page.sendCodeTo("  a.b+c@sub.example.co.uk  ")
+        assertEquals("of the shape: on to the terms", 1, fetches.sent.size)
+    }
+
+    /** The server's rules are the last word: an address of the shape it
+     *  refuses (its 400 `invalid_email`) is told under the button, as the
+     *  page's own check tells one. */
+    @Test fun `an address the server refuses is told under the button`() {
         requests(SignInAnswer.BadAddress)
         val page = open()
 
-        page.sendCodeTo("not an address")
+        page.sendCodeTo("you@example.invalid")
 
         assertTrue(page.shown(R.id.groupSignedOut))
-        assertEquals("That doesn't look like an email address.", page.emailField().error?.toString())
-        assertNull("on the field, not under the button", page.notice())
-        assertEquals("not an address", page.emailField().text.toString())
+        assertEquals("That doesn't look like an email address.", page.notice())
+        assertNull("not on the field", page.emailField().error)
+        assertEquals("you@example.invalid", page.emailField().text.toString())
     }
 
     /** An older Worker's 404: it has no sign-in, and with no other way in
@@ -1023,11 +1283,7 @@ class PtCloudSettingsActivityTest {
         assertEquals("Sign-in isn't available right now. Try again later.", page.notice())
         assertTrue(page.shown(R.id.groupSignedOut))
         assertTrue("no hold", page.sendCodeButton().isEnabled)
-        assertEquals(
-            "the intro, the account and the status, as before",
-            listOf(R.id.tvCloudIntro, R.id.headerCloudAccount, R.id.cardCloudAccount, View.NO_ID),
-            page.sections(),
-        )
+        assertEquals("the signed-out page, as before", signedOutSections, page.sections())
     }
 
     @Test fun `no answer says the service could not be reached, at either step, and moves nothing`() {
@@ -1233,9 +1489,9 @@ class PtCloudSettingsActivityTest {
         )
         assertTrue("a first key turns both switches on", cloudPrefs.ptCloudOcrEnabled && cloudPrefs.ptCloudTranslateEnabled)
         assertTrue(page.shown(R.id.groupSignedIn))
-        assertEquals(EMAIL, page.text(R.id.tvSignedInAs))
-        assertEquals("Free trial until " + CooldownTimeLabel.formatDateTime(ctx, until), page.accountLine())
-        assertTrue(page.shown(R.id.btnCloudJoin))
+        assertEquals("Free trial until " + CooldownTimeLabel.formatDateTime(ctx, until), page.accountTitle())
+        assertEquals(EMAIL, page.accountSubtitle())
+        assertTrue(page.shown(R.id.btnCloudJoinTrial))
         assertEquals("", page.emailField().text.toString())
         assertEquals("", page.codeField().text.toString())
         assertEquals("health checked after the store", 2, healthChecks())
@@ -1257,15 +1513,11 @@ class PtCloudSettingsActivityTest {
         assertEquals(KEY, cloudPrefs.ptCloudClientKey)
         assertFalse("nothing entitled: both switches left off", cloudPrefs.ptCloudOcrEnabled || cloudPrefs.ptCloudTranslateEnabled)
         page.assertRowsDisabledAndOff()
-        assertEquals(EMAIL, page.text(R.id.tvSignedInAs))
-        assertEquals("Trial ended " + CooldownTimeLabel.formatDate(endedAt), page.accountLine())
-        assertTrue(page.shown(R.id.btnCloudJoin))
+        assertEquals("Trial ended " + CooldownTimeLabel.formatDate(endedAt), page.accountTitle())
+        assertEquals(EMAIL, page.accountSubtitle())
+        assertTrue(page.shown(R.id.btnCloudJoinLapsed))
         assertTrue(page.shown(R.id.rowCloudCheckAgain))
-        assertEquals(
-            "Add a Ko-fi membership to keep PlayTranslate Cloud going beyond the trial. For convenience, " +
-                "subscribe with you@example.com so it automatically reaches this account.",
-            page.joinSubtitle(),
-        )
+        assertEquals("Subscribe with you@example.com so it reaches this account automatically.", page.joinHint())
     }
 
     @Test fun `a refused keystore write says the key was not stored`() {
@@ -1381,10 +1633,7 @@ class PtCloudSettingsActivityTest {
         page.signInWith("482913")
         assertTrue(page.shown(R.id.groupSignedOut))
         assertEquals("Sign-in isn't available right now. Try again later.", page.notice())
-        assertEquals(
-            listOf(R.id.tvCloudIntro, R.id.headerCloudAccount, R.id.cardCloudAccount, View.NO_ID),
-            page.sections(),
-        )
+        assertEquals(signedOutSections, page.sections())
     }
 
     @Test fun `a 410 from either sign-in step shows the closed card`() {
@@ -1393,7 +1642,7 @@ class PtCloudSettingsActivityTest {
         page.sendCodeTo()
         assertTrue(page.shown(R.id.cardCloudClosed))
         assertEquals("PlayTranslate Cloud closed on Nov 30. Thank you for using it.", page.text(R.id.tvCloudClosedMessage))
-        assertFalse(page.shown(R.id.cardCloudAccount))
+        assertFalse(page.shown(R.id.cardCloudSignIn))
 
         val again = run {
             controller!!.pause().stop().destroy()
@@ -1431,6 +1680,26 @@ class PtCloudSettingsActivityTest {
 
     /** The hold and its notice come back from the saved state too: a
      *  too-many-codes hold that runs to midnight outlives a theme change. */
+    /** A server's answer under the button is answered the same way: a
+     *  keystroke in the address, or a toggle of the box, drops it (the hold
+     *  it explains stays the address's). */
+    @Test fun `typing or toggling answers a server's notice under the button`() {
+        requests(CodeRequestResult.MailFailed(60), CodeRequestResult.MailFailed(60))
+        val page = open()
+        page.sendCodeTo()
+        assertEquals("Couldn't send the email. Try again in a minute.", page.notice())
+
+        page.agreeRow().performClick()
+        idle()
+        assertNull("a toggle answers it", page.notice())
+
+        page.sendCodeTo("other@example.com")
+        assertEquals("Couldn't send the email. Try again in a minute.", page.notice())
+        page.emailField().text.append("x")
+        idle()
+        assertNull("a keystroke answers it", page.notice())
+    }
+
     @Test fun `a hold and its notice survive a recreate`() {
         requests(CodeRequestResult.TooManyCodes(3_600))
         val page = open()
@@ -1477,32 +1746,49 @@ class PtCloudSettingsActivityTest {
 
     // ── Signed in ─────────────────────────────────────────────────────────
 
-    @Test fun `a trial's title is its address, the line under it Free trial until with the date and the time of day, and Join is in the card`() {
+    /** On the trial: the standing is the title, in the title's own colour,
+     *  the address under it; then the features, live, the service status, and
+     *  under AFTER THE TRIAL the outlined Join with its line; no Already
+     *  joined?. */
+    @Test fun `a trial's title is Free trial until with the date and the time of day, its address under it, and Join after the trial`() {
         val until = now() + 5 * DAY
         signedIn(trial(until))
         val page = open()
 
         assertTrue(page.shown(R.id.groupSignedIn))
-        assertEquals("the address itself, not Signed in as", EMAIL, page.text(R.id.tvSignedInAs))
-        assertEquals("Free trial until " + CooldownTimeLabel.formatDateTime(ctx, until), page.accountLine())
-        assertEquals("in the warning colour", page.themeColor(R.attr.ptWarning), page.accountLineColor())
-        assertTrue(page.shown(R.id.btnCloudJoin))
-        assertNotNull(
-            "in the account card",
-            page.findViewById<ViewGroup>(R.id.cardCloudAccount).findViewById<View>(R.id.btnCloudJoin),
+        assertEquals("Free trial until " + CooldownTimeLabel.formatDateTime(ctx, until), page.accountTitle())
+        assertEquals("in the title's own colour", page.themeColor(R.attr.ptText), page.accountTitleColor())
+        assertEquals("the address under it", EMAIL, page.accountSubtitle())
+        val subtitle = page.findViewById<TextView>(R.id.tvAccountSubtitle)
+        assertEquals("one line", 1, subtitle.maxLines)
+        assertEquals(android.text.TextUtils.TruncateAt.END, subtitle.ellipsize)
+        assertSame("the trial's Join", page.trialJoinButton(), page.joinButton())
+        assertEquals(
+            "Add a Ko-fi membership to keep PlayTranslate Cloud going after the trial.",
+            page.text(R.id.tvJoinNudgeTrial),
         )
+        assertEquals("Join PlayTranslate Cloud", page.joinButton().text.toString())
+        assertEquals("Subscribe with you@example.com so it reaches this account automatically.", page.joinHint())
         assertFalse(page.shown(R.id.rowCloudCheckAgain))
         assertFalse(page.shown(R.id.tvJoinPending))
         assertTrue(page.shown(R.id.btnCloudSignOut))
         assertFalse(page.shown(R.id.groupSignedOut))
+        assertEquals(
+            listOf(
+                R.id.headerCloudAccount, R.id.cardCloudAccount, R.id.headerCloudFeatures, R.id.cardCloudFeatures,
+                R.id.cardCloudStatus, R.id.headerCloudJoin, R.id.cardCloudJoinTrial,
+            ),
+            page.sections(),
+        )
     }
 
-    @Test fun `a trial with no end date shows no account line`() {
+    @Test fun `a trial with no end date titles the card with its address`() {
         signedIn(trial(null))
         val page = open()
 
-        assertNull(page.accountLine())
-        assertTrue(page.shown(R.id.btnCloudJoin))
+        assertEquals(EMAIL, page.accountTitle())
+        assertNull("nothing under it", page.accountSubtitle())
+        assertSame(page.trialJoinButton(), page.joinButton())
     }
 
     @Test fun `a member shows Member until with the date and the time of day, or Member when open-ended, and no Join`() {
@@ -1510,17 +1796,25 @@ class PtCloudSettingsActivityTest {
         signedIn(member(until))
         val checks = keyChecks()
         val page = open()
-        assertEquals("Member until " + CooldownTimeLabel.formatDateTime(ctx, until), page.accountLine())
-        assertEquals("in the subtitle's colour", page.themeColor(R.attr.ptTextMuted), page.accountLineColor())
-        assertFalse(page.shown(R.id.btnCloudJoin))
+        assertEquals("Member until " + CooldownTimeLabel.formatDateTime(ctx, until), page.accountTitle())
+        assertEquals("in the title's own colour", page.themeColor(R.attr.ptText), page.accountTitleColor())
+        assertEquals(EMAIL, page.accountSubtitle())
+        assertFalse(page.joinShown())
+        assertTrue("the service status", page.shown(R.id.cardCloudStatus))
 
         awaitCalls(checks, 1)
         checks.answer(KeyCheck.Accepted("manual", null))
 
-        assertEquals("the record rewritten by the resume's check", "Member", page.accountLine())
-        assertEquals(page.themeColor(R.attr.ptTextMuted), page.accountLineColor())
+        assertEquals("the record rewritten by the resume's check", "Member", page.accountTitle())
         assertEquals(EMAIL, PtCloudService.account!!.email)
-        assertFalse(page.shown(R.id.btnCloudJoin))
+        assertFalse(page.joinShown())
+        assertEquals(
+            listOf(
+                R.id.headerCloudAccount, R.id.cardCloudAccount, R.id.headerCloudFeatures, R.id.cardCloudFeatures,
+                R.id.cardCloudStatus,
+            ),
+            page.sections(),
+        )
     }
 
     @Test fun `a key with no record shows Signed in with a key`() {
@@ -1528,69 +1822,84 @@ class PtCloudSettingsActivityTest {
         val page = open()
 
         assertTrue(page.shown(R.id.groupSignedIn))
-        assertEquals("Signed in with a key", page.text(R.id.tvSignedInAs))
-        assertNull(page.accountLine())
-        assertFalse(page.shown(R.id.btnCloudJoin))
+        assertEquals("Signed in with a key", page.accountTitle())
+        assertNull(page.accountSubtitle())
+        assertFalse(page.joinShown())
         assertFalse(page.shown(R.id.rowCloudCheckAgain))
     }
 
-    @Test fun `an older Worker's 200 shows no account line`() {
+    /** A standing with no address to go under it (a record without one, a
+     *  key given by hand): the line under the title says how the device is
+     *  signed in. */
+    @Test fun `a record with a standing and no address says Signed in with a key under the title`() {
+        val until = now() + 30 * DAY
+        signedIn(member(until, email = null))
+        val page = open()
+
+        assertEquals("Member until " + CooldownTimeLabel.formatDateTime(ctx, until), page.accountTitle())
+        assertEquals("Signed in with a key", page.accountSubtitle())
+    }
+
+    @Test fun `an older Worker's 200 titles the card with the address`() {
         signedIn(trial(now() + 5 * DAY))
         val checks = keyChecks()
         val page = open()
-        assertNotNull(page.accountLine())
+        assertEquals(EMAIL, page.accountSubtitle())
 
         awaitCalls(checks, 1)
         checks.answer(KeyCheck.Accepted(null, null))
 
-        assertNull(page.accountLine())
-        assertEquals("the email kept", EMAIL, page.text(R.id.tvSignedInAs))
-        assertFalse(page.shown(R.id.btnCloudJoin))
+        assertEquals("the email kept, as the title", EMAIL, page.accountTitle())
+        assertNull(page.accountSubtitle())
+        assertFalse(page.joinShown())
         assertFalse(page.shown(R.id.tvAccountUnchecked))
     }
 
-    @Test fun `a 403 whose last_source is trial shows Trial ended, Check again and Join in the card`() {
+    /** The resume's check finds the trial ended: both switches off, the
+     *  rows disabled and off under FEATURES, and right under them the lapsed
+     *  Join card (its title, its line pointing at the features, the accent
+     *  Join and the address to pay with, then under a divider Already
+     *  joined? with Check again); no service status. */
+    @Test fun `a 403 whose last_source is trial shows Trial ended, and the Join card with Check again under the features`() {
         val cloudPrefs = signedIn(trial(now() + 5 * DAY))
         val checks = keyChecks()
         val endedAt = now() - 3 * DAY
         val page = open()
-        assertEquals("the trial's line", page.themeColor(R.attr.ptWarning), page.accountLineColor())
         assertTrue(page.ocrRow().switch().isChecked && page.translateRow().switch().isChecked)
 
         awaitCalls(checks, 1)
         checks.answer(KeyCheck.Inactive("trial", endedAt))
 
-        // The resume's check found the account ended: both switches off,
-        // the rows disabled under it, the group still there.
         assertFalse(cloudPrefs.ptCloudOcrEnabled)
         assertFalse(cloudPrefs.ptCloudTranslateEnabled)
         page.assertRowsDisabledAndOff()
 
-        assertEquals("Trial ended " + CooldownTimeLabel.formatDate(endedAt), page.accountLine())
-        assertEquals("ended, in the alert colour", page.themeColor(R.attr.ptDanger), page.accountLineColor())
+        assertEquals("Trial ended " + CooldownTimeLabel.formatDate(endedAt), page.accountTitle())
+        assertEquals("in the alert colour", page.themeColor(R.attr.ptDanger), page.accountTitleColor())
+        assertEquals(EMAIL, page.accountSubtitle())
         assertTrue(page.shown(R.id.rowCloudCheckAgain))
         assertCheckAgainFree(page)
         assertTrue(page.shownTexts().contains("Already joined? It can take a few seconds to process."))
-        assertTrue(page.shown(R.id.btnCloudJoin))
+        assertSame("the lapsed card's Join", page.lapsedJoinButton(), page.joinButton())
+        assertEquals("Keep PlayTranslate Cloud going", page.text(R.id.tvJoinTitleLapsed))
+        assertTrue(page.shownTexts().contains("Add a Ko-fi membership to turn these features back on."))
+        assertEquals("Subscribe with you@example.com so it reaches this account automatically.", page.joinHint())
         assertTrue(page.shown(R.id.btnCloudSignOut))
-        // Join sits under the account line that says why, the divider right
-        // between them, and the page has no Join card of its own.
-        val group = page.findViewById<ViewGroup>(R.id.groupSignedIn)
-        val accountRow = group.indexOfChild(page.findViewById<View>(R.id.tvSignedInAs).parent.parent as View)
-        assertTrue(page.shown(R.id.dividerCloudJoin))
-        assertEquals("the divider", accountRow + 1, group.indexOfChild(page.findViewById(R.id.dividerCloudJoin)))
-        assertEquals("Join", accountRow + 2, group.indexOfChild(page.findViewById(R.id.btnCloudJoin)))
-        assertEquals("the Join line", accountRow + 3, group.indexOfChild(page.findViewById(R.id.tvJoinSubtitle)))
-        assertTrue(page.shown(R.id.dividerCloudCheckAgain))
-        assertEquals("its own divider", accountRow + 4, group.indexOfChild(page.findViewById(R.id.dividerCloudCheckAgain)))
-        assertEquals("Already joined?", accountRow + 5, group.indexOfChild(page.findViewById(R.id.rowCloudCheckAgain)))
         assertEquals(
+            "the Join card right under the features, no service status",
             listOf(
-                R.id.tvCloudIntro, R.id.headerCloudAccount, R.id.cardCloudAccount,
-                R.id.headerCloudConfiguration, R.id.cardCloudUseFor, View.NO_ID,
+                R.id.headerCloudAccount, R.id.cardCloudAccount, R.id.headerCloudFeatures, R.id.cardCloudFeatures,
+                R.id.cardCloudJoinLapsed,
             ),
             page.sections(),
         )
+        // In the card, top to bottom: title, line, Join, its line, a
+        // divider, Already joined? with the chip.
+        val card = page.findViewById<ViewGroup>(R.id.cardCloudJoinLapsed).getChildAt(0) as ViewGroup
+        val join = card.indexOfChild(page.lapsedJoinButton())
+        assertEquals("Join, third", 2, join)
+        assertEquals("its line under it", join + 1, card.indexOfChild(page.findViewById(R.id.tvJoinHintLapsed)))
+        assertEquals("then Already joined?, under a divider", join + 3, card.indexOfChild(page.findViewById(R.id.rowCloudCheckAgain)))
     }
 
     @Test fun `a 403 with nulls shows No active membership, and with a date Membership inactive since it`() {
@@ -1601,17 +1910,18 @@ class PtCloudSettingsActivityTest {
 
         awaitCalls(checks, 1)
         checks.answer(KeyCheck.Inactive(null, null))
-        assertEquals("No active membership", page.accountLine())
-        assertEquals("inactive, in the alert colour", page.themeColor(R.attr.ptDanger), page.accountLineColor())
-        assertTrue(page.shown(R.id.btnCloudJoin))
+        assertEquals("No active membership", page.accountTitle())
+        assertEquals("inactive, in the alert colour", page.themeColor(R.attr.ptDanger), page.accountTitleColor())
+        assertSame(page.lapsedJoinButton(), page.joinButton())
         assertTrue(page.shown(R.id.rowCloudCheckAgain))
         page.assertRowsDisabledAndOff()
 
         page.checkAgainButton().performClick()
         awaitCalls(checks, 2)
         checks.answer(KeyCheck.Inactive("kofi", endedAt))
-        assertEquals("Membership inactive since " + CooldownTimeLabel.formatDate(endedAt), page.accountLine())
-        assertEquals("inactive with a date, in the alert colour", page.themeColor(R.attr.ptDanger), page.accountLineColor())
+        assertEquals("Membership inactive since " + CooldownTimeLabel.formatDate(endedAt), page.accountTitle())
+        assertEquals(page.themeColor(R.attr.ptDanger), page.accountTitleColor())
+        assertEquals(EMAIL, page.accountSubtitle())
     }
 
     /** The clock words the trial's end and ends nothing: the record is the
@@ -1623,8 +1933,8 @@ class PtCloudSettingsActivityTest {
         val cloudPrefs = signedIn(trial(end))
         val page = open()
 
-        assertEquals("Trial ended " + CooldownTimeLabel.formatDate(end), page.accountLine())
-        assertTrue(page.shown(R.id.btnCloudJoin))
+        assertEquals("Trial ended " + CooldownTimeLabel.formatDate(end), page.accountTitle())
+        assertSame(page.lapsedJoinButton(), page.joinButton())
         assertTrue(page.shown(R.id.rowCloudCheckAgain))
         assertTrue("the clock ends nothing", cloudPrefs.ptCloudOcrEnabled && cloudPrefs.ptCloudTranslateEnabled)
         for (row in listOf(page.ocrRow(), page.translateRow())) {
@@ -1640,8 +1950,8 @@ class PtCloudSettingsActivityTest {
         val cloudPrefs = signedIn(member(now() - 2 * DAY))
         val page = open()
 
-        assertEquals("Member", page.accountLine())
-        assertFalse(page.shown(R.id.btnCloudJoin))
+        assertEquals("Member", page.accountTitle())
+        assertFalse(page.joinShown())
         assertFalse(page.shown(R.id.rowCloudCheckAgain))
         assertTrue(cloudPrefs.ptCloudOcrEnabled && cloudPrefs.ptCloudTranslateEnabled)
         assertTrue(page.ocrRow().switch().isEnabled && page.ocrRow().switch().isChecked)
@@ -1667,9 +1977,9 @@ class PtCloudSettingsActivityTest {
         PtCloudService.onAccountWithheld(KEY, PtCloudService.accountGeneration, KeyCheck.Inactive("kofi", endedAt))
         idle()
 
-        assertEquals("Membership inactive since " + CooldownTimeLabel.formatDate(endedAt), page.accountLine())
+        assertEquals("Membership inactive since " + CooldownTimeLabel.formatDate(endedAt), page.accountTitle())
         page.assertRowsDisabledAndOff()
-        assertTrue(page.shown(R.id.btnCloudJoin))
+        assertSame(page.lapsedJoinButton(), page.joinButton())
     }
 
     /** The resume's check is out when a route's 403 ends the account: its
@@ -1692,7 +2002,7 @@ class PtCloudSettingsActivityTest {
 
         awaitCalls(checks, 2)
         assertFalse("the stale Accepted stood for nothing", cloudPrefs.ptCloudOcrEnabled || cloudPrefs.ptCloudTranslateEnabled)
-        assertEquals("Membership inactive since " + CooldownTimeLabel.formatDate(endedAt), page.accountLine())
+        assertEquals("Membership inactive since " + CooldownTimeLabel.formatDate(endedAt), page.accountTitle())
 
         // The record moves again under the second check: dropped too, and
         // the page says it could not check, asking no third time.
@@ -1701,6 +2011,7 @@ class PtCloudSettingsActivityTest {
         settleIo()
         assertEquals(2, checks.sent.size)
         assertTrue(page.shown(R.id.tvAccountUnchecked))
+        assertNull("in the address's place", page.accountSubtitle())
         assertFalse(cloudPrefs.ptCloudOcrEnabled || cloudPrefs.ptCloudTranslateEnabled)
         page.assertRowsDisabledAndOff()
 
@@ -1711,10 +2022,14 @@ class PtCloudSettingsActivityTest {
         checks.answer(KeyCheck.Accepted("kofi", until))
         assertFalse(page.shown(R.id.tvAccountUnchecked))
         assertTrue("entitled again: both on", cloudPrefs.ptCloudOcrEnabled && cloudPrefs.ptCloudTranslateEnabled)
-        assertEquals("Member until " + CooldownTimeLabel.formatDateTime(ctx, until), page.accountLine())
+        assertEquals("Member until " + CooldownTimeLabel.formatDateTime(ctx, until), page.accountTitle())
+        assertEquals(EMAIL, page.accountSubtitle())
     }
 
-    @Test fun `the cooldown line hides while the account line says ended or inactive`() {
+    /** The cooldown line is the status card's, which hides once the
+     *  account lapsed (the account card and the Join card say why the service
+     *  refuses). */
+    @Test fun `the cooldown line hides with the service status while the account is ended or inactive`() {
         signedIn(trial(now() + 5 * DAY))
         recordCooldown()
         val checks = keyChecks()
@@ -1724,6 +2039,7 @@ class PtCloudSettingsActivityTest {
         awaitCalls(checks, 1)
         checks.answer(KeyCheck.Inactive("trial", now() - DAY))
         assertFalse("trial ended", page.cooldownLine().isShown)
+        assertFalse(page.shown(R.id.cardCloudStatus))
 
         page.checkAgainButton().performClick()
         awaitCalls(checks, 2)
@@ -1743,7 +2059,7 @@ class PtCloudSettingsActivityTest {
         assertTrue("a member's cooldown shows", page.cooldownLine().isShown)
     }
 
-    @Test fun `a check that could not be made says so beside the account line, which keeps the record`() {
+    @Test fun `a check that could not be made says so in the address's place, the title keeping the record`() {
         val until = now() + 5 * DAY
         signedIn(trial(until))
         val checks = keyChecks(KeyCheck.NotChecked)
@@ -1752,12 +2068,18 @@ class PtCloudSettingsActivityTest {
         awaitCalls(checks, 1)
         assertTrue(page.shown(R.id.tvAccountUnchecked))
         assertEquals("Couldn't check the account just now.", page.text(R.id.tvAccountUnchecked))
-        assertEquals("Free trial until " + CooldownTimeLabel.formatDateTime(ctx, until), page.accountLine())
+        assertEquals(
+            "in the warning colour", page.themeColor(R.attr.ptWarning),
+            page.findViewById<TextView>(R.id.tvAccountUnchecked).currentTextColor,
+        )
+        assertNull("in the address's place", page.accountSubtitle())
+        assertEquals("Free trial until " + CooldownTimeLabel.formatDateTime(ctx, until), page.accountTitle())
 
         resume()
         awaitCalls(checks, 2)
         checks.answer(KeyCheck.Accepted("trial", until))
         assertFalse(page.shown(R.id.tvAccountUnchecked))
+        assertEquals(EMAIL, page.accountSubtitle())
     }
 
     @Test fun `Check again checks the stored key, busy on its button while it runs`() {
@@ -1777,9 +2099,9 @@ class PtCloudSettingsActivityTest {
 
     /** Check again is the sign-out chip's twin: a square of the same size
      *  with the sync glyph in the same tint and no text, its description
-     *  read as Check again, at the right end of the Already joined? row,
-     *  under a divider of that row's own. */
-    @Test fun `Check again is the icon chip at the right of the Already joined line, under its own divider`() {
+     *  read as Check again, at the right end of the Already joined? row, the
+     *  lapsed Join card's last, under its divider. */
+    @Test fun `Check again is the icon chip at the right of the Already joined line, in the Join card under its divider`() {
         signedIn(ended("trial", now() - DAY))
         val checks = keyChecks(KeyCheck.Inactive("trial", now() - DAY))
         val page = open()
@@ -1799,7 +2121,11 @@ class PtCloudSettingsActivityTest {
         assertEquals(LinearLayout.HORIZONTAL, row.orientation)
         assertSame("at the row's right end", chip, row.getChildAt(row.childCount - 1))
         assertSame("after the line", row, page.findViewById<View>(R.id.tvJoinPending).parent)
-        assertTrue(page.shown(R.id.dividerCloudCheckAgain))
+        val card = row.parent as ViewGroup
+        assertSame("in the lapsed Join card", page.findViewById<ViewGroup>(R.id.cardCloudJoinLapsed).getChildAt(0), card)
+        assertSame("its last", row, card.getChildAt(card.childCount - 1))
+        val divider = card.getChildAt(card.childCount - 2)
+        assertTrue("under a divider", divider.isShown && divider !is TextView && divider.layoutParams.height == 1.dpIn(page))
     }
 
     @Test fun `a 401 on resume says the key is no longer accepted`() {
@@ -1881,7 +2207,7 @@ class PtCloudSettingsActivityTest {
         page.joinButton().performClick()
         resume()
         awaitCalls(checks, 2)
-        assertTrue(page.shown(R.id.btnCloudJoin))
+        assertTrue(page.shown(R.id.btnCloudJoinLapsed))
         idleFor(9)
         settleIo()
         assertEquals(2, checks.sent.size)
@@ -1889,8 +2215,8 @@ class PtCloudSettingsActivityTest {
         idleFor(1)
         awaitCalls(checks, 3)
 
-        assertTrue(page.accountLine()!!.startsWith("Member until "))
-        assertFalse(page.shown(R.id.btnCloudJoin))
+        assertTrue(page.accountTitle()!!.startsWith("Member until "))
+        assertFalse(page.joinShown())
         assertNull("the accepted check ends the account's cooldown", PtCloudService.unavailableUntil())
         idleFor(30)
         settleIo()
@@ -1921,7 +2247,7 @@ class PtCloudSettingsActivityTest {
         awaitCalls(checks, 3)
         checks.answer(KeyCheck.Accepted("kofi", now() + 38 * DAY))
 
-        assertFalse(page.shown(R.id.btnCloudJoin))
+        assertFalse(page.joinShown())
         idleFor(30)
         settleIo()
         assertEquals("one follow-up only", 3, checks.sent.size)
@@ -1949,7 +2275,7 @@ class PtCloudSettingsActivityTest {
         awaitCalls(checks, 2)
         idleFor(10)
         awaitCalls(checks, 3)
-        assertFalse(again.shown(R.id.btnCloudJoin))
+        assertFalse(again.joinShown())
         idleFor(30)
         settleIo()
         assertEquals("one re-check only", 3, checks.sent.size)
@@ -1973,7 +2299,7 @@ class PtCloudSettingsActivityTest {
         settleIo()
 
         assertEquals(2, checks.sent.size)
-        assertFalse(page.shown(R.id.btnCloudJoin))
+        assertFalse(page.joinShown())
         assertTrue(cloudPrefs.ptCloudOcrEnabled)
         assertTrue(cloudPrefs.ptCloudTranslateEnabled)
         for (row in listOf(page.ocrRow(), page.translateRow())) {
@@ -1987,16 +2313,14 @@ class PtCloudSettingsActivityTest {
         val page = open()
         val join = page.joinButton()
         assertEquals("Join PlayTranslate Cloud", join.text.toString())
-        assertEquals(
-            "Add a Ko-fi membership to keep PlayTranslate Cloud going beyond the trial. For convenience, " +
-                "subscribe with you@example.com so it automatically reaches this account.",
-            page.joinSubtitle(),
-        )
-        assertEquals(
-            "centred",
-            Gravity.CENTER_HORIZONTAL,
-            page.findViewById<TextView>(R.id.tvJoinSubtitle).gravity and Gravity.HORIZONTAL_GRAVITY_MASK,
-        )
+        assertEquals("Subscribe with you@example.com so it reaches this account automatically.", page.joinHint())
+        for (line in listOf(R.id.tvJoinHintTrial, R.id.tvJoinHintLapsed)) {
+            assertEquals(
+                page.resources.getResourceEntryName(line) + " centred",
+                Gravity.CENTER_HORIZONTAL,
+                page.findViewById<TextView>(line).gravity and Gravity.HORIZONTAL_GRAVITY_MASK,
+            )
+        }
 
         join.performClick()
         val opened = shadowOf(page).nextStartedActivity
@@ -2009,14 +2333,30 @@ class PtCloudSettingsActivityTest {
         assertEquals("Link copied", ShadowToast.getTextOfLatestToast())
     }
 
+    /** The lapsed card's Join is the trial card's twin: Ko-fi, the copied
+     *  address, the same label. */
+    @Test fun `the lapsed card's Join opens Ko-fi and copies the address too`() {
+        signedIn(ended("kofi", now() - DAY))
+        val page = open()
+        val join = page.joinButton()
+        assertSame(page.lapsedJoinButton(), join)
+        assertEquals("Join PlayTranslate Cloud", join.text.toString())
+
+        join.performClick()
+        assertEquals("https://ko-fi.com/playtranslate/tiers", shadowOf(page).nextStartedActivity.dataString)
+        join.performLongClick()
+        val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        assertEquals("https://ko-fi.com/playtranslate/tiers", clipboard.primaryClip!!.getItemAt(0).text.toString())
+    }
+
     @Test fun `a record with no email asks for the key's own address under Join, and with no browser Join says so`() {
         signedIn(ended(null, null, email = null))
         val page = open()
-        assertEquals("no address to title it with", "Signed in with a key", page.text(R.id.tvSignedInAs))
+        assertEquals("the standing is the title", "No active membership", page.accountTitle())
+        assertEquals("no address to put under it", "Signed in with a key", page.accountSubtitle())
         assertEquals(
-            "Add a Ko-fi membership to keep PlayTranslate Cloud going. For convenience, subscribe with the " +
-                "email address your key belongs to so it automatically reaches this account.",
-            page.joinSubtitle(),
+            "Subscribe with the email address your key belongs to so it reaches this account automatically.",
+            page.joinHint(),
         )
 
         shadowOf(ctx as Application).checkActivities(true)
@@ -2025,45 +2365,132 @@ class PtCloudSettingsActivityTest {
         assertEquals("No browser available", ShadowToast.getTextOfLatestToast())
     }
 
-    /** One Join, in the account card, for each standing that shows it: on
-     *  the trial and after it the line says "beyond the trial", with no
-     *  active membership just "going"; each names the record's address, or
-     *  the key's own when the record has none. A member and an account with
-     *  no details have no Join. */
-    @Test fun `Join shows for a trial, an ended trial and an inactive membership with the line for each, and not for a member or no details`() {
+    /** Join for each standing that shows it, a card of its own: on the trial
+     *  the AFTER THE TRIAL card under the service status, once the trial
+     *  ended (on the server's word or the clock's) or with no active
+     *  membership the lapsed card under the features, the service status
+     *  hidden; each names the record's address, or the key's own when the
+     *  record has none. A member and an account with no details have no
+     *  Join. */
+    @Test fun `Join shows for a trial, an ended trial and an inactive membership in its card for each, and not for a member or no details`() {
         cloudPrefs()
         val page = open()
-        val trialLine = "Add a Ko-fi membership to keep PlayTranslate Cloud going beyond the trial. For " +
-            "convenience, subscribe with you@example.com so it automatically reaches this account."
-        val trialNoEmail = "Add a Ko-fi membership to keep PlayTranslate Cloud going beyond the trial. For " +
-            "convenience, subscribe with the email address your key belongs to so it automatically reaches " +
-            "this account."
-        val inactiveLine = "Add a Ko-fi membership to keep PlayTranslate Cloud going. For convenience, " +
-            "subscribe with you@example.com so it automatically reaches this account."
-        val inactiveNoEmail = "Add a Ko-fi membership to keep PlayTranslate Cloud going. For convenience, " +
-            "subscribe with the email address your key belongs to so it automatically reaches this account."
+        val line = "Subscribe with you@example.com so it reaches this account automatically."
+        val noEmail = "Subscribe with the email address your key belongs to so it reaches this account automatically."
+        val trialCard = R.id.cardCloudJoinTrial
+        val lapsedCard = R.id.cardCloudJoinLapsed
         val cells = listOf(
-            trial(now() + 5 * DAY) to trialLine,
-            trial(now() + 5 * DAY, email = null) to trialNoEmail,
-            trial(now() - DAY) to trialLine,
-            ended("trial", now() - DAY) to trialLine,
-            ended("trial", now() - DAY, email = null) to trialNoEmail,
-            ended("kofi", now() - DAY) to inactiveLine,
-            ended(null, null) to inactiveLine,
-            ended("kofi", now() - DAY, email = null) to inactiveNoEmail,
-            member(now() + 30 * DAY) to null,
-            member(null) to null,
-            PtCloudAccount(email = EMAIL, active = true, checkedAtMs = now()) to null,
-            null to null,
+            Triple(trial(now() + 5 * DAY), trialCard, line),
+            Triple(trial(now() + 5 * DAY, email = null), trialCard, noEmail),
+            Triple(trial(now() - DAY), lapsedCard, line),
+            Triple(ended("trial", now() - DAY), lapsedCard, line),
+            Triple(ended("trial", now() - DAY, email = null), lapsedCard, noEmail),
+            Triple(ended("kofi", now() - DAY), lapsedCard, line),
+            Triple(ended(null, null), lapsedCard, line),
+            Triple(ended("kofi", now() - DAY, email = null), lapsedCard, noEmail),
+            Triple(member(now() + 30 * DAY), null, null),
+            Triple(member(null), null, null),
+            Triple(PtCloudAccount(email = EMAIL, active = true, checkedAtMs = now()), null, null),
+            Triple(null, null, null),
         )
-        for ((account, line) in cells) {
+        for ((account, card, hint) in cells) {
             assertTrue(PtCloudService.saveClientKey(KEY, account))
             idle()
             val cell = "${account?.standing(now()) ?: PtCloudAccount.Standing.NO_DETAILS} $account"
-            assertEquals(cell, line != null, page.shown(R.id.btnCloudJoin))
-            assertEquals("$cell: the divider with Join", line != null, page.shown(R.id.dividerCloudJoin))
-            assertEquals(cell, line, page.joinSubtitle())
+            assertEquals("$cell: the trial's card", card == trialCard, page.shown(trialCard))
+            assertEquals("$cell: its header", card == trialCard, page.shown(R.id.headerCloudJoin))
+            assertEquals("$cell: the lapsed card", card == lapsedCard, page.shown(lapsedCard))
+            assertEquals("$cell: the service status", card != lapsedCard, page.shown(R.id.cardCloudStatus))
+            assertEquals(cell, hint, page.joinHint())
         }
+    }
+
+    /** A press on [row] as the window delivers one, through the features
+     *  card: down and up at the row's middle, so a row that takes no touch
+     *  leaves it to the card. */
+    private fun PtCloudSettingsActivity.pressThroughCard(row: View) {
+        val card = findViewById<ViewGroup>(R.id.cardCloudFeatures)
+        val r = Rect(0, 0, row.width, row.height)
+        card.offsetDescendantRectToMyCoords(row, r)
+        val at = SystemClock.uptimeMillis()
+        card.dispatchTouchEvent(MotionEvent.obtain(at, at, MotionEvent.ACTION_DOWN, r.exactCenterX(), r.exactCenterY(), 0))
+        card.dispatchTouchEvent(MotionEvent.obtain(at, at + 50, MotionEvent.ACTION_UP, r.exactCenterX(), r.exactCenterY(), 0))
+    }
+
+    /** Once the account lapsed, a press on a greyed feature (the rows,
+     *  disabled, let it through to their card) brings the Join card under
+     *  them into view, scrolling while it is not all on screen, then flashes
+     *  Join (three pulses of its fill toward its ink, once the scroll has
+     *  settled) and puts its fill back as it was; focus moves to Join where a
+     *  button takes it (not in touch mode). Nothing is switched. */
+    @Test fun `once the account lapsed, a press on a greyed feature scrolls to the Join card and flashes Join`() {
+        val cloudPrefs = signedIn(ended("trial", now() - DAY))
+        val page = open()
+        val card = page.findViewById<ViewGroup>(R.id.cardCloudFeatures)
+        val join = page.lapsedJoinButton()
+        val joinCard = page.findViewById<View>(R.id.cardCloudJoinLapsed)
+        val scroll = page.findViewById<View>(R.id.columnCloud).parent as NestedScrollView
+        val rest = join.backgroundTintList
+        val fill = page.themeColor(R.attr.ptAccent)
+        assertTrue("the card takes the press", card.isClickable && card.isFocusable)
+        assertFalse("the rows do not", page.ocrRow().isClickable || page.translateRow().isClickable)
+        fun joinCardBottomOnScreen(): Int {
+            val r = Rect(0, 0, joinCard.width, joinCard.height)
+            scroll.offsetDescendantRectToMyCoords(joinCard, r)
+            return r.bottom - scroll.scrollY
+        }
+        assertTrue("the Join card runs below the screen", joinCardBottomOnScreen() > scroll.height)
+
+        ShadowChoreographer.setPaused(true)
+        ShadowChoreographer.setFrameDelay(Duration.ofMillis(16))
+        val fills = try {
+            page.pressThroughCard(page.translateRow())
+            (1..70).map {
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(30))
+                scroll.computeScroll()
+                join.backgroundTintList!!.defaultColor
+            }
+        } finally {
+            ShadowChoreographer.setPaused(false)
+        }
+
+        assertTrue("scrolled to it", scroll.scrollY > 0)
+        assertTrue("the whole card on screen", joinCardBottomOnScreen() <= scroll.height)
+        assertTrue("Join flashed: $fills", fills.any { it != fill })
+        assertEquals("at rest before the scroll settled", fill, fills.first())
+        assertSame("and put back as it was", rest, join.backgroundTintList)
+        assertEquals("focus follows where a button takes it", !join.isInTouchMode, join.isFocused)
+        assertFalse("nothing switched", cloudPrefs.ptCloudOcrEnabled || cloudPrefs.ptCloudTranslateEnabled)
+        page.assertRowsDisabledAndOff()
+    }
+
+    /** Only a lapsed account's greyed features point at Join: live rows take
+     *  their own press (the switch), and the card takes none signed out,
+     *  while the terms are owed or while the service is closed. */
+    @Test fun `the features card points at Join only once the account lapsed`() {
+        val cloudPrefs = cloudPrefs()
+        val page = open()
+        val card = page.findViewById<ViewGroup>(R.id.cardCloudFeatures)
+        assertFalse("signed out", card.isClickable)
+
+        assertTrue(PtCloudService.saveClientKey(KEY, trial(now() + 5 * DAY)))
+        idle()
+        assertFalse("on the trial", card.isClickable)
+        PtCloudService.setOcrEnabled(false)
+        idle()
+        page.pressThroughCard(page.ocrRow())
+        idle()
+        assertTrue("a live row's press is its switch's", cloudPrefs.ptCloudOcrEnabled)
+
+        assertTrue(PtCloudService.saveClientKey(KEY, PtCloudAccount(email = EMAIL, active = true, termsRequired = true, checkedAtMs = now())))
+        PtCloudService.onAccountWithheld(KEY, PtCloudService.accountGeneration, KeyCheck.TermsRequired(TERMS_VERSION))
+        idle()
+        assertTrue(page.shown(R.id.cardCloudTerms))
+        assertFalse("the terms owed", card.isClickable)
+
+        assertTrue(PtCloudService.saveClientKey(KEY, ended("kofi", now() - DAY)))
+        idle()
+        assertTrue("lapsed", card.isClickable)
     }
 
     /** Sign out is the chip beside the account's title, with no text of its
@@ -2083,7 +2510,7 @@ class PtCloudSettingsActivityTest {
         assertTrue("no text on it", chip.allViews.none { it is TextView })
         val row = chip.parent as LinearLayout
         assertEquals(LinearLayout.HORIZONTAL, row.orientation)
-        assertSame("beside the title", row, page.findViewById<View>(R.id.tvSignedInAs).parent.parent)
+        assertSame("beside the title", row, page.findViewById<View>(R.id.tvAccountTitle).parent.parent)
 
         chip.performClick()
         idle()
@@ -2212,14 +2639,14 @@ class PtCloudSettingsActivityTest {
         idle()
     }
 
-    private fun PtCloudSettingsActivity.showTermsChip() = findViewById<View>(R.id.btnCloudShowTerms)
+    private fun PtCloudSettingsActivity.showTermsButton() = findViewById<MaterialButton>(R.id.btnCloudShowTerms)
 
     /** Ticking the box is the agreement: Try for Free with it unticked,
      *  never held for it, lights the box in its error state, shakes it (a
-     *  sideways wobble that settles where it was) and sends nothing, as a
-     *  refused address is told on its field; a tap on the row ticks it and
-     *  clears the error, and the next Try for Free goes. */
-    @Test fun `Try for Free with the box unticked lights and shakes the box and sends nothing, and ticking it clears the error`() {
+     *  sideways wobble that settles where it was), says why under the button
+     *  and sends nothing; a tap on the row ticks it and clears the error and
+     *  the notice, and the next Try for Free goes. */
+    @Test fun `Try for Free with the box unticked lights and shakes the box, says why and sends nothing, and ticking it clears both`() {
         val fetches = termsFetches(TermsResult.NotAvailable)
         val requests = requests()
         val page = open()
@@ -2246,7 +2673,7 @@ class PtCloudSettingsActivityTest {
         assertTrue("nothing asked", requests.sent.isEmpty())
         assertTrue(page.termsLaunches().isEmpty())
         assertTrue(page.shown(R.id.groupSignedOut))
-        assertNull(page.notice())
+        assertEquals("Agree to the terms to continue.", page.notice())
         assertFree(page, page.sendCodeButton(), R.id.progressCloudSendCode, "Try PlayTranslate Cloud for Free")
 
         page.agreeRow().performClick()
@@ -2254,6 +2681,7 @@ class PtCloudSettingsActivityTest {
 
         assertTrue("the row ticks it", page.agreeBox().isChecked)
         assertFalse("the tick clears the error", page.agreeBox().isErrorShown)
+        assertNull("and the notice", page.notice())
         page.sendCodeTo(agreed = false)
         assertEquals(1, fetches.sent.size)
         assertEquals(listOf(EMAIL), requests.sent)
@@ -2293,6 +2721,29 @@ class PtCloudSettingsActivityTest {
         press(xOf(linkAt + 3))
         assertEquals("on the link: the terms fetched", 1, fetches.sent.size)
         assertFalse("the box left alone", page.agreeBox().isChecked)
+
+        // Above and below the words, in the link's columns, the link still
+        // takes it: the sentence's whole height is its target.
+        fun pressAt(x: Float, atY: Float) {
+            val at = SystemClock.uptimeMillis()
+            row.dispatchTouchEvent(MotionEvent.obtain(at, at, MotionEvent.ACTION_DOWN, x, atY, 0))
+            row.dispatchTouchEvent(MotionEvent.obtain(at, at + 50, MotionEvent.ACTION_UP, x, atY, 0))
+            idle()
+        }
+        fetches.answer(TermsResult.NotAvailable)
+        assertTrue(
+            "the press above the words, inside the sentence: ${sentence.height} tall, its words from ${sentence.totalPaddingTop}",
+            sentence.totalPaddingTop > 1,
+        )
+        pressAt(xOf(linkAt + 3), sentence.top + 1f)
+        assertEquals("its top edge opens the terms", 2, fetches.sent.size)
+        fetches.answer(TermsResult.NotAvailable)
+        pressAt(xOf(linkAt + 3), sentence.bottom - 1f)
+        assertEquals("its bottom edge too", 3, fetches.sent.size)
+        assertFalse("the box left alone", page.agreeBox().isChecked)
+        fetches.answer(TermsResult.NotAvailable)
+        pressAt(xOf(2), sentence.top + 1f)
+        assertTrue("off the link's columns, the row ticks the box", page.agreeBox().isChecked)
     }
 
     /** With the box ticked, the terms are fetched for the device's locale
@@ -2481,7 +2932,7 @@ class PtCloudSettingsActivityTest {
         page.tapTermsLink()
         assertTrue(page.shown(R.id.cardCloudClosed))
         assertEquals("PlayTranslate Cloud closed on Nov 30. Thank you for using it.", page.text(R.id.tvCloudClosedMessage))
-        assertFalse(page.shown(R.id.cardCloudAccount))
+        assertFalse(page.shown(R.id.cardCloudSignIn))
         settleIo()
         assertTrue("no code asked for", requests.sent.isEmpty())
     }
@@ -2563,7 +3014,7 @@ class PtCloudSettingsActivityTest {
 
         assertTrue(page.shown(R.id.cardCloudClosed))
         assertEquals("PlayTranslate Cloud closed on Nov 30. Thank you for using it.", page.text(R.id.tvCloudClosedMessage))
-        assertFalse(page.shown(R.id.cardCloudAccount))
+        assertFalse(page.shown(R.id.cardCloudSignIn))
         assertTrue(requests.sent.isEmpty())
         assertTrue(page.termsLaunches().isEmpty())
     }
@@ -2592,9 +3043,9 @@ class PtCloudSettingsActivityTest {
         assertEquals(listOf(listOf(KEY, TERMS_VERSION, "en")), accepts.sent)
         assertEquals(KEY, cloudPrefs.ptCloudClientKey)
         assertTrue("signed in, the acceptance still out", page.shown(R.id.groupSignedIn))
-        assertTrue(page.accountLine()!!.startsWith("Free trial until "))
+        assertTrue(page.accountTitle()!!.startsWith("Free trial until "))
         assertTrue(page.ocrRow().switch().isEnabled && page.ocrRow().switch().isChecked)
-        assertFalse("no terms row", page.shown(R.id.rowCloudTerms))
+        assertFalse("no terms banner", page.shown(R.id.cardCloudTerms))
         assertFalse(page.shown(R.id.progressCloudSignIn))
     }
 
@@ -2699,8 +3150,8 @@ class PtCloudSettingsActivityTest {
         awaitCalls(checks, 1)
 
         assertFalse("the 403 turned both switches off", cloudPrefs.ptCloudOcrEnabled || cloudPrefs.ptCloudTranslateEnabled)
-        assertEquals("Terms not accepted", page.accountLine())
-        assertTrue(page.shown(R.id.rowCloudTerms))
+        assertEquals("the address as the title", EMAIL, page.accountTitle())
+        assertTrue(page.shown(R.id.cardCloudTerms))
         settleIo()
         assertEquals("not fetched again", 2, fetches.sent.size)
         assertTrue("not opened again", page.termsLaunches().isEmpty())
@@ -2723,8 +3174,8 @@ class PtCloudSettingsActivityTest {
 
         assertEquals(1, accepts.sent.size)
         assertTrue(page.shown(R.id.groupSignedIn))
-        assertTrue(page.accountLine()!!.startsWith("Free trial until "))
-        assertFalse(page.shown(R.id.rowCloudTerms))
+        assertTrue(page.accountTitle()!!.startsWith("Free trial until "))
+        assertFalse(page.shown(R.id.cardCloudTerms))
         assertFalse(page.shown(R.id.tvTermsNotice))
         assertTrue("both switches on", cloudPrefs.ptCloudOcrEnabled && cloudPrefs.ptCloudTranslateEnabled)
         idleFor(30)
@@ -2735,51 +3186,62 @@ class PtCloudSettingsActivityTest {
     }
 
     /** The service turns both switches off for the 403 (the check's answer
-     *  is its word); the page says Terms not accepted in the alert colour,
-     *  with the terms row and its chip in place of Join and Already joined?,
-     *  hides the cooldown line, and opens the terms by itself, once: a
-     *  second resume's same answer opens nothing more. */
-    @Test fun `a resume's 403 terms_required turns both switches off, shows Terms not accepted in the alert colour with the terms row and no Join, and opens the terms once`() {
+     *  is its word); the page shows the terms banner above everything,
+     *  outlined and titled in the warning colour, its line and the 40dp
+     *  accent Show terms at its right, with no Join and no service status
+     *  (the cooldown line with it), the account card titled with the address
+     *  (the 403 carries no dates) and the paused line under the greyed
+     *  features, and opens the terms by itself, once: a second resume's same
+     *  answer opens nothing more. */
+    @Test fun `a resume's 403 terms_required turns both switches off, shows the terms banner with no Join, and opens the terms once`() {
         val cloudPrefs = signedIn(trial(now() + 5 * DAY))
         recordCooldown()
         val fetches = termsFetches(terms())
         val checks = keyChecks()
         val page = open()
-        assertTrue("on the trial, Join", page.shown(R.id.btnCloudJoin))
+        assertTrue("on the trial, Join", page.shown(R.id.btnCloudJoinTrial))
         assertTrue(page.cooldownLine().isShown)
+        assertFalse("no banner on the trial", page.shown(R.id.cardCloudTerms))
 
         awaitCalls(checks, 1)
         checks.answer(KeyCheck.TermsRequired(TERMS_VERSION))
 
         assertFalse(cloudPrefs.ptCloudOcrEnabled || cloudPrefs.ptCloudTranslateEnabled)
         page.assertRowsDisabledAndOff()
-        assertEquals("Terms not accepted", page.accountLine())
-        assertEquals("in the alert colour", page.themeColor(R.attr.ptDanger), page.accountLineColor())
-        assertTrue(page.shown(R.id.dividerCloudTerms))
-        assertTrue(page.shown(R.id.rowCloudTerms))
+        assertTrue(page.shown(R.id.cardCloudTerms))
+        assertEquals("Terms not accepted", page.text(R.id.tvTermsRequired))
+        assertEquals(
+            "in the warning colour", page.themeColor(R.attr.ptWarning),
+            page.findViewById<TextView>(R.id.tvTermsRequired).currentTextColor,
+        )
+        assertEquals(
+            "outlined in it", page.themeColor(R.attr.ptWarning),
+            page.findViewById<MaterialCardView>(R.id.cardCloudTerms).strokeColorStateList!!.defaultColor,
+        )
         assertEquals("Read and accept the terms to keep using PlayTranslate Cloud.", page.text(R.id.tvTermsPending))
         assertFalse("no notice", page.shown(R.id.tvTermsNotice))
-        assertFalse("no Join", page.shown(R.id.btnCloudJoin))
-        assertFalse(page.shown(R.id.dividerCloudJoin))
+        assertEquals("the account card titled with its address", EMAIL, page.accountTitle())
+        assertNull(page.accountSubtitle())
+        assertEquals("Paused until the terms are accepted.", page.text(R.id.tvFeaturesPaused))
+        assertFalse("no Join", page.joinShown())
         assertFalse("no Already joined?", page.shown(R.id.rowCloudCheckAgain))
+        assertFalse("no service status", page.shown(R.id.cardCloudStatus))
         assertFalse("the cooldown line hidden", page.cooldownLine().isShown)
-        // The chip is the Check again chip's twin, at the right end of its
-        // row, the row under Already joined?'s place in the account card.
-        val chip = page.findViewById<ViewGroup>(R.id.btnCloudShowTerms)
-        val signOut = page.findViewById<ViewGroup>(R.id.btnCloudSignOut)
-        assertEquals("Show terms", chip.contentDescription.toString())
-        assertTrue("no text on it", chip.allViews.none { it is TextView })
-        assertEquals("the sign-out chip's size", signOut.layoutParams.width, chip.layoutParams.width)
-        assertEquals(signOut.layoutParams.height, chip.layoutParams.height)
-        val glyph = chip.allViews.filterIsInstance<ImageView>().single()
-        assertEquals(page.themeColor(R.attr.ptTextHint), glyph.imageTintList!!.defaultColor)
-        val row = chip.parent as LinearLayout
-        assertSame(chip, row.getChildAt(row.childCount - 1))
-        val group = page.findViewById<ViewGroup>(R.id.groupSignedIn)
-        val afterCheckAgain = group.indexOfChild(page.findViewById(R.id.rowCloudCheckAgain))
-        assertEquals(afterCheckAgain + 1, group.indexOfChild(page.findViewById(R.id.dividerCloudTerms)))
-        assertEquals(afterCheckAgain + 2, group.indexOfChild(row))
-        assertEquals(afterCheckAgain + 3, group.indexOfChild(page.findViewById(R.id.tvTermsNotice)))
+        assertEquals(
+            listOf(
+                R.id.cardCloudTerms, R.id.headerCloudAccount, R.id.cardCloudAccount,
+                R.id.headerCloudFeatures, R.id.cardCloudFeatures, R.id.tvFeaturesPaused,
+            ),
+            page.sections(),
+        )
+        // Show terms: the accent button with its label, 40dp, at the right
+        // end of the banner's row.
+        val button = page.showTermsButton()
+        assertFree(page, button, R.id.progressCloudShowTerms, "Show terms")
+        assertEquals(0, button.strokeWidth)
+        val box = button.parent as View
+        val row = box.parent as LinearLayout
+        assertSame(box, row.getChildAt(row.childCount - 1))
         // Opened by itself, with the text fetched for the device's locale.
         assertEquals(listOf(Locale.getDefault().toLanguageTag()), fetches.sent)
         assertEquals(TERMS_MARKDOWN, page.termsLaunches().single().intent.getStringExtra(PtCloudTermsActivity.EXTRA_TEXT))
@@ -2793,9 +3255,9 @@ class PtCloudSettingsActivityTest {
     }
 
     /** Opened once an episode by itself: after a Cancel the resume's same
-     *  403 shows the row and opens nothing, the chip opens the terms on
-     *  demand, and a Cancel after the chip opens nothing by itself either. */
-    @Test fun `Cancel then a resume's same 403 does not reopen the terms, the chip does, and a Cancel after the chip does not reopen them either`() {
+     *  403 shows the banner and opens nothing, Show terms opens the terms on
+     *  demand, and a Cancel after Show terms opens nothing by itself either. */
+    @Test fun `Cancel then a resume's same 403 does not reopen the terms, Show terms does, and a Cancel after it does not reopen them either`() {
         signedIn(trial(now() + 5 * DAY))
         val fetches = termsFetches(terms(), terms())
         val checks = keyChecks(
@@ -2810,10 +3272,10 @@ class PtCloudSettingsActivityTest {
         settleIo()
         assertEquals(1, fetches.sent.size)
         assertTrue("not reopened", page.termsLaunches().isEmpty())
-        assertTrue(page.shown(R.id.rowCloudTerms))
-        assertTrue(page.showTermsChip().isEnabled)
+        assertTrue(page.shown(R.id.cardCloudTerms))
+        assertTrue(page.showTermsButton().isEnabled)
 
-        page.showTermsChip().performClick()
+        page.showTermsButton().performClick()
         idle()
         assertEquals(2, fetches.sent.size)
         cancelTerms(page.termsLaunches().single())
@@ -2843,7 +3305,7 @@ class PtCloudSettingsActivityTest {
 
         assertEquals(listOf(listOf(KEY, TERMS_VERSION, "en")), accepts.sent)
         assertEquals("the resume asked nothing", 1, checks.sent.size)
-        assertFalse("the chip waits on the acceptance", page.showTermsChip().isEnabled)
+        assertFalse("Show terms waits on the acceptance", page.showTermsButton().isEnabled)
         assertTrue(page.shown(R.id.progressCloudShowTerms))
 
         accepts.answer(TermsAcceptResult.Accepted)
@@ -2877,7 +3339,7 @@ class PtCloudSettingsActivityTest {
         settleIo()
         assertTrue("a stale 403 opens nothing", page.termsLaunches().isEmpty())
         assertEquals(1, fetches.sent.size)
-        assertTrue(page.shown(R.id.rowCloudTerms))
+        assertTrue(page.shown(R.id.cardCloudTerms))
 
         resume()
         awaitCalls(checks, 3)
@@ -2888,10 +3350,10 @@ class PtCloudSettingsActivityTest {
             assertTrue("live", row.switch().isEnabled)
             assertTrue("on", row.switch().isChecked)
         }
-        assertFalse(page.shown(R.id.rowCloudTerms))
-        assertFalse(page.shown(R.id.dividerCloudTerms))
-        assertTrue(page.accountLine()!!.startsWith("Free trial until "))
-        assertTrue("Join is back for the trial", page.shown(R.id.btnCloudJoin))
+        assertFalse(page.shown(R.id.cardCloudTerms))
+        assertFalse(page.shown(R.id.tvFeaturesPaused))
+        assertTrue(page.accountTitle()!!.startsWith("Free trial until "))
+        assertTrue("Join is back for the trial", page.shown(R.id.btnCloudJoinTrial))
 
         resume()
         awaitCalls(checks, 4)
@@ -2900,13 +3362,13 @@ class PtCloudSettingsActivityTest {
         assertEquals(NEWER_TERMS, page.termsLaunches().single().intent.getStringExtra(PtCloudTermsActivity.EXTRA_VERSION))
     }
 
-    /** Each answer of a signed-in terms call, under the terms row: a 409 on
+    /** Each answer of a signed-in terms call, under the terms banner: a 409 on
      *  the acceptance fetches the newer text and opens it; an acceptance not
      *  recorded, a fetch's 503 and a fetch with no answer each say so, the
      *  last naming the service, and a fetch that opens the page clears the
      *  notice; a 401 on the acceptance acts only through the check that
      *  follows it, which clears the key. */
-    @Test fun `a 409 while signed in fetches and reopens, a 503 shows its notice under the row, an unreachable fetch shows the unreachable notice with the service's name, and a 401 clears the key through the check`() {
+    @Test fun `a 409 while signed in fetches and reopens, a 503 shows its notice under the banner, an unreachable fetch shows the unreachable notice with the service's name, and a 401 clears the key through the check`() {
         val cloudPrefs = signedIn(trial(now() + 5 * DAY))
         val fetches = termsFetches(
             terms(), terms(NEWER_TERMS), TermsResult.Unavailable, TermsResult.Unreachable, terms(NEWER_TERMS),
@@ -2927,20 +3389,20 @@ class PtCloudSettingsActivityTest {
         assertEquals(listOf(KEY, NEWER_TERMS, "en"), accepts.sent[1])
         assertTrue(page.shown(R.id.tvTermsNotice))
         assertEquals("Couldn't record your acceptance. Try again.", page.text(R.id.tvTermsNotice))
-        assertTrue(page.shown(R.id.rowCloudTerms))
+        assertTrue(page.shown(R.id.cardCloudTerms))
         settleIo()
         assertEquals("no check after it", 1, checks.sent.size)
 
-        page.showTermsChip().performClick()
+        page.showTermsButton().performClick()
         idle()
         assertEquals("Couldn't load the terms. Try again in a minute.", page.text(R.id.tvTermsNotice))
         assertTrue(page.shown(R.id.tvTermsNotice))
-        page.showTermsChip().performClick()
+        page.showTermsButton().performClick()
         idle()
         assertEquals("Couldn't reach PlayTranslate Cloud. Make sure you're online and try again.", page.text(R.id.tvTermsNotice))
         assertTrue(page.termsLaunches().isEmpty())
 
-        page.showTermsChip().performClick()
+        page.showTermsButton().performClick()
         idle()
         assertFalse("the fetch that opens the page clears the notice", page.shown(R.id.tvTermsNotice))
         agreeTo(page.termsLaunches().single())
@@ -3095,13 +3557,13 @@ class PtCloudSettingsActivityTest {
         assertTrue(page.shown(R.id.groupSignedOut))
     }
 
-    @Test fun `the hub digest and the account line agree on Terms not accepted`() {
+    @Test fun `the hub digest and the terms banner agree on Terms not accepted`() {
         signedIn(PtCloudAccount(email = EMAIL, active = true, termsRequired = true, checkedAtMs = now()))
         val page = open()
 
-        assertEquals("Terms not accepted", page.accountLine())
+        assertTrue(page.shown(R.id.cardCloudTerms))
+        assertEquals("Terms not accepted", page.text(R.id.tvTermsRequired))
         assertEquals("Terms not accepted", RootSettingsViewModel(ctx as Application).state.value.cloudSummary)
-        assertTrue(page.shown(R.id.rowCloudTerms))
         page.assertRowsDisabledAndOff()
     }
 
@@ -3116,18 +3578,19 @@ class PtCloudSettingsActivityTest {
         assertTrue(page.shown(R.id.cardCloudClosed))
         assertEquals("PlayTranslate Cloud has closed", page.text(R.id.tvCloudClosedTitle))
         assertEquals("PlayTranslate Cloud closed on Nov 30. Thank you.", page.text(R.id.tvCloudClosedMessage))
-        assertFalse("the sign-in form and the account hidden", page.shown(R.id.cardCloudAccount))
+        assertFalse("the sign-in form and the account hidden", page.shown(R.id.cardCloudSignIn))
+        assertFalse(page.shown(R.id.cardCloudAccount))
         assertFalse("with their header", page.shown(R.id.headerCloudAccount))
-        assertFalse(page.shown(R.id.btnCloudJoin))
-        assertTrue("with a key, the switches' group shows", page.shown(R.id.headerCloudConfiguration))
-        for (row in listOf(page.ocrRow(), page.translateRow())) {
-            assertTrue("shown", row.isShown)
-            assertFalse("off", row.switch().isChecked)
-            assertFalse("disabled", row.switch().isEnabled)
-        }
+        assertFalse(page.joinShown())
+        page.assertRowsDisabledAndOff()
         assertTrue("the switches' prefs kept", p.ptCloudOcrEnabled && p.ptCloudTranslateEnabled)
-        assertEquals("Closed", page.status())
+        assertFalse("no service row while closed", page.shown(R.id.cardCloudStatus))
         assertFalse(page.cooldownLine().isShown)
+        assertEquals(
+            "the closed card in the ACCOUNT group's place",
+            listOf(R.id.cardCloudClosed, R.id.headerCloudFeatures, R.id.cardCloudFeatures),
+            page.sections(),
+        )
     }
 
     @Test fun `the closed card clears on the next health answer that is not closed and stays through an unreachable one`() {
@@ -3140,7 +3603,7 @@ class PtCloudSettingsActivityTest {
         health = HealthStatus.Unreachable
         resume()
         assertTrue("an unreachable health says nothing", page.shown(R.id.cardCloudClosed))
-        assertEquals("Closed", page.status())
+        assertFalse("no service row while closed", page.shown(R.id.cardCloudStatus))
 
         health = HealthStatus.NotRunning
         resume()
@@ -3163,11 +3626,16 @@ class PtCloudSettingsActivityTest {
 
     // ── Status ────────────────────────────────────────────────────────────
 
-    @Test fun `the status reads Not checked before the first check`() {
-        // Built but not resumed: the check runs from onResume.
+    /** Built but not resumed (the check runs from onResume): the status
+     *  reads Not checked, and its row hides, signed in too, until a check
+     *  has run. */
+    @Test fun `the status reads Not checked before the first check, its row hidden`() {
+        signedIn(member(now() + 30 * DAY))
         val c = Robolectric.buildActivity(PtCloudSettingsActivity::class.java).create().start()
         try {
             assertEquals("Not checked", c.get().status())
+            assertFalse(c.get().findViewById<View>(R.id.cardCloudStatus).isVisible)
+            assertTrue("the account shows", c.get().findViewById<View>(R.id.cardCloudAccount).isVisible)
         } finally {
             c.stop().destroy()
         }
@@ -3178,6 +3646,37 @@ class PtCloudSettingsActivityTest {
         val page = open()
         assertEquals("Running", page.status())
         assertTrue("a resume check leaves Try for Free alone", page.sendCodeButton().isEnabled)
+    }
+
+    /** The service row signed in: "Service" with a 7dp dot and the answer
+     *  8dp after it, the dot the accent while the service runs and the
+     *  warning colour for any other answer, a check in flight included. */
+    @Test fun `the status dot is the accent while the service runs and the warning colour otherwise`() {
+        signedIn(member(now() + 30 * DAY))
+        var health: HealthStatus = HealthStatus.Running
+        PtCloudSettingsActivity.healthOverrideForTest = { health }
+        val page = open()
+        val dot = page.findViewById<View>(R.id.viewCloudStatusDot)
+        fun dotColor() = dot.backgroundTintList!!.defaultColor
+        assertTrue(page.shown(R.id.cardCloudStatus))
+        assertEquals(7.dpIn(page), dot.layoutParams.width)
+        assertEquals(7.dpIn(page), dot.layoutParams.height)
+        assertEquals(
+            8.dpIn(page),
+            (page.findViewById<View>(R.id.tvCloudStatus).layoutParams as ViewGroup.MarginLayoutParams).marginStart,
+        )
+        assertEquals("Running", page.status())
+        assertEquals(page.themeColor(R.attr.ptAccent), dotColor())
+
+        health = HealthStatus.NotRunning
+        resume()
+        assertEquals("Not running", page.status())
+        assertEquals(page.themeColor(R.attr.ptWarning), dotColor())
+
+        PtCloudSettingsActivity.healthOverrideForTest = { awaitCancellation() }
+        resume()
+        assertEquals("Checking", page.status())
+        assertEquals("a check in flight", page.themeColor(R.attr.ptWarning), dotColor())
     }
 
     @Test fun `each health answer has its status wording`() {

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A feature row's title (settings_row_feature): the text colour, muted
+     while the row is disabled. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="false" android:color="?attr/ptTextMuted" />
+    <item android:color="?attr/ptText" />
+</selector>

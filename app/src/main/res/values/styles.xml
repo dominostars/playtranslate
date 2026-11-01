@@ -241,6 +241,23 @@
         <item name="iconPadding">8dp</item>
     </style>
 
+    <!-- A settings page's text field (the cloud page's email and code, the
+         DeepL key, the LLM base URL and key, a Yomitan dictionary's alias):
+         the ptSurface well with a thin outline and 12dp corners, the accent
+         outline while focused (bg_text_field), 48dp tall at the least, its
+         text in the text colours. Its label above is Text.PT.FieldLabel. The
+         field keeps its own text size, font and input type. -->
+    <style name="Widget.PlayTranslate.TextField" parent="">
+        <item name="android:background">@drawable/bg_text_field</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:paddingStart">14dp</item>
+        <item name="android:paddingEnd">14dp</item>
+        <item name="android:paddingTop">12dp</item>
+        <item name="android:paddingBottom">12dp</item>
+        <item name="android:textColor">?attr/ptText</item>
+        <item name="android:textColorHint">?attr/ptTextHint</item>
+    </style>
+
     <!-- ── Settings row typography ──────────────────────────────────────── -->
 
     <style name="Text.PT.RowTitle" parent="">
@@ -248,6 +265,13 @@
         <item name="android:textColor">?attr/ptText</item>
         <item name="android:textStyle">normal</item>
         <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <!-- The label above a text field (Widget.PlayTranslate.TextField): a
+         row title's size and weight one step down the text colours, so the
+         page's titles stay above it. -->
+    <style name="Text.PT.FieldLabel" parent="Text.PT.RowTitle">
+        <item name="android:textColor">?attr/ptTextMuted</item>
     </style>
 
     <style name="Text.PT.RowSubtitle" parent="">
