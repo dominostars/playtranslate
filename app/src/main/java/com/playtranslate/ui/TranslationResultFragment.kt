@@ -378,7 +378,7 @@ class TranslationResultFragment : Fragment() {
         }
         val hint = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
         val options = OverlayMode.offered(OverlaySurface.CAPTURE, hint)
-            .filter { it in CaptureOverlayLayer.SUPPORTED_MODES }
+            .filter { it in CaptureOverlayLayer.HOSTED_MODES }
             .map { getString(it.labelRes(hint)) to it }
         val selected = host?.captureModeOnScreen() ?: prefs.overlayModeFor(OverlaySurface.CAPTURE)
         content.setCaptureModeRow(options, selected, visible = true)
@@ -391,7 +391,9 @@ class TranslationResultFragment : Fragment() {
         host?.setCaptureModeOnScreen(mode)
         val boxes = currentOnScreenBoxes
         if (mode != OverlayMode.NONE && boxes != null && host?.isResultBoxesShownOnScreen() != true) {
-            presentCurrentBoxes(boxes)
+            // In the mode just picked, over one the capture asked for itself
+            // (tap-to-lookup's Definitions).
+            presentCurrentBoxes(boxes.copy(modeOverride = mode))
         } else if (mode == OverlayMode.TRANSLATION) {
             content.requestDeferredCompletion(force = true)
         }

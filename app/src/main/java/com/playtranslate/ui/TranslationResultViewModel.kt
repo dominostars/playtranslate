@@ -651,9 +651,18 @@ data class OnScreenBoxes(
     val data: OneShotOverlayData,
     val displayId: Int,
     /** The language the capture was read in, for the presentations built
-     *  from its groups (the reading hint); null falls back to the source
-     *  language setting. */
+     *  from its groups (the reading hint, the word lookups); null falls
+     *  back to the source language setting. */
     val sourceLangId: com.playtranslate.language.SourceLangId? = null,
+    /** The frame the capture read, for Definitions' cards (the sentence
+     *  screenshot): its saved path and capture time, null and 0 until the
+     *  result lands. */
+    val screenshotPath: String? = null,
+    val capturedAtMs: Long = 0L,
+    /** The overlay mode this capture was asked for ahead of the remembered
+     *  one (tap-to-lookup is a capture in Definitions); null reads the
+     *  capture surface's setting. Never written to the setting. */
+    val modeOverride: com.playtranslate.OverlayMode? = null,
 )
 
 sealed class ResultState {

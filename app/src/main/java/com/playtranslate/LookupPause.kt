@@ -3,7 +3,7 @@ package com.playtranslate
 /**
  * What an over-game lookup surface paused while it is up: a running
  * auto-translate and the region indicator. Each surface holds one record
- * (every floating icon's drag lens, the tap-to-lookup session), so the way
+ * (every floating icon's drag lens, the over-game capture sheet), so the way
  * the surface ends decides both together: a close restores them
  * ([settle]), a teardown of capture forgets them ([drop]), and a surface
  * that takes over from another takes its record over ([handTo]) instead of

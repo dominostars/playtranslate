@@ -11,7 +11,8 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * Geometry of the tap-to-lookup overlay ([TapLookupOverlay]): the box drawn
+ * Geometry of a capture's Definitions presentation ([WordLookupSession],
+ * [WordBoxesView]): the box drawn
  * around each word, which box a tap lands on, and where the controller's
  * cursor steps along a row. Boxes are built on
  * [DragLookupController.placeTokensOnLine], the placement the drag lens

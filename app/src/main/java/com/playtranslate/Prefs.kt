@@ -32,7 +32,8 @@ import java.util.concurrent.ConcurrentHashMap
  * What is painted over the game text. Every surface that paints stores one
  * value ([OverlaySurface]) and offers a subset of the modes ([offered]):
  * live mode and the hold preview paint translations or the reading hint; a
- * capture also offers the word boxes of tap-to-lookup, and nothing at all.
+ * capture also offers Definitions (a box on every word, a tap opening its
+ * card; tap-to-lookup captures in it) and nothing at all.
  * Persisted as the enum *name* (not ordinal) so the stored value survives
  * future enum edits; the old ordinal-based `auto_translation_mode` pref is
  * handled in [Prefs.migrateLegacyPrefs].

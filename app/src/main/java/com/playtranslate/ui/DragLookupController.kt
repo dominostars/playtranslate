@@ -478,7 +478,7 @@ class DragLookupController(
          *  offset range when there are any, else from [fallbackLineStart] +
          *  offset × [fallbackCharExtent]. A token not found in [lineText] is
          *  skipped. The one placement the drag's finger match
-         *  ([findClosestToken]) and the tap-to-lookup boxes
+         *  ([findClosestToken]) and a capture's Definitions boxes
          *  ([TapLookupGeometry.wordBoxes]) read, so a box drawn for a token
          *  is the extent a finger is matched against. */
         internal fun positionTokens(
@@ -1172,8 +1172,8 @@ class DragLookupController(
     }
 
     /**
-     * The tap on a word's box (the tap-to-lookup overlay,
-     * [TapLookupSession]): look up exactly [at], the token the box was drawn
+     * The tap on a word's box (a capture's Definitions presentation,
+     * [WordLookupSession]): look up exactly [at], the token the box was drawn
      * for, in the scene the caller captured ([lines], its screenshot at
      * [screenshotPath], taken at [capturedAtMs]), and show the sticky lens
      * anchored on [anchor], the box's screen rect, as the result sheet's
@@ -1490,8 +1490,8 @@ class DragLookupController(
     /** A token of one OCR line, as the lookup resolves it: the [line], the
      *  matched [token] of the line's tokenization, its [charOffset] in the
      *  line text and its [surface] as found there. The drag finds one under
-     *  the finger ([locateToken]); the tap-to-lookup boxes hand over the one
-     *  a box was drawn for ([lookUpWord]). */
+     *  the finger ([locateToken]); a capture's Definitions boxes hand over
+     *  the one a box was drawn for ([lookUpWord]). */
     internal data class TokenAt(
         val line: OcrManager.OcrLine,
         val token: com.playtranslate.language.TokenSpan,

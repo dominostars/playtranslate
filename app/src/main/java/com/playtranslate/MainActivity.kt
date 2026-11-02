@@ -218,6 +218,9 @@ class MainActivity :
             // Re-run the capture pipeline on the pinned screenshot/region/language so
             // the panel walks the normal loading stages and re-emits no-text-with-gear.
             oneShotCaptureDisplayId = prov.displayId
+            // A re-read presents in the remembered mode: only tap-to-lookup's
+            // own start asks for another.
+            oneShotModeOverride = null
             _currentCaptureSession.value =
                 svc.processScreenshot(
                     com.playtranslate.capture.CapturedFrame(
@@ -463,7 +466,7 @@ class MainActivity :
                 val joined = perGroup.joinToString("\n\n") { it.text }
                 val filledBoxes = ready.onScreenBoxes?.let { boxes ->
                     fillOneShotOverlayData(boxes.data, perGroup.map { it.text })
-                        ?.let { com.playtranslate.ui.OnScreenBoxes(it, boxes.displayId) }
+                        ?.let { boxes.copy(data = it) }
                 }
                 resultVm.applyDeferredTranslation(
                     pending,
@@ -543,16 +546,22 @@ class MainActivity :
         CaptureBackendResolver.activeOverlayUi?.capturePresentationShowing == true
 
     override fun showResultBoxesOnScreen(boxes: com.playtranslate.ui.OnScreenBoxes) {
-        CaptureBackendResolver.activeOverlayUi?.presentCapture(boxes.displayId, boxes.data, boxes.sourceLangId) {
-            // Freshness poke on every teardown of that window; the fragment
-            // re-derives from isResultBoxesShownOnScreen, so a late or
-            // duplicate poke is harmless.
-            resultFragment?.onScreenBoxesDismissed()
-        }
+        CaptureBackendResolver.activeOverlayUi?.presentCapture(
+            boxes.displayId, boxes.data, boxes.sourceLangId,
+            onDismissed = {
+                // Freshness poke on every teardown of that window; the fragment
+                // re-derives from isResultBoxesShownOnScreen, so a late or
+                // duplicate poke is harmless.
+                resultFragment?.onScreenBoxesDismissed()
+            },
+            screenshotPath = boxes.screenshotPath,
+            capturedAtMs = boxes.capturedAtMs,
+            modeOverride = boxes.modeOverride,
+        )
     }
 
     override fun updateResultBoxesOnScreen(boxes: com.playtranslate.ui.OnScreenBoxes) {
-        CaptureBackendResolver.activeOverlayUi?.updateCapture(boxes.data)
+        CaptureBackendResolver.activeOverlayUi?.updateCapture(boxes.data, boxes.screenshotPath, boxes.capturedAtMs)
     }
 
     override fun hideResultBoxesOnScreen() {
@@ -1590,6 +1599,7 @@ class MainActivity :
                                     val boxes = state.overlayData?.let {
                                         com.playtranslate.ui.OnScreenBoxes(
                                             it, oneShotCaptureDisplayId, state.ocrProvenance?.sourceLangId,
+                                            modeOverride = oneShotModeOverride,
                                         )
                                     }
                                     // A box fill swaps the boxes alone; the
@@ -1611,6 +1621,9 @@ class MainActivity :
                                         onScreenBoxes = state.overlayData?.let {
                                             com.playtranslate.ui.OnScreenBoxes(
                                                 it, oneShotCaptureDisplayId, state.result.ocrProvenance?.sourceLangId,
+                                                screenshotPath = state.result.screenshotPath,
+                                                capturedAtMs = state.result.createdAtMs,
+                                                modeOverride = oneShotModeOverride,
                                             )
                                         },
                                     )
@@ -1766,24 +1779,37 @@ class MainActivity :
         // foregrounded display.
         val displayId = intent.getIntExtra(EXTRA_TARGET_DISPLAY_ID, -1)
             .takeIf { it != -1 }
-        startOneShotCapture(displayId)
+        // Tap-to-lookup asks for Definitions ahead of the remembered mode,
+        // for this capture alone.
+        val modeOverride = intent.getStringExtra(EXTRA_OVERLAY_MODE_OVERRIDE)
+            ?.let { name -> OverlayMode.entries.firstOrNull { it.name == name } }
+        startOneShotCapture(displayId, modeOverride)
     }
+
+    /** The overlay mode the running one-shot capture was asked for ahead of
+     *  the remembered one ([OnScreenBoxes.modeOverride]); null for a plain
+     *  capture. Set with [oneShotCaptureDisplayId] at the start. */
+    private var oneShotModeOverride: OverlayMode? = null
 
     /** Initiate a one-shot capture and route its session to the
      *  collector in [wireServiceCallbacks]. No-op if the service isn't
      *  bound yet. [displayId] threads through to [CaptureService.captureOnce]
      *  for callers that have a specific target (e.g. region picker on a
      *  non-primary display); null defers to captureOnce's default
-     *  primaryGameDisplayId. */
-    private fun startOneShotCapture(displayId: Int? = null) {
+     *  primaryGameDisplayId. [modeOverride] is the mode this capture's
+     *  presentation opens in ahead of the remembered one, never written to
+     *  the setting. */
+    private fun startOneShotCapture(displayId: Int? = null, modeOverride: OverlayMode? = null) {
         val svc = captureService ?: return
         oneShotCaptureDisplayId = displayId ?: svc.primaryGameDisplayId()
+        oneShotModeOverride = modeOverride
         // Translation chips go up on the game display as the capture lands
         // (two screens), so they must have their text; in any other overlay
         // mode a hidden translation section can defer the backend call, and
         // a later switch to Translations completes it through the page's
         // deferred-completion funnel.
-        val allowDefer = prefs.overlayModeFor(OverlaySurface.CAPTURE) != OverlayMode.TRANSLATION
+        val mode = modeOverride ?: prefs.overlayModeFor(OverlaySurface.CAPTURE)
+        val allowDefer = mode != OverlayMode.TRANSLATION
         _currentCaptureSession.value =
             if (displayId != null) svc.captureOnce(displayId, allowDeferTranslation = allowDefer)
             else svc.captureOnce(allowDeferTranslation = allowDefer)
@@ -3176,6 +3202,10 @@ class MainActivity :
          *  display the user actually tapped, instead of falling through
          *  to primaryGameDisplayId / dropdownTargetDisplayIds.first. */
         const val EXTRA_TARGET_DISPLAY_ID = "extra_target_display_id"
+        /** An [OverlayMode] name: the mode the region capture's presentation
+         *  opens in ahead of the remembered one (tap-to-lookup's
+         *  Definitions). Absent for a plain capture. */
+        const val EXTRA_OVERLAY_MODE_OVERRIDE = "extra_overlay_mode_override"
 
         /** The first readiness this process derived, and whether a target
          *  language was already set then; process-scoped so an activity

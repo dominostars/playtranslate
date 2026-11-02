@@ -185,7 +185,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      *  TAP combos are routed by [fireTapOnMain] — the auto/live toggle for the
      *  translation/furigana taps, a one-shot Capture for [HotkeyAssignment
      *  .CAPTURE_TAP], the game-language change for [HotkeyAssignment
-     *  .CHANGE_GAME_LANGUAGE_TAP], tap-to-lookup's toggle for
+     *  .CHANGE_GAME_LANGUAGE_TAP], a capture in Definitions for
      *  [HotkeyAssignment.TAP_TO_LOOKUP_TAP] — through the active [OverlayUiController]
      *  (single- vs dual-screen / InAppOnly) just like the floating menu's
      *  buttons and the floating icon's gestures. The release leg only matters
@@ -195,12 +195,6 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     fun registerHotkeyCallbacks() {
         val svc = CaptureService.instance ?: return
         onHotkeyActivated = { assignment ->
-            // Tap-to-lookup's boxes close before another hotkey acts (its
-            // own toggles them; the live toggles and the game-language
-            // change close them themselves), so that hotkey finds the game
-            // as it was.
-            (CaptureBackendResolver.activeOverlayUi ?: overlayUiController)
-                .closeTapToLookupForHotkey(assignment)
             when (assignment.trigger) {
                 HotkeyTrigger.HOLD -> {
                     // Stamp the hold-start so a quick release can be recognised
@@ -235,7 +229,8 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      * .CAPTURE_TAP] runs a one-shot Capture (toggle-dismissing a showing
      * capture result); [HotkeyAssignment.CHANGE_GAME_LANGUAGE_TAP] runs the
      * floating icon's "Change game language"; [HotkeyAssignment
-     * .TAP_TO_LOOKUP_TAP] toggles its "Enable tap-to-lookup"; the translation and furigana
+     * .TAP_TO_LOOKUP_TAP] runs its "Enable tap-to-lookup", a capture in
+     * Definitions; the translation and furigana
      * taps toggle that mode's auto/live session. Shared by on-press activation
      * and the hold's quick-release tap so every tap binding is honored on both
      * paths. Exhaustive, so a new assignment cannot compile until it is routed
@@ -310,11 +305,12 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Toggle the "Enable tap-to-lookup" hotkey on the main thread: the
-     * floating icon's action of that name on the display
-     * [captureScreenOnMain] targets (the primary game display), closing its
-     * boxes when they are already up. Main thread and the [isUserReachable]
-     * re-check for the same reasons as [captureScreenOnMain].
+     * The "Enable tap-to-lookup" hotkey on the main thread: the floating
+     * icon's action of that name on the display [captureScreenOnMain]
+     * targets (the primary game display), a capture in Definitions that a
+     * second press closes ([OverlayUiController.toggleTapToLookupForDisplay]).
+     * Main thread and the [isUserReachable] re-check for the same reasons
+     * as [captureScreenOnMain].
      */
     private fun tapToLookupOnMain() {
         if (Looper.myLooper() != Looper.getMainLooper()) {

@@ -34,10 +34,10 @@ import java.time.Duration
  * it; every other way the sheet ends disposes of that debt as its funnel
  * says (a page cancels it, a new capture takes it over, a live start and
  * the pill's gear and the menu settle it without a restart, capture's end
- * drops it, a hold sliding into a drag forgets it, a turn of the display
- * gives the screen back).
+ * drops it, a hold sliding into a drag forgets it, tap-to-lookup's hold as
+ * the capture's, a turn of the display gives the screen back).
  *
- * On [TapLookupCloseFunnelsTest]'s footing: the accessibility service is
+ * On [TapToLookupHotkeyTest]'s footing: the accessibility service is
  * created and never connected and resolved as the active backend, so its
  * controller is the one the service's seams reach; the capture service
  * runs, with a stand-in live mode when a session is wanted. One screen, so
@@ -144,8 +144,9 @@ class CapturePauseFunnelsTest {
     }
 
     private fun captureAgain() {
-        OverlayUiController::class.java.getDeclaredMethod("captureCurrentRegionForDisplay", Int::class.java)
-            .apply { isAccessible = true }.invoke(controller(), Display.DEFAULT_DISPLAY)
+        OverlayUiController::class.java
+            .getDeclaredMethod("captureCurrentRegionForDisplay", Int::class.java, OverlayMode::class.java)
+            .apply { isAccessible = true }.invoke(controller(), Display.DEFAULT_DISPLAY, null)
         settle()
         assertNotNull(panel())
     }
@@ -282,6 +283,25 @@ class CapturePauseFunnelsTest {
         icon.onHoldStart!!.invoke()
         settle()
         assertNotNull(panel())
+        assertEquals(1, live.stops)
+        icon.onHoldCancel!!.invoke()
+        icon.onDragStart!!.invoke()
+        settle()
+        assertNull("the sheet is gone", panel())
+        assertNull("its debt is forgotten", record())
+        closeLens()
+        settle()
+        assertFalse("the lens leaves a session the hold stopped stopped", liveOrStarting())
+    }
+
+    @Test fun `a hold's tap-to-lookup that slides into a drag takes its sheet down and forgets the debt`() {
+        prefs.iconHoldAction = HoldAction.TAP_TO_LOOKUP
+        val icon = icon()
+        val live = running()
+
+        icon.onHoldStart!!.invoke()
+        settle()
+        assertEquals(OverlayMode.DEFINITIONS, (panel() as com.playtranslate.ui.CaptureResultOverlay).overlayMode)
         assertEquals(1, live.stops)
         icon.onHoldCancel!!.invoke()
         icon.onDragStart!!.invoke()

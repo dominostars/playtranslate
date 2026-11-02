@@ -150,7 +150,7 @@ class CaptureSheetModeControlTest {
         idle()
         assertTrue(layerOf(o).hasBoxes)
         assertEquals(View.VISIBLE, pillOf(o).visibility)
-        assertEquals(listOf("Translation", "Furigana", "None"), segments(pillOf(o)))
+        assertEquals(listOf("Translation", "Furigana", "Definitions", "None"), segments(pillOf(o)))
 
         flow.value = CaptureState.Done(result(), fillOneShotOverlayData(data(""), listOf("hi")))
         idle()

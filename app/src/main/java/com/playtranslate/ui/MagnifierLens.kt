@@ -349,8 +349,8 @@ class MagnifierLens(
     /** Fires once per actual window teardown (tap-outside in sticky mode,
      *  new drag start, [dismiss] caller). */
     var onDismiss: (() -> Unit)? = null
-    /** For an owner that holds what lies under the sticky lens (the
-     *  tap-to-lookup boxes, [TapLookupSession]): a sticky-mode DOWN off the
+    /** For an owner that holds what lies under the sticky lens (a capture's
+     *  Definitions boxes, [WordLookupSession]): a sticky-mode DOWN off the
      *  card, with its screen position, goes here in place of the lens
      *  dismissing itself, so the owner decides what the tap means (another
      *  word under it, or the end of everything). Null for every other

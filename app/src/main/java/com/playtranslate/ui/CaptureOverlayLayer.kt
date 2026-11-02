@@ -3,6 +3,9 @@ package com.playtranslate.ui
 import android.content.Context
 import android.graphics.Rect
 import android.util.Log
+import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.WindowManager
 import android.widget.FrameLayout
 import com.playtranslate.OcrManager
 import com.playtranslate.OneShotOverlayData
@@ -11,6 +14,8 @@ import com.playtranslate.OverlayToolkit
 import com.playtranslate.Prefs
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
+import com.playtranslate.language.TokenSpan
+import com.playtranslate.overlay.OverlayHost
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,29 +25,44 @@ import kotlinx.coroutines.withContext
 
 /**
  * The one thing that paints a capture's presentation over a game display:
- * translation chips, the reading hint (furigana or pinyin), or nothing, by
- * [mode], from the capture's own data ([OneShotOverlayData]: the translation
- * boxes and the OCR groups they came from), so a change of mode repaints in
- * place with no second read. Hosted inside the capture sheet's window on one
- * screen, and as a window of its own on the game display of two, where the
- * app's results page is the panel. Draws through one [TranslationOverlayView],
- * the view the live tiers draw with, rebuilt when the render settings change.
+ * translation chips, the reading hint (furigana or pinyin), the word boxes
+ * of Definitions, or nothing, by [mode], from the capture's own data
+ * ([OneShotOverlayData]: the translation boxes and the OCR groups they came
+ * from), so a change of mode repaints in place with no second read. Hosted
+ * inside the capture sheet's window on one screen, and as a window of its
+ * own on the game display of two, where the app's results page is the
+ * panel. Chips and readings draw through one [TranslationOverlayView], the
+ * view the live tiers draw with, rebuilt when the render settings change;
+ * Definitions draws through [WordBoxesView], driven by [WordLookupSession],
+ * which needs a [LookupHost] for its card's windows (a host without one
+ * does not offer Definitions).
  *
  * Translation chips paint synchronously ([hasBoxes] is true at once when the
- * data has chips, as skeletons or with text); readings are built off the
- * main thread ([pending] until they land, then [onBoxesSettled] says whether
- * anything was drawn). [expectsBoxes] says before any paint whether [mode]
- * has something to build from, which is what a parked sheet stands on.
- * Definitions arrives with its word-lookup session; until then it paints
- * nothing and is not in [supportedModes]. Main thread only.
+ * data has chips, as skeletons or with text); readings and word boxes are
+ * built off the main thread ([pending] until they land, then
+ * [onBoxesSettled] says whether anything was drawn). [expectsBoxes] says
+ * before any paint whether [mode] has something to build from, which is
+ * what a parked sheet stands on. Main thread only.
  */
 internal class CaptureOverlayLayer(
     ctx: Context,
     private val scope: CoroutineScope,
     private val prefs: Prefs,
+    private val lookupHost: LookupHost? = null,
 ) : FrameLayout(ctx) {
 
+    /** What the Definitions card needs to put its windows up on the game
+     *  display: the display's context and window manager, the overlay host
+     *  and the display. */
+    data class LookupHost(
+        val displayCtx: Context,
+        val wm: WindowManager,
+        val overlayHost: OverlayHost,
+        val displayId: Int,
+    )
+
     private val chipsCtx = android.view.ContextThemeWrapper(ctx, android.R.style.Theme_DeviceDefault)
+    private val density = ctx.resources.displayMetrics.density
 
     /** The reading boxes for the groups of a capture read in [SourceLangId],
      *  in the groups' coordinates. Annotates through the language's engine,
@@ -54,19 +74,27 @@ internal class CaptureOverlayLayer(
             OverlayToolkit.buildFuriganaBoxesByGroup(groups, engine, paint).flatMap { it.boxes }
         }
 
+    /** The tokens of a line read in [SourceLangId]: the drag lens's lookup
+     *  tokens, through the language's engine; tests swap it. */
+    internal var tokenizeLine: suspend (String, SourceLangId) -> List<TokenSpan> =
+        { text, src -> SourceLanguageEngines.get(ctx, src).tokenize(text) }
+
     var mode: OverlayMode = OverlayMode.NONE
         private set
     var data: OneShotOverlayData? = null
         private set
     private var sourceLangId: SourceLangId? = null
+    private var screenshotPath: String? = null
+    private var capturedAtMs = 0L
 
     /** Something is drawn right now. */
-    var hasBoxes: Boolean = false
-        private set
+    val hasBoxes: Boolean
+        get() = if (mode == OverlayMode.DEFINITIONS) words?.hasBoxes == true else chipsShown
 
-    /** A reading build is in flight; [hasBoxes] settles when it lands. */
-    var pending: Boolean = false
-        private set
+    /** A build is in flight (readings, word boxes); [hasBoxes] settles when
+     *  it lands. */
+    val pending: Boolean
+        get() = if (mode == OverlayMode.DEFINITIONS) words?.pending == true else readingBuild != null
 
     /** Every layout of the drawn boxes (a rebuild, a fill): the host
      *  re-places anything it keeps clear of them. */
@@ -75,35 +103,80 @@ internal class CaptureOverlayLayer(
     /** An asynchronous build landed, with whether it drew anything. */
     var onBoxesSettled: ((hasBoxes: Boolean) -> Unit)? = null
 
-    private var chipsView: TranslationOverlayView? = null
-    private var buildJob: Job? = null
+    /** The Definitions card ended by its own means: the host closes as the
+     *  user would ([WordLookupSession]'s class doc). */
+    var onSessionEnded: (() -> Unit)? = null
 
-    /** The modes this layer can paint today ([SUPPORTED_MODES]). */
-    val supportedModes: Set<OverlayMode> get() = SUPPORTED_MODES
+    /** Where Definitions' dimming ([WordBoxesView.spotlight]) goes when the
+     *  host keeps it apart from the boxes: the sheet keeps it beneath its
+     *  panel, so a parked strip is never dimmed while the boxes sit over it.
+     *  Null keeps it inside the boxes view, beneath the boxes. Set before
+     *  the first paint. */
+    var scrimHolder: android.view.ViewGroup? = null
+
+    private var chipsView: TranslationOverlayView? = null
+    private var chipsShown = false
+    private var readingBuild: Job? = null
+
+    private var wordsView: WordBoxesView? = null
+    private var words: WordLookupSession? = null
+    private var wordTouch = false
+
+    /** The modes this layer can paint: [SUPPORTED_MODES], and Definitions
+     *  with a [LookupHost]. */
+    val supportedModes: Set<OverlayMode>
+        get() = if (lookupHost != null) SUPPORTED_MODES + OverlayMode.DEFINITIONS else SUPPORTED_MODES
 
     /** Whether [mode] has something to build from in [data]: chips for
-     *  Translation, groups for the reading hint, never for None. True before
-     *  an asynchronous paint lands, so a host can park on it. */
+     *  Translation, groups for the reading hint and for Definitions, never
+     *  for None. True before an asynchronous paint lands, so a host can park
+     *  on it. */
     val expectsBoxes: Boolean
         get() = when (mode) {
             OverlayMode.TRANSLATION -> data?.hasChips == true
             OverlayMode.FURIGANA -> data?.groups?.isNotEmpty() == true && sourceLangId != null
-            OverlayMode.DEFINITIONS, OverlayMode.NONE -> false
+            OverlayMode.DEFINITIONS ->
+                lookupHost != null && data?.groups?.isNotEmpty() == true && sourceLangId != null
+            OverlayMode.NONE -> false
         }
 
-    /** Take [data] (read in [sourceLangId]) and paint it in [mode]. */
-    fun bind(data: OneShotOverlayData?, sourceLangId: SourceLangId?, mode: OverlayMode) {
+    /** Definitions holds key focus for Back and the controller cursor. */
+    val wantsFocus: Boolean get() = mode == OverlayMode.DEFINITIONS && lookupHost != null
+
+    /** A Definitions card is up. */
+    val hasCard: Boolean get() = words?.hasCard == true
+
+    /** Take [data] (read in [sourceLangId]; its frame saved at
+     *  [screenshotPath] at [capturedAtMs], for a card's pages) and paint it
+     *  in [mode]. */
+    fun bind(
+        data: OneShotOverlayData?,
+        sourceLangId: SourceLangId?,
+        mode: OverlayMode,
+        screenshotPath: String? = this.screenshotPath,
+        capturedAtMs: Long = this.capturedAtMs,
+    ) {
         this.data = data
         this.sourceLangId = sourceLangId
+        this.screenshotPath = screenshotPath
+        this.capturedAtMs = capturedAtMs
         this.mode = mode
         repaint()
     }
 
     /** More of the same capture translated: the chips fill in place. The
-     *  reading hint is built from the groups, which a fill never changes. */
+     *  reading hint and the word boxes are built from the groups, which a
+     *  fill never changes. */
     fun update(data: OneShotOverlayData) {
         this.data = data
         if (mode == OverlayMode.TRANSLATION) repaint()
+    }
+
+    /** The frame's saved path and time arrived after the boxes went up. */
+    fun setFrame(screenshotPath: String?, capturedAtMs: Long) {
+        this.screenshotPath = screenshotPath
+        this.capturedAtMs = capturedAtMs
+        words?.setFrame(screenshotPath, capturedAtMs)
     }
 
     /** Repaint the bound data in [mode]. */
@@ -117,44 +190,85 @@ internal class CaptureOverlayLayer(
      *  orphaned the boxes): the boxes fade and the data goes. */
     fun clear() {
         data = null
-        cancelBuild()
-        hideView(animated = true)
+        cancelReadingBuild()
+        releaseWords()
+        hideChipsView(animated = true)
     }
 
     /** The host's window is going. */
     fun release() {
-        cancelBuild()
+        cancelReadingBuild()
+        releaseWords()
         chipsView = null
         removeAllViews()
     }
 
     /** The drawn footprints of the boxes, in screen coordinates; empty
      *  while nothing is drawn. */
-    fun drawnBoxRects(): List<Rect> =
-        if (hasBoxes) chipsView?.getChildScreenRects().orEmpty() else emptyList()
+    fun drawnBoxRects(): List<Rect> = when {
+        !hasBoxes -> emptyList()
+        mode == OverlayMode.DEFINITIONS -> words?.drawnRects().orEmpty()
+        else -> chipsView?.getChildScreenRects().orEmpty()
+    }
+
+    // ── Definitions: touches and keys ────────────────────────────────────
+
+    /** True when a word of Definitions, or its tap buffer, lies under
+     *  ([x], [y]) (the host's coordinates, the display's). */
+    fun wordAt(x: Float, y: Float): Boolean = words?.wordAt(x, y) == true
+
+    /** A touch the host offers (the whole DOWN..UP stream): claimed by
+     *  Definitions when its DOWN lands on a word, or closes a card. Returns
+     *  true while the sequence is this layer's. */
+    fun onTouch(ev: MotionEvent): Boolean {
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            wordTouch = words?.onTapAt(ev.x, ev.y) == true
+        }
+        val mine = wordTouch
+        if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) {
+            wordTouch = false
+        }
+        return mine
+    }
+
+    /** A key the host offers: Definitions' controller cursor. */
+    fun onKey(ev: KeyEvent): Boolean = words?.onKey(ev) == true
+
+    /** Back: a Definitions card closes (true); otherwise the host's. */
+    fun onBack(): Boolean = words?.onBack() == true
+
+    fun closeCard() {
+        words?.closeCard()
+    }
+
+    // ── Painting ─────────────────────────────────────────────────────────
 
     private fun repaint() {
-        cancelBuild()
+        cancelReadingBuild()
         val d = data
         val src = sourceLangId
+        if (mode != OverlayMode.DEFINITIONS) releaseWords()
         when (mode) {
             OverlayMode.TRANSLATION ->
-                if (d != null && d.hasChips) show(d.boxes, d, d.growthLimits) else hideView(animated = false)
+                if (d != null && d.hasChips) showChips(d.boxes, d, d.growthLimits) else hideChipsView(animated = false)
             OverlayMode.FURIGANA ->
                 if (d != null && d.groups.isNotEmpty() && src != null) buildReadings(d, src)
-                else hideView(animated = false)
-            // Definitions paints through its word-lookup session, which is
-            // not hosted here yet; None paints nothing by definition.
-            OverlayMode.DEFINITIONS, OverlayMode.NONE -> hideView(animated = false)
+                else hideChipsView(animated = false)
+            OverlayMode.DEFINITIONS -> {
+                hideChipsView(animated = false)
+                val host = lookupHost
+                if (host != null && d != null && d.groups.isNotEmpty() && src != null) buildWords(host, d, src)
+                else releaseWords()
+            }
+            OverlayMode.NONE -> hideChipsView(animated = false)
         }
     }
 
-    /** A replaced build is cancelled ([cancelBuild]); cancellation is prompt,
-     *  so a build that lands after its replacement throws on the way back
-     *  and never paints. */
+    /** A replaced build is cancelled ([cancelReadingBuild]); cancellation is
+     *  prompt, so a build that lands after its replacement throws on the way
+     *  back and never paints. */
     private fun buildReadings(d: OneShotOverlayData, src: SourceLangId) {
-        pending = true
-        buildJob = scope.launch {
+        readingBuild = scope.launch {
             val boxes = try {
                 withContext(Dispatchers.Default) { readingBoxes(d.groups, src) }
             } catch (e: CancellationException) {
@@ -163,42 +277,41 @@ internal class CaptureOverlayLayer(
                 Log.w(TAG, "reading boxes failed: ${e.javaClass.simpleName}")
                 emptyList()
             }
-            pending = false
+            readingBuild = null
             // Readings are placed by the annotation; the minimum-text-size
             // growth skips them, so no limits apply.
-            if (boxes.isNotEmpty()) show(boxes, d, GrowthLimits.NONE) else hideView(animated = false)
+            if (boxes.isNotEmpty()) showChips(boxes, d, GrowthLimits.NONE) else hideChipsView(animated = false)
             onBoxesSettled?.invoke(hasBoxes)
         }
     }
 
-    private fun cancelBuild() {
-        buildJob?.cancel()
-        buildJob = null
-        pending = false
+    private fun cancelReadingBuild() {
+        readingBuild?.cancel()
+        readingBuild = null
     }
 
-    private fun show(boxes: List<TextBox>, d: OneShotOverlayData, limits: GrowthLimits) {
-        val v = viewFor(OverlayRenderConfig.from(prefs))
+    private fun showChips(boxes: List<TextBox>, d: OneShotOverlayData, limits: GrowthLimits) {
+        val v = chipsViewFor(OverlayRenderConfig.from(prefs))
         v.animate().cancel()
         v.alpha = 1f
         v.setBoxes(boxes, d.cropLeft, d.cropTop, d.screenshotW, d.screenshotH, growthLimits = limits)
-        hasBoxes = true
+        chipsShown = true
     }
 
-    /** The boxes fade (or vanish) but the view stays attached for a cheap
+    /** The chips fade (or vanish) but the view stays attached for a cheap
      *  re-show; it dies with the host. */
-    private fun hideView(animated: Boolean) {
-        hasBoxes = false
+    private fun hideChipsView(animated: Boolean) {
+        chipsShown = false
         val v = chipsView ?: return
         v.animate().cancel()
         if (animated) v.animate().alpha(0f).setDuration(FADE_MS).start() else v.alpha = 0f
     }
 
-    /** The view for [config]. Built once, but its render config is fixed at
-     *  construction: a setting changed since (the settings screen can sit
-     *  beside the sheet on another display) replaces it, as the live
+    /** The chips view for [config]. Built once, but its render config is
+     *  fixed at construction: a setting changed since (the settings screen
+     *  can sit beside the sheet on another display) replaces it, as the live
      *  overlay's reuse guard does. */
-    private fun viewFor(config: OverlayRenderConfig): TranslationOverlayView {
+    private fun chipsViewFor(config: OverlayRenderConfig): TranslationOverlayView {
         chipsView?.takeIf { it.renderConfig != config }?.let { stale ->
             removeView(stale)
             chipsView = null
@@ -206,7 +319,79 @@ internal class CaptureOverlayLayer(
         return chipsView ?: TranslationOverlayView(chipsCtx, oneShot = true, renderConfig = config).also {
             chipsView = it
             it.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> onBoxesLaidOut?.invoke() }
+            addView(it, 0, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        }
+    }
+
+    /** Box every word of the capture's lines, in screen coordinates. A
+     *  session already up (a re-bind of the same capture) loads the lines
+     *  again and keeps its card where the word survives. */
+    private fun buildWords(host: LookupHost, d: OneShotOverlayData, src: SourceLangId) {
+        val view = wordsView ?: WordBoxesView(context).also {
+            wordsView = it
             addView(it, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+            scrimHolder?.let { holder ->
+                it.removeView(it.spotlight)
+                holder.addView(it.spotlight, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+            }
+        }
+        val session = words ?: WordLookupSession(
+            context = host.displayCtx,
+            displayCtx = host.displayCtx,
+            wm = host.wm,
+            overlayHost = host.overlayHost,
+            displayId = host.displayId,
+            density = density,
+            view = view,
+            scope = scope,
+            tokenize = { text -> tokenizeLine(text, src) },
+            onEnded = { onSessionEnded?.invoke() },
+            onBoxesSettled = { has -> onBoxesLaidOut?.invoke(); onBoxesSettled?.invoke(has) },
+        ).also { words = it }
+        session.load(screenLines(d), screenshotPath, capturedAtMs)
+    }
+
+    private fun releaseWords() {
+        words?.release()
+        words = null
+        wordsView?.let { v ->
+            // The dimming goes with the boxes, wherever the host keeps it.
+            (v.spotlight.parent as? android.view.ViewGroup)?.takeIf { it !== v }?.removeView(v.spotlight)
+            removeView(v)
+        }
+        wordsView = null
+        wordTouch = false
+    }
+
+    /** The capture's lines as the lens reads them, in screen coordinates:
+     *  the groups' lines, offset by the crop and scaled from the frame to
+     *  the display, bounds, symbols and oriented dims through one transform
+     *  (a non-uniform scale fails soft to an upright line, as the camera's
+     *  projection does). */
+    private fun screenLines(d: OneShotOverlayData): List<OcrManager.OcrLine> {
+        val metrics = context.resources.displayMetrics
+        val sx = if (d.screenshotW > 0) metrics.widthPixels.toFloat() / d.screenshotW else 1f
+        val sy = if (d.screenshotH > 0) metrics.heightPixels.toFloat() / d.screenshotH else 1f
+        fun project(r: Rect) = Rect(
+            Math.round((r.left + d.cropLeft) * sx), Math.round((r.top + d.cropTop) * sy),
+            Math.round((r.right + d.cropLeft) * sx), Math.round((r.bottom + d.cropTop) * sy),
+        )
+        val similar = kotlin.math.abs(sx - sy) <= 0.04f * maxOf(sx, sy)
+        return d.groups.flatMapIndexed { gi, group ->
+            group.lines.map { line ->
+                val ang = if (similar) line.angleDeg else 0f
+                OcrManager.OcrLine(
+                    text = line.text,
+                    bounds = project(line.bounds),
+                    groupIndex = gi,
+                    groupText = group.text,
+                    symbols = line.symbols.map { s -> s.copy(bounds = project(s.bounds)) },
+                    orientation = line.orientation,
+                    angleDeg = ang,
+                    orientedWidth = if (ang != 0f) line.orientedWidth * sx else 0f,
+                    orientedHeight = if (ang != 0f) line.orientedHeight * sy else 0f,
+                )
+            }
         }
     }
 
@@ -214,9 +399,13 @@ internal class CaptureOverlayLayer(
         private const val TAG = "CaptureOverlayLayer"
         const val FADE_MS = 150L
 
-        /** The modes the layer paints; a host offers no segment outside it.
-         *  Definitions joins with its word-lookup session. */
+        /** The modes every layer paints; Definitions joins with a [LookupHost]. */
         val SUPPORTED_MODES: Set<OverlayMode> =
             setOf(OverlayMode.TRANSLATION, OverlayMode.FURIGANA, OverlayMode.NONE)
+
+        /** The modes a layer with a [LookupHost] paints: the game-display
+         *  hosts (the sheet, the dual-screen window), so what their controls
+         *  offer. */
+        val HOSTED_MODES: Set<OverlayMode> = SUPPORTED_MODES + OverlayMode.DEFINITIONS
     }
 }

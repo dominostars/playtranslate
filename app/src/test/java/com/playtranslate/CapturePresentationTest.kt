@@ -5,10 +5,12 @@ import android.graphics.Rect
 import android.os.Looper
 import android.os.SystemClock
 import android.view.Display
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.language.TokenSpan
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.ui.CaptureOverlayWindow
 import com.playtranslate.ui.TextBox
@@ -16,6 +18,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -33,7 +36,12 @@ import java.time.Duration
  * a fill or a reading build that leaves nothing takes it down; the row's
  * pick re-flavors in place or takes it down; a running auto-translate stops
  * first; a tap on the game screen hands it back, a tap on the pill does not;
- * the dismissed-notification fires once per window.
+ * the dismissed-notification fires once per window. In Definitions (the
+ * row's pick, or tap-to-lookup's override of one capture, which writes no
+ * setting) the window holds key focus, a tap on a word opens its card and
+ * Back closes a card before the window; tap-to-lookup over a window in
+ * another mode switches it in place, and over one in Definitions takes it
+ * down.
  */
 @RunWith(RobolectricTestRunner::class)
 class CapturePresentationTest {
@@ -86,6 +94,63 @@ class CapturePresentationTest {
         text = listOf(rect),
         groups = listOf(group),
     )
+
+    /** "hello world" with a box per character, for Definitions: 20 px a
+     *  character from x = 100 at y 100..130 of the frame. */
+    private val wordRect = Rect(100, 100, 320, 130)
+    private val wordGroup = OcrManager.OcrGroup(
+        "hello world", wordRect,
+        lines = listOf(
+            OcrManager.LineBox(
+                "hello world", wordRect, groupIndex = 0,
+                symbols = "hello world".mapIndexedNotNull { i, ch ->
+                    if (ch == ' ') null
+                    else OcrManager.SymbolBox(ch.toString(), Rect(100 + i * 20, 100, 120 + i * 20, 130), i)
+                },
+            ),
+        ),
+    )
+
+    private fun wordData() = OneShotOverlayData(
+        boxes = listOf(TextBox("hi", wordRect)),
+        cropLeft = 0, cropTop = 0, screenshotW = 1280, screenshotH = 720,
+        cropWidth = 1280, cropHeight = 720,
+        text = listOf(wordRect),
+        groups = listOf(wordGroup),
+    )
+
+    /** A stand-in for the language's tokenizer: one token per word. */
+    private val words: suspend (String, SourceLangId) -> List<TokenSpan> = { text, _ ->
+        text.split(' ').filter { it.isNotEmpty() }.map { TokenSpan(it, it) }
+    }
+
+    /** The capture window holds key focus. */
+    private fun windowFocusable(): Boolean {
+        val params = OverlayUiController::class.java.getDeclaredField("captureWindowParams")
+            .apply { isAccessible = true }.get(controller) as WindowManager.LayoutParams
+        return (params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) == 0
+    }
+
+    /** A window up in Definitions over [wordData], its words boxed. */
+    private fun definitionsWindow(): CaptureOverlayWindow {
+        assertTrue(present(OverlayMode.TRANSLATION, wordData()))
+        val w = window()!!
+        w.layer.tokenizeLine = words
+        controller.setCaptureMode(OverlayMode.DEFINITIONS)
+        settle()
+        assertTrue(w.layer.hasBoxes)
+        return w
+    }
+
+    private fun tapWindow(w: CaptureOverlayWindow, x: Float, y: Float) {
+        val now = SystemClock.uptimeMillis()
+        for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+            val ev = MotionEvent.obtain(now, now, action, x, y, 0)
+            w.dispatchTouchEvent(ev)
+            ev.recycle()
+        }
+        idle()
+    }
 
     private fun present(mode: OverlayMode, data: OneShotOverlayData = data("hi")): Boolean {
         prefs.captureOverlayMode = mode
@@ -231,5 +296,103 @@ class CapturePresentationTest {
         controller.dismissCapturePresentation()
         controller.dismissCapturePresentation()
         assertEquals("idempotent", 2, dismissals)
+    }
+
+    // ── Definitions ──────────────────────────────────────────────────────
+
+    @Test fun `translations leave the keys to the game`() {
+        assertTrue(present(OverlayMode.TRANSLATION, wordData()))
+        assertFalse(windowFocusable())
+    }
+
+    @Test fun `tap-to-lookup over the window switches it to Definitions in place with key focus, the setting untouched`() {
+        assertTrue(present(OverlayMode.TRANSLATION, wordData()))
+        val w = window()!!
+        w.layer.tokenizeLine = words
+
+        controller.toggleTapToLookupForDisplay(Display.DEFAULT_DISPLAY)
+        settle()
+
+        assertSame(w, window())
+        assertEquals(OverlayMode.DEFINITIONS, controller.capturePresentationMode)
+        assertTrue(w.layer.hasBoxes)
+        assertTrue(windowFocusable())
+        assertEquals(OverlayMode.TRANSLATION, prefs.captureOverlayMode)
+        assertEquals(0, dismissals)
+    }
+
+    @Test fun `a pick away from Definitions gives the keys back`() {
+        definitionsWindow()
+        assertTrue(windowFocusable())
+
+        controller.setCaptureMode(OverlayMode.TRANSLATION)
+        idle()
+
+        assertTrue(controller.capturePresentationShowing)
+        assertFalse(windowFocusable())
+    }
+
+    @Test fun `tap-to-lookup over a Definitions window takes it down`() {
+        definitionsWindow()
+
+        controller.toggleTapToLookupForDisplay(Display.DEFAULT_DISPLAY)
+        idle()
+
+        assertFalse(controller.capturePresentationShowing)
+        assertEquals(1, dismissals)
+    }
+
+    @Test fun `a capture presented with the Definitions override opens in Definitions without writing the setting`() {
+        prefs.captureOverlayMode = OverlayMode.TRANSLATION
+        assertTrue(
+            controller.presentCapture(
+                Display.DEFAULT_DISPLAY, wordData(), SourceLangId.JA,
+                modeOverride = OverlayMode.DEFINITIONS,
+            ) { dismissals++ },
+        )
+        // The word build starts on the next turn of the main loop: the
+        // stand-in tokenizer goes in first.
+        window()!!.layer.tokenizeLine = words
+        settle()
+
+        assertEquals(OverlayMode.DEFINITIONS, controller.capturePresentationMode)
+        assertTrue(window()!!.layer.hasBoxes)
+        assertTrue(windowFocusable())
+        assertEquals(OverlayMode.TRANSLATION, prefs.captureOverlayMode)
+    }
+
+    @Test fun `in Definitions a tap on a word opens its card and keeps the window, and one on nothing hands the screen back`() {
+        val w = definitionsWindow()
+        val word = w.layer.drawnBoxRects().first()
+
+        tapWindow(w, word.exactCenterX(), word.exactCenterY())
+        assertTrue(controller.capturePresentationShowing)
+        assertTrue(w.layer.hasCard)
+
+        // With a card up its own window takes a tap off it; with none, a tap
+        // off every word is on the game.
+        w.layer.closeCard()
+        tapWindow(w, word.exactCenterX(), word.bottom + 200f)
+        assertFalse(controller.capturePresentationShowing)
+        assertEquals(1, dismissals)
+    }
+
+    @Test fun `in Definitions Back closes a card first, then hands the screen back`() {
+        val w = definitionsWindow()
+        val word = w.layer.drawnBoxRects().first()
+        tapWindow(w, word.exactCenterX(), word.exactCenterY())
+        assertTrue(w.layer.hasCard)
+
+        w.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK))
+        w.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK))
+        idle()
+        assertFalse(w.layer.hasCard)
+        assertTrue(controller.capturePresentationShowing)
+
+        w.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK))
+        w.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK))
+        idle()
+        assertFalse(controller.capturePresentationShowing)
+        assertEquals(1, dismissals)
     }
 }
