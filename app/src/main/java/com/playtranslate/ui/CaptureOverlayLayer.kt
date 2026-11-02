@@ -7,6 +7,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
 import android.widget.FrameLayout
+import androidx.core.view.doOnNextLayout
 import com.playtranslate.OcrManager
 import com.playtranslate.OneShotOverlayData
 import com.playtranslate.OverlayMode
@@ -35,7 +36,10 @@ import kotlinx.coroutines.withContext
  * view the live tiers draw with, rebuilt when the render settings change;
  * Definitions draws through [WordBoxesView], driven by [WordLookupSession],
  * which needs a [LookupHost] for its card's windows (a host without one
- * does not offer Definitions).
+ * does not offer Definitions). Every child reads the capture's frame as
+ * filling this layer: the chips view maps it onto its own size, and the
+ * words are boxed in this layer's coordinates ([screenLines]), which are
+ * the display's, both hosts filling the display from its origin.
  *
  * Translation chips paint synchronously ([hasBoxes] is true at once when the
  * data has chips, as skeletons or with text); readings and word boxes are
@@ -323,9 +327,14 @@ internal class CaptureOverlayLayer(
         }
     }
 
-    /** Box every word of the capture's lines, in screen coordinates. A
-     *  session already up (a re-bind of the same capture) loads the lines
-     *  again and keeps its card where the word survives. */
+    /** Box every word of the capture's lines, in this layer's coordinates
+     *  ([screenLines]). A layer not laid out yet (the two-screen window
+     *  binds before its window is added) boxes them at its first layout,
+     *  the session pending until then. They are boxed once against that
+     *  size: both hosts end the presentation when the display's geometry
+     *  changes (the sheet's reconfigured-panel rule, the window's
+     *  size check). A session already up (a re-bind of the same capture)
+     *  loads the lines again and keeps its card where the word survives. */
     private fun buildWords(host: LookupHost, d: OneShotOverlayData, src: SourceLangId) {
         val view = wordsView ?: WordBoxesView(context).also {
             wordsView = it
@@ -336,7 +345,10 @@ internal class CaptureOverlayLayer(
             }
         }
         val session = words ?: WordLookupSession(
-            context = host.displayCtx,
+            // The card acts in the app's context, as the drag lens's acts in
+            // its service's: a page or Anki activity it starts is not tied
+            // to the game display. Its windows are the display's.
+            context = host.displayCtx.applicationContext,
             displayCtx = host.displayCtx,
             wm = host.wm,
             overlayHost = host.overlayHost,
@@ -348,7 +360,8 @@ internal class CaptureOverlayLayer(
             onEnded = { onSessionEnded?.invoke() },
             onBoxesSettled = { has -> onBoxesLaidOut?.invoke(); onBoxesSettled?.invoke(has) },
         ).also { words = it }
-        session.load(screenLines(d), screenshotPath, capturedAtMs)
+        val load = { if (words === session) session.load(screenLines(d), screenshotPath, capturedAtMs) }
+        if (isLaidOut && width > 0 && height > 0) load() else doOnNextLayout { load() }
     }
 
     private fun releaseWords() {
@@ -363,15 +376,17 @@ internal class CaptureOverlayLayer(
         wordTouch = false
     }
 
-    /** The capture's lines as the lens reads them, in screen coordinates:
-     *  the groups' lines, offset by the crop and scaled from the frame to
-     *  the display, bounds, symbols and oriented dims through one transform
-     *  (a non-uniform scale fails soft to an upright line, as the camera's
-     *  projection does). */
+    /** The capture's lines as the lens reads them, in this layer's
+     *  coordinates: the groups' lines, offset by the crop and scaled from
+     *  the frame onto the layer's size, the mapping the chips view makes
+     *  onto its own (never the display metrics, which leave out the system
+     *  bars the frame and the layer both cover), bounds, symbols and
+     *  oriented dims through one transform (a non-uniform scale fails soft
+     *  to an upright line, as the camera's projection does). Needs the
+     *  layer laid out ([buildWords]). */
     private fun screenLines(d: OneShotOverlayData): List<OcrManager.OcrLine> {
-        val metrics = context.resources.displayMetrics
-        val sx = if (d.screenshotW > 0) metrics.widthPixels.toFloat() / d.screenshotW else 1f
-        val sy = if (d.screenshotH > 0) metrics.heightPixels.toFloat() / d.screenshotH else 1f
+        val sx = if (d.screenshotW > 0) width.toFloat() / d.screenshotW else 1f
+        val sy = if (d.screenshotH > 0) height.toFloat() / d.screenshotH else 1f
         fun project(r: Rect) = Rect(
             Math.round((r.left + d.cropLeft) * sx), Math.round((r.top + d.cropTop) * sy),
             Math.round((r.right + d.cropLeft) * sx), Math.round((r.bottom + d.cropTop) * sy),

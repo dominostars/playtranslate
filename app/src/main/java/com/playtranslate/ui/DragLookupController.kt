@@ -1090,14 +1090,20 @@ class DragLookupController(
     /**
      * Show [resolved] as the sticky lens, inside the caller's [lookupJob]:
      * the release's side effects (the word state the chips read, the
-     * sentence sent to the app on dual-screen and recorded in Text History),
-     * then in one main-thread step [place], which puts the lens where it
-     * will show (false: nowhere, and the session ends), the bind and the
-     * promotion to sticky; last the "already in Anki" deck badge. The drag's
-     * release and the tap on a word's box ([lookUpWord]) share it.
+     * sentence recorded in Text History and, with [sendsLineToApp], sent to
+     * the app's page on dual-screen), then in one main-thread step [place],
+     * which puts the lens where it will show (false: nowhere, and the
+     * session ends), the bind and the promotion to sticky; last the
+     * "already in Anki" deck badge. The drag's release and the tap on a
+     * word's box ([lookUpWord]) share it.
      */
     private suspend fun presentResolution(
         resolved: LookupResolution,
+        /** The drag's own scene goes to the app's page on dual-screen. A
+         *  scene the caller presents ([lookUpWord]: a capture whose result
+         *  that page already shows) stays there: sending the line would
+         *  replace the result, and with it the capture's presentation. */
+        sendsLineToApp: Boolean = true,
         place: () -> Boolean = { true },
     ) {
         val popupData = resolved.word
@@ -1120,7 +1126,7 @@ class DragLookupController(
             if (sent != lastSentSentence) {
                 lastSentSentence = sent
                 sentenceToRecord = sent
-                sendLineToMainApp(sent)
+                if (sendsLineToApp) sendLineToMainApp(sent)
             }
         }
         val shown = withContext(Dispatchers.Main) {
@@ -1177,7 +1183,9 @@ class DragLookupController(
      * for, in the scene the caller captured ([lines], its screenshot at
      * [screenshotPath], taken at [capturedAtMs]), and show the sticky lens
      * anchored on [anchor], the box's screen rect, as the result sheet's
-     * word lens anchors on its word ([SourceTextLens]).
+     * word lens anchors on its word ([SourceTextLens]). The scene is the
+     * caller's to present: the word's sentence is recorded but not sent to
+     * the app's page, as a drag's is ([presentResolution]).
      *
      * It resolves first and shows second, so the lens window only ever
      * comes up interactive here, never in its zoom state: on the
@@ -1211,7 +1219,7 @@ class DragLookupController(
                     endSession()
                     return@launch
                 }
-                presentResolution(resolved) {
+                presentResolution(resolved, sendsLineToApp = false) {
                     if (magnifier.isInteractive) magnifier.resetToZoom()
                     val screen = queryScreenSize()
                     magnifier.show(

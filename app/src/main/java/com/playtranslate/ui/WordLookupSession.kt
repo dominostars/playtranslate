@@ -71,8 +71,10 @@ internal class WordLookupSession(
     private var job: Job? = null
     private var closed = false
 
-    /** A tokenization is in flight; the boxes land when it is done. */
-    var pending = false
+    /** No boxes have settled yet: the first [load] has not come (its host
+     *  boxes the words once it has a size) or a tokenization is in flight.
+     *  The boxes land when it is done. */
+    var pending = true
         private set
 
     val hasBoxes: Boolean get() = boxes.isNotEmpty()

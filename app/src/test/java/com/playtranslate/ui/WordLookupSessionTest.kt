@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import android.app.Application
 import android.content.Context
 import android.graphics.Rect
 import android.hardware.input.InputManager
@@ -9,7 +10,9 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.test.core.app.ApplicationProvider
+import com.playtranslate.MainActivity
 import com.playtranslate.OcrManager
+import com.playtranslate.Prefs
 import com.playtranslate.displaySizePx
 import com.playtranslate.language.TokenSpan
 import com.playtranslate.overlay.OverlayHost
@@ -29,6 +32,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowDisplayManager
 import org.robolectric.shadows.ShadowInputDevice
 import org.robolectric.util.ReflectionHelpers
 import java.time.Duration
@@ -88,6 +92,7 @@ class WordLookupSessionTest {
     )
 
     @After fun tearDown() {
+        MainActivity.isInForeground = false
         session.release()
         scope.cancel()
         host.removeAll()
@@ -144,6 +149,16 @@ class WordLookupSessionTest {
     }
 
     // ── boxes ────────────────────────────────────────────────────────────
+
+    @Test fun `a session is pending until its first load lands`() {
+        assertTrue("nothing boxed yet", session.pending)
+        assertFalse(session.hasBoxes)
+
+        load(helloWorld)
+
+        assertFalse(session.pending)
+        assertTrue(session.hasBoxes)
+    }
 
     @Test fun `the boxes land once the tokens are in, one per word`() {
         session.load(listOf(helloWorld), null, 0L)
@@ -263,6 +278,28 @@ class WordLookupSessionTest {
 
         lens().onOffCardDown!!.invoke(600f, 600f)
         assertNull(selected())
+        assertEquals(0, ended)
+    }
+
+    @Test fun `on two screens a word's card leaves the app's page to the capture`() {
+        // The app in front on a second screen, where a drag's lookup sends
+        // its sentence to the page.
+        ShadowDisplayManager.addDisplay("w640dp-h480dp")
+        MainActivity.isInForeground = true
+        Prefs(ctx).sourceLang = "en"
+        load(helloWorld)
+
+        session.onTapAt(150f, 315f)
+        val deadline = System.currentTimeMillis() + 3000
+        while (!lens().isInteractive && System.currentTimeMillis() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(5)
+        }
+
+        assertTrue("the card came up", lens().isInteractive)
+        val app = shadowOf(ctx as Application)
+        val started = generateSequence { app.nextStartedActivity }.map { it.action }.toList()
+        assertFalse(started.toString(), MainActivity.ACTION_DRAG_SENTENCE in started)
         assertEquals(0, ended)
     }
 
