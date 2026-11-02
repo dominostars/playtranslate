@@ -1436,6 +1436,10 @@ class CaptureService : Service() {
         // cancelled before it can put one up over the session. The floating
         // menu does this when it opens, but a start needn't come through the
         // menu (the icon's toggle and swap, the tap hotkeys, the app).
+        // The session starting now is the restart the sheet's capture would
+        // have owed, so its record settles without one, detached before the
+        // sheet goes.
+        CaptureBackendResolver.activeOverlayUi?.settleCapturePause(resumeLive = false)
         CaptureBackendResolver.activeOverlayUi?.dismissCaptureResultOverlay()
         // Tap-to-lookup's boxes come down the same way; the session starting
         // now is the restart they would have owed, so they owe none.

@@ -140,7 +140,7 @@ class ProcessTextActivity : AppCompatActivity() {
                 else LanguageSetupActivity.MODE_TARGET,
             )
         }
-        o.onDismiss = { finish() }
+        o.onDismiss = { _ -> finish() }
         overlay = o
         o.show(w, h)
         observeFreshSession()

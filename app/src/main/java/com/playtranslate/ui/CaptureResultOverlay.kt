@@ -137,8 +137,18 @@ class CaptureResultOverlay(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val touchSlop = ViewConfiguration.get(ctx).scaledTouchSlop
 
-    /** Invoked once, on any dismissal path. */
-    var onDismiss: (() -> Unit)? = null
+    /** Why the sheet closed, for the host's bookkeeping of what the capture
+     *  took from the game screen: the USER closed it (a tap outside, the
+     *  swipe, the B ladder's last rung, a hotkey's second press, the
+     *  one-tap send's exit), a PAGE it opened took the screen (detail, Anki,
+     *  settings, a picker), or the SYSTEM ended it (a cancelled session, the
+     *  host's own teardown). */
+    enum class DismissReason { USER, PAGE, SYSTEM }
+
+    /** Invoked once, on any dismissal path, with why. */
+    var onDismiss: ((DismissReason) -> Unit)? = null
+
+    private var dismissReason = DismissReason.SYSTEM
 
     /** The region this capture was limited to, set by the over-game
      *  controller before [show]. A custom region makes the edge indicator
@@ -1327,7 +1337,7 @@ class CaptureResultOverlay(
         backdropSmall?.recycle()
         backdropSmall = null
         scope.cancel()
-        onDismiss?.invoke()
+        onDismiss?.invoke(dismissReason)
     }
 
     /** Slide the panel up off the top edge, then remove it — so tap-outside and
@@ -1339,6 +1349,8 @@ class CaptureResultOverlay(
     fun animateOutAndDismiss() {
         if (dismissed || animatingOut) return
         animatingOut = true
+        // Every animated exit is the user's own close.
+        dismissReason = DismissReason.USER
         dismissWordLens()
         popovers.dismiss()
         nav?.clearCursor()   // no ring riding the exit slide
@@ -1349,6 +1361,19 @@ class CaptureResultOverlay(
             .setInterpolator(AccelerateInterpolator())
             .withEndAction { dismiss() }
             .start()
+    }
+
+    /** The sheet goes because a page it opened takes the screen. */
+    private fun dismissForPage() {
+        dismissReason = DismissReason.PAGE
+        dismiss()
+    }
+
+    /** The host tears the sheet down (a newer capture, a live start, its own
+     *  teardown): whatever exit was under way, this is the system's. */
+    fun dismissBySystem() {
+        dismissReason = DismissReason.SYSTEM
+        dismiss()
     }
 
     // ── Sliver state (result shown as on-screen boxes) ───────────────────
@@ -2379,12 +2404,12 @@ class CaptureResultOverlay(
             onLaunchedActivity = { kind ->
                 when (kind) {
                     SourceLensActions.LaunchKind.Anki ->
-                        if (dismissOnActivityLaunch) dismiss()
+                        if (dismissOnActivityLaunch) dismissForPage()
                     SourceLensActions.LaunchKind.Detail -> {
                         val r = lastResult
                         val nav = onNavigateToDetail
                         if (r != null && nav != null) nav(r)
-                        else if (dismissOnActivityLaunch) dismiss()
+                        else if (dismissOnActivityLaunch) dismissForPage()
                     }
                 }
             },
@@ -2448,12 +2473,12 @@ class CaptureResultOverlay(
             prov.sourceLangId,
             prov.engineToken,
             onReOcr = { reOcr(prov, path, deviceOnly = true) },
-            onDownload = { backend -> launchOcrSettings(backend, prov.sourceLangId); dismiss() },
+            onDownload = { backend -> launchOcrSettings(backend, prov.sourceLangId); dismissForPage() },
             cloud = OcrPicker.CloudChoice(
                 onReOcr = { reOcr(prov, path, deviceOnly = false) },
                 // The cloud page, the way the download page opens: on the
                 // foreground display, this sheet gone since the app comes up.
-                onOpenPage = { launchOnForegroundDisplay(Intent(ctx.applicationContext, PtCloudSettingsActivity::class.java)); dismiss() },
+                onOpenPage = { launchOnForegroundDisplay(Intent(ctx.applicationContext, PtCloudSettingsActivity::class.java)); dismissForPage() },
             ),
         ).showAsOverlay()
     }
@@ -2511,7 +2536,7 @@ class CaptureResultOverlay(
         // Read before dismiss(): the picker workspace frosts over the same
         // capture this sheet was frosted with.
         val frostPath = lastResult?.screenshotPath
-        dismiss()
+        dismissForPage()
         val opened = CaptureBackendResolver.activeOverlayUi?.openWorkspace(displayId, frostPath) {
             if (isSource) SourceListPage() else TargetListPage()
         } == true
@@ -2566,9 +2591,9 @@ class CaptureResultOverlay(
         )
         if (inWorkspace) {
             val nav = onNavigateToDetail
-            if (nav != null) nav(result) else if (dismissOnActivityLaunch) dismiss()
+            if (nav != null) nav(result) else if (dismissOnActivityLaunch) dismissForPage()
         } else if (dismissOnActivityLaunch) {
-            dismiss()
+            dismissForPage()
         }
     }
 

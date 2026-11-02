@@ -205,6 +205,12 @@ class OverlayUiController(
             // The in-app boxes' window dies with its display; drop our handle
             // (and notify the app's toggle) rather than holding a zombie.
             if (displayId == captureWindowDisplayId) dismissCapturePresentation()
+            // The sheet's window died with its display: drop our handle rather
+            // than hold a zombie, and give the game screen back.
+            if (displayId == captureDisplayId && captureResultOverlay != null) {
+                settleCapturePause(resumeLive = true)
+                dismissCaptureResultOverlay()
+            }
             reconcileFloatingIcons()
         }
         override fun onDisplayChanged(displayId: Int) {
@@ -749,6 +755,9 @@ class OverlayUiController(
         com.playtranslate.translation.TranslationErrors.onPillSettingsOpened(owner)
         closeTapToLookup(resumeLive = false)
         dismissFloatingMenu()
+        // The gear stops auto-translate on purpose: the sheet's record owes
+        // no restart.
+        settleCapturePause(resumeLive = false)
         dismissCaptureResultOverlay()
         dismissWorkspace()
         if (regionController.isRegionEditorActive) regionController.hideRegionEditor()
@@ -1060,6 +1069,14 @@ class OverlayUiController(
         onDismissed: () -> Unit,
     ): Boolean {
         dismissCapturePresentation()
+        // A sheet still up from a one-screen capture (the app came to the
+        // front on a second screen since): the app's page is the panel now,
+        // and the user is in the app, so the sheet goes and its restart is
+        // cancelled.
+        if (captureResultOverlay != null) {
+            settleCapturePause(resumeLive = false)
+            dismissCaptureResultOverlay()
+        }
         val prefs = Prefs(context)
         val mode = prefs.overlayModeFor(OverlaySurface.CAPTURE)
         if (mode == OverlayMode.NONE) return false
@@ -1575,7 +1592,14 @@ class OverlayUiController(
                     // in front on the other screen is the app's and stands.
                     // The auto-translate it stopped stays stopped
                     // (holdStoppedLive), as after the toggle's stop.
-                    HoldAction.CAPTURE_SCREEN -> dismissCaptureResultOverlay()
+                    HoldAction.CAPTURE_SCREEN -> {
+                        // The drag's own record takes the screen next, and it
+                        // leaves a session this hold stopped stopped
+                        // (holdStoppedLive): the capture's debt is forgotten,
+                        // not handed on.
+                        dropCapturePause()
+                        dismissCaptureResultOverlay()
+                    }
                     // The toggle and the swap stand: the drag that follows
                     // pauses a running auto-translate and resumes it
                     // afterwards, in the mode the swap left, as any drag does,
@@ -1882,8 +1906,16 @@ class OverlayUiController(
         if (endsCapture) {
             endErrorPillSession()
             // Capture is ending: tap-to-lookup goes, forgetting what it
-            // paused, as the icons' drag sessions do below.
+            // paused, as the icons' drag sessions do below, and the capture
+            // sheet's record is forgotten too.
             dropTapToLookup()
+            dropCapturePause()
+        } else {
+            // The icons go while capture carries on (Hide for Now, the task
+            // swiped away): a sheet up stays, but with no icon and the app
+            // behind, a restart it owed would be torn straight down again
+            // (updateForegroundState), after a possible consent prompt.
+            capturePause?.cancelResume()
         }
         if (iconHandles.isEmpty()) return
         Log.i(TAG, "hideFloatingIcon (all): $reason")
@@ -1913,6 +1945,7 @@ class OverlayUiController(
     private fun cancelLensResumes() {
         iconHandles.values.forEach { it.dragPause.cancelResume() }
         tapLookup?.pause?.cancelResume()
+        capturePause?.cancelResume()
     }
 
     /**
@@ -1955,6 +1988,9 @@ class OverlayUiController(
         // Suppress live captures while menu is open.
         CaptureService.instance?.holdActive = true
         hideTranslationOverlay()
+        // The menu pauses live mode itself and offers Auto: the sheet's
+        // record owes no restart.
+        settleCapturePause(resumeLive = false)
         dismissCaptureResultOverlay()
         // The icon tap is a button press — the in-app boxes' dismissal
         // contract (any interaction dismisses the ephemeral presentation),
@@ -2626,6 +2662,62 @@ class OverlayUiController(
      *  hides the region indicator and pauses or restarts auto-translate
      *  through this controller's routing (MainActivity's when it is in front
      *  on another screen). */
+    // ── What the capture sheet took from the game screen ─────────────────
+
+    /** The over-game capture sheet's pause record: a capture stops a running
+     *  auto-translate (and hides the region indicator) while its sheet holds
+     *  the game screen, and the user's own close of the sheet gives both
+     *  back. One record per sheet: a new capture takes the standing one over
+     *  ([LookupPause.handTo]), a page the sheet opens cancels the restart, a
+     *  live start or the error pill's gear settles it without one, and
+     *  capture's end drops it. Two screens have no sheet and no record: the
+     *  app's results page is the panel there, and its button restarts live. */
+    private var capturePause: LookupPause? = null
+
+    private fun newCapturePause() = LookupPause(
+        hideIndicator = { regionController.hideIndicatorForDrag() },
+        restoreIndicator = { regionController.restoreIndicatorAfterDrag() },
+        // A start still pending (its consent dialog, its stream probe) is
+        // the user's running session too: the capture stops it and owes it.
+        liveRunning = { CaptureService.instance?.let { it.isLive || it.isLiveStartPending } == true },
+        stopLive = { stopLiveRouted() },
+        startLive = { startLiveRouted() },
+    )
+
+    /** The sheet's record settles: the indicator comes back, and
+     *  auto-translate restarts when the capture stopped it and [resumeLive]
+     *  says so (false where what comes next stops it anyway, or a page now
+     *  covers the game). Detached before it acts, so the restart's own
+     *  teardown of the sheet finds nothing to settle. */
+    fun settleCapturePause(resumeLive: Boolean) {
+        val record = capturePause ?: return
+        capturePause = null
+        record.settle(resumeLive)
+    }
+
+    /** Capture is ending: the record is forgotten without acting. */
+    private fun dropCapturePause() {
+        capturePause?.drop()
+        capturePause = null
+    }
+
+    /** The sheet [overlay] closed for [reason]. The user's own close hands
+     *  the game screen back; a page cancels the restart; the system's
+     *  endings leave the record to the funnel that caused them (a new
+     *  capture takes it over, a live start settles it, a teardown drops it;
+     *  a cancelled session's record waits for the next of those). */
+    private fun onCaptureSheetDismissed(
+        overlay: com.playtranslate.ui.CaptureResultOverlay,
+        reason: com.playtranslate.ui.CaptureResultOverlay.DismissReason,
+    ) {
+        if (captureResultOverlay === overlay) captureResultOverlay = null
+        when (reason) {
+            com.playtranslate.ui.CaptureResultOverlay.DismissReason.USER -> settleCapturePause(resumeLive = true)
+            com.playtranslate.ui.CaptureResultOverlay.DismissReason.PAGE -> settleCapturePause(resumeLive = false)
+            com.playtranslate.ui.CaptureResultOverlay.DismissReason.SYSTEM -> Unit
+        }
+    }
+
     private fun newLookupPause() = LookupPause(
         hideIndicator = { regionController.hideIndicatorForDrag() },
         restoreIndicator = { regionController.restoreIndicatorAfterDrag() },
@@ -2662,6 +2754,9 @@ class OverlayUiController(
         iconHandles.values.forEach { it.dragPause.handTo(session.pause) }
         dismissAllDragLookupPopups()
         dismissFloatingMenu()
+        // The capture sheet's record moves to the boxes, which close it.
+        capturePause?.handTo(session.pause)
+        capturePause = null
         dismissCaptureResultOverlay()
         dismissCapturePresentation()
         session.pause.begin()
@@ -2804,12 +2899,7 @@ class OverlayUiController(
         captureIsPreferredPrimary = true
         val region = CaptureService.instance?.activeRegionForDisplay(displayId)
             ?: CaptureService.DEFAULT_REGION
-        val stoppedLive = CaptureService.instance?.isLive == true
-        if (stoppedLive) {
-            stopLiveRouted()
-        }
-        handleRegionSelection(displayId, region)
-        return stoppedLive
+        return handleRegionSelection(displayId, region)
     }
 
     private fun sendMainActivityIntent(action: String, targetDisplayId: Int? = null) {
@@ -2824,17 +2914,35 @@ class OverlayUiController(
     }
 
     /**
-     * Routes a drag-selected region to the appropriate activity. Effectively
-     * single screen (or app backgrounded): capture now and hand the path to
-     * TranslationResultActivity. Otherwise: send ACTION_REGION_CAPTURE.
+     * Routes a region to the surface that shows its capture, stopping a
+     * running auto-translate first so this is a clean one-shot, not a live
+     * refresh. Effectively single screen (or app backgrounded): the over-game
+     * sheet, whose pause record owes the restart ([capturePause]: the user's
+     * own close of the sheet gives the game screen back). Otherwise:
+     * ACTION_REGION_CAPTURE to the app, which owns the result and whose
+     * button restarts live. Returns true when auto-translate was running (or
+     * starting) and was stopped, or asked to stop: a hold's drag reads it.
      */
-    private fun handleRegionSelection(displayId: Int, region: RegionEntry) {
-        // A capture takes the game screen: tap-to-lookup's boxes come down,
-        // and auto-translate stays stopped, as a capture leaves it.
-        closeTapToLookup(resumeLive = false)
+    private fun handleRegionSelection(displayId: Int, region: RegionEntry): Boolean {
+        val wasLive = CaptureService.instance?.let { it.isLive || it.isLiveStartPending } == true
         if (effectivelySingleScreen()) {
+            // The capture takes over what the surfaces it replaces paused
+            // (the standing sheet, tap-to-lookup, the icons' drag lenses), so
+            // nothing restarts in between; then it stops auto-translate and
+            // hides the region indicator for itself.
+            val record = newCapturePause()
+            capturePause?.handTo(record)
+            tapLookup?.pause?.handTo(record)
+            iconHandles.values.forEach { it.dragPause.handTo(record) }
+            capturePause = record
+            closeTapToLookup(resumeLive = false)
+            record.begin(pauseLive = true)
             showCaptureResultOverlay(displayId, region)
         } else {
+            // A capture takes the game screen: tap-to-lookup's boxes come down,
+            // and auto-translate stays stopped, as a capture leaves it.
+            closeTapToLookup(resumeLive = false)
+            if (wasLive) stopLiveRouted()
             val intent = Intent(context, MainActivity::class.java).apply {
                 action = MainActivity.ACTION_REGION_CAPTURE
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -2846,6 +2954,7 @@ class OverlayUiController(
             }
             context.startActivity(intent)
         }
+        return wasLive
     }
 
     /**
@@ -2916,6 +3025,10 @@ class OverlayUiController(
             val curGeometry = context.displayGeometryOf(displayId)
             if (gen != captureGeneration || curGeometry != launchGeometry) {
                 bitmap?.recycle()
+                // Reconfigured under us with no sheet to show: the game screen
+                // goes back now. (A bumped generation means another funnel
+                // has already disposed of the record.)
+                if (gen == captureGeneration) settleCapturePause(resumeLive = true)
                 return@launch
             }
             // Committed: record what the SHOWN panel is built for, so a later reconfiguration
@@ -2924,7 +3037,7 @@ class OverlayUiController(
             captureDisplayId = displayId
             captureGeometry = launchGeometry
             val overlay = com.playtranslate.ui.CaptureResultOverlay(displayCtx, wm, displayId, overlayHost)
-            overlay.onDismiss = { if (captureResultOverlay === overlay) captureResultOverlay = null }
+            overlay.onDismiss = { reason -> onCaptureSheetDismissed(overlay, reason) }
             overlay.onNavigateToDetail = { result -> stashCaptureOverlayForReshow(displayId, result, region) }
             // Over-game sheet: B/dpad/stick drive it while a controller is attached.
             overlay.controllerNavEnabled = true
@@ -2979,6 +3092,9 @@ class OverlayUiController(
      * takes this path.
      */
     private fun launchResultActivity(displayId: Int, region: RegionEntry) {
+        // A page, not a sheet: the game screen is the page's now, so the
+        // capture's record settles without its restart.
+        settleCapturePause(resumeLive = false)
         val gen = captureGeneration
         captureJob = scope.launch {
             val frame = CaptureBackendResolver.active().captureSource?.requestClean(displayId)
@@ -3021,7 +3137,9 @@ class OverlayUiController(
         captureGeneration++
         captureJob?.cancel()
         captureJob = null
-        captureResultOverlay?.dismiss()
+        // The system's teardown, whatever exit the sheet had under way: its
+        // record is each funnel's to dispose of, never settled from here.
+        captureResultOverlay?.dismissBySystem()
         captureResultOverlay = null
         captureDisplayId = -1
         captureGeometry = null
@@ -3042,6 +3160,9 @@ class OverlayUiController(
         val built = captureGeometry ?: return
         val now = context.displayGeometryOf(changedDisplayId) ?: return
         if (now != built) {
+            // The user did nothing; the game screen goes back to what the
+            // capture stopped.
+            settleCapturePause(resumeLive = true)
             dismissCaptureResultOverlay()
         }
     }
@@ -3054,6 +3175,9 @@ class OverlayUiController(
         result: com.playtranslate.model.TranslationResult,
         region: RegionEntry,
     ) {
+        // A page takes the screen: the restart is forgone, and the sheet
+        // that comes back on Back owes nothing.
+        settleCapturePause(resumeLive = false)
         dismissCaptureResultOverlay()
         pendingReshow = PendingReshow(displayId, result, region, android.os.SystemClock.elapsedRealtime())
     }
@@ -3085,7 +3209,7 @@ class OverlayUiController(
         captureDisplayId = displayId
         captureGeometry = DisplayGeometry(size.x, size.y, display.rotation)
         val overlay = com.playtranslate.ui.CaptureResultOverlay(displayCtx, wm, displayId, overlayHost)
-        overlay.onDismiss = { if (captureResultOverlay === overlay) captureResultOverlay = null }
+        overlay.onDismiss = { reason -> onCaptureSheetDismissed(overlay, reason) }
         overlay.onNavigateToDetail = { r -> stashCaptureOverlayForReshow(displayId, r, region) }
         // Same controller-nav opt-in as the fresh-capture path, or the sheet
         // would come back keyless after a detail round-trip.
