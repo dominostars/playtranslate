@@ -2852,6 +2852,16 @@
          per-hanzi pronunciation). -->
     <string name="overlay_mode_option_pinyin">Pinyin</string>
 
+    <!-- Overlay mode chooser option (captures only) — draw a box around every
+         word on the captured screen; a tap on a box opens that word's
+         dictionary definition. One word, fits a four-segment control. -->
+    <string name="overlay_mode_option_definitions">Definitions</string>
+
+    <!-- Overlay mode chooser option (captures only) — draw nothing over the
+         captured screen; the result shows only in the panel. One short word,
+         fits a four-segment control. -->
+    <string name="overlay_mode_option_none">None</string>
+
     <!-- Subtitle on the "Hide overlays" toggle. -->
     <string name="settings_hide_overlays_during_auto_mode">Hide overlays during auto mode</string>
 

@@ -2762,8 +2762,8 @@ class MainActivity :
     private fun showAutoModeDropdown(anchor: View) {
         dismissDropdown()
         val currentMode = prefs.overlayMode
-        val modes = listOf(OverlayMode.TRANSLATION, OverlayMode.FURIGANA)
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
+        val modes = OverlayMode.offered(OverlaySurface.LIVE, hintKind)
 
         // Current mode at bottom, others above
         val ordered = modes.filter { it != currentMode } + currentMode

@@ -1840,6 +1840,9 @@ class CaptureService : Service() {
         return when (prefs.overlayMode) {
             OverlayMode.FURIGANA -> OverlayFlavor.FURIGANA
             OverlayMode.TRANSLATION -> OverlayFlavor.TRANSLATION
+            // Never stored for auto-translate (Prefs.overlayMode reads them as
+            // Translation); named so a new mode must say what live does with it.
+            OverlayMode.DEFINITIONS, OverlayMode.NONE -> OverlayFlavor.TRANSLATION
         }
     }
 

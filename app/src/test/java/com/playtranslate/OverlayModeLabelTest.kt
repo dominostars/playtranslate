@@ -22,6 +22,13 @@ class OverlayModeLabelTest {
         }
     }
 
+    @Test fun `definitions and none have one name each on every hint kind`() {
+        for (hint in HintTextKind.entries) {
+            assertEquals(hint.name, R.string.overlay_mode_option_definitions, OverlayMode.DEFINITIONS.labelRes(hint))
+            assertEquals(hint.name, R.string.overlay_mode_option_none, OverlayMode.NONE.labelRes(hint))
+        }
+    }
+
     @Test fun `the hint mode reads Pinyin on a Pinyin language and Furigana on every other kind`() {
         assertEquals(
             mapOf(

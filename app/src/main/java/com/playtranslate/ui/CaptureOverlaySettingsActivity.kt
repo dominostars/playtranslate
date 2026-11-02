@@ -43,6 +43,7 @@ import com.playtranslate.CaptureService
 import com.playtranslate.OcrManager
 import com.playtranslate.OcrTokenScope
 import com.playtranslate.OverlayMode
+import com.playtranslate.OverlaySurface
 import com.playtranslate.PlayTranslateAccessibilityService
 import com.playtranslate.Prefs
 import com.playtranslate.R
@@ -323,7 +324,7 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
             overlayModeSection.isVisible = true
             buildPillToggle(
                 container = overlayModeToggleContainer,
-                options = listOf(OverlayMode.TRANSLATION, OverlayMode.FURIGANA)
+                options = OverlayMode.offered(OverlaySurface.LIVE, hintKind)
                     .map { getString(it.labelRes(hintKind)) to it },
                 selected = prefs.overlayMode,
                 onSelect = { mode ->

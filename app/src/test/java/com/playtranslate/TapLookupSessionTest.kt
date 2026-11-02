@@ -712,7 +712,7 @@ class TapLookupSessionTest {
         running()
         open()
         startedActions()
-        val other = OverlayMode.entries.first { it != prefs.overlayMode }
+        val other = listOf(OverlayMode.TRANSLATION, OverlayMode.FURIGANA).first { it != prefs.overlayMode }
 
         controller.toggleAutoMode(other)
 
@@ -745,7 +745,7 @@ class TapLookupSessionTest {
         running()
         open()
         startedActions()
-        val other = OverlayMode.entries.first { it != prefs.overlayMode }
+        val other = listOf(OverlayMode.TRANSLATION, OverlayMode.FURIGANA).first { it != prefs.overlayMode }
 
         liveGesture("swapOverlayModeOrStartLive")
 

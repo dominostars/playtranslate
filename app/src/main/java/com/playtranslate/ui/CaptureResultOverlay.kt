@@ -55,6 +55,8 @@ import com.playtranslate.OneShotOverlayData
 import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.fillOneShotOverlayData
 import com.playtranslate.fillsBoxesOf
+import com.playtranslate.OverlayMode
+import com.playtranslate.OverlaySurface
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.RegionEntry
@@ -177,10 +179,12 @@ class CaptureResultOverlay(
     }
 
     var presentationPrefs: PresentationPrefs = object : PresentationPrefs {
+        // The header toggle over the capture's overlay mode, until the mode
+        // pill replaces it: on paints translations, off paints nothing.
         override var boxesEnabled: Boolean
-            get() = prefs.captureBoxesEnabled
+            get() = prefs.overlayModeFor(OverlaySurface.CAPTURE) != OverlayMode.NONE
             set(value) {
-                prefs.captureBoxesEnabled = value
+                prefs.captureOverlayMode = if (value) OverlayMode.TRANSLATION else OverlayMode.NONE
             }
         override var startPosture: Float
             get() = prefs.capturePanelPosture

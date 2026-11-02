@@ -2172,12 +2172,11 @@ class OverlayUiController(
         )
     }
 
-    /** Overlay modes selectable for [id]: just Translation, unless the language
-     *  carries a reading hint (Furigana/Pinyin), which adds the hint mode. */
+    /** Overlay modes auto-translate offers for [id]: just Translation, unless
+     *  the language carries a reading hint (Furigana/Pinyin), which adds the
+     *  hint mode ([OverlayMode.offered]). */
     private fun availableOverlayModes(id: SourceLangId): List<OverlayMode> =
-        if (SourceLanguageProfiles[id].hintTextKind == HintTextKind.NONE)
-            listOf(OverlayMode.TRANSLATION)
-        else listOf(OverlayMode.TRANSLATION, OverlayMode.FURIGANA)
+        OverlayMode.offered(OverlaySurface.LIVE, SourceLanguageProfiles[id].hintTextKind)
 
     /** The overlay mode after [prefs]'s current one among those its source
      *  language offers: the other one on a language with a reading hint,
@@ -2948,14 +2947,14 @@ class OverlayUiController(
             svc.configureOverride(displayId, region)
             // Do NOT recycle the frame — processScreenshot consumes it async on
             // the service scope and recycles it itself.
-            // Defer the translation only while the on-frame boxes are OFF for
-            // this flow: with boxes intended, translated chips must go up with
-            // the result. (The panel's funnel completes a deferred result if
-            // the user flips boxes on later.) Posture needs no term here —
-            // effectiveStartPosture drops a collapsed posture when boxes are
-            // off, so "collapsed sliver waiting on a deferred translation"
-            // can't happen.
-            val allowDefer = !Prefs(context).captureBoxesEnabled
+            // Defer the translation only while the capture's overlay is not
+            // Translations: with translated chips intended, they must go up
+            // with the result. (The panel's funnel completes a deferred
+            // result if the user switches to Translations later.) Posture
+            // needs no term here: effectiveStartPosture drops a collapsed
+            // posture when nothing is painted, so "collapsed sliver waiting
+            // on a deferred translation" can't happen.
+            val allowDefer = Prefs(context).overlayModeFor(OverlaySurface.CAPTURE) != OverlayMode.TRANSLATION
             val session = if (frame != null)
                 svc.processScreenshot(frame, displayId, allowDeferTranslation = allowDefer)
                 else svc.captureOnce(displayId, allowDeferTranslation = allowDefer)
