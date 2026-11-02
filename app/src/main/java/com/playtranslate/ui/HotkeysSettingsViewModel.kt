@@ -38,6 +38,7 @@ class HotkeysSettingsViewModel(app: Application) : AndroidViewModel(app) {
             Prefs.KEY_HOTKEY_FURIGANA_TAP,
             Prefs.KEY_HOTKEY_CAPTURE_TAP,
             Prefs.KEY_HOTKEY_CHANGE_GAME_LANGUAGE_TAP,
+            Prefs.KEY_HOTKEY_TAP_TO_LOOKUP_TAP,
             Prefs.KEY_QUICK_TILE_ADDED,
             Prefs.KEY_SOURCE_LANG,
         )
@@ -52,6 +53,7 @@ class HotkeysSettingsViewModel(app: Application) : AndroidViewModel(app) {
             translationTapHotkey = prefs.hotkeyTranslationTap,
             captureTapHotkey = prefs.hotkeyCaptureTap,
             changeGameLanguageTapHotkey = prefs.hotkeyChangeGameLanguageTap,
+            tapToLookupTapHotkey = prefs.hotkeyTapToLookupTap,
             showFuriganaSection = hintKind != HintTextKind.NONE,
             furiganaHotkey = prefs.hotkeyFurigana,
             furiganaTapHotkey = prefs.hotkeyFuriganaTap,
@@ -76,6 +78,8 @@ class HotkeysSettingsViewModel(app: Application) : AndroidViewModel(app) {
     fun clearCaptureTapHotkey() { prefs.hotkeyCaptureTap = "" }
     fun setChangeGameLanguageTapHotkey(combo: String) { prefs.hotkeyChangeGameLanguageTap = combo }
     fun clearChangeGameLanguageTapHotkey() { prefs.hotkeyChangeGameLanguageTap = "" }
+    fun setTapToLookupTapHotkey(combo: String) { prefs.hotkeyTapToLookupTap = combo }
+    fun clearTapToLookupTapHotkey() { prefs.hotkeyTapToLookupTap = "" }
     fun markQuickTileAdded() { prefs.quickTileAdded = true }
 }
 
@@ -84,6 +88,7 @@ data class HotkeysUiState(
     val translationTapHotkey: String,
     val captureTapHotkey: String,
     val changeGameLanguageTapHotkey: String,
+    val tapToLookupTapHotkey: String,
     val showFuriganaSection: Boolean,
     val furiganaHotkey: String,
     val furiganaTapHotkey: String,

@@ -346,6 +346,20 @@ class RootSettingsViewModelTest {
         assertEquals("Translation", vm.state.value.hotkeysSummary)
     }
 
+    @Test @Config(sdk = [34])
+    fun `the tap-to-lookup hotkey counts toward Translation, bound after construction`() {
+        // It lives in the Hotkeys page's Translations section too; bound
+        // while the VM is alive, so its key must be observed.
+        Prefs(ctx).quickTileAdded = true // drop the Add-tile prefix from the digest
+        val vm = RootSettingsViewModel(app)
+        assertEquals("No hotkeys set", vm.state.value.hotkeysSummary)
+
+        Prefs(ctx).hotkeyTapToLookupTap = "102"
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals("Translation", vm.state.value.hotkeysSummary)
+    }
+
     // ── PlayTranslate Cloud digest ────────────────────────────────────────
     // The VM reads the service's settings (PtCloudService.config), so the
     // keyed cell stores its key through a reversible codec installed there;

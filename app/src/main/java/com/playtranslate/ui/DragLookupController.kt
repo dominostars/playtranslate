@@ -13,7 +13,6 @@ import android.util.TypedValue
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.R
-import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.displaySizePx
 import com.playtranslate.DisplayGeometry
 import com.playtranslate.displayGeometryOf
@@ -38,10 +37,7 @@ import com.playtranslate.model.FrequencyTag
 import com.playtranslate.yomitan.YomitanDataStore
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.selectHeadword
-import com.playtranslate.ocr.FrameReaders
-import com.playtranslate.ocr.readLines
 import kotlinx.coroutines.*
-import java.io.File
 import kotlin.coroutines.coroutineContext
 import kotlin.math.abs
 
@@ -321,6 +317,9 @@ class DragLookupController(
 
     companion object {
         private const val TAG = "DragLookup"
+        /** The drag's screenshot in the screenshots cache
+         *  ([LookupCapture.saveScreenshot]). */
+        private const val DRAG_SCREENSHOT_FILE = "drag.jpg"
         /** Hold time before dwell triggers definitions. */
         private const val DWELL_MS = 1000L
         /** Movement (px equivalent of dp) tolerance during dwell — finger
@@ -456,12 +455,43 @@ class DragLookupController(
             fallbackLineStart: Int,
             fallbackCharExtent: Float,
             vertical: Boolean = false,
-        ): Pair<String, Int>? {
-            data class TokenPos(val token: String, val idx: Int, val start: Float, val end: Float)
-            val positioned = mutableListOf<TokenPos>()
+        ): Pair<String, Int>? = closestPlacedToken(
+            positionTokens(lineText, tokens, symbols, fallbackLineStart, fallbackCharExtent, vertical),
+            fingerPos,
+        )?.let { it.surface to it.charOffset }
 
+        /** One token of a line placed along the line's flow axis: its
+         *  [surface], its [charOffset] in the line text, its index in the
+         *  token list it was placed from ([tokenIndex]), and its extent
+         *  [start]..[end] on that axis ([positionTokens]). */
+        internal data class PlacedToken(
+            val surface: String,
+            val charOffset: Int,
+            val tokenIndex: Int,
+            val start: Float,
+            val end: Float,
+        )
+
+        /** Where each of [tokens] (surfaces, in line order) sits along the
+         *  line's flow axis: found by `indexOf` from the end of the token
+         *  placed before it, its extent taken from the [symbols] in its
+         *  offset range when there are any, else from [fallbackLineStart] +
+         *  offset × [fallbackCharExtent]. A token not found in [lineText] is
+         *  skipped. The one placement the drag's finger match
+         *  ([findClosestToken]) and the tap-to-lookup boxes
+         *  ([TapLookupGeometry.wordBoxes]) read, so a box drawn for a token
+         *  is the extent a finger is matched against. */
+        internal fun positionTokens(
+            lineText: String,
+            tokens: List<String>,
+            symbols: List<OcrManager.SymbolBox>,
+            fallbackLineStart: Int,
+            fallbackCharExtent: Float,
+            vertical: Boolean = false,
+        ): List<PlacedToken> {
+            val placed = mutableListOf<PlacedToken>()
             var pos = 0
-            for (token in tokens) {
+            for ((tokenIndex, token) in tokens.withIndex()) {
                 val idx = lineText.indexOf(token, pos)
                 if (idx < 0) continue
                 val endIdx = idx + token.length
@@ -480,21 +510,60 @@ class DragLookupController(
                     start = fallbackLineStart + idx * fallbackCharExtent
                     end = fallbackLineStart + endIdx * fallbackCharExtent
                 }
-                positioned += TokenPos(token, idx, start, end)
+                placed += PlacedToken(token, idx, tokenIndex, start, end)
                 pos = endIdx
             }
-            if (positioned.isEmpty()) return null
+            return placed
+        }
 
+        /** The placed token whose extent contains [fingerPos], else the one
+         *  whose centre is nearest; null when [placed] is empty. */
+        internal fun closestPlacedToken(placed: List<PlacedToken>, fingerPos: Int): PlacedToken? {
             // Prefer exact hit (finger within token span).
-            val exact = positioned.firstOrNull { fingerPos >= it.start && fingerPos <= it.end }
-            if (exact != null) return exact.token to exact.idx
-
+            placed.firstOrNull { fingerPos >= it.start && fingerPos <= it.end }?.let { return it }
             // Fallback: nearest center.
-            val nearest = positioned.minByOrNull {
+            return placed.minByOrNull {
                 val center = (it.start + it.end) / 2f
                 abs(fingerPos - center)
             }
-            return nearest?.let { it.token to it.idx }
+        }
+
+        /** [tokens] (surfaces, in line order) placed on [line]'s own flow
+         *  axis ([positionTokens]): x for an upright horizontal line, y for a
+         *  vertical one, the baseline u (centre-anchored, [flowU]) for a
+         *  slanted one, whose symbols ride that axis ([uSpaceSymbols]). The
+         *  char-extent fallback divides the line's extent on that axis by its
+         *  length. Empty for an empty line. */
+        internal fun placeTokensOnLine(line: OcrManager.OcrLine, tokens: List<String>): List<PlacedToken> {
+            val lineText = line.text
+            if (lineText.isEmpty()) return emptyList()
+            val isVertical = line.orientation == com.playtranslate.language.TextOrientation.VERTICAL
+            val rotated = line.angleDeg != 0f
+            val lineExtent = when {
+                rotated -> line.orientedWidth
+                isVertical -> line.bounds.height().toFloat()
+                else -> line.bounds.width().toFloat()
+            }
+            return positionTokens(
+                lineText = lineText,
+                tokens = tokens,
+                symbols = if (rotated) uSpaceSymbols(line) else line.symbols,
+                fallbackLineStart = when {
+                    rotated -> Math.round(-line.orientedWidth / 2f)
+                    isVertical -> line.bounds.top
+                    else -> line.bounds.left
+                },
+                fallbackCharExtent = lineExtent / lineText.length,
+                vertical = isVertical,
+            )
+        }
+
+        /** The screen point ([x], [y]) on [line]'s flow axis, the space
+         *  [placeTokensOnLine] places tokens in. */
+        internal fun flowPosition(line: OcrManager.OcrLine, x: Int, y: Int): Int = when {
+            line.angleDeg != 0f -> Math.round(flowU(line, x, y))
+            line.orientation == com.playtranslate.language.TextOrientation.VERTICAL -> y
+            else -> x
         }
     }
 
@@ -853,35 +922,13 @@ class DragLookupController(
         if (lineText.isEmpty()) return null
         val tokens = cache[lineText] ?: return null
         if (tokens.isEmpty()) return null
-        val isVertical = hitLine.orientation == com.playtranslate.language.TextOrientation.VERTICAL
-        val rotated = hitLine.angleDeg != 0f
-        val lineExtent = when {
-            rotated -> hitLine.orientedWidth
-            isVertical -> hitLine.bounds.height().toFloat()
-            else -> hitLine.bounds.width().toFloat()
-        }
-        val charExtent = lineExtent / lineText.length
-        val match = findClosestToken(
-            lineText = lineText,
-            tokens = tokens.map { it.surface },
-            // Slanted lines run the same horizontal math on the baseline axis:
-            // finger and symbol extents both projected to u (center-anchored).
-            fingerPos = when {
-                rotated -> Math.round(flowU(hitLine, rawX, rawY))
-                isVertical -> rawY
-                else -> rawX
-            },
-            symbols = if (rotated) uSpaceSymbols(hitLine) else hitLine.symbols,
-            fallbackLineStart = when {
-                rotated -> Math.round(-hitLine.orientedWidth / 2f)
-                isVertical -> hitLine.bounds.top
-                else -> hitLine.bounds.left
-            },
-            fallbackCharExtent = charExtent,
-            vertical = isVertical,
+        // Slanted lines run the same horizontal math on the baseline axis:
+        // finger and symbol extents both projected to u (center-anchored).
+        val match = closestPlacedToken(
+            placeTokensOnLine(hitLine, tokens.map { it.surface }),
+            flowPosition(hitLine, rawX, rawY),
         ) ?: return null
-        val matchedOffset = match.second
-        val matched = tokens.firstOrNull { it.charOffset == matchedOffset }
+        val matched = tokens.firstOrNull { it.charOffset == match.charOffset }
             ?: return null
         return TokenHit(hitLine, matched)
     }
@@ -1026,67 +1073,7 @@ class DragLookupController(
                     }
                     return@launch
                 }
-                val popupData = resolved.word
-                // Release-only side effects (only when lookup succeeded).
-                lastWord = popupData.word
-                lastSurface = popupData.surface
-                lastLookupForm = popupData.lookupForm
-                lastLookupReading = popupData.lookupReading
-                currentEntry = popupData.entry
-                currentEntries = popupData.entries
-                lastReading = popupData.reading
-                currentSecondaryPopups = resolved.secondaries()
-                // The sticky lens's body state; its pending sections wait
-                // behind the "Load more" row for [loadSecondaries].
-                currentResolution = resolved
-                currentAnkiDecks = emptyList()
-                secondaryLoading = false
-                var sentenceToRecord: String? = null
-                currentSentence?.let { sent ->
-                    if (sent != lastSentSentence) {
-                        lastSentSentence = sent
-                        sentenceToRecord = sent
-                        sendLineToMainApp(sent)
-                    }
-                }
-                withContext(Dispatchers.Main) {
-                    sentenceToRecord?.let { recordLookupSentence(it) }
-                    publishCurrent(LensScroll.Top)
-                    if (!magnifier.makeInteractive()) {
-                        // No lens to show them in (its window was refused):
-                        // the session ends here, settled.
-                        endSession()
-                    }
-                    // Lens is now in DEFINITIONS mode — the zoom no longer
-                    // renders, so the bitmap can be released.
-                    handOffDragBitmap()
-                }
-                // Fill the "already in Anki" deck badge AFTER the definitions
-                // are up, so the Anki query never delays them. Runs in this
-                // lookupJob (a new lookup cancels it) and is isolated so an
-                // Anki failure can't dismiss an already-shown lens. The
-                // badge joins the lens's current state, so it keeps any
-                // sections a load added meanwhile (a load keeps the
-                // word, hence the word identity); a lens dismissed meanwhile
-                // has cleared that state and takes nothing.
-                try {
-                    val anki = AnkiManager(context)
-                    if (anki.isAnkiDroidInstalled() && anki.hasPermission()) {
-                        val decks = withContext(Dispatchers.IO) {
-                            anki.decksByWord(listOf(popupData.word))[popupData.word].orEmpty()
-                        }
-                        if (decks.isNotEmpty()) withContext(Dispatchers.Main) {
-                            if (currentResolution?.word === popupData) {
-                                currentAnkiDecks = decks
-                                publishCurrent(LensScroll.Keep)
-                            }
-                        }
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Log.w(TAG, "Lens deck badge fill failed: ${e.message}")
-                }
+                presentResolution(resolved)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1098,6 +1085,146 @@ class DragLookupController(
             }
         }
         return true
+    }
+
+    /**
+     * Show [resolved] as the sticky lens, inside the caller's [lookupJob]:
+     * the release's side effects (the word state the chips read, the
+     * sentence sent to the app on dual-screen and recorded in Text History),
+     * then in one main-thread step [place], which puts the lens where it
+     * will show (false: nowhere, and the session ends), the bind and the
+     * promotion to sticky; last the "already in Anki" deck badge. The drag's
+     * release and the tap on a word's box ([lookUpWord]) share it.
+     */
+    private suspend fun presentResolution(
+        resolved: LookupResolution,
+        place: () -> Boolean = { true },
+    ) {
+        val popupData = resolved.word
+        // Release-only side effects (only when lookup succeeded).
+        lastWord = popupData.word
+        lastSurface = popupData.surface
+        lastLookupForm = popupData.lookupForm
+        lastLookupReading = popupData.lookupReading
+        currentEntry = popupData.entry
+        currentEntries = popupData.entries
+        lastReading = popupData.reading
+        currentSecondaryPopups = resolved.secondaries()
+        // The sticky lens's body state; its pending sections wait
+        // behind the "Load more" row for [loadSecondaries].
+        currentResolution = resolved
+        currentAnkiDecks = emptyList()
+        secondaryLoading = false
+        var sentenceToRecord: String? = null
+        currentSentence?.let { sent ->
+            if (sent != lastSentSentence) {
+                lastSentSentence = sent
+                sentenceToRecord = sent
+                sendLineToMainApp(sent)
+            }
+        }
+        val shown = withContext(Dispatchers.Main) {
+            sentenceToRecord?.let { recordLookupSentence(it) }
+            if (!place()) {
+                endSession()
+                handOffDragBitmap()
+                return@withContext false
+            }
+            publishCurrent(LensScroll.Top)
+            val interactive = magnifier.makeInteractive()
+            if (!interactive) {
+                // No lens to show them in (its window was refused):
+                // the session ends here, settled.
+                endSession()
+            }
+            // Lens is now in DEFINITIONS mode — the zoom no longer
+            // renders, so the bitmap can be released.
+            handOffDragBitmap()
+            interactive
+        }
+        if (!shown) return
+        // Fill the "already in Anki" deck badge AFTER the definitions
+        // are up, so the Anki query never delays them. Runs in this
+        // lookupJob (a new lookup cancels it) and is isolated so an
+        // Anki failure can't dismiss an already-shown lens. The
+        // badge joins the lens's current state, so it keeps any
+        // sections a load added meanwhile (a load keeps the
+        // word, hence the word identity); a lens dismissed meanwhile
+        // has cleared that state and takes nothing.
+        try {
+            val anki = AnkiManager(context)
+            if (anki.isAnkiDroidInstalled() && anki.hasPermission()) {
+                val decks = withContext(Dispatchers.IO) {
+                    anki.decksByWord(listOf(popupData.word))[popupData.word].orEmpty()
+                }
+                if (decks.isNotEmpty()) withContext(Dispatchers.Main) {
+                    if (currentResolution?.word === popupData) {
+                        currentAnkiDecks = decks
+                        publishCurrent(LensScroll.Keep)
+                    }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Lens deck badge fill failed: ${e.message}")
+        }
+    }
+
+    /**
+     * The tap on a word's box (the tap-to-lookup overlay,
+     * [TapLookupSession]): look up exactly [at], the token the box was drawn
+     * for, in the scene the caller captured ([lines], its screenshot at
+     * [screenshotPath], taken at [capturedAtMs]), and show the sticky lens
+     * anchored on [anchor], the box's screen rect, as the result sheet's
+     * word lens anchors on its word ([SourceTextLens]).
+     *
+     * It resolves first and shows second, so the lens window only ever
+     * comes up interactive here, never in its zoom state: on the
+     * MediaProjection backend that state is a full-screen touchable window
+     * that is not yet interactive, and it would swallow every tap while the
+     * lookup runs. A card already up for another word is reset in place
+     * ([MagnifierLens.resetToZoom]: the same window and no dismissal, so no
+     * [onSettled]) and re-anchored in the same step. A newer call cancels an
+     * older one still resolving, with its secondary load and its speech.
+     */
+    internal fun lookUpWord(
+        lines: List<OcrManager.OcrLine>,
+        screenshotPath: String?,
+        capturedAtMs: Long,
+        at: TokenAt,
+        anchor: Rect,
+    ) {
+        lookupJob?.cancel()
+        clearSecondaryLoad()
+        speakChip?.release()
+        dragInProgress = false
+        lensRevealed = false
+        ocrLines = lines
+        this.screenshotPath = screenshotPath
+        dragCapturedAtMs = capturedAtMs
+        sessionGeometry = context.displayGeometryOf(displayId)
+        lookupJob = scope.launch {
+            try {
+                val resolved = resolveToken(at)
+                if (resolved == null) {
+                    endSession()
+                    return@launch
+                }
+                presentResolution(resolved) {
+                    if (magnifier.isInteractive) magnifier.resetToZoom()
+                    val screen = queryScreenSize()
+                    magnifier.show(
+                        anchor.centerX(), anchor.top, screen.x, screen.y, anchorHeight = anchor.height(),
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Word lookup failed", e)
+                endSession()
+            }
+        }
     }
 
     /**
@@ -1275,21 +1402,11 @@ class DragLookupController(
     private suspend fun captureAndOcr() {
         Log.d(TAG, "Taking screenshot for full-screen OCR...")
 
-        // Warm PlayTranslate Cloud for readDragLines' read below: a fresh
-        // capture, so it reads in the source language from the same pref and
-        // never device-only.
-        FrameReaders.warm(Prefs(context).sourceLangId, deviceOnly = false)
-
-        // maskOwnWindows = false: the lens looks up words wherever the
-        // finger is, our own pages included, so this frame must carry our
-        // UI's real pixels. The saved screenshot below therefore contains
-        // them too, by design. Live mode is already stopped for the drag
-        // (OverlayUiController's onDragStart), so no translate-path frame
-        // can be served from this capture.
-        val bitmap = withTimeoutOrNull(3000L) {
-            CaptureBackendResolver.active().captureSource
-                ?.requestClean(displayId, maskOwnWindows = false)?.bitmap
-        }
+        // The lookup's clean frame, our own windows' real pixels included,
+        // with PlayTranslate Cloud warmed for readDragLines' read below
+        // ([LookupCapture.cleanFrame]). Live mode is already stopped for the
+        // drag (OverlayUiController's onDragStart).
+        val bitmap = LookupCapture.cleanFrame(context, displayId)
         // The clean frame was captured with the lens off-screen — now it's
         // safe to bring the lens up (capture-before-reveal). Reveal even on
         // failure so the drag still gets its UI, matching the old placeholder
@@ -1317,7 +1434,9 @@ class DragLookupController(
             return
         }
 
-        val savedPath = withContext(Dispatchers.IO) { saveScreenshot(bitmap) }
+        val savedPath = withContext(Dispatchers.IO) {
+            LookupCapture.saveScreenshot(context, bitmap, DRAG_SCREENSHOT_FILE)
+        }
         onScreenshotCaptured(bitmap, savedPath)
 
         val lines = readDragLines(bitmap)
@@ -1336,17 +1455,11 @@ class DragLookupController(
         pretokenizeLines(lines)
     }
 
-    /** The drag's lines: through PlayTranslate Cloud when the router
-     *  ([FrameReaders.readerFor]) would send a capture there (a frame it
-     *  cannot read falls back to the device), else on the device; the same
-     *  read every other consumer makes, with or without a running service.
-     *  Called directly in the OCR job, never inside a scoped builder, since a
-     *  cloud read's later work is a child of the calling job. */
-    private suspend fun readDragLines(bitmap: Bitmap): List<OcrManager.OcrLine>? {
-        val srcId = Prefs(context).sourceLangId
-        return FrameReaders.readerFor(srcId, deviceOnly = false)
-            .readLines(bitmap, srcId, FrameReaders.frameId("drag-d$displayId"))
-    }
+    /** The drag's lines ([LookupCapture.readLines]). Called directly in the
+     *  OCR job, never inside a scoped builder, since a cloud read's later
+     *  work is a child of the calling job. */
+    private suspend fun readDragLines(bitmap: Bitmap): List<OcrManager.OcrLine>? =
+        LookupCapture.readLines(context, bitmap, "drag-d$displayId")
 
     /** Run on the main thread once the drag-start bitmap is in hand. The
      *  magnifier window already exists (shown immediately at drag start);
@@ -1372,7 +1485,32 @@ class DragLookupController(
         fingerY: Int,
         lines: List<OcrManager.OcrLine>,
         @Suppress("UNUSED_PARAMETER") isDwell: Boolean,
-    ): LookupResolution? {
+    ): LookupResolution? = locateToken(fingerX, fingerY, lines)?.let { resolveToken(it) }
+
+    /** A token of one OCR line, as the lookup resolves it: the [line], the
+     *  matched [token] of the line's tokenization, its [charOffset] in the
+     *  line text and its [surface] as found there. The drag finds one under
+     *  the finger ([locateToken]); the tap-to-lookup boxes hand over the one
+     *  a box was drawn for ([lookUpWord]). */
+    internal data class TokenAt(
+        val line: OcrManager.OcrLine,
+        val token: com.playtranslate.language.TokenSpan,
+        val charOffset: Int,
+        val surface: String,
+    )
+
+    /** The token under the finger at ([fingerX], [fingerY]): the line there
+     *  ([findLineAt]), tokenized, and the token whose extent on the line's
+     *  flow axis is under the finger, else the nearest ([closestPlacedToken]
+     *  over [placeTokensOnLine]). The placement's token index picks the
+     *  [com.playtranslate.language.TokenSpan], which disambiguates lines
+     *  where the same surface appears more than once with different
+     *  context-dependent lemmas. Null with no line, no tokens or no match. */
+    private suspend fun locateToken(
+        fingerX: Int,
+        fingerY: Int,
+        lines: List<OcrManager.OcrLine>,
+    ): TokenAt? {
         // Find the line the finger is over
         val hitLine = findLineAt(fingerX, fingerY, lines)
 
@@ -1383,70 +1521,40 @@ class DragLookupController(
 
         Log.d(TAG, "Hit line: \"${hitLine.text}\" at ($fingerX, $fingerY)")
 
-        val lineText = hitLine.text
-        val isVertical = hitLine.orientation == com.playtranslate.language.TextOrientation.VERTICAL
-        val rotated = hitLine.angleDeg != 0f
-        // For vertical text, characters stack along the height; for horizontal,
-        // along the width; for slanted lines, along the oriented width.
-        val lineExtent = when {
-            rotated -> hitLine.orientedWidth
-            isVertical -> hitLine.bounds.height().toFloat()
-            else -> hitLine.bounds.width().toFloat()
-        }
-        val charExtent = lineExtent / lineText.length
-
         // Tokenize the line (surface spans for position mapping, lookup forms for dictionary)
         val engine = SourceLanguageEngines.get(context, Prefs(context).sourceLangId)
-        val tokenResults = engine.tokenize(lineText)
+        val tokenResults = engine.tokenize(hitLine.text)
 
         if (tokenResults.isEmpty()) return null
 
         // Find the token whose screen position is closest to the finger.
         // For vertical text, match along the Y axis; for horizontal, along X.
-        val surfaceTokens = tokenResults.map { it.surface }
-        val tokenMatch = findClosestToken(
-            lineText = lineText,
-            tokens = surfaceTokens,
-            fingerPos = when {
-                rotated -> Math.round(flowU(hitLine, fingerX, fingerY))
-                isVertical -> fingerY
-                else -> fingerX
-            },
-            symbols = if (rotated) uSpaceSymbols(hitLine) else hitLine.symbols,
-            fallbackLineStart = when {
-                rotated -> Math.round(-hitLine.orientedWidth / 2f)
-                isVertical -> hitLine.bounds.top
-                else -> hitLine.bounds.left
-            },
-            fallbackCharExtent = charExtent,
-            vertical = isVertical,
-        )
-        if (tokenMatch == null) return null
+        val placed = closestPlacedToken(
+            placeTokensOnLine(hitLine, tokenResults.map { it.surface }),
+            flowPosition(hitLine, fingerX, fingerY),
+        ) ?: return null
+        return TokenAt(hitLine, tokenResults[placed.tokenIndex], placed.charOffset, placed.surface)
+    }
 
-        val matchedSurface = tokenMatch.first
-        val matchedIdx = tokenMatch.second
-        // Walk tokenResults the same way findClosestToken did and pick the
-        // one whose start position equals matchedIdx. Disambiguates lines
-        // where the same surface appears multiple times with potentially
-        // different context-dependent lemmas.
-        val matchedToken: com.playtranslate.language.TokenSpan? = run {
-            var pos = 0
-            for (t in tokenResults) {
-                val idx = lineText.indexOf(t.surface, pos)
-                if (idx < 0) continue
-                if (idx == matchedIdx) return@run t
-                pos = idx + t.surface.length
-            }
-            null
-        }
+    /** Resolve [at] into the lens's data: its dictionary lookup, the
+     *  sentence it sits in, and its related units. Everything after the
+     *  finger match, shared by the drag ([locateToken]) and the tap on a
+     *  word's box ([lookUpWord]). */
+    private suspend fun resolveToken(at: TokenAt): LookupResolution? {
+        val hitLine = at.line
+        val lineText = hitLine.text
+        val engine = SourceLanguageEngines.get(context, Prefs(context).sourceLangId)
+        val matchedSurface = at.surface
+        val matchedIdx = at.charOffset
+        val matchedToken = at.token
         // Phrase-aware, word-first: the popup's identity is the dragged
         // word; the longest dictionary expression CONTAINING it rides along
         // as the lens's phrase section — the same split the tap surfaces
         // get via [SourceWordLookup.resolveAt]. [matchedIdx] is the matched
         // surface's char offset in [lineText].
         val phraseKey = withContext(Dispatchers.IO) { engine.longestPhraseAt(lineText, matchedIdx) }
-        val lookupForm = matchedToken?.lookupForm ?: matchedSurface
-        val readingHint = matchedToken?.reading
+        val lookupForm = matchedToken.lookupForm
+        val readingHint = matchedToken.reading
 
         // Dictionary lookup using the base/dictionary form + reading hint
         val prefs = Prefs(context)
@@ -1468,7 +1576,7 @@ class DragLookupController(
         // The dragged form's conjugation line: the lookup's own deinflection
         // chain, then the matched token's (both dictionary form outward).
         val inflectedForms = InflectionChain.lines(
-            matchedSurface, response?.deinflection.orEmpty(), matchedToken?.inflections.orEmpty(),
+            matchedSurface, response?.deinflection.orEmpty(), matchedToken.inflections,
             InflectionParadigms.readingsOf(Prefs(context).sourceLangId, entries, entry?.slug),
         )
         val popupData: PopupData = if (entry != null && defResult != null) {
@@ -1547,7 +1655,7 @@ class DragLookupController(
             emptyList()
         }
         val primaryIds = entries.mapNotNullTo(mutableSetOf()) { it.packId }
-        val alternativeSpans = if (phraseKey == null && matchedToken != null) {
+        val alternativeSpans = if (phraseKey == null) {
             withContext(Dispatchers.IO) { engine.alternativesOf(matchedToken, primaryIds) }
         } else {
             emptyList()
@@ -2028,15 +2136,5 @@ class DragLookupController(
         context.startActivity(intent)
     }
 
-    private fun saveScreenshot(bitmap: Bitmap): String? {
-        return try {
-            val dir = File(context.cacheDir, "screenshots").apply { mkdirs() }
-            val file = File(dir, "drag.jpg")
-            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-            file.absolutePath
-        } catch (e: Exception) {
-            Log.e(TAG, "saveScreenshot failed: ${e.message}")
-            null
-        }
-    }
+
 }

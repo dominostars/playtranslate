@@ -1067,6 +1067,14 @@
          the title of the Hotkeys page row that binds a key to the same
          action, and of the dialog that records that key. -->
     <string name="icon_action_change_game_language">Change game language</string>
+    <!-- Hold or Tap: capture the game screen once and draw a box around
+         every word on it; tapping a box shows that word's definition, and
+         tapping anywhere else, the close button or Back hides the boxes.
+         "Tap-to-lookup" names that mode ("lookup" as a noun, as in "word
+         lookups"). Also the title of the Hotkeys page row that binds a key
+         to the same action (a press while the boxes are up hides them),
+         and of the dialog that records that key. -->
+    <string name="icon_action_tap_to_lookup">Enable tap-to-lookup</string>
     <!-- Brief pill at the top of the game screen after that action
          switched to the other downloaded language, confirming which one
          the app now reads. It fades out by itself after two seconds.

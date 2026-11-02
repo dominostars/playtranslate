@@ -1456,6 +1456,13 @@ class Prefs internal constructor(
         get() = sp.getString(KEY_HOTKEY_CHANGE_GAME_LANGUAGE_TAP, "") ?: ""
         set(v) = sp.edit { putString(KEY_HOTKEY_CHANGE_GAME_LANGUAGE_TAP, v) }
 
+    /** Hotkey combo for "Enable tap-to-lookup", the floating icon's action of
+     *  that name, as a toggle (a press while its boxes are up closes them).
+     *  Empty = not set. Format: keyCodes joined by "+". */
+    var hotkeyTapToLookupTap: String
+        get() = sp.getString(KEY_HOTKEY_TAP_TO_LOOKUP_TAP, "") ?: ""
+        set(v) = sp.edit { putString(KEY_HOTKEY_TAP_TO_LOOKUP_TAP, v) }
+
     /** Capture interval for live mode in seconds. */
     var captureIntervalSec: Float
         get() = sp.getFloat(KEY_CAPTURE_INTERVAL_SEC, DEFAULT_CAPTURE_INTERVAL_SEC).coerceAtLeast(MIN_CAPTURE_INTERVAL_SEC)
@@ -2032,6 +2039,7 @@ class Prefs internal constructor(
         const val KEY_HOTKEY_FURIGANA_TAP                  = "hotkey_furigana_tap"
         const val KEY_HOTKEY_CAPTURE_TAP                   = "hotkey_capture_tap"
         const val KEY_HOTKEY_CHANGE_GAME_LANGUAGE_TAP      = "hotkey_change_game_language_tap"
+        const val KEY_HOTKEY_TAP_TO_LOOKUP_TAP             = "hotkey_tap_to_lookup_tap"
         const val KEY_QUICK_TILE_ADDED                     = "quick_tile_added"
         const val KEY_QUICK_TILE_PROMPT_DONE               = "quick_tile_prompt_done"
         const val KEY_SESSION_ON_BOOT                      = "session_on_boot"

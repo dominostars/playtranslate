@@ -40,7 +40,7 @@ class FloatingOverlayIcon(context: Context) : View(context) {
 
     /** Diameter of the (notional) full circle — only ~1/4 of this lands
      *  inside the screen since the rest is pushed off the edge. */
-    private val circleSizePx = (56 * resources.displayMetrics.density).toInt()
+    private val circleSizePx = (IconDiscStyle.DIAMETER_DP * resources.displayMetrics.density).toInt()
     /** Extra touch padding around the circle for easier grabbing. */
     private val touchPaddingPx = (12 * resources.displayMetrics.density).toInt()
     /** Total view size (circle + padding on each side). */
@@ -76,24 +76,24 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         set(value) { if (field == value) return; field = value; invalidate() }
 
     // ── Normal mode paints ──────────────────────────────────────────────
-    private val defaultCircleColor = "#CC000000".toColorInt()
+    private val defaultCircleColor = IconDiscStyle.FILL
     private val liveCircleColor = "#CC990000".toColorInt()
     private val liveDegradedCircleColor = "#CC999900".toColorInt()
     private val circlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = defaultCircleColor
         style = Paint.Style.FILL
     }
-    private val borderColor = "#66888888".toColorInt()
+    private val borderColor = IconDiscStyle.BORDER
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = borderColor
         style = Paint.Style.STROKE
-        strokeWidth = 1.5f * resources.displayMetrics.density
+        strokeWidth = IconDiscStyle.BORDER_DP * resources.displayMetrics.density
     }
     /** Base (undimmed) arrow colour — deliberately off pure white. Pure white
      *  drives all three OLED subpixels at max (blue ages fastest), so a static
      *  white arrow is the icon's main burn-in risk; a light silver cuts emitted
      *  light ~25% with no perceptible change against the dark disc. */
-    private val arrowColor = "#C0C0C0".toColorInt()
+    private val arrowColor = IconDiscStyle.GLYPH
     /** Arrow paints ([Glyph.ARROW_FILLED] / [Glyph.ARROW_OUTLINED]). The
      *  filled arrow is a solid glyph AND the resting state — a deliberate
      *  design choice (2026-09-05: the arrow's weight is the status light, so
@@ -405,7 +405,7 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     /** The clearance the centre keeps inside the top and bottom dock lines
      *  ([IconDock.verticalRange]): off the system gesture zones on a bare
      *  edge, and the same margin above a bar the window lies below. */
-    private val gestureInsetPx = (48 * resources.displayMetrics.density).toInt()
+    private val gestureInsetPx = (IconDock.GESTURE_INSET_DP * resources.displayMetrics.density).toInt()
 
     companion object {
         private const val TAG = "FloatingIcon"
@@ -920,4 +920,23 @@ class FloatingOverlayIcon(context: Context) : View(context) {
     fun destroy() {
         // Intentionally empty.
     }
+}
+
+/**
+ * The floating icon's disc as it rests on its dock: its size and colours,
+ * shared by every surface that wears it, the icon itself and tap-to-lookup's
+ * X ([TapLookupOverlay]), which sits over it in the same look.
+ */
+internal object IconDiscStyle {
+    /** The disc's diameter. */
+    const val DIAMETER_DP = 56f
+    /** Its rim's width. */
+    const val BORDER_DP = 1.5f
+    /** The fill: black at 80%. */
+    val FILL: Int = "#CC000000".toColorInt()
+    /** The rim. */
+    val BORDER: Int = "#66888888".toColorInt()
+    /** The glyph: a light silver, deliberately off pure white, since a static
+     *  white glyph is the icon's main burn-in risk (see the icon's arrow). */
+    val GLYPH: Int = "#C0C0C0".toColorInt()
 }

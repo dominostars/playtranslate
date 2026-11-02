@@ -129,16 +129,16 @@ enum class HotkeyTrigger { HOLD, TAP }
  * and a [trigger] style:
  *  - HOLD combos show the overlay only while held (momentary preview).
  *  - TAP combos toggle the persistent auto/live session in [mode].
- *  - [CAPTURE_TAP] and [CHANGE_GAME_LANGUAGE_TAP] are the exceptions:
- *    TAP-triggered actions tied to no overlay mode, so their [mode] is
- *    nominal and unused — the caller dispatches them by identity, not by
- *    mode/trigger (see PlayTranslateAccessibilityService.fireTapOnMain).
+ *  - [CAPTURE_TAP], [CHANGE_GAME_LANGUAGE_TAP] and [TAP_TO_LOOKUP_TAP] are
+ *    the exceptions: TAP-triggered actions tied to no overlay mode, so their
+ *    [mode] is nominal and unused — the caller dispatches them by identity,
+ *    not by mode/trigger (see PlayTranslateAccessibilityService.fireTapOnMain).
  *    [CAPTURE_TAP] is the one-shot "Capture screen" (the same action as the
  *    floating-icon Capture button), which respects the *current* overlay mode;
  *    [CHANGE_GAME_LANGUAGE_TAP] is the floating icon's "Change game language"
- *    gesture. Modelling them as TAPs lets them reuse the state machine's tap
- *    timing unchanged (fire on press, fire on quick-release of a shadowed
- *    combo).
+ *    gesture; [TAP_TO_LOOKUP_TAP] is its "Enable tap-to-lookup", as a toggle.
+ *    Modelling them as TAPs lets them reuse the state machine's tap timing
+ *    unchanged (fire on press, fire on quick-release of a shadowed combo).
  *
  * Used as the combo identity throughout the state machine — [OverlayMode]
  * alone can't tell the hold and tap bindings for the same mode apart.
@@ -150,6 +150,7 @@ enum class HotkeyAssignment(val mode: OverlayMode, val trigger: HotkeyTrigger) {
     FURIGANA_TAP(OverlayMode.FURIGANA, HotkeyTrigger.TAP),
     CAPTURE_TAP(OverlayMode.TRANSLATION, HotkeyTrigger.TAP),
     CHANGE_GAME_LANGUAGE_TAP(OverlayMode.TRANSLATION, HotkeyTrigger.TAP),
+    TAP_TO_LOOKUP_TAP(OverlayMode.TRANSLATION, HotkeyTrigger.TAP),
 }
 
 /** A configured hotkey: a set of keycodes bound to an [assignment]. */
@@ -173,16 +174,16 @@ fun parseHotkeyCombo(stored: String): Set<Int> {
  * the hold, since it would silently start an auto session). Mirrors the
  * `hintTextKind != NONE` gate used by the Hotkeys page and the settings digest.
  *
- * [captureTap] (the "Capture screen" one-shot) and [changeGameLanguageTap] are
- * offered on every source language — neither is a reading-hint feature — so
- * they are included regardless of [hasReadingHint], exactly like the
- * translation combos.
+ * [captureTap] (the "Capture screen" one-shot), [changeGameLanguageTap] and
+ * [tapToLookupTap] are offered on every source language — none is a
+ * reading-hint feature — so they are included regardless of
+ * [hasReadingHint], exactly like the translation combos.
  *
  * Holds are listed before taps so a combo bound to both a hold and a tap of the
  * same key-set resolves to the hold in [decideHotkeyAction] (maxByOrNull returns
  * the first of equal-size matches), preserving instant-hold + tap-on-release;
- * [CAPTURE_TAP] and [CHANGE_GAME_LANGUAGE_TAP] are listed last so a hold still
- * wins that tie over them.
+ * [CAPTURE_TAP], [CHANGE_GAME_LANGUAGE_TAP] and [TAP_TO_LOOKUP_TAP] are listed
+ * last so a hold still wins that tie over them.
  */
 fun buildHotkeyCombos(
     translationHold: String,
@@ -191,6 +192,7 @@ fun buildHotkeyCombos(
     furiganaTap: String,
     captureTap: String,
     changeGameLanguageTap: String,
+    tapToLookupTap: String,
     hasReadingHint: Boolean,
 ): List<HotkeyCombo> = listOfNotNull(
     HotkeyCombo(parseHotkeyCombo(translationHold), HotkeyAssignment.TRANSLATION_HOLD),
@@ -201,6 +203,7 @@ fun buildHotkeyCombos(
         HotkeyCombo(parseHotkeyCombo(furiganaTap), HotkeyAssignment.FURIGANA_TAP) else null,
     HotkeyCombo(parseHotkeyCombo(captureTap), HotkeyAssignment.CAPTURE_TAP),
     HotkeyCombo(parseHotkeyCombo(changeGameLanguageTap), HotkeyAssignment.CHANGE_GAME_LANGUAGE_TAP),
+    HotkeyCombo(parseHotkeyCombo(tapToLookupTap), HotkeyAssignment.TAP_TO_LOOKUP_TAP),
 ).filter { it.keys.isNotEmpty() }
 
 /** Snapshot of mutable hotkey state, used as input to [decideHotkeyAction]. */

@@ -248,6 +248,11 @@ class MagnifierLens(
     /** When false, the post-release Anki chip stays hidden — used by the
      *  over-game capture panel, whose lens is display + speak only. */
     private val showAnkiChip: Boolean = true,
+    /** When false, the sticky lens never takes window focus, a controller
+     *  attached or not: the owner keeps the controller (tap-to-lookup, whose
+     *  boxes' cursor A and B drive while its card is up), and the card's own
+     *  controls are touch's. */
+    private val takesControllerFocus: Boolean = true,
 ) {
     private val density = rawCtx.resources.displayMetrics.density
     private fun dp(v: Float) = (v * density).toInt()
@@ -344,6 +349,14 @@ class MagnifierLens(
     /** Fires once per actual window teardown (tap-outside in sticky mode,
      *  new drag start, [dismiss] caller). */
     var onDismiss: (() -> Unit)? = null
+    /** For an owner that holds what lies under the sticky lens (the
+     *  tap-to-lookup boxes, [TapLookupSession]): a sticky-mode DOWN off the
+     *  card, with its screen position, goes here in place of the lens
+     *  dismissing itself, so the owner decides what the tap means (another
+     *  word under it, or the end of everything). Null for every other
+     *  lens: the tap dismisses it. A touch outside the window altogether
+     *  (ACTION_OUTSIDE) dismisses either way. Read at each tap. */
+    var onOffCardDown: ((rawX: Float, rawY: Float) -> Unit)? = null
     /** Fires when the card or pill is tapped in sticky mode. In split mode
      *  ([setSplitDefinitions]) this is the PRIMARY section's open action —
      *  the pill and the primary section both fire it. */
@@ -534,7 +547,7 @@ class MagnifierLens(
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
             WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
-        tookControllerFocus = hasNavInputDevice(rawCtx)
+        tookControllerFocus = takesControllerFocus && hasNavInputDevice(rawCtx)
         if (!tookControllerFocus) {
             flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         } else {
@@ -558,14 +571,22 @@ class MagnifierLens(
         // them so they don't reach the app/game behind), and — while focusable
         // for the controller — the B button dismisses the same way.
         root.interactive = true
-        root.onOffCardTap = { dismiss() }
+        root.onOffCardDown = { x, y -> offCardDown(x, y) }
+        root.onOutside = { dismiss() }
         root.onDismissKey = { dismiss() }
-        view.attachInteractiveListeners(onDismissRequest = { dismiss() })
+        view.attachInteractiveListeners(onDismissRequest = { x, y -> offCardDown(x, y) })
         view.setArrowVisible(true, arrowRelX())
         // Release commit: grow the card to fit the dictionary, animated inside
         // the fixed window (definitions were bound just above).
         fitHeightToContent()
         return true
+    }
+
+    /** A sticky-mode DOWN off the card at ([rawX], [rawY]): the owner's
+     *  [onOffCardDown] when it set one, else the dismissal. */
+    private fun offCardDown(rawX: Float, rawY: Float) {
+        val hook = onOffCardDown
+        if (hook != null) hook(rawX, rawY) else dismiss()
     }
 
     /** Controller-opened lens: ring the pill from the start, so the next A
@@ -743,7 +764,8 @@ class MagnifierLens(
         // screen (never resized); just revert the flags. The following show()
         // repositions the base card for the new drag.
         root.interactive = false
-        root.onOffCardTap = null
+        root.onOffCardDown = null
+        root.onOutside = null
         p.flags = zoomWindowFlags()
         try { wm.updateViewLayout(root, p) } catch (_: Exception) {}
         view.detachInteractiveListeners()
@@ -1028,14 +1050,17 @@ class MagnifierLens(
     ) : FrameLayout(ctx) {
         /** True once the lens is sticky; off-card taps dismiss only then. */
         var interactive = false
-        /** Invoked when a sticky-mode DOWN lands left/right of the lens column,
-         *  or a touch lands outside the window altogether. (Taps inside the
-         *  column but off the chrome band are dismissed by [lens] itself; all
+        /** Invoked with the DOWN's screen position when a sticky-mode DOWN
+         *  lands left/right of the lens column. (Taps inside the column but
+         *  off the chrome band go through [lens]'s own dismiss request; all
          *  are consumed by this full-screen window.) */
-        var onOffCardTap: (() -> Unit)? = null
+        var onOffCardDown: ((rawX: Float, rawY: Float) -> Unit)? = null
+        /** Invoked when a touch lands outside the window altogether
+         *  (FLAG_WATCH_OUTSIDE_TOUCH). */
+        var onOutside: (() -> Unit)? = null
         /** Controller B / back while the sticky lens holds window focus (it
          *  goes focusable when a controller is attached — [makeInteractive]).
-         *  A separate hook from [onOffCardTap]: same dismissal, different
+         *  A separate hook from [onOffCardDown]: same dismissal, different
          *  intent. */
         var onDismissKey: (() -> Unit)? = null
         /** The insets last dispatched to this window, the one source for
@@ -1127,7 +1152,7 @@ class MagnifierLens(
                     MotionEvent.ACTION_DOWN -> {
                         val left = lens.translationX
                         if (ev.x < left || ev.x >= left + lensW) {
-                            onOffCardTap?.invoke()
+                            onOffCardDown?.invoke(ev.rawX, ev.rawY)
                             return true   // consume: the tap dismisses; it does not pass through
                         }
                     }
@@ -1138,7 +1163,7 @@ class MagnifierLens(
                     // non-DOWN event to no child while it has no touch target,
                     // so a listener on [lens] never saw one.
                     MotionEvent.ACTION_OUTSIDE -> {
-                        onOffCardTap?.invoke()
+                        onOutside?.invoke()
                         return true
                     }
                 }
@@ -2246,10 +2271,11 @@ class MagnifierLens(
          *  region (card body OR pill, NOT on chips OR arrow strip). Gated
          *  on DOWN so a stray UP elsewhere can't fire the open handler. */
         private var tapGestureActive = false
-        /** Dismiss callback wired by [attachInteractiveListeners]; used when a
-         *  sticky-mode tap lands off the lens chrome (the transparent area of
-         *  the full-height window above/below the card). */
-        private var dismissRequest: (() -> Unit)? = null
+        /** Dismiss callback wired by [attachInteractiveListeners], with the
+         *  DOWN's screen position; used when a sticky-mode tap lands off the
+         *  lens chrome (the transparent area of the full-height window
+         *  above/below the card). */
+        private var dismissRequest: ((rawX: Float, rawY: Float) -> Unit)? = null
         override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
             val handled = super.dispatchTouchEvent(ev)
             if (isInteractive) {
@@ -2259,7 +2285,7 @@ class MagnifierLens(
                     // (mirrors the ACTION_OUTSIDE dismissal beyond the edges).
                     if (ev.y < contentTopInView || ev.y >= contentBottomInView) {
                         tapGestureActive = false
-                        dismissRequest?.invoke()
+                        dismissRequest?.invoke(ev.rawX, ev.rawY)
                         return handled
                     }
                     tapGestureActive = isTapEligible(ev.x, ev.y)
@@ -3152,7 +3178,7 @@ class MagnifierLens(
         var isInteractive: Boolean = false
             private set
 
-        fun attachInteractiveListeners(onDismissRequest: () -> Unit) {
+        fun attachInteractiveListeners(onDismissRequest: (rawX: Float, rawY: Float) -> Unit) {
             dismissRequest = onDismissRequest
             // A touch outside the window is the root's to hear
             // ([LensRoot.dispatchTouchEvent]). TalkBack users dismiss the

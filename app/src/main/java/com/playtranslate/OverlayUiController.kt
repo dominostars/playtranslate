@@ -146,6 +146,18 @@ class OverlayUiController(
         val stashedAtMs: Long,
     )
 
+    /** Tap-to-lookup while it is up ([com.playtranslate.ui.TapLookupSession]),
+     *  capturing or showing its boxes. Single instance across displays — a
+     *  new one takes over from it. Detached before every close, whose
+     *  restart of live mode comes back to [closeTapToLookup] through
+     *  [CaptureService.startLive] and must find nothing. */
+    private var tapLookup: com.playtranslate.ui.TapLookupSession? = null
+
+    /** Where tap-to-lookup sessions read their scene: the device's capture,
+     *  read and tokenizer. Tests stand a fake in. */
+    internal var tapLookupReader: com.playtranslate.ui.TapLookupSession.Reader =
+        com.playtranslate.ui.TapLookupSession.DeviceReader(context)
+
     /** The floating workspace while showing (single-screen). Single instance —
      *  a new open replaces it. Geometry tracked like the capture panel's, so a
      *  display reconfiguration dismisses it ([dismissWorkspaceIfReconfigured]). */
@@ -186,6 +198,9 @@ class OverlayUiController(
         }
         override fun onDisplayRemoved(displayId: Int) {
             if (!isActiveController) return
+            // Tap-to-lookup's window dies with its display; the session ends
+            // as a close would, restoring what it paused.
+            if (tapLookup?.displayId == displayId) closeTapToLookup(resumeLive = true)
             // The in-app boxes' window dies with its display; drop our handle
             // (and notify the app's toggle) rather than holding a zombie.
             if (displayId == appBoxesDisplayId) hideAppBoxes()
@@ -201,6 +216,10 @@ class OverlayUiController(
                 dismissCaptureResultPanelIfReconfigured(displayId)
                 // Same stale-layout rule for the floating workspace.
                 dismissWorkspaceIfReconfigured(displayId)
+                // And for tap-to-lookup: its boxes are the old layout's.
+                if (tapLookup?.let { it.displayId == displayId && it.isStale() } == true) {
+                    closeTapToLookup(resumeLive = true)
+                }
                 // A rotation / resize invalidates a per-box translation overlay
                 // group — its cached displayW/displayH drive the OCR→screen
                 // mapping. Drop it on a size change; the next capture cycle
@@ -255,21 +274,18 @@ class OverlayUiController(
     // ── Floating icon registry ───────────────────────────────────────────
 
     /** Per-display floating-icon bundle — the icon, its WindowManager, the
-     *  drag-lookup controller, and the live-pause clear-flag closure all
+     *  drag-lookup controller, and what its drag sessions paused all
      *  lifecycle together. */
     private data class FloatingIconHandle(
         val icon: FloatingOverlayIcon,
         val wm: WindowManager,
         val dragController: DragLookupController,
-        val clearLivePauseFlag: () -> Unit,
-        /** Restores what a drag session paused (live mode, the region
-         *  indicator), as its settle does: for a teardown while capture
-         *  carries on. */
-        val settleDragPause: () -> Unit,
-        /** Forgets what a drag session paused without acting: for a teardown
-         *  that ends capture, where a resumed live start would land on a
-         *  backend on its way out. */
-        val dropDragPause: () -> Unit,
+        /** What this display's drag sessions paused (live mode, the region
+         *  indicator): settled when a session's lens settles or the icon goes
+         *  while capture carries on, dropped when the icon goes because
+         *  capture ends (a resumed live start would land on a backend on its
+         *  way out), its restart cancelled when a page covers the game. */
+        val dragPause: LookupPause,
         /** Builds a fresh, fully wired icon VIEW for this display — closes
          *  over the display's collaborators (drag controller, session state)
          *  inside [installFloatingIconForDisplay], so install and the
@@ -730,6 +746,7 @@ class OverlayUiController(
         }
         cancelLensResumes()
         com.playtranslate.translation.TranslationErrors.onPillSettingsOpened(owner)
+        closeTapToLookup(resumeLive = false)
         dismissFloatingMenu()
         dismissCaptureResultOverlay()
         dismissWorkspace()
@@ -1389,34 +1406,10 @@ class OverlayUiController(
             magnifier = magnifier,
             overlayHost = overlayHost,
         )
-        // Track whether live mode / region overlay were active when drag started
-        var liveWasPausedForPopup = false
-        var overlayHiddenForDrag = false
-        val clearLivePauseFlag: () -> Unit = { liveWasPausedForPopup = false }
-
-        fun restoreRegionOverlay() {
-            if (overlayHiddenForDrag) {
-                overlayHiddenForDrag = false
-                regionController.restoreIndicatorAfterDrag()
-            }
-        }
-
-        fun resumeLiveMode() {
-            if (liveWasPausedForPopup) {
-                liveWasPausedForPopup = false
-                startLiveRouted()
-            }
-        }
-
-        val settleDragPause: () -> Unit = {
-            restoreRegionOverlay()
-            resumeLiveMode()
-        }
-        val dropDragPause: () -> Unit = {
-            overlayHiddenForDrag = false
-            liveWasPausedForPopup = false
-        }
-        controller.onSettled = settleDragPause
+        // What this display's drag sessions paused (live mode, the region
+        // indicator), restored when a session's lens settles.
+        val dragPause = newLookupPause()
+        controller.onSettled = { dragPause.settle(resumeLive = true) }
 
         // One builder for every icon VIEW this display ever shows — the
         // install below and bringFloatingIconsToFront's replace both use it,
@@ -1424,10 +1417,10 @@ class OverlayUiController(
         // per call: a view attaches only once, and the z-order re-raise
         // replaces the window instead of re-adding it (see
         // [FloatingIconHandle.makeIcon] for why). The session state the
-        // callbacks mutate (liveWasPausedForPopup, overlayHiddenForDrag) and
-        // the controller are captured from THIS install scope, shared by
-        // every icon generation, so controller.onSettled always reads the
-        // same flags the current icon's onDragStart wrote.
+        // callbacks mutate (dragPause) and the controller are captured from
+        // THIS install scope, shared by every icon generation, so
+        // controller.onSettled always settles the same record the current
+        // icon's onDragStart began.
         val makeWiredIcon: () -> FloatingOverlayIcon = {
             val icon = FloatingOverlayIcon(displayCtx).apply {
                 this.wm = wm
@@ -1485,6 +1478,7 @@ class OverlayUiController(
                     TapAction.TOGGLE_AUTO_TRANSLATE -> toggleLiveFromOverlay()
                     TapAction.SWAP_OVERLAY_MODE -> swapOverlayModeOrStartLive()
                     TapAction.CHANGE_GAME_LANGUAGE -> changeGameLanguage(display)
+                    TapAction.TAP_TO_LOOKUP -> startTapToLookup(displayId)
                 }
             }
             // True from a hold whose toggle, or whose capture, stopped
@@ -1500,18 +1494,13 @@ class OverlayUiController(
                 ensureService()
                 when (prefs.iconDragAction) {
                     DragAction.LOOKUP_WORDS -> {
-                        // Hide region preview so the user can see game text while dragging
-                        if (regionController.hideIndicatorForDrag()) {
-                            overlayHiddenForDrag = true
-                        }
-                        // Pause live mode while dragging for definitions,
-                        // unless this drag's hold just stopped it.
+                        // Hide the region preview so the user can see game
+                        // text while dragging, and pause live mode while
+                        // dragging for definitions, unless this drag's hold
+                        // just stopped it.
                         val stoppedByHold = holdStoppedLive
                         holdStoppedLive = false
-                        if (!stoppedByHold && CaptureService.instance?.isLive == true) {
-                            liveWasPausedForPopup = true
-                            stopLiveRouted()
-                        }
+                        dragPause.begin(pauseLive = !stoppedByHold)
                         controller.onDragStart()
                     }
                 }
@@ -1553,6 +1542,7 @@ class OverlayUiController(
                     HoldAction.TOGGLE_AUTO_TRANSLATE -> holdStoppedLive = toggleLiveFromOverlay()
                     HoldAction.SWAP_OVERLAY_MODE -> swapOverlayModeOrStartLive()
                     HoldAction.CHANGE_GAME_LANGUAGE -> holdOpenedPicker = changeGameLanguage(display)
+                    HoldAction.TAP_TO_LOOKUP -> startTapToLookup(displayId)
                 }
             }
             icon.onHoldEnd = {
@@ -1561,12 +1551,13 @@ class OverlayUiController(
                     // The menu opened at the hold threshold and stays up; the
                     // lift ends the gesture, not the menu. Likewise the
                     // capture, the toggle, the swap and the game-language
-                    // change (its switch, or its picker) happened at the
+                    // change (its switch, or its picker) and tap-to-lookup
+                    // (its boxes stay up for taps) happened at the
                     // threshold. A lift with no start latched (the starved
                     // hold above) therefore does none of them.
                     HoldAction.CAPTURE_SCREEN, HoldAction.OPEN_QUICK_MENU,
                     HoldAction.TOGGLE_AUTO_TRANSLATE, HoldAction.SWAP_OVERLAY_MODE,
-                    HoldAction.CHANGE_GAME_LANGUAGE -> Unit
+                    HoldAction.CHANGE_GAME_LANGUAGE, HoldAction.TAP_TO_LOOKUP -> Unit
                 }
                 heldAction = null
                 holdStoppedLive = false
@@ -1601,6 +1592,11 @@ class OverlayUiController(
                     // menu does: its full-screen window would stay up under
                     // the lens.
                     HoldAction.CHANGE_GAME_LANGUAGE -> if (holdOpenedPicker) dismissWorkspace()
+                    // Tap-to-lookup's boxes close: the drag lens takes the
+                    // screen. The drag takes over what they paused, so its
+                    // lens restores auto-translate and the region indicator
+                    // when it settles, and nothing restarts in between.
+                    HoldAction.TAP_TO_LOOKUP -> closeTapToLookupIntoDrag(dragPause)
                 }
                 heldAction = null
                 holdOpenedPicker = false
@@ -1626,9 +1622,7 @@ class OverlayUiController(
                 icon = icon,
                 wm = wm,
                 dragController = controller,
-                clearLivePauseFlag = clearLivePauseFlag,
-                settleDragPause = settleDragPause,
-                dropDragPause = dropDragPause,
+                dragPause = dragPause,
                 makeIcon = makeWiredIcon,
             )
             // An icon is on screen: the persisted session record says so
@@ -1868,7 +1862,7 @@ class OverlayUiController(
         val handle = iconHandles.remove(displayId) ?: return
         Log.i(TAG, "hideFloatingIcon[$displayId]: $reason")
         handle.dragController.destroy()
-        if (endsCapture) handle.dropDragPause() else handle.settleDragPause()
+        if (endsCapture) handle.dragPause.drop() else handle.dragPause.settle(resumeLive = true)
         handle.icon.destroy()
         overlayHost.removeOverlayWindow(handle.icon)
         // A parked placement prompt belongs to the appearance that armed it.
@@ -1890,7 +1884,12 @@ class OverlayUiController(
      *  for Now, a reconcile while they're suppressed, the task swiped away),
      *  and then the pills stay (2026-09-27). */
     fun hideFloatingIcon(reason: String, endsCapture: Boolean) {
-        if (endsCapture) endErrorPillSession()
+        if (endsCapture) {
+            endErrorPillSession()
+            // Capture is ending: tap-to-lookup goes, forgetting what it
+            // paused, as the icons' drag sessions do below.
+            dropTapToLookup()
+        }
         if (iconHandles.isEmpty()) return
         Log.i(TAG, "hideFloatingIcon (all): $reason")
         val ids = iconHandles.keys.toList()
@@ -1917,7 +1916,8 @@ class OverlayUiController(
     /** Every word lens that paused auto-translate for its lookup forgets to
      *  restart it when it closes. */
     private fun cancelLensResumes() {
-        iconHandles.values.forEach { it.clearLivePauseFlag.invoke() }
+        iconHandles.values.forEach { it.dragPause.cancelResume() }
+        tapLookup?.pause?.cancelResume()
     }
 
     /**
@@ -2387,6 +2387,22 @@ class OverlayUiController(
     }
 
     /**
+     * Tap-to-lookup's boxes come down for a live control (a tap hotkey, the
+     * icon's toggle and swap, the quick menu's Auto button) without the
+     * restart they owe: the control acts on the session they paused, which
+     * counts as running in the overlay mode selected. True when they paused
+     * one. Their record says so where isLive cannot: on two screens with
+     * the app in front, the stop and the restart go through MainActivity
+     * and land later, so a control reading isLive would start what it
+     * should stop.
+     */
+    private fun takeTapLookupPause(): Boolean {
+        val paused = tapLookup?.pause?.pausedLive == true
+        closeTapToLookup(resumeLive = false)
+        return paused
+    }
+
+    /**
      * Toggle the auto/live session for [mode] from a tap hotkey. Each tap
      * hotkey owns its overlay mode, so the semantics are per-mode (matching
      * the user's "Tap to start/stop Auto …" rows):
@@ -2394,6 +2410,9 @@ class OverlayUiController(
      *  - live running in the *other* mode → switch to [mode] in place,
      *    keeping the session running;
      *  - not live → start the session in [mode].
+     * A session tap-to-lookup's boxes paused counts as running in the mode
+     * selected ([takeTapLookupPause]), so [mode]'s stays off and the other
+     * mode's restarts in [mode].
      *
      * Start/stop reuse [toggleLiveFromOverlay]'s exact single- vs dual-screen /
      * InAppOnly routing ([startLiveFromOverlay], [stopLiveRouted]); the
@@ -2405,7 +2424,12 @@ class OverlayUiController(
         // Auto-translate becomes the most-recently-used primary, mirroring the
         // floating menu's Auto button.
         captureIsPreferredPrimary = false
-        if (svc?.isLive == true) {
+        if (takeTapLookupPause()) {
+            if (prefs.overlayMode != mode) {
+                prefs.overlayMode = mode
+                startLiveFromOverlay()
+            }
+        } else if (svc?.isLive == true) {
             if (prefs.overlayMode == mode) {
                 stopLiveRouted()
             } else {
@@ -2424,12 +2448,15 @@ class OverlayUiController(
      * menu's Auto button, and the icon's toggle gesture
      * ([HoldAction.TOGGLE_AUTO_TRANSLATE], [TapAction.TOGGLE_AUTO_TRANSLATE]),
      * which is that button without the menu. A start is in the overlay mode
-     * already selected ([startLiveFromOverlay]). Returns true when it
-     * stopped auto-translate, or asked MainActivity to.
+     * already selected ([startLiveFromOverlay]). A session tap-to-lookup's
+     * boxes paused counts as running ([takeTapLookupPause]), so it stays
+     * off. Returns true when it stopped auto-translate, asked MainActivity
+     * to, or found it stopped by the boxes.
      */
     private fun toggleLiveFromOverlay(): Boolean {
         // Auto-translate becomes the most-recently-used primary.
         captureIsPreferredPrimary = false
+        if (takeTapLookupPause()) return true
         return if (CaptureService.instance?.isLive == true) {
             stopLiveRouted()
             true
@@ -2444,16 +2471,22 @@ class OverlayUiController(
      * [TapAction.SWAP_OVERLAY_MODE]): with auto-translate running, switch it
      * in place to the other overlay mode (Translation ⇄ Furigana / Pinyin),
      * as a tap hotkey for that mode does; with it off, start it in the mode
-     * already selected. Bound only on a source language with a reading hint
-     * (elsewhere the gesture acts as its default, [IconGestureBindings.resolve]),
-     * so there is another mode to switch to.
+     * already selected. A session tap-to-lookup's boxes paused counts as
+     * running ([takeTapLookupPause]), so it restarts in the other mode.
+     * Bound only on a source language with a reading hint (elsewhere the
+     * gesture acts as its default, [IconGestureBindings.resolve]), so there
+     * is another mode to switch to.
      */
     private fun swapOverlayModeOrStartLive() {
         // Auto-translate becomes the most-recently-used primary, mirroring the
         // floating menu's Auto button.
         captureIsPreferredPrimary = false
         val svc = CaptureService.instance
-        if (svc?.isLive == true) {
+        if (takeTapLookupPause()) {
+            val prefs = Prefs(context)
+            prefs.overlayMode = nextOverlayMode(prefs)
+            startLiveFromOverlay()
+        } else if (svc?.isLive == true) {
             switchLiveOverlayMode(svc, nextOverlayMode(Prefs(context)), "icon_swap")
         } else {
             startLiveFromOverlay()
@@ -2484,21 +2517,25 @@ class OverlayUiController(
      * The switch is the pref write: what a change of the game language
      * does to the rest of the app, a running auto-translate restarted in it
      * included, is CaptureService's, as for every change made anywhere
-     * ([CaptureService.onSourceLanguageChanged]). Returns true when the
-     * picker opened in the floating workspace, which a hold's slide into a
-     * drag closes.
+     * ([CaptureService.onSourceLanguageChanged]). That includes
+     * tap-to-lookup's boxes, which it closes after its own restart, so a
+     * session they paused starts once, in the new language. The picker
+     * leaves the language as it is until a pick, so the boxes close before
+     * it opens, restoring what they paused. Returns true when the picker
+     * opened in the floating workspace, which a hold's slide into a drag
+     * closes.
      */
     private fun changeGameLanguage(display: Display): Boolean {
         val prefs = Prefs(context)
         val current = prefs.sourceLangId
         val downloaded = OcrModelManager.fullyInstalledSources(context)
-        if (downloaded.size != 2 || current !in downloaded) {
+        fun picker(): Boolean {
+            closeTapToLookup(resumeLive = true)
             return openGameLanguagePicker(display.displayId)
         }
+        if (downloaded.size != 2 || current !in downloaded) return picker()
         val other = downloaded.first { it != current }
-        if (LanguagePackStore.isForcedUpgrade(context, other)) {
-            return openGameLanguagePicker(display.displayId)
-        }
+        if (LanguagePackStore.isForcedUpgrade(context, other)) return picker()
         prefs.sourceLang = other.code
         showNoTextPill(
             display,
@@ -2591,6 +2628,136 @@ class OverlayUiController(
         }
     }
 
+    /** A pause record for an over-game lookup surface ([LookupPause]): it
+     *  hides the region indicator and pauses or restarts auto-translate
+     *  through this controller's routing (MainActivity's when it is in front
+     *  on another screen). */
+    private fun newLookupPause() = LookupPause(
+        hideIndicator = { regionController.hideIndicatorForDrag() },
+        restoreIndicator = { regionController.restoreIndicatorAfterDrag() },
+        liveRunning = { CaptureService.instance?.isLive == true },
+        stopLive = { stopLiveRouted() },
+        startLive = { startLiveRouted() },
+    )
+
+    /**
+     * "Enable tap-to-lookup" on [displayId] ([com.playtranslate.ui.TapLookupSession]):
+     * the icon's Tap and Hold action, and the hotkey's start
+     * ([toggleTapToLookupForDisplay]). It takes over what the surfaces it
+     * replaces paused before they close (a session on another display, the
+     * icons' drag lenses), so nothing restarts in between, closes the
+     * surfaces that would sit in its frame (the menu, the capture panel,
+     * the in-app boxes), then pauses auto-translate and hides the region
+     * indicator for itself, and captures. The workspace stays, as it does
+     * for the drag lens, which reads our own pages too. The boxes go over
+     * the game display whatever the app shows on another screen.
+     */
+    private fun startTapToLookup(displayId: Int) {
+        val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        val display = dm.getDisplay(displayId) ?: return
+        val displayCtx = context.createDisplayContext(display)
+        val wm = OwnWindows.manager(displayCtx) ?: return
+        val session = com.playtranslate.ui.TapLookupSession(
+            context, display, displayCtx, wm, overlayHost, newLookupPause(), tapLookupReader,
+        ) { ended, noText -> onTapLookupEnded(ended, noText) }
+        tapLookup?.let { old ->
+            tapLookup = null
+            old.pause.handTo(session.pause)
+            old.close()
+        }
+        iconHandles.values.forEach { it.dragPause.handTo(session.pause) }
+        dismissAllDragLookupPopups()
+        dismissFloatingMenu()
+        dismissCaptureResultOverlay()
+        hideAppBoxes()
+        session.pause.begin()
+        tapLookup = session
+        session.start()
+    }
+
+    /**
+     * The "Enable tap-to-lookup" hotkey on [displayId], the primary game
+     * display: a toggle, as the Capture screen hotkey is. A session up,
+     * capturing or showing, closes and restores what it paused; else one
+     * starts. Called on the main thread via the active overlay UI.
+     */
+    fun toggleTapToLookupForDisplay(displayId: Int) {
+        if (tapLookup != null) {
+            closeTapToLookup(resumeLive = true)
+            return
+        }
+        startTapToLookup(displayId)
+    }
+
+    /**
+     * Close tap-to-lookup if it is up: its window, its card and its capture
+     * go, the region indicator comes back, and auto-translate restarts when
+     * the session stopped it and [resumeLive] says so (false when what comes
+     * next stops it anyway: a capture, a live start, the error pill's
+     * settings). Detached before the settle, whose restart reaches
+     * [CaptureService.startLive] and through it this method again.
+     */
+    fun closeTapToLookup(resumeLive: Boolean) {
+        val session = tapLookup ?: return
+        tapLookup = null
+        session.close()
+        session.pause.settle(resumeLive)
+    }
+
+    /** Capture is ending: tap-to-lookup goes and forgets what it paused. */
+    private fun dropTapToLookup() {
+        val session = tapLookup ?: return
+        tapLookup = null
+        session.close()
+        session.pause.drop()
+    }
+
+    /** A hold that opened tap-to-lookup slid into a drag: the boxes close
+     *  and the drag ([dragPause], the icon's) takes over what they paused. */
+    private fun closeTapToLookupIntoDrag(dragPause: LookupPause) {
+        val session = tapLookup ?: return
+        tapLookup = null
+        session.pause.handTo(dragPause)
+        session.close()
+    }
+
+    /**
+     * A hotkey other than tap-to-lookup's own is about to act: the boxes
+     * close first, restoring what they paused, so a hold preview never
+     * paints under the boxes (its raise of the icons would put them above).
+     * The others close them themselves: the live toggles deciding from what
+     * they paused ([toggleAutoMode]), the game-language change only where
+     * its picker opens ([changeGameLanguage]), and the capture's own path
+     * without a restart ([handleRegionSelection]). Exhaustive, so a new
+     * hotkey cannot compile until it says what it does here.
+     */
+    fun closeTapToLookupForHotkey(assignment: HotkeyAssignment) {
+        when (assignment) {
+            HotkeyAssignment.TAP_TO_LOOKUP_TAP, HotkeyAssignment.CAPTURE_TAP,
+            HotkeyAssignment.TRANSLATION_TAP, HotkeyAssignment.FURIGANA_TAP,
+            HotkeyAssignment.CHANGE_GAME_LANGUAGE_TAP -> Unit
+            HotkeyAssignment.TRANSLATION_HOLD, HotkeyAssignment.FURIGANA_HOLD ->
+                closeTapToLookup(resumeLive = true)
+        }
+    }
+
+    /** [session] ended itself (a tap on no word, the X, Back, its card's own
+     *  end, a failed capture): it closes as a close does. With [noText] the
+     *  read found no word, and the no-text pill says so for the whole
+     *  screen, which is what the session read. */
+    private fun onTapLookupEnded(session: com.playtranslate.ui.TapLookupSession, noText: Boolean) {
+        if (tapLookup !== session) {
+            session.close()
+            return
+        }
+        closeTapToLookup(resumeLive = true)
+        if (!noText) return
+        val message = CaptureService.instance
+            ?.noTextMessage(session.displayId, CaptureService.DEFAULT_REGION) ?: return
+        val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        dm.getDisplay(session.displayId)?.let { showNoTextPill(it, message) }
+    }
+
     /**
      * "Capture screen" hotkey action — a toggle. If a capture-result overlay
      * from a prior press is still on screen, dismiss it and stop; the *next*
@@ -2668,6 +2835,9 @@ class OverlayUiController(
      * TranslationResultActivity. Otherwise: send ACTION_REGION_CAPTURE.
      */
     private fun handleRegionSelection(displayId: Int, region: RegionEntry) {
+        // A capture takes the game screen: tap-to-lookup's boxes come down,
+        // and auto-translate stays stopped, as a capture leaves it.
+        closeTapToLookup(resumeLive = false)
         if (effectivelySingleScreen()) {
             showCaptureResultOverlay(displayId, region)
         } else {
@@ -3058,6 +3228,7 @@ class OverlayUiController(
      *  the magnifier / popup / a menu the structured destroy chain
      *  hadn't reached yet. */
     fun hideAll() {
+        dropTapToLookup()
         dismissCaptureResultOverlay()
         dismissWorkspace()
         hideTranslationOverlay()

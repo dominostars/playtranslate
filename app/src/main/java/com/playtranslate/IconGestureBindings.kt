@@ -14,9 +14,9 @@ import com.playtranslate.language.HintTextKind
  * the Settings surfaces render, the "On the floating icon" cell and the
  * picker page it opens: a title per candidate, and whether the current
  * source language offers it. "Open the quick menu", the capture, the
- * auto-translate toggle, the swap and the game-language change are each
- * offered on two gestures and so are each a constant in two enums, sharing
- * their strings;
+ * auto-translate toggle, the swap, the game-language change and
+ * tap-to-lookup are each offered on two gestures and so are each a constant
+ * in two enums, sharing their strings;
  * [IconGestureBindings.quickMenuReachable] is the one place that treats the
  * two menu constants as the same thing.
  *
@@ -96,7 +96,11 @@ enum class HoldAction : IconAction {
     SWAP_OVERLAY_MODE,
     /** The game-language change ([TapAction.CHANGE_GAME_LANGUAGE]) at the
      *  hold threshold; the lift does nothing. */
-    CHANGE_GAME_LANGUAGE;
+    CHANGE_GAME_LANGUAGE,
+    /** Tap-to-lookup ([TapAction.TAP_TO_LOOKUP]) at the hold threshold; the
+     *  lift does nothing, and a slide into a drag closes the boxes, the
+     *  drag lens taking over what they paused. */
+    TAP_TO_LOOKUP;
 
     override fun titleRes(hint: HintTextKind): Int = when (this) {
         CAPTURE_SCREEN -> R.string.icon_action_capture_screen
@@ -105,11 +109,12 @@ enum class HoldAction : IconAction {
         TOGGLE_AUTO_TRANSLATE -> R.string.icon_action_toggle_auto_translate
         SWAP_OVERLAY_MODE -> SwapOverlayMode.titleRes(hint)
         CHANGE_GAME_LANGUAGE -> R.string.icon_action_change_game_language
+        TAP_TO_LOOKUP -> R.string.icon_action_tap_to_lookup
     }
 
     override fun isOfferedOn(hint: HintTextKind): Boolean = when (this) {
         CAPTURE_SCREEN, SHOW_TRANSLATIONS, OPEN_QUICK_MENU, TOGGLE_AUTO_TRANSLATE,
-        CHANGE_GAME_LANGUAGE -> true
+        CHANGE_GAME_LANGUAGE, TAP_TO_LOOKUP -> true
         SWAP_OVERLAY_MODE -> SwapOverlayMode.isOfferedOn(hint)
     }
 
@@ -135,7 +140,13 @@ enum class TapAction : IconAction {
      *  to the other one and say so in a pill; otherwise open the language
      *  picker, as the quick menu's Language row does (OverlayUiController's
      *  changeGameLanguage). Offered on every language. */
-    CHANGE_GAME_LANGUAGE;
+    CHANGE_GAME_LANGUAGE,
+    /** "Enable tap-to-lookup": capture this display once and box every
+     *  word; a tap on a box opens its definition card, a tap on no box, the
+     *  X or Back closes the boxes (OverlayUiController's startTapToLookup,
+     *  [com.playtranslate.ui.TapLookupSession]). Offered on every
+     *  language. */
+    TAP_TO_LOOKUP;
 
     override fun titleRes(hint: HintTextKind): Int = when (this) {
         OPEN_QUICK_MENU -> R.string.icon_action_open_quick_menu
@@ -143,10 +154,12 @@ enum class TapAction : IconAction {
         TOGGLE_AUTO_TRANSLATE -> R.string.icon_action_toggle_auto_translate
         SWAP_OVERLAY_MODE -> SwapOverlayMode.titleRes(hint)
         CHANGE_GAME_LANGUAGE -> R.string.icon_action_change_game_language
+        TAP_TO_LOOKUP -> R.string.icon_action_tap_to_lookup
     }
 
     override fun isOfferedOn(hint: HintTextKind): Boolean = when (this) {
-        OPEN_QUICK_MENU, CAPTURE_SCREEN, TOGGLE_AUTO_TRANSLATE, CHANGE_GAME_LANGUAGE -> true
+        OPEN_QUICK_MENU, CAPTURE_SCREEN, TOGGLE_AUTO_TRANSLATE, CHANGE_GAME_LANGUAGE,
+        TAP_TO_LOOKUP -> true
         SWAP_OVERLAY_MODE -> SwapOverlayMode.isOfferedOn(hint)
     }
 

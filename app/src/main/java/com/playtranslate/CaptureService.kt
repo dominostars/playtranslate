@@ -1427,6 +1427,9 @@ class CaptureService : Service() {
         // menu does this when it opens, but a start needn't come through the
         // menu (the icon's toggle and swap, the tap hotkeys, the app).
         CaptureBackendResolver.activeOverlayUi?.dismissCaptureResultOverlay()
+        // Tap-to-lookup's boxes come down the same way; the session starting
+        // now is the restart they would have owed, so they owe none.
+        CaptureBackendResolver.activeOverlayUi?.closeTapToLookup(resumeLive = false)
 
         // One feedback session per start — engine warm-up, startup chip,
         // first-cycle gate, busy tracking ([LiveSessionFeedback]). The
@@ -2332,6 +2335,11 @@ class CaptureService : Service() {
             stopLive()
             startLive()
         }
+        // Tap-to-lookup's boxes hold the old language's tokens, which the
+        // new language's engine would look up: they close, restarting what
+        // they paused, now in the new language. After the restart above,
+        // which a session they paused is not live for, so it starts once.
+        CaptureBackendResolver.activeOverlayUi?.closeTapToLookup(resumeLive = true)
         if (LanguagePackStore.isInstalled(this, id)) {
             serviceScope.launch(Dispatchers.IO) {
                 SourceLanguageEngines.preloadAndRecover(this@CaptureService, id)

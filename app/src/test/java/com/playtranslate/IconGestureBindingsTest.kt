@@ -116,6 +116,8 @@ class IconGestureBindingsTest {
                 R.string.icon_action_change_game_language,
                 TapAction.CHANGE_GAME_LANGUAGE.titleRes(hint),
             )
+            assertEquals(R.string.icon_action_tap_to_lookup, HoldAction.TAP_TO_LOOKUP.titleRes(hint))
+            assertEquals(R.string.icon_action_tap_to_lookup, TapAction.TAP_TO_LOOKUP.titleRes(hint))
         }
     }
 

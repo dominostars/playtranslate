@@ -60,7 +60,7 @@ class HotkeysSettingsRowsTest {
         return page
     }
 
-    @Test fun `Change game language is the Translations card's last row and shows and clears its own binding`() {
+    @Test fun `Change game language sits in the Translations card and shows and clears its own binding`() {
         prefs.hotkeyCaptureTap = KeyEvent.KEYCODE_BUTTON_X.toString()
         prefs.hotkeyChangeGameLanguageTap = KeyEvent.KEYCODE_BUTTON_Y.toString()
         val page = open()
@@ -70,7 +70,6 @@ class HotkeysSettingsRowsTest {
 
         val card = row.parent as ViewGroup
         assertSame("the Translations card", page.findViewById<View>(R.id.rowHotkeyCaptureTap).parent, card)
-        assertSame("its last row", row, card.getChildAt(card.childCount - 1))
         assertEquals("Change game language", row.findViewById<TextView>(R.id.tvRowTitle).text.toString())
         assertEquals(label(KeyEvent.KEYCODE_BUTTON_Y), subtitle.text.toString())
         assertTrue(switch.isChecked)
@@ -81,6 +80,34 @@ class HotkeysSettingsRowsTest {
 
         assertEquals("", prefs.hotkeyChangeGameLanguageTap)
         assertEquals("the capture row's binding stands", KeyEvent.KEYCODE_BUTTON_X.toString(), prefs.hotkeyCaptureTap)
+        assertEquals("Not set", subtitle.text.toString())
+        assertFalse(switch.isChecked)
+    }
+
+    @Test fun `Enable tap-to-lookup is the Translations card's last row and shows and clears its own binding`() {
+        prefs.hotkeyChangeGameLanguageTap = KeyEvent.KEYCODE_BUTTON_Y.toString()
+        prefs.hotkeyTapToLookupTap = KeyEvent.KEYCODE_BUTTON_L1.toString()
+        val page = open()
+        val row = page.findViewById<View>(R.id.rowHotkeyTapToLookupTap)
+        val subtitle = row.findViewById<TextView>(R.id.tvRowSubtitle)
+        val switch = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+
+        val card = row.parent as ViewGroup
+        assertSame("the Translations card", page.findViewById<View>(R.id.rowHotkeyCaptureTap).parent, card)
+        assertSame("its last row", row, card.getChildAt(card.childCount - 1))
+        assertEquals("Enable tap-to-lookup", row.findViewById<TextView>(R.id.tvRowTitle).text.toString())
+        assertEquals(label(KeyEvent.KEYCODE_BUTTON_L1), subtitle.text.toString())
+        assertTrue(switch.isChecked)
+
+        // A tap on the row flips its switch; off clears the binding.
+        row.performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals("", prefs.hotkeyTapToLookupTap)
+        assertEquals(
+            "the game-language row's binding stands",
+            KeyEvent.KEYCODE_BUTTON_Y.toString(), prefs.hotkeyChangeGameLanguageTap,
+        )
         assertEquals("Not set", subtitle.text.toString())
         assertFalse(switch.isChecked)
     }

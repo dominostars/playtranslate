@@ -94,6 +94,17 @@ class HotkeysSettingsViewModelTest {
         assertEquals("", Prefs(ctx).hotkeyChangeGameLanguageTap)
     }
 
+    @Test fun `the tap-to-lookup hotkey seeds from prefs and writes through`() {
+        Prefs(ctx).hotkeyTapToLookupTap = "102"
+        val vm = HotkeysSettingsViewModel(app)
+        assertEquals("102", vm.state.value.tapToLookupTapHotkey)
+
+        vm.setTapToLookupTapHotkey("113+102")
+        assertEquals("113+102", Prefs(ctx).hotkeyTapToLookupTap)
+        vm.clearTapToLookupTapHotkey()
+        assertEquals("", Prefs(ctx).hotkeyTapToLookupTap)
+    }
+
     @Test fun `markQuickTileAdded persists`() {
         val vm = HotkeysSettingsViewModel(app)
         vm.markQuickTileAdded()

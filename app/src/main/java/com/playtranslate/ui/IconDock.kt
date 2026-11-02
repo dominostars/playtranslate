@@ -23,6 +23,13 @@ import com.playtranslate.overlay.Sides
  */
 object IconDock {
 
+    /** The clearance the icon's centre keeps inside the top and bottom dock
+     *  lines ([verticalRange]): off the system gesture zones on a bare edge,
+     *  and the same margin above a bar the window lies below. Shared by the
+     *  icon and by what sits over it (tap-to-lookup's X), so both find the
+     *  same centre for a slot. */
+    const val GESTURE_INSET_DP = 48f
+
     /** Window origin (the top-left of the `viewSize` square). */
     data class Place(val x: Int, val y: Int)
 

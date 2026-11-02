@@ -171,6 +171,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
                 Prefs.KEY_QUICK_TILE_ADDED, Prefs.KEY_HOTKEY_TRANSLATION, Prefs.KEY_HOTKEY_FURIGANA,
                 Prefs.KEY_HOTKEY_TRANSLATION_TAP, Prefs.KEY_HOTKEY_FURIGANA_TAP,
                 Prefs.KEY_HOTKEY_CAPTURE_TAP, Prefs.KEY_HOTKEY_CHANGE_GAME_LANGUAGE_TAP,
+                Prefs.KEY_HOTKEY_TAP_TO_LOOKUP_TAP,
                 Prefs.KEY_THEME_MODE, Prefs.KEY_ACCENT_NAME,
                 Prefs.KEY_PT_CLOUD_OCR_ENABLED, Prefs.KEY_PT_CLOUD_TRANSLATE_ENABLED,
                 Prefs.KEY_PT_CLOUD_CLIENT_KEY, Prefs.KEY_PT_CLOUD_ACCOUNT,
@@ -262,14 +263,15 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
     private fun hotkeysDigest(): String {
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
         // The Translation category covers its hold (show), tap (auto-toggle),
-        // one-shot capture and game-language hotkeys — the digest names the
-        // category, so any of the four being bound counts. All four live under
-        // the Hotkeys page's Translations section.
+        // one-shot capture, game-language and tap-to-lookup hotkeys — the
+        // digest names the category, so any of the five being bound counts.
+        // All five live under the Hotkeys page's Translations section.
         val hasTranslation =
             prefs.hotkeyTranslation.isNotEmpty() ||
                 prefs.hotkeyTranslationTap.isNotEmpty() ||
                 prefs.hotkeyCaptureTap.isNotEmpty() ||
-                prefs.hotkeyChangeGameLanguageTap.isNotEmpty()
+                prefs.hotkeyChangeGameLanguageTap.isNotEmpty() ||
+                prefs.hotkeyTapToLookupTap.isNotEmpty()
         // A leftover furigana hotkey from a prior language must not surface when
         // the current source has no hint layer — matches the Hotkeys page hiding
         // that section for HintTextKind.NONE.

@@ -45,6 +45,7 @@ class HotkeysSettingsActivity : SettingsSubPageActivity() {
     private lateinit var rowHotkeyTranslationTap: View
     private lateinit var rowHotkeyCaptureTap: View
     private lateinit var rowHotkeyChangeGameLanguageTap: View
+    private lateinit var rowHotkeyTapToLookupTap: View
     private lateinit var sectionFurigana: View
     private lateinit var headerFurigana: View
     private lateinit var rowHotkeyFurigana: View
@@ -58,6 +59,7 @@ class HotkeysSettingsActivity : SettingsSubPageActivity() {
         rowHotkeyTranslationTap = findViewById(R.id.rowHotkeyTranslationTap)
         rowHotkeyCaptureTap = findViewById(R.id.rowHotkeyCaptureTap)
         rowHotkeyChangeGameLanguageTap = findViewById(R.id.rowHotkeyChangeGameLanguageTap)
+        rowHotkeyTapToLookupTap = findViewById(R.id.rowHotkeyTapToLookupTap)
         sectionFurigana = findViewById(R.id.sectionFurigana)
         headerFurigana = findViewById(R.id.headerFurigana)
         rowHotkeyFurigana = findViewById(R.id.rowHotkeyFurigana)
@@ -110,6 +112,15 @@ class HotkeysSettingsActivity : SettingsSubPageActivity() {
             dialogTitle = getString(R.string.icon_action_change_game_language),
             onSet = vm::setChangeGameLanguageTapHotkey,
             onClear = vm::clearChangeGameLanguageTapHotkey,
+        )
+        // The floating icon's "Enable tap-to-lookup", under its title.
+        renderHotkeyRow(
+            row = rowHotkeyTapToLookupTap,
+            title = getString(R.string.icon_action_tap_to_lookup),
+            hotkey = state.tapToLookupTapHotkey,
+            dialogTitle = getString(R.string.icon_action_tap_to_lookup),
+            onSet = vm::setTapToLookupTapHotkey,
+            onClear = vm::clearTapToLookupTapHotkey,
         )
 
         sectionFurigana.isVisible = state.showFuriganaSection

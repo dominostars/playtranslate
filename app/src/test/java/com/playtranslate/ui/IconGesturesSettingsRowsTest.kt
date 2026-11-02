@@ -23,8 +23,8 @@ import org.robolectric.Shadows.shadowOf
 
 /**
  * The gesture picker page's Hold and Tap rows on each kind of source
- * language: the auto-translate toggle and the game-language change are on
- * every one; the swap row is there, named after the language's reading
+ * language: the auto-translate toggle, the game-language change and
+ * tap-to-lookup are on every one; the swap row is there, named after the language's reading
  * hint, only on a language that has one; elsewhere a stored swap shows as
  * its gesture's default, checked.
  * A language changed while the page is open (dual-screen: from the floating
@@ -43,6 +43,7 @@ class IconGesturesSettingsRowsTest {
     private val swapFurigana = "Swap between translation and furigana"
     private val swapPinyin = "Swap between translation and pinyin"
     private val changeLanguage = "Change game language"
+    private val tapToLookup = "Enable tap-to-lookup"
 
     @Before fun setUp() {
         // androidx keeps one AndroidViewModelFactory per process, holding the
@@ -68,14 +69,14 @@ class IconGesturesSettingsRowsTest {
         assertEquals(
             listOf(
                 capture to false, showTranslations to false, quickMenu to false, toggle to false,
-                swapFurigana to true, changeLanguage to false,
+                swapFurigana to true, changeLanguage to false, tapToLookup to false,
             ),
             rows(page, R.id.optionsHold),
         )
         assertEquals(
             listOf(
                 quickMenu to false, capture to false, toggle to false,
-                swapFurigana to true, changeLanguage to false,
+                swapFurigana to true, changeLanguage to false, tapToLookup to false,
             ),
             rows(page, R.id.optionsTap),
         )
@@ -87,14 +88,14 @@ class IconGesturesSettingsRowsTest {
         assertEquals(
             listOf(
                 capture to false, showTranslations to false, quickMenu to false, toggle to false,
-                swapPinyin to true, changeLanguage to false,
+                swapPinyin to true, changeLanguage to false, tapToLookup to false,
             ),
             rows(page, R.id.optionsHold),
         )
         assertEquals(
             listOf(
                 quickMenu to false, capture to false, toggle to false,
-                swapPinyin to true, changeLanguage to false,
+                swapPinyin to true, changeLanguage to false, tapToLookup to false,
             ),
             rows(page, R.id.optionsTap),
         )
@@ -106,12 +107,12 @@ class IconGesturesSettingsRowsTest {
         assertEquals(
             listOf(
                 capture to true, showTranslations to false, quickMenu to false, toggle to false,
-                changeLanguage to false,
+                changeLanguage to false, tapToLookup to false,
             ),
             rows(page, R.id.optionsHold),
         )
         assertEquals(
-            listOf(quickMenu to true, capture to false, toggle to false, changeLanguage to false),
+            listOf(quickMenu to true, capture to false, toggle to false, changeLanguage to false, tapToLookup to false),
             rows(page, R.id.optionsTap),
         )
     }
@@ -124,12 +125,30 @@ class IconGesturesSettingsRowsTest {
         assertEquals(
             listOf(
                 capture to false, showTranslations to false, quickMenu to false, toggle to false,
-                changeLanguage to true,
+                changeLanguage to true, tapToLookup to false,
             ),
             rows(page, R.id.optionsHold),
         )
         assertEquals(
-            listOf(quickMenu to false, capture to false, toggle to false, changeLanguage to true),
+            listOf(quickMenu to false, capture to false, toggle to false, changeLanguage to true, tapToLookup to false),
+            rows(page, R.id.optionsTap),
+        )
+    }
+
+    @Test fun `tap-to-lookup is checked where bound, on a language without a reading hint too`() {
+        prefs.sourceLang = "en"
+        prefs.iconHoldAction = HoldAction.TAP_TO_LOOKUP
+        prefs.iconTapAction = TapAction.TAP_TO_LOOKUP
+        val page = open()
+        assertEquals(
+            listOf(
+                capture to false, showTranslations to false, quickMenu to false, toggle to false,
+                changeLanguage to false, tapToLookup to true,
+            ),
+            rows(page, R.id.optionsHold),
+        )
+        assertEquals(
+            listOf(quickMenu to false, capture to false, toggle to false, changeLanguage to false, tapToLookup to true),
             rows(page, R.id.optionsTap),
         )
     }
@@ -142,12 +161,12 @@ class IconGesturesSettingsRowsTest {
         assertEquals(
             listOf(
                 capture to true, showTranslations to false, quickMenu to false, toggle to false,
-                changeLanguage to false,
+                changeLanguage to false, tapToLookup to false,
             ),
             rows(page, R.id.optionsHold),
         )
         assertEquals(
-            listOf(quickMenu to true, capture to false, toggle to false, changeLanguage to false),
+            listOf(quickMenu to true, capture to false, toggle to false, changeLanguage to false, tapToLookup to false),
             rows(page, R.id.optionsTap),
         )
     }
