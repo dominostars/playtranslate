@@ -34,7 +34,7 @@ import kotlinx.coroutines.withContext
  * judged here, whichever window it reached ([onTapAt]: the boxes' own, or
  * the card's off-card hook, [MagnifierLens.onOffCardDown]):
  *  - the X, over the floating icon, ends the session, card or not;
- *  - a tap on a box, or within [BUFFER_DP] of one (the closest then), fills
+ *  - a tap on a box, or within [BUFFER_DP] of one (the closest then), lights
  *    it and opens the drag lens's definition card on it
  *    ([DragLookupController.lookUpWord]), moving a card that is up for
  *    another word; on the word whose card is up, it closes that card;
@@ -43,10 +43,13 @@ import kotlinx.coroutines.withContext
  *    card's.
  * The controller drives the boxes the whole time (the card never takes it,
  * [MagnifierLens] built with takesControllerFocus = false): the D-pad moves a
- * ring over the boxes (left and right along the ringed word's row, up and
- * down across rows), A on the ringed word opens its card, A on the word
+ * cursor over the boxes (left and right along the cursor word's row, up and
+ * down across rows), A on the cursor's word opens its card, A on the word
  * whose card is up closes it, and A on another word moves the card there;
- * Back with a card up closes the card, with none ends the session.
+ * Back with a card up closes the card, with none ends the session. The
+ * overlay dims the game around the highlighted box ([highlight]) and sets an
+ * accent glow around it: the cursor's box once the controller has one, the
+ * selected box before.
  *
  * The session decides nothing about what it paused ([pause]): when it ends
  * itself it tells its owner ([onEnded]), and the owner, which also ends it
@@ -130,9 +133,13 @@ internal class TapLookupSession(
     /** The box whose card is up or on its way; null with none (see the
      *  class kdoc for what it decides). */
     private var selected: Int? = null
-    /** The box the controller cursor rings; null before the first
-     *  controller press. */
+    /** The box the controller cursor is on; null before the first
+     *  controller press. A tap that opens a card moves it there. */
     private var cursor: Int? = null
+
+    /** The box the spotlight leaves undimmed and the glow is around: the
+     *  cursor's, else the selected one. */
+    private val highlight: Int? get() = cursor ?: selected
 
     private val magnifier = MagnifierLens(
         displayCtx, wm, displayId, overlayHost, takesControllerFocus = false,
@@ -296,14 +303,15 @@ internal class TapLookupSession(
         }
     }
 
-    /** Fill the box at [index] and open its card there, moving a card that
+    /** Highlight the box at [index] and open its card there, moving a card that
      *  is up for another box. */
     private fun select(index: Int) {
         val box = boxes.getOrNull(index) ?: return
         val line = lines.getOrNull(box.lineIndex) ?: return
         val token = lineTokens.getOrNull(box.lineIndex)?.getOrNull(box.tokenIndex) ?: return
         selected = index
-        overlay?.setSelected(index)
+        if (cursor != null) cursor = index
+        overlay?.setHighlight(highlight)
         val anchor = Rect().also { box.screenBounds().roundOut(it) }
         lookup.lookUpWord(
             lines, screenshotPath, capturedAtMs,
@@ -317,7 +325,7 @@ internal class TapLookupSession(
      *  boxes up. */
     private fun closeCard() {
         selected = null
-        overlay?.setSelected(null)
+        overlay?.setHighlight(highlight)
         lookup.dismiss()
     }
 
@@ -337,12 +345,13 @@ internal class TapLookupSession(
 
     /**
      * The controller cursor, as on the capture sheet: the first D-pad or A
-     * press rings the first box (topmost, then leftmost) and does nothing
-     * else. The D-pad then moves the ring: along the ringed word's row to
+     * press puts it on the highlighted box, or the first box (topmost, then
+     * leftmost) with none, and does nothing else. The D-pad then moves it,
+     * the spotlight with it: along the cursor word's row to
      * the next word that way, staying put at the row's end
      * ([TapLookupGeometry.nextInRow]: left and right on a horizontal line, up
      * and down on a vertical column), and across rows to the nearest box that
-     * way ([SheetNavGeometry.nextInDirection]). A on the ringed box opens its
+     * way ([SheetNavGeometry.nextInDirection]). A on the cursor's box opens its
      * card, or closes it when it is that box's card that is up. Acts on the
      * DOWN and consumes the UP; keys it does not drive pass on.
      */
@@ -357,7 +366,7 @@ internal class TapLookupSession(
         }
         val current = cursor
         if (current == null) {
-            moveCursor(SheetNavGeometry.firstItem(rects))
+            moveCursor(selected ?: SheetNavGeometry.firstItem(rects))
             return true
         }
         if (dir != null) {
@@ -384,7 +393,7 @@ internal class TapLookupSession(
 
     private fun moveCursor(index: Int?) {
         cursor = index
-        overlay?.setCursor(index)
+        overlay?.setHighlight(highlight)
     }
 
     /** The session ends itself, once. */

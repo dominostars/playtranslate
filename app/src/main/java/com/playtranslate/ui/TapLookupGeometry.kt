@@ -13,7 +13,7 @@ import kotlin.math.sin
 /**
  * Geometry of the tap-to-lookup overlay ([TapLookupOverlay]): the box drawn
  * around each word, which box a tap lands on, and where the controller's
- * ring steps along a row. Boxes are built on
+ * cursor steps along a row. Boxes are built on
  * [DragLookupController.placeTokensOnLine], the placement the drag lens
  * matches a finger against, so a box covers exactly the extent its token is
  * looked up by. Pure: no views, no context.
@@ -177,11 +177,11 @@ internal object TapLookupGeometry {
     }
 
     /**
-     * The controller ring's step along a row: from the box at [from] toward
+     * The controller cursor's step along a row: from the box at [from] toward
      * [dir] (left or right on a horizontal line, up or down on a vertical
      * column), the nearest box of the same row whose centre lies beyond
      * [from]'s that way, by the distance along the row; ties go to the one
-     * nearer across it. Null at the row's end, so the ring stays put rather
+     * nearer across it. Null at the row's end, so the cursor stays put rather
      * than leave the row. Two boxes are in the same row when their extents
      * across it overlap by at least half the shorter one: a word on the same
      * line, or beside it in another column, is; the next line, whose padded

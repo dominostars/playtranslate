@@ -220,12 +220,12 @@ class TapLookupGeometryTest {
         assertEquals(0, TapLookupGeometry.hitTest(listOf(small, large), 111f, 105f, slopPx = 24f))
     }
 
-    // ── the controller ring's step along a row ─────────────────────────────
+    // ── the controller cursor's step along a row ───────────────────────────
 
     private val right = SheetNavGeometry.Dir.RIGHT
     private val left = SheetNavGeometry.Dir.LEFT
 
-    @Test fun `along a row the ring passes a nearer word on the next row for the next word on its own`() {
+    @Test fun `along a row the cursor passes a nearer word on the next row for the next word on its own`() {
         val bounds = listOf(
             RectF(97f, 297f, 143f, 333f),   // aa
             RectF(597f, 297f, 643f, 333f),  // bb, far along the same row
@@ -246,7 +246,7 @@ class TapLookupGeometryTest {
         assertEquals(2, TapLookupGeometry.nextInRow(bounds, 0, right))
     }
 
-    @Test fun `on a vertical column the ring steps down and up along it`() {
+    @Test fun `on a vertical column the cursor steps down and up along it`() {
         val bounds = listOf(
             RectF(200f, 100f, 230f, 140f),  // the column's first word
             RectF(200f, 145f, 230f, 185f),  // its second

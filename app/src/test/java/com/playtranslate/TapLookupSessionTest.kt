@@ -49,9 +49,9 @@ import java.time.Duration
  * ("hello world"), two words. The hotkey's toggle opens and closes it, a
  * press while the capture is out included, and a capture that throws ends
  * it; every tap is judged in one
- * place (a word fills and keeps the boxes, the X and anything else close
+ * place (a word lights and keeps the boxes, the X and anything else close
  * them); a card that ends by its own means ends the session, Back with no
- * card ends it, and the controller rings, moves and selects as on the
+ * card ends it, and the controller lights, moves and selects as on the
  * capture sheet.
  *
  * What the boxes paused is the session's [LookupPause]: closed by the user
@@ -152,7 +152,11 @@ class TapLookupSessionTest {
 
     private fun boxCount(): Int = overlay()!!.field<List<*>>("boxes").size
 
-    private fun selected(): Int? = overlay()!!.field("selected")
+    /** The box whose card is up. */
+    private fun selected(): Int? = session()!!.field("selected")
+
+    /** The box the overlay's spotlight and glow are on. */
+    private fun highlighted(): Int? = overlay()!!.field("highlighted")
 
     private fun cursor(): Int? = session()!!.field("cursor")
 
@@ -294,13 +298,15 @@ class TapLookupSessionTest {
 
     // ── taps ─────────────────────────────────────────────────────────────
 
-    @Test fun `a tap on a word fills its box and keeps the boxes up`() {
+    @Test fun `a tap on a word lights its box and keeps the boxes up`() {
         open()
+        assertNull("nothing lit before a word is picked", highlighted())
 
         down(150f, 315f)
 
         assertNotNull(session())
         assertEquals(0, selected())
+        assertEquals(0, highlighted())
     }
 
     @Test fun `a tap on no word closes the boxes and restarts the auto-translate they paused`() {
@@ -387,6 +393,7 @@ class TapLookupSessionTest {
 
         assertNotNull("the boxes stay", session())
         assertNull("the word is cleared", selected())
+        assertNull("with no controller cursor, nothing stays lit", highlighted())
     }
 
     @Test fun `with a card up, a tap on its own word closes the card and the boxes stay`() {
@@ -407,6 +414,7 @@ class TapLookupSessionTest {
 
         assertNotNull(session())
         assertEquals(1, selected())
+        assertEquals(1, highlighted())
     }
 
     @Test fun `with a card up, the card's off-card hook moves it to the word tapped`() {
@@ -482,7 +490,8 @@ class TapLookupSessionTest {
         press(KeyEvent.KEYCODE_BACK)
 
         assertNotNull("the boxes stay", session())
-        assertNull("the box is no longer filled", selected())
+        assertNull("the card's word is cleared", selected())
+        assertNull("and no longer lit", highlighted())
         assertFalse("the card is gone", lens.isInteractive)
 
         press(KeyEvent.KEYCODE_BACK)
@@ -529,19 +538,49 @@ class TapLookupSessionTest {
         assertNotNull(session())
     }
 
-    @Test fun `the first controller press rings the first word, the D-pad moves the ring, A opens the ringed word`() {
+    @Test fun `the first controller press lights the first word, the D-pad moves the light, A opens the lit word`() {
         open()
 
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
-        assertEquals("the first press rings the first word", 0, cursor())
+        assertEquals("the first press puts the cursor on the first word", 0, cursor())
+        assertEquals("and lights it", 0, highlighted())
         assertNull("and opens nothing", selected())
 
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
         assertEquals(1, cursor())
+        assertEquals(1, highlighted())
 
         press(KeyEvent.KEYCODE_BUTTON_A)
         assertEquals(1, selected())
         assertNotNull(session())
+    }
+
+    @Test fun `with a card up the first controller press starts on its word, and the light leaves it with the cursor`() {
+        open()
+        down(260f, 315f)
+
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("on the card's word, not the first word", 1, cursor())
+        assertEquals(1, highlighted())
+
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        assertEquals(0, highlighted())
+        assertEquals("the card stays on its word", 1, selected())
+    }
+
+    @Test fun `a tap moves the controller cursor to the word it opens, and A closing that card leaves it lit`() {
+        open()
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals(0, cursor())
+
+        down(260f, 315f)
+        assertEquals(1, selected())
+        assertEquals("the cursor follows the tap", 1, cursor())
+        assertEquals(1, highlighted())
+
+        press(KeyEvent.KEYCODE_BUTTON_A)
+        assertNull("A on the card's word closes it", selected())
+        assertEquals("the cursor's word stays lit", 1, highlighted())
     }
 
     @Test fun `right on the controller stays on the row, past a nearer word on the next row, and stops at its end`() {
@@ -564,7 +603,7 @@ class TapLookupSessionTest {
         assertEquals(4, boxCount())
 
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
-        assertEquals("the first press rings the first word", 0, cursor())
+        assertEquals("the first press puts the cursor on the first word", 0, cursor())
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
         assertEquals("along the row to bb, not down to cc", 1, cursor())
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
@@ -586,7 +625,7 @@ class TapLookupSessionTest {
         press(KeyEvent.KEYCODE_BUTTON_A)
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
         press(KeyEvent.KEYCODE_BUTTON_A)
-        assertEquals("the card moved to the ringed word", 1, selected())
+        assertEquals("the card moved to the cursor's word", 1, selected())
     }
 
     @Test fun `with a controller attached the card leaves the controller to the boxes`() {
@@ -603,8 +642,8 @@ class TapLookupSessionTest {
         assertTrue(lens.makeInteractive())
 
         assertFalse("the card does not take the controller", lens.isConsumingController)
-        // So A reaches the boxes: the first press rings the word, the next
-        // closes its card.
+        // So A reaches the boxes: the first press puts the cursor on the
+        // card's word, the next closes its card.
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
         press(KeyEvent.KEYCODE_BUTTON_A)
         assertNull(selected())
