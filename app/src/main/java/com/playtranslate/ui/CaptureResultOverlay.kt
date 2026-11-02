@@ -3442,9 +3442,11 @@ class CaptureResultOverlay(
             if (popovers.isShowing) return super.dispatchTouchEvent(ev)
             // A sequence that began on the mode pill is the pill's, whatever
             // the rules below would claim: it is a child above everything.
-            if (pillTouch || (ev.actionMasked == MotionEvent.ACTION_DOWN && hitsModePill(ev))) {
-                pillTouch = ev.actionMasked != MotionEvent.ACTION_UP &&
-                    ev.actionMasked != MotionEvent.ACTION_CANCEL
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) pillTouch = hitsModePill(ev)
+            if (pillTouch) {
+                if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) {
+                    pillTouch = false
+                }
                 return super.dispatchTouchEvent(ev)
             }
             if (routeOutsideFollowUp(ev)) return true

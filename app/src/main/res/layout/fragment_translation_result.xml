@@ -188,4 +188,18 @@
 
     </ScrollView>
 
+    <!-- The capture-mode row (two screens): what the next capture paints
+         over the game display. It overlays the top of the root; the status
+         and result areas take a matching top margin while it shows. -->
+    <FrameLayout
+        android:id="@+id/captureModeRow"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/pt_row_min_height"
+        android:layout_gravity="top"
+        android:paddingStart="@dimen/pt_section_h_padding"
+        android:paddingEnd="@dimen/pt_section_h_padding"
+        android:paddingTop="9dp"
+        android:paddingBottom="9dp"
+        android:visibility="gone" />
+
 </FrameLayout>

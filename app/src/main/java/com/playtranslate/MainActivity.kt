@@ -540,10 +540,10 @@ class MainActivity :
     // The toggle's truth: the controller's window ownership, queried live —
     // nothing here or in the fragment mirrors it.
     override fun isResultBoxesShownOnScreen(): Boolean =
-        CaptureBackendResolver.activeOverlayUi?.appBoxesShowing == true
+        CaptureBackendResolver.activeOverlayUi?.capturePresentationShowing == true
 
     override fun showResultBoxesOnScreen(boxes: com.playtranslate.ui.OnScreenBoxes) {
-        CaptureBackendResolver.activeOverlayUi?.showAppBoxes(boxes.displayId, boxes.data) {
+        CaptureBackendResolver.activeOverlayUi?.presentCapture(boxes.displayId, boxes.data, boxes.sourceLangId) {
             // Freshness poke on every teardown of that window; the fragment
             // re-derives from isResultBoxesShownOnScreen, so a late or
             // duplicate poke is harmless.
@@ -552,11 +552,19 @@ class MainActivity :
     }
 
     override fun updateResultBoxesOnScreen(boxes: com.playtranslate.ui.OnScreenBoxes) {
-        CaptureBackendResolver.activeOverlayUi?.updateAppBoxes(boxes.data)
+        CaptureBackendResolver.activeOverlayUi?.updateCapture(boxes.data)
     }
 
     override fun hideResultBoxesOnScreen() {
-        CaptureBackendResolver.activeOverlayUi?.hideAppBoxes()
+        CaptureBackendResolver.activeOverlayUi?.dismissCapturePresentation()
+    }
+
+    override fun captureModeOnScreen(): OverlayMode? =
+        CaptureBackendResolver.activeOverlayUi?.capturePresentationMode
+
+    override fun setCaptureModeOnScreen(mode: OverlayMode) {
+        val ui = CaptureBackendResolver.activeOverlayUi
+        if (ui != null) ui.setCaptureMode(mode) else prefs.captureOverlayMode = mode
     }
 
     override fun liveShowOnScreenState(): Boolean? {
@@ -1580,7 +1588,9 @@ class MainActivity :
                                     resultVm.showStatus(state.message)
                                 is CaptureState.Translating -> {
                                     val boxes = state.overlayData?.let {
-                                        com.playtranslate.ui.OnScreenBoxes(it, oneShotCaptureDisplayId)
+                                        com.playtranslate.ui.OnScreenBoxes(
+                                            it, oneShotCaptureDisplayId, state.ocrProvenance?.sourceLangId,
+                                        )
                                     }
                                     // A box fill swaps the boxes alone; the
                                     // placeholder would restart the word lookups.
@@ -1599,7 +1609,9 @@ class MainActivity :
                                     resultVm.displayResult(
                                         state.result, applicationContext,
                                         onScreenBoxes = state.overlayData?.let {
-                                            com.playtranslate.ui.OnScreenBoxes(it, oneShotCaptureDisplayId)
+                                            com.playtranslate.ui.OnScreenBoxes(
+                                                it, oneShotCaptureDisplayId, state.result.ocrProvenance?.sourceLangId,
+                                            )
                                         },
                                     )
                                     _currentCaptureSession.value = null
@@ -1766,12 +1778,15 @@ class MainActivity :
     private fun startOneShotCapture(displayId: Int? = null) {
         val svc = captureService ?: return
         oneShotCaptureDisplayId = displayId ?: svc.primaryGameDisplayId()
-        // This page paints no boxes on its own (dual-screen show-on-screen is
-        // an explicit tap, routed through the deferred-completion funnel), so
-        // a hidden translation section can always defer the backend call.
+        // Translation chips go up on the game display as the capture lands
+        // (two screens), so they must have their text; in any other overlay
+        // mode a hidden translation section can defer the backend call, and
+        // a later switch to Translations completes it through the page's
+        // deferred-completion funnel.
+        val allowDefer = prefs.overlayModeFor(OverlaySurface.CAPTURE) != OverlayMode.TRANSLATION
         _currentCaptureSession.value =
-            if (displayId != null) svc.captureOnce(displayId, allowDeferTranslation = true)
-            else svc.captureOnce(allowDeferTranslation = true)
+            if (displayId != null) svc.captureOnce(displayId, allowDeferTranslation = allowDefer)
+            else svc.captureOnce(allowDeferTranslation = allowDefer)
     }
 
     // ── Accessibility service flow ─────────────────────────────────────────

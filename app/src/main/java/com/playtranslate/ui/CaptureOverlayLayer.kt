@@ -78,9 +78,8 @@ internal class CaptureOverlayLayer(
     private var chipsView: TranslationOverlayView? = null
     private var buildJob: Job? = null
 
-    /** The modes this layer can paint today. */
-    val supportedModes: Set<OverlayMode> =
-        setOf(OverlayMode.TRANSLATION, OverlayMode.FURIGANA, OverlayMode.NONE)
+    /** The modes this layer can paint today ([SUPPORTED_MODES]). */
+    val supportedModes: Set<OverlayMode> get() = SUPPORTED_MODES
 
     /** Whether [mode] has something to build from in [data]: chips for
      *  Translation, groups for the reading hint, never for None. True before
@@ -214,5 +213,10 @@ internal class CaptureOverlayLayer(
     companion object {
         private const val TAG = "CaptureOverlayLayer"
         const val FADE_MS = 150L
+
+        /** The modes the layer paints; a host offers no segment outside it.
+         *  Definitions joins with its word-lookup session. */
+        val SUPPORTED_MODES: Set<OverlayMode> =
+            setOf(OverlayMode.TRANSLATION, OverlayMode.FURIGANA, OverlayMode.NONE)
     }
 }

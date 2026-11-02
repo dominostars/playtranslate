@@ -650,6 +650,10 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
 data class OnScreenBoxes(
     val data: OneShotOverlayData,
     val displayId: Int,
+    /** The language the capture was read in, for the presentations built
+     *  from its groups (the reading hint); null falls back to the source
+     *  language setting. */
+    val sourceLangId: com.playtranslate.language.SourceLangId? = null,
 )
 
 sealed class ResultState {

@@ -34,6 +34,7 @@ import com.playtranslate.overlay.OverlayEnvironment
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlay.OverlayPlacement
 import com.playtranslate.ui.CaptureOverlaySettingsActivity
+import com.playtranslate.ui.CaptureOverlayWindow
 import com.playtranslate.ui.DimController
 import com.playtranslate.ui.DragLookupController
 import com.playtranslate.ui.FloatingIconMenu
@@ -203,7 +204,7 @@ class OverlayUiController(
             if (tapLookup?.displayId == displayId) closeTapToLookup(resumeLive = true)
             // The in-app boxes' window dies with its display; drop our handle
             // (and notify the app's toggle) rather than holding a zombie.
-            if (displayId == appBoxesDisplayId) hideAppBoxes()
+            if (displayId == captureWindowDisplayId) dismissCapturePresentation()
             reconcileFloatingIcons()
         }
         override fun onDisplayChanged(displayId: Int) {
@@ -226,7 +227,7 @@ class OverlayUiController(
                 // rebuilds the group at the new dimensions.
                 dropResizedTranslationOverlay(displayId)
                 // Same stale-mapping rule for the in-app result's on-screen boxes.
-                dropReconfiguredAppBoxes(displayId)
+                dropReconfiguredCaptureWindow(displayId)
             }
             // Every window still up on the display follows it: the host
             // re-pins the full-screen ones and lays out every placed one (the
@@ -1009,173 +1010,157 @@ class OverlayUiController(
         }
     }
 
-    // ── In-app result "show on screen" boxes (dual-screen) ───────────────
+    // ── The capture's presentation on the game display (dual-screen) ──────
 
-    /** The in-app results page's one-shot boxes: on a dual-screen device the
-     *  result panel lives in MainActivity, so — unlike the single-screen
-     *  capture panel, which hosts its boxes as its own bottom-most child —
-     *  these need a standalone full-screen window over the captured game
-     *  display. Deliberately NOT in [translationOverlayHandles]: live cycles
-     *  must never adopt or replace this window, and its teardown must notify
-     *  the app so the header toggle can unselect. */
-    private var appBoxesView: TranslationOverlayView? = null
-    private var appBoxesDisplayId = -1
+    /** The capture's presentation when the app's results page is the panel:
+     *  on a dual-screen device the result lives in MainActivity, so, unlike
+     *  the single-screen sheet, which hosts its boxes as its own child, the
+     *  game display gets a window of its own ([CaptureOverlayWindow]: the
+     *  layer and the mode pill). Deliberately NOT in
+     *  [translationOverlayHandles]: live cycles must never adopt or replace
+     *  it, and its teardown must notify the app so its row refreshes. */
+    private var captureWindow: CaptureOverlayWindow? = null
+    private var captureWindowDisplayId = -1
 
     /** The showing window's dismissed-notification, invoked exactly once at
-     *  the OWNERSHIP transition — [hideAppBoxes] disowns-and-notifies
-     *  synchronously; the view's detach listener is only a backstop for
-     *  removal paths that bypass it (the [OverlayHost.removeAll] sweep,
+     *  the OWNERSHIP transition: [dismissCapturePresentation] disowns and
+     *  notifies synchronously; the view's detach listener is only a backstop
+     *  for removal paths that bypass it (the [OverlayHost.removeAll] sweep,
      *  display death). Keyed to ownership, not view lifetime, because
      *  [OverlayHost.removeOverlayWindow]'s removeView detaches ASYNC: a
-     *  replaced/hidden window's late detach must not clear the toggle state
-     *  of a NEWER window shown in the meantime. */
-    private var appBoxesOnDismissed: (() -> Unit)? = null
+     *  replaced window's late detach must not clear the state of a NEWER
+     *  window shown in the meantime. */
+    private var captureWindowOnDismissed: (() -> Unit)? = null
 
-    /** Whether the in-app boxes window is currently owned (shown). THE truth
-     *  the in-app header toggle renders from — the fragment derives its
-     *  selected state from this query instead of mirroring it through the
-     *  onDismissed notifications, so a late/missing/duplicate notification
-     *  can only delay a refresh, never render a wrong state. Flips
-     *  synchronously with ownership: set before [showAppBoxes] returns,
-     *  cleared at the top of [hideAppBoxes] (not at the async detach). */
-    val appBoxesShowing: Boolean
-        get() = appBoxesView != null
+    /** Whether the capture's window is owned (shown): THE truth the results
+     *  page renders from, never a mirror. Flips synchronously with
+     *  ownership: set before [presentCapture] returns, cleared at the top of
+     *  [dismissCapturePresentation] (not at the async detach). */
+    val capturePresentationShowing: Boolean
+        get() = captureWindow != null
+
+    /** The mode the showing window paints in; null with none. */
+    val capturePresentationMode: OverlayMode?
+        get() = captureWindow?.mode
 
     /**
-     * Paint a one-shot result's boxes over [displayId] for the in-app results
-     * page. The window is touchable — a tap anywhere on it dismisses (the
-     * boxes are an ephemeral presentation, and touchable windows are exempt
-     * from the MediaProjection QTI visual clamp). Registered through
-     * [overlayHost], so clean captures blank it like every other overlay.
-     *
-     * [onDismissed] fires exactly once, when the controller disowns THIS
-     * window — any path: the tap, [hideAppBoxes], a display change,
-     * [hideAll]'s sweep — so the caller's toggle state can track paint
-     * reality. Deliberate teardowns notify synchronously; only ownership-
-     * bypassing removals notify from the (async) detach backstop.
-     *
-     * Returns false when the surface can't be claimed (live mode owns the
-     * game screen, display gone, addView failure); the caller must treat
-     * that as "not shown".
+     * Present a capture's [data] (read in [sourceLangId]) over [displayId]
+     * for the app's results page, in the capture's overlay mode. Nothing is
+     * created in None, and nothing when the mode has nothing to draw from the
+     * data (translations whose every box came back blank). The game screen
+     * is the capture's now: a running auto-translate stops first, as a
+     * capture stops it; the paint is never refused for it and no pref is
+     * written. [onDismissed] fires once when the window goes, by any path.
+     * False = not shown.
      */
-    fun showAppBoxes(
+    fun presentCapture(
         displayId: Int,
         data: OneShotOverlayData,
+        sourceLangId: SourceLangId?,
         onDismissed: () -> Unit,
     ): Boolean {
-        hideAppBoxes()
-        if (CaptureService.instance?.isLive == true) return false
-        // Data whose every translation came back blank keeps its groups but
-        // has no chip to paint: a touchable window with nothing in it would
-        // only eat the game's next tap.
-        if (!data.hasChips) return false
+        dismissCapturePresentation()
+        val prefs = Prefs(context)
+        val mode = prefs.overlayModeFor(OverlaySurface.CAPTURE)
+        if (mode == OverlayMode.NONE) return false
+        CaptureService.instance?.let { svc ->
+            if (svc.isLive || svc.isLiveStartPending) svc.stopLive()
+        }
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val display = dm.getDisplay(displayId) ?: return false
         val displayCtx = context.createDisplayContext(display)
         val wm = OwnWindows.manager(displayCtx) ?: return false
-        val view = TranslationOverlayView(
-            android.view.ContextThemeWrapper(displayCtx, android.R.style.Theme_DeviceDefault),
-            oneShot = true,
-            renderConfig = OverlayRenderConfig.from(Prefs(context)),
-            onDismiss = { hideAppBoxes() },
-        ).apply {
-            setBoxes(
-                data.boxes, data.cropLeft, data.cropTop, data.screenshotW, data.screenshotH,
-                growthLimits = data.growthLimits,
-            )
+        val window = CaptureOverlayWindow(
+            displayCtx, scope, prefs,
+            onDismissRequested = { dismissCapturePresentation() },
+            onNothingToShow = { dismissCapturePresentation() },
+            onModePicked = { setCaptureMode(it) },
+        )
+        window.bind(data, sourceLangId, mode)
+        if (window.showsNothing) {
+            window.release()
+            return false
         }
-        // Backstop notification for removal paths that bypass hideAppBoxes
-        // (the overlayHost.removeAll sweep, display death): if this view still
-        // OWNS the slot when it detaches, no deliberate teardown ran — disown
-        // and notify here. The identity guard is load-bearing: removeView
-        // detaches async, so a replaced/hidden window's late detach lands
-        // after a newer window may already own the slot, and firing
-        // unconditionally would clear the NEW window's toggle state while its
-        // touchable overlay still blocks the game. Every deliberate teardown
-        // instead notifies synchronously in hideAppBoxes, which nulls the
-        // field first — so this guard also prevents a double fire.
-        view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+        // Backstop notification for removal paths that bypass
+        // dismissCapturePresentation (the overlayHost.removeAll sweep, display
+        // death): if this window still OWNS the slot when it detaches, no
+        // deliberate teardown ran, so disown and notify here. The identity
+        // guard is load-bearing: removeView detaches async, so a replaced
+        // window's late detach lands after a newer window may already own
+        // the slot, and firing unconditionally would clear the NEW window's
+        // state while its touchable overlay still blocks the game.
+        window.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {}
             override fun onViewDetachedFromWindow(v: View) {
-                if (appBoxesView === view) {
-                    appBoxesView = null
-                    appBoxesDisplayId = -1
-                    appBoxesOnDismissed = null
+                if (captureWindow === window) {
+                    captureWindow = null
+                    captureWindowDisplayId = -1
+                    captureWindowOnDismissed = null
+                    window.release()
                     onDismissed()
                 }
             }
         })
         val params = buildOverlayLayoutParams(touchable = true, windowAlpha = 1.0f)
-        if (!overlayHost.addOverlayWindow(view, wm, params, displayId, OverlayPlacement.CaptureSpace)) return false
-        appBoxesView = view
-        appBoxesDisplayId = displayId
-        appBoxesOnDismissed = onDismissed
+        if (!overlayHost.addOverlayWindow(window, wm, params, displayId, OverlayPlacement.CaptureSpace)) {
+            window.release()
+            return false
+        }
+        captureWindow = window
+        captureWindowDisplayId = displayId
+        captureWindowOnDismissed = onDismissed
         // Keep the floating icon's tap target above the touchable window,
         // matching the one-shot cell in showTranslationOverlay.
         bringFloatingIconsToFront(displayId)
         return true
     }
 
-    /** Swap the app boxes in place: the skeleton → translated promotion when
-     *  a Done lands while they're up. No-op when they aren't. The view's
-     *  render config is fixed at construction, so a render setting changed
-     *  since they went up replaces the window through [showAppBoxes]. The old
-     *  one is disowned silently first (not [hideAppBoxes], whose onDismissed
-     *  would flip the caller's toggle off for boxes that stay up); the
-     *  callback carries over, and fires only if the new window can't show. */
-    fun updateAppBoxes(data: OneShotOverlayData) {
-        val view = appBoxesView ?: return
-        // Every translation came back blank: nothing left to paint, and a
-        // touchable window with nothing in it would only eat the game's tap.
-        if (!data.hasChips) {
-            hideAppBoxes()
-            return
-        }
-        if (view.renderConfig == OverlayRenderConfig.from(Prefs(context))) {
-            view.setBoxes(
-                data.boxes, data.cropLeft, data.cropTop, data.screenshotW, data.screenshotH,
-                growthLimits = data.growthLimits,
-            )
-            return
-        }
-        val displayId = appBoxesDisplayId
-        val onDismissed = appBoxesOnDismissed ?: {}
-        // Nulled before the removal, so the old view's detach backstop (its
-        // identity guard) stays silent.
-        appBoxesView = null
-        appBoxesDisplayId = -1
-        appBoxesOnDismissed = null
-        overlayHost.removeOverlayWindow(view)
-        if (!showAppBoxes(displayId, data, onDismissed)) onDismissed()
+    /** More of the same capture translated: the window fills in place (the
+     *  layer replaces its view itself when a render setting changed). A fill
+     *  that leaves nothing to draw takes the window down. No-op with none. */
+    fun updateCapture(data: OneShotOverlayData) {
+        val window = captureWindow ?: return
+        window.update(data)
+        if (window.showsNothing) dismissCapturePresentation()
     }
 
-    /** Tear the app boxes down. Idempotent. Disowns the window and fires its
-     *  onDismissed SYNCHRONOUSLY — not from the async detach — so the
-     *  caller's toggle state updates before any subsequent show can race the
-     *  old window's removeView (see [appBoxesOnDismissed]). */
-    fun hideAppBoxes() {
-        val view = appBoxesView ?: return
-        val onDismissed = appBoxesOnDismissed
-        appBoxesView = null
-        appBoxesDisplayId = -1
-        appBoxesOnDismissed = null
-        overlayHost.removeOverlayWindow(view)
+    /** The results page's row or the window's pill picked [mode]: the pref
+     *  is written and a showing window re-flavors in place; a mode with
+     *  nothing to draw (None by definition) takes it down. With no window up
+     *  only the pref moves; the page presents its own data next. */
+    fun setCaptureMode(mode: OverlayMode) {
+        Prefs(context).captureOverlayMode = mode
+        val window = captureWindow ?: return
+        window.setMode(mode)
+        if (window.showsNothing) dismissCapturePresentation()
+    }
+
+    /** Take the capture's window down. Idempotent. Disowns the window and
+     *  fires its onDismissed SYNCHRONOUSLY, not from the async detach, so the
+     *  page's state updates before any subsequent present can race the old
+     *  window's removeView (see [captureWindowOnDismissed]). */
+    fun dismissCapturePresentation() {
+        val window = captureWindow ?: return
+        val onDismissed = captureWindowOnDismissed
+        captureWindow = null
+        captureWindowDisplayId = -1
+        captureWindowOnDismissed = null
+        window.release()
+        overlayHost.removeOverlayWindow(window)
         onDismissed?.invoke()
     }
 
-    /** Drop the app boxes when their display's geometry changed — same
-     *  rationale as [dropResizedTranslationOverlay]: the view's cached
-     *  dimensions drive the OCR→screen mapping, so a stale size mispositions
-     *  every box. Unlike the live overlay there's no cycle to rebuild them,
-     *  so they just dismiss (the result they belong to was captured against
-     *  the old geometry anyway). */
-    private fun dropReconfiguredAppBoxes(displayId: Int) {
-        if (displayId != appBoxesDisplayId) return
-        val view = appBoxesView ?: return
+    /** Drop the capture's window when its display's geometry changed: same
+     *  rationale as [dropResizedTranslationOverlay], the layer's view maps
+     *  OCR to screen by its own size, so a stale size mispositions every
+     *  box. There is no cycle to rebuild it, so it just dismisses. */
+    private fun dropReconfiguredCaptureWindow(displayId: Int) {
+        if (displayId != captureWindowDisplayId) return
+        val window = captureWindow ?: return
         val display = (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
-            ?.getDisplay(displayId) ?: run { hideAppBoxes(); return }
+            ?.getDisplay(displayId) ?: run { dismissCapturePresentation(); return }
         val size = getDisplaySize(display)
-        if (size.x != view.width || size.y != view.height) hideAppBoxes()
+        if (size.x != window.width || size.y != window.height) dismissCapturePresentation()
     }
 
     /** Remove specific boxes from the overlay on [displayId] without
@@ -1974,7 +1959,7 @@ class OverlayUiController(
         // The icon tap is a button press — the in-app boxes' dismissal
         // contract (any interaction dismisses the ephemeral presentation),
         // and the menu would sit over them anyway.
-        hideAppBoxes()
+        dismissCapturePresentation()
 
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
         menu.hintModeLabel = hintModeLabelFor(prefs.overlayMode, hintKind)
@@ -2678,7 +2663,7 @@ class OverlayUiController(
         dismissAllDragLookupPopups()
         dismissFloatingMenu()
         dismissCaptureResultOverlay()
-        hideAppBoxes()
+        dismissCapturePresentation()
         session.pause.begin()
         tapLookup = session
         session.start()
@@ -3247,7 +3232,7 @@ class OverlayUiController(
         dismissCaptureResultOverlay()
         dismissWorkspace()
         hideTranslationOverlay()
-        hideAppBoxes()
+        dismissCapturePresentation()
         regionController.hideAll()
         dismissFloatingMenu()
         hideFloatingIcon("hideAll", endsCapture = true)

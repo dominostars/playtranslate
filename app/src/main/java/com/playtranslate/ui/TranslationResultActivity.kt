@@ -334,6 +334,12 @@ class TranslationResultActivity :
     override fun showResultBoxesOnScreen(boxes: OnScreenBoxes) {}
     override fun updateResultBoxesOnScreen(boxes: OnScreenBoxes) {}
     override fun hideResultBoxesOnScreen() {}
+    // One screen: this page is the panel and nothing paints over the game,
+    // so a pick on the row (never shown here) could only move the pref.
+    override fun captureModeOnScreen(): com.playtranslate.OverlayMode? = null
+    override fun setCaptureModeOnScreen(mode: com.playtranslate.OverlayMode) {
+        Prefs(this).captureOverlayMode = mode
+    }
     override fun liveShowOnScreenState(): Boolean? = null
     override fun isLiveModeRunning() = false
     override fun setLiveShowOnScreen(on: Boolean) {}

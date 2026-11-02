@@ -12,6 +12,7 @@ import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.Prefs
+import com.playtranslate.OverlayMode
 import com.playtranslate.R
 import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.TranslationResult
@@ -147,6 +148,10 @@ class TranslationResultContent(
         /** The bound Ready result carries a deferred translation and a
          *  consumer needs it now — see [requestDeferredCompletion]. */
         fun completeDeferredTranslation() {}
+
+        /** The capture-mode row's pick (two screens; the host decides what
+         *  it does to boxes on the game display). */
+        fun onCaptureModePicked(mode: OverlayMode) {}
     }
 
     val scrollView: ScrollView = root.findViewById(R.id.resultsContent)
@@ -408,6 +413,37 @@ class TranslationResultContent(
         if (currentReady()?.pendingTranslation == null) return
         if (prefs.hideTranslationSection && !force) return
         host.completeDeferredTranslation()
+    }
+
+    // ── The capture-mode row (two screens) ──────────────────────────────
+
+    private val captureModeRow: android.widget.FrameLayout = root.findViewById(R.id.captureModeRow)
+    private var captureModeRowKey: Triple<List<Pair<String, OverlayMode>>, OverlayMode, Boolean>? = null
+
+    /** The capture-mode row over the result area: [options] with [selected]
+     *  marked, or hidden. It overlays the top of the root, so the status and
+     *  result areas take a matching top margin while it shows and nothing
+     *  draws beneath it. Rebuilt only on a change, so every refresh may call
+     *  it without cutting a segment's slide short. */
+    fun setCaptureModeRow(options: List<Pair<String, OverlayMode>>, selected: OverlayMode, visible: Boolean) {
+        val key = Triple(options, selected, visible)
+        if (key == captureModeRowKey) return
+        captureModeRowKey = key
+        captureModeRow.visibility = if (visible) View.VISIBLE else View.GONE
+        val inset = if (visible) ctx.resources.getDimensionPixelSize(R.dimen.pt_row_min_height) else 0
+        for (v in listOf(statusContainer, scrollView)) {
+            (v.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.let { lp ->
+                if (lp.topMargin != inset) {
+                    lp.topMargin = inset
+                    v.layoutParams = lp
+                }
+            }
+        }
+        if (visible && options.isNotEmpty()) {
+            buildPillToggle(captureModeRow, options, selected) { host.onCaptureModePicked(it) }
+        } else {
+            captureModeRow.removeAllViews()
+        }
     }
 
     /** Shared status / error / idle layout — single status container,
