@@ -1065,6 +1065,10 @@ class OverlayUiController(
     ): Boolean {
         hideAppBoxes()
         if (CaptureService.instance?.isLive == true) return false
+        // Data whose every translation came back blank keeps its groups but
+        // has no chip to paint: a touchable window with nothing in it would
+        // only eat the game's next tap.
+        if (!data.hasChips) return false
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val display = dm.getDisplay(displayId) ?: return false
         val displayCtx = context.createDisplayContext(display)
@@ -1121,6 +1125,12 @@ class OverlayUiController(
      *  callback carries over, and fires only if the new window can't show. */
     fun updateAppBoxes(data: OneShotOverlayData) {
         val view = appBoxesView ?: return
+        // Every translation came back blank: nothing left to paint, and a
+        // touchable window with nothing in it would only eat the game's tap.
+        if (!data.hasChips) {
+            hideAppBoxes()
+            return
+        }
         if (view.renderConfig == OverlayRenderConfig.from(Prefs(context))) {
             view.setBoxes(
                 data.boxes, data.cropLeft, data.cropTop, data.screenshotW, data.screenshotH,
@@ -2949,15 +2959,21 @@ class OverlayUiController(
             // the service scope and recycles it itself.
             // Defer the translation only while the capture's overlay is not
             // Translations: with translated chips intended, they must go up
-            // with the result. (The panel's funnel completes a deferred
-            // result if the user switches to Translations later.) Posture
-            // needs no term here: effectiveStartPosture drops a collapsed
-            // posture when nothing is painted, so "collapsed sliver waiting
-            // on a deferred translation" can't happen.
-            val allowDefer = Prefs(context).overlayModeFor(OverlaySurface.CAPTURE) != OverlayMode.TRANSLATION
+            // with the result. Such a capture that opens parked defers even
+            // with the translation section visible: nothing shows the
+            // translation until the panel comes up, and the panel's funnel
+            // completes it then, or when the user switches to Translations.
+            val captureMode = Prefs(context).overlayModeFor(OverlaySurface.CAPTURE)
+            val allowDefer = captureMode != OverlayMode.TRANSLATION
+            val deferWhileParked = allowDefer && overlay.willOpenParked()
             val session = if (frame != null)
-                svc.processScreenshot(frame, displayId, allowDeferTranslation = allowDefer)
-                else svc.captureOnce(displayId, allowDeferTranslation = allowDefer)
+                svc.processScreenshot(
+                    frame, displayId,
+                    allowDeferTranslation = allowDefer, deferWhileParked = deferWhileParked,
+                )
+                else svc.captureOnce(
+                    displayId, allowDeferTranslation = allowDefer, deferWhileParked = deferWhileParked,
+                )
             overlay.observe(session)
         }
     }

@@ -123,7 +123,17 @@ data class OneShotOverlayData(
      *  the boxes' crop coordinates, so growth stays clear of text whose box
      *  was dropped (a blank translation, [fillOneShotOverlayData]). */
     val text: List<android.graphics.Rect>,
+    /** The OCR groups the capture read, with their lines, in the boxes' crop
+     *  coordinates: what the furigana and word-box presentations are built
+     *  from, so a capture re-flavors in place without a second read. Empty
+     *  only for data built without a read (the stash re-show, tests). */
+    val groups: List<OcrManager.OcrGroup> = emptyList(),
 ) {
+    /** Whether the translation presentation has anything to paint: boxes,
+     *  as skeletons or with text. False once a final fill dropped every box
+     *  as blank, while [groups] still serve the other presentations. */
+    val hasChips: Boolean get() = boxes.isNotEmpty()
+
     /** Growth limits for painting these boxes: the capture region, in the
      *  boxes' own crop coordinates, and clear of the read text no box covers. */
     val growthLimits: com.playtranslate.ui.GrowthLimits
@@ -134,11 +144,14 @@ data class OneShotOverlayData(
 }
 
 /** Zip per-group translated [texts] into [skeleton]'s index-aligned boxes and
- *  drop the ones that came back blank. Null when nothing survives (null/absent
- *  skeleton, count mismatch, every translation blank) — callers then keep/clear
- *  their presentation rather than paint empty boxes. Shared by the capture
- *  pipeline (translations arrive with the cycle) and the deferred-translation
- *  completion (translations arrive when the user reveals the section). */
+ *  drop the ones that came back blank. Null only when the fill cannot be made
+ *  (null/absent skeleton, count mismatch); when every translation is blank the
+ *  data survives with no boxes ([OneShotOverlayData.hasChips] false), since
+ *  its groups still serve the furigana and word-box presentations. Callers
+ *  paint nothing for empty boxes rather than empty boxes. Shared by the
+ *  capture pipeline (translations arrive with the cycle) and the
+ *  deferred-translation completion (translations arrive when the user
+ *  reveals the section). */
 internal fun fillOneShotOverlayData(
     skeleton: OneShotOverlayData?,
     texts: List<String>,
@@ -147,7 +160,6 @@ internal fun fillOneShotOverlayData(
     val filled = skeleton.boxes.mapIndexed { idx, box ->
         box.copy(translatedText = texts[idx])
     }.filter { it.translatedText.isNotBlank() }
-    if (filled.isEmpty()) return null
     return skeleton.copy(boxes = filled)
 }
 
@@ -251,6 +263,31 @@ sealed class CaptureState {
  *  only that scoping keeps it from passing for a box fill of the first. */
 internal fun CaptureState.Translating.fillsBoxesOf(previous: CaptureState?): Boolean =
     previous is CaptureState.Translating && previous.copy(overlayData = null) == copy(overlayData = null)
+
+/** Whether a capture skips machine translation for now: the caller opted in
+ *  ([allowDefer]) and no consumer needs it yet, because the translation
+ *  section is hidden ([sectionHidden]) or the caller's panel opens parked
+ *  with nothing but boxes of another kind on screen ([deferWhileParked]);
+ *  never on a same-language pair ([samePair]), whose translation is free.
+ *  Pure, so the cells are unit-tested without the pipeline. */
+internal fun shouldDeferTranslation(
+    allowDefer: Boolean,
+    sectionHidden: Boolean,
+    deferWhileParked: Boolean,
+    samePair: Boolean,
+): Boolean = allowDefer && (sectionHidden || deferWhileParked) && !samePair
+
+/** Whether a deferred translation must run now: a consumer needs it. The
+ *  panel shows it once the translation section is visible and the sheet is
+ *  out of its park ([parked] false), and the translation chips need it
+ *  whenever they are the overlay ([mode] Translation), skeletons otherwise
+ *  pulsing forever. The other modes paint without it, so a parked sheet in
+ *  them, or a hidden section, waits. Pure, for the cells. */
+internal fun deferredCompletionNeeded(
+    sectionHidden: Boolean,
+    parked: Boolean,
+    mode: OverlayMode,
+): Boolean = (!sectionHidden && !parked) || mode == OverlayMode.TRANSLATION
 
 /** Layer D of the cancellation contract (see [CaptureService]): the state to
  *  write when a one-shot job completes with [completionCause] while [current] is

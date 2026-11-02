@@ -13,7 +13,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.playtranslate.OcrTokenScope
 import com.playtranslate.OneShotOverlayData
+import com.playtranslate.OverlayMode
+import com.playtranslate.OverlaySurface
 import com.playtranslate.Prefs
+import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.R
 import com.playtranslate.camera.CameraCoordinates
 import com.playtranslate.camera.CameraRegionUi
@@ -134,11 +137,22 @@ class ImageReviewController(
             }
         },
         presentationPrefs = object : CaptureResultOverlay.PresentationPrefs {
-            override var boxesEnabled: Boolean
-                get() = prefs.importBoxesEnabled
+            // The import tool keeps its boxes switch beside its flavor, as the
+            // camera does: None is the switch off, a flavor pick turns it on.
+            override var overlayMode: OverlayMode
+                get() = if (prefs.importBoxesEnabled) prefs.overlayModeFor(OverlaySurface.IMPORT) else OverlayMode.NONE
                 set(value) {
-                    prefs.importBoxesEnabled = value
+                    if (value == OverlayMode.NONE) {
+                        prefs.importBoxesEnabled = false
+                    } else {
+                        prefs.importBoxesEnabled = true
+                        prefs.importOverlayMode = value
+                    }
                 }
+            override val offeredOverlayModes: List<OverlayMode>
+                get() = OverlayMode.offered(
+                    OverlaySurface.IMPORT, SourceLanguageProfiles[prefs.sourceLangId].hintTextKind,
+                ) + OverlayMode.NONE
             override var startPosture: Float
                 get() = prefs.importPanelPosture
                 set(value) {

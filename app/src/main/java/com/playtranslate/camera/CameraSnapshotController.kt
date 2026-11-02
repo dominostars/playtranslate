@@ -13,7 +13,10 @@ import androidx.core.view.isVisible
 import com.playtranslate.CaptureSession
 import com.playtranslate.OcrTokenScope
 import com.playtranslate.OneShotOverlayData
+import com.playtranslate.OverlayMode
+import com.playtranslate.OverlaySurface
 import com.playtranslate.Prefs
+import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.R
 import com.playtranslate.ui.CaptureResultOverlay
 
@@ -141,11 +144,23 @@ class CameraSnapshotController(
             }
         },
         presentationPrefs = object : CaptureResultOverlay.PresentationPrefs {
-            override var boxesEnabled: Boolean
-                get() = prefs.cameraBoxesEnabled
+            // The camera keeps its boxes switch beside its flavor: the live
+            // preview paints the flavor whatever the review's switch says, so
+            // None is the switch off, and a flavor pick turns it on.
+            override var overlayMode: OverlayMode
+                get() = if (prefs.cameraBoxesEnabled) prefs.overlayModeFor(OverlaySurface.CAMERA) else OverlayMode.NONE
                 set(value) {
-                    prefs.cameraBoxesEnabled = value
+                    if (value == OverlayMode.NONE) {
+                        prefs.cameraBoxesEnabled = false
+                    } else {
+                        prefs.cameraBoxesEnabled = true
+                        prefs.cameraOverlayMode = value
+                    }
                 }
+            override val offeredOverlayModes: List<OverlayMode>
+                get() = OverlayMode.offered(
+                    OverlaySurface.CAMERA, SourceLanguageProfiles[prefs.sourceLangId].hintTextKind,
+                ) + OverlayMode.NONE
             override var startPosture: Float
                 get() = prefs.cameraPanelPosture
                 set(value) {

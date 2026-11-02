@@ -3,6 +3,7 @@ package com.playtranslate
 import android.graphics.Rect
 import com.playtranslate.ui.TextBox
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -46,7 +47,17 @@ class OneShotOverlayDataGrowthTest {
     }
 
     @Test
-    fun everyTranslationBlank_isNull() {
-        assertNull(fillOneShotOverlayData(skeleton(), listOf("", " ", "")))
+    fun everyTranslationBlank_keepsTheDataWithoutChips() {
+        val filled = fillOneShotOverlayData(skeleton(), listOf("", " ", ""))!!
+        assertTrue(filled.boxes.isEmpty())
+        assertFalse(filled.hasChips)
+        // Every group is text to keep clear of, since no box covers it.
+        assertEquals(drawn.map { Rect(it) }, filled.growthLimits.avoid)
+    }
+
+    @Test
+    fun aFillThatCannotBeMade_isNull() {
+        assertNull(fillOneShotOverlayData(null, listOf("one")))
+        assertNull(fillOneShotOverlayData(skeleton(), listOf("one", "two")))
     }
 }

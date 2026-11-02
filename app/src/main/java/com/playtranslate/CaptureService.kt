@@ -902,16 +902,22 @@ class CaptureService : Service() {
      *  [allowDeferTranslation] is a per-call-site opt-in for the deferred
      *  path (skip MT while the translation section is hidden — see
      *  [PendingTranslation]); a surface that will paint translated boxes
-     *  immediately must not opt in. */
+     *  immediately must not opt in. [deferWhileParked] widens the opt-in to a
+     *  capture whose panel opens parked with the section visible: nothing
+     *  shows the translation until the panel comes up, so MT waits for that
+     *  (the sheet's deferred-completion funnel runs it). */
     fun captureOnce(
         displayId: Int = primaryGameDisplayId(),
         allowDeferTranslation: Boolean = false,
+        deferWhileParked: Boolean = false,
     ): CaptureSession {
         oneShotCaptureJob?.cancel()
         val state = MutableStateFlow<CaptureState>(
             CaptureState.InProgress(getString(R.string.status_capturing))
         )
-        val job = serviceScope.launch { runCaptureCycle(displayId, state, allowDeferTranslation) }
+        val job = serviceScope.launch {
+            runCaptureCycle(displayId, state, allowDeferTranslation, deferWhileParked)
+        }
         attachCancellationTerminal(job, state)
         oneShotCaptureJob = job
         return CaptureSession(state.asStateFlow(), job)
@@ -943,6 +949,7 @@ class CaptureService : Service() {
         sourceLangIdOverride: SourceLangId? = null,
         allowDeferTranslation: Boolean = false,
         deviceOnly: Boolean = false,
+        deferWhileParked: Boolean = false,
     ): CaptureSession {
         oneShotCaptureJob?.cancel()
         val state = MutableStateFlow<CaptureState>(
@@ -951,6 +958,7 @@ class CaptureService : Service() {
         val job = serviceScope.launch {
             runProcessCycle(
                 frame, displayId, state, regionOverride, sourceLangIdOverride, allowDeferTranslation, deviceOnly,
+                deferWhileParked,
             )
         }
         attachCancellationTerminal(job, state)
@@ -1040,6 +1048,7 @@ class CaptureService : Service() {
         sourceLangIdOverride: SourceLangId? = null,
         allowDeferTranslation: Boolean = false,
         deviceOnly: Boolean = false,
+        deferWhileParked: Boolean = false,
     ) {
         state.value = CaptureState.InProgress(getString(R.string.status_capturing))
         // Source language + region come from current settings for a fresh capture,
@@ -1062,6 +1071,7 @@ class CaptureService : Service() {
             isReOcr = isReOcr,
             deviceOnly = deviceOnly,
             allowDeferTranslation = allowDeferTranslation,
+            deferWhileParked = deferWhileParked,
             onOcrStart = { state.value = CaptureState.InProgress(getString(R.string.status_ocr)) },
             onOcrReady = { originalText, segments, ocrProvenance, overlayData ->
                 state.value =
@@ -3335,6 +3345,7 @@ class CaptureService : Service() {
         isReOcr: Boolean,
         deviceOnly: Boolean,
         allowDeferTranslation: Boolean,
+        deferWhileParked: Boolean,
         onOcrStart: (() -> Unit)?,
         onOcrReady: ((
             originalText: String,
@@ -3444,8 +3455,9 @@ class CaptureService : Service() {
             // A same-language pair takes nothing from the reader: its
             // translations are never awaited (the finally cancels them).
             val reader = readerTranslations.takeIf { recordSrc != recordTgt }
-            // Deferred path: the translation section is hidden and the caller
-            // opted in, so no consumer needs MT right now — skip the backend
+            // Deferred path: the caller opted in and no consumer needs MT
+            // right now (the translation section is hidden, or the caller's
+            // panel opens parked, deferWhileParked), so skip the backend
             // batch entirely. Rows record translation-less (they attach later
             // via onCaptureTranslated) and Done carries a PendingTranslation
             // with everything the completion needs. The free source==target
@@ -3453,9 +3465,12 @@ class CaptureService : Service() {
             // (allowDeferTranslation stays false at their call sites): their
             // recording is gated off below, so a deferred re-OCR would have
             // nothing to attach its late translation to.
-            val mayDefer = allowDeferTranslation &&
-                Prefs(this@CaptureService).hideTranslationSection &&
-                recordSrc != recordTgt
+            val mayDefer = shouldDeferTranslation(
+                allowDeferTranslation,
+                sectionHidden = Prefs(this@CaptureService).hideTranslationSection,
+                deferWhileParked = deferWhileParked,
+                samePair = recordSrc == recordTgt,
+            )
             // What can be shown at once, by group, under the pair OCR ran in:
             // the reader's translations that came with its OCR (final, and
             // cached here, so a deferred completion serves them from the
@@ -3635,6 +3650,7 @@ class CaptureService : Service() {
         displayId: Int,
         state: MutableStateFlow<CaptureState>,
         allowDeferTranslation: Boolean = false,
+        deferWhileParked: Boolean = false,
     ) {
         if (!isConfigured) {
             state.value = CaptureState.Failed(NOT_CONFIGURED_MESSAGE)
@@ -3662,6 +3678,7 @@ class CaptureService : Service() {
             isReOcr = false,
             deviceOnly = false,
             allowDeferTranslation = allowDeferTranslation,
+            deferWhileParked = deferWhileParked,
             onOcrStart = null,
             // Reveal the source as soon as OCR finishes; translation lands on Done.
             onOcrReady = { originalText, segments, ocrProvenance, overlayData ->
@@ -3735,8 +3752,10 @@ class CaptureService : Service() {
      *  view renders pulsing skeleton lines for those), sampled colors, OCR bounds.
      *  One box per OCR group, index-aligned, so [partlyFillOneShotOverlayData]
      *  (as translations arrive) and [fillOneShotOverlayData] (once they are
-     *  final) can zip the per-group translations in later. Null when there are no groups or no
-     *  color reference (its allocation is best-effort — see [oneShotColorRef]). */
+     *  final) can zip the per-group translations in later. Null when there are
+     *  no groups; without a color reference (its allocation is best-effort, see
+     *  [oneShotColorRef]) the boxes take the default pair, since the groups
+     *  themselves serve the furigana and word-box presentations. */
     private fun buildOneShotOverlayData(
         ocrResult: OcrManager.OcrResult,
         colorRef: Bitmap?,
@@ -3744,8 +3763,8 @@ class CaptureService : Service() {
         screenshotW: Int, screenshotH: Int,
         cropWidth: Int, cropHeight: Int,
     ): OneShotOverlayData? {
-        if (colorRef == null || ocrResult.groups.isEmpty()) return null
-        val colors = OverlayToolkit.sampleGroupColors(
+        if (ocrResult.groups.isEmpty()) return null
+        val colors = if (colorRef == null) emptyList() else OverlayToolkit.sampleGroupColors(
             colorRef, ocrResult.groups.map { it.bounds }, cropLeft, cropTop, ONE_SHOT_COLOR_SCALE,
         )
         val boxes = ocrResult.groups.mapIndexed { idx, g ->
@@ -3762,6 +3781,7 @@ class CaptureService : Service() {
         return OneShotOverlayData(
             boxes, cropLeft, cropTop, screenshotW, screenshotH, cropWidth, cropHeight,
             text = ocrResult.groups.map { it.drawBounds },
+            groups = ocrResult.groups,
         )
     }
 

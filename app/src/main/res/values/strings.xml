@@ -2862,6 +2862,16 @@
          fits a four-segment control. -->
     <string name="overlay_mode_option_none">None</string>
 
+    <!-- Accessibility description of the capture's overlay-mode control while
+         it is collapsed to a round button showing the selected mode's icon.
+         %1$s = the selected mode's name (Translation, Furigana, Pinyin,
+         Definitions, None). A tap expands the control. -->
+    <string name="capture_overlay_pill_collapsed_cd">Overlays: <xliff:g id="mode" example="Translation">%1$s</xliff:g>. Tap to change.</string>
+
+    <!-- Accessibility description of the X that collapses the capture's
+         overlay-mode control to its round button. -->
+    <string name="capture_overlay_pill_collapse_cd">Hide overlay options</string>
+
     <!-- Subtitle on the "Hide overlays" toggle. -->
     <string name="settings_hide_overlays_during_auto_mode">Hide overlays during auto mode</string>
 
