@@ -41,7 +41,8 @@ import java.time.Duration
  * setting) the window holds key focus, a tap on a word opens its card and
  * Back closes a card before the window; tap-to-lookup over a window in
  * another mode switches it in place, and over one in Definitions takes it
- * down.
+ * down. A change of the game language takes the window down, and a capture
+ * read in a language other than the game's is never put up.
  */
 @RunWith(RobolectricTestRunner::class)
 class CapturePresentationTest {
@@ -296,6 +297,28 @@ class CapturePresentationTest {
         controller.dismissCapturePresentation()
         controller.dismissCapturePresentation()
         assertEquals("idempotent", 2, dismissals)
+    }
+
+    @Test fun `a change of the game language takes the window down once`() {
+        assertTrue(present(OverlayMode.TRANSLATION))
+
+        controller.endCapturesForLanguageChange()
+        idle()
+
+        assertFalse(controller.capturePresentationShowing)
+        assertEquals(1, dismissals)
+    }
+
+    @Test fun `a capture read in a language other than the game's is not put up`() {
+        // The page keeps a result through a change of the game language,
+        // and its row's pick presents it through here.
+        prefs.sourceLang = "en"
+        assertFalse("read in Japanese, the game's English now", present(OverlayMode.TRANSLATION))
+        assertFalse(controller.capturePresentationShowing)
+        assertEquals(0, dismissals)
+
+        prefs.sourceLang = "ja"
+        assertTrue("read in the game's language", present(OverlayMode.TRANSLATION))
     }
 
     // ── Definitions ──────────────────────────────────────────────────────

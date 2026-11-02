@@ -2336,6 +2336,9 @@ class CaptureService : Service() {
      *    stream probe) is not restarted: it goes ahead, and its first-cycle
      *    gate warms the new language's engine before the first pass
      *    ([LiveSessionFeedback.awaitFirstCycleClear]);
+     *  - every capture up on the game screen ends, giving back what it
+     *    stopped ([OverlayUiController.endCapturesForLanguageChange]): it
+     *    belongs to the language it was read in;
      *  - the new language's engine warms up in the background.
      */
     private fun onSourceLanguageChanged(prefs: Prefs, id: SourceLangId) {
@@ -2349,9 +2352,9 @@ class CaptureService : Service() {
             stopLive()
             startLive()
         }
-        // A capture's sheet stays, as for any capture. Its Definitions boxes
-        // keep the tokens of the language they were read in; a card still
-        // looks words up in the language set now.
+        // Every capture ends: after the restart above, which a session a
+        // capture stopped is not live for, so what it gives back starts once.
+        CaptureBackendResolver.activeOverlayUi?.endCapturesForLanguageChange()
         if (LanguagePackStore.isInstalled(this, id)) {
             serviceScope.launch(Dispatchers.IO) {
                 SourceLanguageEngines.preloadAndRecover(this@CaptureService, id)

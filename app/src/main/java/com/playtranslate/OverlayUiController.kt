@@ -1069,8 +1069,10 @@ class OverlayUiController(
      * for the app's results page, in the capture's overlay mode, or in
      * [modeOverride] when the capture asked for one (tap-to-lookup's
      * Definitions), which is never written to the setting. Nothing is
-     * created in None, and nothing when the mode has nothing to draw from the
-     * data (translations whose every box came back blank). The game screen
+     * created in None, nothing when the mode has nothing to draw from the
+     * data (translations whose every box came back blank), and nothing for
+     * a capture read in a language other than the game's now
+     * ([endCapturesForLanguageChange]). The game screen
      * is the capture's now: a running auto-translate stops first, as a
      * capture stops it; the paint is never refused for it and no pref is
      * written. [screenshotPath] and [capturedAtMs] are the frame the
@@ -1087,6 +1089,11 @@ class OverlayUiController(
         modeOverride: OverlayMode? = null,
         onDismissed: () -> Unit,
     ): Boolean {
+        val prefs = Prefs(context)
+        // The page keeps a result through a change of the game language,
+        // which ended its window; a pick on its row would otherwise put it
+        // back up, with cards that look its words up in the new language.
+        if (sourceLangId != null && sourceLangId != prefs.sourceLangId) return false
         dismissCapturePresentation()
         // A sheet still up from a one-screen capture (the app came to the
         // front on a second screen since): the app's page is the panel now,
@@ -1096,7 +1103,6 @@ class OverlayUiController(
             settleCapturePause(resumeLive = false)
             dismissCaptureResultOverlay()
         }
-        val prefs = Prefs(context)
         val mode = modeOverride ?: prefs.overlayModeFor(OverlaySurface.CAPTURE)
         if (mode == OverlayMode.NONE) return false
         CaptureService.instance?.let { svc ->
@@ -2542,11 +2548,11 @@ class OverlayUiController(
      *
      * The switch is the pref write: what a change of the game language
      * does to the rest of the app, a running auto-translate restarted in it
-     * included, is CaptureService's, as for every change made anywhere
-     * ([CaptureService.onSourceLanguageChanged]). A capture's sheet stays
-     * up through it, as for any capture. Returns true when the picker
-     * opened in the floating workspace, which a hold's slide into a drag
-     * closes.
+     * and a capture up on the game screen ended included, is
+     * CaptureService's, as for every change made anywhere
+     * ([CaptureService.onSourceLanguageChanged]). Returns true when the
+     * picker opened in the floating workspace, which a hold's slide into a
+     * drag closes.
      */
     private fun changeGameLanguage(display: Display): Boolean {
         val prefs = Prefs(context)
@@ -3053,6 +3059,24 @@ class OverlayUiController(
         // Any teardown invalidates a pending re-show. The stash path re-sets it
         // immediately AFTER calling this, so its own teardown doesn't lose it.
         pendingReshow = null
+    }
+
+    /**
+     * The game language changed ([CaptureService.onSourceLanguageChanged]),
+     * and a capture belongs to the language it was read in: its readings
+     * and word boxes were built in it, while a Definitions card looks its
+     * words up in the language set now. So every capture ends and settles
+     * what it owes: an auto-translate the sheet's capture stopped restarts,
+     * in the new language, as on a turn of the sheet's display (and as
+     * tap-to-lookup's boxes did on a language change); the sheet goes, and
+     * with it a capture still being set up and a sheet waiting on a page's
+     * Back to come back; the two-screen window goes too, whose result the
+     * app's page keeps and [presentCapture] does not put back up.
+     */
+    fun endCapturesForLanguageChange() {
+        settleCapturePause(resumeLive = true)
+        dismissCaptureResultOverlay()
+        dismissCapturePresentation()
     }
 
     /** Dismiss a SHOWING capture panel when its own display's geometry (size or rotation)

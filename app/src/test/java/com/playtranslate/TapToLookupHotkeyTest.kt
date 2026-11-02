@@ -35,8 +35,8 @@ import java.time.Duration
  * that writes no setting. A second press is the user's close; a press over
  * a capture in another mode switches it to Definitions in place; a plain
  * capture afterwards opens in the remembered mode; the capture hotkey
- * closes it as it closes any capture; the game-language hotkey's switch
- * leaves it up, as it leaves any capture.
+ * closes it as it closes any capture, and so does the game-language
+ * hotkey's switch, its words having been read in the old language.
  *
  * On [ChangeGameLanguageHotkeyTest]'s footing: the accessibility service is
  * created and never connected, and its floating icon is up, which is what
@@ -190,16 +190,17 @@ class TapToLookupHotkeyTest {
         assertNull(sheet())
     }
 
-    @Test fun `the game-language hotkey's switch leaves the Definitions capture up`() {
+    @Test fun `the game-language hotkey's switch closes the Definitions capture`() {
+        // Its words were read in English; a card would look them up in
+        // Spanish. Nothing was running, so nothing comes back.
         downloaded(SourceLangId.EN, SourceLangId.ES)
         press(lookupKey)
-        val opened = sheet()
-        assertNotNull(opened)
+        assertEquals(OverlayMode.DEFINITIONS, sheet()!!.overlayMode)
 
         press(languageKey)
+        settle()
 
         assertEquals(SourceLangId.ES, prefs.sourceLangId)
-        assertSame(opened, sheet())
-        assertEquals(OverlayMode.DEFINITIONS, opened!!.overlayMode)
+        assertNull(sheet())
     }
 }

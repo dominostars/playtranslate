@@ -35,7 +35,8 @@ import java.time.Duration
  * says (a page cancels it, a new capture takes it over, a live start and
  * the pill's gear and the menu settle it without a restart, capture's end
  * drops it, a hold sliding into a drag forgets it, tap-to-lookup's hold as
- * the capture's, a turn of the display gives the screen back).
+ * the capture's, a turn of the display and a change of the game language
+ * give the screen back).
  *
  * On [TapToLookupHotkeyTest]'s footing: the accessibility service is
  * created and never connected and resolved as the active backend, so its
@@ -338,5 +339,32 @@ class CapturePauseFunnelsTest {
         assertNull(panel())
         assertNull(record())
         assertTrue(liveOrStarting())
+    }
+
+    @Test fun `a change of the game language closes the sheet and gives the screen back`() {
+        running()
+        capture()
+
+        prefs.sourceLang = "es"
+        settle()
+
+        assertNull(panel())
+        assertNull(record())
+        assertTrue("auto-translate is back, or on its way", liveOrStarting())
+    }
+
+    @Test fun `a sheet waiting on a page's Back stays gone after a change of the game language`() {
+        running()
+        capture()
+        controller().stashCaptureOverlayForReshow(Display.DEFAULT_DISPLAY, result(), CaptureService.DEFAULT_REGION)
+        settle()
+
+        prefs.sourceLang = "es"
+        settle()
+        controller().onCaptureDetailBackPressed(Display.DEFAULT_DISPLAY)
+        settle()
+
+        assertNull("not re-shown", panel())
+        assertFalse("the page cancelled the restart", liveOrStarting())
     }
 }
