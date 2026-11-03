@@ -19,6 +19,7 @@ import android.graphics.Point
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.os.Build
 import android.text.InputType
 import android.text.Layout
 import android.util.TypedValue
@@ -28,6 +29,9 @@ import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewConfiguration
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
+import androidx.annotation.RequiresApi
 import android.view.ViewOutlineProvider
 import android.view.ViewTreeObserver
 import android.view.WindowManager
@@ -3556,6 +3560,45 @@ class CaptureResultOverlay(
          *  ([dismiss]) lingers this window as an invisible key sink while a
          *  press is still in flight. */
         val keyGuard = WindowKeyPairGuard()
+
+        /** The platform Back callback while attached ([registerBackCallback]). */
+        private var backCallback: Any? = null
+
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) registerBackCallback()
+        }
+
+        override fun onDetachedFromWindow() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) unregisterBackCallback()
+            super.onDetachedFromWindow()
+        }
+
+        /** Back as the platform delivers it to an app given callback-based
+         *  back (target 36 on Android 16), where the key [dispatchKeyEvent]
+         *  reads never arrives: the press does what the key does there. The
+         *  sheet takes Back while the controller nav is live, which takes it
+         *  in every state, or while it holds the keys for Definitions, and
+         *  either way runs [onControllerBack]; otherwise a press does
+         *  nothing, as the key does. The two paths are exclusive by the
+         *  platform's mode, so a press runs once. As [CaptureOverlayWindow]
+         *  does for the two-screen window. */
+        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+        private fun registerBackCallback() {
+            val dispatcher = findOnBackInvokedDispatcher() ?: return
+            val callback = OnBackInvokedCallback {
+                if (!keyGuard.isLingering && (nav != null || holdsKeysForDefinitions)) onControllerBack()
+            }
+            dispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback)
+            backCallback = callback
+        }
+
+        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+        private fun unregisterBackCallback() {
+            val callback = backCallback as? OnBackInvokedCallback ?: return
+            backCallback = null
+            findOnBackInvokedDispatcher()?.unregisterOnBackInvokedCallback(callback)
+        }
 
         /** Controller keys, live only while the window took focus at show()
          *  ([nav] non-null). Before super so nav sees keys first — its own

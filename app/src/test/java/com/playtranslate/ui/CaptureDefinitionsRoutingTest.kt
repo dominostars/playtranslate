@@ -2,9 +2,11 @@ package com.playtranslate.ui
 
 import android.content.Context
 import android.graphics.Rect
+import android.hardware.input.InputManager
 import android.os.Looper
 import android.os.SystemClock
 import android.view.Display
+import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -28,6 +30,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -35,6 +38,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowInputDevice
+import org.robolectric.util.ReflectionHelpers
 import java.time.Duration
 
 /**
@@ -515,6 +520,59 @@ class CaptureDefinitionsRoutingTest {
         key(o, KeyEvent.KEYCODE_BACK)
         idleLong()
         assertEquals(listOf(CaptureResultOverlay.DismissReason.USER), dismissals)
+    }
+
+    /** Back as the platform's callback delivers it (target 36 on Android
+     *  16), where the key never arrives. */
+    private fun systemBack(o: CaptureResultOverlay) {
+        val root: ViewGroup = o.field("root")
+        val callback: android.window.OnBackInvokedCallback = root.field("backCallback")
+        callback.onBackInvoked()
+        idle()
+    }
+
+    @Test fun `the platform's Back closes a card first, then the sheet, as the key does`() {
+        val o = create(override = OverlayMode.DEFINITIONS)
+        bind(o, top)
+        tap(o, 70f, 110f)
+        assertEquals(0, selected(o))
+
+        systemBack(o)
+        assertNull(selected(o))
+        assertTrue(dismissals.isEmpty())
+
+        systemBack(o)
+        idleLong()
+        assertEquals(listOf(CaptureResultOverlay.DismissReason.USER), dismissals)
+    }
+
+    @Test fun `the platform's Back leaves a Translations sheet without a controller to the game`() {
+        val o = create()
+        bind(o, top)
+
+        systemBack(o)
+        idleLong()
+
+        assertTrue("nothing of the sheet's to close", dismissals.isEmpty())
+    }
+
+    @Test fun `with a controller attached, the platform's Back runs the sheet's own ladder in any mode`() {
+        val pad = ShadowInputDevice.makeInputDeviceNamed("pad")
+        ReflectionHelpers.setField(pad, "mId", 42)
+        ReflectionHelpers.setField(pad, "mSources", InputDevice.SOURCE_GAMEPAD)
+        shadowOf(ctx.getSystemService(InputManager::class.java)).addInputDevice(pad)
+        val o = CaptureResultOverlay(ctx, wm, Display.DEFAULT_DISPLAY, host)
+        sheet = o
+        o.onDismiss = { dismissals += it }
+        o.controllerNavEnabled = true
+        o.show(screen.x, screen.y)
+        idleLong()
+        assertNotNull("the controller nav is live", o.field<Any?>("nav"))
+
+        systemBack(o)
+        idleLong()
+
+        assertEquals("B's rung: the sheet closes", listOf(CaptureResultOverlay.DismissReason.USER), dismissals)
     }
 
     @Test fun `a Back release whose press the sheet never saw does nothing`() {
