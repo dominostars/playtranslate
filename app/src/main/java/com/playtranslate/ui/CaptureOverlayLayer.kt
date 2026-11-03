@@ -93,7 +93,7 @@ internal class CaptureOverlayLayer(
 
     /** Something is drawn right now. */
     val hasBoxes: Boolean
-        get() = if (mode == OverlayMode.DEFINITIONS) words?.hasBoxes == true else chipsShown
+        get() = if (mode == OverlayMode.DEFINITIONS) words?.hasBoxes == true else chipsPaint != null
 
     /** A build is in flight (readings, word boxes); [hasBoxes] settles when
      *  it lands. */
@@ -119,7 +119,9 @@ internal class CaptureOverlayLayer(
     var scrimHolder: android.view.ViewGroup? = null
 
     private var chipsView: TranslationOverlayView? = null
-    private var chipsShown = false
+    /** The mode whose paint the chips view shows: Translations' chips or
+     *  the reading hint's readings; null while it is hidden. */
+    private var chipsPaint: OverlayMode? = null
     private var readingBuild: Job? = null
 
     private var wordsView: WordBoxesView? = null
@@ -254,10 +256,18 @@ internal class CaptureOverlayLayer(
         if (mode != OverlayMode.DEFINITIONS) releaseWords()
         when (mode) {
             OverlayMode.TRANSLATION ->
-                if (d != null && d.hasChips) showChips(d.boxes, d, d.growthLimits) else hideChipsView(animated = false)
-            OverlayMode.FURIGANA ->
-                if (d != null && d.groups.isNotEmpty() && src != null) buildReadings(d, src)
+                if (d != null && d.hasChips) showChips(d.boxes, d, d.growthLimits, OverlayMode.TRANSLATION)
                 else hideChipsView(animated = false)
+            OverlayMode.FURIGANA ->
+                if (d != null && d.groups.isNotEmpty() && src != null) {
+                    // The readings build off the main thread. Chips of
+                    // another paint (a switch from Translations) never show
+                    // under the reading mode meanwhile; readings already up
+                    // (the sheet binds the same capture again when its
+                    // result lands) stay until the rebuild replaces them.
+                    if (chipsPaint != OverlayMode.FURIGANA) hideChipsView(animated = false)
+                    buildReadings(d, src)
+                } else hideChipsView(animated = false)
             OverlayMode.DEFINITIONS -> {
                 hideChipsView(animated = false)
                 val host = lookupHost
@@ -284,7 +294,8 @@ internal class CaptureOverlayLayer(
             readingBuild = null
             // Readings are placed by the annotation; the minimum-text-size
             // growth skips them, so no limits apply.
-            if (boxes.isNotEmpty()) showChips(boxes, d, GrowthLimits.NONE) else hideChipsView(animated = false)
+            if (boxes.isNotEmpty()) showChips(boxes, d, GrowthLimits.NONE, OverlayMode.FURIGANA)
+            else hideChipsView(animated = false)
             onBoxesSettled?.invoke(hasBoxes)
         }
     }
@@ -294,18 +305,19 @@ internal class CaptureOverlayLayer(
         readingBuild = null
     }
 
-    private fun showChips(boxes: List<TextBox>, d: OneShotOverlayData, limits: GrowthLimits) {
+    /** Show [boxes] in the chips view as [paint]'s ([chipsPaint]). */
+    private fun showChips(boxes: List<TextBox>, d: OneShotOverlayData, limits: GrowthLimits, paint: OverlayMode) {
         val v = chipsViewFor(OverlayRenderConfig.from(prefs))
         v.animate().cancel()
         v.alpha = 1f
         v.setBoxes(boxes, d.cropLeft, d.cropTop, d.screenshotW, d.screenshotH, growthLimits = limits)
-        chipsShown = true
+        chipsPaint = paint
     }
 
     /** The chips fade (or vanish) but the view stays attached for a cheap
      *  re-show; it dies with the host. */
     private fun hideChipsView(animated: Boolean) {
-        chipsShown = false
+        chipsPaint = null
         val v = chipsView ?: return
         v.animate().cancel()
         if (animated) v.animate().alpha(0f).setDuration(FADE_MS).start() else v.alpha = 0f

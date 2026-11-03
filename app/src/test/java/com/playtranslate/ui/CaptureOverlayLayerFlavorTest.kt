@@ -30,7 +30,8 @@ import org.robolectric.Shadows.shadowOf
  * [CaptureOverlayLayer] paints a capture's data in one mode at a time:
  * translation chips at once, readings once their build lands, nothing in
  * None, and re-flavors in place from the same data. Mode × data cells, the
- * async settle, the stale build, and the render-config replacement.
+ * async settle, the stale build, and the render-config replacement. While
+ * readings build, translation chips are down and readings already up stay.
  */
 @RunWith(RobolectricTestRunner::class)
 class CaptureOverlayLayerFlavorTest {
@@ -177,6 +178,45 @@ class CaptureOverlayLayerFlavorTest {
         l.setMode(OverlayMode.TRANSLATION)
         assertTrue(l.hasBoxes)
         assertEquals("no second build for a translation paint", 1, readingCalls)
+    }
+
+    @Test fun `a switch from translations takes the chips down while the readings build`() {
+        readings = listOf(readingBox)
+        val l = layer()
+        l.bind(data("hi"), SourceLangId.JA, OverlayMode.TRANSLATION)
+        assertTrue(l.hasBoxes)
+        gate = CompletableDeferred()
+
+        l.setMode(OverlayMode.FURIGANA)
+
+        // Translations are not readings: they never show under the reading
+        // mode while it builds, and the build keeps the host's place.
+        assertFalse(l.hasBoxes)
+        assertEquals(0f, chipsView(l)!!.alpha)
+        assertTrue(l.pending)
+        gate!!.complete(Unit)
+        settle(l)
+        assertTrue(l.hasBoxes)
+        assertEquals(1f, chipsView(l)!!.alpha)
+    }
+
+    @Test fun `a re-bind in the reading mode keeps its readings up while they rebuild`() {
+        // The sheet binds the same capture again when its result lands.
+        readings = listOf(readingBox)
+        val l = layer()
+        l.bind(data(""), SourceLangId.JA, OverlayMode.FURIGANA)
+        settle(l)
+        assertTrue(l.hasBoxes)
+        gate = CompletableDeferred()
+
+        l.bind(data("hi"), SourceLangId.JA, OverlayMode.FURIGANA)
+
+        assertTrue("no blank between the two builds", l.hasBoxes)
+        assertEquals(1f, chipsView(l)!!.alpha)
+        assertTrue(l.pending)
+        gate!!.complete(Unit)
+        settle(l)
+        assertTrue(l.hasBoxes)
     }
 
     @Test fun `a fill repaints translation chips and leaves a reading build alone`() {
