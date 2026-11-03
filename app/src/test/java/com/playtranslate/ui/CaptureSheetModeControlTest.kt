@@ -277,6 +277,35 @@ class CaptureSheetModeControlTest {
         assertTrue("the skeleton chips went up", layerOf(o).hasBoxes)
     }
 
+    @Test fun `a sheet back from a page never starts parked, with no boxes to stand on`() {
+        prefs.captureOverlayMode = OverlayMode.TRANSLATION
+        prefs.capturePanelPosture = CaptureResultGeometry.COLLAPSED_POSTURE
+        val o = CaptureResultOverlay(ctx, wm, Display.DEFAULT_DISPLAY, host)
+        sheet = o
+        assertTrue("the posture alone would park it", o.willOpenParked())
+        o.showWithResult(1280, 720, result())
+        idle()
+        assertFalse(parked(o))
+        assertFalse(layerOf(o).hasBoxes)
+        assertEquals("no pill without boxes", 0, pillOf(o).childCount)
+    }
+
+    @Test fun `closing a sheet back from a page keeps a parked posture for the next capture`() {
+        prefs.captureOverlayMode = OverlayMode.TRANSLATION
+        prefs.capturePanelPosture = CaptureResultGeometry.COLLAPSED_POSTURE
+        val o = CaptureResultOverlay(ctx, wm, Display.DEFAULT_DISPLAY, host)
+        sheet = o
+        o.showWithResult(1280, 720, result())
+        idle()
+        assertFalse(parked(o))
+
+        o.dismiss()
+        idle()
+        assertEquals(CaptureResultGeometry.COLLAPSED_POSTURE, prefs.capturePanelPosture, 0f)
+        val next = CaptureResultOverlay(ctx, wm, Display.DEFAULT_DISPLAY, host)
+        assertTrue("the next capture still opens parked", next.willOpenParked())
+    }
+
     @Test fun `the pill is not offered before a result is bound`() {
         val o = open(OverlayMode.TRANSLATION)
         assertEquals(0, pillOf(o).childCount)

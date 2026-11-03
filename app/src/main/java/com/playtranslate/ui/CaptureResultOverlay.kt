@@ -478,11 +478,12 @@ class CaptureResultOverlay(
     private var userStatedPosture = false
 
     /** True while the only reason the sheet is out of its park is a tap during
-     *  a LOADING phase — a peek at progress, not a posture. [recordPosture]
-     *  keeps writing the collapsed posture through it, so watching one capture
-     *  work doesn't silently retire a collapsed default. Any real posture
-     *  gesture afterwards (drag, resize, re-park) clears it and records
-     *  normally. */
+     *  a LOADING phase (a peek at progress, not a posture), or its return
+     *  from a page without its boxes, which brings it up on its own
+     *  ([showWithResult]). [recordPosture] keeps writing the collapsed posture
+     *  through it, so watching one capture work, or coming back from a page,
+     *  doesn't silently retire a collapsed default. Any real posture gesture
+     *  afterwards (drag, resize, re-park) clears it and records normally. */
     private var loadingPeekExpand = false
 
     /** End target of the height animation currently in [heightAnimator];
@@ -1358,12 +1359,21 @@ class CaptureResultOverlay(
     /** Re-show entry point for the controller's stash-and-rebind path: set up the
      *  window exactly like [show], then bind a previously-captured result directly
      *  (no capture session) — used when the user backs out of the detail screen.
+     *  The result comes back alone: its boxes belong to the frame, the screen and
+     *  the capture they were made in, so the stash keeps none, and the sheet
+     *  never comes back parked (a strip with nothing over the game). That
+     *  opening is the sheet's, not the user's: closing it keeps a parked
+     *  posture ([loadingPeekExpand]).
      *  [backdrop] re-supplies the clean capture for the frosted sheet fill — a
      *  re-show is a NEW overlay (the stash keeps no bitmap), so without it the
      *  sheet returns frost-less from every detail / workspace round trip. */
     fun showWithResult(screenW: Int, screenH: Int, result: TranslationResult, backdrop: Bitmap? = null) {
         show(screenW, screenH, backdrop)
         bindResult(result)
+        if (sliverMode) {
+            expandFromSliver()
+            loadingPeekExpand = true
+        }
     }
 
     fun dismiss() {
