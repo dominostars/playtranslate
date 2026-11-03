@@ -48,6 +48,11 @@ data class OcrProvenance(
      *  [frameIncludesSystemUi]; readers apply `?: false` (matches pre-field
      *  behavior). */
     val frameIncludesOwnOverlays: Boolean? = null,
+    /** The display's size and rotation when the saved screenshot was asked
+     *  for ([com.playtranslate.capture.CapturedFrame.geometry]), so a re-read of
+     *  it keeps the layout its boxes belong to. Null where nothing recorded
+     *  it. */
+    val frameGeometry: com.playtranslate.DisplayGeometry? = null,
 ) {
     /** Whether an OCR-tool switch may re-read the saved screenshot. Not one
      *  that can contain our own overlays: on the pinhole tier that frame

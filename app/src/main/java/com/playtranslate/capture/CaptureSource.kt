@@ -2,6 +2,7 @@ package com.playtranslate.capture
 
 import android.graphics.Bitmap
 import android.os.SystemClock
+import com.playtranslate.DisplayGeometry
 import kotlinx.coroutines.CoroutineScope
 
 /**
@@ -40,12 +41,28 @@ class CapturedFrame(
      *  consumers (e.g. [com.playtranslate.TypewriterGate]'s caps) should use
      *  instead of reading a clock around their capture call. */
     val capturedAtMs: Long = SystemClock.uptimeMillis(),
+    /** The display's size and rotation when the frame was asked for: the
+     *  layout its text sat in, which a capture's boxes are placed against,
+     *  so its window over the game never goes up in another
+     *  ([com.playtranslate.OverlayUiController.presentCapture]). Read before
+     *  a one-shot capture's screenshot is requested
+     *  ([com.playtranslate.CaptureService.stampedWithRequestLayout]), not by
+     *  the sources on every frame, since live frames never go up as a
+     *  capture's window; a re-read carries it from the result's provenance
+     *  ([com.playtranslate.model.OcrProvenance.frameGeometry]). Null where
+     *  nothing recorded it. */
+    val geometry: DisplayGeometry? = null,
 ) {
     /** Same facts, different pixels — for pipeline stages that OCR a mutated
      *  COPY of the frame (overlay-region fills, clean-ref patches). The
      *  derived frame owns [newBitmap]; the parent's bitmap is untouched. */
     fun derive(newBitmap: Bitmap) =
-        CapturedFrame(newBitmap, includesSystemUi, includesOwnOverlays, capturedAtMs)
+        CapturedFrame(newBitmap, includesSystemUi, includesOwnOverlays, capturedAtMs, geometry)
+
+    /** The same frame, its pixels and facts, taken in [geometry]. The
+     *  returned frame owns the bitmap from here; this one is dropped. */
+    fun withGeometry(geometry: DisplayGeometry?) =
+        CapturedFrame(bitmap, includesSystemUi, includesOwnOverlays, capturedAtMs, geometry)
 
     fun recycle() {
         if (!bitmap.isRecycled) bitmap.recycle()

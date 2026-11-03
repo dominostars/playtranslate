@@ -100,9 +100,10 @@ internal enum class CaptureTakeover(
     /** The sheet's display turned or changed size: its boxes are the old
      *  layout's, and the user did nothing, so the game screen goes back to
      *  what the capture stopped. A sheet on its way checks its own geometry
-     *  when its screenshot is in, and two screens' capture on its way and its
-     *  window keep the baselines of their own (a turn while the app reads
-     *  was accepted on 2026-11-02). */
+     *  when its screenshot is in. Two screens' capture needs no row: its
+     *  window drops itself on a turn, and a capture is put up only in the
+     *  layout its frame was taken in ([OneShotOverlayData.frameGeometry]),
+     *  whether it lands after a turn or the page's row asks again. */
     DISPLAY_TURN(
         debt = CaptureDebt.RESTART, phases = CapturePhases.SHOWN, definitionsOnly = false, endsWindow = false,
     ),

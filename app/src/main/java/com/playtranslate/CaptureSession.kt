@@ -128,6 +128,12 @@ data class OneShotOverlayData(
      *  from, so a capture re-flavors in place without a second read. Empty
      *  only for data built without a read (the stash re-show, tests). */
     val groups: List<OcrManager.OcrGroup> = emptyList(),
+    /** The display's size and rotation when the frame was asked for
+     *  ([com.playtranslate.capture.CapturedFrame.geometry]): the layout the
+     *  boxes are placed against, so the two-screen window never puts them
+     *  up over another ([OverlayUiController.presentCapture]). Null where
+     *  nothing recorded it. */
+    val frameGeometry: DisplayGeometry? = null,
 ) {
     /** Whether the translation presentation has anything to paint: boxes,
      *  as skeletons or with text. False once a final fill dropped every box

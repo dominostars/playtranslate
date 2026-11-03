@@ -1126,9 +1126,11 @@ class OverlayUiController(
      * [modeOverride] when the capture asked for one (tap-to-lookup's
      * Definitions), which is never written to the setting. Nothing is
      * created in None, nothing when the mode has nothing to draw from the
-     * data (translations whose every box came back blank), and nothing for
-     * a capture read in a language other than the game's now
-     * ([CaptureTakeover.LANGUAGE_CHANGE]). With [captureId] the page puts up
+     * data (translations whose every box came back blank), nothing for a
+     * capture read in a language other than the game's now
+     * ([CaptureTakeover.LANGUAGE_CHANGE]), and nothing for one whose frame
+     * was taken in another layout of the display than its own now
+     * ([OneShotOverlayData.frameGeometry]). With [captureId] the page puts up
      * the capture of that id as it lands ([beginAppCapture]), and nothing
      * when something has taken the game screen since it started
      * ([endCaptures]); without, the user asked (the page's row), and nothing
@@ -1158,6 +1160,14 @@ class OverlayUiController(
         // which ended its window; a pick on its row would otherwise put it
         // back up, with cards that look its words up in the new language.
         if (sourceLangId != null && sourceLangId != prefs.sourceLangId) return false
+        // The display turned or changed size since the frame was asked for:
+        // its boxes may belong to the old layout and would sit over other
+        // text (in Definitions a tap would open another word), whether the
+        // capture lands after the turn or the page's row asks again after the
+        // turn took its window down (dropReconfiguredCaptureWindow). The
+        // result stays on the page, and the display turning back lets it up.
+        val frameGeometry = data.frameGeometry
+        if (frameGeometry != null && frameGeometry != context.displayGeometryOf(displayId)) return false
         if (captureId != null) {
             // Something took the game screen while it was read (or a newer
             // capture replaced it): the result stays on the page.

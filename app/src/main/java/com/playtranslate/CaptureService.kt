@@ -3121,9 +3121,30 @@ class CaptureService : Service() {
     }
 
     /** Capture a clean screenshot via the active capture backend. The
-     *  frame carries its capture-time facts ([CapturedFrame]). */
+     *  frame carries its capture-time facts ([CapturedFrame]), the display's
+     *  layout among them ([stampedWithRequestLayout]). */
     internal suspend fun captureScreen(displayId: Int): com.playtranslate.capture.CapturedFrame? =
-        CaptureBackendResolver.active().captureSource?.requestClean(displayId)
+        stampedWithRequestLayout(displayId) {
+            CaptureBackendResolver.active().captureSource?.requestClean(displayId)
+        }
+
+    /** The frame [take] returns, stamped with the layout [displayId] had when
+     *  it was asked for ([CapturedFrame.geometry]). Not the layout it has once
+     *  the frame comes back: the screenshot is grabbed a while before that
+     *  (its buffer is copied into a bitmap first), and a turn in between
+     *  would label old pixels with the new layout, which
+     *  [OverlayUiController.presentCapture] accepts. Read first, a change
+     *  while the screenshot is taken leaves the frame with a layout the
+     *  display no longer has, so the capture stays on the page, even when the
+     *  turn came before the grab and the pixels are fine; only the display
+     *  going back to that layout before the result lands lets it up. */
+    internal suspend fun stampedWithRequestLayout(
+        displayId: Int,
+        take: suspend () -> com.playtranslate.capture.CapturedFrame?,
+    ): com.playtranslate.capture.CapturedFrame? {
+        val askedIn = displayGeometryOf(displayId)
+        return take()?.withGeometry(askedIn)
+    }
 
     /** Persist [raw] to the screenshot cache via the active capture backend. */
     internal fun captureSaveToCache(raw: Bitmap, displayId: Int): String? =
@@ -3172,12 +3193,14 @@ class CaptureService : Service() {
         // clean — downstream.
         frameIncludesSystemUi: Boolean? = null,
         frameIncludesOwnOverlays: Boolean? = null,
+        frameGeometry: DisplayGeometry? = null,
     ): OcrProvenance? {
         attribution ?: return null
         return OcrProvenance(
             attribution.label, attribution.token, displayId, sourceLangId, region,
             frameIncludesSystemUi = frameIncludesSystemUi,
             frameIncludesOwnOverlays = frameIncludesOwnOverlays,
+            frameGeometry = frameGeometry,
         )
     }
 
@@ -3485,7 +3508,7 @@ class CaptureService : Service() {
             // produced it.
             val ocrProvenance = ocrProvenanceFor(
                 reading.attribution, displayId, region, srcId, frameIncludesSystemUi,
-                frame.includesOwnOverlays,
+                frame.includesOwnOverlays, frame.geometry,
             )
 
             // No text, nothing to translate: the finally cancels the reader's
@@ -3539,6 +3562,7 @@ class CaptureService : Service() {
             val skeletonData = buildOneShotOverlayData(
                 ocrResult, colorRef, left, top, rawW, rawH,
                 cropWidth = right - left, cropHeight = bottom - top,
+                frameGeometry = frame.geometry,
             )
             val firstPaint =
                 if (mayDefer) skeletonData else partlyFillOneShotOverlayData(skeletonData, atOnce.map { it?.text })
@@ -3815,6 +3839,7 @@ class CaptureService : Service() {
         cropLeft: Int, cropTop: Int,
         screenshotW: Int, screenshotH: Int,
         cropWidth: Int, cropHeight: Int,
+        frameGeometry: DisplayGeometry?,
     ): OneShotOverlayData? {
         if (ocrResult.groups.isEmpty()) return null
         val colors = if (colorRef == null) emptyList() else OverlayToolkit.sampleGroupColors(
@@ -3835,6 +3860,7 @@ class CaptureService : Service() {
             boxes, cropLeft, cropTop, screenshotW, screenshotH, cropWidth, cropHeight,
             text = ocrResult.groups.map { it.drawBounds },
             groups = ocrResult.groups,
+            frameGeometry = frameGeometry,
         )
     }
 

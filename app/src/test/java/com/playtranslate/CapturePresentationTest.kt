@@ -50,9 +50,11 @@ import java.time.Duration
  * down. A change of the game language takes the window down, and a capture
  * read in a language other than the game's is never put up. A change of the
  * game display's size or rotation takes the window down; an event that keeps
- * both leaves it. A switch of the window's mode in place, the row's or
- * tap-to-lookup's, tells the page; a tap-to-lookup hold that slides into a
- * drag takes the window down.
+ * both leaves it; and a capture whose frame was taken in another layout
+ * than the display's now never goes up, as it lands or from the row, while
+ * one that recorded no layout goes up as before. A switch of the window's
+ * mode in place, the row's or tap-to-lookup's, tells the page; a
+ * tap-to-lookup hold that slides into a drag takes the window down.
  */
 @RunWith(RobolectricTestRunner::class)
 class CapturePresentationTest {
@@ -406,6 +408,60 @@ class CapturePresentationTest {
 
         assertFalse("its words would sit over other text", controller.capturePresentationShowing)
         assertEquals(1, dismissals)
+    }
+
+    // ── The layout a capture's frame was taken in ────────────────────────
+
+    /** [data] put up as a capture of the page's: landing as the capture of
+     *  [captureId], or with none, as the page's row asks. */
+    private fun presentAs(data: OneShotOverlayData, captureId: Long? = null): Boolean {
+        prefs.captureOverlayMode = OverlayMode.TRANSLATION
+        val shown = controller.presentCapture(
+            Display.DEFAULT_DISPLAY, data, SourceLangId.JA, captureId = captureId,
+            onModeChanged = { modeChanges++ },
+        ) { dismissals++ }
+        idle()
+        return shown
+    }
+
+    @Test fun `a capture whose frame was taken before a turn stays off the game, as it lands or from the row`() {
+        val taken = data("hi").copy(frameGeometry = geometry())
+        val id = controller.beginAppCapture(Display.DEFAULT_DISPLAY, null)
+        reconfigure("+land")
+        assertNotEquals(taken.frameGeometry, geometry())
+
+        assertFalse("landing after the turn", presentAs(taken, id))
+        assertFalse("the row asking after it", presentAs(taken))
+        assertFalse(controller.capturePresentationShowing)
+        assertEquals(0, dismissals)
+    }
+
+    @Test fun `a capture taken in the layout the display has goes up, as it lands or from the row`() {
+        val taken = data("hi").copy(frameGeometry = geometry())
+        assertTrue("landing", presentAs(taken, controller.beginAppCapture(Display.DEFAULT_DISPLAY, null)))
+        controller.dismissCapturePresentation()
+        assertTrue("the row asking", presentAs(taken))
+    }
+
+    @Test fun `a frame whose layout nothing recorded goes up after a turn as before`() {
+        reconfigure("+land")
+        assertTrue(presentAs(data("hi")))
+    }
+
+    @Test fun `after a flip took the window down, the row's pick leaves it down until the display flips back`() {
+        val taken = data("hi").copy(frameGeometry = geometry())
+        assertTrue(presentAs(taken))
+        val display = ctx.getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
+        val rotation = display.rotation
+        shadowOf(display).setRotation(Surface.ROTATION_180)
+        displayChanged()
+        assertFalse(controller.capturePresentationShowing)
+
+        assertFalse("its boxes would sit over other text", presentAs(taken))
+        assertFalse(controller.capturePresentationShowing)
+
+        shadowOf(display).setRotation(rotation)
+        assertTrue("the layout it was taken in again", presentAs(taken))
     }
 
     // ── Definitions ──────────────────────────────────────────────────────

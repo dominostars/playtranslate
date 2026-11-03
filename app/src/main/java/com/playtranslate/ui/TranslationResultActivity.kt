@@ -277,6 +277,7 @@ class TranslationResultActivity :
                 com.playtranslate.capture.CapturedFrame(
                     bmp, includesSystemUi = prov.frameIncludesSystemUi ?: true,
                     includesOwnOverlays = prov.frameIncludesOwnOverlays ?: false,
+                    geometry = prov.frameGeometry,
                 ),
                 prov.displayId, prov.region, prov.sourceLangId,
                 deviceOnly = deviceOnly,
