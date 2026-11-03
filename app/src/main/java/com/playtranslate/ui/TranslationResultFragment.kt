@@ -355,13 +355,12 @@ class TranslationResultFragment : Fragment() {
     }
 
     /** Put [boxes] up on the game display. Translation chips on a deferred
-     *  result go up as skeletons: run the skipped translation, and its
-     *  completion swaps the filled boxes in. */
+     *  result go up as skeletons: the funnel runs the skipped translation
+     *  for them ([TranslationResultContent.requestDeferredCompletion]), and
+     *  its completion swaps the filled boxes in. */
     private fun presentCurrentBoxes(boxes: OnScreenBoxes) {
         host?.showResultBoxesOnScreen(boxes)
-        if (host?.captureModeOnScreen() == OverlayMode.TRANSLATION) {
-            content.requestDeferredCompletion(force = true)
-        }
+        content.requestDeferredCompletion()
     }
 
     /** The capture-mode row over the result area (two screens): every mode
@@ -393,8 +392,10 @@ class TranslationResultFragment : Fragment() {
             // In the mode just picked, over one the capture asked for itself
             // (tap-to-lookup's Definitions).
             presentCurrentBoxes(boxes.copy(modeOverride = mode))
-        } else if (mode == OverlayMode.TRANSLATION) {
-            content.requestDeferredCompletion(force = true)
+        } else {
+            // Boxes re-flavored in place: chips just switched to
+            // Translations need the skipped translation.
+            content.requestDeferredCompletion()
         }
         refreshShowOnScreen()
         refreshCaptureModeRow()
@@ -890,6 +891,10 @@ class TranslationResultFragment : Fragment() {
 
         /** No entry, nothing to open into, no chevron. */
         override val opensWithoutEntry: Boolean get() = false
+
+        /** The capture's window on the game display, read live from the
+         *  host as the row reads it. */
+        override val captureModeOnScreen: OverlayMode? get() = host?.captureModeOnScreen()
 
         override fun wireLensActions(lens: MagnifierLens, resolved: SourceWordLookup.ResolvedAt) =
             this@TranslationResultFragment.wireLensActions(lens, resolved)

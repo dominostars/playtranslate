@@ -10,6 +10,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
+import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.language.AnnotatedSpan
@@ -89,7 +90,9 @@ class TranslationResultContentTest {
         var clearAction = false
         var startHint = false
         var edit = false
+        var modeOnScreen: OverlayMode? = null
 
+        override val captureModeOnScreen: OverlayMode? get() = modeOnScreen
         override fun onRender(state: ResultState) { rendered += state }
         override fun onWordTapped(
             word: String,
@@ -215,6 +218,30 @@ class TranslationResultContentTest {
         vm.applyDeferredTranslation(pending, "Cat", null, null)
         content.requestDeferredCompletion()
         assertEquals("no pending left: no request", 2, host.completions)
+    }
+
+    @Test
+    fun `translation boxes on the game screen run the deferred translation when the result lands, whatever the eye says`() {
+        // Two screens, the section hidden: the row picked Translations while
+        // the capture was still being read, and the request found nothing.
+        Prefs(app).hideTranslationSection = true
+        host.modeOnScreen = OverlayMode.TRANSLATION
+        content.render(ResultState.Translating("猫", TextSegments.ofText("猫")))
+        content.requestDeferredCompletion()
+        assertEquals("nothing has landed yet", 0, host.completions)
+
+        val pending = PendingTranslation(listOf("猫"), SourceLangId.JA, "en")
+        vm.displayResult(result("猫", "", pending), app)
+        content.render(vm.result.value)
+
+        assertEquals("the Ready bind runs it for the chips", 1, host.completions)
+        // Boxes in another mode paint without it and wait for the eye, as
+        // the over-game sheet's do; with none up, likewise.
+        host.modeOnScreen = OverlayMode.FURIGANA
+        content.requestDeferredCompletion()
+        host.modeOnScreen = null
+        content.requestDeferredCompletion()
+        assertEquals(1, host.completions)
     }
 
     @Test

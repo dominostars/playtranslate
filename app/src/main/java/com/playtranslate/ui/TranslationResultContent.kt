@@ -14,6 +14,7 @@ import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.Prefs
 import com.playtranslate.OverlayMode
 import com.playtranslate.R
+import com.playtranslate.deferredCompletionNeeded
 import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.overlay.OverlayHost
@@ -148,6 +149,12 @@ class TranslationResultContent(
         /** The bound Ready result carries a deferred translation and a
          *  consumer needs it now — see [requestDeferredCompletion]. */
         fun completeDeferredTranslation() {}
+
+        /** The overlay mode the capture's boxes are painted in on the game
+         *  screen right now (two screens), or null with none painted. In
+         *  Translations they need the deferred translation whatever the
+         *  section's eye says ([requestDeferredCompletion]). */
+        val captureModeOnScreen: OverlayMode? get() = null
 
         /** The capture-mode row's pick (two screens; the host decides what
          *  it does to boxes on the game display). */
@@ -348,9 +355,11 @@ class TranslationResultContent(
                 revealFitted(generation) {
                     if (anchor != null) restoreScrollAnchor(anchor) else scrollToFreshResultStart()
                 }
-                // A deferred result bound while the section is visible (the
-                // pref is global and nothing listens for flips) must run its
-                // skipped translation now. No-op without a pending.
+                // A deferred result bound while a consumer needs it runs its
+                // skipped translation now: the section visible (the pref is
+                // global and nothing listens for flips), or Translation
+                // boxes on the game screen, picked while it was being read.
+                // No-op without a pending.
                 requestDeferredCompletion()
             }
         }
@@ -402,17 +411,25 @@ class TranslationResultContent(
         }
     }
 
-    /** Deferred-translation trigger funnel (mirror of the over-game panel's
-     *  maybeCompleteDeferred): ask the host to run the skipped translation
-     *  when the bound Ready result still carries a pending AND either the
-     *  translation section is visible or [force] — a consumer needs the
-     *  translation regardless of the section's visibility (on-screen boxes,
-     *  an Anki flow). The host is the single completion owner and guards
-     *  against duplicate triggers. */
+    /** Deferred-translation trigger funnel, the over-game panel's rule
+     *  ([deferredCompletionNeeded], which its maybeCompleteDeferred applies):
+     *  ask the host to run the skipped translation when the bound Ready
+     *  result still carries a pending AND a consumer needs it: the
+     *  translation section is visible, the capture's boxes on the game
+     *  screen are Translations ([Host.captureModeOnScreen], which need their
+     *  text whatever the eye says), or [force] (an Anki flow). Run on every
+     *  Ready bind as well as when the boxes go up or the row picks, so a
+     *  pick of Translations made while the capture was still being read
+     *  completes when its result lands. The host is the single completion
+     *  owner and guards against duplicate triggers. */
     fun requestDeferredCompletion(force: Boolean = false) {
         if (currentReady()?.pendingTranslation == null) return
-        if (prefs.hideTranslationSection && !force) return
-        host.completeDeferredTranslation()
+        val needed = force || deferredCompletionNeeded(
+            sectionHidden = prefs.hideTranslationSection,
+            parked = false,
+            mode = host.captureModeOnScreen ?: OverlayMode.NONE,
+        )
+        if (needed) host.completeDeferredTranslation()
     }
 
     // ── The capture-mode row (two screens) ──────────────────────────────
