@@ -176,6 +176,50 @@ class CapturePauseFunnelsTest {
         lens.onSettled!!.invoke()
     }
 
+    /** Restarts the drag lens's own record asked for ([lensUp]). */
+    private var dragRestarts = 0
+
+    /** The default display's drag lens up and sticky, as a drag leaves it,
+     *  with what that drag paused; a restart its record asks for is counted
+     *  in [dragRestarts] instead of run. */
+    private fun lensUp(): DragLookupController {
+        val handle = field<Map<*, *>>("iconHandles")[Display.DEFAULT_DISPLAY]!!
+        fun <T> of(name: String): T {
+            @Suppress("UNCHECKED_CAST")
+            return handle.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(handle) as T
+        }
+        val pause = of<LookupPause>("dragPause")
+        LookupPause::class.java.getDeclaredField("startLive").apply { isAccessible = true }
+            .set(pause, { dragRestarts++; Unit })
+        pause.begin(pauseLive = true)
+        val lens = of<DragLookupController>("dragController")
+        val magnifier = DragLookupController::class.java.getDeclaredField("magnifier")
+            .apply { isAccessible = true }.get(lens) as com.playtranslate.ui.MagnifierLens
+        val screen = ctx.displaySizePx()
+        assertTrue(magnifier.show(150, 300, screen.x, screen.y, anchorHeight = 30))
+        assertTrue(magnifier.makeInteractive())
+        assertTrue(lens.isPopupShowing)
+        return lens
+    }
+
+    @Test fun `tap-to-lookup over an open drag lens closes it and takes over what its drag paused`() {
+        icon()
+        val live = running()
+        val lens = lensUp()
+        assertEquals("the drag paused it", 1, live.stops)
+
+        controller().toggleTapToLookupForDisplay(Display.DEFAULT_DISPLAY)
+        settle()
+
+        assertFalse("the lens does not stay under the sheet", lens.isPopupShowing)
+        assertNotNull(panel())
+        assertTrue("the sheet owes the drag's restart", record()!!.pausedLive)
+        assertEquals("closing the lens asked for no restart", 0, dragRestarts)
+        assertFalse(liveOrStarting())
+        closeByUser()
+        assertTrue("the user's close gives it back", liveOrStarting())
+    }
+
     @Test fun `a capture stops a running auto-translate and the user's close restarts it`() {
         val live = running()
         capture()

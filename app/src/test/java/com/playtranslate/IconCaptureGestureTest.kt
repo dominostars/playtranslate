@@ -318,6 +318,44 @@ class IconCaptureGestureTest {
         assertEquals(emptyList<String?>(), startedActions())
     }
 
+    /** The default display's drag lens up and sticky, as a drag leaves it,
+     *  with what that drag paused (with the app in front, a stop sent to
+     *  it). */
+    private fun lensUp(): com.playtranslate.ui.DragLookupController {
+        val handles = OverlayUiController::class.java.getDeclaredField("iconHandles")
+            .apply { isAccessible = true }.get(controller) as Map<*, *>
+        val handle = handles[Display.DEFAULT_DISPLAY]!!
+        fun <T> of(name: String): T {
+            @Suppress("UNCHECKED_CAST")
+            return handle.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(handle) as T
+        }
+        of<LookupPause>("dragPause").begin(pauseLive = true)
+        val lens = of<com.playtranslate.ui.DragLookupController>("dragController")
+        val magnifier = com.playtranslate.ui.DragLookupController::class.java.getDeclaredField("magnifier")
+            .apply { isAccessible = true }.get(lens) as com.playtranslate.ui.MagnifierLens
+        val screen = ctx.displaySizePx()
+        assertTrue(magnifier.show(150, 300, screen.x, screen.y, anchorHeight = 30))
+        assertTrue(magnifier.makeInteractive())
+        assertTrue(lens.isPopupShowing)
+        return lens
+    }
+
+    @Test fun `with the app in front tap-to-lookup over an open drag lens closes it without the restart its drag owed`() {
+        appInFront()
+        prefs.iconTapAction = TapAction.TAP_TO_LOOKUP
+        val icon = icon()
+        running(OverlayFlavor.TRANSLATION)
+        val lens = lensUp()
+        assertEquals("the drag's stop went to the app", listOf<String?>(MainActivity.ACTION_STOP_LIVE), startedActions())
+
+        icon.onTap!!.invoke()
+
+        assertFalse("the lens does not stay under the capture's window", lens.isPopupShowing)
+        val actions = startedActions()
+        assertTrue(actions.toString(), MainActivity.ACTION_REGION_CAPTURE in actions)
+        assertFalse("nothing restarts auto-translate under the capture", MainActivity.ACTION_START_LIVE in actions)
+    }
+
     // The hold's mark lasts one gesture: the next drag pauses a running
     // session and resumes it when its lens closes, as a drag always has.
     @Test fun `the drag after a hold's gesture pauses and resumes a running session`() {

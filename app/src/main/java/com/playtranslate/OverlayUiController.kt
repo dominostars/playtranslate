@@ -2864,8 +2864,10 @@ class OverlayUiController(
      * sheet, whose pause record owes the restart ([capturePause]: the user's
      * own close of the sheet gives the game screen back). Otherwise:
      * ACTION_REGION_CAPTURE to the app, which owns the result and whose
-     * button restarts live. Returns true when auto-translate was running (or
-     * starting) and was stopped, or asked to stop: a hold's drag reads it.
+     * button restarts live. Either way a drag lens left open closes, as
+     * tap-to-lookup's own start closed it before it became a capture.
+     * Returns true when auto-translate was running (or starting) and was
+     * stopped, or asked to stop: a hold's drag reads it.
      */
     private fun handleRegionSelection(
         displayId: Int,
@@ -2883,8 +2885,17 @@ class OverlayUiController(
             iconHandles.values.forEach { it.dragPause.handTo(record) }
             capturePause = record
             record.begin(pauseLive = true)
+            // A drag lens left open would sit under the sheet and come back
+            // over the game, with its own older scene, when the sheet goes.
+            // Its record is the capture's now, so closing it restarts nothing.
+            dismissAllDragLookupPopups()
             showCaptureResultOverlay(displayId, region, modeOverride)
         } else {
+            // A drag lens left open would sit under the capture's window;
+            // it closes, its record settling without the restart it would
+            // owe, since a capture leaves auto-translate stopped here.
+            iconHandles.values.forEach { it.dragPause.settle(resumeLive = false) }
+            dismissAllDragLookupPopups()
             // A capture takes the game screen: auto-translate stays stopped,
             // as a capture leaves it; the app's button restarts it.
             if (wasLive) stopLiveRouted()
