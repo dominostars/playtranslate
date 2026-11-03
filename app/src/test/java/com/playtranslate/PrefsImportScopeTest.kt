@@ -44,6 +44,17 @@ class PrefsImportScopeTest {
         assertNull(prefs.importOcrBackendToken(SourceLangId.JA))
     }
 
+    @Test fun importAndCameraOverlayModesPinIndependently() {
+        prefs.cameraOverlayMode = OverlayMode.FURIGANA
+        prefs.importOverlayMode = OverlayMode.TRANSLATION
+        assertEquals(OverlayMode.FURIGANA, prefs.cameraOverlayMode)
+        assertEquals(OverlayMode.TRANSLATION, prefs.importOverlayMode)
+        prefs.cameraOverlayMode = OverlayMode.TRANSLATION
+        prefs.importOverlayMode = OverlayMode.FURIGANA
+        assertEquals(OverlayMode.TRANSLATION, prefs.cameraOverlayMode)
+        assertEquals(OverlayMode.FURIGANA, prefs.importOverlayMode)
+    }
+
     @Test fun importOverlayModeInheritsGlobalUntilSet() {
         prefs.overlayMode = OverlayMode.FURIGANA
         assertEquals(OverlayMode.FURIGANA, prefs.importOverlayMode)

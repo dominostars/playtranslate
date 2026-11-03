@@ -17,7 +17,8 @@ import org.robolectric.RobolectricTestRunner
  * auto-translate's until set, its legacy boxes switch migrates once
  * (off = None, on = inherit), a read coerces to what the source language
  * offers without rewriting, and auto-translate's own pref never reads a
- * mode live cannot paint.
+ * mode live cannot paint. The capture's, the camera's and the import tool's
+ * own properties read the coerced value too.
  */
 @RunWith(RobolectricTestRunner::class)
 class PrefsOverlayMigrationTest {
@@ -116,6 +117,31 @@ class PrefsOverlayMigrationTest {
         prefs.sourceLang = "en"
         assertEquals(OverlayMode.TRANSLATION, prefs.overlayModeFor(OverlaySurface.CAMERA))
         assertEquals(OverlayMode.TRANSLATION, prefs.overlayModeFor(OverlaySurface.IMPORT))
+    }
+
+    @Test fun `the tools' own properties read a pick the language does not offer as translations, and keep it`() {
+        // The camera's preview and review, the import review and both gear
+        // menus read these properties, the reviews' mode control reads
+        // overlayModeFor: they must give one answer.
+        val prefs = Prefs(ctx)
+        prefs.sourceLang = "ja"
+        prefs.cameraOverlayMode = OverlayMode.FURIGANA
+        prefs.importOverlayMode = OverlayMode.FURIGANA
+        prefs.captureOverlayMode = OverlayMode.FURIGANA
+
+        prefs.sourceLang = "en"
+
+        assertEquals(OverlayMode.TRANSLATION, prefs.cameraOverlayMode)
+        assertEquals(OverlayMode.TRANSLATION, prefs.importOverlayMode)
+        assertEquals(OverlayMode.TRANSLATION, prefs.captureOverlayMode)
+        assertEquals("kept", "FURIGANA", sp().getString("camera_overlay_mode", null))
+        assertEquals("kept", "FURIGANA", sp().getString("import_overlay_mode", null))
+        assertEquals("kept", "FURIGANA", rawCapture())
+
+        prefs.sourceLang = "ja"
+        assertEquals(OverlayMode.FURIGANA, prefs.cameraOverlayMode)
+        assertEquals(OverlayMode.FURIGANA, prefs.importOverlayMode)
+        assertEquals(OverlayMode.FURIGANA, prefs.captureOverlayMode)
     }
 
     @Test fun `the mode pill opens expanded until the user collapses it`() {
