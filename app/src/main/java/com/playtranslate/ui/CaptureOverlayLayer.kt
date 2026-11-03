@@ -240,6 +240,12 @@ internal class CaptureOverlayLayer(
     /** A key the host offers: Definitions' controller cursor. */
     fun onKey(ev: KeyEvent): Boolean = words?.onKey(ev) == true
 
+    /** Definitions' controller cursor onto the word at [index], in
+     *  [drawnBoxRects]' order. */
+    fun focusWord(index: Int) {
+        words?.focus(index)
+    }
+
     /** Back: a Definitions card closes (true); otherwise the host's. */
     fun onBack(): Boolean = words?.onBack() == true
 

@@ -2960,6 +2960,27 @@ class CaptureResultOverlay(
 
         override fun collapseToSliver() = this@CaptureResultOverlay.collapseToSliver()
 
+        // Up off the sheet's top in Definitions: the words over the game are
+        // the controller's, as they are while the sheet is parked. The sheet
+        // parks with the words' cursor on the word nearest above its edge
+        // (the touch rules' edge, above which a word is the word's), the
+        // cursor's column first; with no word up there the cursor stays. The
+        // camera and import hosts never offer Definitions.
+        private val leaveLoc = IntArray(2)
+        override fun leaveSheetUp(fromOnScreen: Rect): Boolean {
+            if (!holdsKeysForDefinitions) return false
+            root.getLocationOnScreen(leaveLoc)
+            val edge = (leaveLoc[1] + panel.top + panel.translationY).toInt()
+            val word = SheetNavGeometry.nextInDirection(
+                SheetNavGeometry.NavRect(fromOnScreen.left, edge, fromOnScreen.right, edge),
+                layer.drawnBoxRects().map { SheetNavGeometry.NavRect(it.left, it.top, it.right, it.bottom) },
+                SheetNavGeometry.Dir.UP,
+            ) ?: return false
+            this@CaptureResultOverlay.collapseToSliver()
+            layer.focusWord(word)
+            return true
+        }
+
         private val sliverLoc = IntArray(2)
         override fun sliverRect(out: Rect): Boolean {
             // Parked and at rest only: the row fades in through the collapse

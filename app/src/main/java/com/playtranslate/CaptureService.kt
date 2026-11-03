@@ -65,6 +65,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -422,13 +423,14 @@ class CaptureService : Service() {
         )
     }
 
-    /** Whether a one-shot hold gesture is currently in flight, i.e. whether
-     *  the floating icons should be wearing their loading spinner. State of
-     *  record for that spinner — see [setHoldLoading]. */
+    /** Whether a one-shot hold gesture is currently in flight: one of the two
+     *  things the floating icons' loading spinner shows ([iconsLoading]; the
+     *  other is an app read, [showReadOnIcons]). See [setHoldLoading]. */
     private var holdLoading = false
 
     /**
-     * Arm / disarm the floating icons' hold spinner.
+     * Arm / disarm the hold's share of the floating icons' spinner
+     * ([iconsLoading]).
      *
      * Pushed straight at the icons rather than published on a flow the
      * activity collects. The spinner is a sub-window of an overlay icon the
@@ -449,7 +451,38 @@ class CaptureService : Service() {
     internal fun setHoldLoading(loading: Boolean) {
         if (holdLoading == loading) return
         holdLoading = loading
-        CaptureBackendResolver.activeOverlayUi?.setIconsLoading(loading)
+        CaptureBackendResolver.activeOverlayUi?.setIconsLoading(iconsLoading)
+    }
+
+    /** The app's one-shot read whose first stage the floating icons' spinner
+     *  shows ([showReadOnIcons]); null with none. */
+    private var readOnIcons: CaptureSession? = null
+
+    /** The icons wear the spinner while a hold's one-shot runs or an app
+     *  read shown on them is in its first stage: the spinner's one truth,
+     *  pushed from every change of either and at [syncIconState]. */
+    private val iconsLoading: Boolean get() = holdLoading || readOnIcons != null
+
+    /**
+     * Show [session]'s read on the floating icons' spinner until it leaves
+     * its first stage ([CaptureState.InProgress]: the shot and the OCR), for
+     * the app's own captures on two screens, whose page is on the other
+     * screen: nothing on the game screen said a read was under way, and its
+     * result lands there. Whatever comes next (boxes up, the result, no
+     * text, a failure, a cancel) ends it; a newer read shown here replaces
+     * it, and the older one's end then leaves the spinner to the newer.
+     * Every session reaches a terminal state ([attachCancellationTerminal]),
+     * so the watch always ends. Main thread.
+     */
+    fun showReadOnIcons(session: CaptureSession) {
+        readOnIcons = session
+        CaptureBackendResolver.activeOverlayUi?.setIconsLoading(iconsLoading)
+        serviceScope.launch {
+            session.state.first { it !is CaptureState.InProgress }
+            if (readOnIcons !== session) return@launch
+            readOnIcons = null
+            CaptureBackendResolver.activeOverlayUi?.setIconsLoading(iconsLoading)
+        }
     }
 
     /** Push current service state to every floating icon. Called automatically
@@ -464,7 +497,7 @@ class CaptureService : Service() {
         val ui = CaptureBackendResolver.activeOverlayUi ?: return
         ui.setIconsLiveMode(isLive)
         ui.setIconsDegraded(translationDegraded)
-        ui.setIconsLoading(holdLoading)
+        ui.setIconsLoading(iconsLoading)
         ui.setIconsGlyph(
             GameAudioGate.iconGlyph(
                 this,
@@ -687,6 +720,16 @@ class CaptureService : Service() {
         // those native resources. Redundant after source.destroy() above —
         // teardown() no-ops on a dead session.
         mediaProjectionControllerIfInitialized?.destroy()
+        // The icons' spinner is this service's to clear: the accessibility
+        // backend's icons outlive it, and a hold or a read still showing on
+        // them would spin until the next instance syncs them (the read's
+        // watch dies with serviceScope below). The MediaProjection icons
+        // went with their overlay UI above; gated as onCreate's sync is.
+        holdLoading = false
+        readOnIcons = null
+        if (CaptureBackendResolver.active().requiresAccessibilityService) {
+            CaptureBackendResolver.activeOverlayUi?.setIconsLoading(false)
+        }
         instance = null
         serviceScope.cancel()
         // The TranslationBackendRegistry is owned at app scope (built in
@@ -1437,10 +1480,8 @@ class CaptureService : Service() {
         // menu does this when it opens, but a start needn't come through the
         // menu (the icon's toggle and swap, the tap hotkeys, the app).
         // The session starting now is the restart the sheet's capture would
-        // have owed, so its record settles without one, detached before the
-        // sheet goes.
-        CaptureBackendResolver.activeOverlayUi?.settleCapturePause(resumeLive = false)
-        CaptureBackendResolver.activeOverlayUi?.dismissCaptureResultOverlay()
+        // have owed, so its record settles without one.
+        CaptureBackendResolver.activeOverlayUi?.endCaptures(CaptureTakeover.LIVE_START)
 
         // One feedback session per start — engine warm-up, startup chip,
         // first-cycle gate, busy tracking ([LiveSessionFeedback]). The
@@ -2337,8 +2378,8 @@ class CaptureService : Service() {
      *    gate warms the new language's engine before the first pass
      *    ([LiveSessionFeedback.awaitFirstCycleClear]);
      *  - every capture up on the game screen ends, giving back what it
-     *    stopped ([OverlayUiController.endCapturesForLanguageChange]): it
-     *    belongs to the language it was read in;
+     *    stopped ([CaptureTakeover.LANGUAGE_CHANGE]): it belongs to the
+     *    language it was read in;
      *  - the new language's engine warms up in the background.
      */
     private fun onSourceLanguageChanged(prefs: Prefs, id: SourceLangId) {
@@ -2354,7 +2395,7 @@ class CaptureService : Service() {
         }
         // Every capture ends: after the restart above, which a session a
         // capture stopped is not live for, so what it gives back starts once.
-        CaptureBackendResolver.activeOverlayUi?.endCapturesForLanguageChange()
+        CaptureBackendResolver.activeOverlayUi?.endCaptures(CaptureTakeover.LANGUAGE_CHANGE)
         if (LanguagePackStore.isInstalled(this, id)) {
             serviceScope.launch(Dispatchers.IO) {
                 SourceLanguageEngines.preloadAndRecover(this@CaptureService, id)
@@ -2448,10 +2489,11 @@ class CaptureService : Service() {
     val livePaused: Boolean get() = holdActive || slowOcrAlert != null
 
     /**
-     * Common hold-to-preview begin sequence used by both the in-app button
-     * and the gamepad hotkey. Gates live display via [holdActive], stops the
-     * live capture loop, destroys the existing overlay view so the one-shot
-     * can render cleanly, and launches the one-shot.
+     * Common hold-to-preview begin sequence used by the floating icon's hold,
+     * the in-app button and the gamepad hotkey. Gates live display via
+     * [holdActive], stops the live capture loop, destroys the existing
+     * overlay view so the one-shot can render cleanly, and launches the
+     * one-shot.
      *
      * [holdActive] doubles as the pause signal for [PinholeOverlayMode] (its
      * cycle polls the flag directly). Stopping the backend's live capture
@@ -2476,6 +2518,15 @@ class CaptureService : Service() {
         displayIds: Set<Int>,
         panelDisplayId: Int,
     ) {
+        // Every hold-to-preview passes here (the icon's hold, the app's hold
+        // button, the hold hotkeys): a capture showing Definitions on a
+        // display it paints on ends first ([CaptureTakeover.HOLD_PREVIEW]).
+        // Before the live read below, which then sees an auto-translate that
+        // capture's close restarted and pauses it for the hold. (No capture
+        // is up while auto-translate runs, since a capture stops it and a
+        // start ends a capture, so the triggers' own reads of it before this
+        // never meet one.)
+        CaptureBackendResolver.activeOverlayUi?.endCaptures(CaptureTakeover.HOLD_PREVIEW, displayIds)
         holdActive = true
         if (isLive) {
             // Hold pause is global — stop every per-display loop and hide

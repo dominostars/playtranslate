@@ -79,8 +79,8 @@ class CapturePauseFunnelsTest {
     private fun <T> field(name: String): T =
         OverlayUiController::class.java.getDeclaredField(name).apply { isAccessible = true }.get(controller()) as T
 
-    private fun panel(): Any? = field("captureResultOverlay")
-    private fun record(): LookupPause? = field("capturePause")
+    private fun panel(): Any? = controller().captureSheetForTest
+    private fun record(): LookupPause? = controller().capturePauseForTest
 
     @Before fun setUp() {
         clearPrefs()
@@ -245,7 +245,7 @@ class CapturePauseFunnelsTest {
             .apply { isAccessible = true }.invoke(controller(), other, null)
         settle()
         val sheet = panel() as com.playtranslate.ui.CaptureResultOverlay
-        assertEquals("the sheet is on the other display", other, field<Int>("captureDisplayId"))
+        assertEquals("the sheet is on the other display", other, controller().captureDisplayIdForTest)
 
         // The hotkey's display is the primary one; the sheet it toggles is
         // the one up, wherever it is.
@@ -362,10 +362,16 @@ class CapturePauseFunnelsTest {
     @Test fun `a live start settles the debt and takes the sheet down`() {
         running()
         capture()
+        // The start is the restart the debt was for: the record asks for no
+        // second one (which would run a start inside this start).
+        var restarts = 0
+        LookupPause::class.java.getDeclaredField("startLive").apply { isAccessible = true }
+            .set(record()!!, { restarts++; Unit })
         svc().startLive()
         settle()
         assertNull(panel())
         assertNull(record())
+        assertEquals(0, restarts)
         svc().stopLive()
         assertFalse("nothing left to restart it", liveOrStarting())
     }
@@ -489,5 +495,366 @@ class CapturePauseFunnelsTest {
 
         assertNull("not re-shown", panel())
         assertFalse("the page cancelled the restart", liveOrStarting())
+    }
+
+    // ── what ends a capture before it acts ───────────────────────────────
+
+    @Test fun `a hotkey's hold-to-preview closes a Definitions sheet first, as the user's close`() {
+        running()
+        controller().toggleTapToLookupForDisplay(Display.DEFAULT_DISPLAY)
+        settle()
+        assertEquals(OverlayMode.DEFINITIONS, (panel() as com.playtranslate.ui.CaptureResultOverlay).overlayMode)
+        assertTrue(record()!!.pausedLive)
+
+        svc().hotkeyHoldStart(OverlayMode.TRANSLATION)
+        settle()
+
+        assertNull("the preview would paint under its dimming", panel())
+        assertNull("its record settled", record())
+        assertTrue("the user's close gives auto-translate back", liveOrStarting())
+        svc().hotkeyHoldEnd()
+    }
+
+    @Test fun `a hotkey's hold-to-preview leaves a Translations sheet up`() {
+        running()
+        capture()
+
+        svc().hotkeyHoldStart(OverlayMode.TRANSLATION)
+        settle()
+
+        assertNotNull(panel())
+        assertTrue("it still owes the restart", record()!!.pausedLive)
+        svc().hotkeyHoldEnd()
+        closeByUser()
+        assertTrue(liveOrStarting())
+    }
+
+    // Every hold-to-preview passes one step (beginHoldPreview), so the icon's
+    // hold and the app's hold button end a Definitions capture as the hotkey
+    // does.
+    @Test fun `the icon's hold-to-preview closes a Definitions sheet first, as the hotkey's does`() {
+        prefs.iconHoldAction = HoldAction.SHOW_TRANSLATIONS
+        val icon = icon()
+        running()
+        controller().toggleTapToLookupForDisplay(Display.DEFAULT_DISPLAY)
+        settle()
+        assertEquals(OverlayMode.DEFINITIONS, (panel() as com.playtranslate.ui.CaptureResultOverlay).overlayMode)
+
+        icon.onHoldStart!!.invoke()
+        settle()
+
+        assertNull("the preview would paint under its dimming", panel())
+        assertNull("its record settled", record())
+        assertTrue("the user's close gives auto-translate back", liveOrStarting())
+        icon.onHoldEnd!!.invoke()
+    }
+
+    @Test fun `the app's hold button closes a Definitions sheet first`() {
+        running()
+        controller().toggleTapToLookupForDisplay(Display.DEFAULT_DISPLAY)
+        settle()
+        assertNotNull(panel())
+
+        svc().holdStartFanout()
+        settle()
+
+        assertNull(panel())
+        assertNull(record())
+        assertTrue(liveOrStarting())
+        svc().holdEnd()
+    }
+
+    // An icon's preview paints on its own display, so a Definitions sheet on
+    // another stays, as tap-to-lookup from an icon acts on its own display.
+    @Test fun `an icon's hold-to-preview on another display leaves a Definitions sheet here up`() {
+        val other = ShadowDisplayManager.addDisplay("w640dp-h480dp")
+        running()
+        controller().toggleTapToLookupForDisplay(Display.DEFAULT_DISPLAY)
+        settle()
+        val sheet = panel()
+        assertNotNull(sheet)
+
+        svc().holdStart(other)
+        settle()
+
+        assertSame(sheet, panel())
+        assertTrue("it still owes the restart", record()!!.pausedLive)
+        svc().holdEnd()
+    }
+
+    // With the app in front the capture's presentation is the two-screen
+    // window; the app's hold button previews on the game display under it.
+    @Test fun `with the app in front, the app's hold button takes a Definitions window down first`() {
+        ShadowDisplayManager.addDisplay("w640dp-h480dp")
+        MainActivity.isInForeground = true
+        var dismissed = 0
+        val rect = android.graphics.Rect(100, 100, 320, 130)
+        val group = OcrManager.OcrGroup(
+            "hello world", rect,
+            lines = listOf(
+                OcrManager.LineBox(
+                    "hello world", rect, groupIndex = 0,
+                    symbols = "hello world".mapIndexedNotNull { i, ch ->
+                        if (ch == ' ') null
+                        else OcrManager.SymbolBox(ch.toString(), android.graphics.Rect(100 + i * 20, 100, 120 + i * 20, 130), i)
+                    },
+                ),
+            ),
+        )
+        val data = OneShotOverlayData(
+            boxes = listOf(com.playtranslate.ui.TextBox("hi", rect)),
+            cropLeft = 0, cropTop = 0, screenshotW = 1280, screenshotH = 720,
+            cropWidth = 1280, cropHeight = 720, text = listOf(rect), groups = listOf(group),
+        )
+        assertTrue(
+            controller().presentCapture(
+                Display.DEFAULT_DISPLAY, data, prefs.sourceLangId, modeOverride = OverlayMode.DEFINITIONS,
+            ) { dismissed++ },
+        )
+        assertEquals(OverlayMode.DEFINITIONS, controller().capturePresentationMode)
+
+        svc().holdStartFanout()
+        settle()
+
+        assertFalse(controller().capturePresentationShowing)
+        assertEquals(1, dismissed)
+        svc().holdEnd()
+    }
+
+    // ── a capture still on its way (Codex, 2026-11-03) ──────────────────
+
+    @Test fun `a hold-to-preview ends a Definitions capture still taking its screenshot, as it ends one showing`() {
+        running()
+        controller().toggleTapToLookupForDisplay(Display.DEFAULT_DISPLAY)
+        // No settle: the screenshot is not in, so there is no sheet yet.
+        assertNull(panel())
+        assertEquals("on its way", Display.DEFAULT_DISPLAY, controller().captureDisplayIdForTest)
+        assertTrue(record()!!.pausedLive)
+
+        svc().hotkeyHoldStart(OverlayMode.TRANSLATION)
+        settle()
+
+        assertNull("its sheet never comes up over the preview", panel())
+        assertEquals("the capture is over", -1, controller().captureDisplayIdForTest)
+        assertTrue("as the user's close, auto-translate is back", liveOrStarting())
+        svc().hotkeyHoldEnd()
+    }
+
+    @Test fun `a hold-to-preview leaves a Translations capture on its way, which comes up`() {
+        running()
+        controller().toggleCaptureScreenForDisplay(Display.DEFAULT_DISPLAY)
+        assertNull(panel())
+
+        svc().hotkeyHoldStart(OverlayMode.TRANSLATION)
+        settle()
+
+        assertNotNull(panel())
+        assertTrue("it still owes the restart", record()!!.pausedLive)
+        svc().hotkeyHoldEnd()
+    }
+
+    @Test fun `a display that goes away takes its capture's sheet down and gives the screen back`() {
+        val other = ShadowDisplayManager.addDisplay("w640dp-h480dp")
+        running()
+        OverlayUiController::class.java
+            .getDeclaredMethod("captureCurrentRegionForDisplay", Int::class.java, OverlayMode::class.java)
+            .apply { isAccessible = true }.invoke(controller(), other, null)
+        settle()
+        assertNotNull(panel())
+        assertTrue(record()!!.pausedLive)
+
+        field<android.hardware.display.DisplayManager.DisplayListener>("displayListener").onDisplayRemoved(other)
+
+        assertNull(panel())
+        assertNull(record())
+        assertTrue(liveOrStarting())
+    }
+
+    /** The id the last capture sent to the app carries; the started
+     *  activities are consumed. */
+    private fun sentCaptureId(): Long {
+        val app = shadowOf(ctx as android.app.Application)
+        val sent = generateSequence { app.nextStartedActivity }.toList()
+        val id = sent.single { it.action == MainActivity.ACTION_REGION_CAPTURE }
+            .getLongExtra(MainActivity.EXTRA_REGION_CAPTURE_ID, -1L)
+        assertTrue("the capture carries an id", id > 0L)
+        return id
+    }
+
+    // On two screens a capture on its way is the app's read: a takeover
+    // keeps its result off the game (it stays on the app's page).
+    @Test fun `with the app in front a hold-to-preview keeps a Definitions capture on its way off the game`() {
+        ShadowDisplayManager.addDisplay("w640dp-h480dp")
+        MainActivity.isInForeground = true
+        controller().toggleTapToLookupForDisplay(Display.DEFAULT_DISPLAY)
+        val id = sentCaptureId()
+        assertTrue(controller().appCaptureOnItsWayForTest(id))
+
+        svc().holdStartFanout()
+        settle()
+
+        assertFalse(controller().appCaptureOnItsWayForTest(id))
+        svc().holdEnd()
+    }
+
+    @Test fun `with the app in front a hold-to-preview leaves a Translations capture on its way`() {
+        ShadowDisplayManager.addDisplay("w640dp-h480dp")
+        MainActivity.isInForeground = true
+        controller().toggleCaptureScreenForDisplay(Display.DEFAULT_DISPLAY)
+        val id = sentCaptureId()
+
+        svc().holdStartFanout()
+        settle()
+
+        assertTrue(controller().appCaptureOnItsWayForTest(id))
+        svc().holdEnd()
+    }
+
+    @Test fun `with the app in front the quick menu keeps a capture on its way off the game`() {
+        ShadowDisplayManager.addDisplay("w640dp-h480dp")
+        MainActivity.isInForeground = true
+        prefs.iconTapAction = TapAction.OPEN_QUICK_MENU
+        val icon = icon()
+        controller().toggleCaptureScreenForDisplay(Display.DEFAULT_DISPLAY)
+        val id = sentCaptureId()
+
+        icon.onTap!!.invoke()
+        settle()
+
+        assertFalse(controller().appCaptureOnItsWayForTest(id))
+        controller().dismissFloatingMenu()
+    }
+
+    // The app went behind while it read a capture, and a capture since went
+    // to the sheet: the app's result, landing when it comes back, never
+    // takes the game screen from the newer capture.
+    @Test fun `a capture the app was reading never comes up over a newer one-screen capture`() {
+        ShadowDisplayManager.addDisplay("w640dp-h480dp")
+        MainActivity.isInForeground = true
+        controller().toggleCaptureScreenForDisplay(Display.DEFAULT_DISPLAY)
+        val id = sentCaptureId()
+        MainActivity.isInForeground = false
+
+        capture()
+        val sheet = panel()
+        assertFalse(controller().appCaptureOnItsWayForTest(id))
+        MainActivity.isInForeground = true
+        val rect = android.graphics.Rect(100, 100, 300, 140)
+        val data = OneShotOverlayData(
+            boxes = listOf(com.playtranslate.ui.TextBox("hi", rect)),
+            cropLeft = 0, cropTop = 0, screenshotW = 1280, screenshotH = 720,
+            cropWidth = 1280, cropHeight = 720, text = listOf(rect),
+        )
+
+        assertFalse(controller().presentCapture(Display.DEFAULT_DISPLAY, data, null, captureId = id) {})
+        assertSame("the sheet stands", sheet, panel())
+    }
+
+    @Test fun `a display that goes away takes the two-screen window down`() {
+        ShadowDisplayManager.addDisplay("w640dp-h480dp")
+        MainActivity.isInForeground = true
+        val rect = android.graphics.Rect(100, 100, 300, 140)
+        val data = OneShotOverlayData(
+            boxes = listOf(com.playtranslate.ui.TextBox("hi", rect)),
+            cropLeft = 0, cropTop = 0, screenshotW = 1280, screenshotH = 720,
+            cropWidth = 1280, cropHeight = 720, text = listOf(rect),
+        )
+        var dismissed = 0
+        assertTrue(controller().presentCapture(Display.DEFAULT_DISPLAY, data, null) { dismissed++ })
+
+        field<android.hardware.display.DisplayManager.DisplayListener>("displayListener")
+            .onDisplayRemoved(Display.DEFAULT_DISPLAY)
+
+        assertFalse(controller().capturePresentationShowing)
+        assertEquals(1, dismissed)
+    }
+
+    @Test fun `with the app come to the front, a capture sent to it ends a sheet capture still taking its screenshot`() {
+        // Two screens with the app behind, so the first capture is the sheet's.
+        ShadowDisplayManager.addDisplay("w640dp-h480dp")
+        running()
+        controller().toggleCaptureScreenForDisplay(Display.DEFAULT_DISPLAY)
+        assertNull("on its way", panel())
+        assertTrue(record()!!.pausedLive)
+        MainActivity.isInForeground = true
+
+        controller().toggleCaptureScreenForDisplay(Display.DEFAULT_DISPLAY)
+        settle()
+
+        assertNull("its sheet never comes up over the app's capture", panel())
+        assertEquals(-1, controller().captureDisplayIdForTest)
+        val app = shadowOf(ctx as android.app.Application)
+        val sent = generateSequence { app.nextStartedActivity }.map { it.action }.toList()
+        assertTrue(sent.toString(), MainActivity.ACTION_REGION_CAPTURE in sent)
+        assertFalse("without the restart, the app being in front", MainActivity.ACTION_START_LIVE in sent)
+        assertFalse(liveOrStarting())
+    }
+
+    // Any capture's start drops a sheet waiting on a page's Back, with no
+    // capture up to end: the page's Back must not bring the old one back
+    // over the new capture.
+    @Test fun `a new capture drops a sheet waiting on a page's Back`() {
+        running()
+        capture()
+        controller().stashCaptureOverlayForReshow(Display.DEFAULT_DISPLAY, result(), CaptureService.DEFAULT_REGION)
+        settle()
+        assertNull(panel())
+
+        capture()
+        val sheet = panel()
+        controller().onCaptureDetailBackPressed(Display.DEFAULT_DISPLAY)
+        settle()
+
+        assertSame("the new capture's sheet stands", sheet, panel())
+    }
+
+    @Test fun `opening the game-language picker closes the sheet first and gives the screen back`() {
+        prefs.iconTapAction = TapAction.CHANGE_GAME_LANGUAGE
+        val icon = icon()
+        running()
+        capture()
+        assertTrue(record()!!.pausedLive)
+
+        // No second language installed: the gesture opens the picker.
+        icon.onTap!!.invoke()
+        settle()
+
+        assertNotNull("the picker is up", field<Any?>("workspace"))
+        assertNull(panel())
+        assertNull(record())
+        assertTrue("auto-translate is back, or on its way", liveOrStarting())
+    }
+
+    @Test fun `a sheet waiting on a page's Back stays gone once the picker opens over the page`() {
+        running()
+        capture()
+        controller().stashCaptureOverlayForReshow(Display.DEFAULT_DISPLAY, result(), CaptureService.DEFAULT_REGION)
+        settle()
+
+        controller().changeGameLanguageForDisplay(Display.DEFAULT_DISPLAY)
+        settle()
+        // The picker closes as the user closes it, which is a page's Back.
+        controller().onCaptureDetailBackPressed(Display.DEFAULT_DISPLAY)
+        settle()
+
+        assertNull("only the flow that stashed it brings it back", panel())
+        assertFalse("the page cancelled the restart", liveOrStarting())
+    }
+
+    @Test fun `tap-to-lookup closes the quick menu it starts under`() {
+        prefs.iconTapAction = TapAction.OPEN_QUICK_MENU
+        val icon = icon()
+        icon.onTap!!.invoke()
+        settle()
+        assertNotNull("the menu is up", field<Any?>("floatingMenu"))
+        assertTrue("the menu holds live capture paused", svc().holdActive)
+
+        // A hotkey reaches past the menu.
+        controller().toggleTapToLookupForDisplay(Display.DEFAULT_DISPLAY)
+        settle()
+
+        assertNull("the menu is gone", field<Any?>("floatingMenu"))
+        assertFalse("and its pause with it", svc().holdActive)
+        assertEquals(OverlayMode.DEFINITIONS, (panel() as com.playtranslate.ui.CaptureResultOverlay).overlayMode)
     }
 }

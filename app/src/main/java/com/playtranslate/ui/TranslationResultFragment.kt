@@ -395,8 +395,9 @@ class TranslationResultFragment : Fragment() {
         val boxes = currentOnScreenBoxes
         if (mode != OverlayMode.NONE && boxes != null && host?.isResultBoxesShownOnScreen() != true) {
             // In the mode just picked, over one the capture asked for itself
-            // (tap-to-lookup's Definitions).
-            presentCurrentBoxes(boxes.copy(modeOverride = mode))
+            // (tap-to-lookup's Definitions). The user asked: not as the
+            // capture landing, whose game screen may since have been taken.
+            presentCurrentBoxes(boxes.copy(modeOverride = mode, captureId = null))
         } else {
             // Boxes re-flavored in place: chips just switched to
             // Translations need the skipped translation.

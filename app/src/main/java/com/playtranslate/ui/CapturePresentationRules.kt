@@ -12,7 +12,10 @@ import com.playtranslate.OverlayMode
  * boxless status first, so the edge is the capture arriving; the page's
  * render funnel replaying the same boxes (a STARTED replay after the window
  * was taken down in onStop) has no edge, so a window the user tapped away
- * stays down until they ask again.
+ * stays down until they ask again. Whether the game screen is still the
+ * capture's is the controller's to say when it is put up
+ * ([com.playtranslate.OverlayUiController.presentCapture], by
+ * [OnScreenBoxes.captureId]).
  */
 internal fun presentsCaptureOnEdge(
     previousBoxes: OnScreenBoxes?,

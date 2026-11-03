@@ -149,8 +149,7 @@ class PrimaryGameDisplayTest {
         }
         settle()
 
-        val captured = OverlayUiController::class.java.getDeclaredField("captureDisplayId")
-            .apply { isAccessible = true }.get(a11y!!.get().overlayUiController) as Int?
+        val captured = a11y!!.get().overlayUiController.captureDisplayIdForTest
         assertEquals("the panel went up over the default display", Display.DEFAULT_DISPLAY, captured)
         val app = shadowOf(ctx as Application)
         val launched = generateSequence { app.nextStartedActivity }.toList()

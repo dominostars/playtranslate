@@ -63,9 +63,7 @@ class TapToLookupHotkeyTest {
 
     private fun controller(): OverlayUiController = a11y!!.get().overlayUiController
 
-    private fun sheet(): CaptureResultOverlay? =
-        OverlayUiController::class.java.getDeclaredField("captureResultOverlay")
-            .apply { isAccessible = true }.get(controller()) as CaptureResultOverlay?
+    private fun sheet(): CaptureResultOverlay? = controller().captureSheetForTest
 
     @Before fun setUp() {
         sp().edit().clear().commit()

@@ -672,6 +672,11 @@ data class OnScreenBoxes(
      *  one (tap-to-lookup is a capture in Definitions); null reads the
      *  capture surface's setting. Never written to the setting. */
     val modeOverride: com.playtranslate.OverlayMode? = null,
+    /** The capture these boxes are from, as it started on the game display
+     *  ([com.playtranslate.OverlayUiController.beginAppCapture]): put up as
+     *  it lands, they go up only while the game screen is still its own.
+     *  Null for boxes the user asks to see (the page's row). */
+    val captureId: Long? = null,
 )
 
 sealed class ResultState {

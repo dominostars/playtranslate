@@ -221,7 +221,8 @@ class MainActivity :
             // A re-read presents in the remembered mode: only tap-to-lookup's
             // own start asks for another.
             oneShotModeOverride = null
-            _currentCaptureSession.value =
+            followCapture(
+                svc,
                 svc.processScreenshot(
                     com.playtranslate.capture.CapturedFrame(
                         bmp, includesSystemUi = prov.frameIncludesSystemUi ?: true,
@@ -229,7 +230,8 @@ class MainActivity :
                     ),
                     prov.displayId, prov.region, prov.sourceLangId,
                     deviceOnly = deviceOnly,
-                )
+                ),
+            )
         }
     }
 
@@ -557,6 +559,7 @@ class MainActivity :
             screenshotPath = boxes.screenshotPath,
             capturedAtMs = boxes.capturedAtMs,
             modeOverride = boxes.modeOverride,
+            captureId = boxes.captureId,
         )
     }
 
@@ -1600,6 +1603,7 @@ class MainActivity :
                                         com.playtranslate.ui.OnScreenBoxes(
                                             it, oneShotCaptureDisplayId, state.ocrProvenance?.sourceLangId,
                                             modeOverride = oneShotModeOverride,
+                                            captureId = oneShotCaptureId,
                                         )
                                     }
                                     // A box fill swaps the boxes alone; the
@@ -1624,6 +1628,7 @@ class MainActivity :
                                                 screenshotPath = state.result.screenshotPath,
                                                 capturedAtMs = state.result.createdAtMs,
                                                 modeOverride = oneShotModeOverride,
+                                                captureId = oneShotCaptureId,
                                             )
                                         },
                                     )
@@ -1783,8 +1788,20 @@ class MainActivity :
         // for this capture alone.
         val modeOverride = intent.getStringExtra(EXTRA_OVERLAY_MODE_OVERRIDE)
             ?.let { name -> OverlayMode.entries.firstOrNull { it.name == name } }
-        startOneShotCapture(displayId, modeOverride)
+        // The controller started this capture on the game display before it
+        // sent it (OverlayUiController.beginAppCapture); a region capture
+        // sent without an id (the quick menu's region row) starts there now,
+        // as the app's own captures do.
+        val captureId = intent.getLongExtra(EXTRA_REGION_CAPTURE_ID, NO_REGION_CAPTURE_ID)
+            .takeIf { it != NO_REGION_CAPTURE_ID }
+        startOneShotCapture(displayId, modeOverride, captureId)
     }
+
+    /** The capture over the game the running one-shot is, on two screens
+     *  ([OnScreenBoxes.captureId], [followCapture]): its boxes go up as it
+     *  lands only while the game screen is still its own. Null on one
+     *  screen, and with no overlay UI to start it on. */
+    private var oneShotCaptureId: Long? = null
 
     /** The overlay mode the running one-shot capture was asked for ahead of
      *  the remembered one ([OnScreenBoxes.modeOverride]); null for a plain
@@ -1798,8 +1815,13 @@ class MainActivity :
      *  non-primary display); null defers to captureOnce's default
      *  primaryGameDisplayId. [modeOverride] is the mode this capture's
      *  presentation opens in ahead of the remembered one, never written to
-     *  the setting. */
-    private fun startOneShotCapture(displayId: Int? = null, modeOverride: OverlayMode? = null) {
+     *  the setting. [captureId] is the capture over the game it already is,
+     *  when the controller started it ([followCapture]). */
+    private fun startOneShotCapture(
+        displayId: Int? = null,
+        modeOverride: OverlayMode? = null,
+        captureId: Long? = null,
+    ) {
         val svc = captureService ?: return
         oneShotCaptureDisplayId = displayId ?: svc.primaryGameDisplayId()
         oneShotModeOverride = modeOverride
@@ -1810,9 +1832,32 @@ class MainActivity :
         // deferred-completion funnel.
         val mode = modeOverride ?: prefs.overlayModeFor(OverlaySurface.CAPTURE)
         val allowDefer = mode != OverlayMode.TRANSLATION
-        _currentCaptureSession.value =
+        followCapture(
+            svc,
             if (displayId != null) svc.captureOnce(displayId, allowDeferTranslation = allowDefer)
-            else svc.captureOnce(allowDeferTranslation = allowDefer)
+            else svc.captureOnce(allowDeferTranslation = allowDefer),
+            captureId,
+        )
+    }
+
+    /** [session] is the page's capture now ([_currentCaptureSession]). On
+     *  two screens it is the capture over the game too ([oneShotCaptureId]):
+     *  [captureId] when the controller started it, else it starts there now
+     *  ([com.playtranslate.OverlayUiController.beginAppCapture]), taking the
+     *  game screen as the icon's captures do. Its result goes up over the
+     *  game on the other screen, where nothing else shows a read is under
+     *  way, so the icons there spin while it reads
+     *  ([CaptureService.showReadOnIcons]). Every capture this activity starts
+     *  comes through here. */
+    private fun followCapture(svc: CaptureService, session: CaptureSession, captureId: Long? = null) {
+        oneShotCaptureId = if (supportsShowOnScreen()) {
+            captureId ?: CaptureBackendResolver.activeOverlayUi
+                ?.beginAppCapture(oneShotCaptureDisplayId, oneShotModeOverride)
+        } else {
+            null
+        }
+        _currentCaptureSession.value = session
+        if (supportsShowOnScreen()) svc.showReadOnIcons(session)
     }
 
     // ── Accessibility service flow ─────────────────────────────────────────
@@ -3187,6 +3232,14 @@ class MainActivity :
         const val EXTRA_DRAG_SENTENCE_ORIGINAL = "extra_drag_sentence_original"
         const val EXTRA_DRAG_SENTENCE_TRANSLATION = "extra_drag_sentence_translation"
         const val ACTION_REGION_CAPTURE = "com.playtranslate.ACTION_REGION_CAPTURE"
+        /** The capture an [ACTION_REGION_CAPTURE] carries, as the controller
+         *  started it on the game display
+         *  ([com.playtranslate.OverlayUiController.beginAppCapture]), so its
+         *  result goes up there only while the game screen is still its own. */
+        const val EXTRA_REGION_CAPTURE_ID = "extra_region_capture_id"
+        /** [EXTRA_REGION_CAPTURE_ID] absent: a region capture sent without one
+         *  (the quick menu's region row) starts on the game display here. */
+        private const val NO_REGION_CAPTURE_ID = -1L
         const val EXTRA_TOP_FRAC = "extra_top_frac"
         const val EXTRA_BOTTOM_FRAC = "extra_bottom_frac"
         const val EXTRA_LEFT_FRAC = "extra_left_frac"

@@ -139,12 +139,15 @@ class CaptureDefinitionsRoutingTest {
     )
 
     /** A sheet up, before its capture reads anything; [override] is the mode
-     *  tap-to-lookup asks for. */
-    private fun create(override: OverlayMode? = null): CaptureResultOverlay {
+     *  tap-to-lookup asks for. With [controller] a gamepad is attached and
+     *  the sheet's controller nav is live, as over the game. */
+    private fun create(override: OverlayMode? = null, controller: Boolean = false): CaptureResultOverlay {
+        if (controller) attachPad()
         val o = CaptureResultOverlay(ctx, wm, Display.DEFAULT_DISPLAY, host)
         sheet = o
         o.onDismiss = { dismissals += it }
         o.overlayModeOverride = override
+        o.controllerNavEnabled = controller
         layerOf(o).tokenizeLine = { text, _ ->
             text.split(' ').filter { it.isNotEmpty() }.map { TokenSpan(it, it) }
         }
@@ -235,6 +238,23 @@ class CaptureDefinitionsRoutingTest {
             ev.recycle()
         }
         idle()
+    }
+
+    private fun attachPad() {
+        val pad = ShadowInputDevice.makeInputDeviceNamed("pad")
+        ReflectionHelpers.setField(pad, "mId", 42)
+        ReflectionHelpers.setField(pad, "mSources", InputDevice.SOURCE_GAMEPAD)
+        shadowOf(ctx.getSystemService(InputManager::class.java)).addInputDevice(pad)
+    }
+
+    /** D-pad UP, laid out as on a device before each press, until the
+     *  sheet parks or [max] presses have gone. */
+    private fun upUntilParked(o: CaptureResultOverlay, max: Int = 12) {
+        repeat(max) {
+            if (parked(o)) return
+            layout(o)
+            key(o, KeyEvent.KEYCODE_DPAD_UP)
+        }
     }
 
     private fun key(o: CaptureResultOverlay, code: Int) {
@@ -507,6 +527,62 @@ class CaptureDefinitionsRoutingTest {
         assertNull(cursor(o))
     }
 
+    @Test fun `expanded with a controller, UP off the sheet's top parks it on the word nearest above`() {
+        prefs.captureOverlayMode = OverlayMode.DEFINITIONS
+        val o = create(controller = true)
+        bind(o, top)
+        assertFalse(parked(o))
+        val edge = panelTop(o)
+        val near = (edge - 60).toInt()
+        val under = (edge + 60).toInt()
+        assertTrue("room for a line between the top line and the edge", near > 140)
+        assertTrue("room for a line under the panel's edge", under + 40 < screen.y)
+
+        // The same text read again with a word just above the edge and one
+        // the panel covers, both in the middle column the pill sits in: the
+        // sheet fits the same text, so its edge stays.
+        bind(
+            o, top,
+            group("near", top = near, left = screen.x / 2 - 40),
+            group("under", top = under, left = screen.x / 2 - 50),
+        )
+        assertEquals(edge, panelTop(o), 0.5f)
+        upUntilParked(o)
+
+        assertTrue("the sheet parks", parked(o))
+        assertEquals("the words' cursor on the word nearest above the sheet", 2, cursor(o))
+        assertNull("no card opens", selected(o))
+        assertTrue(dismissals.isEmpty())
+
+        // The D-pad drives the words from there.
+        key(o, KeyEvent.KEYCODE_DPAD_UP)
+        assertTrue("onto the top line", cursor(o) in setOf(0, 1))
+    }
+
+    @Test fun `expanded with a controller and no word above, UP off the sheet's top leaves it up`() {
+        prefs.captureOverlayMode = OverlayMode.DEFINITIONS
+        val o = create(controller = true)
+        val edge = run { bind(o, top); panelTop(o) }
+        // Only a word the panel covers.
+        bind(o, group("under", top = (edge + 60).toInt(), left = screen.x / 2 - 50))
+        assertEquals(edge, panelTop(o), 0.5f)
+        upUntilParked(o)
+
+        assertFalse(parked(o))
+        assertTrue(dismissals.isEmpty())
+    }
+
+    @Test fun `a Translations sheet with a controller stays up on UP off its top`() {
+        val o = create(controller = true)
+        bind(o, top)
+        assertFalse(parked(o))
+
+        upUntilParked(o)
+
+        assertFalse(parked(o))
+        assertTrue(dismissals.isEmpty())
+    }
+
     @Test fun `Back closes a card first, then the sheet`() {
         val o = create(override = OverlayMode.DEFINITIONS)
         bind(o, top)
@@ -557,10 +633,7 @@ class CaptureDefinitionsRoutingTest {
     }
 
     @Test fun `with a controller attached, the platform's Back runs the sheet's own ladder in any mode`() {
-        val pad = ShadowInputDevice.makeInputDeviceNamed("pad")
-        ReflectionHelpers.setField(pad, "mId", 42)
-        ReflectionHelpers.setField(pad, "mSources", InputDevice.SOURCE_GAMEPAD)
-        shadowOf(ctx.getSystemService(InputManager::class.java)).addInputDevice(pad)
+        attachPad()
         val o = CaptureResultOverlay(ctx, wm, Display.DEFAULT_DISPLAY, host)
         sheet = o
         o.onDismiss = { dismissals += it }

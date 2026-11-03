@@ -90,6 +90,7 @@ class CapturePresentationTest {
     }
 
     @After fun tearDown() {
+        MainActivity.isInForeground = false
         controller.hideAll()
         com.playtranslate.capture.CaptureLifecycle.setFloatingIconSuppressed(ctx, true)
         service?.destroy()
@@ -313,7 +314,7 @@ class CapturePresentationTest {
     @Test fun `a change of the game language takes the window down once`() {
         assertTrue(present(OverlayMode.TRANSLATION))
 
-        controller.endCapturesForLanguageChange()
+        controller.endCaptures(CaptureTakeover.LANGUAGE_CHANGE)
         idle()
 
         assertFalse(controller.capturePresentationShowing)
@@ -468,6 +469,82 @@ class CapturePresentationTest {
         idle()
 
         assertFalse("not left over the game under the lens", controller.capturePresentationShowing)
+        assertEquals(1, dismissals)
+    }
+
+    // The slide takes down the window the hold switched in place, and sends
+    // the app nothing: the app's result stands on its page.
+    @Test fun `a tap-to-lookup hold that switched the window in place sends the app nothing`() {
+        ShadowDisplayManager.addDisplay("w640dp-h480dp")
+        MainActivity.isInForeground = true
+        prefs.iconHoldAction = HoldAction.TAP_TO_LOOKUP
+        assertTrue(present(OverlayMode.TRANSLATION, wordData()))
+        window()!!.layer.tokenizeLine = words
+        val icon = icon()
+        val app = shadowOf(ctx as android.app.Application)
+        generateSequence { app.nextStartedActivity }.toList()
+
+        icon.onHoldStart!!.invoke()
+        settle()
+        assertEquals(OverlayMode.DEFINITIONS, controller.capturePresentationMode)
+        icon.onHoldCancel!!.invoke()
+        idle()
+
+        assertFalse(controller.capturePresentationShowing)
+        val sent = generateSequence { app.nextStartedActivity }.map { it.action }.toList()
+        assertEquals("no capture sent", emptyList<String?>(), sent)
+    }
+
+    // Driven through the hold triggers in CapturePauseFunnelsTest; here the
+    // row itself, which this controller (not the active backend's) receives.
+    @Test fun `a hold-to-preview on the window's display takes a Definitions window down and leaves another up`() {
+        assertTrue(present(OverlayMode.TRANSLATION, wordData()))
+        window()!!.layer.tokenizeLine = words
+
+        controller.endCaptures(CaptureTakeover.HOLD_PREVIEW, setOf(Display.DEFAULT_DISPLAY))
+        assertTrue("a Translations window stands under the preview", controller.capturePresentationShowing)
+
+        controller.setCaptureMode(OverlayMode.DEFINITIONS)
+        settle()
+        controller.endCaptures(CaptureTakeover.HOLD_PREVIEW, setOf(Display.DEFAULT_DISPLAY + 7))
+        assertTrue("a preview on another display leaves it up", controller.capturePresentationShowing)
+        controller.endCaptures(CaptureTakeover.HOLD_PREVIEW, setOf(Display.DEFAULT_DISPLAY))
+        assertFalse(controller.capturePresentationShowing)
+        assertEquals(1, dismissals)
+    }
+
+    @Test fun `the quick menu opening takes the window down`() {
+        assertTrue(present(OverlayMode.TRANSLATION))
+        prefs.iconTapAction = TapAction.OPEN_QUICK_MENU
+        val icon = icon()
+
+        icon.onTap!!.invoke()
+        idle()
+
+        assertFalse(controller.capturePresentationShowing)
+        assertEquals(1, dismissals)
+        controller.dismissFloatingMenu()
+    }
+
+    @Test fun `the error pill's gear takes the window down`() {
+        assertTrue(present(OverlayMode.TRANSLATION))
+
+        OverlayUiController::class.java.getDeclaredMethod("openServiceSettingsFromPill", String::class.java, Int::class.java)
+            .apply { isAccessible = true }.invoke(controller, "deepl", Display.DEFAULT_DISPLAY)
+        idle()
+
+        assertFalse(controller.capturePresentationShowing)
+        assertEquals(1, dismissals)
+    }
+
+    @Test fun `opening the game-language picker takes the window down`() {
+        assertTrue(present(OverlayMode.TRANSLATION))
+
+        // No second language installed: "Change game language" opens the picker.
+        controller.changeGameLanguageForDisplay(Display.DEFAULT_DISPLAY)
+        idle()
+
+        assertFalse(controller.capturePresentationShowing)
         assertEquals(1, dismissals)
     }
 

@@ -53,6 +53,13 @@ interface CaptureSheetNavHost {
      *  this is safe to fire from a DOWN). */
     fun collapseToSliver()
 
+    /** UP with nothing above the cursor on the sheet: true when the host
+     *  takes the controller off the sheet, from [fromOnScreen] (the cursor's
+     *  item), and the nav then drops its cursor; false leaves it where it
+     *  is. Definitions parks the sheet with its words' cursor on the word
+     *  nearest above the sheet, over the game. */
+    fun leaveSheetUp(fromOnScreen: Rect): Boolean
+
     /** The parked strip's hint row while the sheet rests in its sliver: false
      *  while expanded, and while the row is still fading in through the park
      *  animation. A on the parked sheet rings this; a second A expands (see
@@ -337,7 +344,18 @@ class CaptureSheetControllerNav(
         }
         val from = cands[curIdx].second.toNavRect()
         val target = SheetNavGeometry.nextInDirection(from, cands.map { it.second.toNavRect() }, dir)
-            ?: return   // nothing that way: the cursor stays (no wrap-around)
+        if (target == null) {
+            // Nothing that way: the cursor stays (no wrap-around), except
+            // off the sheet's top, where the host may take the controller to
+            // what lies above it. An open menu's rows are modal: off its top
+            // row the cursor stays.
+            if (dir == SheetNavGeometry.Dir.UP && host.popoverNavActions() == null &&
+                host.leaveSheetUp(cands[curIdx].second)
+            ) {
+                clearCursor()
+            }
+            return
+        }
         setCursor(cands[target].first, cands[target].second)
     }
 

@@ -247,6 +247,15 @@ internal class WordLookupSession(
         return true
     }
 
+    /** Put the controller cursor on the box at [index] (in [drawnRects]'
+     *  order), the spotlight with it, as a D-pad move does: the sheet's own
+     *  cursor handing the controller to the words. The D-pad moves it on
+     *  from there. */
+    fun focus(index: Int) {
+        if (closed || index !in boxes.indices) return
+        moveCursor(index)
+    }
+
     private fun moveCursor(index: Int?) {
         cursor = index
         view.setHighlight(highlight)

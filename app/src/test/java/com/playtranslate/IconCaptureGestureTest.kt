@@ -155,13 +155,9 @@ class IconCaptureGestureTest {
     private fun startedActions(): List<String?> = started().map { it.action }
 
     /** The display the panel went up over, once it has; -1 for none. */
-    private fun panelDisplay(): Int? =
-        OverlayUiController::class.java.getDeclaredField("captureDisplayId")
-            .apply { isAccessible = true }.get(controller) as Int?
+    private fun panelDisplay(): Int = controller.captureDisplayIdForTest
 
-    private fun panel(): Any? =
-        OverlayUiController::class.java.getDeclaredField("captureResultOverlay")
-            .apply { isAccessible = true }.get(controller)
+    private fun panel(): Any? = controller.captureSheetForTest
 
     @Test fun `a hold captures once at the threshold, and its lift captures nothing more`() {
         appInFront()
@@ -295,8 +291,8 @@ class IconCaptureGestureTest {
 
     // The stop is a message to the app, so the drag a slide turns the hold
     // into finds the session still running; it must not pause it and start
-    // it again when the lens closes, over the capture's result. The capture
-    // itself went to the app and is the app's to show.
+    // it again when the lens closes. The capture itself went to the app,
+    // which keeps it on its page: it never comes up over the game (below).
     @Test fun `a hold's capture that slides into a drag leaves the stopped session stopped after the lens closes`() {
         appInFront()
         prefs.iconHoldAction = HoldAction.CAPTURE_SCREEN
@@ -315,7 +311,171 @@ class IconCaptureGestureTest {
         icon.onDragStart!!.invoke()
         closeLens()
 
+        assertEquals("no restart, and nothing else sent", emptyList<String?>(), startedActions())
+    }
+
+    /** Boxes of a capture as the app's page puts them up when it lands. */
+    private fun landed() = OneShotOverlayData(
+        boxes = listOf(com.playtranslate.ui.TextBox("hi", android.graphics.Rect(100, 100, 300, 140))),
+        cropLeft = 0, cropTop = 0, screenshotW = 1280, screenshotH = 720,
+        cropWidth = 1280, cropHeight = 720,
+        text = listOf(android.graphics.Rect(100, 100, 300, 140)),
+    )
+
+    /** The capture [id] lands on the app's page, which puts it up over the
+     *  game by itself: true when it went up. */
+    private fun lands(id: Long): Boolean =
+        controller.presentCapture(Display.DEFAULT_DISPLAY, landed(), null, captureId = id) {}
+
+    /** The id the last capture sent to the app carries. */
+    private fun sentCaptureId(intents: List<Intent>): Long =
+        intents.single { it.action == MainActivity.ACTION_REGION_CAPTURE }
+            .getLongExtra(MainActivity.EXTRA_REGION_CAPTURE_ID, -1L)
+            .also { assertTrue("the capture carries an id", it > 0L) }
+
+    // On two screens a capture's result goes up over the game by itself, so
+    // one the hold sent to the app would land over the lens the slide opens:
+    // the slide ends it on the game display, whatever its mode, and sends
+    // the app nothing; its result stays on the app's page.
+    @Test fun `with the app in front a hold's capture or tap-to-lookup that slides into a drag never comes up over the game`() {
+        appInFront()
+        captureService()
+        val icon = icon()
+        for (action in listOf(HoldAction.CAPTURE_SCREEN, HoldAction.TAP_TO_LOOKUP)) {
+            prefs.iconHoldAction = action
+            icon.onHoldStart!!.invoke()
+            val id = sentCaptureId(started())
+            assertTrue("$action: on its way", controller.appCaptureOnItsWayForTest(id))
+            icon.onHoldCancel!!.invoke()
+            icon.onDragStart!!.invoke()
+            closeLens()
+
+            assertEquals("$action: nothing more sent", emptyList<String?>(), startedActions())
+            assertFalse("$action: refused when it lands", lands(id))
+            assertFalse(controller.capturePresentationShowing)
+        }
+    }
+
+    // A hold that lifts keeps its capture: its result comes up when it lands.
+    @Test fun `a hold that lifts keeps the capture it sent`() {
+        appInFront()
+        captureService()
+        prefs.iconHoldAction = HoldAction.CAPTURE_SCREEN
+        val icon = icon()
+
+        icon.onHoldStart!!.invoke()
+        icon.onHoldEnd!!.invoke()
+        val id = sentCaptureId(started())
+
+        assertTrue(lands(id))
+        assertTrue(controller.capturePresentationShowing)
+        assertFalse("landed, it is the window now", controller.appCaptureOnItsWayForTest(id))
+    }
+
+    // A message to an app no longer in front would bring it forward: the
+    // slide ends the capture on the game display without one.
+    @Test fun `a hold whose app went behind before the slide sends nothing and still ends its capture`() {
+        appInFront()
+        captureService()
+        prefs.iconHoldAction = HoldAction.CAPTURE_SCREEN
+        val icon = icon()
+
+        icon.onHoldStart!!.invoke()
+        val id = sentCaptureId(started())
+        MainActivity.isInForeground = false
+        icon.onHoldCancel!!.invoke()
+
         assertEquals(emptyList<String?>(), startedActions())
+        assertFalse(controller.appCaptureOnItsWayForTest(id))
+    }
+
+    // On one screen the capture is the sheet's, cancelled here: nothing goes
+    // to the app.
+    @Test fun `on one screen a hold's slide into a drag sends the app nothing`() {
+        captureService()
+        prefs.iconHoldAction = HoldAction.CAPTURE_SCREEN
+        val icon = icon()
+
+        icon.onHoldStart!!.invoke()
+        settle()
+        icon.onHoldCancel!!.invoke()
+
+        assertEquals(emptyList<String?>(), startedActions())
+    }
+
+    // Each capture sent to the app is a capture of its own: a newer one
+    // replaces an older still on its way, whose result then stays on the page.
+    @Test fun `each capture sent to the app has its own id, and a newer one replaces an older`() {
+        appInFront()
+        captureService()
+        prefs.iconTapAction = TapAction.CAPTURE_SCREEN
+        val icon = icon()
+
+        icon.onTap!!.invoke()
+        val first = sentCaptureId(started())
+        icon.onTap!!.invoke()
+        val second = sentCaptureId(started())
+
+        assertTrue(first != second)
+        assertFalse(lands(first))
+        assertTrue(lands(second))
+    }
+
+    // A drag lookup that starts while the app reads a capture for this game
+    // display takes the screen from it (CaptureTakeover.LENS_START): its
+    // result stays on the page. A capture already up stays under the lens.
+    @Test fun `with the app in front a drag that starts while a capture is on its way keeps it off the game`() {
+        appInFront()
+        captureService()
+        prefs.iconTapAction = TapAction.CAPTURE_SCREEN
+        val icon = icon()
+
+        icon.onTap!!.invoke()
+        val id = sentCaptureId(started())
+        icon.onDragStart!!.invoke()
+
+        assertFalse(controller.appCaptureOnItsWayForTest(id))
+        assertFalse("refused when it lands", lands(id))
+        closeLens()
+    }
+
+    @Test fun `with the app in front a drag leaves a capture already up over the game`() {
+        appInFront()
+        captureService()
+        prefs.iconTapAction = TapAction.CAPTURE_SCREEN
+        val icon = icon()
+        icon.onTap!!.invoke()
+        assertTrue(lands(sentCaptureId(started())))
+
+        icon.onDragStart!!.invoke()
+
+        assertTrue("it stays under the lens, as it always has", controller.capturePresentationShowing)
+        closeLens()
+    }
+
+    // On one screen the capture still taking its screenshot never comes up
+    // over the lens, and the lens takes over what it stopped: the lens's
+    // close gives auto-translate back, as the capture's close would have.
+    @Test fun `on one screen a drag that starts while a capture is on its way ends it, and the lens gives back what it stopped`() {
+        prefs.iconTapAction = TapAction.CAPTURE_SCREEN
+        val icon = icon()
+        val mode = running(OverlayFlavor.TRANSLATION)
+        icon.onTap!!.invoke()
+        assertEquals("the capture stopped it", 1, mode.stops)
+        assertEquals("on its way", Display.DEFAULT_DISPLAY, panelDisplay())
+        assertNull(panel())
+
+        icon.onDragStart!!.invoke()
+        settle()
+
+        assertNull("never comes up over the lens", panel())
+        assertEquals(-1, panelDisplay())
+        assertFalse(service!!.get().isLive || service!!.get().isLiveStartPending)
+        closeLens()
+        assertTrue(
+            "the lens gives it back",
+            service!!.get().isLive || service!!.get().isLiveStartPending,
+        )
     }
 
     /** The default display's drag lens up and sticky, as a drag leaves it,
