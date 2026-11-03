@@ -1652,6 +1652,11 @@ class OverlayUiController(
                         // Definitions, so the same.
                         dropCapturePause()
                         dismissCaptureResultOverlay()
+                        // The two-screen window goes as the sheet does: a
+                        // tap-to-lookup hold switched it to Definitions in
+                        // place, and it would stay over the game under the
+                        // lens, dimming it and holding the keys.
+                        dismissCapturePresentation()
                     }
                     // The toggle and the swap stand: the drag that follows
                     // pauses a running auto-translate and resumes it

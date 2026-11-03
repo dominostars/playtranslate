@@ -88,6 +88,7 @@ class CapturePresentationTest {
 
     @After fun tearDown() {
         controller.hideAll()
+        com.playtranslate.capture.CaptureLifecycle.setFloatingIconSuppressed(ctx, true)
         service?.destroy()
         service = null
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(5))
@@ -433,6 +434,36 @@ class CapturePresentationTest {
 
         assertTrue(controller.capturePresentationShowing)
         assertFalse(windowFocusable())
+    }
+
+    /** The default display's floating icon, installed. */
+    private fun icon(): com.playtranslate.ui.FloatingOverlayIcon {
+        com.playtranslate.capture.CaptureLifecycle.setFloatingIconSuppressed(ctx, false)
+        controller.reconcileFloatingIcons(freshAppearance = false)
+        idle()
+        val handles = OverlayUiController::class.java.getDeclaredField("iconHandles")
+            .apply { isAccessible = true }.get(controller) as Map<*, *>
+        val handle = handles[Display.DEFAULT_DISPLAY]!!
+        return handle.javaClass.getDeclaredField("icon").apply { isAccessible = true }
+            .get(handle) as com.playtranslate.ui.FloatingOverlayIcon
+    }
+
+    @Test fun `a tap-to-lookup hold that slides into a drag takes the window it switched down`() {
+        prefs.iconHoldAction = HoldAction.TAP_TO_LOOKUP
+        assertTrue(present(OverlayMode.TRANSLATION, wordData()))
+        window()!!.layer.tokenizeLine = words
+        val icon = icon()
+
+        icon.onHoldStart!!.invoke()
+        settle()
+        assertEquals("the hold switched it in place", OverlayMode.DEFINITIONS, controller.capturePresentationMode)
+        assertTrue("its words are up", window()!!.layer.hasBoxes)
+
+        icon.onHoldCancel!!.invoke()
+        idle()
+
+        assertFalse("not left over the game under the lens", controller.capturePresentationShowing)
+        assertEquals(1, dismissals)
     }
 
     @Test fun `tap-to-lookup over a Definitions window takes it down`() {
