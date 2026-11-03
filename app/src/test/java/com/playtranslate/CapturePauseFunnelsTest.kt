@@ -277,6 +277,28 @@ class CapturePauseFunnelsTest {
         assertFalse(liveOrStarting())
     }
 
+    @Test fun `with the app come to the front, a capture sent to it takes a sheet left up down at once, owing nothing`() {
+        running()
+        capture()
+        assertTrue(record()!!.pausedLive)
+        // The app comes to the front on another screen; tap-to-lookup there.
+        val other = ShadowDisplayManager.addDisplay("w640dp-h480dp")
+        MainActivity.isInForeground = true
+
+        OverlayUiController::class.java.getDeclaredMethod("captureInDefinitions", Int::class.javaPrimitiveType)
+            .apply { isAccessible = true }.invoke(controller(), other)
+        settle()
+
+        assertNull("the sheet goes whatever the capture brings back", panel())
+        assertNull("its record settled", record())
+        // With the app in front a restart would be a message to it.
+        val app = shadowOf(ctx as android.app.Application)
+        val sent = generateSequence { app.nextStartedActivity }.map { it.action }.toList()
+        assertTrue(sent.toString(), MainActivity.ACTION_REGION_CAPTURE in sent)
+        assertFalse("without a restart under the app's capture", MainActivity.ACTION_START_LIVE in sent)
+        assertFalse(liveOrStarting())
+    }
+
     @Test fun `a capture stops a running auto-translate and the user's close restarts it`() {
         val live = running()
         capture()

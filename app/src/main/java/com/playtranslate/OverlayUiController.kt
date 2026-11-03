@@ -2904,6 +2904,12 @@ class OverlayUiController(
             dismissAllDragLookupPopups()
             showCaptureResultOverlay(displayId, region, modeOverride)
         } else {
+            // A sheet still up from a capture taken with the app in the
+            // background (the app came to the front on another screen since)
+            // goes now, whatever this capture brings back, even nothing: the
+            // app is in front, so its record settles without the restart.
+            settleCapturePause(resumeLive = false)
+            dismissCaptureResultOverlay()
             // A drag lens left open would sit under the capture's window;
             // it closes, its record settling without the restart it would
             // owe, since a capture leaves auto-translate stopped here.
