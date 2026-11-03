@@ -28,6 +28,19 @@ private fun segmentPadPx(count: Int, density: Float): Int = ((if (count > 3) 8 e
 /** The track's inset around its segments. */
 private fun trackPadPx(density: Float): Int = (3 * density).toInt()
 
+/** A segment's height. */
+private fun segmentHeightPx(density: Float): Int = (32 * density).toInt()
+
+/**
+ * The height a [buildPillToggle] control draws at: a segment's and the
+ * track's inset around it. For a host that shapes itself around the
+ * control (the game screen's mode pill sizes its X to it).
+ */
+fun pillToggleHeightPx(ctx: Context): Int {
+    val density = ctx.resources.displayMetrics.density
+    return segmentHeightPx(density) + 2 * trackPadPx(density)
+}
+
 /**
  * The width a [buildPillToggle] control of [labels] needs to show every
  * label at its full size, bold as the selected segment draws it, inside
@@ -59,23 +72,27 @@ fun pillToggleFitWidthPx(ctx: Context, labels: List<String>): Int {
  * of more than three segments pads them less, so four segments of localized
  * text fit a phone-width row; two- and three-segment controls whose labels
  * fit at 13sp render as they always did. A host that sizes the control
- * itself can size it to its labels ([pillToggleFitWidthPx]). Returns a
- * [PillToggle] for a host that has to freeze the segments; hosts that never
- * do can ignore it.
+ * itself can size it to its labels ([pillToggleFitWidthPx]). [roundEnds]
+ * rounds the track and the selected segment's indicator into full pills,
+ * for a host that is pill-shaped itself (the game screen's mode pill); the
+ * rest keep their rounded corners. Returns a [PillToggle] for a host that
+ * has to freeze the segments; hosts that never do can ignore it.
  */
 fun <T> buildPillToggle(
     container: FrameLayout,
     options: List<Pair<String, T>>,
     selected: T,
+    roundEnds: Boolean = false,
     onSelect: (T) -> Unit,
 ): PillToggle {
     container.removeAllViews()
     val ctx = container.context
     val dp = ctx.resources.displayMetrics.density
-    val trackRadius = 10 * dp
-    val pillRadius = 8 * dp
     val trackPad = trackPadPx(dp)
-    val pillH = (32 * dp).toInt()
+    val pillH = segmentHeightPx(dp)
+    // Round ends: half of each one's height.
+    val trackRadius = if (roundEnds) pillToggleHeightPx(ctx) / 2f else 10 * dp
+    val pillRadius = if (roundEnds) pillH / 2f else 8 * dp
     // Four segments on a phone leave each label about 45dp at the usual
     // padding; a narrower inset gives localized labels the room.
     val pillPad = segmentPadPx(options.size, dp)

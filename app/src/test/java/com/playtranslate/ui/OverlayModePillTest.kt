@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.Context
+import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Looper
@@ -241,7 +242,7 @@ class OverlayModePillTest {
         val barW = h.pill.width
         assertTrue("a bar wider than it is tall", barW > barH)
         val capsule = h.pill.background as GradientDrawable
-        assertEquals("the bar's own corners", OverlayModePill.ROW_RADIUS_DP * ctx.resources.displayMetrics.density, capsule.cornerRadius, 0.01f)
+        assertEquals("a full pill", barH / 2f, capsule.cornerRadius, 0.01f)
 
         // The host's remembered state on a new capture: no clock advance.
         h.pill.render(options, OverlayMode.TRANSLATION, collapsed = true)
@@ -250,6 +251,43 @@ class OverlayModePillTest {
         assertEquals("the bar's own height, measured whole", bar(h.pill).measuredHeight, h.pill.height)
         assertEquals("as wide as it is tall", barH, h.pill.width)
         assertEquals("a circle", barH / 2f, capsule.cornerRadius, 0.01f)
+    }
+
+    /** [v]'s bounds in [ancestor]'s coordinates. */
+    private fun boundsIn(v: View, ancestor: View): Rect {
+        var x = 0
+        var y = 0
+        var cur = v
+        while (cur !== ancestor) {
+            x += cur.left
+            y += cur.top
+            cur = cur.parent as View
+        }
+        return Rect(x, y, x + v.width, y + v.height)
+    }
+
+    @Test fun `the track and the X sit concentric in the capsule's round ends, either direction`() {
+        for (rtl in listOf(false, true)) {
+            val h = Hosted(rtl)
+            h.pill.render(options, OverlayMode.FURIGANA, collapsed = false)
+            h.layout()
+            val p = h.pill
+            assertEquals("a full pill ($rtl)", p.height / 2f, (p.background as GradientDrawable).cornerRadius, 0.01f)
+            val track = (bar(p) as ViewGroup).getChildAt(0).let { (it as ViewGroup).getChildAt(0) }
+            val highlight = (track as ViewGroup).getChildAt(0)
+            assertEquals("the track's ends", track.height / 2f, (track.background as GradientDrawable).cornerRadius, 0.01f)
+            assertEquals("the highlight's ends", highlight.height / 2f, (highlight.background as GradientDrawable).cornerRadius, 0.01f)
+            // Full pills one inset apart on every side share their ends' centres.
+            val t = boundsIn(track, p)
+            val x = boundsIn(closeButton(p)!!, p)
+            val inset = t.top
+            assertTrue("an inset at all", inset > 0)
+            assertEquals("the track's bottom inset ($rtl)", inset, p.height - t.bottom)
+            assertEquals("the track's start inset ($rtl)", inset, if (rtl) p.width - t.right else t.left)
+            assertEquals("the X's top inset ($rtl)", inset, x.top)
+            assertEquals("the X's bottom inset ($rtl)", inset, p.height - x.bottom)
+            assertEquals("the X's end inset ($rtl)", inset, if (rtl) x.left else p.width - x.right)
+        }
     }
 
     @Test fun `the X shrinks the bar into the disc at the end edge`() {

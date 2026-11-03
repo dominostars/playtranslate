@@ -25,14 +25,14 @@ import kotlin.math.roundToInt
  * reach, so it lives in the host's root above the panel; the host routes
  * touches inside its bounds to it and places it under the status bar.
  *
- * Both states are one capsule, which this view draws and clips its content
- * to. The bar is measured whole in either state, so the disc is the bar's
- * height, and as wide. A tap on the X or on the disc morphs one into the
- * other: the capsule's width runs between the disc's and the bar's, its
- * contents held to its end edge, where the host pins it and where the X
- * and the disc both sit; the bar keeps its size and is clipped, never
- * squeezed; the two contents fade through, so they never show or take a
- * tap together. [render] sets a state outright.
+ * Both states are one capsule, a pill at every width, which this view
+ * draws and clips its content to. The bar is measured whole in either
+ * state, so the disc is the bar's height, and as wide. A tap on the X or
+ * on the disc morphs one into the other: the capsule's width runs between
+ * the disc's and the bar's, its contents held to its end edge, where the
+ * host pins it and where the X and the disc both sit; the bar keeps its
+ * size and is clipped, never squeezed; the two contents fade through, so
+ * they never show or take a tap together. [render] sets a state outright.
  *
  * Idempotent: [render] rebuilds only when the options, the selection or the
  * collapsed state changed, so a host may call it from every refresh without
@@ -169,8 +169,9 @@ internal class OverlayModePill(context: Context) : FrameLayout(context) {
         glyph.setPadding(pad, pad, pad, pad)
         val square = MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY)
         glyph.measure(square, square)
-        // A circle at the disc, the bar's own corners at the bar.
-        val radius = h / 2f + (ROW_RADIUS_DP * dp - h / 2f) * reveal
+        // A pill at every width: round ends the bar's height, so the disc
+        // is a circle and the bar's ends are concentric with the track's.
+        val radius = h / 2f
         if (capsule.cornerRadius != radius) capsule.cornerRadius = radius
         setMeasuredDimension((h + (bar.measuredWidth - h) * reveal).roundToInt(), h)
     }
@@ -196,15 +197,16 @@ internal class OverlayModePill(context: Context) : FrameLayout(context) {
         )
     }
 
-    /** The segments and the X, padded inside the capsule, which is their
-     *  background. */
+    /** The segments and the X inside the capsule, which is their background:
+     *  one inset all round, so the track sits in the capsule's start end
+     *  and the X's square, the track's height, in its other end, each
+     *  concentric with it. */
     private fun buildBar(options: List<Pair<String, OverlayMode>>, selected: OverlayMode): View {
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            val padH = (6 * dp).toInt()
-            val padV = (4 * dp).toInt()
-            setPadding(padH, padV, padH, padV)
+            val inset = (INSET_DP * dp).toInt()
+            setPadding(inset, inset, inset, inset)
         }
         val toggleHost = FrameLayout(context).apply {
             // Wide enough for every label at its full size, and no narrower
@@ -217,14 +219,14 @@ internal class OverlayModePill(context: Context) : FrameLayout(context) {
                 1f,
             )
         }
-        buildPillToggle(toggleHost, options, selected) { mode ->
+        buildPillToggle(toggleHost, options, selected, roundEnds = true) { mode ->
             this.selected = mode
             showGlyph(mode)
             onSelect?.invoke(mode)
         }
         row.addView(toggleHost)
-        val closeSize = (32 * dp).toInt()
-        val closePad = (6 * dp).toInt()
+        val closeSize = pillToggleHeightPx(context)
+        val closePad = (closeSize - (GLYPH_DP * dp).roundToInt()) / 2
         row.addView(ImageView(context).apply {
             layoutParams = LinearLayout.LayoutParams(closeSize, closeSize).apply {
                 marginStart = (4 * dp).toInt()
@@ -242,7 +244,9 @@ internal class OverlayModePill(context: Context) : FrameLayout(context) {
     }
 
     companion object {
-        const val ROW_RADIUS_DP = 20f
+        /** The capsule's buffer around the track and the X, the same on
+         *  every side. */
+        const val INSET_DP = 4
         /** Each segment's least width in the expanded control; longer
          *  labels widen it ([pillToggleFitWidthPx]). */
         const val SEGMENT_DP = 78
