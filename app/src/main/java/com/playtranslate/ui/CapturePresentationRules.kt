@@ -21,3 +21,14 @@ internal fun presentsCaptureOnEdge(
     rememberedMode: OverlayMode,
 ): Boolean = nextBoxes != null && previousBoxes == null && !shownNow &&
     (nextBoxes.modeOverride ?: rememberedMode) != OverlayMode.NONE
+
+/**
+ * Whether the results page shows its capture-mode row (two screens): only
+ * with a capture's result on the page, whose boxes ([boxes]) are what the
+ * row puts on the game display, and only where the game display is another
+ * screen ([showsOnScreen]). Not before a capture, not while one is being
+ * read (a capture hops through a boxless status first), and not over a
+ * result without boxes (live mode's, an edit's).
+ */
+internal fun showsCaptureModeRow(showsOnScreen: Boolean, boxes: OnScreenBoxes?): Boolean =
+    showsOnScreen && boxes != null

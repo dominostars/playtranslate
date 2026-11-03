@@ -1116,7 +1116,6 @@ class OverlayUiController(
             displayCtx, wm, overlayHost, displayId, scope, prefs,
             onDismissRequested = { dismissCapturePresentation() },
             onNothingToShow = { dismissCapturePresentation() },
-            onModePicked = { setCaptureMode(it) },
         )
         window.bind(data, sourceLangId, mode, screenshotPath, capturedAtMs)
         if (window.showsNothing) {

@@ -35,7 +35,8 @@ import java.time.Duration
  * [CaptureOverlayWindow]): nothing in None, the capture's mode otherwise;
  * a fill or a reading build that leaves nothing takes it down; the row's
  * pick re-flavors in place or takes it down; a running auto-translate stops
- * first; a tap on the game screen hands it back, a tap on the pill does not;
+ * first; the window carries no mode control (the app's row is the control
+ * on two screens), and any tap on the game screen hands it back;
  * the dismissed-notification fires once per window. In Definitions (the
  * row's pick, or tap-to-lookup's override of one capture, which writes no
  * setting) the window holds key focus, a tap on a word opens its card and
@@ -266,7 +267,7 @@ class CapturePresentationTest {
         assertTrue(controller.capturePresentationShowing)
     }
 
-    @Test fun `a tap on the game screen hands it back, a tap on the pill does not`() {
+    @Test fun `the window carries no mode control, and a tap where one would sit hands the screen back`() {
         assertTrue(present(OverlayMode.TRANSLATION))
         val w = window()!!
         w.measure(
@@ -274,16 +275,13 @@ class CapturePresentationTest {
             android.view.View.MeasureSpec.makeMeasureSpec(720, android.view.View.MeasureSpec.EXACTLY),
         )
         w.layout(0, 0, 1280, 720)
-        val pill = w.getChildAt(1)
-        assertTrue("the pill is laid out top-right", pill.right > 0 && pill.bottom > 0)
+        fun descendants(v: android.view.View): List<android.view.View> =
+            if (v is android.view.ViewGroup) listOf(v) + (0 until v.childCount).flatMap { descendants(v.getChildAt(it)) }
+            else listOf(v)
+        assertTrue("no pill on the game screen", descendants(w).none { it is com.playtranslate.ui.OverlayModePill })
+        // The top-right corner, where the pill sits on one screen.
         val now = SystemClock.uptimeMillis()
-        val onPill = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, pill.left + 4f, pill.top + 4f, 0)
-        w.dispatchTouchEvent(onPill)
-        w.dispatchTouchEvent(MotionEvent.obtain(now, now + 10, MotionEvent.ACTION_UP, pill.left + 4f, pill.top + 4f, 0))
-        idle()
-        assertTrue("the pill's own touch", controller.capturePresentationShowing)
-        val onGame = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, 640f, 600f, 0)
-        w.dispatchTouchEvent(onGame)
+        w.dispatchTouchEvent(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, 1240f, 30f, 0))
         idle()
         assertFalse(controller.capturePresentationShowing)
         assertEquals(1, dismissals)

@@ -10,7 +10,9 @@ import org.junit.Test
  * by itself ([presentsCaptureOnEdge]): only on the edge where boxes arrive,
  * only while nothing is up, and never in None, the mode being the one the
  * capture asked for itself (tap-to-lookup's Definitions) over the remembered
- * one. Every cell.
+ * one. Every cell. And when the page shows its capture-mode row
+ * ([showsCaptureModeRow]): only with a capture's result on it, on two
+ * screens.
  */
 class CapturePresentationRulesTest {
 
@@ -41,6 +43,13 @@ class CapturePresentationRulesTest {
 
     @Test fun `none never presents`() {
         assertEquals(false, presentsCaptureOnEdge(null, boxes, shownNow = false, rememberedMode = OverlayMode.NONE))
+    }
+
+    @Test fun `the mode row shows only with a capture's result, on two screens`() {
+        assertEquals("a capture's result", true, showsCaptureModeRow(showsOnScreen = true, boxes = boxes))
+        assertEquals("before one, or a result without boxes", false, showsCaptureModeRow(showsOnScreen = true, boxes = null))
+        assertEquals("one screen", false, showsCaptureModeRow(showsOnScreen = false, boxes = boxes))
+        assertEquals("neither", false, showsCaptureModeRow(showsOnScreen = false, boxes = null))
     }
 
     @Test fun `the mode a capture asked for itself wins over the remembered one`() {

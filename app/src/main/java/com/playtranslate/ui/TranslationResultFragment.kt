@@ -367,11 +367,10 @@ class TranslationResultFragment : Fragment() {
     /** The capture-mode row over the result area (two screens): every mode
      *  a capture offers that the game-display layer paints, the painted
      *  boxes' mode selected while they are up, else the remembered one.
-     *  Shown with or without a result, so the next capture's mode can be
-     *  set ahead of it. */
+     *  Shown only with a capture's result on the page ([showsCaptureModeRow]). */
     private fun refreshCaptureModeRow() {
         if (view == null) return
-        val visible = host?.supportsShowOnScreen() == true
+        val visible = showsCaptureModeRow(host?.supportsShowOnScreen() == true, currentOnScreenBoxes)
         if (!visible) {
             content.setCaptureModeRow(emptyList(), OverlayMode.TRANSLATION, visible = false)
             return

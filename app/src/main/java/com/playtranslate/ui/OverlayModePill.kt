@@ -104,8 +104,14 @@ internal class OverlayModePill(context: Context) : FrameLayout(context) {
             layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
         }
         val toggleHost = FrameLayout(context).apply {
+            // Wide enough for every label at its full size, and no narrower
+            // than the segments always were. On a screen too narrow for it
+            // the weight gives way, so the X stays on screen and the labels
+            // shrink as they always could.
             layoutParams = LinearLayout.LayoutParams(
-                (SEGMENT_DP * dp).toInt() * options.size, LinearLayout.LayoutParams.WRAP_CONTENT,
+                maxOf((SEGMENT_DP * dp).toInt() * options.size, pillToggleFitWidthPx(context, options.map { it.first })),
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f,
             )
         }
         buildPillToggle(toggleHost, options, selected) { mode ->
@@ -140,7 +146,8 @@ internal class OverlayModePill(context: Context) : FrameLayout(context) {
     companion object {
         const val DISC_DP = 36
         const val ROW_RADIUS_DP = 20f
-        /** Each segment's width in the expanded control. */
+        /** Each segment's least width in the expanded control; longer
+         *  labels widen it ([pillToggleFitWidthPx]). */
         const val SEGMENT_DP = 78
 
         fun glyphOf(mode: OverlayMode): Int = when (mode) {
