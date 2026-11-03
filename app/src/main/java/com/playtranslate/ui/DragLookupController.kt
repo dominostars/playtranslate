@@ -1178,10 +1178,24 @@ class DragLookupController(
     }
 
     /**
+     * The frame of the scene a capture's Definitions presentation
+     * ([WordLookupSession]) looks its words up in: its screenshot at
+     * [screenshotPath], taken at [capturedAtMs], which a card's pages and
+     * its Anki note read at tap time ([lensActions]). The session gives it
+     * with its lines and again when it arrives after them (a capture whose
+     * result lands after its boxes went up), so a card already up cites it
+     * from then on. This controller is the frame's one holder.
+     */
+    internal fun setFrame(screenshotPath: String?, capturedAtMs: Long) {
+        this.screenshotPath = screenshotPath
+        dragCapturedAtMs = capturedAtMs
+    }
+
+    /**
      * The tap on a word's box (a capture's Definitions presentation,
      * [WordLookupSession]): look up exactly [at], the token the box was drawn
-     * for, in the scene the caller captured ([lines], its screenshot at
-     * [screenshotPath], taken at [capturedAtMs]), and show the sticky lens
+     * for, in the scene the caller captured ([lines], its frame as
+     * [setFrame] last gave it), and show the sticky lens
      * anchored on [anchor], the box's screen rect, as the result sheet's
      * word lens anchors on its word ([SourceTextLens]). The scene is the
      * caller's to present: the word's sentence is recorded but not sent to
@@ -1198,8 +1212,6 @@ class DragLookupController(
      */
     internal fun lookUpWord(
         lines: List<OcrManager.OcrLine>,
-        screenshotPath: String?,
-        capturedAtMs: Long,
         at: TokenAt,
         anchor: Rect,
     ) {
@@ -1209,8 +1221,6 @@ class DragLookupController(
         dragInProgress = false
         lensRevealed = false
         ocrLines = lines
-        this.screenshotPath = screenshotPath
-        dragCapturedAtMs = capturedAtMs
         sessionGeometry = context.displayGeometryOf(displayId)
         lookupJob = scope.launch {
             try {

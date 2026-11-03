@@ -45,7 +45,9 @@ import java.time.Duration
  * up closes it, a tap off every word closes a card and is the host's with
  * none); a card that ends by its own means ends the presentation, one the
  * session closes does not; Back closes a card and is the host's with none;
- * the controller lights, moves and selects, the card never taking it.
+ * the controller lights, moves and selects, the card never taking it. A card
+ * cites the capture's frame whether it came with the lines or after the card
+ * opened.
  */
 @RunWith(RobolectricTestRunner::class)
 class WordLookupSessionTest {
@@ -301,6 +303,32 @@ class WordLookupSessionTest {
         val started = generateSequence { app.nextStartedActivity }.map { it.action }.toList()
         assertFalse(started.toString(), MainActivity.ACTION_DRAG_SENTENCE in started)
         assertEquals(0, ended)
+    }
+
+    // ── the frame a card cites ───────────────────────────────────────────
+
+    /** The frame the card's pages and Anki note read at tap time. */
+    private fun cardFrame(): Pair<String?, Long?> =
+        lookup().field<String?>("screenshotPath") to lookup().field<Long?>("dragCapturedAtMs")
+
+    @Test fun `a card opened before the frame arrives cites it once it does`() {
+        // The boxes go up with the read; the frame comes with the result.
+        load(helloWorld)
+        session.onTapAt(150f, 315f)
+        assertTrue(session.hasCard)
+
+        session.setFrame("/screenshots/capture.jpg", 1_234L)
+
+        assertEquals("/screenshots/capture.jpg" to 1_234L, cardFrame())
+    }
+
+    @Test fun `a frame given with the lines reaches a card opened later`() {
+        session.load(listOf(helloWorld), "/screenshots/capture.jpg", 1_234L)
+        settle()
+
+        session.onTapAt(150f, 315f)
+
+        assertEquals("/screenshots/capture.jpg" to 1_234L, cardFrame())
     }
 
     // ── the card's end ───────────────────────────────────────────────────

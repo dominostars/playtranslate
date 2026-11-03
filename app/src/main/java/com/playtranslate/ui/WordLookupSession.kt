@@ -66,8 +66,6 @@ internal class WordLookupSession(
     private var lines: List<OcrManager.OcrLine> = emptyList()
     private var lineTokens: List<List<TokenSpan>> = emptyList()
     private var boxes: List<TapLookupGeometry.WordBox> = emptyList()
-    private var screenshotPath: String? = null
-    private var capturedAtMs = 0L
     private var job: Job? = null
     private var closed = false
 
@@ -97,13 +95,13 @@ internal class WordLookupSession(
     }
 
     /** Box every token of [lines] (screen coordinates), the frame they were
-     *  read from saved at [screenshotPath] at [capturedAtMs]. A card up for
-     *  a box that survives (the same lines read again) stays. */
+     *  read from saved at [screenshotPath] at [capturedAtMs] (the card's to
+     *  hold, [DragLookupController.setFrame]). A card up for a box that
+     *  survives (the same lines read again) stays. */
     fun load(lines: List<OcrManager.OcrLine>, screenshotPath: String?, capturedAtMs: Long) {
         job?.cancel()
         this.lines = lines
-        this.screenshotPath = screenshotPath
-        this.capturedAtMs = capturedAtMs
+        lookup.setFrame(screenshotPath, capturedAtMs)
         pending = true
         job = scope.launch {
             val tokens = try {
@@ -134,10 +132,10 @@ internal class WordLookupSession(
     }
 
     /** The frame's saved path and time arrived after the lines (a capture
-     *  whose result lands after its boxes went up). */
+     *  whose result lands after its boxes went up): a card already up cites
+     *  it from now on, as every later one does. */
     fun setFrame(screenshotPath: String?, capturedAtMs: Long) {
-        this.screenshotPath = screenshotPath
-        this.capturedAtMs = capturedAtMs
+        lookup.setFrame(screenshotPath, capturedAtMs)
     }
 
     /** The drawn footprints of the boxes, in screen coordinates. */
@@ -172,7 +170,7 @@ internal class WordLookupSession(
         view.setHighlight(highlight)
         val anchor = Rect().also { box.screenBounds().roundOut(it) }
         lookup.lookUpWord(
-            lines, screenshotPath, capturedAtMs,
+            lines,
             DragLookupController.TokenAt(line, token, box.charOffset, box.surface),
             anchor,
         )
