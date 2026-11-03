@@ -227,11 +227,16 @@ class TranslationResultFragment : Fragment() {
 
     /** The paintable boxes carried by the currently-rendered state, or null.
      *  Tracks [ResultState.Translating]/[ResultState.Ready.onScreenBoxes]
-     *  through the render funnel — see [syncOnScreenBoxes]. Deliberately the
-     *  ONLY show-on-screen state this fragment holds: whether the boxes are
-     *  painted is derived from [TranslationResultHost.isResultBoxesShownOnScreen]
-     *  at each render, never mirrored. */
-    private var currentOnScreenBoxes: OnScreenBoxes? = null
+     *  through the render funnel — see [syncOnScreenBoxes]. Kept in the
+     *  view model ([TranslationResultViewModel.renderedOnScreenBoxes]), which
+     *  outlives a recreated page, so the replay into a new page is not a
+     *  capture arriving. Deliberately the ONLY show-on-screen state this page
+     *  reads besides the host: whether the boxes are painted is derived from
+     *  [TranslationResultHost.isResultBoxesShownOnScreen] at each render,
+     *  never mirrored. */
+    private var currentOnScreenBoxes: OnScreenBoxes?
+        get() = vm.renderedOnScreenBoxes
+        set(value) { vm.renderedOnScreenBoxes = value }
 
     // ── Fragment lifecycle ─────────────────────────────────────────────────
 

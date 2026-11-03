@@ -60,6 +60,15 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
     private val _result = MutableStateFlow<ResultState>(ResultState.Idle)
     val result: StateFlow<ResultState> = _result.asStateFlow()
 
+    /** The on-screen boxes of the state the results page last rendered (two
+     *  screens): what a capture's arrival is read against
+     *  ([presentsCaptureOnEdge]), and what the page's mode row shows and
+     *  its picks put up. Held here, not in the page, so a page recreated
+     *  over the same result (a theme, dark-mode or locale change recreates
+     *  the activity, and this model outlives it) replays it as the capture
+     *  it already was and puts nothing back up on the game display. */
+    var renderedOnScreenBoxes: OnScreenBoxes? = null
+
     private val _wordLookups = MutableStateFlow<WordLookupsState>(WordLookupsState.Idle)
     val wordLookups: StateFlow<WordLookupsState> = _wordLookups.asStateFlow()
 
