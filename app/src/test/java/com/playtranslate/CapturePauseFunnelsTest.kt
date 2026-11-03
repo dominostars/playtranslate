@@ -28,6 +28,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ServiceController
 import org.robolectric.shadows.ShadowDisplayManager
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
 import java.time.Duration
 
 /**
@@ -252,6 +254,27 @@ class CapturePauseFunnelsTest {
 
         assertSame("the same sheet, not a capture of the primary display", sheet, panel())
         assertEquals(OverlayMode.DEFINITIONS, sheet.overlayMode)
+    }
+
+    @Test fun `a sheet whose capture is cancelled from outside settles its debt without a restart`() {
+        running()
+        capture()
+        assertTrue(record()!!.pausedLive)
+        val sheet = panel() as com.playtranslate.ui.CaptureResultOverlay
+
+        // A region change in the app, or the app's own capture, cancels the
+        // sheet's session; the sheet ends itself.
+        sheet.observe(CaptureSession(MutableStateFlow<CaptureState>(CaptureState.Cancelled), Job()))
+        settle()
+
+        assertNull(panel())
+        assertNull("settled, not left for a later capture", record())
+        assertFalse("no restart", liveOrStarting())
+        // The next capture owes nothing, so its close restarts nothing.
+        capture()
+        assertFalse(record()!!.pausedLive)
+        closeByUser()
+        assertFalse(liveOrStarting())
     }
 
     @Test fun `a capture stops a running auto-translate and the user's close restarts it`() {

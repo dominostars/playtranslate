@@ -2736,10 +2736,12 @@ class OverlayUiController(
     }
 
     /** The sheet [overlay] closed for [reason]. The user's own close hands
-     *  the game screen back; a page cancels the restart; the system's
-     *  endings leave the record to the funnel that caused them (a new
-     *  capture takes it over, a live start settles it, a teardown drops it;
-     *  a cancelled session's record waits for the next of those). */
+     *  the game screen back; a page cancels the restart; so does a session
+     *  cancelled from outside the host's paths (a region change or a capture
+     *  of the app's, with the app in front), which nothing that follows owes
+     *  anything for; the system's endings leave the record to the funnel
+     *  that caused them (a new capture takes it over, a live start settles
+     *  it, a teardown drops it). */
     private fun onCaptureSheetDismissed(
         overlay: com.playtranslate.ui.CaptureResultOverlay,
         reason: com.playtranslate.ui.CaptureResultOverlay.DismissReason,
@@ -2747,7 +2749,8 @@ class OverlayUiController(
         if (captureResultOverlay === overlay) captureResultOverlay = null
         when (reason) {
             com.playtranslate.ui.CaptureResultOverlay.DismissReason.USER -> settleCapturePause(resumeLive = true)
-            com.playtranslate.ui.CaptureResultOverlay.DismissReason.PAGE -> settleCapturePause(resumeLive = false)
+            com.playtranslate.ui.CaptureResultOverlay.DismissReason.PAGE,
+            com.playtranslate.ui.CaptureResultOverlay.DismissReason.CANCELLED -> settleCapturePause(resumeLive = false)
             com.playtranslate.ui.CaptureResultOverlay.DismissReason.SYSTEM -> Unit
         }
     }

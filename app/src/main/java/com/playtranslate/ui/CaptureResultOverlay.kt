@@ -141,9 +141,10 @@ class CaptureResultOverlay(
      *  took from the game screen: the USER closed it (a tap outside, the
      *  swipe, the B ladder's last rung, a hotkey's second press, the
      *  one-tap send's exit), a PAGE it opened took the screen (detail, Anki,
-     *  settings, a picker), or the SYSTEM ended it (a cancelled session, the
-     *  host's own teardown). */
-    enum class DismissReason { USER, PAGE, SYSTEM }
+     *  settings, a picker), its session was CANCELLED from outside the
+     *  host's own paths (a region change or a capture of the app's), or the
+     *  SYSTEM ended it (the host's own teardown). */
+    enum class DismissReason { USER, PAGE, CANCELLED, SYSTEM }
 
     /** Invoked once, on any dismissal path, with why. */
     var onDismiss: ((DismissReason) -> Unit)? = null
@@ -1246,7 +1247,13 @@ class CaptureResultOverlay(
                         if (sliverMode) expandFromSliverForStatus()
                         setStatus(state.message)
                     }
-                    CaptureState.Cancelled -> dismiss()
+                    CaptureState.Cancelled -> {
+                        // The host's own endings dismiss the sheet before its
+                        // session's cancel can land, so this one came from
+                        // outside them.
+                        dismissReason = DismissReason.CANCELLED
+                        dismiss()
+                    }
                 }
             }
         }
