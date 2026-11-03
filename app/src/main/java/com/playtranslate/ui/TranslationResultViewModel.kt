@@ -62,7 +62,7 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
 
     /** The on-screen boxes of the state the results page last rendered (two
      *  screens): what a capture's arrival is read against
-     *  ([presentsCaptureOnEdge]), and what the page's mode row shows and
+     *  ([onScreenStep]), and what the page's mode row shows and
      *  its picks put up. Held here, not in the page, so a page recreated
      *  over the same result (a theme, dark-mode or locale change recreates
      *  the activity, and this model outlives it) replays it as the capture

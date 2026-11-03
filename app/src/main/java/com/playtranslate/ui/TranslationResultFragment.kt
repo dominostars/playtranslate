@@ -333,27 +333,32 @@ class TranslationResultFragment : Fragment() {
     // ── "Show on screen" toggle (dual-screen) ─────────────────────────────
 
     /** Render-funnel reconciliation for the on-screen boxes: every state
-     *  change lands here first. A state without boxes tears a paint down
-     *  (Clear, a fresh capture's status hop, a live/drag/edit result) — the
-     *  hide is unconditional because it's idempotent and the host owns the
-     *  truth; a state WITH boxes while painted is the same session's
-     *  skeleton → translated promotion (a new capture always hops through a
-     *  boxless InProgress status first, so it can't masquerade as a
-     *  promotion), which swaps the paint in place. */
+     *  change lands here first and does the step [onScreenStep] gives. A
+     *  state without boxes takes the window down (the hide is idempotent and
+     *  the host owns the truth); more of the same capture
+     *  ([OnScreenBoxes.captureId]) fills its window in place; another
+     *  capture's boxes replace the window, its arrival putting it up on the
+     *  game display by itself in its overlay mode (None puts nothing up). */
     private fun syncOnScreenBoxes(boxes: OnScreenBoxes?) {
         val previous = currentOnScreenBoxes
         currentOnScreenBoxes = boxes
-        val shown = host?.isResultBoxesShownOnScreen() == true
-        if (boxes == null) {
-            host?.hideResultBoxesOnScreen()
-        } else if (shown) {
-            host?.updateResultBoxesOnScreen(boxes)
-        } else if (host?.supportsShowOnScreen() == true &&
-            presentsCaptureOnEdge(previous, boxes, shown, prefs.overlayModeFor(OverlaySurface.CAPTURE))
-        ) {
-            // A capture arriving puts its presentation up on the game display
-            // by itself, in the capture's overlay mode (None puts nothing up).
-            presentCurrentBoxes(boxes)
+        val step = onScreenStep(
+            previous, boxes,
+            shownNow = host?.isResultBoxesShownOnScreen() == true,
+            showsOnScreen = host?.supportsShowOnScreen() == true,
+            rememberedMode = prefs.overlayModeFor(OverlaySurface.CAPTURE),
+        )
+        when (step) {
+            OnScreenStep.NONE -> Unit
+            OnScreenStep.HIDE -> host?.hideResultBoxesOnScreen()
+            OnScreenStep.FILL -> boxes?.let { host?.updateResultBoxesOnScreen(it) }
+            OnScreenStep.PRESENT -> boxes?.let {
+                // Another capture's window goes first, whether or not this
+                // one may go up: the controller refuses a capture whose game
+                // screen was taken and leaves what is up alone.
+                host?.hideResultBoxesOnScreen()
+                presentCurrentBoxes(it)
+            }
         }
         refreshShowOnScreen()
         refreshCaptureModeRow()
