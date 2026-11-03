@@ -2,11 +2,13 @@ package com.playtranslate
 
 import android.content.Context
 import android.graphics.Rect
+import android.hardware.display.DisplayManager
 import android.os.Looper
 import android.os.SystemClock
 import android.view.Display
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.Surface
 import android.view.WindowManager
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.language.SourceLangId
@@ -17,6 +19,7 @@ import com.playtranslate.ui.TextBox
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -25,8 +28,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ServiceController
+import org.robolectric.shadows.ShadowDisplayManager
 import java.time.Duration
 
 /**
@@ -43,7 +48,9 @@ import java.time.Duration
  * Back closes a card before the window; tap-to-lookup over a window in
  * another mode switches it in place, and over one in Definitions takes it
  * down. A change of the game language takes the window down, and a capture
- * read in a language other than the game's is never put up.
+ * read in a language other than the game's is never put up. A change of the
+ * game display's size or rotation takes the window down; an event that keeps
+ * both leaves it.
  */
 @RunWith(RobolectricTestRunner::class)
 class CapturePresentationTest {
@@ -317,6 +324,81 @@ class CapturePresentationTest {
 
         prefs.sourceLang = "ja"
         assertTrue("read in the game's language", present(OverlayMode.TRANSLATION))
+    }
+
+    // ── The display's geometry ───────────────────────────────────────────
+
+    private fun geometry() = ctx.displayGeometryOf(Display.DEFAULT_DISPLAY)!!
+
+    /** The display listener's check for the capture's window, as an event
+     *  for the game display runs it. */
+    private fun displayChanged() {
+        OverlayUiController::class.java
+            .getDeclaredMethod("dropReconfiguredCaptureWindow", Int::class.javaPrimitiveType)
+            .apply { isAccessible = true }
+            .invoke(controller, Display.DEFAULT_DISPLAY)
+        idle()
+    }
+
+    @Test fun `a display event that keeps the geometry leaves the window up`() {
+        // A refresh-rate or state event changes neither the size nor the
+        // rotation.
+        assertTrue(present(OverlayMode.TRANSLATION))
+
+        displayChanged()
+
+        assertTrue(controller.capturePresentationShowing)
+        assertEquals(0, dismissals)
+    }
+
+    /** The game display takes [qualifiers]: the display itself, and the
+     *  configuration the app reads its size through. */
+    private fun reconfigure(qualifiers: String) {
+        ShadowDisplayManager.changeDisplay(Display.DEFAULT_DISPLAY, qualifiers)
+        RuntimeEnvironment.setQualifiers(qualifiers)
+    }
+
+    @Test fun `a turn of the game display takes the window down once`() {
+        assertTrue(present(OverlayMode.TRANSLATION))
+        val before = geometry()
+        reconfigure("+land")
+        val after = geometry()
+        assertNotEquals("another size", before.width to before.height, after.width to after.height)
+        assertNotEquals("another rotation", before.rotation, after.rotation)
+
+        displayChanged()
+
+        assertFalse(controller.capturePresentationShowing)
+        assertEquals(1, dismissals)
+    }
+
+    @Test fun `a resize that keeps the rotation takes the window down`() {
+        assertTrue(present(OverlayMode.TRANSLATION))
+        val before = geometry()
+        reconfigure("w400dp-h600dp")
+        val after = geometry()
+        assertEquals("the same rotation", before.rotation, after.rotation)
+        assertNotEquals("another size", before.width to before.height, after.width to after.height)
+
+        displayChanged()
+
+        assertFalse(controller.capturePresentationShowing)
+        assertEquals(1, dismissals)
+    }
+
+    @Test fun `a 180 degree flip that keeps the size takes the Definitions window down`() {
+        definitionsWindow()
+        val before = geometry()
+        val display = ctx.getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
+        shadowOf(display).setRotation(Surface.ROTATION_180)
+        val after = geometry()
+        assertEquals("the same size", before.width to before.height, after.width to after.height)
+        assertNotEquals("another rotation", before.rotation, after.rotation)
+
+        displayChanged()
+
+        assertFalse("its words would sit over other text", controller.capturePresentationShowing)
+        assertEquals(1, dismissals)
     }
 
     // ── Definitions ──────────────────────────────────────────────────────

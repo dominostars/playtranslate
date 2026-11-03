@@ -234,8 +234,9 @@ fun Context.statusBarHeightPx(): Int {
  * rotation. A 180 degree flip keeps the size but changes the rotation, so
  * comparing this, not the size alone, still tells a stale surface from a
  * live one; a refresh-rate or HDR event keeps both, so it churns nothing.
- * The capture panel, the workspace and a drag session each record the
- * value they were built against and end when the display's differs.
+ * The capture panel, the capture's two-screen window, the workspace and a
+ * drag session each record the value they were built against and end when
+ * the display's differs.
  */
 data class DisplayGeometry(val width: Int, val height: Int, val rotation: Int)
 

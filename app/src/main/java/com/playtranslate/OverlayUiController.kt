@@ -213,7 +213,8 @@ class OverlayUiController(
                 // mapping. Drop it on a size change; the next capture cycle
                 // rebuilds the group at the new dimensions.
                 dropResizedTranslationOverlay(displayId)
-                // Same stale-mapping rule for the in-app result's on-screen boxes.
+                // The capture's two-screen window: the panel's rule, size or
+                // rotation.
                 dropReconfiguredCaptureWindow(displayId)
             }
             // Every window still up on the display follows it: the host
@@ -1012,6 +1013,13 @@ class OverlayUiController(
     private var captureWindowDisplayId = -1
     private var captureWindowWm: WindowManager? = null
     private var captureWindowParams: WindowManager.LayoutParams? = null
+    /** The geometry (size and rotation) of [captureWindowDisplayId] when the
+     *  window went up: its boxes are mapped onto that layout, so the window
+     *  ends when the display's differs ([dropReconfiguredCaptureWindow]).
+     *  Taken when the window goes up, not when its frame was taken: a turn
+     *  while the frame is being read, before the window exists, is not
+     *  seen. */
+    private var captureWindowGeometry: DisplayGeometry? = null
 
     /** [flags] with the window's focus for its mode: focusable in
      *  Definitions, for Back and the controller cursor, with
@@ -1110,6 +1118,7 @@ class OverlayUiController(
         }
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val display = dm.getDisplay(displayId) ?: return false
+        val geometry = context.displayGeometryOf(displayId) ?: return false
         val displayCtx = context.createDisplayContext(display)
         val wm = OwnWindows.manager(displayCtx) ?: return false
         val window = CaptureOverlayWindow(
@@ -1138,6 +1147,7 @@ class OverlayUiController(
                     captureWindowDisplayId = -1
                     captureWindowWm = null
                     captureWindowParams = null
+                    captureWindowGeometry = null
                     captureWindowOnDismissed = null
                     window.release()
                     onDismissed()
@@ -1154,6 +1164,7 @@ class OverlayUiController(
         captureWindowWm = wm
         captureWindowParams = params
         captureWindowDisplayId = displayId
+        captureWindowGeometry = geometry
         captureWindowOnDismissed = onDismissed
         // Keep the floating icon's tap target above the touchable window,
         // matching the one-shot cell in showTranslationOverlay.
@@ -1196,6 +1207,7 @@ class OverlayUiController(
         captureWindowDisplayId = -1
         captureWindowWm = null
         captureWindowParams = null
+        captureWindowGeometry = null
         captureWindowOnDismissed = null
         window.release()
         if (wm != null && params != null) {
@@ -1206,17 +1218,18 @@ class OverlayUiController(
         onDismissed?.invoke()
     }
 
-    /** Drop the capture's window when its display's geometry changed: same
-     *  rationale as [dropResizedTranslationOverlay], the layer's view maps
-     *  OCR to screen by its own size, so a stale size mispositions every
-     *  box. There is no cycle to rebuild it, so it just dismisses. */
+    /** Drop the capture's window when its display's geometry (size or
+     *  rotation) is no longer the one it went up in
+     *  ([captureWindowGeometry]), the capture sheet's rule
+     *  ([dismissCaptureResultPanelIfReconfigured]): its boxes are mapped
+     *  onto that layout, so a turn, a 180 degree flip that keeps the size,
+     *  or a resize leaves every box, and in Definitions every word a tap
+     *  opens, over other text. A display that went away reads null and
+     *  drops the window too. There is no cycle to rebuild it, so it just
+     *  dismisses. */
     private fun dropReconfiguredCaptureWindow(displayId: Int) {
-        if (displayId != captureWindowDisplayId) return
-        val window = captureWindow ?: return
-        val display = (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
-            ?.getDisplay(displayId) ?: run { dismissCapturePresentation(); return }
-        val size = getDisplaySize(display)
-        if (size.x != window.width || size.y != window.height) dismissCapturePresentation()
+        if (displayId != captureWindowDisplayId || captureWindow == null) return
+        if (context.displayGeometryOf(displayId) != captureWindowGeometry) dismissCapturePresentation()
     }
 
     /** Remove specific boxes from the overlay on [displayId] without
