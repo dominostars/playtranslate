@@ -16,7 +16,9 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -218,6 +220,38 @@ class CapturePauseFunnelsTest {
         assertFalse(liveOrStarting())
         closeByUser()
         assertTrue("the user's close gives it back", liveOrStarting())
+    }
+
+    @Test fun `tap-to-lookup from another display captures there and leaves this sheet's mode alone`() {
+        val other = ShadowDisplayManager.addDisplay("w640dp-h480dp")
+        capture()
+        val sheet = panel() as com.playtranslate.ui.CaptureResultOverlay
+        assertEquals(OverlayMode.TRANSLATION, sheet.overlayMode)
+
+        OverlayUiController::class.java.getDeclaredMethod("captureInDefinitions", Int::class.javaPrimitiveType)
+            .apply { isAccessible = true }.invoke(controller(), other)
+        settle()
+
+        assertEquals("not switched in place", OverlayMode.TRANSLATION, sheet.overlayMode)
+        assertNotSame("the capture on the other display replaced it", sheet, panel())
+    }
+
+    @Test fun `the tap-to-lookup hotkey switches a sheet on another display in place`() {
+        val other = ShadowDisplayManager.addDisplay("w640dp-h480dp")
+        OverlayUiController::class.java
+            .getDeclaredMethod("captureCurrentRegionForDisplay", Int::class.java, OverlayMode::class.java)
+            .apply { isAccessible = true }.invoke(controller(), other, null)
+        settle()
+        val sheet = panel() as com.playtranslate.ui.CaptureResultOverlay
+        assertEquals("the sheet is on the other display", other, field<Int>("captureDisplayId"))
+
+        // The hotkey's display is the primary one; the sheet it toggles is
+        // the one up, wherever it is.
+        controller().toggleTapToLookupForDisplay(Display.DEFAULT_DISPLAY)
+        settle()
+
+        assertSame("the same sheet, not a capture of the primary display", sheet, panel())
+        assertEquals(OverlayMode.DEFINITIONS, sheet.overlayMode)
     }
 
     @Test fun `a capture stops a running auto-translate and the user's close restarts it`() {

@@ -491,6 +491,29 @@ class CapturePresentationTest {
         assertEquals("a switch that takes it down is the dismissal", 2, modeChanges)
     }
 
+    @Test fun `an icon's tap-to-lookup on another display leaves this window alone, and the hotkey toggles it wherever it is`() {
+        val other = ShadowDisplayManager.addDisplay("w640dp-h480dp")
+        prefs.captureOverlayMode = OverlayMode.TRANSLATION
+        assertTrue(
+            controller.presentCapture(other, wordData(), SourceLangId.JA, onModeChanged = { modeChanges++ }) {
+                dismissals++
+            },
+        )
+        idle()
+        window()!!.layer.tokenizeLine = words
+
+        // The default display's icon is not pressed over this window.
+        OverlayUiController::class.java.getDeclaredMethod("captureInDefinitions", Int::class.javaPrimitiveType)
+            .apply { isAccessible = true }.invoke(controller, Display.DEFAULT_DISPLAY)
+        idle()
+        assertEquals("not switched", OverlayMode.TRANSLATION, controller.capturePresentationMode)
+        assertEquals(0, modeChanges)
+
+        // The hotkey has no display of its own: it toggles the one up.
+        controller.toggleTapToLookupForDisplay(Display.DEFAULT_DISPLAY)
+        assertEquals(OverlayMode.DEFINITIONS, controller.capturePresentationMode)
+    }
+
     @Test fun `tap-to-lookup over a Definitions window takes it down`() {
         definitionsWindow()
 

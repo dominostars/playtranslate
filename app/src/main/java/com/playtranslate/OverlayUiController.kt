@@ -2764,19 +2764,22 @@ class OverlayUiController(
      * "Enable tap-to-lookup", the icon's Tap and Hold action and the hotkey
      * of that name: a capture of [displayId] in Definitions, by a per-capture
      * override that remembers nothing (a pick on the pill is what remembers).
-     * A press with nothing up captures; with a presentation up in Definitions
-     * it is the user's close, as the capture hotkey's second press is; with
-     * one up in another mode it switches that presentation to Definitions in
-     * place. Returns true when it stopped auto-translate, as a capture's
-     * start reports it ([handleRegionSelection]); a hold's drag reads it.
+     * A press with nothing up on [displayId] captures it; with a presentation
+     * up there in Definitions it is the user's close, as the capture hotkey's
+     * second press is; with one up there in another mode it switches that
+     * presentation to Definitions in place. A presentation on another display
+     * is not the one pressed over: the press captures [displayId], which
+     * replaces it as any capture does. Returns true when it stopped
+     * auto-translate, as a capture's start reports it
+     * ([handleRegionSelection]); a hold's drag reads it.
      */
     private fun captureInDefinitions(displayId: Int): Boolean {
-        captureResultOverlay?.let { sheet ->
+        captureResultOverlay?.takeIf { captureDisplayId == displayId }?.let { sheet ->
             if (sheet.overlayMode == OverlayMode.DEFINITIONS) animateOutCaptureResultOverlay()
             else sheet.applyOverlayModeOverride(OverlayMode.DEFINITIONS)
             return false
         }
-        captureWindow?.let { window ->
+        captureWindow?.takeIf { captureWindowDisplayId == displayId }?.let { window ->
             if (window.mode == OverlayMode.DEFINITIONS) dismissCapturePresentation()
             else switchCaptureWindowMode(OverlayMode.DEFINITIONS)
             return false
@@ -2784,11 +2787,18 @@ class OverlayUiController(
         return captureCurrentRegionForDisplay(displayId, modeOverride = OverlayMode.DEFINITIONS)
     }
 
-    /** The "Enable tap-to-lookup" hotkey on [displayId], the primary game
-     *  display ([captureInDefinitions]). Called on the main thread via the
-     *  active overlay UI. */
+    /** The "Enable tap-to-lookup" hotkey ([captureInDefinitions]). It has no
+     *  display of its own: a presentation up anywhere is the one it toggles,
+     *  as the capture hotkey's second press closes the sheet wherever it is;
+     *  with none up it captures [displayId], the primary game display.
+     *  Called on the main thread via the active overlay UI. */
     fun toggleTapToLookupForDisplay(displayId: Int) {
-        captureInDefinitions(displayId)
+        val target = when {
+            captureResultOverlay != null -> captureDisplayId
+            captureWindow != null -> captureWindowDisplayId
+            else -> displayId
+        }
+        captureInDefinitions(target)
     }
 
     /**
