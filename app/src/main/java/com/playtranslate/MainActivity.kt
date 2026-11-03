@@ -548,12 +548,12 @@ class MainActivity :
     override fun showResultBoxesOnScreen(boxes: com.playtranslate.ui.OnScreenBoxes) {
         CaptureBackendResolver.activeOverlayUi?.presentCapture(
             boxes.displayId, boxes.data, boxes.sourceLangId,
-            onDismissed = {
-                // Freshness poke on every teardown of that window; the fragment
-                // re-derives from isResultBoxesShownOnScreen, so a late or
-                // duplicate poke is harmless.
-                resultFragment?.onScreenBoxesDismissed()
-            },
+            // Freshness pokes on every teardown of that window and every
+            // switch of its mode in place (tap-to-lookup's, which the page
+            // did not make); the fragment re-derives from the controller's
+            // live state, so a late or duplicate poke is harmless.
+            onModeChanged = { resultFragment?.onScreenBoxesChanged() },
+            onDismissed = { resultFragment?.onScreenBoxesChanged() },
             screenshotPath = boxes.screenshotPath,
             capturedAtMs = boxes.capturedAtMs,
             modeOverride = boxes.modeOverride,

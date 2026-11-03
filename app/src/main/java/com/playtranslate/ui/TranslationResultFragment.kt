@@ -141,7 +141,7 @@ class TranslationResultFragment : Fragment() {
          *  The single source of truth the toggle's selected state renders
          *  from — the fragment holds no mirror flag, so no teardown path can
          *  desync the pill from the window (it derives, the host's
-         *  [onScreenBoxesDismissed] pokes are freshness only). */
+         *  [onScreenBoxesChanged] pokes are freshness only). */
         fun isResultBoxesShownOnScreen(): Boolean
 
         /** Paint [boxes] over the game display. The paint can be refused (no
@@ -154,7 +154,7 @@ class TranslationResultFragment : Fragment() {
         fun updateResultBoxesOnScreen(boxes: OnScreenBoxes)
 
         /** Tear the painted boxes down. Idempotent. The host pokes
-         *  [onScreenBoxesDismissed] on every window teardown so the pill
+         *  [onScreenBoxesChanged] on every window teardown so the pill
          *  refreshes promptly, but correctness never rides on the poke. */
         fun hideResultBoxesOnScreen()
 
@@ -402,10 +402,12 @@ class TranslationResultFragment : Fragment() {
     }
 
     /** The host's poke that the boxes window state changed underneath us
-     *  (tap on the boxes, live start, display change, onStop). Freshness
-     *  only: the refresh re-reads the host's ownership truth, so a late,
-     *  duplicate, or self-initiated poke can't render a wrong state. */
-    fun onScreenBoxesDismissed() {
+     *  (tap on the boxes, live start, display change, onStop, a switch of
+     *  its mode this page did not make, as tap-to-lookup's). Freshness
+     *  only: the refresh re-reads the host's ownership truth and the
+     *  window's mode, so a late, duplicate, or self-initiated poke can't
+     *  render a wrong state. */
+    fun onScreenBoxesChanged() {
         if (view == null) return
         refreshShowOnScreen()
         refreshCaptureModeRow()

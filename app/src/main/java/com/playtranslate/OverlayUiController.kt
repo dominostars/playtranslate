@@ -1061,6 +1061,11 @@ class OverlayUiController(
      *  window shown in the meantime. */
     private var captureWindowOnDismissed: (() -> Unit)? = null
 
+    /** The showing window's mode-changed notification
+     *  ([switchCaptureWindowMode]): the page shows the window's mode in its
+     *  row and re-reads it from [capturePresentationMode] on this poke. */
+    private var captureWindowOnModeChanged: (() -> Unit)? = null
+
     /** Whether the capture's window is owned (shown): THE truth the results
      *  page renders from, never a mirror. Flips synchronously with
      *  ownership: set before [presentCapture] returns, cleared at the top of
@@ -1086,7 +1091,9 @@ class OverlayUiController(
      * written. [screenshotPath] and [capturedAtMs] are the frame the
      * capture read, which a Definitions card's pages cite; a result that
      * lands later brings them ([updateCapture]). [onDismissed] fires once
-     * when the window goes, by any path. False = not shown.
+     * when the window goes, by any path; [onModeChanged] whenever it
+     * re-flavors in place, whoever switched it ([switchCaptureWindowMode]).
+     * False = not shown.
      */
     fun presentCapture(
         displayId: Int,
@@ -1095,6 +1102,7 @@ class OverlayUiController(
         screenshotPath: String? = null,
         capturedAtMs: Long = 0L,
         modeOverride: OverlayMode? = null,
+        onModeChanged: () -> Unit = {},
         onDismissed: () -> Unit,
     ): Boolean {
         val prefs = Prefs(context)
@@ -1149,6 +1157,7 @@ class OverlayUiController(
                     captureWindowParams = null
                     captureWindowGeometry = null
                     captureWindowOnDismissed = null
+                    captureWindowOnModeChanged = null
                     window.release()
                     onDismissed()
                 }
@@ -1166,6 +1175,7 @@ class OverlayUiController(
         captureWindowDisplayId = displayId
         captureWindowGeometry = geometry
         captureWindowOnDismissed = onDismissed
+        captureWindowOnModeChanged = onModeChanged
         // Keep the floating icon's tap target above the touchable window,
         // matching the one-shot cell in showTranslationOverlay.
         bringFloatingIconsToFront(displayId)
@@ -1182,16 +1192,26 @@ class OverlayUiController(
         if (window.showsNothing) dismissCapturePresentation()
     }
 
-    /** The results page's row or the window's pill picked [mode]: the pref
-     *  is written and a showing window re-flavors in place; a mode with
-     *  nothing to draw (None by definition) takes it down. With no window up
-     *  only the pref moves; the page presents its own data next. */
+    /** The results page's row picked [mode]: the pref is written and a
+     *  showing window re-flavors in place ([switchCaptureWindowMode]). With
+     *  no window up only the pref moves; the page presents its own data
+     *  next. */
     fun setCaptureMode(mode: OverlayMode) {
         Prefs(context).captureOverlayMode = mode
+        switchCaptureWindowMode(mode)
+    }
+
+    /** Re-flavor the showing window to [mode] in place, for the row's pick
+     *  and for tap-to-lookup's switch alike: its key focus follows the mode,
+     *  a mode with nothing to draw (None by definition) takes it down, and
+     *  otherwise the page is told, since its row shows the window's mode and
+     *  a switch it did not make would leave the row on the old one. No-op
+     *  with none up. */
+    private fun switchCaptureWindowMode(mode: OverlayMode) {
         val window = captureWindow ?: return
         window.setMode(mode)
         refreshCaptureWindowFocus()
-        if (window.showsNothing) dismissCapturePresentation()
+        if (window.showsNothing) dismissCapturePresentation() else captureWindowOnModeChanged?.invoke()
     }
 
     /** Take the capture's window down. Idempotent. Disowns the window and
@@ -1209,6 +1229,7 @@ class OverlayUiController(
         captureWindowParams = null
         captureWindowGeometry = null
         captureWindowOnDismissed = null
+        captureWindowOnModeChanged = null
         window.release()
         if (wm != null && params != null) {
             window.remove(wm, params) { overlayHost.removeOverlayWindow(window) }
@@ -2756,13 +2777,8 @@ class OverlayUiController(
             return false
         }
         captureWindow?.let { window ->
-            if (window.mode == OverlayMode.DEFINITIONS) {
-                dismissCapturePresentation()
-            } else {
-                window.setMode(OverlayMode.DEFINITIONS)
-                refreshCaptureWindowFocus()
-                if (window.showsNothing) dismissCapturePresentation()
-            }
+            if (window.mode == OverlayMode.DEFINITIONS) dismissCapturePresentation()
+            else switchCaptureWindowMode(OverlayMode.DEFINITIONS)
             return false
         }
         return captureCurrentRegionForDisplay(displayId, modeOverride = OverlayMode.DEFINITIONS)

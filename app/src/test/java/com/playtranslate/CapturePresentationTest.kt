@@ -50,7 +50,9 @@ import java.time.Duration
  * down. A change of the game language takes the window down, and a capture
  * read in a language other than the game's is never put up. A change of the
  * game display's size or rotation takes the window down; an event that keeps
- * both leaves it.
+ * both leaves it. A switch of the window's mode in place, the row's or
+ * tap-to-lookup's, tells the page; a tap-to-lookup hold that slides into a
+ * drag takes the window down.
  */
 @RunWith(RobolectricTestRunner::class)
 class CapturePresentationTest {
@@ -62,6 +64,7 @@ class CapturePresentationTest {
     )
     private var service: ServiceController<CaptureService>? = null
     private var dismissals = 0
+    private var modeChanges = 0
 
     private class StandInLiveMode(override val flavor: OverlayFlavor) : LiveMode {
         var stops = 0
@@ -164,7 +167,9 @@ class CapturePresentationTest {
 
     private fun present(mode: OverlayMode, data: OneShotOverlayData = data("hi")): Boolean {
         prefs.captureOverlayMode = mode
-        val shown = controller.presentCapture(Display.DEFAULT_DISPLAY, data, SourceLangId.JA) { dismissals++ }
+        val shown = controller.presentCapture(
+            Display.DEFAULT_DISPLAY, data, SourceLangId.JA, onModeChanged = { modeChanges++ },
+        ) { dismissals++ }
         idle()
         return shown
     }
@@ -464,6 +469,26 @@ class CapturePresentationTest {
 
         assertFalse("not left over the game under the lens", controller.capturePresentationShowing)
         assertEquals(1, dismissals)
+    }
+
+    @Test fun `tap-to-lookup's switch in place tells the page the mode changed, as the row's pick does`() {
+        // The page's row shows the window's mode; tap-to-lookup switches it
+        // without the page.
+        assertTrue(present(OverlayMode.TRANSLATION, wordData()))
+        window()!!.layer.tokenizeLine = words
+
+        controller.toggleTapToLookupForDisplay(Display.DEFAULT_DISPLAY)
+
+        assertEquals(OverlayMode.DEFINITIONS, controller.capturePresentationMode)
+        assertEquals(1, modeChanges)
+        assertEquals(0, dismissals)
+
+        controller.setCaptureMode(OverlayMode.TRANSLATION)
+        assertEquals("one path for both", 2, modeChanges)
+
+        controller.setCaptureMode(OverlayMode.NONE)
+        assertEquals(1, dismissals)
+        assertEquals("a switch that takes it down is the dismissal", 2, modeChanges)
     }
 
     @Test fun `tap-to-lookup over a Definitions window takes it down`() {
