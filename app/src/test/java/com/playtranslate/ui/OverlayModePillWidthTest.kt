@@ -89,7 +89,8 @@ class OverlayModePillWidthTest {
     @Test fun `on a screen too narrow for that the X stays on screen`() {
         val width = 240
         val pill = laidOut(listOf("Translations", "Furigana", "Definitions", "None"), width)
-        val close = descendants(pill).filterIsInstance<ImageView>().single()
+        val close = descendants(pill).filterIsInstance<ImageView>()
+            .single { it.contentDescription == ctx.getString(R.string.capture_overlay_pill_collapse_cd) }
         assertTrue("the pill fits the screen", pill.width <= width)
         assertTrue("the X ends inside the pill", leftIn(close, pill) + close.width <= pill.width)
         assertTrue("the X has its width", close.width > 0)
