@@ -18,6 +18,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
+import com.playtranslate.OverlayMode
+import com.playtranslate.OverlaySurface
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.model.OcrProvenance
@@ -25,6 +27,7 @@ import com.playtranslate.model.TranslationResult
 import com.playtranslate.model.headwordDisplay
 import com.playtranslate.model.selectHeadword
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.themeColor
 import com.playtranslate.overlay.OwnWindows
@@ -138,7 +141,7 @@ class TranslationResultFragment : Fragment() {
          *  The single source of truth the toggle's selected state renders
          *  from — the fragment holds no mirror flag, so no teardown path can
          *  desync the pill from the window (it derives, the host's
-         *  [onScreenBoxesDismissed] pokes are freshness only). */
+         *  [onScreenBoxesChanged] pokes are freshness only). */
         fun isResultBoxesShownOnScreen(): Boolean
 
         /** Paint [boxes] over the game display. The paint can be refused (no
@@ -151,9 +154,18 @@ class TranslationResultFragment : Fragment() {
         fun updateResultBoxesOnScreen(boxes: OnScreenBoxes)
 
         /** Tear the painted boxes down. Idempotent. The host pokes
-         *  [onScreenBoxesDismissed] on every window teardown so the pill
+         *  [onScreenBoxesChanged] on every window teardown so the pill
          *  refreshes promptly, but correctness never rides on the poke. */
         fun hideResultBoxesOnScreen()
+
+        /** The overlay mode the painted boxes are in right now; null while
+         *  nothing is painted. The row shows it selected over the pref. */
+        fun captureModeOnScreen(): OverlayMode?
+
+        /** The row picked [mode]: the pref is written and painted boxes
+         *  re-flavor in place (None takes them down). With nothing painted
+         *  only the pref moves; the fragment presents next. */
+        fun setCaptureModeOnScreen(mode: OverlayMode)
 
         /** Live-mode semantics for the toggle: non-null exactly when a live
          *  session is running AND the hide-overlays-during-auto setting is
@@ -215,11 +227,16 @@ class TranslationResultFragment : Fragment() {
 
     /** The paintable boxes carried by the currently-rendered state, or null.
      *  Tracks [ResultState.Translating]/[ResultState.Ready.onScreenBoxes]
-     *  through the render funnel — see [syncOnScreenBoxes]. Deliberately the
-     *  ONLY show-on-screen state this fragment holds: whether the boxes are
-     *  painted is derived from [TranslationResultHost.isResultBoxesShownOnScreen]
-     *  at each render, never mirrored. */
-    private var currentOnScreenBoxes: OnScreenBoxes? = null
+     *  through the render funnel — see [syncOnScreenBoxes]. Kept in the
+     *  view model ([TranslationResultViewModel.renderedOnScreenBoxes]), which
+     *  outlives a recreated page, so the replay into a new page is not a
+     *  capture arriving. Deliberately the ONLY show-on-screen state this page
+     *  reads besides the host: whether the boxes are painted is derived from
+     *  [TranslationResultHost.isResultBoxesShownOnScreen] at each render,
+     *  never mirrored. */
+    private var currentOnScreenBoxes: OnScreenBoxes?
+        get() = vm.renderedOnScreenBoxes
+        set(value) { vm.renderedOnScreenBoxes = value }
 
     // ── Fragment lifecycle ─────────────────────────────────────────────────
 
@@ -267,6 +284,15 @@ class TranslationResultFragment : Fragment() {
                 launch {
                     prefs.observe(Prefs.KEY_HIDE_GAME_OVERLAYS).collect { refreshShowOnScreen() }
                 }
+                // The capture-mode row follows the capture's mode, the
+                // auto-translate mode it inherits until set, and the source
+                // language (which decides the modes offered), whichever
+                // surface writes them.
+                launch {
+                    prefs.observe(
+                        Prefs.KEY_CAPTURE_OVERLAY_MODE, Prefs.KEY_OVERLAY_MODE, Prefs.KEY_SOURCE_LANG,
+                    ).collect { refreshCaptureModeRow() }
+                }
             }
         }
     }
@@ -307,30 +333,95 @@ class TranslationResultFragment : Fragment() {
     // ── "Show on screen" toggle (dual-screen) ─────────────────────────────
 
     /** Render-funnel reconciliation for the on-screen boxes: every state
-     *  change lands here first. A state without boxes tears a paint down
-     *  (Clear, a fresh capture's status hop, a live/drag/edit result) — the
-     *  hide is unconditional because it's idempotent and the host owns the
-     *  truth; a state WITH boxes while painted is the same session's
-     *  skeleton → translated promotion (a new capture always hops through a
-     *  boxless InProgress status first, so it can't masquerade as a
-     *  promotion), which swaps the paint in place. */
+     *  change lands here first and does the step [onScreenStep] gives. A
+     *  state without boxes takes the window down (the hide is idempotent and
+     *  the host owns the truth); more of the same capture
+     *  ([OnScreenBoxes.captureId]) fills its window in place; another
+     *  capture's boxes replace the window, its arrival putting it up on the
+     *  game display by itself in its overlay mode (None puts nothing up). */
     private fun syncOnScreenBoxes(boxes: OnScreenBoxes?) {
+        val previous = currentOnScreenBoxes
         currentOnScreenBoxes = boxes
-        if (boxes == null) {
-            host?.hideResultBoxesOnScreen()
-        } else if (host?.isResultBoxesShownOnScreen() == true) {
-            host?.updateResultBoxesOnScreen(boxes)
+        val step = onScreenStep(
+            previous, boxes,
+            shownNow = host?.isResultBoxesShownOnScreen() == true,
+            showsOnScreen = host?.supportsShowOnScreen() == true,
+            rememberedMode = prefs.overlayModeFor(OverlaySurface.CAPTURE),
+        )
+        when (step) {
+            OnScreenStep.NONE -> Unit
+            OnScreenStep.HIDE -> host?.hideResultBoxesOnScreen()
+            OnScreenStep.FILL -> boxes?.let { host?.updateResultBoxesOnScreen(it) }
+            OnScreenStep.PRESENT -> boxes?.let {
+                // Another capture's window goes first, whether or not this
+                // one may go up: the controller refuses a capture whose game
+                // screen was taken and leaves what is up alone.
+                host?.hideResultBoxesOnScreen()
+                presentCurrentBoxes(it)
+            }
         }
         refreshShowOnScreen()
+        refreshCaptureModeRow()
+    }
+
+    /** Put [boxes] up on the game display. Translation chips on a deferred
+     *  result go up as skeletons: the funnel runs the skipped translation
+     *  for them ([TranslationResultContent.requestDeferredCompletion]), and
+     *  its completion swaps the filled boxes in. */
+    private fun presentCurrentBoxes(boxes: OnScreenBoxes) {
+        host?.showResultBoxesOnScreen(boxes)
+        content.requestDeferredCompletion()
+    }
+
+    /** The capture-mode row over the result area (two screens): every mode
+     *  a capture offers that the game-display layer paints, the painted
+     *  boxes' mode selected while they are up, else the remembered one.
+     *  Shown only with a capture's result on the page ([showsCaptureModeRow]). */
+    private fun refreshCaptureModeRow() {
+        if (view == null) return
+        val visible = showsCaptureModeRow(host?.supportsShowOnScreen() == true, currentOnScreenBoxes)
+        if (!visible) {
+            content.setCaptureModeRow(emptyList(), OverlayMode.TRANSLATION, visible = false)
+            return
+        }
+        val hint = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
+        val options = OverlayMode.offered(OverlaySurface.CAPTURE, hint)
+            .filter { it in CaptureOverlayLayer.HOSTED_MODES }
+            .map { getString(it.labelRes(hint)) to it }
+        val selected = host?.captureModeOnScreen() ?: prefs.overlayModeFor(OverlaySurface.CAPTURE)
+        content.setCaptureModeRow(options, selected, visible = true)
+    }
+
+    /** A pick on the capture-mode row. Painted boxes re-flavor in place
+     *  through the host; with nothing painted the current result goes up in
+     *  the new mode, or stays down for None. */
+    private fun onCaptureModePicked(mode: OverlayMode) {
+        host?.setCaptureModeOnScreen(mode)
+        val boxes = currentOnScreenBoxes
+        if (mode != OverlayMode.NONE && boxes != null && host?.isResultBoxesShownOnScreen() != true) {
+            // In the mode just picked, over one the capture asked for itself
+            // (tap-to-lookup's Definitions). The user asked: not as the
+            // capture landing, whose game screen may since have been taken.
+            presentCurrentBoxes(boxes.copy(modeOverride = mode, captureId = null))
+        } else {
+            // Boxes re-flavored in place: chips just switched to
+            // Translations need the skipped translation.
+            content.requestDeferredCompletion()
+        }
+        refreshShowOnScreen()
+        refreshCaptureModeRow()
     }
 
     /** The host's poke that the boxes window state changed underneath us
-     *  (tap on the boxes, live start, display change, onStop). Freshness
-     *  only: the refresh re-reads the host's ownership truth, so a late,
-     *  duplicate, or self-initiated poke can't render a wrong state. */
-    fun onScreenBoxesDismissed() {
+     *  (tap on the boxes, live start, display change, onStop, a switch of
+     *  its mode this page did not make, as tap-to-lookup's). Freshness
+     *  only: the refresh re-reads the host's ownership truth and the
+     *  window's mode, so a late, duplicate, or self-initiated poke can't
+     *  render a wrong state. */
+    fun onScreenBoxesChanged() {
         if (view == null) return
         refreshShowOnScreen()
+        refreshCaptureModeRow()
     }
 
     /** The host's live-mode start/stop edge: the Words card auto-hides for
@@ -355,31 +446,17 @@ class TranslationResultFragment : Fragment() {
             content.binder.setShowOnScreenAvailable(true)
             content.binder.setShowOnScreenToggled(liveState)
         } else {
-            content.binder.setShowOnScreenAvailable(
-                currentOnScreenBoxes != null && host?.supportsShowOnScreen() == true
-            )
-            content.binder.setShowOnScreenToggled(host?.isResultBoxesShownOnScreen() == true)
+            // A capture's presentation is the mode row's and the game-display
+            // pill's; the header pill serves live mode alone.
+            content.binder.setShowOnScreenAvailable(false)
+            content.binder.setShowOnScreenToggled(false)
         }
     }
 
     private fun onShowOnScreenTapped() {
-        val liveState = host?.liveShowOnScreenState()
-        if (liveState != null) {
-            host?.setLiveShowOnScreen(!liveState)
-            // The pref observer refreshes too; this keeps the pill snappy.
-            refreshShowOnScreen()
-            return
-        }
-        if (host?.isResultBoxesShownOnScreen() == true) {
-            host?.hideResultBoxesOnScreen()
-        } else {
-            currentOnScreenBoxes?.let { host?.showResultBoxesOnScreen(it) }
-            // Boxes on a deferred result go up as skeletons — run the skipped
-            // translation; its completion swaps the filled boxes in.
-            content.requestDeferredCompletion(force = true)
-        }
-        // Ownership flipped synchronously (or the show was refused); the
-        // refresh reads whichever reality landed.
+        val liveState = host?.liveShowOnScreenState() ?: return
+        host?.setLiveShowOnScreen(!liveState)
+        // The pref observer refreshes too; this keeps the pill snappy.
         refreshShowOnScreen()
     }
 
@@ -828,6 +905,10 @@ class TranslationResultFragment : Fragment() {
         /** No entry, nothing to open into, no chevron. */
         override val opensWithoutEntry: Boolean get() = false
 
+        /** The capture's window on the game display, read live from the
+         *  host as the row reads it. */
+        override val captureModeOnScreen: OverlayMode? get() = host?.captureModeOnScreen()
+
         override fun wireLensActions(lens: MagnifierLens, resolved: SourceWordLookup.ResolvedAt) =
             this@TranslationResultFragment.wireLensActions(lens, resolved)
 
@@ -900,6 +981,8 @@ class TranslationResultFragment : Fragment() {
         override fun onAddToAnki() = onAnkiClicked()
         override fun onAnkiOneTap() = oneTapSentenceFromResult()
         override fun onShowOnScreenTapped() = this@TranslationResultFragment.onShowOnScreenTapped()
+        override fun onCaptureModePicked(mode: OverlayMode) =
+            this@TranslationResultFragment.onCaptureModePicked(mode)
 
         override fun completeDeferredTranslation() {
             host?.completeDeferredTranslation()

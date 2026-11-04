@@ -15,7 +15,6 @@ import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.capture.CaptureLifecycle
 import com.playtranslate.net.NetworkConnectivity.InternetState
 import com.playtranslate.overlay.OverlayHost
-import com.playtranslate.overlay.OwnWindows
 import com.playtranslate.translation.BackendFailure
 import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.translation.OnlineAttempt
@@ -28,7 +27,6 @@ import com.playtranslate.translation.TranslationErrors
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.ui.AnkiEditorPage
 import com.playtranslate.ui.AnkiSentenceEditorPage
-import com.playtranslate.ui.CaptureResultOverlay
 import com.playtranslate.ui.DragLookupController
 import com.playtranslate.ui.FloatingIconMenu
 import com.playtranslate.ui.FloatingOverlayIcon
@@ -359,17 +357,22 @@ class ErrorPillSettingsGearTest {
     }
 
     @Test fun `the gear closes the capture panel and the workspace`() {
-        val wm = OwnWindows.manager(ctx.createDisplayContext(defaultDisplay()))!!
-        OverlayUiController::class.java.getDeclaredField("captureResultOverlay")
-            .apply { isAccessible = true }
-            .set(controller, CaptureResultOverlay(ctx, wm, Display.DEFAULT_DISPLAY, host))
+        // A capture's sheet up, as a capture puts it there.
+        val built = Robolectric.buildService(CaptureService::class.java).create()
+        service = built
+        built.get().gameDisplayIds = setOf(Display.DEFAULT_DISPLAY)
+        OverlayUiController::class.java
+            .getDeclaredMethod("captureCurrentRegionForDisplay", Int::class.java, OverlayMode::class.java)
+            .apply { isAccessible = true }.invoke(controller, Display.DEFAULT_DISPLAY, null)
+        settle()
+        assertNotNull(controller.captureSheetForTest)
         assertTrue(controller.openWorkspace(Display.DEFAULT_DISPLAY) { StubPage() })
         settle()
         report(outOfCredits())
 
         tapGear()
 
-        assertNull(field<CaptureResultOverlay?>("captureResultOverlay"))
+        assertNull(controller.captureSheetForTest)
         assertNull(field<Any?>("workspace"))
     }
 

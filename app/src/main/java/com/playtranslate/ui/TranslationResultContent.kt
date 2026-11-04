@@ -12,7 +12,9 @@ import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.Prefs
+import com.playtranslate.OverlayMode
 import com.playtranslate.R
+import com.playtranslate.deferredCompletionNeeded
 import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.overlay.OverlayHost
@@ -147,6 +149,16 @@ class TranslationResultContent(
         /** The bound Ready result carries a deferred translation and a
          *  consumer needs it now — see [requestDeferredCompletion]. */
         fun completeDeferredTranslation() {}
+
+        /** The overlay mode the capture's boxes are painted in on the game
+         *  screen right now (two screens), or null with none painted. In
+         *  Translations they need the deferred translation whatever the
+         *  section's eye says ([requestDeferredCompletion]). */
+        val captureModeOnScreen: OverlayMode? get() = null
+
+        /** The capture-mode row's pick (two screens; the host decides what
+         *  it does to boxes on the game display). */
+        fun onCaptureModePicked(mode: OverlayMode) {}
     }
 
     val scrollView: ScrollView = root.findViewById(R.id.resultsContent)
@@ -343,9 +355,11 @@ class TranslationResultContent(
                 revealFitted(generation) {
                     if (anchor != null) restoreScrollAnchor(anchor) else scrollToFreshResultStart()
                 }
-                // A deferred result bound while the section is visible (the
-                // pref is global and nothing listens for flips) must run its
-                // skipped translation now. No-op without a pending.
+                // A deferred result bound while a consumer needs it runs its
+                // skipped translation now: the section visible (the pref is
+                // global and nothing listens for flips), or Translation
+                // boxes on the game screen, picked while it was being read.
+                // No-op without a pending.
                 requestDeferredCompletion()
             }
         }
@@ -397,17 +411,56 @@ class TranslationResultContent(
         }
     }
 
-    /** Deferred-translation trigger funnel (mirror of the over-game panel's
-     *  maybeCompleteDeferred): ask the host to run the skipped translation
-     *  when the bound Ready result still carries a pending AND either the
-     *  translation section is visible or [force] — a consumer needs the
-     *  translation regardless of the section's visibility (on-screen boxes,
-     *  an Anki flow). The host is the single completion owner and guards
-     *  against duplicate triggers. */
+    /** Deferred-translation trigger funnel, the over-game panel's rule
+     *  ([deferredCompletionNeeded], which its maybeCompleteDeferred applies):
+     *  ask the host to run the skipped translation when the bound Ready
+     *  result still carries a pending AND a consumer needs it: the
+     *  translation section is visible, the capture's boxes on the game
+     *  screen are Translations ([Host.captureModeOnScreen], which need their
+     *  text whatever the eye says), or [force] (an Anki flow). Run on every
+     *  Ready bind as well as when the boxes go up or the row picks, so a
+     *  pick of Translations made while the capture was still being read
+     *  completes when its result lands. The host is the single completion
+     *  owner and guards against duplicate triggers. */
     fun requestDeferredCompletion(force: Boolean = false) {
         if (currentReady()?.pendingTranslation == null) return
-        if (prefs.hideTranslationSection && !force) return
-        host.completeDeferredTranslation()
+        val needed = force || deferredCompletionNeeded(
+            sectionHidden = prefs.hideTranslationSection,
+            parked = false,
+            mode = host.captureModeOnScreen ?: OverlayMode.NONE,
+        )
+        if (needed) host.completeDeferredTranslation()
+    }
+
+    // ── The capture-mode row (two screens) ──────────────────────────────
+
+    private val captureModeRow: android.widget.FrameLayout = root.findViewById(R.id.captureModeRow)
+    private var captureModeRowKey: Triple<List<Pair<String, OverlayMode>>, OverlayMode, Boolean>? = null
+
+    /** The capture-mode row over the result area: [options] with [selected]
+     *  marked, or hidden. It overlays the top of the root, so the status and
+     *  result areas take a matching top margin while it shows and nothing
+     *  draws beneath it. Rebuilt only on a change, so every refresh may call
+     *  it without cutting a segment's slide short. */
+    fun setCaptureModeRow(options: List<Pair<String, OverlayMode>>, selected: OverlayMode, visible: Boolean) {
+        val key = Triple(options, selected, visible)
+        if (key == captureModeRowKey) return
+        captureModeRowKey = key
+        captureModeRow.visibility = if (visible) View.VISIBLE else View.GONE
+        val inset = if (visible) ctx.resources.getDimensionPixelSize(R.dimen.pt_row_min_height) else 0
+        for (v in listOf(statusContainer, scrollView)) {
+            (v.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.let { lp ->
+                if (lp.topMargin != inset) {
+                    lp.topMargin = inset
+                    v.layoutParams = lp
+                }
+            }
+        }
+        if (visible && options.isNotEmpty()) {
+            buildPillToggle(captureModeRow, options, selected) { host.onCaptureModePicked(it) }
+        } else {
+            captureModeRow.removeAllViews()
+        }
     }
 
     /** Shared status / error / idle layout — single status container,

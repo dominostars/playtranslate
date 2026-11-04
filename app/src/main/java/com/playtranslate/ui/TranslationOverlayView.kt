@@ -434,12 +434,17 @@ class TranslationOverlayView(
             val mode = resolvedBox.mode
             if (box.isFurigana) {
                 if (box.angleDeg != 0f) {
-                    // Slanted ruby: fixed screen-scaled oriented dims, text
-                    // bottom-pinned INSIDE the band via gravity (the in-frame
-                    // analogue of the upright path's bottom pin), rotated
+                    // Slanted ruby: screen-scaled oriented dims, rotated
                     // about the center like SOURCE_ANGLE — bounds are the
                     // band's exact AABB, so the center pin lands the band on
-                    // its baseline offset.
+                    // its baseline offset. The view wraps its text's height,
+                    // at least the band's, with its bottom on the band's
+                    // bottom (the upright path's bottom pin, along the
+                    // band's own axis): a font whose line is taller than
+                    // the band (the CJK fallback's metrics at the size ratio)
+                    // grows the view away from the base instead of
+                    // scrolling the text, which the outlined stroke pass
+                    // cannot draw.
                     val bandW = (box.orientedWidth * scaleX).toInt().coerceAtLeast(1)
                     val fh = (box.orientedHeight * scaleY).toInt().coerceAtLeast(1)
                     val textSizePx = FuriganaMetrics.textSizePx(fh.toFloat())
@@ -466,12 +471,23 @@ class TranslationOverlayView(
                     // which is what the merge assumed.
                     val textW = FuriganaMetrics.renderedWidth(box.translatedText, fh.toFloat(), furiganaMeasure).toInt()
                     val fw = maxOf(bandW, textW)
+                    child.measure(
+                        MeasureSpec.makeMeasureSpec(fw, MeasureSpec.EXACTLY),
+                        MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
+                    )
+                    val viewH = maxOf(fh, child.measuredHeight)
                     val extra = (fw - bandW) / 2f
+                    // Half the growth past the band moves the centre up the
+                    // band's axis, (sin, -cos) of its angle, so the bottom
+                    // edge stays where the band's is.
+                    val lift = (viewH - fh) / 2f
                     val rad = Math.toRadians(box.angleDeg.toDouble())
-                    val cx = rect.centerX() + extra * kotlin.math.cos(rad).toFloat()
-                    val cy = rect.centerY() + extra * kotlin.math.sin(rad).toFloat()
-                    addView(child, LayoutParams(fw, fh))
-                    applyRotatedPin(child, cx, cy, fw, fh, box.angleDeg)
+                    val cos = kotlin.math.cos(rad).toFloat()
+                    val sin = kotlin.math.sin(rad).toFloat()
+                    val cx = rect.centerX() + extra * cos + lift * sin
+                    val cy = rect.centerY() + extra * sin - lift * cos
+                    addView(child, LayoutParams(fw, viewH))
+                    applyRotatedPin(child, cx, cy, fw, viewH, box.angleDeg)
                     return@forEach
                 }
                 val isVerticalFurigana = box.orientation == TextOrientation.VERTICAL

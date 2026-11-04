@@ -601,7 +601,10 @@ class ImageImportSession(
             try {
                 when (prefs.importOverlayMode) {
                     OverlayMode.FURIGANA -> showFurigana(ocr, auW, auH, epoch)
-                    OverlayMode.TRANSLATION ->
+                    // The import tool stores translations or the hint
+                    // (OverlayMode.offered); the other two are named so a new
+                    // mode must say what it paints here.
+                    OverlayMode.TRANSLATION, OverlayMode.DEFINITIONS, OverlayMode.NONE ->
                         showTranslationBoxes(ocr, colors, translations, auW, auH, epoch)
                 }
             } catch (e: Exception) {

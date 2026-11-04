@@ -338,7 +338,7 @@ class FrozenReviewPanel(
                 else LanguageSetupActivity.MODE_TARGET,
             )
         }
-        o.onDismiss = { finishReview() }
+        o.onDismiss = { _ -> finishReview() }
         overlay = o
 
         val (w, h) = hostSize()

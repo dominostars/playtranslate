@@ -924,8 +924,7 @@ class FloatingOverlayIcon(context: Context) : View(context) {
 
 /**
  * The floating icon's disc as it rests on its dock: its size and colours,
- * shared by every surface that wears it, the icon itself and tap-to-lookup's
- * X ([TapLookupOverlay]), which sits over it in the same look.
+ * shared by every surface that wears it.
  */
 internal object IconDiscStyle {
     /** The disc's diameter. */

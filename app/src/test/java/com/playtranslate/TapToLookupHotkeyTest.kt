@@ -2,8 +2,6 @@ package com.playtranslate
 
 import android.content.ComponentName
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.Rect
 import android.os.Looper
 import android.provider.Settings
 import android.view.Display
@@ -14,12 +12,13 @@ import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.capture.CaptureLifecycle
 import com.playtranslate.language.LanguagePackStore
 import com.playtranslate.language.SourceLangId
-import com.playtranslate.language.TokenSpan
-import com.playtranslate.ui.TapLookupSession
+import com.playtranslate.ui.CaptureResultOverlay
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -31,16 +30,18 @@ import java.time.Duration
 
 /**
  * The "Enable tap-to-lookup" hotkey, driven from a controller key press
- * through the accessibility service's hotkey dispatch: a press opens the
- * boxes on the primary game display, the next closes them, another hotkey
- * closes them before it acts, and the game-language hotkey's switch leaves
- * them to the language change, which closes them. The session itself is
- * [TapLookupSessionTest]'s; here its scene comes from a stand-in reader.
+ * through the accessibility service's hotkey dispatch: a capture of the
+ * primary game display in Definitions, by an override of that one capture
+ * that writes no setting. A second press is the user's close; a press over
+ * a capture in another mode switches it to Definitions in place; a plain
+ * capture afterwards opens in the remembered mode; the capture hotkey
+ * closes it as it closes any capture, and so does the game-language
+ * hotkey's switch, its words having been read in the old language.
  *
  * On [ChangeGameLanguageHotkeyTest]'s footing: the accessibility service is
  * created and never connected, and its floating icon is up, which is what
  * lets a hotkey fire; the capture service runs, since the dispatch is wired
- * to it.
+ * to it. One screen, so the capture is the over-game sheet.
  */
 @RunWith(RobolectricTestRunner::class)
 class TapToLookupHotkeyTest {
@@ -50,33 +51,22 @@ class TapToLookupHotkeyTest {
     private var service: ServiceController<CaptureService>? = null
     private var a11y: ServiceController<PlayTranslateAccessibilityService>? = null
     private val lookupKey = KeyEvent.KEYCODE_BUTTON_L1
-    private val autoKey = KeyEvent.KEYCODE_BUTTON_R1
+    private val captureKey = KeyEvent.KEYCODE_BUTTON_X
     private val languageKey = KeyEvent.KEYCODE_BUTTON_Y
-
-    private class OneWordReader : TapLookupSession.Reader {
-        override suspend fun capture(displayId: Int): Bitmap? =
-            Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
-        override suspend fun readLines(bitmap: Bitmap, displayId: Int) = listOf(
-            OcrManager.OcrLine(text = "hello", bounds = Rect(100, 300, 200, 330)),
-        )
-        override suspend fun tokenize(text: String) = listOf(TokenSpan(text, text))
-        override suspend fun saveScreenshot(bitmap: Bitmap): String? = null
-    }
 
     private fun settle() = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100))
 
-    private fun clearPrefs() {
-        ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE).edit().clear().commit()
-    }
+    /** Past the sheet's exit slide. */
+    private fun settleExit() = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(600))
+
+    private fun sp() = ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
 
     private fun controller(): OverlayUiController = a11y!!.get().overlayUiController
 
-    private fun session(): TapLookupSession? =
-        OverlayUiController::class.java.getDeclaredField("tapLookup")
-            .apply { isAccessible = true }.get(controller()) as TapLookupSession?
+    private fun sheet(): CaptureResultOverlay? = controller().captureSheetForTest
 
     @Before fun setUp() {
-        clearPrefs()
+        sp().edit().clear().commit()
         // The resolver flag is process-global: a class that ran before this
         // one may have left MediaProjection active. Resolve into
         // accessibility, whose controller the hotkeys reach.
@@ -90,17 +80,17 @@ class TapToLookupHotkeyTest {
         CaptureLifecycle.setFloatingIconSuppressed(ctx, false)
         prefs.captureDisplayIds = setOf(Display.DEFAULT_DISPLAY)
         prefs.hotkeyTapToLookupTap = lookupKey.toString()
-        prefs.hotkeyTranslationTap = autoKey.toString()
+        prefs.hotkeyCaptureTap = captureKey.toString()
         prefs.hotkeyChangeGameLanguageTap = languageKey.toString()
         // English before the capture service starts, as in
         // ChangeGameLanguageHotkeyTest: set later, it is a change of the game
         // language, whose engine warm-up finds a faked pack corrupt and
         // deletes it.
         prefs.sourceLang = "en"
+        MainActivity.isInForeground = false
         val built = Robolectric.buildService(PlayTranslateAccessibilityService::class.java).create()
         a11y = built
         PlayTranslateAccessibilityService.instance = built.get()
-        built.get().overlayUiController.tapLookupReader = OneWordReader()
         built.get().overlayUiController.reconcileFloatingIcons(freshAppearance = false)
         settle()
         val svc = Robolectric.buildService(CaptureService::class.java).create()
@@ -120,7 +110,7 @@ class TapToLookupHotkeyTest {
         CaptureLifecycle.setFloatingIconSuppressed(ctx, true)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(5))
         LanguagePackStore.rootDir(ctx).deleteRecursively()
-        clearPrefs()
+        sp().edit().clear().commit()
     }
 
     /** [ids]' packs on disk, as the installed check reads a finished
@@ -149,34 +139,66 @@ class TapToLookupHotkeyTest {
         settle()
     }
 
-    @Test fun `a press opens the boxes on the primary game display, and the next closes them`() {
-        press(lookupKey)
-        val opened = session()
-        assertNotNull(opened)
-        assertNotNull(opened!!.javaClass.getDeclaredField("overlay").apply { isAccessible = true }.get(opened))
-
+    @Test fun `a press captures the game display in Definitions without remembering the mode, and the next closes it`() {
         press(lookupKey)
 
-        assertNull(session())
+        val opened = sheet()
+        assertNotNull("the capture's sheet is up", opened)
+        assertEquals(OverlayMode.DEFINITIONS, opened!!.overlayMode)
+        assertFalse("no mode remembered", sp().contains(Prefs.KEY_CAPTURE_OVERLAY_MODE))
+        assertEquals(OverlayMode.TRANSLATION, prefs.overlayModeFor(OverlaySurface.CAPTURE))
+
+        press(lookupKey)
+        settleExit()
+
+        assertNull(sheet())
     }
 
-    @Test fun `another hotkey closes the boxes before it acts`() {
+    @Test fun `a press over a capture in another mode switches it to Definitions in place`() {
+        press(captureKey)
+        val capture = sheet()
+        assertNotNull(capture)
+        assertEquals(OverlayMode.TRANSLATION, capture!!.overlayMode)
+
         press(lookupKey)
-        assertNotNull(session())
 
-        press(autoKey)
-
-        assertNull(session())
+        assertSame("the same sheet", capture, sheet())
+        assertEquals(OverlayMode.DEFINITIONS, capture.overlayMode)
+        assertFalse("no mode remembered", sp().contains(Prefs.KEY_CAPTURE_OVERLAY_MODE))
     }
 
-    @Test fun `the game-language hotkey's switch leaves the boxes to the language change, which closes them`() {
+    @Test fun `a plain capture after tap-to-lookup opens in the remembered mode`() {
+        press(lookupKey)
+        press(lookupKey)
+        settleExit()
+        assertNull(sheet())
+
+        press(captureKey)
+
+        assertEquals(OverlayMode.TRANSLATION, sheet()!!.overlayMode)
+    }
+
+    @Test fun `the capture hotkey closes a Definitions capture as it closes any capture`() {
+        press(lookupKey)
+        assertNotNull(sheet())
+
+        press(captureKey)
+        settleExit()
+
+        assertNull(sheet())
+    }
+
+    @Test fun `the game-language hotkey's switch closes the Definitions capture`() {
+        // Its words were read in English; a card would look them up in
+        // Spanish. Nothing was running, so nothing comes back.
         downloaded(SourceLangId.EN, SourceLangId.ES)
         press(lookupKey)
-        assertNotNull(session())
+        assertEquals(OverlayMode.DEFINITIONS, sheet()!!.overlayMode)
 
         press(languageKey)
+        settle()
 
         assertEquals(SourceLangId.ES, prefs.sourceLangId)
-        assertNull("the language change closed them", session())
+        assertNull(sheet())
     }
 }

@@ -1,8 +1,10 @@
 package com.playtranslate.ui
 
 import android.content.Context
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.text.TextPaint
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
@@ -12,6 +14,50 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.playtranslate.R
 import com.playtranslate.themeColor
+import kotlin.math.ceil
+
+/** A segment's label size, which it shrinks from down to [LABEL_MIN_SP]
+ *  before it ellipsizes. */
+private const val LABEL_SP = 13
+private const val LABEL_MIN_SP = 10
+
+/** A segment's side padding: a control of more than three segments pads
+ *  them less, so four segments of localized text fit a phone-width row. */
+private fun segmentPadPx(count: Int, density: Float): Int = ((if (count > 3) 8 else 14) * density).toInt()
+
+/** The track's inset around its segments. */
+private fun trackPadPx(density: Float): Int = (3 * density).toInt()
+
+/** A segment's height. */
+private fun segmentHeightPx(density: Float): Int = (32 * density).toInt()
+
+/**
+ * The height a [buildPillToggle] control draws at: a segment's and the
+ * track's inset around it. For a host that shapes itself around the
+ * control (the game screen's mode pill sizes its X to it).
+ */
+fun pillToggleHeightPx(ctx: Context): Int {
+    val density = ctx.resources.displayMetrics.density
+    return segmentHeightPx(density) + 2 * trackPadPx(density)
+}
+
+/**
+ * The width a [buildPillToggle] control of [labels] needs to show every
+ * label at its full size, bold as the selected segment draws it, inside
+ * the segment's padding and the track's inset. For a host that sizes the
+ * control itself (the game screen's mode pill), so a long label is neither
+ * shrunk nor cut; a host short of this width shrinks the labels as before.
+ */
+fun pillToggleFitWidthPx(ctx: Context, labels: List<String>): Int {
+    val metrics = ctx.resources.displayMetrics
+    val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, LABEL_SP.toFloat(), metrics)
+        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+    }
+    val widest = labels.maxOfOrNull { paint.measureText(it) } ?: 0f
+    val segment = ceil(widest).toInt() + 2 * segmentPadPx(labels.size, metrics.density)
+    return segment * labels.size + 2 * trackPadPx(metrics.density)
+}
 
 /**
  * Build a sliding-pill segmented control inside [container]. The active pill
@@ -25,25 +71,31 @@ import com.playtranslate.themeColor
  * Labels shrink from 13sp down to 10sp before they ellipsize, and a control
  * of more than three segments pads them less, so four segments of localized
  * text fit a phone-width row; two- and three-segment controls whose labels
- * fit at 13sp render as they always did. Returns a [PillToggle] for a host
- * that has to freeze the segments; hosts that never do can ignore it.
+ * fit at 13sp render as they always did. A host that sizes the control
+ * itself can size it to its labels ([pillToggleFitWidthPx]). [roundEnds]
+ * rounds the track and the selected segment's indicator into full pills,
+ * for a host that is pill-shaped itself (the game screen's mode pill); the
+ * rest keep their rounded corners. Returns a [PillToggle] for a host that
+ * has to freeze the segments; hosts that never do can ignore it.
  */
 fun <T> buildPillToggle(
     container: FrameLayout,
     options: List<Pair<String, T>>,
     selected: T,
+    roundEnds: Boolean = false,
     onSelect: (T) -> Unit,
 ): PillToggle {
     container.removeAllViews()
     val ctx = container.context
     val dp = ctx.resources.displayMetrics.density
-    val trackRadius = 10 * dp
-    val pillRadius = 8 * dp
-    val trackPad = (3 * dp).toInt()
-    val pillH = (32 * dp).toInt()
+    val trackPad = trackPadPx(dp)
+    val pillH = segmentHeightPx(dp)
+    // Round ends: half of each one's height.
+    val trackRadius = if (roundEnds) pillToggleHeightPx(ctx) / 2f else 10 * dp
+    val pillRadius = if (roundEnds) pillH / 2f else 8 * dp
     // Four segments on a phone leave each label about 45dp at the usual
     // padding; a narrower inset gives localized labels the room.
-    val pillPad = ((if (options.size > 3) 8 else 14) * dp).toInt()
+    val pillPad = segmentPadPx(options.size, dp)
 
     val surfaceColor = ctx.themeColor(R.attr.ptSurface)
     val accentColor = ctx.themeColor(R.attr.ptAccent)
@@ -89,7 +141,7 @@ fun <T> buildPillToggle(
         val isActive = idx == selectedIdx
         val pill = TextView(ctx).apply {
             text = label
-            textSize = 13f
+            textSize = LABEL_SP.toFloat()
             typeface = Typeface.create(
                 "sans-serif-medium",
                 if (isActive) Typeface.BOLD else Typeface.NORMAL,
@@ -100,7 +152,7 @@ fun <T> buildPillToggle(
             setPadding(pillPad, 0, pillPad, 0)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
-            setAutoSizeTextTypeUniformWithConfiguration(10, 13, 1, TypedValue.COMPLEX_UNIT_SP)
+            setAutoSizeTextTypeUniformWithConfiguration(LABEL_MIN_SP, LABEL_SP, 1, TypedValue.COMPLEX_UNIT_SP)
             isClickable = true
             isFocusable = true
         }

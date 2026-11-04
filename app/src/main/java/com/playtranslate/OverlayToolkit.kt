@@ -250,9 +250,18 @@ object OverlayToolkit {
         engine: SourceLanguageEngine,
         furiganaPaint: TextPaint,
         debugTiming: Boolean = false,
+    ): List<FuriganaGroup> = buildFuriganaBoxesByGroup(ocrResult.groups, engine, furiganaPaint, debugTiming)
+
+    /** [buildFuriganaBoxesByGroup] over the groups alone: a capture keeps its
+     *  groups ([OneShotOverlayData.groups]) and nothing else of its read. */
+    suspend fun buildFuriganaBoxesByGroup(
+        ocrGroups: List<OcrManager.OcrGroup>,
+        engine: SourceLanguageEngine,
+        furiganaPaint: TextPaint,
+        debugTiming: Boolean = false,
     ): List<FuriganaGroup> {
         val groups = mutableListOf<FuriganaGroup>()
-        for (group in ocrResult.groups) {
+        for (group in ocrGroups) {
             val groupBoxes = buildFuriganaBoxesForGroup(group, engine, furiganaPaint, debugTiming)
             if (groupBoxes.isNotEmpty()) {
                 groups += FuriganaGroup(

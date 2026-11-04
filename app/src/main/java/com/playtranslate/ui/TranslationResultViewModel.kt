@@ -60,6 +60,15 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
     private val _result = MutableStateFlow<ResultState>(ResultState.Idle)
     val result: StateFlow<ResultState> = _result.asStateFlow()
 
+    /** The on-screen boxes of the state the results page last rendered (two
+     *  screens): what a capture's arrival is read against
+     *  ([onScreenStep]), and what the page's mode row shows and
+     *  its picks put up. Held here, not in the page, so a page recreated
+     *  over the same result (a theme, dark-mode or locale change recreates
+     *  the activity, and this model outlives it) replays it as the capture
+     *  it already was and puts nothing back up on the game display. */
+    var renderedOnScreenBoxes: OnScreenBoxes? = null
+
     private val _wordLookups = MutableStateFlow<WordLookupsState>(WordLookupsState.Idle)
     val wordLookups: StateFlow<WordLookupsState> = _wordLookups.asStateFlow()
 
@@ -650,6 +659,24 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
 data class OnScreenBoxes(
     val data: OneShotOverlayData,
     val displayId: Int,
+    /** The language the capture was read in, for the presentations built
+     *  from its groups (the reading hint, the word lookups); null falls
+     *  back to the source language setting. */
+    val sourceLangId: com.playtranslate.language.SourceLangId? = null,
+    /** The frame the capture read, for Definitions' cards (the sentence
+     *  screenshot): its saved path and capture time, null and 0 until the
+     *  result lands. */
+    val screenshotPath: String? = null,
+    val capturedAtMs: Long = 0L,
+    /** The overlay mode this capture was asked for ahead of the remembered
+     *  one (tap-to-lookup is a capture in Definitions); null reads the
+     *  capture surface's setting. Never written to the setting. */
+    val modeOverride: com.playtranslate.OverlayMode? = null,
+    /** The capture these boxes are from, as it started on the game display
+     *  ([com.playtranslate.OverlayUiController.beginAppCapture]): put up as
+     *  it lands, they go up only while the game screen is still its own.
+     *  Null for boxes the user asks to see (the page's row). */
+    val captureId: Long? = null,
 )
 
 sealed class ResultState {

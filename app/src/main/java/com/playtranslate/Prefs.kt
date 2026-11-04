@@ -29,15 +29,22 @@ import kotlinx.coroutines.flow.callbackFlow
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Which overlay the live-mode loop and hold-to-preview gesture should render
- * when the user doesn't force a specific mode via hotkey. Persisted as the
- * enum *name* (not ordinal) so the stored value survives future enum edits;
- * the old ordinal-based `auto_translation_mode` pref is handled in
- * [Prefs.migrateLegacyPrefs].
+ * What is painted over the game text. Every surface that paints stores one
+ * value ([OverlaySurface]) and offers a subset of the modes ([offered]):
+ * live mode and the hold preview paint translations or the reading hint; a
+ * capture also offers Definitions (a box on every word, a tap opening its
+ * card; tap-to-lookup captures in it) and nothing at all.
+ * Persisted as the enum *name* (not ordinal) so the stored value survives
+ * future enum edits; the old ordinal-based `auto_translation_mode` pref is
+ * handled in [Prefs.migrateLegacyPrefs].
  */
 enum class OverlayMode {
     TRANSLATION,
-    FURIGANA;
+    FURIGANA,
+    /** A box around every word the lens can look up; a tap opens its card. */
+    DEFINITIONS,
+    /** Nothing painted over the frame. */
+    NONE;
 
     /** This mode's name on a source language whose reading hint is [hint]. The
      *  hint mode draws whichever hint the language has, so it has no name of its
@@ -48,13 +55,41 @@ enum class OverlayMode {
         FURIGANA ->
             if (hint == HintTextKind.PINYIN) R.string.overlay_mode_option_pinyin
             else R.string.overlay_mode_option_furigana
+        DEFINITIONS -> R.string.overlay_mode_option_definitions
+        NONE -> R.string.overlay_mode_option_none
     }
 
     companion object {
         fun fromStorageName(name: String?): OverlayMode =
             entries.find { it.name == name } ?: TRANSLATION
+
+        /** The modes [surface] offers on a source language whose reading hint
+         *  is [hint], in display order. The hint mode needs a hint to draw
+         *  (the icon swap gesture's rule). Live mode paints translations or
+         *  the hint and nothing else; a capture adds the word boxes and None;
+         *  the camera and import tools keep their own boxes switch for
+         *  "nothing", since their live preview paints the flavor regardless. */
+        fun offered(surface: OverlaySurface, hint: HintTextKind): List<OverlayMode> {
+            val hintMode = if (hint == HintTextKind.NONE) emptyList() else listOf(FURIGANA)
+            return when (surface) {
+                OverlaySurface.LIVE, OverlaySurface.CAMERA, OverlaySurface.IMPORT ->
+                    listOf(TRANSLATION) + hintMode
+                OverlaySurface.CAPTURE ->
+                    listOf(TRANSLATION) + hintMode + listOf(DEFINITIONS, NONE)
+            }
+        }
+
+        /** [stored] when [surface] offers it on [hint], else Translation. The
+         *  stored value is not rewritten: a Furigana kept through a language
+         *  without a hint comes back on one with it (the icon gestures'
+         *  precedent). */
+        fun coerce(stored: OverlayMode, surface: OverlaySurface, hint: HintTextKind): OverlayMode =
+            if (stored in offered(surface, hint)) stored else TRANSLATION
     }
 }
+
+/** The surfaces that each store an [OverlayMode] of their own. */
+enum class OverlaySurface { LIVE, CAPTURE, CAMERA, IMPORT }
 
 /**
  * Which per-surface OCR engine selection a picker action persists to:
@@ -1014,13 +1049,58 @@ class Prefs internal constructor(
         get() = sp.getString(KEY_CAPTURE_METHOD, "") ?: ""
         set(v) = sp.edit { putString(KEY_CAPTURE_METHOD, v) }
 
+    /** Auto-translate's overlay ([OverlaySurface.LIVE]): translations or the
+     *  reading hint. Only those two are ever stored here; a value live cannot
+     *  paint reads as Translation. The hint's own fit to the source language
+     *  is a persisted fix-up, `CaptureService.dropOverlayModeNotOffered`. */
     var overlayMode: OverlayMode
-        get() = OverlayMode.fromStorageName(sp.getString(KEY_OVERLAY_MODE, null))
+        get() = when (val stored = OverlayMode.fromStorageName(sp.getString(KEY_OVERLAY_MODE, null))) {
+            OverlayMode.TRANSLATION, OverlayMode.FURIGANA -> stored
+            OverlayMode.DEFINITIONS, OverlayMode.NONE -> OverlayMode.TRANSLATION
+        }
         set(v) = sp.edit { putString(KEY_OVERLAY_MODE, v.name) }
 
     var hideGameOverlays: Boolean
         get() = sp.getBoolean(KEY_HIDE_GAME_OVERLAYS, false)
         set(v) = sp.edit { putBoolean(KEY_HIDE_GAME_OVERLAYS, v) }
+
+    /** The over-game capture's overlay ([OverlaySurface.CAPTURE] offers every
+     *  mode): what its boxes paint over the game, as the source language
+     *  offers it ([overlayModeFor]). Inherit-until-set: unset reads
+     *  [overlayMode], so a capture starts where auto-translate is; the
+     *  first capture-side pick pins it, after which the two move
+     *  independently. */
+    var captureOverlayMode: OverlayMode
+        get() = overlayModeFor(OverlaySurface.CAPTURE)
+        set(v) = sp.edit { putString(KEY_CAPTURE_OVERLAY_MODE, v.name) }
+
+    /** [surface]'s overlay mode as the source language offers it
+     *  ([OverlayMode.coerce]): the pick stored for it, or Translation for a
+     *  pick the language does not offer, which is never rewritten, so it
+     *  returns on a language that offers it. The capture's, the camera's and
+     *  the import tool's properties all read through here, so no reader can
+     *  get a mode its surface cannot paint for the language; their stored
+     *  picks are read nowhere else ([storedOverlayMode]). */
+    fun overlayModeFor(surface: OverlaySurface): OverlayMode {
+        val stored = when (surface) {
+            OverlaySurface.LIVE -> overlayMode
+            OverlaySurface.CAPTURE -> storedOverlayMode(KEY_CAPTURE_OVERLAY_MODE)
+            OverlaySurface.CAMERA -> storedOverlayMode(KEY_CAMERA_OVERLAY_MODE)
+            OverlaySurface.IMPORT -> storedOverlayMode(KEY_IMPORT_OVERLAY_MODE)
+        }
+        return OverlayMode.coerce(stored, surface, SourceLanguageProfiles[sourceLangId].hintTextKind)
+    }
+
+    /** A tool's own stored pick under [key], as written; unset inherits
+     *  auto-translate's ([overlayMode]). Only [overlayModeFor] reads it. */
+    private fun storedOverlayMode(key: String): OverlayMode =
+        sp.getString(key, null)?.let { OverlayMode.fromStorageName(it) } ?: overlayMode
+
+    /** The capture's overlay-mode pill rests collapsed to the mode's glyph
+     *  once the user has closed it with its X; expanded until then. */
+    var captureOverlayPillCollapsed: Boolean
+        get() = sp.getBoolean(KEY_CAPTURE_OVERLAY_PILL_COLLAPSED, false)
+        set(v) = sp.edit { putBoolean(KEY_CAPTURE_OVERLAY_PILL_COLLAPSED, v) }
 
     // ── Capture-result presentation (two independent axes per flow) ────────
     // "Boxes" (on-frame overlays) and the panel's start posture are separate
@@ -1031,12 +1111,6 @@ class Prefs internal constructor(
     // CaptureResultGeometry: NO_POSTURE (the default) = never set,
     // COLLAPSED_POSTURE = parked in the sliver, else the height the user
     // dragged the sheet to as a fraction of the display.
-
-    /** Over-game capture: paint the result's boxes over the game (the header
-     *  toggle's state). Default ON. */
-    var captureBoxesEnabled: Boolean
-        get() = sp.getBoolean("capture_boxes_enabled", true)
-        set(v) = sp.edit { putBoolean("capture_boxes_enabled", v) }
 
     /** The accent glow around the display edges while the result panel is up
      *  or parked in its sliver ([com.playtranslate.ui.EdgeIndicatorView]);
@@ -1067,15 +1141,16 @@ class Prefs internal constructor(
         set(v) = sp.edit { putFloat("camera_panel_posture", v) }
 
     /** The camera tool's own overlay flavor (Translation vs Furigana/Pinyin),
-     *  cycled from the camera pill's gear menu. Inherit-until-set: unset reads
-     *  the global [overlayMode], so the camera starts wherever the app is; the
-     *  first camera-side cycle pins it, after which the two move independently
-     *  (a camera flavor change must not silently rebuild live mode's overlays,
-     *  and vice versa). */
+     *  cycled from the camera pill's gear menu, as the source language offers
+     *  it ([overlayModeFor]): a hint pick reads as Translation on a language
+     *  without one. Inherit-until-set: unset reads the global [overlayMode],
+     *  so the camera starts wherever the app is; the first camera-side cycle
+     *  pins it, after which the two move independently (a camera flavor
+     *  change must not silently rebuild live mode's overlays, and vice
+     *  versa). */
     var cameraOverlayMode: OverlayMode
-        get() = sp.getString("camera_overlay_mode", null)
-            ?.let { OverlayMode.fromStorageName(it) } ?: overlayMode
-        set(v) = sp.edit { putString("camera_overlay_mode", v.name) }
+        get() = overlayModeFor(OverlaySurface.CAMERA)
+        set(v) = sp.edit { putString(KEY_CAMERA_OVERLAY_MODE, v.name) }
 
     /** The camera tool's own OCR engine selection for [id], or null to
      *  inherit the global [ocrBackendToken] — same inherit-until-set contract
@@ -1102,13 +1177,13 @@ class Prefs internal constructor(
         set(v) = sp.edit { putFloat("import_panel_posture", v) }
 
     /** The import tool's own overlay flavor — same inherit-until-set
-     *  contract and rationale as [cameraOverlayMode], inheriting from the
-     *  GLOBAL flavor (not the camera's: each tool pins independently off
-     *  the app-wide default). */
+     *  contract and rationale as [cameraOverlayMode], read the same way as
+     *  the source language offers it, inheriting from the GLOBAL flavor (not
+     *  the camera's: each tool pins independently off the app-wide
+     *  default). */
     var importOverlayMode: OverlayMode
-        get() = sp.getString("import_overlay_mode", null)
-            ?.let { OverlayMode.fromStorageName(it) } ?: overlayMode
-        set(v) = sp.edit { putString("import_overlay_mode", v.name) }
+        get() = overlayModeFor(OverlaySurface.IMPORT)
+        set(v) = sp.edit { putString(KEY_IMPORT_OVERLAY_MODE, v.name) }
 
     /** The import tool's own OCR engine selection for [id], or null to
      *  inherit the global [ocrBackendToken] — same inherit-until-set and
@@ -1205,6 +1280,16 @@ class Prefs internal constructor(
                 hideGameOverlays = true
             }
             sp.edit { remove(legacyKey) }
+        }
+
+        // The capture's boxes switch became a value of its overlay mode
+        // (2026-11): off = None, on = inherit auto-translate's mode, as an
+        // unset key does. The key goes, so this runs once.
+        if (sp.contains(LEGACY_CAPTURE_BOXES_KEY)) {
+            if (!sp.getBoolean(LEGACY_CAPTURE_BOXES_KEY, true)) {
+                captureOverlayMode = OverlayMode.NONE
+            }
+            sp.edit { remove(LEGACY_CAPTURE_BOXES_KEY) }
         }
 
         // Migrate the pre-redesign 4-theme picker (Black/White/Rainbow/Purple)
@@ -1995,7 +2080,14 @@ class Prefs internal constructor(
         const val KEY_ACCENT_NAME                   = "accent_name"
         private const val KEY_CAPTURE_INTERVAL_SEC  = "capture_interval_sec"
         private const val KEY_CAPTURE_METHOD           = "capture_method"
-        private const val KEY_OVERLAY_MODE               = "overlay_mode"
+        /** Public so the results page can observe the value a capture inherits. */
+        const val KEY_OVERLAY_MODE                       = "overlay_mode"
+        const val KEY_CAPTURE_OVERLAY_MODE               = "capture_overlay_mode"
+        private const val KEY_CAMERA_OVERLAY_MODE        = "camera_overlay_mode"
+        private const val KEY_IMPORT_OVERLAY_MODE        = "import_overlay_mode"
+        private const val KEY_CAPTURE_OVERLAY_PILL_COLLAPSED = "capture_overlay_pill_collapsed"
+        /** The capture's boxes switch before it became a value of [KEY_CAPTURE_OVERLAY_MODE]. */
+        private const val LEGACY_CAPTURE_BOXES_KEY        = "capture_boxes_enabled"
         private const val KEY_SETTINGS_SCROLL_Y        = "settings_scroll_y"
         const val KEY_SHOW_OVERLAY_ICON       = "show_overlay_icon"
         const val KEY_ICON_DRAG_ACTION        = "icon_drag_action"

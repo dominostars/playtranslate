@@ -8,6 +8,7 @@ import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.doOnLayout
 import androidx.lifecycle.lifecycleScope
+import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.applyEdgeToEdge
@@ -95,9 +96,11 @@ class ProcessTextActivity : AppCompatActivity() {
         o.opaqueBackgroundBoost = true
         // No frame to park over: never sliver-start, never offer boxes.
         o.presentationPrefs = object : CaptureResultOverlay.PresentationPrefs {
-            override var boxesEnabled: Boolean
-                get() = false
+            override var overlayMode: OverlayMode
+                get() = OverlayMode.NONE
                 set(_) {}
+            override val offeredOverlayModes: List<OverlayMode>
+                get() = emptyList()
             override var startPosture: Float
                 get() = CaptureResultGeometry.NO_POSTURE
                 set(_) {}
@@ -137,7 +140,7 @@ class ProcessTextActivity : AppCompatActivity() {
                 else LanguageSetupActivity.MODE_TARGET,
             )
         }
-        o.onDismiss = { finish() }
+        o.onDismiss = { _ -> finish() }
         overlay = o
         o.show(w, h)
         observeFreshSession()

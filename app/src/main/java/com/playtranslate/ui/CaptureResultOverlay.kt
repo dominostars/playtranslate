@@ -19,6 +19,7 @@ import android.graphics.Point
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.os.Build
 import android.text.InputType
 import android.text.Layout
 import android.util.TypedValue
@@ -28,6 +29,9 @@ import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewConfiguration
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
+import androidx.annotation.RequiresApi
 import android.view.ViewOutlineProvider
 import android.view.ViewTreeObserver
 import android.view.WindowManager
@@ -53,9 +57,13 @@ import com.playtranslate.CaptureSession
 import com.playtranslate.CaptureState
 import com.playtranslate.OneShotOverlayData
 import com.playtranslate.PlayTranslateApplication
+import com.playtranslate.deferredCompletionNeeded
 import com.playtranslate.fillOneShotOverlayData
 import com.playtranslate.fillsBoxesOf
+import com.playtranslate.OverlayMode
+import com.playtranslate.OverlaySurface
 import com.playtranslate.Prefs
+import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.R
 import com.playtranslate.RegionEntry
 import com.playtranslate.language.OcrBackend
@@ -133,8 +141,19 @@ class CaptureResultOverlay(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val touchSlop = ViewConfiguration.get(ctx).scaledTouchSlop
 
-    /** Invoked once, on any dismissal path. */
-    var onDismiss: (() -> Unit)? = null
+    /** Why the sheet closed, for the host's bookkeeping of what the capture
+     *  took from the game screen: the USER closed it (a tap outside, the
+     *  swipe, the B ladder's last rung, a hotkey's second press, the
+     *  one-tap send's exit), a PAGE it opened took the screen (detail, Anki,
+     *  settings, a picker), its session was CANCELLED from outside the
+     *  host's own paths (a region change or a capture of the app's), or the
+     *  SYSTEM ended it (the host's own teardown). */
+    enum class DismissReason { USER, PAGE, CANCELLED, SYSTEM }
+
+    /** Invoked once, on any dismissal path, with why. */
+    var onDismiss: ((DismissReason) -> Unit)? = null
+
+    private var dismissReason = DismissReason.SYSTEM
 
     /** The region this capture was limited to, set by the over-game
      *  controller before [show]. A custom region makes the edge indicator
@@ -164,24 +183,49 @@ class CaptureResultOverlay(
     var boxPresenter: BoxPresenter? = null
 
     /** The sheet's two persisted presentation axes, independent per host flow.
-     *  [boxesEnabled] is the header toggle's state — whether results paint
-     *  their boxes over the frame — written the moment the toggle is tapped.
-     *  [startPosture] is where the user left the panel: parked in the sliver,
-     *  or the height they dragged it to (see [CaptureResultGeometry]'s posture
-     *  encoding) — read when a flow starts and written on dismissal ("it opens
-     *  how you left it"). Default: the over-game capture prefs; the camera
-     *  substitutes its own pair. */
+     *  [overlayMode] is what the boxes paint over the frame (the surface's own
+     *  [OverlayMode], None for nothing), read coerced to what the source
+     *  language offers and written the moment the mode pill is tapped;
+     *  [offeredOverlayModes] is what that pill offers, empty for a host with
+     *  no frame to paint over. [startPosture] is where the user left the
+     *  panel: parked in the sliver, or the height they dragged it to (see
+     *  [CaptureResultGeometry]'s posture encoding) — read when a flow starts
+     *  and written on dismissal ("it opens how you left it"). Default: the
+     *  over-game capture prefs; the camera and import substitute their own. */
     interface PresentationPrefs {
-        var boxesEnabled: Boolean
+        var overlayMode: OverlayMode
+        val offeredOverlayModes: List<OverlayMode>
         var startPosture: Float
     }
 
+    /** A mode this one capture opens in, over the remembered one, until
+     *  the user picks: the tap-to-lookup gesture and hotkey capture in
+     *  Definitions without pinning every later capture to it. Set by the
+     *  host before [show]; a sheet shown with one starts parked
+     *  ([postureFromOverride]). */
+    var overlayModeOverride: OverlayMode? = null
+
+    /** This sheet was shown with an [overlayModeOverride], so it starts
+     *  parked whatever the remembered posture: tap-to-lookup is a capture in
+     *  Definitions with the sheet collapsed, the words the point and the
+     *  translation waiting for the panel (a parked capture defers it). Its
+     *  posture is the override's, not the user's, so [recordPosture] leaves
+     *  the remembered one as it was, and a plain capture after it opens as
+     *  before. Fixed at [show] for the sheet's life. */
+    private var postureFromOverride = false
+
     var presentationPrefs: PresentationPrefs = object : PresentationPrefs {
-        override var boxesEnabled: Boolean
-            get() = prefs.captureBoxesEnabled
+        override var overlayMode: OverlayMode
+            get() = overlayModeOverride ?: prefs.overlayModeFor(OverlaySurface.CAPTURE)
             set(value) {
-                prefs.captureBoxesEnabled = value
+                // A pick is the user's: it is remembered, and the override ends.
+                overlayModeOverride = null
+                prefs.captureOverlayMode = value
             }
+        override val offeredOverlayModes: List<OverlayMode>
+            get() = OverlayMode.offered(
+                OverlaySurface.CAPTURE, SourceLanguageProfiles[prefs.sourceLangId].hintTextKind,
+            )
         override var startPosture: Float
             get() = prefs.capturePanelPosture
             set(value) {
@@ -308,7 +352,28 @@ class CaptureResultOverlay(
      *  the sheet is a child-order fact rather than a window race, and
      *  teardown is the window's own. Created on first show, then faded/re-fed
      *  via [TranslationOverlayView.setBoxes] (skeleton → translated). */
-    private var chipsView: TranslationOverlayView? = null
+    /** Paints the result over the frame in the chosen mode (the over-game
+     *  host; the camera and import paint through [boxPresenter]). A root
+     *  child placed by [syncChipsOrder]. */
+    private val layer = CaptureOverlayLayer(
+        ctx, scope, prefs,
+        lookupHost = CaptureOverlayLayer.LookupHost(rawCtx, wm, overlayHost, displayId),
+    )
+
+    /** The overlay-mode control, a root child above everything. */
+    private val modePill = OverlayModePill(ctx)
+
+    /** Definitions' dimming ([CaptureOverlayLayer.scrimHolder]): a root child
+     *  beneath the panel at all times, while the boxes rise above a parked
+     *  strip ([syncChipsOrder]), so a card never dims the strip. */
+    private val scrimHolder = FrameLayout(ctx)
+
+    /** A touch sequence that began on the mode pill: the root's own rules
+     *  stand down until it ends. */
+    private var pillTouch = false
+
+    /** The host's presenter has boxes up (the camera and import reviews). */
+    private var presenterShown = false
 
     /** Where the boxes sit against the sheet: above it while the sheet rests
      *  in its sliver, beneath it otherwise. The parked strip is exactly the
@@ -329,13 +394,22 @@ class CaptureResultOverlay(
     /** True from the moment the panel starts collapsing to its bottom-edge
      *  sliver until it starts expanding back. Root touch handling swaps to
      *  sliver rules while set. Purely the PANEL's position — the on-screen
-     *  boxes are the independent [PresentationPrefs.boxesEnabled] axis. */
+     *  boxes are the independent [PresentationPrefs.overlayMode] axis. */
     private var sliverMode = false
 
     /** Whether the on-screen boxes are currently up (via [showChips]): the
      *  live counterpart of the persisted toggle, so a box fill and Done know to
      *  promote in place ([updateChips]) vs present fresh, and hide paths can no-op. */
-    private var boxesShown = false
+    /** Boxes are painted over the frame right now: the host's presenter's,
+     *  or the layer's. Derived, never mirrored, so a refused or faded paint
+     *  can't leave a stale claim. */
+    private val boxesShown: Boolean
+        get() = if (boxPresenter != null) presenterShown else layer.hasBoxes
+
+    /** The layer is still building its boxes (readings land off the main
+     *  thread); a parked sheet stands on this until they do. */
+    private val boxesPending: Boolean
+        get() = boxPresenter == null && layer.pending
 
     /** Sliver-only hint text (see the body's addView). Two modes, switched by
      *  [updateSliverHint]: the idle "tap for more options" advertisement, and
@@ -409,11 +483,12 @@ class CaptureResultOverlay(
     private var userStatedPosture = false
 
     /** True while the only reason the sheet is out of its park is a tap during
-     *  a LOADING phase — a peek at progress, not a posture. [recordPosture]
-     *  keeps writing the collapsed posture through it, so watching one capture
-     *  work doesn't silently retire a collapsed default. Any real posture
-     *  gesture afterwards (drag, resize, re-park) clears it and records
-     *  normally. */
+     *  a LOADING phase (a peek at progress, not a posture), or its return
+     *  from a page without its boxes, which brings it up on its own
+     *  ([showWithResult]). [recordPosture] keeps writing the collapsed posture
+     *  through it, so watching one capture work, or coming back from a page,
+     *  doesn't silently retire a collapsed default. Any real posture gesture
+     *  afterwards (drag, resize, re-park) clears it and records normally. */
     private var loadingPeekExpand = false
 
     /** End target of the height animation currently in [heightAnimator];
@@ -716,6 +791,22 @@ class CaptureResultOverlay(
         // lifts them above the panel only while it is parked) and the panel,
         // so the bloom never tints a chip or the sheet.
         root.addView(edgeIndicator.ring, FrameLayout.LayoutParams(MATCH, MATCH))
+        // Definitions' dimming over the ring and beneath everything else, the
+        // panel included, whatever the sheet's posture.
+        root.addView(scrimHolder, FrameLayout.LayoutParams(MATCH, MATCH))
+        layer.scrimHolder = scrimHolder
+        // The boxes right above the dimming; [syncChipsOrder] lifts them above
+        // the panel while it is parked.
+        root.addView(layer, FrameLayout.LayoutParams(MATCH, MATCH))
+        layer.onBoxesLaidOut = { placeSliverHint() }
+        layer.onBoxesSettled = { onBoxesSettled() }
+        // A Definitions card that ended by its own means (a page it opened,
+        // a lost window) ends the sheet as the user would: the boxes never
+        // sit over what the card opened.
+        layer.onSessionEnded = { if (!dismissed && !animatingOut) animateOutAndDismiss() }
+        // Outside gestures go to the layer first (a word of Definitions, a
+        // card to close); a host with a frame of its own replaces this.
+        outsideLookupRouter = { ev -> layer.onTouch(ev) }
         // Shadow next → behind the panel, so the opaque sheet covers all but the
         // soft fade cast above its top edge.
         root.addView(edgeShadow, FrameLayout.LayoutParams(MATCH, shadowHeightPx, Gravity.TOP))
@@ -730,6 +821,19 @@ class CaptureResultOverlay(
         // After the panel so the ring draws over the sheet; a plain non-clickable
         // View, so in-panel touches fall through it to the panel below.
         root.addView(focusRing, FrameLayout.LayoutParams(MATCH, MATCH))
+        // The mode pill last: above everything, the parked boxes and the ring
+        // included, at the top edge where neither the panel nor a
+        // bottom-anchored dialogue reaches. The status-bar inset is added
+        // when the insets arrive.
+        root.addView(
+            modePill,
+            FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.END).apply {
+                topMargin = dp(PILL_TOP_DP)
+                marginEnd = dp(PILL_END_DP)
+            },
+        )
+        modePill.onSelect = { selectOverlayMode(it) }
+        modePill.onCollapsedChanged = { prefs.captureOverlayPillCollapsed = it }
         // One-shot after each bind: park the scroll just past the hidden
         // translation section's collapsed header (see hiddenTopPx). Layout-
         // driven because the needed scroll range only exists once the grow
@@ -763,6 +867,7 @@ class CaptureResultOverlay(
         if (dismissed) return
         this.screenW = screenW
         this.screenH = screenH
+        postureFromOverride = overlayModeOverride != null
         // Bound the sliver hint now that the display width is known: its row is
         // WRAP and centered, so nothing else would stop the borrowed status
         // text of a long locale from running out past the sheet's edges.
@@ -847,7 +952,6 @@ class CaptureResultOverlay(
         )
         // Overlay-only: the target header's show-on-screen toggle flips the
         // on-frame boxes — accent while ON — without moving the panel.
-        b.setShowOnScreenAction { toggleBoxes() }
         b.onSectionVisibilityChanged = {
             applySideBySideCollapse()
             // Stacked hidden-translation parks the collapsed header above the
@@ -943,6 +1047,14 @@ class CaptureResultOverlay(
             val sideLeft = clear.left
             val sideRight = clear.right
             val imeLift = clear.imeLift
+            // The mode pill sits under the status bar, not behind it.
+            val pillTop = clear.top + dp(PILL_TOP_DP)
+            (modePill.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
+                if (lp.topMargin != pillTop) {
+                    lp.topMargin = pillTop
+                    modePill.requestLayout()
+                }
+            }
             if (navInset != bottomInsetPx || sideLeft != body.paddingLeft || sideRight != body.paddingRight) {
                 bottomInsetPx = navInset
                 body.setPadding(sideLeft, body.paddingTop, sideRight, navInset)
@@ -970,7 +1082,9 @@ class CaptureResultOverlay(
         // async flag flip to race), which also lands the OverlayHost
         // focusable-overlay paper trail on add.
         val navActive = controllerNavEnabled && hasNavInputDevice(ctx)
-        sheetHost.attach(root, screenW, screenH, focusable = navActive)
+        // Definitions holds the keys from the first frame, while the read
+        // runs too ([holdsKeysForDefinitions]).
+        sheetHost.attach(root, screenW, screenH, focusable = navActive || holdsKeysForDefinitions)
         // The edge indicator follows its setting for the sheet's lifetime
         // (observe seeds the current value now and fires on every change; the
         // collector dies with [scope] in dismiss): the camera flow's OCR
@@ -1040,7 +1154,7 @@ class CaptureResultOverlay(
                         // toggle-on paints the latest.
                         if (state.fillsBoxesOf(previous)) {
                             overlayData = state.overlayData
-                            if (boxesShown) state.overlayData?.let { updateChips(it) }
+                            state.overlayData?.let { fillBoxes(it) }
                             return@collect
                         }
                         // The capture's boxes exist from OCR time (skeletons, some
@@ -1064,62 +1178,60 @@ class CaptureResultOverlay(
                         // already showing swaps them in place). (Fits while
                         // slivered run measure-only — they set the drag ceiling +
                         // card chrome but never animate the height.)
-                        if (presentationPrefs.boxesEnabled) {
-                            state.overlayData?.let {
-                                if (boxesShown) updateChips(it) else showChips(it)
-                            }
-                        }
+                        state.overlayData?.let { paintBoxes(it) }
                         // Collapsed-start may park the panel (or keep show()'s
                         // park) only while the sliver has something to stand on:
-                        // boxes actually painted, or the user's persisted
-                        // boxes-off posture. When boxes were EXPECTED but reality
-                        // refused them — the overlay surface is live mode's, or
-                        // OCR produced nothing paintable — a sliver would leave
-                        // NOTHING readable, so the panel comes (or stays) up
-                        // instead: the old success-gated collapse, split across
-                        // the two axes.
+                        // boxes painted or still building (readings land off
+                        // the main thread; [onBoxesSettled] re-judges then), or
+                        // the user's persisted no-boxes posture. When boxes were
+                        // EXPECTED but reality refused them — the overlay
+                        // surface is live mode's, or OCR produced nothing
+                        // paintable — a sliver would leave NOTHING readable, so
+                        // the panel comes (or stays) up instead.
                         //
                         // ...and only while the user hasn't overruled it. This
                         // test re-reads the PREF, so without that term a tap
                         // during the loading arc would be undone by the very
                         // work it was made to watch: OCR lands, and the sheet
                         // the user just opened slams shut in the same frame.
-                        val sliverJustified =
-                            boxesShown || !presentationPrefs.boxesEnabled
                         val startsCollapsed = CaptureResultGeometry
                             .isCollapsedPosture(effectiveStartPosture())
-                        if (startsCollapsed && sliverJustified && !userStatedPosture) {
+                        if (startsCollapsed && sliverJustified() && !userStatedPosture) {
                             collapseToSliver()
-                        } else if (sliverMode && !sliverJustified) {
+                        } else if (sliverMode && !sliverJustified()) {
                             expandFromSliver()
                         }
-                        // bindResult rendered the toggle before the paint
+                        // bindResult rendered the control before the paint
                         // attempt above — re-render now that boxesShown has
                         // settled (same main-thread dispatch, so no flash).
-                        updateShowOnScreenAction()
+                        updateModeControl()
                     }
                     is CaptureState.Done -> {
                         overlayData = state.overlayData
                         val data = state.overlayData
                         if (data == null) {
-                            // Nothing paintable came back: skeletons must not
-                            // pulse forever, and a sliver waiting on boxes has
+                            // Nothing came back: skeletons must not pulse
+                            // forever, and a sliver waiting on boxes has
                             // nothing left to show — bring the panel back.
                             hideChips()
-                            if (sliverMode && presentationPrefs.boxesEnabled) {
+                            if (sliverMode && presentationPrefs.overlayMode != OverlayMode.NONE) {
                                 expandFromSliver()
                             }
-                        } else if (presentationPrefs.boxesEnabled) {
+                        } else {
                             // Promote showing skeletons in place; first paint
-                            // otherwise (e.g. the toggle was flipped on after
-                            // OCR, or the boxes surface was busy at Translating).
-                            if (boxesShown) updateChips(data) else showChips(data)
+                            // otherwise (e.g. the mode was picked after OCR, or
+                            // the boxes surface was busy at Translating).
+                            paintBoxes(data)
                             // Boxes expected but refused (the surface got
-                            // claimed since Translating): a sliver with nothing
-                            // behind it is unreadable — bring the panel back.
-                            if (sliverMode && !boxesShown) expandFromSliver()
+                            // claimed since Translating, or every translation
+                            // came back blank): a sliver with nothing behind it
+                            // is unreadable — bring the panel back.
+                            if (sliverMode && !sliverJustified()) expandFromSliver()
                         }
                         bindResult(state.result)
+                        // The frame's path and time reach a Definitions card's
+                        // pages from here.
+                        layer.setFrame(state.result.screenshotPath, state.result.createdAtMs)
                     }
                     is CaptureState.NoText -> {
                         // A re-run (OCR gear, camera region change) can land
@@ -1139,7 +1251,13 @@ class CaptureResultOverlay(
                         if (sliverMode) expandFromSliverForStatus()
                         setStatus(state.message)
                     }
-                    CaptureState.Cancelled -> dismiss()
+                    CaptureState.Cancelled -> {
+                        // The host's own endings dismiss the sheet before its
+                        // session's cancel can land, so this one came from
+                        // outside them.
+                        dismissReason = DismissReason.CANCELLED
+                        dismiss()
+                    }
                 }
             }
         }
@@ -1174,19 +1292,50 @@ class CaptureResultOverlay(
     fun persistPosture() = recordPosture()
 
     /** The remembered posture a flow should actually open at. A COLLAPSED one
-     *  is honored only while the boxes toggle has somewhere to put the result:
-     *  with boxes off, starting parked in the sliver lands a capture with
-     *  nothing readable on screen at all — no panel, no boxes — so the sliver
-     *  is dropped and the sheet opens at the plain fit-to-content default, as
-     *  if no posture had ever been recorded. A remembered HEIGHT always stands:
-     *  it still shows the text. (Boxes that were expected but refused at paint
-     *  time are the separate, live sliverJustified check in [observe].) */
+     *  is honored only while the overlay mode paints something: in None,
+     *  starting parked in the sliver lands a capture with nothing readable on
+     *  screen at all — no panel, no boxes — so the sliver is dropped and the
+     *  sheet opens at the plain fit-to-content default, as if no posture had
+     *  ever been recorded. A remembered HEIGHT always stands: it still shows
+     *  the text. (Boxes that were expected but refused at paint time are the
+     *  separate, live [sliverJustified] check in [observe].) */
     private fun effectiveStartPosture(): Float {
-        val posture = presentationPrefs.startPosture
+        // A capture tap-to-lookup opened starts parked ([postureFromOverride]).
+        val posture = if (postureFromOverride) CaptureResultGeometry.COLLAPSED_POSTURE
+            else presentationPrefs.startPosture
         val blindStart = CaptureResultGeometry.isCollapsedPosture(posture) &&
-            !presentationPrefs.boxesEnabled
+            presentationPrefs.overlayMode == OverlayMode.NONE
         return if (blindStart) CaptureResultGeometry.NO_POSTURE else posture
     }
+
+    /** Whether the flow is about to open parked in the sliver, so a capture
+     *  whose boxes are not translations can wait with its translation until
+     *  the panel comes up (the host passes it to the capture as
+     *  `deferWhileParked`). */
+    fun willOpenParked(): Boolean =
+        CaptureResultGeometry.isCollapsedPosture(effectiveStartPosture())
+
+    /** What this sheet's capture may defer, asked by the host after [show]
+     *  and passed to the capture as `allowDeferTranslation` and
+     *  `deferWhileParked`. */
+    data class CaptureDeferral(val allow: Boolean, val whileParked: Boolean)
+
+    /** The deferral for this sheet's mode, its override included: a capture
+     *  whose boxes are not translation chips may skip the backend call while
+     *  the translation section is hidden ([CaptureDeferral.allow]), and also
+     *  while it opens parked, since nothing shows the translation until the
+     *  panel comes up and leaving the park completes it
+     *  ([CaptureDeferral.whileParked]). Chips need their text, so a
+     *  Translations capture defers nothing. */
+    fun captureDeferral(): CaptureDeferral {
+        val allow = overlayMode != OverlayMode.TRANSLATION
+        return CaptureDeferral(allow, allow && willOpenParked())
+    }
+
+    /** Whether a parked sheet has something to stand on: the user's own
+     *  no-boxes park, or boxes painted or still building. */
+    private fun sliverJustified(): Boolean =
+        presentationPrefs.overlayMode == OverlayMode.NONE || boxesShown || boxesPending
 
     /** Record where the user is leaving the panel: the sliver, or the auto-size
      *  ceiling their last drag committed — the DEFAULT ceiling when they never
@@ -1203,6 +1352,8 @@ class CaptureResultOverlay(
      *  moment it's tapped. */
     private fun recordPosture() {
         if (lastResult == null || scroll.visibility != View.VISIBLE) return
+        // The override's park is not the user's posture ([postureFromOverride]).
+        if (postureFromOverride) return
         presentationPrefs.startPosture = CaptureResultGeometry.postureFor(
             autoMaxPx,
             screenH,
@@ -1219,12 +1370,21 @@ class CaptureResultOverlay(
     /** Re-show entry point for the controller's stash-and-rebind path: set up the
      *  window exactly like [show], then bind a previously-captured result directly
      *  (no capture session) — used when the user backs out of the detail screen.
+     *  The result comes back alone: its boxes belong to the frame, the screen and
+     *  the capture they were made in, so the stash keeps none, and the sheet
+     *  never comes back parked (a strip with nothing over the game). That
+     *  opening is the sheet's, not the user's: closing it keeps a parked
+     *  posture ([loadingPeekExpand]).
      *  [backdrop] re-supplies the clean capture for the frosted sheet fill — a
      *  re-show is a NEW overlay (the stash keeps no bitmap), so without it the
      *  sheet returns frost-less from every detail / workspace round trip. */
     fun showWithResult(screenW: Int, screenH: Int, result: TranslationResult, backdrop: Bitmap? = null) {
         show(screenW, screenH, backdrop)
         bindResult(result)
+        if (sliverMode) {
+            expandFromSliver()
+            loadingPeekExpand = true
+        }
     }
 
     fun dismiss() {
@@ -1241,6 +1401,7 @@ class CaptureResultOverlay(
         captureSession?.cancel()
         captureSession = null
         binder?.release()
+        layer.release()
         nav?.release()
         nav = null
         edgeSync?.let { root.viewTreeObserver.removeOnPreDrawListener(it) }
@@ -1261,7 +1422,7 @@ class CaptureResultOverlay(
         backdropSmall?.recycle()
         backdropSmall = null
         scope.cancel()
-        onDismiss?.invoke()
+        onDismiss?.invoke(dismissReason)
     }
 
     /** Slide the panel up off the top edge, then remove it — so tap-outside and
@@ -1273,6 +1434,8 @@ class CaptureResultOverlay(
     fun animateOutAndDismiss() {
         if (dismissed || animatingOut) return
         animatingOut = true
+        // Every animated exit is the user's own close.
+        dismissReason = DismissReason.USER
         dismissWordLens()
         popovers.dismiss()
         nav?.clearCursor()   // no ring riding the exit slide
@@ -1285,124 +1448,153 @@ class CaptureResultOverlay(
             .start()
     }
 
-    // ── Sliver state (result shown as on-screen boxes) ───────────────────
-
-    /** Paint [data]'s boxes over the game (a child of this window, placed by
-     *  [syncChipsOrder]), or hand them to the host's [boxPresenter] (the
-     *  camera's warp overlays).
-     *  False when the surface isn't ours to draw on (live mode). */
-    private fun showChips(data: OneShotOverlayData): Boolean {
-        boxPresenter?.let {
-            if (it.show(data)) {
-                boxesShown = true
-                return true
-            }
-            return false
-        }
-        if (CaptureService.instance?.isLive == true) return false
-        val v = chipsViewFor(OverlayRenderConfig.from(prefs))
-        v.animate().cancel()
-        v.alpha = 1f
-        v.setBoxes(
-            data.boxes, data.cropLeft, data.cropTop, data.screenshotW, data.screenshotH,
-            growthLimits = data.growthLimits,
-        )
-        boxesShown = true
-        return true
+    /** The sheet goes because a page it opened takes the screen. */
+    private fun dismissForPage() {
+        dismissReason = DismissReason.PAGE
+        dismiss()
     }
 
-    /** The chips view for [config], placed by [syncChipsOrder]. The view is
-     *  built once per sheet, but its render config is fixed at construction:
-     *  a setting changed since (the settings screen can sit beside the sheet
-     *  on another display) replaces it, as the live overlay's reuse guard
-     *  does. The one path both [showChips] and [updateChips] take. */
-    private fun chipsViewFor(config: OverlayRenderConfig): TranslationOverlayView {
-        chipsView?.takeIf { it.renderConfig != config }?.let { stale ->
-            root.removeView(stale)
-            chipsView = null
+    /** The host tears the sheet down (a newer capture, a live start, its own
+     *  teardown): whatever exit was under way, this is the system's. */
+    fun dismissBySystem() {
+        dismissReason = DismissReason.SYSTEM
+        dismiss()
+    }
+
+    // ── Sliver state (result shown as on-screen boxes) ───────────────────
+
+    /** Paint [data] in the chosen mode: a first paint, or a swap in place of
+     *  boxes already up (the skeleton to translated promotion as a fill or
+     *  Done lands). The host's presenter paints for the camera and import
+     *  reviews (it reads the flavor itself); the layer paints for the
+     *  over-game sheet, where live mode owns the surface and refuses it. */
+    private fun paintBoxes(data: OneShotOverlayData) {
+        val mode = presentationPrefs.overlayMode
+        boxPresenter?.let { presenter ->
+            if (mode == OverlayMode.NONE) {
+                if (presenterShown) {
+                    presenterShown = false
+                    presenter.hide()
+                }
+            } else if (presenterShown) {
+                presenter.update(data)
+            } else {
+                presenterShown = presenter.show(data)
+            }
+            return
         }
-        val v = chipsView ?: TranslationOverlayView(
-            android.view.ContextThemeWrapper(ctx, android.R.style.Theme_DeviceDefault),
-            oneShot = true,
-            renderConfig = config,
-        ).also {
-            chipsView = it
-            // Every chip layout (each rebuild: the skeletons, the translated
-            // promotion) re-places the parked hint against the drawn boxes.
-            it.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> placeSliverHint() }
-            root.addView(it, root.indexOfChild(chipsAnchor()) + 1, FrameLayout.LayoutParams(MATCH, MATCH))
+        if (CaptureService.instance?.isLive == true) {
+            layer.clear()
+            return
         }
-        syncChipsOrder()
-        return v
+        val sourceLangId = lastResult?.ocrProvenance?.sourceLangId ?: prefs.sourceLangId
+        layer.bind(
+            data, sourceLangId, mode,
+            screenshotPath = lastResult?.screenshotPath, capturedAtMs = lastResult?.createdAtMs ?: 0L,
+        )
+    }
+
+    /** The mode the sheet paints in now, override included. */
+    val overlayMode: OverlayMode get() = presentationPrefs.overlayMode
+
+    /** More of the same capture translated: swap the boxes in place and
+     *  nothing else. Boxes that are not up stay down (a presenter that never
+     *  showed, a layer live mode refused). */
+    private fun fillBoxes(data: OneShotOverlayData) {
+        val presenter = boxPresenter
+        if (presenter != null) {
+            if (presenterShown) presenter.update(data)
+            return
+        }
+        if (CaptureService.instance?.isLive == true) return
+        layer.update(data)
+    }
+
+    /** A reading build landed. Nothing drawn under a park the user did not
+     *  state leaves the sliver with nothing to stand on: the panel comes up. */
+    private fun onBoxesSettled() {
+        if (dismissed) return
+        if (!boxesShown && sliverMode && !userStatedPosture) expandFromSliver()
+        placeSliverHint()
+        updateModeControl()
     }
 
     /** The root child the boxes sit directly above for the current
-     *  [chipsOverSheet]: the panel while parked, else the edge ring (so the
-     *  bloom never tints a box, and the shadow, rail and panel cover them). */
-    private fun chipsAnchor(): View = if (chipsOverSheet) panel else edgeIndicator.ring
+     *  [chipsOverSheet]: the panel while parked, else Definitions' dimming,
+     *  itself just over the edge ring (so the bloom never tints a box, the
+     *  dimming never covers one, and the shadow, rail and panel cover them). */
+    private fun chipsAnchor(): View = if (chipsOverSheet) panel else scrimHolder
 
-    /** Put the boxes where [chipsOverSheet] says, if they exist and aren't
-     *  there already. A move is a same-window child re-add — no window
-     *  traffic — and the focus ring, added after the panel, stays above
-     *  them either way. Idempotent, so the per-frame height funnel can call
-     *  it freely. */
+    /** Put the boxes where [chipsOverSheet] says, if they aren't there
+     *  already. A move is a same-window child re-add — no window traffic —
+     *  and the focus ring and the mode pill, added after the panel, stay
+     *  above them either way. Idempotent, so the per-frame height funnel can
+     *  call it freely. */
     private fun syncChipsOrder() {
-        val v = chipsView ?: return
         val anchor = chipsAnchor()
-        if (root.indexOfChild(v) == root.indexOfChild(anchor) + 1) return
-        root.removeView(v)
-        root.addView(v, root.indexOfChild(anchor) + 1)
+        if (root.indexOfChild(layer) == root.indexOfChild(anchor) + 1) return
+        root.removeView(layer)
+        root.addView(layer, root.indexOfChild(anchor) + 1)
     }
 
-    /** Swap the boxes in place: the skeleton to translated promotion as a box
-     *  fill or Done lands. No-op unless the boxes are up. A render setting
-     *  changed since they went up replaces the view ([chipsViewFor]); the
-     *  fresh one starts at alpha 1, right since the boxes were up. */
-    private fun updateChips(data: OneShotOverlayData) {
-        boxPresenter?.let {
-            it.update(data)
-            return
-        }
-        val shown = chipsView ?: return
-        if (shown.alpha == 0f) return
-        chipsViewFor(OverlayRenderConfig.from(prefs)).setBoxes(
-            data.boxes, data.cropLeft, data.cropTop, data.screenshotW, data.screenshotH,
-            growthLimits = data.growthLimits,
-        )
-    }
-
-    /** Fade the boxes out. The view stays attached (alpha 0) for cheap re-shows;
-     *  it dies with the window. */
+    /** Take the boxes down: the host's presenter's, or the layer's, which
+     *  fade and keep their view for a cheap re-show. */
     private fun hideChips() {
-        boxesShown = false
-        placeSliverHint()   // nothing covers the strip any more: the row re-centres
-        boxPresenter?.let {
-            it.hide()
-            return
+        val presenter = boxPresenter
+        if (presenter != null) {
+            presenterShown = false
+            presenter.hide()
+        } else {
+            layer.clear()
         }
-        val v = chipsView ?: return
-        v.animate().alpha(0f).setDuration(SLIVER_FADE_MS).start()
+        placeSliverHint()   // nothing covers the strip any more: the row re-centres
     }
 
-    /** The header toggle: flip the on-frame boxes without moving the panel.
-     *  Turning ON paints the bound result's boxes (skeletons where the
-     *  translation is still running); the persisted state lands wherever
-     *  reality landed — the overlay surface can refuse the paint (live mode
-     *  owns it), and the accent state must never claim boxes that aren't
-     *  there. */
-    private fun toggleBoxes() {
-        if (boxesShown) {
-            presentationPrefs.boxesEnabled = false
-            hideChips()
-        } else {
-            val data = overlayData ?: return
-            presentationPrefs.boxesEnabled = showChips(data)
-            // Boxes on a deferred result went up as skeletons — run the skipped
-            // translation now so they fill instead of pulsing forever.
-            maybeCompleteDeferred()
+    /** The mode pill: paint the bound result in [mode] and remember it. A
+     *  switch to Translations on a deferred result runs the skipped
+     *  translation, so the skeletons fill instead of pulsing forever; a
+     *  switch to None while parked leaves nothing on screen but the strip,
+     *  so the panel comes up. */
+    private fun selectOverlayMode(mode: OverlayMode) {
+        if (presentationPrefs.overlayMode == mode) return
+        presentationPrefs.overlayMode = mode
+        val data = overlayData
+        if (data != null) paintBoxes(data) else hideChips()
+        // Definitions holds the keys; the other modes give them back.
+        applyWindowFocusPolicy()
+        when (mode) {
+            OverlayMode.TRANSLATION -> maybeCompleteDeferred()
+            OverlayMode.NONE -> if (sliverMode) expandFromSliver()
+            OverlayMode.FURIGANA, OverlayMode.DEFINITIONS -> {}
         }
-        updateShowOnScreenAction()
+        updateModeControl()
     }
+
+    /** The tap-to-lookup gesture or hotkey over a sheet already up in another
+     *  mode: paint this capture in [mode] without remembering it (the pill
+     *  shows it selected; a pick there is what remembers). */
+    fun applyOverlayModeOverride(mode: OverlayMode) {
+        if (presentationPrefs.overlayMode == mode) return
+        overlayModeOverride = mode
+        val data = overlayData
+        if (data != null) paintBoxes(data) else hideChips()
+        applyWindowFocusPolicy()
+        if (mode == OverlayMode.TRANSLATION) maybeCompleteDeferred()
+        updateModeControl()
+    }
+
+    /** The one exit from the park: a deferred translation the park was
+     *  waiting on runs now ([maybeCompleteDeferred] reads [sliverMode]). */
+    private fun leaveSliver() {
+        sliverMode = false
+        maybeCompleteDeferred()
+    }
+
+    /** A DOWN inside the mode pill's bounds (root coordinates). */
+    private fun hitsModePill(ev: MotionEvent): Boolean =
+        modePill.visibility == View.VISIBLE &&
+            ev.x >= modePill.left && ev.x < modePill.right &&
+            ev.y >= modePill.top && ev.y < modePill.bottom
 
     /** Collapse the sheet to its bottom-edge sliver. Height-based (the sheet's
      *  bottom edge retracts, like the grow-to-fit in reverse) so the sliver
@@ -1432,11 +1624,11 @@ class CaptureResultOverlay(
      *  the crossfade brings the sections back as the height climbs. */
     private fun expandFromSliver() {
         if (dismissed || animatingOut || !sliverMode) return
-        sliverMode = false
+        leaveSliver()
         nav?.clearCursor()   // every exit from the park drops the sliver cursor
         val target = preSliverHeightPx.coerceAtLeast(CaptureResultGeometry.minPanelHeight(screenH))
         animateSliverHeight(target) {
-            updateShowOnScreenAction()
+            updateModeControl()
             // Re-run the fit the sliver suppressed (a collapsed-start lands
             // before the Done grow-to-fit ever ran, so the height may still be
             // the loading floor). Skipped when a status replaced the content
@@ -1461,10 +1653,10 @@ class CaptureResultOverlay(
      *  successor, the animation ends at/above it. */
     private fun expandFromSliverForStatus() {
         if (dismissed || animatingOut || !sliverMode) return
-        sliverMode = false
+        leaveSliver()
         nav?.clearCursor()   // every exit from the park drops the sliver cursor
         animateSliverHeight(CaptureResultGeometry.minPanelHeight(screenH)) {
-            updateShowOnScreenAction()
+            updateModeControl()
         }
         // Apply the floor to the animation we just started. The KDoc's "every
         // setStatus retargets" covers the paths that expand BEFORE their status
@@ -1533,7 +1725,7 @@ class CaptureResultOverlay(
     private fun endSliverDrag() {
         if (dismissed) return
         if (panelHeightPx >= CaptureResultGeometry.minPanelHeight(screenH)) {
-            sliverMode = false
+            leaveSliver()
             // A dragged-to height IS a posture: it stands down the auto-park,
             // and it supersedes any loading peek that opened the sheet first.
             userStatedPosture = true
@@ -1541,7 +1733,7 @@ class CaptureResultOverlay(
             // Adopt the dragged height like endResize does, so re-fits keep it.
             autoMaxPx = committedCeiling()
             reFitText()
-            updateShowOnScreenAction()
+            updateModeControl()
         } else {
             // Pulled and let fall back: the user kept it parked, so the pref
             // takes the wheel again.
@@ -1725,12 +1917,11 @@ class CaptureResultOverlay(
      *  the boxes are hidden, and for hosts that paint boxes through their
      *  own presenter, whose geometry is not this window's. */
     private fun coveredHintSpans(): List<IntRange> {
-        val v = chipsView ?: return emptyList()
-        if (!boxesShown) return emptyList()
+        if (boxPresenter != null || !boxesShown) return emptyList()
         val stripTop = screenH - sliverHeightPx() + dp(HANDLE_HEIGHT_DP)
         val stripBottom = screenH - bottomInsetPx
         root.getLocationOnScreen(rootLoc)
-        return v.getChildScreenRects().mapNotNull { r ->
+        return layer.drawnBoxRects().mapNotNull { r ->
             r.offset(-rootLoc[0], -rootLoc[1])
             if (r.bottom <= stripTop || r.top >= stripBottom || r.right <= r.left) null
             else r.left until r.right
@@ -1759,19 +1950,25 @@ class CaptureResultOverlay(
         }
     }
 
-    /** The target header's boxes toggle is offered whenever there is something
-     *  to paint — skeleton boxes count (a mid-translation flip shows the same
-     *  pulsing placeholders). Deliberately NOT gated on sliverMode: the button
-     *  is scroll content, so a collapse fades it out with the sections instead
-     *  of yanking it to GONE, and it's unreachable while slivered anyway (the
-     *  root consumes every touch). The accent state mirrors [boxesShown] — the
-     *  boxes actually painted — NOT the persisted pref: the surface can refuse
-     *  the paint (live mode), and the accent must never claim boxes that
-     *  aren't there. The pref stays untouched as the standing intent; only a
-     *  user tap re-lands it (see [toggleBoxes]). */
-    private fun updateShowOnScreenAction() {
-        binder?.setShowOnScreenAvailable(overlayData != null)
-        binder?.setShowOnScreenToggled(boxesShown)
+    /** The mode pill is offered whenever there is a result with boxes to
+     *  paint (skeletons count: a mid-translation switch shows the same
+     *  pulsing placeholders), with the modes the host offers that the layer
+     *  can paint, the persisted mode selected and the collapsed state the
+     *  user left it in. It floats above the panel, so it is reachable while
+     *  parked, which is the whole reason it exists. Idempotent: the pill
+     *  rebuilds only on a change, so every refresh may call this. */
+    private fun updateModeControl() {
+        val hint = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
+        val offered = if (overlayData == null) {
+            emptyList()
+        } else {
+            presentationPrefs.offeredOverlayModes.filter { boxPresenter != null || it in layer.supportedModes }
+        }
+        modePill.render(
+            options = offered.map { ctx.getString(it.labelRes(hint)) to it },
+            selected = presentationPrefs.overlayMode,
+            collapsed = prefs.captureOverlayPillCollapsed,
+        )
     }
 
     /** Extra content height beyond the visible body when the translation
@@ -1832,7 +2029,7 @@ class CaptureResultOverlay(
         // Terminal statuses are excluded: they expand out of the park anyway,
         // and a spinner beside "no text found" claims work that has stopped.
         statusMessage = message.takeIf { loading }
-        updateShowOnScreenAction()
+        updateModeControl()
         // The proportional loading floor (20% of screen height) is SHORTER than
         // the status block itself on a landscape screen — "Recognizing text"
         // rendered clipped to invisibility in horizontal mode. Floor the panel
@@ -1871,7 +2068,7 @@ class CaptureResultOverlay(
         val needed = statusFloorPx()
         if (heightAnimator?.isRunning == true) {
             if (heightAnimatorTargetPx < needed) {
-                animateSliverHeight(needed) { updateShowOnScreenAction() }
+                animateSliverHeight(needed) { updateModeControl() }
             }
         } else if (panelHeightPx < needed) {
             setPanelHeight(needed)
@@ -1900,7 +2097,7 @@ class CaptureResultOverlay(
         // take over as the on-screen sign of work in flight. The sliver goes
         // back to advertising its tap.
         statusMessage = null
-        updateShowOnScreenAction()
+        updateModeControl()
         // Fresh result with the translation section hidden: park its collapsed
         // header above the scroll fold once the fit lays out (see hiddenTopPx).
         // From STABLE state, not hiddenTopPx() — that reads the header's
@@ -1949,7 +2146,11 @@ class CaptureResultOverlay(
     private fun maybeCompleteDeferred() {
         val bound = lastResult ?: return
         val pending = bound.pendingTranslation ?: return
-        val needed = !prefs.hideTranslationSection || boxesShown || presentationPrefs.boxesEnabled
+        val needed = deferredCompletionNeeded(
+            sectionHidden = prefs.hideTranslationSection,
+            parked = sliverMode,
+            mode = presentationPrefs.overlayMode,
+        )
         if (!needed) return
         // Same pending already completing (double trigger): one batch only.
         if (deferredInFlight == pending) return
@@ -2000,10 +2201,8 @@ class CaptureResultOverlay(
                 )
                 // Promote any skeletons already up; nothing paintable → take them
                 // down rather than leave them pulsing (Done's data == null recovery).
-                if (boxesShown) {
-                    if (filled != null) updateChips(filled) else hideChips()
-                }
-                updateShowOnScreenAction()
+                if (filled != null) paintBoxes(filled) else hideChips()
+                updateModeControl()
             } finally {
                 // Only the run that still owns the generation releases the
                 // marker — a superseding launch already stamped its own.
@@ -2312,12 +2511,12 @@ class CaptureResultOverlay(
             onLaunchedActivity = { kind ->
                 when (kind) {
                     SourceLensActions.LaunchKind.Anki ->
-                        if (dismissOnActivityLaunch) dismiss()
+                        if (dismissOnActivityLaunch) dismissForPage()
                     SourceLensActions.LaunchKind.Detail -> {
                         val r = lastResult
                         val nav = onNavigateToDetail
                         if (r != null && nav != null) nav(r)
-                        else if (dismissOnActivityLaunch) dismiss()
+                        else if (dismissOnActivityLaunch) dismissForPage()
                     }
                 }
             },
@@ -2381,12 +2580,12 @@ class CaptureResultOverlay(
             prov.sourceLangId,
             prov.engineToken,
             onReOcr = { reOcr(prov, path, deviceOnly = true) },
-            onDownload = { backend -> launchOcrSettings(backend, prov.sourceLangId); dismiss() },
+            onDownload = { backend -> launchOcrSettings(backend, prov.sourceLangId); dismissForPage() },
             cloud = OcrPicker.CloudChoice(
                 onReOcr = { reOcr(prov, path, deviceOnly = false) },
                 // The cloud page, the way the download page opens: on the
                 // foreground display, this sheet gone since the app comes up.
-                onOpenPage = { launchOnForegroundDisplay(Intent(ctx.applicationContext, PtCloudSettingsActivity::class.java)); dismiss() },
+                onOpenPage = { launchOnForegroundDisplay(Intent(ctx.applicationContext, PtCloudSettingsActivity::class.java)); dismissForPage() },
             ),
         ).showAsOverlay()
     }
@@ -2405,6 +2604,7 @@ class CaptureResultOverlay(
                 com.playtranslate.capture.CapturedFrame(
                     bmp, includesSystemUi = prov.frameIncludesSystemUi ?: true,
                     includesOwnOverlays = prov.frameIncludesOwnOverlays ?: false,
+                    geometry = prov.frameGeometry,
                 ),
                 prov.displayId, prov.region, prov.sourceLangId,
                 deviceOnly = deviceOnly,
@@ -2444,7 +2644,7 @@ class CaptureResultOverlay(
         // Read before dismiss(): the picker workspace frosts over the same
         // capture this sheet was frosted with.
         val frostPath = lastResult?.screenshotPath
-        dismiss()
+        dismissForPage()
         val opened = CaptureBackendResolver.activeOverlayUi?.openWorkspace(displayId, frostPath) {
             if (isSource) SourceListPage() else TargetListPage()
         } == true
@@ -2499,9 +2699,9 @@ class CaptureResultOverlay(
         )
         if (inWorkspace) {
             val nav = onNavigateToDetail
-            if (nav != null) nav(result) else if (dismissOnActivityLaunch) dismiss()
+            if (nav != null) nav(result) else if (dismissOnActivityLaunch) dismissForPage()
         } else if (dismissOnActivityLaunch) {
-            dismiss()
+            dismissForPage()
         }
     }
 
@@ -2629,7 +2829,7 @@ class CaptureResultOverlay(
         // orphans them, so drop the data AND any boxes already painted from it.
         overlayData = null
         hideChips()
-        updateShowOnScreenAction()
+        updateModeControl()
         val gen = ++editGeneration
         b.bindSource(edited.segments)   // sets text + paints furigana
         b.setTargetTranslatingPlaceholder()
@@ -2684,8 +2884,20 @@ class CaptureResultOverlay(
      *  this is what keeps [commitEdit] from dropping controller focus. */
     private fun applyWindowFocusPolicy() {
         val editing = editContainer.visibility == View.VISIBLE
-        sheetHost.setFocusPolicy(root, focusable = editing || nav != null, wantsIme = editing)
+        sheetHost.setFocusPolicy(
+            root, focusable = editing || nav != null || holdsKeysForDefinitions, wantsIme = editing,
+        )
     }
+
+    /** The sheet is in Definitions, so its window holds key focus, Back
+     *  closing a card and then the sheet without a controller and the D-pad
+     *  driving the words while parked. Read from the sheet's own mode, not
+     *  what the layer last painted, so the keys are the sheet's from the
+     *  first frame (the read still running) and go back to the game the
+     *  moment another mode is picked, with or without data. The camera and
+     *  import hosts never offer Definitions. */
+    private val holdsKeysForDefinitions: Boolean
+        get() = boxPresenter == null && presentationPrefs.overlayMode == OverlayMode.DEFINITIONS
 
     /** The controller's B / system back, in sheet-modal precedence order —
      *  the mirror of [CaptureResultRoot.dispatchTouchEvent]'s ladder. The
@@ -2697,6 +2909,8 @@ class CaptureResultOverlay(
             popovers.isShowing -> popovers.dismiss()
             editContainer.visibility == View.VISIBLE -> cancelEdit()
             sourceLens?.isShowing == true -> dismissWordLens()
+            // A Definitions card is the lens rung's twin over the game.
+            layer.hasCard -> layer.closeCard()
             // One B, ringed or not: the sliver cursor is not a rung of this
             // ladder (see CaptureSheetControllerNav.handleKey).
             sliverMode -> dismissFromSliver()
@@ -2746,6 +2960,27 @@ class CaptureResultOverlay(
         }
 
         override fun collapseToSliver() = this@CaptureResultOverlay.collapseToSliver()
+
+        // Up off the sheet's top in Definitions: the words over the game are
+        // the controller's, as they are while the sheet is parked. The sheet
+        // parks with the words' cursor on the word nearest above its edge
+        // (the touch rules' edge, above which a word is the word's), the
+        // cursor's column first; with no word up there the cursor stays. The
+        // camera and import hosts never offer Definitions.
+        private val leaveLoc = IntArray(2)
+        override fun leaveSheetUp(fromOnScreen: Rect): Boolean {
+            if (!holdsKeysForDefinitions) return false
+            root.getLocationOnScreen(leaveLoc)
+            val edge = (leaveLoc[1] + panel.top + panel.translationY).toInt()
+            val word = SheetNavGeometry.nextInDirection(
+                SheetNavGeometry.NavRect(fromOnScreen.left, edge, fromOnScreen.right, edge),
+                layer.drawnBoxRects().map { SheetNavGeometry.NavRect(it.left, it.top, it.right, it.bottom) },
+                SheetNavGeometry.Dir.UP,
+            ) ?: return false
+            this@CaptureResultOverlay.collapseToSliver()
+            layer.focusWord(word)
+            return true
+        }
 
         private val sliverLoc = IntArray(2)
         override fun sliverRect(out: Rect): Boolean {
@@ -3144,12 +3379,12 @@ class CaptureResultOverlay(
             // Mirror endSliverDrag: past the classic floor the drag pulled the
             // sheet out of its park; under it, settle back into the sliver.
             if (panelHeightPx >= min) {
-                sliverMode = false
+                leaveSliver()
                 userStatedPosture = true
                 loadingPeekExpand = false
                 autoMaxPx = committedCeiling()
                 reFitText()
-                updateShowOnScreenAction()
+                updateModeControl()
             } else {
                 userStatedPosture = false
                 loadingPeekExpand = false
@@ -3348,12 +3583,69 @@ class CaptureResultOverlay(
          *  press is still in flight. */
         val keyGuard = WindowKeyPairGuard()
 
+        /** The platform Back callback while attached ([registerBackCallback]). */
+        private var backCallback: Any? = null
+
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) registerBackCallback()
+        }
+
+        override fun onDetachedFromWindow() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) unregisterBackCallback()
+            super.onDetachedFromWindow()
+        }
+
+        /** Back as the platform delivers it to an app given callback-based
+         *  back (target 36 on Android 16), where the key [dispatchKeyEvent]
+         *  reads never arrives: the press does what the key does there. The
+         *  sheet takes Back while the controller nav is live, which takes it
+         *  in every state, or while it holds the keys for Definitions, and
+         *  either way runs [onControllerBack]; otherwise a press does
+         *  nothing, as the key does. The two paths are exclusive by the
+         *  platform's mode, so a press runs once. As [CaptureOverlayWindow]
+         *  does for the two-screen window. */
+        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+        private fun registerBackCallback() {
+            val dispatcher = findOnBackInvokedDispatcher() ?: return
+            val callback = OnBackInvokedCallback {
+                if (!keyGuard.isLingering && (nav != null || holdsKeysForDefinitions)) onControllerBack()
+            }
+            dispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback)
+            backCallback = callback
+        }
+
+        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+        private fun unregisterBackCallback() {
+            val callback = backCallback as? OnBackInvokedCallback ?: return
+            backCallback = null
+            findOnBackInvokedDispatcher()?.unregisterOnBackInvokedCallback(callback)
+        }
+
         /** Controller keys, live only while the window took focus at show()
          *  ([nav] non-null). Before super so nav sees keys first — its own
          *  edit/popover awareness decides what falls through to children. */
+        /** Back fires on the UP of a DOWN this window saw ([backDownSeen]),
+         *  so a press from before the sheet appeared cannot close it; with a
+         *  controller attached the nav does this itself. */
+        private var backDownSeen = false
+
         override fun dispatchKeyEvent(ev: KeyEvent): Boolean {
             if (keyGuard.isLingering) return keyGuard.lingerKey(ev)
             keyGuard.track(ev)
+            // Definitions while parked: the D-pad and A drive the words (the
+            // boxes are all that is on screen); expanded, the nav owns them.
+            if (sliverMode && layer.onKey(ev)) return true
+            if (nav == null && holdsKeysForDefinitions && ControllerKeys.isBack(ev.keyCode)) {
+                when (ev.action) {
+                    KeyEvent.ACTION_DOWN -> if (ev.repeatCount == 0) backDownSeen = true
+                    KeyEvent.ACTION_UP -> if (backDownSeen) {
+                        backDownSeen = false
+                        onControllerBack()
+                    }
+                }
+                return true
+            }
             return nav?.handleKey(ev) == true || super.dispatchKeyEvent(ev)
         }
 
@@ -3373,7 +3665,28 @@ class CaptureResultOverlay(
             // over everything but its card) handles outside taps by
             // dismissing it.
             if (popovers.isShowing) return super.dispatchTouchEvent(ev)
+            // A sequence that began on the mode pill is the pill's, whatever
+            // the rules below would claim: it is a child above everything.
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) pillTouch = hitsModePill(ev)
+            if (pillTouch) {
+                if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) {
+                    pillTouch = false
+                }
+                return super.dispatchTouchEvent(ev)
+            }
             if (routeOutsideFollowUp(ev)) return true
+            // A word of Definitions the user can see is the word's, ahead of
+            // the sheet's own rules: above the sheet's edge, where the grab
+            // band reaches past it (expanded) or the sliver's tap-or-drag
+            // band does (parked), and on the parked strip itself while the
+            // words are drawn over it. The bands keep their gestures where no
+            // word is.
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN &&
+                (chipsOverSheet || ev.y < panel.top + panel.translationY) &&
+                layer.wordAt(ev.x, ev.y) && tryRouteOutsideDown(ev)
+            ) {
+                return true
+            }
             if (sliverMode) {
                 when (ev.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
@@ -3385,6 +3698,8 @@ class CaptureResultOverlay(
                         // the advertised gesture here (see the hint) — this
                         // whole band is its target, which is why it can afford
                         // to reach so far past the sheet.
+                        // (A word of Definitions under the finger was the
+                        // word's, above.)
                         if (ev.y >= panelTop - dp(EXTRA_GRAB_PAST_EDGE_DP)) {
                             sliverTouch = true
                             sliverDragging = false
@@ -3582,6 +3897,9 @@ class CaptureResultOverlay(
         const val SLIVER_DURATION_MS = 220L
         /** Duration of the section fade that rides the sliver transitions. */
         const val SLIVER_FADE_MS = 150L
+        /** The mode pill's inset under the status bar and from the end edge. */
+        const val PILL_TOP_DP = 12
+        const val PILL_END_DP = 16
         /** How far past the sheet's edge the resize grab zone extends. */
         const val EXTRA_GRAB_PAST_EDGE_DP = 26
         /** ...and how far INTO the sheet it reaches below the grabber strip.

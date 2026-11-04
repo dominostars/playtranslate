@@ -478,7 +478,7 @@ class DragLookupController(
          *  offset range when there are any, else from [fallbackLineStart] +
          *  offset × [fallbackCharExtent]. A token not found in [lineText] is
          *  skipped. The one placement the drag's finger match
-         *  ([findClosestToken]) and the tap-to-lookup boxes
+         *  ([findClosestToken]) and a capture's Definitions boxes
          *  ([TapLookupGeometry.wordBoxes]) read, so a box drawn for a token
          *  is the extent a finger is matched against. */
         internal fun positionTokens(
@@ -1090,14 +1090,20 @@ class DragLookupController(
     /**
      * Show [resolved] as the sticky lens, inside the caller's [lookupJob]:
      * the release's side effects (the word state the chips read, the
-     * sentence sent to the app on dual-screen and recorded in Text History),
-     * then in one main-thread step [place], which puts the lens where it
-     * will show (false: nowhere, and the session ends), the bind and the
-     * promotion to sticky; last the "already in Anki" deck badge. The drag's
-     * release and the tap on a word's box ([lookUpWord]) share it.
+     * sentence recorded in Text History and, with [sendsLineToApp], sent to
+     * the app's page on dual-screen), then in one main-thread step [place],
+     * which puts the lens where it will show (false: nowhere, and the
+     * session ends), the bind and the promotion to sticky; last the
+     * "already in Anki" deck badge. The drag's release and the tap on a
+     * word's box ([lookUpWord]) share it.
      */
     private suspend fun presentResolution(
         resolved: LookupResolution,
+        /** The drag's own scene goes to the app's page on dual-screen. A
+         *  scene the caller presents ([lookUpWord]: a capture whose result
+         *  that page already shows) stays there: sending the line would
+         *  replace the result, and with it the capture's presentation. */
+        sendsLineToApp: Boolean = true,
         place: () -> Boolean = { true },
     ) {
         val popupData = resolved.word
@@ -1120,7 +1126,7 @@ class DragLookupController(
             if (sent != lastSentSentence) {
                 lastSentSentence = sent
                 sentenceToRecord = sent
-                sendLineToMainApp(sent)
+                if (sendsLineToApp) sendLineToMainApp(sent)
             }
         }
         val shown = withContext(Dispatchers.Main) {
@@ -1172,12 +1178,28 @@ class DragLookupController(
     }
 
     /**
-     * The tap on a word's box (the tap-to-lookup overlay,
-     * [TapLookupSession]): look up exactly [at], the token the box was drawn
-     * for, in the scene the caller captured ([lines], its screenshot at
-     * [screenshotPath], taken at [capturedAtMs]), and show the sticky lens
+     * The frame of the scene a capture's Definitions presentation
+     * ([WordLookupSession]) looks its words up in: its screenshot at
+     * [screenshotPath], taken at [capturedAtMs], which a card's pages and
+     * its Anki note read at tap time ([lensActions]). The session gives it
+     * with its lines and again when it arrives after them (a capture whose
+     * result lands after its boxes went up), so a card already up cites it
+     * from then on. This controller is the frame's one holder.
+     */
+    internal fun setFrame(screenshotPath: String?, capturedAtMs: Long) {
+        this.screenshotPath = screenshotPath
+        dragCapturedAtMs = capturedAtMs
+    }
+
+    /**
+     * The tap on a word's box (a capture's Definitions presentation,
+     * [WordLookupSession]): look up exactly [at], the token the box was drawn
+     * for, in the scene the caller captured ([lines], its frame as
+     * [setFrame] last gave it), and show the sticky lens
      * anchored on [anchor], the box's screen rect, as the result sheet's
-     * word lens anchors on its word ([SourceTextLens]).
+     * word lens anchors on its word ([SourceTextLens]). The scene is the
+     * caller's to present: the word's sentence is recorded but not sent to
+     * the app's page, as a drag's is ([presentResolution]).
      *
      * It resolves first and shows second, so the lens window only ever
      * comes up interactive here, never in its zoom state: on the
@@ -1190,8 +1212,6 @@ class DragLookupController(
      */
     internal fun lookUpWord(
         lines: List<OcrManager.OcrLine>,
-        screenshotPath: String?,
-        capturedAtMs: Long,
         at: TokenAt,
         anchor: Rect,
     ) {
@@ -1201,8 +1221,6 @@ class DragLookupController(
         dragInProgress = false
         lensRevealed = false
         ocrLines = lines
-        this.screenshotPath = screenshotPath
-        dragCapturedAtMs = capturedAtMs
         sessionGeometry = context.displayGeometryOf(displayId)
         lookupJob = scope.launch {
             try {
@@ -1211,7 +1229,7 @@ class DragLookupController(
                     endSession()
                     return@launch
                 }
-                presentResolution(resolved) {
+                presentResolution(resolved, sendsLineToApp = false) {
                     if (magnifier.isInteractive) magnifier.resetToZoom()
                     val screen = queryScreenSize()
                     magnifier.show(
@@ -1490,8 +1508,8 @@ class DragLookupController(
     /** A token of one OCR line, as the lookup resolves it: the [line], the
      *  matched [token] of the line's tokenization, its [charOffset] in the
      *  line text and its [surface] as found there. The drag finds one under
-     *  the finger ([locateToken]); the tap-to-lookup boxes hand over the one
-     *  a box was drawn for ([lookUpWord]). */
+     *  the finger ([locateToken]); a capture's Definitions boxes hand over
+     *  the one a box was drawn for ([lookUpWord]). */
     internal data class TokenAt(
         val line: OcrManager.OcrLine,
         val token: com.playtranslate.language.TokenSpan,

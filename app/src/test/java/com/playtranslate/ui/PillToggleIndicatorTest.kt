@@ -1,6 +1,7 @@
 package com.playtranslate.ui
 
 import android.app.Activity
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Looper
 import android.view.View
@@ -78,9 +79,31 @@ class PillToggleIndicatorTest {
         assertEquals("indicator's width", segment.width.toFloat(), indicator.width.toFloat(), 1f)
     }
 
-    private fun pillToggle(selected: Int) = buildPillToggle(
-        container, listOf("Off" to 0, "Low" to 1, "Medium" to 2, "High" to 3), selected,
+    private fun pillToggle(selected: Int, roundEnds: Boolean = false) = buildPillToggle(
+        container, listOf("Off" to 0, "Low" to 1, "Medium" to 2, "High" to 3), selected, roundEnds,
     ) {}
+
+    private fun radius(v: View) = (v.background as GradientDrawable).cornerRadius
+
+    @Test
+    fun `round ends make the track and the indicator full pills`() {
+        pillToggle(selected = 2, roundEnds = true)
+        settle()
+        assertEquals("the height a host shapes itself around", pillToggleHeightPx(container.context), track.height)
+        assertEquals("the track's ends", track.height / 2f, radius(track), 0.01f)
+        assertEquals("the indicator's ends", indicator.height / 2f, radius(indicator), 0.01f)
+        assertIndicatorUnder(2)
+    }
+
+    @Test
+    fun `by default the track and the indicator keep their corners`() {
+        val dp = container.resources.displayMetrics.density
+        // As every other host calls it: no shape argument.
+        buildPillToggle(container, listOf("Off" to 0, "Low" to 1, "Medium" to 2), 2) {}
+        settle()
+        assertEquals("the track's corners", 10 * dp, radius(track), 0.01f)
+        assertEquals("the indicator's corners", 8 * dp, radius(indicator), 0.01f)
+    }
 
     @Test
     fun `pill toggle starts under the selected segment, LTR`() {

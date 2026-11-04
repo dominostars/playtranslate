@@ -65,6 +65,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -422,13 +423,14 @@ class CaptureService : Service() {
         )
     }
 
-    /** Whether a one-shot hold gesture is currently in flight, i.e. whether
-     *  the floating icons should be wearing their loading spinner. State of
-     *  record for that spinner — see [setHoldLoading]. */
+    /** Whether a one-shot hold gesture is currently in flight: one of the two
+     *  things the floating icons' loading spinner shows ([iconsLoading]; the
+     *  other is an app read, [showReadOnIcons]). See [setHoldLoading]. */
     private var holdLoading = false
 
     /**
-     * Arm / disarm the floating icons' hold spinner.
+     * Arm / disarm the hold's share of the floating icons' spinner
+     * ([iconsLoading]).
      *
      * Pushed straight at the icons rather than published on a flow the
      * activity collects. The spinner is a sub-window of an overlay icon the
@@ -449,7 +451,38 @@ class CaptureService : Service() {
     internal fun setHoldLoading(loading: Boolean) {
         if (holdLoading == loading) return
         holdLoading = loading
-        CaptureBackendResolver.activeOverlayUi?.setIconsLoading(loading)
+        CaptureBackendResolver.activeOverlayUi?.setIconsLoading(iconsLoading)
+    }
+
+    /** The app's one-shot read whose first stage the floating icons' spinner
+     *  shows ([showReadOnIcons]); null with none. */
+    private var readOnIcons: CaptureSession? = null
+
+    /** The icons wear the spinner while a hold's one-shot runs or an app
+     *  read shown on them is in its first stage: the spinner's one truth,
+     *  pushed from every change of either and at [syncIconState]. */
+    private val iconsLoading: Boolean get() = holdLoading || readOnIcons != null
+
+    /**
+     * Show [session]'s read on the floating icons' spinner until it leaves
+     * its first stage ([CaptureState.InProgress]: the shot and the OCR), for
+     * the app's own captures on two screens, whose page is on the other
+     * screen: nothing on the game screen said a read was under way, and its
+     * result lands there. Whatever comes next (boxes up, the result, no
+     * text, a failure, a cancel) ends it; a newer read shown here replaces
+     * it, and the older one's end then leaves the spinner to the newer.
+     * Every session reaches a terminal state ([attachCancellationTerminal]),
+     * so the watch always ends. Main thread.
+     */
+    fun showReadOnIcons(session: CaptureSession) {
+        readOnIcons = session
+        CaptureBackendResolver.activeOverlayUi?.setIconsLoading(iconsLoading)
+        serviceScope.launch {
+            session.state.first { it !is CaptureState.InProgress }
+            if (readOnIcons !== session) return@launch
+            readOnIcons = null
+            CaptureBackendResolver.activeOverlayUi?.setIconsLoading(iconsLoading)
+        }
     }
 
     /** Push current service state to every floating icon. Called automatically
@@ -464,7 +497,7 @@ class CaptureService : Service() {
         val ui = CaptureBackendResolver.activeOverlayUi ?: return
         ui.setIconsLiveMode(isLive)
         ui.setIconsDegraded(translationDegraded)
-        ui.setIconsLoading(holdLoading)
+        ui.setIconsLoading(iconsLoading)
         ui.setIconsGlyph(
             GameAudioGate.iconGlyph(
                 this,
@@ -687,6 +720,16 @@ class CaptureService : Service() {
         // those native resources. Redundant after source.destroy() above —
         // teardown() no-ops on a dead session.
         mediaProjectionControllerIfInitialized?.destroy()
+        // The icons' spinner is this service's to clear: the accessibility
+        // backend's icons outlive it, and a hold or a read still showing on
+        // them would spin until the next instance syncs them (the read's
+        // watch dies with serviceScope below). The MediaProjection icons
+        // went with their overlay UI above; gated as onCreate's sync is.
+        holdLoading = false
+        readOnIcons = null
+        if (CaptureBackendResolver.active().requiresAccessibilityService) {
+            CaptureBackendResolver.activeOverlayUi?.setIconsLoading(false)
+        }
         instance = null
         serviceScope.cancel()
         // The TranslationBackendRegistry is owned at app scope (built in
@@ -902,16 +945,22 @@ class CaptureService : Service() {
      *  [allowDeferTranslation] is a per-call-site opt-in for the deferred
      *  path (skip MT while the translation section is hidden — see
      *  [PendingTranslation]); a surface that will paint translated boxes
-     *  immediately must not opt in. */
+     *  immediately must not opt in. [deferWhileParked] widens the opt-in to a
+     *  capture whose panel opens parked with the section visible: nothing
+     *  shows the translation until the panel comes up, so MT waits for that
+     *  (the sheet's deferred-completion funnel runs it). */
     fun captureOnce(
         displayId: Int = primaryGameDisplayId(),
         allowDeferTranslation: Boolean = false,
+        deferWhileParked: Boolean = false,
     ): CaptureSession {
         oneShotCaptureJob?.cancel()
         val state = MutableStateFlow<CaptureState>(
             CaptureState.InProgress(getString(R.string.status_capturing))
         )
-        val job = serviceScope.launch { runCaptureCycle(displayId, state, allowDeferTranslation) }
+        val job = serviceScope.launch {
+            runCaptureCycle(displayId, state, allowDeferTranslation, deferWhileParked)
+        }
         attachCancellationTerminal(job, state)
         oneShotCaptureJob = job
         return CaptureSession(state.asStateFlow(), job)
@@ -943,6 +992,7 @@ class CaptureService : Service() {
         sourceLangIdOverride: SourceLangId? = null,
         allowDeferTranslation: Boolean = false,
         deviceOnly: Boolean = false,
+        deferWhileParked: Boolean = false,
     ): CaptureSession {
         oneShotCaptureJob?.cancel()
         val state = MutableStateFlow<CaptureState>(
@@ -951,6 +1001,7 @@ class CaptureService : Service() {
         val job = serviceScope.launch {
             runProcessCycle(
                 frame, displayId, state, regionOverride, sourceLangIdOverride, allowDeferTranslation, deviceOnly,
+                deferWhileParked,
             )
         }
         attachCancellationTerminal(job, state)
@@ -1040,6 +1091,7 @@ class CaptureService : Service() {
         sourceLangIdOverride: SourceLangId? = null,
         allowDeferTranslation: Boolean = false,
         deviceOnly: Boolean = false,
+        deferWhileParked: Boolean = false,
     ) {
         state.value = CaptureState.InProgress(getString(R.string.status_capturing))
         // Source language + region come from current settings for a fresh capture,
@@ -1062,6 +1114,7 @@ class CaptureService : Service() {
             isReOcr = isReOcr,
             deviceOnly = deviceOnly,
             allowDeferTranslation = allowDeferTranslation,
+            deferWhileParked = deferWhileParked,
             onOcrStart = { state.value = CaptureState.InProgress(getString(R.string.status_ocr)) },
             onOcrReady = { originalText, segments, ocrProvenance, overlayData ->
                 state.value =
@@ -1426,10 +1479,9 @@ class CaptureService : Service() {
         // cancelled before it can put one up over the session. The floating
         // menu does this when it opens, but a start needn't come through the
         // menu (the icon's toggle and swap, the tap hotkeys, the app).
-        CaptureBackendResolver.activeOverlayUi?.dismissCaptureResultOverlay()
-        // Tap-to-lookup's boxes come down the same way; the session starting
-        // now is the restart they would have owed, so they owe none.
-        CaptureBackendResolver.activeOverlayUi?.closeTapToLookup(resumeLive = false)
+        // The session starting now is the restart the sheet's capture would
+        // have owed, so its record settles without one.
+        CaptureBackendResolver.activeOverlayUi?.endCaptures(CaptureTakeover.LIVE_START)
 
         // One feedback session per start — engine warm-up, startup chip,
         // first-cycle gate, busy tracking ([LiveSessionFeedback]). The
@@ -1840,6 +1892,9 @@ class CaptureService : Service() {
         return when (prefs.overlayMode) {
             OverlayMode.FURIGANA -> OverlayFlavor.FURIGANA
             OverlayMode.TRANSLATION -> OverlayFlavor.TRANSLATION
+            // Never stored for auto-translate (Prefs.overlayMode reads them as
+            // Translation); named so a new mode must say what live does with it.
+            OverlayMode.DEFINITIONS, OverlayMode.NONE -> OverlayFlavor.TRANSLATION
         }
     }
 
@@ -2322,6 +2377,9 @@ class CaptureService : Service() {
      *    stream probe) is not restarted: it goes ahead, and its first-cycle
      *    gate warms the new language's engine before the first pass
      *    ([LiveSessionFeedback.awaitFirstCycleClear]);
+     *  - every capture up on the game screen ends, giving back what it
+     *    stopped ([CaptureTakeover.LANGUAGE_CHANGE]): it belongs to the
+     *    language it was read in;
      *  - the new language's engine warms up in the background.
      */
     private fun onSourceLanguageChanged(prefs: Prefs, id: SourceLangId) {
@@ -2335,11 +2393,9 @@ class CaptureService : Service() {
             stopLive()
             startLive()
         }
-        // Tap-to-lookup's boxes hold the old language's tokens, which the
-        // new language's engine would look up: they close, restarting what
-        // they paused, now in the new language. After the restart above,
-        // which a session they paused is not live for, so it starts once.
-        CaptureBackendResolver.activeOverlayUi?.closeTapToLookup(resumeLive = true)
+        // Every capture ends: after the restart above, which a session a
+        // capture stopped is not live for, so what it gives back starts once.
+        CaptureBackendResolver.activeOverlayUi?.endCaptures(CaptureTakeover.LANGUAGE_CHANGE)
         if (LanguagePackStore.isInstalled(this, id)) {
             serviceScope.launch(Dispatchers.IO) {
                 SourceLanguageEngines.preloadAndRecover(this@CaptureService, id)
@@ -2433,10 +2489,11 @@ class CaptureService : Service() {
     val livePaused: Boolean get() = holdActive || slowOcrAlert != null
 
     /**
-     * Common hold-to-preview begin sequence used by both the in-app button
-     * and the gamepad hotkey. Gates live display via [holdActive], stops the
-     * live capture loop, destroys the existing overlay view so the one-shot
-     * can render cleanly, and launches the one-shot.
+     * Common hold-to-preview begin sequence used by the floating icon's hold,
+     * the in-app button and the gamepad hotkey. Gates live display via
+     * [holdActive], stops the live capture loop, destroys the existing
+     * overlay view so the one-shot can render cleanly, and launches the
+     * one-shot.
      *
      * [holdActive] doubles as the pause signal for [PinholeOverlayMode] (its
      * cycle polls the flag directly). Stopping the backend's live capture
@@ -2461,6 +2518,15 @@ class CaptureService : Service() {
         displayIds: Set<Int>,
         panelDisplayId: Int,
     ) {
+        // Every hold-to-preview passes here (the icon's hold, the app's hold
+        // button, the hold hotkeys): a capture showing Definitions on a
+        // display it paints on ends first ([CaptureTakeover.HOLD_PREVIEW]).
+        // Before the live read below, which then sees an auto-translate that
+        // capture's close restarted and pauses it for the hold. (No capture
+        // is up while auto-translate runs, since a capture stops it and a
+        // start ends a capture, so the triggers' own reads of it before this
+        // never meet one.)
+        CaptureBackendResolver.activeOverlayUi?.endCaptures(CaptureTakeover.HOLD_PREVIEW, displayIds)
         holdActive = true
         if (isLive) {
             // Hold pause is global — stop every per-display loop and hide
@@ -3055,9 +3121,30 @@ class CaptureService : Service() {
     }
 
     /** Capture a clean screenshot via the active capture backend. The
-     *  frame carries its capture-time facts ([CapturedFrame]). */
+     *  frame carries its capture-time facts ([CapturedFrame]), the display's
+     *  layout among them ([stampedWithRequestLayout]). */
     internal suspend fun captureScreen(displayId: Int): com.playtranslate.capture.CapturedFrame? =
-        CaptureBackendResolver.active().captureSource?.requestClean(displayId)
+        stampedWithRequestLayout(displayId) {
+            CaptureBackendResolver.active().captureSource?.requestClean(displayId)
+        }
+
+    /** The frame [take] returns, stamped with the layout [displayId] had when
+     *  it was asked for ([CapturedFrame.geometry]). Not the layout it has once
+     *  the frame comes back: the screenshot is grabbed a while before that
+     *  (its buffer is copied into a bitmap first), and a turn in between
+     *  would label old pixels with the new layout, which
+     *  [OverlayUiController.presentCapture] accepts. Read first, a change
+     *  while the screenshot is taken leaves the frame with a layout the
+     *  display no longer has, so the capture stays on the page, even when the
+     *  turn came before the grab and the pixels are fine; only the display
+     *  going back to that layout before the result lands lets it up. */
+    internal suspend fun stampedWithRequestLayout(
+        displayId: Int,
+        take: suspend () -> com.playtranslate.capture.CapturedFrame?,
+    ): com.playtranslate.capture.CapturedFrame? {
+        val askedIn = displayGeometryOf(displayId)
+        return take()?.withGeometry(askedIn)
+    }
 
     /** Persist [raw] to the screenshot cache via the active capture backend. */
     internal fun captureSaveToCache(raw: Bitmap, displayId: Int): String? =
@@ -3106,12 +3193,14 @@ class CaptureService : Service() {
         // clean — downstream.
         frameIncludesSystemUi: Boolean? = null,
         frameIncludesOwnOverlays: Boolean? = null,
+        frameGeometry: DisplayGeometry? = null,
     ): OcrProvenance? {
         attribution ?: return null
         return OcrProvenance(
             attribution.label, attribution.token, displayId, sourceLangId, region,
             frameIncludesSystemUi = frameIncludesSystemUi,
             frameIncludesOwnOverlays = frameIncludesOwnOverlays,
+            frameGeometry = frameGeometry,
         )
     }
 
@@ -3332,6 +3421,7 @@ class CaptureService : Service() {
         isReOcr: Boolean,
         deviceOnly: Boolean,
         allowDeferTranslation: Boolean,
+        deferWhileParked: Boolean,
         onOcrStart: (() -> Unit)?,
         onOcrReady: ((
             originalText: String,
@@ -3418,7 +3508,7 @@ class CaptureService : Service() {
             // produced it.
             val ocrProvenance = ocrProvenanceFor(
                 reading.attribution, displayId, region, srcId, frameIncludesSystemUi,
-                frame.includesOwnOverlays,
+                frame.includesOwnOverlays, frame.geometry,
             )
 
             // No text, nothing to translate: the finally cancels the reader's
@@ -3441,8 +3531,9 @@ class CaptureService : Service() {
             // A same-language pair takes nothing from the reader: its
             // translations are never awaited (the finally cancels them).
             val reader = readerTranslations.takeIf { recordSrc != recordTgt }
-            // Deferred path: the translation section is hidden and the caller
-            // opted in, so no consumer needs MT right now — skip the backend
+            // Deferred path: the caller opted in and no consumer needs MT
+            // right now (the translation section is hidden, or the caller's
+            // panel opens parked, deferWhileParked), so skip the backend
             // batch entirely. Rows record translation-less (they attach later
             // via onCaptureTranslated) and Done carries a PendingTranslation
             // with everything the completion needs. The free source==target
@@ -3450,9 +3541,12 @@ class CaptureService : Service() {
             // (allowDeferTranslation stays false at their call sites): their
             // recording is gated off below, so a deferred re-OCR would have
             // nothing to attach its late translation to.
-            val mayDefer = allowDeferTranslation &&
-                Prefs(this@CaptureService).hideTranslationSection &&
-                recordSrc != recordTgt
+            val mayDefer = shouldDeferTranslation(
+                allowDeferTranslation,
+                sectionHidden = Prefs(this@CaptureService).hideTranslationSection,
+                deferWhileParked = deferWhileParked,
+                samePair = recordSrc == recordTgt,
+            )
             // What can be shown at once, by group, under the pair OCR ran in:
             // the reader's translations that came with its OCR (final, and
             // cached here, so a deferred completion serves them from the
@@ -3468,6 +3562,7 @@ class CaptureService : Service() {
             val skeletonData = buildOneShotOverlayData(
                 ocrResult, colorRef, left, top, rawW, rawH,
                 cropWidth = right - left, cropHeight = bottom - top,
+                frameGeometry = frame.geometry,
             )
             val firstPaint =
                 if (mayDefer) skeletonData else partlyFillOneShotOverlayData(skeletonData, atOnce.map { it?.text })
@@ -3632,6 +3727,7 @@ class CaptureService : Service() {
         displayId: Int,
         state: MutableStateFlow<CaptureState>,
         allowDeferTranslation: Boolean = false,
+        deferWhileParked: Boolean = false,
     ) {
         if (!isConfigured) {
             state.value = CaptureState.Failed(NOT_CONFIGURED_MESSAGE)
@@ -3659,6 +3755,7 @@ class CaptureService : Service() {
             isReOcr = false,
             deviceOnly = false,
             allowDeferTranslation = allowDeferTranslation,
+            deferWhileParked = deferWhileParked,
             onOcrStart = null,
             // Reveal the source as soon as OCR finishes; translation lands on Done.
             onOcrReady = { originalText, segments, ocrProvenance, overlayData ->
@@ -3732,17 +3829,20 @@ class CaptureService : Service() {
      *  view renders pulsing skeleton lines for those), sampled colors, OCR bounds.
      *  One box per OCR group, index-aligned, so [partlyFillOneShotOverlayData]
      *  (as translations arrive) and [fillOneShotOverlayData] (once they are
-     *  final) can zip the per-group translations in later. Null when there are no groups or no
-     *  color reference (its allocation is best-effort — see [oneShotColorRef]). */
+     *  final) can zip the per-group translations in later. Null when there are
+     *  no groups; without a color reference (its allocation is best-effort, see
+     *  [oneShotColorRef]) the boxes take the default pair, since the groups
+     *  themselves serve the furigana and word-box presentations. */
     private fun buildOneShotOverlayData(
         ocrResult: OcrManager.OcrResult,
         colorRef: Bitmap?,
         cropLeft: Int, cropTop: Int,
         screenshotW: Int, screenshotH: Int,
         cropWidth: Int, cropHeight: Int,
+        frameGeometry: DisplayGeometry?,
     ): OneShotOverlayData? {
-        if (colorRef == null || ocrResult.groups.isEmpty()) return null
-        val colors = OverlayToolkit.sampleGroupColors(
+        if (ocrResult.groups.isEmpty()) return null
+        val colors = if (colorRef == null) emptyList() else OverlayToolkit.sampleGroupColors(
             colorRef, ocrResult.groups.map { it.bounds }, cropLeft, cropTop, ONE_SHOT_COLOR_SCALE,
         )
         val boxes = ocrResult.groups.mapIndexed { idx, g ->
@@ -3759,6 +3859,8 @@ class CaptureService : Service() {
         return OneShotOverlayData(
             boxes, cropLeft, cropTop, screenshotW, screenshotH, cropWidth, cropHeight,
             text = ocrResult.groups.map { it.drawBounds },
+            groups = ocrResult.groups,
+            frameGeometry = frameGeometry,
         )
     }
 

@@ -51,6 +51,14 @@ class CaptureSheetControllerNavTest {
         override fun navActions(): List<NavAction> = emptyList()
         override fun handleRect(out: Rect) = false
         override fun collapseToSliver() = Unit
+        /** Where each UP off the top asked the host to leave from. */
+        val leaves = mutableListOf<Rect>()
+        /** Whether the host takes the controller off the sheet. */
+        var takesLeave = true
+        override fun leaveSheetUp(fromOnScreen: Rect): Boolean {
+            leaves += Rect(fromOnScreen)
+            return takesLeave
+        }
         override fun sliverRect(out: Rect): Boolean {
             if (!slivered || !stripAtRest) return false
             out.set(strip)
@@ -58,11 +66,20 @@ class CaptureSheetControllerNavTest {
         }
         override fun resizeBy(dyPx: Int) = Unit
         override fun commitResize() = Unit
-        override fun wordCount() = 0
-        override fun wordRect(index: Int, out: Rect) = false
+        /** The sheet's source words, while expanded. */
+        var words: List<Rect> = emptyList()
+        override fun wordCount() = words.size
+        override fun wordRect(index: Int, out: Rect): Boolean {
+            out.set(words.getOrNull(index) ?: return false)
+            return true
+        }
         override fun wordRunIsRtl() = false
         override fun activateWord(index: Int) = Unit
-        override fun scrollViewportOnScreen(out: Rect) = false
+        override fun scrollViewportOnScreen(out: Rect): Boolean {
+            if (words.isEmpty()) return false
+            out.set(0, 0, 1080, 1200)
+            return true
+        }
         override fun scrollBy(dy: Int) = Unit
         override fun ensureVisible(itemOnScreen: Rect) = Unit
         override fun setRing(itemOnScreen: Rect?, clipOnScreen: Rect?) {
@@ -161,5 +178,48 @@ class CaptureSheetControllerNavTest {
         assertNotNull(host.ring)
         press(nav, KeyEvent.KEYCODE_ENTER)
         assertEquals(1, host.expandCalls)
+    }
+
+    // ── UP off the sheet's top ───────────────────────────────────────────
+
+    /** An expanded sheet with one row of two words: the cursor's first
+     *  press lands on the first word. */
+    private fun expandedWithWords(): Pair<FakeHost, CaptureSheetControllerNav> {
+        val host = FakeHost().apply {
+            slivered = false
+            words = listOf(Rect(100, 600, 200, 640), Rect(220, 600, 320, 640))
+        }
+        val nav = CaptureSheetControllerNav(ctx, host)
+        press(nav, KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals(host.words[0], host.ring)
+        return host to nav
+    }
+
+    @Test
+    fun upWithNothingAbove_asksTheHostToLeave_andDropsTheCursorWhenItDoes() {
+        val (host, nav) = expandedWithWords()
+        press(nav, KeyEvent.KEYCODE_DPAD_UP)
+        assertEquals("from the cursor's item", listOf(host.words[0]), host.leaves)
+        assertNull(host.ring)
+    }
+
+    @Test
+    fun upWithNothingAbove_keepsTheCursorWhenTheHostDeclines() {
+        val (host, nav) = expandedWithWords()
+        host.takesLeave = false
+        press(nav, KeyEvent.KEYCODE_DPAD_UP)
+        assertEquals(1, host.leaves.size)
+        assertEquals(host.words[0], host.ring)
+    }
+
+    @Test
+    fun otherDirectionsWithNothingThatWay_neverLeaveTheSheet() {
+        val (host, nav) = expandedWithWords()
+        press(nav, KeyEvent.KEYCODE_DPAD_DOWN)
+        press(nav, KeyEvent.KEYCODE_DPAD_LEFT)
+        press(nav, KeyEvent.KEYCODE_DPAD_RIGHT)
+        press(nav, KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals(emptyList<Rect>(), host.leaves)
+        assertEquals("the run's end, where the cursor stays", host.words[1], host.ring)
     }
 }

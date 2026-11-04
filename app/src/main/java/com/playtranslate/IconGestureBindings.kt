@@ -98,8 +98,8 @@ enum class HoldAction : IconAction {
      *  hold threshold; the lift does nothing. */
     CHANGE_GAME_LANGUAGE,
     /** Tap-to-lookup ([TapAction.TAP_TO_LOOKUP]) at the hold threshold; the
-     *  lift does nothing, and a slide into a drag closes the boxes, the
-     *  drag lens taking over what they paused. */
+     *  lift does nothing, and a slide into a drag dismisses the capture, as
+     *  [CAPTURE_SCREEN]'s does. */
     TAP_TO_LOOKUP;
 
     override fun titleRes(hint: HintTextKind): Int = when (this) {
@@ -141,11 +141,13 @@ enum class TapAction : IconAction {
      *  picker, as the quick menu's Language row does (OverlayUiController's
      *  changeGameLanguage). Offered on every language. */
     CHANGE_GAME_LANGUAGE,
-    /** "Enable tap-to-lookup": capture this display once and box every
-     *  word; a tap on a box opens its definition card, a tap on no box, the
-     *  X or Back closes the boxes (OverlayUiController's startTapToLookup,
-     *  [com.playtranslate.ui.TapLookupSession]). Offered on every
-     *  language. */
+    /** "Enable tap-to-lookup": a capture of this display in Definitions
+     *  (OverlayUiController's captureInDefinitions): every word the capture
+     *  read gets a box, a tap on a box opens its definition card, a tap on
+     *  no box or Back closes the capture; a press with a capture up in
+     *  another mode switches it to Definitions, with one up in Definitions
+     *  closes it ([com.playtranslate.ui.WordLookupSession]). The capture's
+     *  own mode setting is not written. Offered on every language. */
     TAP_TO_LOOKUP;
 
     override fun titleRes(hint: HintTextKind): Int = when (this) {

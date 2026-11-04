@@ -975,7 +975,9 @@ class CameraSession(
     ) {
         val mode = prefs.cameraOverlayMode
         when (mode) {
-            OverlayMode.TRANSLATION -> {
+            // The camera stores translations or the hint (OverlayMode.offered);
+            // the other two are named so a new mode must say what it paints here.
+            OverlayMode.TRANSLATION, OverlayMode.DEFINITIONS, OverlayMode.NONE -> {
                 // usableGroups already dropped blank groups, so this filter is
                 // a no-op that KEEPS the index alignment with [groupColors]
                 // (sampled per gated group at acquire); the reader's positions
@@ -1819,7 +1821,7 @@ class CameraSession(
             try {
                 when (prefs.cameraOverlayMode) {
                     OverlayMode.FURIGANA -> buildAndShow(ocr, colors, auW, auH, epoch)
-                    OverlayMode.TRANSLATION ->
+                    OverlayMode.TRANSLATION, OverlayMode.DEFINITIONS, OverlayMode.NONE ->
                         showFrozenTranslationBoxes(ocr, colors, translations, auW, auH, epoch)
                 }
             } catch (e: Exception) {

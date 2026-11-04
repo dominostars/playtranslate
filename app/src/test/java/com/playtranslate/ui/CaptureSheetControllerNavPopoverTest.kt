@@ -51,6 +51,13 @@ class CaptureSheetControllerNavPopoverTest {
         override fun navActions(): List<NavAction> = buttons
         override fun handleRect(out: Rect) = false
         override fun collapseToSliver() = Unit
+        /** Every UP off the top that asked to leave the sheet; this host
+         *  would take each. */
+        val leaves = mutableListOf<Rect>()
+        override fun leaveSheetUp(fromOnScreen: Rect): Boolean {
+            leaves += Rect(fromOnScreen)
+            return true
+        }
         override fun sliverRect(out: Rect) = false
         override fun resizeBy(dyPx: Int) = Unit
         override fun commitResize() = Unit
@@ -137,6 +144,25 @@ class CaptureSheetControllerNavPopoverTest {
         press(KeyEvent.KEYCODE_DPAD_UP)
         press(KeyEvent.KEYCODE_DPAD_UP)
         assertEquals("the header buttons are out of reach", rectOf(row0), host.ring)
+    }
+
+    @Test
+    fun `off an open menu's top row the cursor stays, and the sheet is never left`() {
+        host.popoverRows = menu
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertEquals(rectOf(row0), host.ring)
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        assertEquals(rectOf(row0), host.ring)
+        assertEquals(emptyList<Rect>(), host.leaves)
+    }
+
+    @Test
+    fun `off the sheet's top row with no menu open, UP asks the host to leave from the cursor's item`() {
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertEquals(rectOf(header), host.ring)
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        assertEquals(listOf(rectOf(header)), host.leaves)
+        assertNull("the host took the controller: the cursor drops", host.ring)
     }
 
     @Test

@@ -13,9 +13,9 @@ import java.io.File
 
 /**
  * The capture and the read the over-game word lookups take their scene
- * from: the drag lens ([DragLookupController]) and tap-to-lookup
- * ([TapLookupSession]). Both read the whole display, wherever the words are,
- * so one shape serves both and their frames cannot drift apart.
+ * from: the drag lens ([DragLookupController]). It reads the whole display,
+ * wherever the words are, so one shape serves every lens and their frames
+ * cannot drift apart.
  */
 internal object LookupCapture {
 

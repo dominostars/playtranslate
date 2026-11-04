@@ -362,7 +362,10 @@ class OneShotManager(private val service: CaptureService) {
             val engine = SourceLanguageEngines.get(service, Prefs(service).sourceLangId)
             FuriganaOneShotProcessor(engine, service.furiganaPaint)
         }
-        OverlayMode.TRANSLATION -> TranslationOneShotProcessor(atOnce, translate)
+        // The hold reads auto-translate's mode, which stores neither of these,
+        // and its hotkeys force Translation or Furigana.
+        OverlayMode.TRANSLATION, OverlayMode.DEFINITIONS, OverlayMode.NONE ->
+            TranslationOneShotProcessor(atOnce, translate)
     }
 
     private fun showNoTextPill(displayId: Int) {
