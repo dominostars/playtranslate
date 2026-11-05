@@ -122,6 +122,22 @@ internal object ChineseEntryGroups {
     fun candidateReadings(groups: List<EntryGroup>): List<String> =
         groups.filterNot { it.isProperNoun }.map { it.reading }.distinct()
 
+    /**
+     * The readings among [groups] that name a different word than the group
+     * at [index]: every other group's reading whose pinyin differs from that
+     * group's own. A Traditional reader's 裡 and 裏 read lǐ as 里 itself
+     * does and claim nothing from it; the surname Lǐ does. An imported row
+     * carrying one of these belongs to that other entry, so the lookup that
+     * leads with [index] leaves it out
+     * ([com.playtranslate.yomitan.TermMerge.merge]'s excluded readings).
+     */
+    fun otherReadings(groups: List<EntryGroup>, index: Int): Set<String> {
+        val own = PinyinFormatter.canonicalPinyin(groups[index].reading)
+        return groups.filterIndexed { i, _ -> i != index }
+            .map { it.reading }
+            .filterTo(LinkedHashSet()) { PinyinFormatter.canonicalPinyin(it) != own }
+    }
+
     /** The group as the one entry a lookup returns. */
     fun toEntry(group: EntryGroup): DictionaryEntry {
         val senses = group.lines.map { line ->

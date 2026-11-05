@@ -479,6 +479,7 @@ object YomitanDataStore {
         term: String,
         readings: Set<String>?,
         resolveToFirstReading: Boolean = false,
+        excludedReadings: Set<String> = emptySet(),
     ): TermLookup = withContext(Dispatchers.IO) {
         val empty = TermLookup(emptyList(), readings?.singleOrNull())
         if (term.isEmpty()) return@withContext empty
@@ -520,6 +521,7 @@ object YomitanDataStore {
             dictColors = caps.dictColors,
             resolveToFirstReading = resolveToFirstReading,
             readingKey = readingKeyFor(sourceLanguage),
+            excludedReadings = excludedReadings,
         )
     }
 

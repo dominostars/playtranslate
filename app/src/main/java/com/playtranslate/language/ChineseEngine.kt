@@ -32,6 +32,30 @@ internal inline fun <T> runCatchingNonCancellable(block: () -> T): T? =
         null
     }
 
+/** How a lookup's imported rows narrow to the entry it returned: the
+ *  [reading] they must carry, or none, and the [excludedReadings] whose rows
+ *  belong to another entry. */
+internal class ImportNarrowing(val reading: String?, val excludedReadings: Set<String>)
+
+/**
+ * Which imported rows go with the entry [hit] landed, compared as pinyin
+ * whatever format the import writes it in ([PinyinFormatter.canonicalPinyin]).
+ * A group the hint picked, an "Also matches" entry or a heteronym the
+ * context chose, takes only the rows of its own reading, so an alternative
+ * never repeats the primary's imported block. The default group takes every
+ * row but the ones another group's reading claims: 东西 read dōng xi keeps
+ * "thing" and leaves "east and west" to the dōng xī entry, while a row no
+ * group claims (the import follows another pinyin convention, 知道 written
+ * zhīdao against the pack's zhī dào, or carries no reading) stays with the
+ * default, so a word with one reading keeps every imported row, as before
+ * groups. A pack miss narrows nothing.
+ */
+internal fun importNarrowing(hit: GroupHit?): ImportNarrowing = when {
+    hit == null -> ImportNarrowing(null, emptySet())
+    hit.hinted -> ImportNarrowing(hit.response.entries.first().headwords.first().reading, emptySet())
+    else -> ImportNarrowing(null, hit.otherReadings)
+}
+
 /**
  * Chinese source-language engine. Uses HanLP's CRF/perceptron segmenter for
  * word-level tokenization (handles both Simplified and Traditional, resolves
@@ -140,17 +164,13 @@ class ChineseEngine(
 
     override suspend fun lookup(word: String, reading: String?): DictionaryResponse? {
         val hit = dict.lookupGroup(word, profile.preferTraditional, reading)
-        // Imported senses attach to the one entry returned. The default group
-        // takes every imported row whatever its reading, since imported
-        // pinyin comes in formats of its own (the behaviour before groups);
-        // any other group, an "Also matches" entry or a heteronym the
-        // context picked, takes only the rows whose reading is the group's,
-        // compared as pinyin whatever format the import writes it in
-        // (TermMerge with PinyinFormatter.canonicalPinyin), so an alternative
-        // never repeats the primary's imported block. No fallback forms:
-        // Chinese does not inflect.
-        val importReading = if (hit?.hinted == true) hit.response.entries.first().headwords.first().reading else null
-        return yomitan.applyTo(hit?.response, word, reading = importReading, fallbackForms = emptyList())
+        // Imported senses attach to the one entry returned, narrowed to it
+        // ([importNarrowing]). No fallback forms: Chinese does not inflect.
+        val narrowing = importNarrowing(hit)
+        return yomitan.applyTo(
+            hit?.response, word, reading = narrowing.reading, fallbackForms = emptyList(),
+            excludedReadings = narrowing.excludedReadings,
+        )
     }
 
     /**

@@ -294,4 +294,44 @@ class TermMergeTest {
         assertEquals("ナマ", YomitanDataStore.readingKeyFor("ja")("ナマ"))
         assertEquals("dong1 xi1", YomitanDataStore.readingKeyFor("ko")("dong1 xi1"))
     }
+
+    @Test
+    fun `rows another entry's reading claims are left out and every other row stays`() {
+        // 东西: the default entry reads dōng xi. "east and west" belongs to
+        // the dōng xī entry; a row in another convention and a row with no
+        // reading (the term as its own reading) are claimed by nobody and stay.
+        val rows = listOf(
+            row("dictA", "dong1 xi1", 0.0, "east and west"),
+            row("dictA", "dong1 xi5", 0.0, "thing"),
+            row("dictA", "dong1 xi3", 0.0, "odd convention"),
+            row("dictA", "东西", 0.0, "unread"),
+        )
+        val result = TermMerge.merge(
+            rows, order, normalizedReadings = null, normalizedTerm = "东西",
+            readingKey = PinyinFormatter::canonicalPinyin, excludedReadings = setOf("dōng xī"),
+        )
+        assertEquals(listOf("thing", "odd convention", "unread"), result.groups.single().senses.map { it.definition })
+    }
+
+    @Test
+    fun `an exclusion that claims every row leaves no group and the pack's senses stand`() {
+        val rows = listOf(row("dictA", "dong1 xi1", 0.0, "east and west"))
+        val result = TermMerge.merge(
+            rows, order, normalizedReadings = null, normalizedTerm = "东西", singleDictionary = true,
+            readingKey = PinyinFormatter::canonicalPinyin, excludedReadings = setOf("dōng xī"),
+        )
+        assertEquals(emptyList<ImportedSenseGroup>(), result.groups)
+        assertEquals(false, result.suppressesPackSenses)
+    }
+
+    @Test
+    fun `excluded readings compare through the same key as the narrowing`() {
+        // Without the pinyin key the numbered row is not the tone-marked
+        // reading, so nothing is claimed.
+        val rows = listOf(row("dictA", "dong1 xi1", 0.0, "east and west"), row("dictA", "dong1 xi5", 0.0, "thing"))
+        val stored = TermMerge.merge(
+            rows, order, normalizedReadings = null, normalizedTerm = "东西", excludedReadings = setOf("dōng xī"),
+        )
+        assertEquals(listOf("east and west", "thing"), stored.groups.single().senses.map { it.definition })
+    }
 }

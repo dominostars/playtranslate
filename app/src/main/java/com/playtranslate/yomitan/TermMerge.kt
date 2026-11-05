@@ -76,21 +76,37 @@ internal object TermMerge {
          *  imported row written "dong1 xi1" matches a pack reading written
          *  "dōng xī". [resolvedReading] stays the caller's own string. */
         readingKey: (String) -> String = { it },
+        /** Readings whose rows belong to ANOTHER entry of the same spelling
+         *  and are dropped before any narrowing, compared through
+         *  [readingKey]; empty by default. The caller that hands out one
+         *  entry per reading without narrowing its default one (ChineseEngine:
+         *  东西 read dōng xi leads, dōng xī is its own entry) passes the other
+         *  entries' readings, so "east and west" does not sit under "thing".
+         *  A row matching none of them, one whose pinyin follows another
+         *  convention or that carries no reading, stays: exclusion can move
+         *  a row to its own entry, never hide one. */
+        excludedReadings: Set<String> = emptySet(),
     ): YomitanDataStore.TermLookup {
+        val candidates = if (excludedReadings.isEmpty()) {
+            rows
+        } else {
+            val excluded = excludedReadings.mapTo(HashSet(), readingKey)
+            rows.filterNot { readingKey(it.reading) in excluded }
+        }
         val narrowed = when {
             !normalizedReadings.isNullOrEmpty() -> {
                 val keys = normalizedReadings.mapTo(HashSet(), readingKey)
-                rows.filter { readingKey(it.reading) in keys || it.reading == normalizedTerm }
+                candidates.filter { readingKey(it.reading) in keys || it.reading == normalizedTerm }
             }
             resolveToFirstReading -> {
                 // The reading [resolvedReading] reports below: the first row,
                 // in section order, of the first dictionary with rows.
                 val first = dictOrder.firstNotNullOfOrNull { (dictId, _) ->
-                    rows.firstOrNull { it.dictId == dictId }?.reading
+                    candidates.firstOrNull { it.dictId == dictId }?.reading
                 }
-                if (first == null) rows else rows.filter { it.reading == first }
+                if (first == null) candidates else candidates.filter { it.reading == first }
             }
-            else -> rows
+            else -> candidates
         }
         // Section order across dicts; score (desc) within a dict —
         // sortedByDescending is stable, so equal scores keep bank order.

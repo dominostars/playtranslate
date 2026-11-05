@@ -15,10 +15,12 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 
-/** One lookup's result: the entry it leads with, and whether the caller's
- *  reading hint picked a group other than the one an unhinted lookup
- *  leads with (the engine filters imported senses by reading only then). */
-internal class GroupHit(val response: DictionaryResponse, val hinted: Boolean)
+/** One lookup's result: the entry it leads with, whether the caller's
+ *  reading hint picked a group other than the one an unhinted lookup leads
+ *  with, and the readings of the surface's other words
+ *  ([ChineseEntryGroups.otherReadings]); the engine narrows the imported
+ *  senses from the last two ([importNarrowing]). */
+internal class GroupHit(val response: DictionaryResponse, val hinted: Boolean, val otherReadings: Set<String>)
 
 /**
  * Read-only SQLite dictionary for Chinese, backed by a CC-CEDICT-derived
@@ -137,7 +139,11 @@ class ChineseDictionaryManager private constructor(private val context: Context)
             val groups = groupsOf(surface, preferTraditional)
             if (groups.isEmpty()) return@withContext null
             val index = ChineseEntryGroups.hintedIndex(groups, reading) ?: 0
-            GroupHit(DictionaryResponse(entries = listOf(ChineseEntryGroups.toEntry(groups[index]))), hinted = index != 0)
+            GroupHit(
+                DictionaryResponse(entries = listOf(ChineseEntryGroups.toEntry(groups[index]))),
+                hinted = index != 0,
+                otherReadings = ChineseEntryGroups.otherReadings(groups, index),
+            )
         }
 
     /** Every group of [surface] in lead order; the engine drops the one a

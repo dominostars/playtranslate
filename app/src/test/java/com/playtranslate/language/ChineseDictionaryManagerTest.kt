@@ -89,6 +89,22 @@ class ChineseDictionaryManagerTest {
         assertNotNull(dict.lookup("放"))
         assertNull(dict.lookup("放在"))
 
+        // Imported rows narrow to the entry a lookup landed: a hinted group
+        // takes its own reading's rows; the default group takes every row but
+        // the ones another word's reading claims; a miss narrows nothing.
+        val thing = dict.lookupGroup("东西", preferTraditional = false, reading = null)!!
+        assertEquals(setOf("dōng xī"), thing.otherReadings)
+        assertNull(importNarrowing(thing).reading)
+        assertEquals(setOf("dōng xī"), importNarrowing(thing).excludedReadings)
+        assertEquals(setOf("dōng xi"), eastWest.otherReadings)
+        assertEquals("dōng xī", importNarrowing(eastWest).reading)
+        assertEquals(emptySet<String>(), importNarrowing(eastWest).excludedReadings)
+        assertEquals(setOf("lǐ"), surname.otherReadings)
+        assertEquals(setOf("Lǐ"), dict.lookupGroup("里", preferTraditional = true, reading = null)!!.otherReadings)
+        assertEquals(emptySet<String>(), dict.lookupGroup("放", preferTraditional = false, reading = null)!!.otherReadings)
+        assertNull(importNarrowing(null).reading)
+        assertEquals(emptySet<String>(), importNarrowing(null).excludedReadings)
+
         // The pack closed under the manager (an eviction while a capture is
         // still being read): every query answers "nothing" and none throws.
         closeHandleUnder(dict)

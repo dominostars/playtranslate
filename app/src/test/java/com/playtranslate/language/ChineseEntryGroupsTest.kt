@@ -129,4 +129,25 @@ class ChineseEntryGroupsTest {
         assertEquals(groups.first().reading, ChineseEntryGroups.candidateReadings(groups).first())
         assertTrue(ChineseEntryGroups.groups(li, "里", false)[1].isProperNoun)
     }
+
+    @Test fun `the other readings are the other words' readings, never the landed group's own`() {
+        val simplified = ChineseEntryGroups.groups(li, "里", false)
+        assertEquals(setOf("Lǐ"), ChineseEntryGroups.otherReadings(simplified, 0))
+        assertEquals(setOf("lǐ"), ChineseEntryGroups.otherReadings(simplified, 1))
+        // A Traditional reader's 裡 and 裏 read lǐ as 里 does: they claim no
+        // imported row from it. The surname does.
+        val traditional = ChineseEntryGroups.groups(li, "里", true)
+        assertEquals(setOf("Lǐ"), ChineseEntryGroups.otherReadings(traditional, 0))
+        val dongxi = ChineseEntryGroups.groups(
+            listOf(
+                line(41964, "dong1 xi1", "东西", "東西", listOf("east and west"), freq = 60),
+                line(41965, "dong1 xi5", "东西", "東西", listOf("thing"), freq = 70),
+            ),
+            "东西", false,
+        )
+        assertEquals(setOf("dōng xī"), ChineseEntryGroups.otherReadings(dongxi, 0))
+        assertEquals(setOf("dōng xi"), ChineseEntryGroups.otherReadings(dongxi, 1))
+        val single = ChineseEntryGroups.groups(listOf(line(1, "fang4", "放", glosses = listOf("to put"))), "放", false)
+        assertEquals(emptySet<String>(), ChineseEntryGroups.otherReadings(single, 0))
+    }
 }

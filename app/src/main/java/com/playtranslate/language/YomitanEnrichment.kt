@@ -74,13 +74,17 @@ class YomitanEnrichment(
      * reading, mirroring the pack's candidate tiers), merges them into
      * [packResponse] (or synthesizes an entry on a pack miss), then attaches
      * pitch + frequency to every headword. Returns null only when [packResponse]
-     * is null AND nothing imported matched.
+     * is null AND nothing imported matched. [excludedReadings] are readings
+     * whose imported rows belong to another entry of the same spelling
+     * ([com.playtranslate.yomitan.TermMerge.merge]); only an engine that
+     * hands out one entry per reading passes any.
      */
     suspend fun applyTo(
         packResponse: DictionaryResponse?,
         word: String,
         reading: String?,
         fallbackForms: List<String>,
+        excludedReadings: Set<String> = emptySet(),
     ): DictionaryResponse? {
         // Optional enrichment must never sink the pack result: a Yomitan
         // failure returns [packResponse] unchanged, and an enrich failure
@@ -88,7 +92,7 @@ class YomitanEnrichment(
         val imported = failOpen<ImportedTerms?>(null, "term lookup") {
             lookupImportedTerms(
                 word, reading, packReadings(packResponse, word),
-                packWrittenForms(packResponse, word, reading), fallbackForms,
+                packWrittenForms(packResponse, word, reading), fallbackForms, excludedReadings,
             )
         } ?: return packResponse
         val merged = mergeImportedTerms(packResponse, word, imported.lookup, imported.resolvedTerm)
@@ -204,12 +208,14 @@ class YomitanEnrichment(
         packReadings: Set<String>,
         packForms: List<Pair<String, Set<String>>>,
         fallbackForms: List<String>,
+        excludedReadings: Set<String>,
     ): ImportedTerms {
         val miss = ImportedTerms(YomitanDataStore.TermLookup(emptyList(), reading), null)
         if (!YomitanDataStore.hasTermDictionaries(appContext, sourceLang)) return miss
         for (query in importedLookupTiers(word, reading, packReadings, packForms, fallbackForms)) {
             val hit = YomitanDataStore.termSensesFor(
                 appContext, sourceLang, query.term, query.readings, query.resolveToFirstReading,
+                excludedReadings,
             )
             if (hit.groups.isNotEmpty()) return ImportedTerms(hit, query.term)
         }
