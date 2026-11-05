@@ -73,4 +73,20 @@ class PinyinFormatterTest {
         assertEquals("nǚ", PinyinFormatter.canonicalReading("Nǚ"))
         assertEquals("dōng", PinyinFormatter.canonicalReading("DŌNG"))
     }
+
+    @Test fun `canonical pinyin equates every format a dictionary writes a reading in`() {
+        val forms = listOf("dong1 xi1", "dōng xī", "dōngxī", "dong1xi1", "dōng-xī", "do\u0304ng xi\u0304", " dōng xī ")
+        for (form in forms) assertEquals(form, "dōngxī", PinyinFormatter.canonicalPinyin(form))
+        assertEquals("Xīān", PinyinFormatter.canonicalPinyin("Xi1 an1"))
+        assertEquals("Xīān", PinyinFormatter.canonicalPinyin("Xī'ān"))
+    }
+
+    @Test fun `canonical pinyin folds the umlaut spellings and keeps case`() {
+        for (form in listOf("nu:3", "nv3", "nǚ")) assertEquals(form, "nǚ", PinyinFormatter.canonicalPinyin(form))
+        assertEquals("Lǐ", PinyinFormatter.canonicalPinyin("Li3"))
+        assertFalse(PinyinFormatter.canonicalPinyin("Li3") == PinyinFormatter.canonicalPinyin("li3"))
+        // Neutral tone and a reading with no tone at all keep their letters.
+        assertEquals("dōngxi", PinyinFormatter.canonicalPinyin("dong1 xi5"))
+        assertEquals("ma", PinyinFormatter.canonicalPinyin("ma"))
+    }
 }

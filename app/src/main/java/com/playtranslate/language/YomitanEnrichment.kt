@@ -362,9 +362,8 @@ class YomitanEnrichment(
          *  (groups ride the first entry; single-dictionary mode also strips the
          *  pack's own senses), synthesizes an entry on a pack miss, or returns
          *  null when the pack missed and nothing imported matched. With no group
-         *  to attach it returns [packResponse] untouched — so a pre-applied
-         *  entry reorder (e.g. ChineseEngine's preferReading) is never
-         *  disturbed by the wrap. */
+         *  to attach it returns [packResponse] untouched — so the order the
+         *  engine chose its entries in is never disturbed by the wrap. */
         internal fun mergeImportedTerms(
             packResponse: DictionaryResponse?,
             word: String,

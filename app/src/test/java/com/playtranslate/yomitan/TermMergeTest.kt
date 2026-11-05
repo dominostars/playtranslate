@@ -1,5 +1,6 @@
 package com.playtranslate.yomitan
 
+import com.playtranslate.language.PinyinFormatter
 import com.playtranslate.model.ImportedSense
 import com.playtranslate.model.ImportedSenseGroup
 import org.junit.Assert.assertEquals
@@ -264,5 +265,33 @@ class TermMergeTest {
         )
         assertEquals(listOf("raw", "life"), result.groups.single().senses.map { it.definition })
         assertEquals("なま", result.resolvedReading)
+    }
+
+    @Test
+    fun `a reading key narrows imported rows written in another pinyin format`() {
+        // The pack reads 东西 "dōng xī" for the alternative; the import wrote
+        // its rows numbered. Only the matching reading's row survives, and the
+        // resolved reading stays the caller's own string.
+        val rows = listOf(row("dictA", "dong1 xi1", 0.0, "east and west"), row("dictA", "dong1 xi5", 0.0, "thing"))
+        val result = TermMerge.merge(
+            rows, order, normalizedReadings = setOf("dōng xī"), normalizedTerm = "东西",
+            readingKey = PinyinFormatter::canonicalPinyin,
+        )
+        assertEquals(listOf("east and west"), result.groups.single().senses.map { it.definition })
+        assertEquals("dōng xī", result.resolvedReading)
+    }
+
+    @Test
+    fun `without a reading key the readings compare as stored`() {
+        val rows = listOf(row("dictA", "dong1 xi1", 0.0, "east and west"), row("dictA", "dong1 xi5", 0.0, "thing"))
+        val result = TermMerge.merge(rows, order, normalizedReadings = setOf("dōng xī"), normalizedTerm = "东西")
+        assertEquals(emptyList<ImportedSenseGroup>(), result.groups)
+    }
+
+    @Test
+    fun `Chinese readings compare canonicalized and every other language's as stored`() {
+        assertEquals("dōngxī", YomitanDataStore.readingKeyFor("zh")("dong1 xi1"))
+        assertEquals("ナマ", YomitanDataStore.readingKeyFor("ja")("ナマ"))
+        assertEquals("dong1 xi1", YomitanDataStore.readingKeyFor("ko")("dong1 xi1"))
     }
 }

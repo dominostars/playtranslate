@@ -20,8 +20,8 @@ import org.junit.Test
  * lifted verbatim out of JapaneseEngine when Yomitan enrichment was generalized
  * to every source language. Guards the three shapes the move must preserve
  * (pack-hit attach, pack-miss synthesize, single-dictionary suppression) AND
- * that wrapping a pack response in the merge never disturbs its entry order —
- * the invariant ChineseEngine.preferReading's heteronym reorder relies on.
+ * that wrapping a pack response in the merge never disturbs its entry order,
+ * the order the engine chose (ChineseEngine hands out the group its hint picked).
  * Pure JVM — no Context, no dict, no HanLP.
  */
 class YomitanEnrichmentMergeTest {
@@ -120,8 +120,8 @@ class YomitanEnrichmentMergeTest {
 
     @Test
     fun `pack hit with no imported groups returns the pack response untouched`() {
-        // Entries arrive in a deliberate non-frequency order (as if preferReading
-        // already floated "B" to the front); the merge must NOT reorder them.
+        // Entries arrive in a deliberate non-frequency order (as if the engine
+        // already put "B" first); the merge must NOT reorder them.
         val pack = DictionaryResponse(listOf(entry("B"), entry("A")))
         val merged = YomitanEnrichment.mergeImportedTerms(pack, "w", lookup(), resolvedTerm = "w")
         assertSame(pack, merged)

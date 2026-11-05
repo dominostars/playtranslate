@@ -69,10 +69,18 @@ internal object TermMerge {
          *  imported group's title. Defaulted so existing callers are unaffected. */
         dictColors: Map<String, Int?> = emptyMap(),
         resolveToFirstReading: Boolean = false,
+        /** The comparison key for a reading on BOTH sides of the narrowing
+         *  filter, identity by default. Chinese readings are pinyin, which
+         *  dictionaries write in several formats, so its callers pass
+         *  [com.playtranslate.language.PinyinFormatter.canonicalPinyin] and an
+         *  imported row written "dong1 xi1" matches a pack reading written
+         *  "dōng xī". [resolvedReading] stays the caller's own string. */
+        readingKey: (String) -> String = { it },
     ): YomitanDataStore.TermLookup {
         val narrowed = when {
-            !normalizedReadings.isNullOrEmpty() -> rows.filter {
-                it.reading in normalizedReadings || it.reading == normalizedTerm
+            !normalizedReadings.isNullOrEmpty() -> {
+                val keys = normalizedReadings.mapTo(HashSet(), readingKey)
+                rows.filter { readingKey(it.reading) in keys || it.reading == normalizedTerm }
             }
             resolveToFirstReading -> {
                 // The reading [resolvedReading] reports below: the first row,

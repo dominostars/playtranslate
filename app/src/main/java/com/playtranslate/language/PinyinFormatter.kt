@@ -67,6 +67,25 @@ object PinyinFormatter {
     fun canonicalReading(syllable: String): String =
         foldUmlaut(syllable.lowercase(Locale.ROOT))
 
+    private val TONE_DIGIT_RUN = Regex("([1-5])(?=[A-Za-z])")
+    private val SYLLABLE_JOINERS = Regex("[\\s'’\\-]")
+
+    /**
+     * One key for comparing a pinyin reading across the formats dictionaries
+     * write it in: numbered ("dong1 xi1", "dong1xi1") or tone-marked ("dōng
+     * xī", "dōngxī"), with or without spaces, apostrophes or hyphens between
+     * syllables, "u:" / "v" or ü, composed or decomposed tone marks. Case is
+     * KEPT: CC-CEDICT's capital initial marks a proper noun, and Lǐ is not
+     * lǐ. The imported-term filter compares pack and imported readings
+     * through it for Chinese ([com.playtranslate.yomitan.YomitanDataStore.readingKeyFor]);
+     * nothing displays it.
+     */
+    fun canonicalPinyin(reading: String): String {
+        val spaced = TONE_DIGIT_RUN.replace(reading.trim(), "$1 ")
+        val marked = foldUmlaut(numberedToToneMarks(spaced))
+        return java.text.Normalizer.normalize(SYLLABLE_JOINERS.replace(marked, ""), java.text.Normalizer.Form.NFC)
+    }
+
     /**
      * CC-CEDICT definitions embed pinyin cross-references in brackets, e.g.
      * `"capital of Hebei Province 河北省[He2 bei3 sheng3] in China"`. Convert

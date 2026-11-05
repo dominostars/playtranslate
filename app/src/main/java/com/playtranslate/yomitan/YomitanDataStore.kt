@@ -11,6 +11,7 @@ import com.google.gson.JsonParser
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import com.playtranslate.dictionary.Deinflector
+import com.playtranslate.language.PinyinFormatter
 import com.playtranslate.model.FrequencyTag
 import com.playtranslate.model.ImportedKanji
 import com.playtranslate.model.ImportedSenseGroup
@@ -518,8 +519,17 @@ object YomitanDataStore {
             singleDictionary = caps.termsSingleDictionary,
             dictColors = caps.dictColors,
             resolveToFirstReading = resolveToFirstReading,
+            readingKey = readingKeyFor(sourceLanguage),
         )
     }
+
+    /** The reading comparison [TermMerge.merge] narrows with for
+     *  [sourceLanguage] (the primary subtag, so zh-Hant is zh): Chinese
+     *  readings are pinyin, which dictionaries write in several formats, so
+     *  they compare canonicalized; every other language's readings compare
+     *  as stored. */
+    internal fun readingKeyFor(sourceLanguage: String): (String) -> String =
+        if (sourceLanguage == "zh") PinyinFormatter::canonicalPinyin else { reading -> reading }
 
     /**
      * Batch existence gate for the tokenizer's n-gram phrase re-glob:

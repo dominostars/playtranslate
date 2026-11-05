@@ -4,7 +4,6 @@ import android.content.Context
 import com.hankcs.hanlp.HanLP
 import com.hankcs.hanlp.corpus.io.IIOAdapter
 import com.hankcs.hanlp.dictionary.py.Pinyin
-import com.hankcs.hanlp.seg.common.Term
 import com.playtranslate.model.CharacterDetail
 import com.playtranslate.model.DictionaryResponse
 import com.playtranslate.model.HanziDetail
@@ -34,25 +33,21 @@ internal inline fun <T> runCatchingNonCancellable(block: () -> T): T? =
     }
 
 /**
- * Floats the entry whose headword reading matches [reading] to the front, so
- * `entries.first()` / `headwordDisplay` reflect a context-resolved heteronym
- * choice. A null/blank hint, or no matching entry, leaves the response in its
- * original frequency order. Extracted and `internal` so the selection is
- * JVM-unit-testable without HanLP.
- */
-internal fun DictionaryResponse.preferReading(reading: String?): DictionaryResponse {
-    if (reading.isNullOrEmpty()) return this
-    val idx = entries.indexOfFirst { e -> e.headwords.any { it.reading == reading } }
-    if (idx <= 0) return this
-    return copy(entries = listOf(entries[idx]) + entries.filterIndexed { i, _ -> i != idx })
-}
-
-/**
  * Chinese source-language engine. Uses HanLP's CRF/perceptron segmenter for
  * word-level tokenization (handles both Simplified and Traditional, resolves
  * ambiguity using context, and supports custom dictionaries for game-specific
  * terms via `CustomDictionary.add`). Dictionary lookups go through
  * [ChineseDictionaryManager] against a CC-CEDICT-derived pack.
+ *
+ * HanLP segments; the dictionary decides the units. HanLP's vocabulary is
+ * not CC-CEDICT's (its core dictionary fuses 放在, its name recogniser
+ * fuses 包里, and CC-CEDICT defines neither), so a term no dictionary lists
+ * is narrowed to the dictionary words inside it before it becomes a span
+ * ([ChineseWordMatch], the Chinese side of the Japanese invariant that a
+ * unit fuses only when some dictionary lists it), a looked-up unit descends
+ * to its member words ([memberWordsOf]), and a surface with several
+ * readings leads with one entry and offers the rest as alternatives
+ * ([alternativesOf], [ChineseEntryGroups]).
  *
  * HanLP's first `segment()` call deserializes the CRF model (~1-2s).
  * [preload] triggers this on the background IO thread so the user's first
@@ -143,14 +138,67 @@ class ChineseEngine(
         dict.searchPrefix(query, limit, profile.preferTraditional)
             .map { TokenSpan(surface = it, lookupForm = it, reading = null) }
 
-    override suspend fun lookup(word: String, reading: String?): DictionaryResponse? =
-        yomitan.applyTo(
-            // Verbatim former body — the ?.preferReading(reading) heteronym
-            // reorder must survive the wrap. CC-CEDICT reading is pinyin, not
-            // a Yomitan reading key, so the imported term lookup keys on null.
-            dict.lookup(word, profile.preferTraditional)?.preferReading(reading),
-            word, reading = null, fallbackForms = emptyList(),
-        )
+    override suspend fun lookup(word: String, reading: String?): DictionaryResponse? {
+        val hit = dict.lookupGroup(word, profile.preferTraditional, reading)
+        // Imported senses attach to the one entry returned. The default group
+        // takes every imported row whatever its reading, since imported
+        // pinyin comes in formats of its own (the behaviour before groups);
+        // any other group, an "Also matches" entry or a heteronym the
+        // context picked, takes only the rows whose reading is the group's,
+        // compared as pinyin whatever format the import writes it in
+        // (TermMerge with PinyinFormatter.canonicalPinyin), so an alternative
+        // never repeats the primary's imported block. No fallback forms:
+        // Chinese does not inflect.
+        val importReading = if (hit?.hinted == true) hit.response.entries.first().headwords.first().reading else null
+        return yomitan.applyTo(hit?.response, word, reading = importReading, fallbackForms = emptyList())
+    }
+
+    /**
+     * The member words of [headword]: the dictionary words inside it, itself
+     * excluded, single hanzi included ([ChineseWordMatch.memberSplit]), so a
+     * listed compound descends too (常用 → 常 + 用) and an unlisted unit
+     * lands its parts (放在 → 放 + 在). [expressionClass] means nothing
+     * here, since CC-CEDICT carries no part of speech. The syllables of
+     * [headwordReading] ride onto the members as their hints. With no pack
+     * open nothing is listed and the unit splits into its characters, which
+     * then resolve nothing, as the unit itself would.
+     */
+    override suspend fun memberWordsOf(
+        headword: String,
+        expressionClass: Boolean,
+        headwordReading: String?,
+    ): List<TokenSpan> {
+        val listed = listedWords(ChineseWordMatch.probeCandidates(listOf(headword))) ?: emptySet()
+        return ChineseWordMatch.memberSplit(headword, listed, headwordReading)
+    }
+
+    /**
+     * The other words [span]'s form could be: every reading group of the
+     * form but the one a lookup led with ([primaryIds]), each as a span on
+     * its OWN displayed form with its reading as the hint, so [lookup] lands
+     * that group. The surface is the group's form, not the tapped one: a
+     * Traditional reader's 裡 and 裏 groups beside 里 also carry the shared
+     * simplified 里, and the surfaces pick the headword they show by
+     * surface. Chinese has no inflection for the tapped surface to carry.
+     */
+    override suspend fun alternativesOf(span: TokenSpan, primaryIds: Set<Long>): List<TokenSpan> =
+        dict.alternativeGroups(span.lookupForm, profile.preferTraditional)
+            .filter { it.packId !in primaryIds }
+            .map { TokenSpan(surface = it.displayedForm, lookupForm = it.displayedForm, reading = it.reading) }
+
+    /**
+     * The listed-word oracle for [ChineseWordMatch]: the pack's headwords
+     * among [candidates], plus the imported term dictionaries' terms when
+     * any are installed ([YomitanEnrichment.phraseOracle], the oracle the
+     * Japanese re-glob consults). Null when no pack is open, so the caller
+     * leaves HanLP's terms as they are rather than splitting every one.
+     */
+    private suspend fun listedWords(candidates: Set<String>): Set<String>? {
+        if (candidates.isEmpty()) return emptySet()
+        val pack = dict.existingHeadwords(candidates) ?: return null
+        val oracle = yomitan.phraseOracle() ?: return pack
+        return pack + oracle(candidates)
+    }
 
     /**
      * CC-CEDICT contains most common hanzi as single-character entries with
@@ -232,22 +280,44 @@ class ChineseEngine(
             val terms = runCatchingNonCancellable { HanLP.segment(text) }
                 ?: return@withContext SentenceAnnotation.plain(text, profile.id)
             val charPinyin = runCatchingNonCancellable { HanLP.convertToPinyinList(text) }
+            // The dictionary decides the units: a term no dictionary lists
+            // (放在 from HanLP's core dictionary, 包里 from its name
+            // recogniser) is narrowed to the dictionary words inside it, so
+            // every multi-character span is a word some dictionary defines.
+            // One probe before the walk. A term the text does not hold
+            // verbatim is aligned to nothing and stays whole: its pieces
+            // could land on a later occurrence and drag the cursor past the
+            // terms between.
+            val words = terms.mapNotNull { term -> term.word?.takeIf { it.isNotEmpty() } }
+            val listed = listedWords(ChineseWordMatch.probeCandidates(words))
+            val units = mutableListOf<Pair<String, Int>>()
+            var cursor = 0
+            for (word in words) {
+                val found = text.indexOf(word, cursor)
+                if (found < 0) {
+                    units += word to -1
+                    continue
+                }
+                var start = found
+                val pieces = if (listed == null) listOf(word) else ChineseWordMatch.pieces(word, listed)
+                for (piece in pieces) {
+                    units += piece to start
+                    start += piece.length
+                }
+                cursor = found + word.length
+            }
             // Corrections at WORDS and FULL — tokenize() has always carried
             // them (its callers' lookups honor the hint); only the TOKENS
             // display path, which never consulted them, skips the pass.
             val corrections =
-                if (depth != AnnotationDepth.TOKENS) contextualReadings(terms, text) else emptyMap()
+                if (depth != AnnotationDepth.TOKENS) contextualReadings(units.map { it.first }, text) else emptyMap()
             val spans = mutableListOf<AnnotatedSpan>()
-            var cursor = 0
             var emitted = 0
             fun emitGapUpTo(pos: Int) {
                 if (pos > emitted) spans.add(charSpan(text, emitted, pos, charPinyin, null, null))
             }
-            for (term in terms) {
-                val word = term.word ?: continue
-                if (word.isEmpty()) continue
-                val found = text.indexOf(word, cursor)
-                if (found < 0) {
+            for ((word, start) in units) {
+                if (start < 0) {
                     if (isLookupWorthy(word)) {
                         spans.add(AnnotatedSpan(
                             start = -1, end = -1, surface = word,
@@ -257,15 +327,14 @@ class ChineseEngine(
                     }
                     continue
                 }
-                cursor = found + word.length
-                emitGapUpTo(found)
+                emitGapUpTo(start)
                 spans.add(charSpan(
-                    text, found, found + word.length, charPinyin,
+                    text, start, start + word.length, charPinyin,
                     lookupForm = word.takeIf { isLookupWorthy(it) },
                     reading = corrections[word],
                     lookupHint = corrections[word],
                 ))
-                emitted = found + word.length
+                emitted = start + word.length
             }
             emitGapUpTo(text.length)
             SentenceAnnotation(text, profile.id, generation, spans)
@@ -323,18 +392,17 @@ class ChineseEngine(
      * annotation path. Anything not in the map keeps its frequency-default
      * reading, so coverage and robustness stay exactly the existing path's.
      */
-    private suspend fun contextualReadings(terms: List<Term>, text: String): Map<String, String> {
+    private suspend fun contextualReadings(words: List<String>, text: String): Map<String, String> {
         if (text.isBlank()) return emptyMap()
         // HanLP's phrase-aware per-hanzi pinyin is the context signal — computed
         // lazily so a sentence with no ambiguous surface skips the extra pass.
-        // The caller's already-segmented `terms` are reused, so we never
-        // re-segment (tokenize already paid for HanLP.segment).
+        // The caller's already-segmented and narrowed `words` are reused, so
+        // we never re-segment (annotate already paid for HanLP.segment).
         val charPinyin: List<Pinyin>? by lazy { runCatchingNonCancellable { HanLP.convertToPinyinList(text) } }
         val occurrences = mutableListOf<HeteronymOccurrence>()
         val candidatesBySurface = HashMap<String, List<String>>()
         var cursor = 0
-        for (term in terms) {
-            val word = term.word ?: continue
+        for (word in words) {
             if (word.isEmpty()) continue
             // Align the term to the source text so we can slice its per-char
             // pinyin; greedy from the running cursor is robust to whitespace
@@ -347,10 +415,12 @@ class ChineseEngine(
             // CC-CEDICT lookup is surface-keyed, so resolve candidates once per
             // surface. Reading-only query (no sense/gloss build) — we only need
             // the candidate readings to detect a heteronym and disambiguate.
-            // Cancellation propagates; a dict hiccup degrades to no correction
-            // for this surface rather than aborting the send.
+            // In the reader's script, so the first candidate is the reading an
+            // unhinted lookup leads with. Cancellation propagates; a dict
+            // hiccup degrades to no correction for this surface rather than
+            // aborting the send.
             val candidates = candidatesBySurface.getOrPut(word) {
-                runCatchingNonCancellable { dict.candidateReadings(word) } ?: emptyList()
+                runCatchingNonCancellable { dict.candidateReadings(word, profile.preferTraditional) } ?: emptyList()
             }
             if (candidates.size < 2) continue    // unambiguous → frequency default is correct
             // Record EVERY ambiguous occurrence with its positional context;
@@ -378,8 +448,7 @@ class ChineseEngine(
         return syllables
     }
 
-    private fun isHanziChar(c: Char): Boolean =
-        c.code in 0x4e00..0x9fff || c.code in 0x3400..0x4dbf
+    private fun isHanziChar(c: Char): Boolean = ChineseWordMatch.isHanzi(c)
 
     override fun close() {
         annotationCache.clear()

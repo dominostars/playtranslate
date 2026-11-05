@@ -7,17 +7,17 @@ import android.util.Log
 import com.hankcs.hanlp.dictionary.CustomDictionary
 import com.playtranslate.dictionary.PREFIX_EXACT_BONUS
 import com.playtranslate.dictionary.prefixUpperBound
-import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.DictionaryResponse
-import com.playtranslate.model.Headword
-import com.playtranslate.model.PosVocabulary
-import com.playtranslate.model.Sense
-import com.playtranslate.model.expressionFrom
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+
+/** One lookup's result: the entry it leads with, and whether the caller's
+ *  reading hint picked a group other than the one an unhinted lookup
+ *  leads with (the engine filters imported senses by reading only then). */
+internal class GroupHit(val response: DictionaryResponse, val hinted: Boolean)
 
 /**
  * Read-only SQLite dictionary for Chinese, backed by a CC-CEDICT-derived
@@ -26,8 +26,10 @@ import java.io.File
  * when different), so a single `WHERE text = ?` query matches either
  * variant.
  *
- * No stemming or de-inflection — Chinese doesn't inflect. Lookup is
- * direct surface match with silent pass-through on miss.
+ * No stemming or de-inflection — Chinese doesn't inflect. A lookup reads
+ * every CC-CEDICT line of the surface and hands out ONE entry, the group
+ * [ChineseEntryGroups] leads with; the other groups are the surface's
+ * alternatives ([alternativeGroups]). Silent pass-through on miss.
  */
 class ChineseDictionaryManager private constructor(private val context: Context) {
 
@@ -51,7 +53,9 @@ class ChineseDictionaryManager private constructor(private val context: Context)
      * even on whitespace-clean input, and the downstream dict.sqlite
      * lookup never sees the compound surface. Augmenting HanLP's
      * runtime trie with every CC-CEDICT headword (already in
-     * dict.sqlite) closes the gap without rebuilding the pack.
+     * dict.sqlite) closes the gap without rebuilding the pack. The
+     * other direction, a HanLP term CC-CEDICT does not list, is the
+     * engine's narrowing ([ChineseWordMatch]).
      *
      * Why runtime instead of the pack's CustomDictionary.txt: HanLP
      * ships its CustomDictionary as a precompiled .txt.bin only — the
@@ -107,10 +111,57 @@ class ChineseDictionaryManager private constructor(private val context: Context)
         }
     }
 
-    suspend fun lookup(surface: String, preferTraditional: Boolean = false): DictionaryResponse? = withContext(Dispatchers.IO) {
+    /**
+     * The one entry [surface] leads with ([ChineseEntryGroups]), or with a
+     * [reading] hint the group that reading names; a hint no group matches
+     * falls back to the default group, never to null, the contract of the
+     * Japanese pack's reading step. Null only when the pack has no line
+     * for [surface].
+     */
+    suspend fun lookup(surface: String, preferTraditional: Boolean = false, reading: String? = null): DictionaryResponse? =
+        lookupGroup(surface, preferTraditional, reading)?.response
+
+    /** [lookup] with whether the hint picked a non-default group. */
+    internal suspend fun lookupGroup(surface: String, preferTraditional: Boolean, reading: String?): GroupHit? =
+        withContext(Dispatchers.IO) {
+            val groups = groupsOf(surface, preferTraditional)
+            if (groups.isEmpty()) return@withContext null
+            val index = ChineseEntryGroups.hintedIndex(groups, reading) ?: 0
+            GroupHit(DictionaryResponse(entries = listOf(ChineseEntryGroups.toEntry(groups[index]))), hinted = index != 0)
+        }
+
+    /** Every group of [surface] in lead order; the engine drops the one a
+     *  lookup led with and offers the rest as "Also matches". */
+    internal suspend fun alternativeGroups(surface: String, preferTraditional: Boolean): List<EntryGroup> =
+        withContext(Dispatchers.IO) { groupsOf(surface, preferTraditional) }
+
+    /**
+     * Tone-marked readings for [surface] for the heteronym pass, in lead
+     * order with proper nouns left out, so the first is the reading an
+     * unhinted [lookup] leads with in the same script (the pass emits a
+     * correction only when the context reading differs from it) and a
+     * surname never counts as a heteronym of the common word.
+     */
+    suspend fun candidateReadings(surface: String, preferTraditional: Boolean = false): List<String> =
+        withContext(Dispatchers.IO) { ChineseEntryGroups.candidateReadings(groupsOf(surface, preferTraditional)) }
+
+    /**
+     * Which of [candidates] the pack lists as a headword, either script. The
+     * listed-word oracle behind the engine's narrowing and member split; one
+     * query per 500 candidates, under SQLite's bind limit. Null when no pack
+     * is open, which the engine tells from "none listed": with no pack it
+     * leaves HanLP's terms whole instead of splitting every one.
+     */
+    suspend fun existingHeadwords(candidates: Collection<String>): Set<String>? = withContext(Dispatchers.IO) {
         val database = ensureOpen() ?: return@withContext null
-        val ids = queryEntryIds(database, surface)
-        if (ids.isNotEmpty()) buildResponse(database, ids, preferTraditional) else null
+        if (candidates.isEmpty()) return@withContext emptySet()
+        val found = HashSet<String>()
+        for (chunk in candidates.distinct().chunked(EXISTS_CHUNK)) {
+            val marks = chunk.joinToString(",") { "?" }
+            database.rawQuery("SELECT DISTINCT text FROM headword WHERE text IN ($marks)", chunk.toTypedArray())
+                .use { c -> while (c.moveToNext()) found.add(c.getString(0)) }
+        }
+        found
     }
 
     /**
@@ -121,7 +172,7 @@ class ChineseDictionaryManager private constructor(private val context: Context)
      * Each result is a headword string that re-resolves via [lookup].
      *
      * Deduped to one entry per row, with the display form picked in the
-     * caller's preferred script ([preferTraditional]) exactly as [buildEntry]
+     * caller's preferred script ([preferTraditional]) as [primaryHeadword]
      * does — so a word never appears twice (once per script).
      */
     suspend fun searchPrefix(
@@ -145,9 +196,8 @@ class ChineseDictionaryManager private constructor(private val context: Context)
         ids.mapNotNull { id -> primaryHeadword(database, id, preferTraditional) }.distinct()
     }
 
-    /** Display headword for [id] in the caller's preferred script. Mirrors
-     *  [buildEntry]'s script-order pick (position 0 = simplified,
-     *  position 1 = traditional; reversed when [preferTraditional]). */
+    /** Display headword for [id] in the caller's preferred script (position
+     *  0 = simplified, position 1 = traditional). */
     private fun primaryHeadword(db: SQLiteDatabase, id: Long, preferTraditional: Boolean): String? {
         val forms = mutableListOf<String>()
         db.rawQuery(
@@ -156,31 +206,6 @@ class ChineseDictionaryManager private constructor(private val context: Context)
         ).use { c -> while (c.moveToNext()) forms.add(c.getString(0)) }
         if (forms.isEmpty()) return null
         return if (preferTraditional && forms.size > 1) forms[1] else forms[0]
-    }
-
-    /**
-     * Tone-marked readings for [surface] — one per matching entry, in
-     * frequency-descending order, deduped. Reading-only: it skips the
-     * sense/gloss/headword construction that [lookup]/[buildEntry] perform, for
-     * callers (heteronym disambiguation) that only need the candidate readings.
-     * Mirrors [buildEntry]'s primary-reading pick (lowest `position`, run
-     * through [PinyinFormatter.numberedToToneMarks]).
-     */
-    suspend fun candidateReadings(surface: String): List<String> = withContext(Dispatchers.IO) {
-        val database = ensureOpen() ?: return@withContext emptyList()
-        val readings = ArrayList<String>()
-        for (id in queryEntryIds(database, surface)) {
-            database.rawQuery(
-                "SELECT text FROM reading WHERE entry_id=? ORDER BY position LIMIT 1",
-                arrayOf(id.toString()),
-            ).use { c ->
-                if (c.moveToFirst()) {
-                    c.getString(0)?.takeIf { it.isNotBlank() }
-                        ?.let { readings.add(PinyinFormatter.numberedToToneMarks(it)) }
-                }
-            }
-        }
-        readings.distinct()
     }
 
     fun close() {
@@ -223,90 +248,61 @@ class ChineseDictionaryManager private constructor(private val context: Context)
         false
     }
 
-    private fun queryEntryIds(db: SQLiteDatabase, word: String): List<Long> {
-        val ids = mutableListOf<Long>()
-        db.rawQuery(
-            "SELECT DISTINCT h.entry_id FROM headword h JOIN entry e ON e.id = h.entry_id WHERE h.text = ? ORDER BY e.freq_score DESC LIMIT 8",
-            arrayOf(word)
-        ).use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
-        return ids
+    /** [ChineseEntryGroups.groups] over the pack's lines for [surface]. Must
+     *  run on IO. */
+    private suspend fun groupsOf(surface: String, preferTraditional: Boolean): List<EntryGroup> {
+        val database = ensureOpen() ?: return emptyList()
+        return ChineseEntryGroups.groups(queryLines(database, surface), surface, preferTraditional)
     }
 
-    private fun buildResponse(db: SQLiteDatabase, entryIds: List<Long>, preferTraditional: Boolean = false): DictionaryResponse {
-        val entries = entryIds.mapNotNull { buildEntry(db, it, preferTraditional) }
-        return DictionaryResponse(entries = entries)
-    }
-
-    private fun buildEntry(db: SQLiteDatabase, id: Long, preferTraditional: Boolean = false): DictionaryEntry? {
-        val idStr = id.toString()
-
-        var isCommon = false
-        var freqScore = 0
-        db.rawQuery("SELECT is_common, freq_score FROM entry WHERE id=?", arrayOf(idStr)).use { c ->
-            if (c.moveToFirst()) {
-                isCommon  = c.getInt(0) == 1
-                freqScore = c.getInt(1)
-            }
-        }
-
-        val headwordTexts = mutableListOf<String>()
+    /**
+     * Every CC-CEDICT line whose simplified or traditional form is [word]:
+     * one query for the entry, its reading and its sense (the pack writes
+     * one of each per line), one for the lines' written forms.
+     */
+    private fun queryLines(db: SQLiteDatabase, word: String): List<CedictLine> {
+        class Row(val id: Long, val freq: Int, val common: Boolean, val reading: String, val pos: String, val glosses: List<String>, val misc: List<String>)
+        val rows = mutableListOf<Row>()
         db.rawQuery(
-            "SELECT text FROM headword WHERE entry_id=? ORDER BY position",
-            arrayOf(idStr)
-        ).use { c -> while (c.moveToNext()) headwordTexts.add(c.getString(0)) }
-        if (headwordTexts.isEmpty()) return null
-
-        // CC-CEDICT stores pinyin in the reading table
-        val readings = mutableListOf<String>()
-        db.rawQuery(
-            "SELECT text FROM reading WHERE entry_id=? ORDER BY position",
-            arrayOf(idStr)
-        ).use { c -> while (c.moveToNext()) readings.add(c.getString(0)) }
-
-        // CC-CEDICT has one reading per entry shared by all headword forms
-        val primaryReading = readings.firstOrNull()?.let { PinyinFormatter.numberedToToneMarks(it) }
-        val headwords = headwordTexts.map { written ->
-            Headword(written = written, reading = primaryReading)
-        }.let { if (preferTraditional && it.size > 1) it.reversed() else it }
-
-        val senses = mutableListOf<Sense>()
-        db.rawQuery(
-            "SELECT pos, glosses, misc FROM sense WHERE entry_id=? ORDER BY position LIMIT 8",
-            arrayOf(idStr)
+            "SELECT DISTINCT e.id, e.freq_score, e.is_common, r.text, s.pos, s.glosses, s.misc " +
+                "FROM headword h JOIN entry e ON e.id = h.entry_id " +
+                "JOIN reading r ON r.entry_id = e.id AND r.position = 0 " +
+                "JOIN sense s ON s.entry_id = e.id AND s.position = 0 " +
+                "WHERE h.text = ? ORDER BY e.id",
+            arrayOf(word),
         ).use { c ->
             while (c.moveToNext()) {
-                val posList   = PosVocabulary.parse(c.getString(0))
-                val glossList = c.getString(1).split('\t').filter { it.isNotBlank() }
-                    .map { PinyinFormatter.convertPinyinInBrackets(it) }
-                val miscList  = c.getString(2).split('\t').filter { it.isNotBlank() }
-                senses.add(
-                    Sense(
-                        targetDefinitions = glossList,
-                        partsOfSpeech = posList,
-                        tags = emptyList(),
-                        restrictions = emptyList(),
-                        info = emptyList(),
-                        misc = miscList,
-                    )
-                )
+                rows.add(Row(
+                    id = c.getLong(0), freq = c.getInt(1), common = c.getInt(2) == 1,
+                    reading = c.getString(3) ?: "", pos = c.getString(4) ?: "",
+                    glosses = c.getString(5).orEmpty().split('\t').filter { it.isNotBlank() },
+                    misc = c.getString(6).orEmpty().split('\t').filter { it.isNotBlank() },
+                ))
             }
         }
-        if (senses.isEmpty()) return null
-
-        return DictionaryEntry(
-            slug = headwordTexts.first(),
-            isCommon = isCommon,
-            tags = emptyList(),
-            jlpt = emptyList(),
-            headwords = headwords,
-            senses = senses,
-            isExpression = expressionFrom(senses),
-            freqScore = (freqScore * 5 / 100).coerceIn(0, 5),
-        )
+        if (rows.isEmpty()) return emptyList()
+        val forms = HashMap<Long, MutableList<String>>()
+        val marks = rows.joinToString(",") { "?" }
+        db.rawQuery(
+            "SELECT entry_id, text FROM headword WHERE entry_id IN ($marks) ORDER BY entry_id, position",
+            rows.map { it.id.toString() }.toTypedArray(),
+        ).use { c ->
+            while (c.moveToNext()) forms.getOrPut(c.getLong(0)) { mutableListOf() }.add(c.getString(1))
+        }
+        return rows.mapNotNull { row ->
+            val written = forms[row.id] ?: return@mapNotNull null
+            if (row.glosses.isEmpty()) return@mapNotNull null
+            CedictLine(
+                id = row.id, freqScore = row.freq, isCommon = row.common, reading = row.reading,
+                simplified = written[0], traditional = written.getOrNull(1),
+                pos = row.pos, glosses = row.glosses, misc = row.misc,
+            )
+        }
     }
 
     companion object {
         private const val TAG = "ChineseDictMgr"
+        private const val EXISTS_CHUNK = 500
 
         @SuppressLint("StaticFieldLeak")
         @Volatile private var instance: ChineseDictionaryManager? = null
