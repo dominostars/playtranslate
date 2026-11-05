@@ -6,6 +6,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.util.Log
 import com.hankcs.hanlp.dictionary.CustomDictionary
 import com.playtranslate.dictionary.PREFIX_EXACT_BONUS
+import com.playtranslate.dictionary.withRefcount
 import com.playtranslate.dictionary.prefixUpperBound
 import com.playtranslate.model.DictionaryResponse
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +31,11 @@ internal class GroupHit(val response: DictionaryResponse, val hinted: Boolean)
  * every CC-CEDICT line of the surface and hands out ONE entry, the group
  * [ChineseEntryGroups] leads with; the other groups are the surface's
  * alternatives ([alternativeGroups]). Silent pass-through on miss.
+ *
+ * Every query runs under [withRefcount], as the Japanese manager's do: a
+ * pack evicted while a capture is still being read (an uninstall, the
+ * upgrade flow's post-install close) answers "nothing" instead of throwing
+ * out of the engine, whose annotation must degrade and never throw.
  */
 class ChineseDictionaryManager private constructor(private val context: Context) {
 
@@ -86,22 +92,26 @@ class ChineseDictionaryManager private constructor(private val context: Context)
                 val database = ensureOpen() ?: return@withContext
                 val started = System.currentTimeMillis()
                 var added = 0
-                database.rawQuery(
-                    "SELECT DISTINCT h.text, e.freq_score FROM headword h " +
-                        "JOIN entry e ON e.id = h.entry_id WHERE LENGTH(h.text) >= 2",
-                    null,
-                ).use { c ->
-                    while (c.moveToNext()) {
-                        val word = c.getString(0) ?: continue
-                        val freq = maxOf(1, c.getInt(1))
-                        // HanLP's add() takes either a bare word (assumed
-                        // n 1) or a word + nature/freq spec. Use "n <freq>"
-                        // so freq carries through; POS isn't read
-                        // anywhere in the app.
-                        CustomDictionary.add(word, "n $freq")
-                        added++
+                // A pack closed under the walk leaves the guard unset, so
+                // the next preload injects.
+                database.withRefcount {
+                    database.rawQuery(
+                        "SELECT DISTINCT h.text, e.freq_score FROM headword h " +
+                            "JOIN entry e ON e.id = h.entry_id WHERE LENGTH(h.text) >= 2",
+                        null,
+                    ).use { c ->
+                        while (c.moveToNext()) {
+                            val word = c.getString(0) ?: continue
+                            val freq = maxOf(1, c.getInt(1))
+                            // HanLP's add() takes either a bare word (assumed
+                            // n 1) or a word + nature/freq spec. Use "n <freq>"
+                            // so freq carries through; POS isn't read
+                            // anywhere in the app.
+                            CustomDictionary.add(word, "n $freq")
+                            added++
+                        }
                     }
-                }
+                } ?: return@withContext
                 Log.d(
                     TAG,
                     "Injected $added CC-CEDICT entries into HanLP CustomDictionary in ${System.currentTimeMillis() - started} ms",
@@ -149,19 +159,22 @@ class ChineseDictionaryManager private constructor(private val context: Context)
      * Which of [candidates] the pack lists as a headword, either script. The
      * listed-word oracle behind the engine's narrowing and member split; one
      * query per 500 candidates, under SQLite's bind limit. Null when no pack
-     * is open, which the engine tells from "none listed": with no pack it
-     * leaves HanLP's terms whole instead of splitting every one.
+     * is open, or the pack closed under the probe, which the engine tells
+     * from "none listed": with no pack it leaves HanLP's terms whole instead
+     * of splitting every one.
      */
     suspend fun existingHeadwords(candidates: Collection<String>): Set<String>? = withContext(Dispatchers.IO) {
         val database = ensureOpen() ?: return@withContext null
         if (candidates.isEmpty()) return@withContext emptySet()
-        val found = HashSet<String>()
-        for (chunk in candidates.distinct().chunked(EXISTS_CHUNK)) {
-            val marks = chunk.joinToString(",") { "?" }
-            database.rawQuery("SELECT DISTINCT text FROM headword WHERE text IN ($marks)", chunk.toTypedArray())
-                .use { c -> while (c.moveToNext()) found.add(c.getString(0)) }
+        database.withRefcount {
+            val found = HashSet<String>()
+            for (chunk in candidates.distinct().chunked(EXISTS_CHUNK)) {
+                val marks = chunk.joinToString(",") { "?" }
+                database.rawQuery("SELECT DISTINCT text FROM headword WHERE text IN ($marks)", chunk.toTypedArray())
+                    .use { c -> while (c.moveToNext()) found.add(c.getString(0)) }
+            }
+            found
         }
-        found
     }
 
     /**
@@ -184,16 +197,18 @@ class ChineseDictionaryManager private constructor(private val context: Context)
         if (q.isEmpty()) return@withContext emptyList()
         val database = ensureOpen() ?: return@withContext emptyList()
         val upper = prefixUpperBound(q) ?: return@withContext emptyList()
-        val ids = mutableListOf<Long>()
-        database.rawQuery(
-            "SELECT h.entry_id AS eid, " +
-                "MAX(e.freq_score + (CASE WHEN h.text = ? THEN $PREFIX_EXACT_BONUS ELSE 0 END)) AS s " +
-                "FROM headword h JOIN entry e ON e.id = h.entry_id " +
-                "WHERE h.text >= ? AND h.text < ? " +
-                "GROUP BY h.entry_id ORDER BY s DESC LIMIT ?",
-            arrayOf(q, q, upper, limit.toString()),
-        ).use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
-        ids.mapNotNull { id -> primaryHeadword(database, id, preferTraditional) }.distinct()
+        database.withRefcount {
+            val ids = mutableListOf<Long>()
+            database.rawQuery(
+                "SELECT h.entry_id AS eid, " +
+                    "MAX(e.freq_score + (CASE WHEN h.text = ? THEN $PREFIX_EXACT_BONUS ELSE 0 END)) AS s " +
+                    "FROM headword h JOIN entry e ON e.id = h.entry_id " +
+                    "WHERE h.text >= ? AND h.text < ? " +
+                    "GROUP BY h.entry_id ORDER BY s DESC LIMIT ?",
+                arrayOf(q, q, upper, limit.toString()),
+            ).use { c -> while (c.moveToNext()) ids.add(c.getLong(0)) }
+            ids.mapNotNull { id -> primaryHeadword(database, id, preferTraditional) }.distinct()
+        } ?: emptyList()
     }
 
     /** Display headword for [id] in the caller's preferred script (position
@@ -248,11 +263,12 @@ class ChineseDictionaryManager private constructor(private val context: Context)
         false
     }
 
-    /** [ChineseEntryGroups.groups] over the pack's lines for [surface]. Must
-     *  run on IO. */
+    /** [ChineseEntryGroups.groups] over the pack's lines for [surface]; none
+     *  when no pack is open or it closed under the query. Must run on IO. */
     private suspend fun groupsOf(surface: String, preferTraditional: Boolean): List<EntryGroup> {
         val database = ensureOpen() ?: return emptyList()
-        return ChineseEntryGroups.groups(queryLines(database, surface), surface, preferTraditional)
+        val lines = database.withRefcount { queryLines(database, surface) } ?: return emptyList()
+        return ChineseEntryGroups.groups(lines, surface, preferTraditional)
     }
 
     /**

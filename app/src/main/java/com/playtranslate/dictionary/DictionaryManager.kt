@@ -30,16 +30,6 @@ import java.util.WeakHashMap
 
 private const val TAG = "DictionaryManager"
 
-/** Run [block] while holding an extra SQLite reference on the receiver, so a
- *  concurrent close()+reopen (e.g. PackUpgradeOrchestrator's post-install
- *  eviction) can't tear the underlying connection down mid-cursor.
- *  Returns null if the connection was already closed before we could
- *  acquire — caller treats that the same as "no result". */
-private inline fun <T> SQLiteDatabase.withRefcount(block: () -> T): T? {
-    try { acquireReference() } catch (_: IllegalStateException) { return null }
-    try { return block() } finally { releaseReference() }
-}
-
 /** Result from [DictionaryManager.tokenizeWithSurfaces]. */
 data class TokenWithReading(
     /** Text as it appears in the input (e.g. "使わない"). */

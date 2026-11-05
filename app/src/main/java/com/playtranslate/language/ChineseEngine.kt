@@ -168,8 +168,8 @@ class ChineseEngine(
         expressionClass: Boolean,
         headwordReading: String?,
     ): List<TokenSpan> {
-        val listed = listedWords(ChineseWordMatch.probeCandidates(listOf(headword))) ?: emptySet()
-        return ChineseWordMatch.memberSplit(headword, listed, headwordReading)
+        val listed = runCatchingNonCancellable { listedWords(ChineseWordMatch.probeCandidates(listOf(headword))) }
+        return ChineseWordMatch.memberSplit(headword, listed ?: emptySet(), headwordReading)
     }
 
     /**
@@ -190,8 +190,11 @@ class ChineseEngine(
      * The listed-word oracle for [ChineseWordMatch]: the pack's headwords
      * among [candidates], plus the imported term dictionaries' terms when
      * any are installed ([YomitanEnrichment.phraseOracle], the oracle the
-     * Japanese re-glob consults). Null when no pack is open, so the caller
-     * leaves HanLP's terms as they are rather than splitting every one.
+     * Japanese re-glob consults). Null when no pack is open or it closed
+     * under the probe, so the caller leaves HanLP's terms as they are rather
+     * than splitting every one; the callers wrap it like the heteronym
+     * probe, so a database error mid-query degrades the same way instead of
+     * escaping annotate, whose contract is to degrade and never throw.
      */
     private suspend fun listedWords(candidates: Set<String>): Set<String>? {
         if (candidates.isEmpty()) return emptySet()
@@ -289,7 +292,7 @@ class ChineseEngine(
             // could land on a later occurrence and drag the cursor past the
             // terms between.
             val words = terms.mapNotNull { term -> term.word?.takeIf { it.isNotEmpty() } }
-            val listed = listedWords(ChineseWordMatch.probeCandidates(words))
+            val listed = runCatchingNonCancellable { listedWords(ChineseWordMatch.probeCandidates(words)) }
             val units = mutableListOf<Pair<String, Int>>()
             var cursor = 0
             for (word in words) {

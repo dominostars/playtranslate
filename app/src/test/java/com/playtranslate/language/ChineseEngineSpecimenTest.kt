@@ -80,6 +80,16 @@ class ChineseEngineSpecimenTest {
             val members = engine.memberWordsOf("常用", expressionClass = false, headwordReading = "cháng yòng")
             assertEquals(listOf("常" to "cháng", "用" to "yòng"), members.map { it.surface to it.reading })
             assertEquals(listOf("放", "在"), engine.memberWordsOf("放在", false, null).map { it.surface })
+
+            // The pack closed under the engine (an eviction while a capture is
+            // still being read): the line still annotates, with HanLP's terms
+            // left whole, and a lookup answers nothing; nothing throws.
+            val field = ChineseDictionaryManager::class.java.getDeclaredField("db").apply { isAccessible = true }
+            (field.get(ChineseDictionaryManager.get(ctx)) as android.database.sqlite.SQLiteDatabase).close()
+            val afterClose = engine.tokenize(SPECIMEN).map { it.surface }
+            assertTrue("expected HanLP's 放在 whole in $afterClose", "放在" in afterClose)
+            assertEquals(null, engine.lookup("里", null))
+            assertEquals(listOf("放", "在"), engine.memberWordsOf("放在", false, null).map { it.surface })
         }
     }
 

@@ -88,6 +88,24 @@ class ChineseDictionaryManagerTest {
         assertEquals(emptySet<String>(), dict.existingHeadwords(emptyList()))
         assertNotNull(dict.lookup("放"))
         assertNull(dict.lookup("放在"))
+
+        // The pack closed under the manager (an eviction while a capture is
+        // still being read): every query answers "nothing" and none throws.
+        closeHandleUnder(dict)
+        assertNull(dict.lookup("里"))
+        assertNull(dict.lookupGroup("里", preferTraditional = false, reading = "Lǐ"))
+        assertEquals(emptyList<EntryGroup>(), dict.alternativeGroups("里", preferTraditional = false))
+        assertEquals(emptyList<String>(), dict.candidateReadings("里"))
+        assertNull(dict.existingHeadwords(listOf("放")))
+        assertEquals(emptyList<String>(), dict.searchPrefix("里"))
+    }
+
+    /** Close the SQLite handle the manager holds, as a pack eviction does,
+     *  without telling the manager, so its next query meets a closed handle. */
+    private fun closeHandleUnder(dict: ChineseDictionaryManager) {
+        val field = ChineseDictionaryManager::class.java.getDeclaredField("db")
+        field.isAccessible = true
+        (field.get(dict) as SQLiteDatabase).close()
     }
 
     private fun writeFixture(ctx: Context) {
