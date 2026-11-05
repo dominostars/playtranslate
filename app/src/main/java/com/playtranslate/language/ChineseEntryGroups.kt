@@ -67,15 +67,27 @@ internal data class EntryGroup(
  *      裏, and a character that is both a simplified character and another
  *      character's traditional form, 乾, leads with its own word);
  *  (d) a group with a defining line before one that only cross-references;
- *  (e) frequency; (f) the pack's line order.
+ *  (e) frequency, which separates the words of two simplified forms that
+ *      share a traditional one and never two readings of one written word,
+ *      since the pack scores the written word;
+ *  (f) the reading [ChineseReadingDefaults] names for the word, which is
+ *      what tells 要 yào "to want" from yāo "to demand";
+ *  (g) the pack's line order, CC-CEDICT's alphabetical pinyin.
  * The same order gives [candidateReadings] for the heteronym pass, so the
  * first candidate is the reading an unhinted lookup leads with. Pure, so the
  * rule is tested without a database.
  */
 internal object ChineseEntryGroups {
 
-    /** The groups of [lines] for [surface], in the order above with no hint. */
-    fun groups(lines: List<CedictLine>, surface: String, preferTraditional: Boolean): List<EntryGroup> {
+    /** The groups of [lines] for [surface], in the order above with no hint.
+     *  [leadReading] gives the reading a simplified headword leads with, as
+     *  the pack stores it, or null ([ChineseReadingDefaults.leadReading]). */
+    fun groups(
+        lines: List<CedictLine>,
+        surface: String,
+        preferTraditional: Boolean,
+        leadReading: (String) -> String? = { null },
+    ): List<EntryGroup> {
         val byKey = LinkedHashMap<Pair<String, String>, MutableList<CedictLine>>()
         for (line in lines) {
             val displayed = if (preferTraditional) line.traditional ?: line.simplified else line.simplified
@@ -103,6 +115,7 @@ internal object ChineseEntryGroups {
                 .thenBy { if (it.displayedForm == surface) 0 else 1 }
                 .thenBy { group -> if (group.lines.all(::isCrossReferenceOnly)) 1 else 0 }
                 .thenByDescending { group -> group.lines.maxOf { it.freqScore } }
+                .thenBy { group -> if (group.lines.any { leadReading(it.simplified) == it.reading }) 0 else 1 }
                 .thenBy { group -> group.lines.minOf { it.id } },
         )
     }
@@ -121,6 +134,12 @@ internal object ChineseEntryGroups {
      *  reading), distinct. Its first element is the unhinted lookup's. */
     fun candidateReadings(groups: List<EntryGroup>): List<String> =
         groups.filterNot { it.isProperNoun }.map { it.reading }.distinct()
+
+    /** Whether the group [groups] leads with is the one [leadReading] names
+     *  for its word, so the default rests on the table and not on the pack's
+     *  line order alone. */
+    fun leadIsNamed(groups: List<EntryGroup>, leadReading: (String) -> String?): Boolean =
+        groups.firstOrNull()?.lines?.any { leadReading(it.simplified) == it.reading } == true
 
     /**
      * The readings among [groups] that name a different word than the group

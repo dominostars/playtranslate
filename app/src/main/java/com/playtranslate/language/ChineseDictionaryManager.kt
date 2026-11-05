@@ -22,6 +22,15 @@ import java.io.File
  *  senses from the last two ([importNarrowing]). */
 internal class GroupHit(val response: DictionaryResponse, val hinted: Boolean, val otherReadings: Set<String>)
 
+/** What the heteronym pass needs of one surface: its [readings] in lead
+ *  order ([ChineseEntryGroups.candidateReadings]) and whether the first is
+ *  the reading the table names for the word ([ChineseEntryGroups.leadIsNamed]). */
+internal class HeteronymCandidates(val readings: List<String>, val leadNamed: Boolean) {
+    companion object {
+        val NONE = HeteronymCandidates(emptyList(), leadNamed = false)
+    }
+}
+
 /**
  * Read-only SQLite dictionary for Chinese, backed by a CC-CEDICT-derived
  * pack. Both Simplified and Traditional headwords are stored in the
@@ -32,7 +41,9 @@ internal class GroupHit(val response: DictionaryResponse, val hinted: Boolean, v
  * No stemming or de-inflection — Chinese doesn't inflect. A lookup reads
  * every CC-CEDICT line of the surface and hands out ONE entry, the group
  * [ChineseEntryGroups] leads with; the other groups are the surface's
- * alternatives ([alternativeGroups]). Silent pass-through on miss.
+ * alternatives ([alternativeGroups]). Which reading leads where the pack
+ * cannot say comes from the app's own table ([ChineseReadingDefaults]).
+ * Silent pass-through on miss.
  *
  * Every query runs under [withRefcount], as the Japanese manager's do: a
  * pack evicted while a capture is still being read (an uninstall, the
@@ -46,6 +57,9 @@ class ChineseDictionaryManager private constructor(private val context: Context)
 
     @Volatile private var customDictInjected = false
     private val customDictMutex = Mutex()
+
+    /** Which reading leads where the pack cannot say; read once from assets. */
+    private val readingDefaults: ChineseReadingDefaults by lazy { ChineseReadingDefaults.load(context) }
 
     suspend fun preload() = ensureOpen()
 
@@ -152,14 +166,22 @@ class ChineseDictionaryManager private constructor(private val context: Context)
         withContext(Dispatchers.IO) { groupsOf(surface, preferTraditional) }
 
     /**
-     * Tone-marked readings for [surface] for the heteronym pass, in lead
-     * order with proper nouns left out, so the first is the reading an
+     * What the heteronym pass needs of [surface]: its tone-marked readings in
+     * lead order with proper nouns left out, so the first is the reading an
      * unhinted [lookup] leads with in the same script (the pass emits a
      * correction only when the context reading differs from it) and a
-     * surname never counts as a heteronym of the common word.
+     * surname never counts as a heteronym of the common word; and whether
+     * that first reading is the one the table names, which decides what the
+     * pass counts as context.
      */
-    suspend fun candidateReadings(surface: String, preferTraditional: Boolean = false): List<String> =
-        withContext(Dispatchers.IO) { ChineseEntryGroups.candidateReadings(groupsOf(surface, preferTraditional)) }
+    internal suspend fun heteronymCandidates(surface: String, preferTraditional: Boolean): HeteronymCandidates =
+        withContext(Dispatchers.IO) {
+            val groups = groupsOf(surface, preferTraditional)
+            HeteronymCandidates(
+                ChineseEntryGroups.candidateReadings(groups),
+                ChineseEntryGroups.leadIsNamed(groups, readingDefaults::leadReading),
+            )
+        }
 
     /**
      * Which of [candidates] the pack lists as a headword, either script. The
@@ -274,7 +296,7 @@ class ChineseDictionaryManager private constructor(private val context: Context)
     private suspend fun groupsOf(surface: String, preferTraditional: Boolean): List<EntryGroup> {
         val database = ensureOpen() ?: return emptyList()
         val lines = database.withRefcount { queryLines(database, surface) } ?: return emptyList()
-        return ChineseEntryGroups.groups(lines, surface, preferTraditional)
+        return ChineseEntryGroups.groups(lines, surface, preferTraditional, readingDefaults::leadReading)
     }
 
     /**

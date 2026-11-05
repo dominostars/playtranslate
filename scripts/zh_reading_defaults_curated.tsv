@@ -1,0 +1,181 @@
+# Hand decisions for the Chinese lead-reading table (scripts/build_zh_reading_defaults.py reads this file).
+# One row per word: surface, the reading that leads (numbered pinyin exactly as the ZH pack stores it), basis, gloss.
+# basis = judgment: the reading the word most often has when it stands alone in running text, decided by review.
+# basis = segmenter: neither reading clearly leads, so the reading HanLP gives the word on its own was kept.
+# gloss = the first CC-CEDICT gloss of that reading, for review only; the build ignores it.
+# basis = none (reading "-"): the word gets no row, so it keeps the pack's line order and, in a sentence, the
+# reading HanLP gives it, as before the table. For a word no reading of which should be backed.
+丼	dong4	judgment	(Tw) bowl of steamed rice with other food on top (loanword from Japanese "donburi")
+仔	zai3	judgment	variant of 崽[zai3]
+俟	si4	judgment	(literary) to wait for
+倔	jue4	judgment	gruff; surly
+切	qie1	judgment	to cut; to slice; to carve
+划	hua2	judgment	to row
+削	xiao1	judgment	to peel with a knife
+咳	ke2	judgment	cough
+哦	o4	judgment	oh (interjection indicating that one has just learned sth)
+唠	lao4	judgment	to gossip
+啊	a5	judgment	modal particle ending sentence, showing affirmation, approval, or consent
+啦	la5	judgment	sentence-final particle, contraction of 了啊, indicating exclamation
+喽	lou5	judgment	(final particle equivalent to 了[le5])
+嘀	di1	judgment	(onom.) sound of dripping water, a ticking clock etc
+囤	tun2	judgment	to store; to hoard
+尽	jin4	judgment	to use up
+帖	tie3	judgment	invitation card
+弹	tan2	judgment	to pluck (a string)
+得	de5	judgment	structural particle: used after a verb (or adjective as main verb), linking it to following phrase indicating effect, degree, possibility etc
+怼	dui3	judgment	(Internet slang) to attack verbally; to publicly criticize; to call out
+拓	tuo4	judgment	to expand
+挣	zheng4	judgment	to struggle to get free
+教	jiao1	judgment	to teach; to instruct
+数	shu3	judgment	to count
+晃	huang4	judgment	to sway
+曲	qu3	judgment	tune
+欸	ei2	judgment	eh; huh (used to express surprise)
+泊	bo2	judgment	to moor (a boat)
+耶	ye5	judgment	final particle indicating enthusiasm etc
+艮	gen4	judgment	one of the Eight Trigrams 八卦[ba1 gua4], symbolizing mountain
+茄	qie2	judgment	eggplant
+莳	shi4	judgment	(literary) to grow
+藉	jie4	judgment	(literary) cushion; mat
+诶	-	none	its ei readings only cite 欸 and cannot lead, and xi1 "sigh" is not the modern word
+调	tiao2	judgment	to harmonize
+铺	pu1	judgment	to spread
+长	chang2	judgment	long
+鹄	hu2	judgment	swan
+上头	shang4 tou5	segmenter	the top; the upper part; (its) surface
+上色	shang4 shai3	judgment	to color (a picture etc)
+下咽	xia4 yan4	judgment	to swallow (food or drink)
+下场	xia4 chang5	judgment	the end
+下调	xia4 tiao2	judgment	to adjust downwards
+不了	bu4 liao3	judgment	(as a resultative verb suffix) unable to (do sth)
+不差	bu4 cha4	judgment	not bad
+东西	dong1 xi5	judgment	thing
+中伏	zhong4 fu2	judgment	to be ambushed
+中招	zhong4 zhao1	judgment	(martial arts) to get hit; to get taken down
+串行	chuan4 xing2	segmenter	series
+买卖	mai3 mai5	judgment	purchase and sale; transaction
+人家	ren2 jia5	judgment	other people
+何为	he2 wei2	judgment	what is
+供养	gong1 yang3	judgment	to supply
+便宜	pian2 yi5	judgment	cheap; inexpensive
+倒数	dao4 shu3	judgment	to count backwards (from 10 down to 0)
+倒车	dao4 che1	judgment	to reverse (a vehicle)
+倒转	dao4 zhuan4	segmenter	(of time, or a video clip etc) to run in reverse
+公差	gong1 chai1	segmenter	official errand
+冲压	chong4 ya1	segmenter	to stamp; to press (sheet metal)
+准头	zhun3 tou5	judgment	(coll.) accuracy
+出圈	chu1 quan1	judgment	to gain popularity beyond the original niche community or fan base; to go mainstream
+出息	chu1 xi5	judgment	future prospects
+分子	fen1 zi3	judgment	(chemistry) molecule
+分量	fen4 liang5	judgment	quantity; weight; measure
+切口	qie1 kou3	judgment	incision
+前传	qian2 zhuan4	judgment	prequel
+区处	qu1 chu4	segmenter	(literary) dwelling
+单子	dan1 zi5	judgment	list of items
+卷子	juan4 zi5	judgment	test paper; examination paper
+历数	li4 shu3	judgment	to enumerate
+压板	ya4 ban3	segmenter	see-saw
+反角	fan3 jue2	judgment	bad guy (in a story)
+发卡	fa4 qia3	segmenter	hair grip
+发蒙	fa1 meng1	judgment	to be confused
+受累	shou4 lei4	judgment	to be put to a lot of trouble
+口角	kou3 jue2	segmenter	altercation; wrangle; angry argument
+口音	kou3 yin5	judgment	voice
+告诉	gao4 su5	judgment	to tell; to inform; to let know
+地方	di4 fang5	judgment	place; location; area; space; territory
+垫圈	dian4 quan1	judgment	washer (on bolt)
+复明	fu4 ming2	judgment	to regain one's eyesight
+外传	wai4 zhuan4	judgment	unofficial biography (as opposed to official dynastic biography)
+多少	duo1 shao5	judgment	how much?; how many?
+大夫	dai4 fu5	judgment	doctor; physician
+大意	da4 yi5	judgment	careless
+大方	da4 fang5	judgment	generous
+大爷	da4 ye5	judgment	(coll.) father's older brother
+大都	da4 du1	segmenter	for the most part
+失调	shi1 tiao2	judgment	imbalance
+好事	hao3 shi4	judgment	good action, deed, thing or work (also sarcastic, "a fine thing indeed")
+好吃	hao3 chi1	judgment	tasty; delicious
+好处	hao3 chu5	judgment	benefit; advantage; merit
+好学	hao4 xue2	segmenter	eager to study
+妻子	qi1 zi5	judgment	wife
+字号	zi4 hao5	judgment	character size
+字帖	zi4 tie4	judgment	copybook (for calligraphy)
+定当	ding4 dang1	judgment	necessarily
+小子	xiao3 zi5	judgment	(coll.) boy
+工夫	gong1 fu5	judgment	period of time (may be months, or mere seconds)
+差事	chai1 shi5	judgment	errand
+弹片	dan4 pian4	judgment	shrapnel; shell fragment
+当夜	dang4 ye4	segmenter	that very night
+当天	dang4 tian1	segmenter	the same day
+当晚	dang4 wan3	segmenter	the same evening
+当月	dang4 yue4	segmenter	the same month
+得罪	de2 zui5	judgment	to offend sb
+德性	de2 xing5	judgment	(coll.) revolting behavior
+总长	zong3 chang2	judgment	total length
+悉数	xi1 shu4	judgment	all
+憎恶	zeng1 wu4	judgment	to loathe; to detest; to abhor
+所长	suo3 zhang3	judgment	director; head of an institute, office or station
+手卷	shou3 juan4	segmenter	hand scroll
+把手	ba3 shou5	judgment	handle
+挑嘴	tiao1 zui3	judgment	picky about food
+排满	pai2 man3	judgment	to be filled with (things arranged in rows)
+提子	ti2 zi5	judgment	grape
+支吾	zhi1 wu5	judgment	to respond evasively or vaguely
+故事	gu4 shi5	judgment	narrative; story; tale
+教会	jiao4 hui4	segmenter	Christian church
+教学	jiao4 xue2	judgment	teaching; instruction
+散落	san4 luo4	judgment	to disperse
+散钱	san4 qian2	segmenter	to scatter money
+断行	duan4 hang2	judgment	line break (computing)
+朝阳	zhao1 yang2	judgment	the morning sun
+本事	ben3 shi5	judgment	ability
+杆子	gan3 zi5	segmenter	pole
+测度	ce4 duo2	segmenter	to estimate
+滑溜	hua2 liu5	judgment	smooth
+炸锅	zha4 guo1	segmenter	(of food) to burst out of the pot
+煞气	sha4 qi4	judgment	baleful look
+照应	zhao4 ying5	judgment	to look after
+片头	pian4 tou2	judgment	(cinema, TV) title sequence; opening credits; intro
+猴儿	hou2 r5	judgment	monkey
+琢磨	zuo2 mo5	judgment	to ponder
+生意	sheng1 yi5	judgment	business
+电线杆	dian4 xian4 gan1	judgment	electric pole
+疏散	shu1 san4	judgment	to scatter; to disperse; to evacuate
+盘缠	pan2 chan5	judgment	money for a voyage; travel expenses
+盛装	sheng4 zhuang1	judgment	splendid clothes
+眉目	mei2 mu5	judgment	progress
+看好	kan4 hao3	judgment	to regard as having good prospects
+矫情	jiao3 qing2	judgment	affected
+禁用	jin4 yong4	judgment	to prohibit the use of sth
+空地	kong4 di4	judgment	vacant land
+端详	duan1 xiang5	judgment	to look over carefully
+粘连	zhan1 lian2	judgment	adhesion
+累累	lei3 lei3	segmenter	again and again
+结实	jie1 shi5	judgment	rugged
+结果	jie2 guo3	judgment	outcome; result; consequence
+英石	ying1 shi2	segmenter	ornamental limestone rock (供石[gong1 shi2]) from Yingde 英德[Ying1 de2], Guangdong
+落空	luo4 kong1	judgment	to fail; to fall through; to come to nothing
+虾子	xia1 zi5	segmenter	shrimp
+行头	xing2 tou5	judgment	a person's clothing
+裁缝	cai2 feng5	judgment	tailor
+说法	shuo1 fa5	judgment	way of speaking
+调升	tiao2 sheng1	segmenter	to adjust upward
+调拨	diao4 bo1	judgment	to send (products)
+负累	fu4 lei4	segmenter	burden
+起来	qi5 lai5	judgment	(after a verb) indicating the beginning and continuation of an action or a state
+车行	che1 hang2	judgment	car-related business
+转动	zhuan4 dong4	segmenter	to rotate (about an axis)
+转台	zhuan4 tai2	segmenter	rotating stage
+较差	jiao4 cha4	judgment	mediocre
+逐行	zhu2 hang2	judgment	line by line (translation, scanning etc)
+重名	chong2 ming2	judgment	to have the same name
+重点	zhong4 dian3	judgment	important point; main point; focus
+铁杆	tie3 gan3	judgment	iron rod
+铺盖	pu1 gai5	judgment	bedding; bedclothes
+铺面	pu4 mian4	judgment	front window
+长毛	chang2 mao2	judgment	long-wool (sheep etc)
+长牙	zhang3 ya2	judgment	to grow teeth; to teethe
+门道	men2 dao5	judgment	the way to do sth
+露点	lu4 dian3	segmenter	(meteorology) dew point
+频数	pin2 shu4	judgment	frequency

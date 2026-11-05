@@ -239,6 +239,7 @@ Work we reimplemented rather than linked. No source was copied verbatim.
 - [CC-CEDICT](https://cc-cedict.org/wiki/): Chinese-English dictionary (CC BY-SA 4.0)
 - [CFDICT](https://chinese.gratis/cfdict.php): Chinese-French dictionary, used for French-target glosses (CC BY-SA 3.0)
 - [HanDeDict](https://handedict.zydeo.net/): Chinese-German dictionary, used for German-target glosses (CC BY-SA 2.0 DE)
+- [Unihan](https://www.unicode.org/reports/tr38/) (Unicode Han Database): Chinese character readings, used to choose which reading leads when a character has several (© Unicode, Inc.; Unicode License v3)
 - [Wiktionary](https://en.wiktionary.org/) via [kaikki.org](https://kaikki.org/): multilingual dictionary entries (CC BY-SA)
 - [Tatoeba](https://tatoeba.org/): example sentences (CC BY 2.0)
 - [PanLex](https://panlex.org/): multilingual translation pairs (CC0)

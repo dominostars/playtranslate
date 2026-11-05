@@ -4,14 +4,19 @@ import java.text.Normalizer
 
 /**
  * One ambiguous (≥2 CC-CEDICT readings) Chinese token occurrence in a
- * sentence: its [surface], its candidate readings in frequency order
- * ([candidates] `.first()` is the frequency default), and the per-hanzi HanLP
- * context pinyin ([context], null when it can't be resolved for this position).
+ * sentence: its [surface], its candidate readings in lead order
+ * ([candidates] `.first()` is the default, the reading an unhinted lookup
+ * leads with), the per-hanzi HanLP pinyin at this position ([context], null
+ * when it can't be resolved), and the per-hanzi pinyin HanLP gives the word
+ * with nothing around it ([standalone]; null when not known, and when the
+ * default is only the pack's line order, where that standing reading is the
+ * better opinion and counts as context).
  */
 internal data class HeteronymOccurrence(
     val surface: String,
     val candidates: List<String>,
     val context: List<String>?,
+    val standalone: List<String>? = null,
 )
 
 /**
@@ -21,11 +26,11 @@ internal data class HeteronymOccurrence(
  *
  * CC-CEDICT lists one reading per entry, so a surface with several entries
  * (东西 dōngxī "east-west" / dōngxi "thing"; 地 dì / de) exposes multiple
- * candidate readings ordered by frequency. The display historically took the
- * highest-frequency one regardless of context. This object instead scores
- * each candidate against HanLP's contextual pinyin for the same span and
- * picks the best match, falling back to frequency-first when nothing aligns —
- * so it is never worse than the prior behavior.
+ * candidate readings, the default first ([ChineseEntryGroups]). The display
+ * historically took the first one regardless of context. This object
+ * instead scores each candidate against HanLP's contextual pinyin for the
+ * same span and picks the best match, falling back to the default when
+ * nothing aligns, so it is never worse than the prior behavior.
  *
  * Pure Kotlin (no HanLP / Android) so the scoring is JVM-unit-testable; the
  * engine supplies the candidate list and the context syllables.
@@ -37,8 +42,8 @@ internal object PinyinDisambiguator {
 
     /**
      * @param candidates CC-CEDICT readings for the surface — tone-marked and
-     *   space-separated (e.g. "dōng xī"), in frequency order (first = most
-     *   frequent, i.e. the prior default).
+     *   space-separated (e.g. "dōng xī"), in lead order (first = the default,
+     *   the reading an unhinted lookup leads with).
      * @param context HanLP's per-hanzi tone-marked pinyin for this span, one
      *   syllable per hanzi (e.g. ["dōng", "xi"]).
      * @return the chosen reading, returned verbatim from [candidates].
@@ -55,7 +60,7 @@ internal object PinyinDisambiguator {
             val syllables = cand.trim().split(WHITESPACE)
             // Only candidates that align 1:1 with the hanzi can be scored
             // per-position; others (érhuà, irregular entries) can't be
-            // compared, so they stay eligible only as the freq-first fallback.
+            // compared, so they stay eligible only as the default fallback.
             if (syllables.size != context.size) continue
             var score = 0
             for (k in syllables.indices) {
@@ -65,7 +70,7 @@ internal object PinyinDisambiguator {
                 if (normToned(syllables[k]) == ctxToned[k]) score += 1000
                 if (normBare(syllables[k]) == ctxBare[k]) score += 1
             }
-            // Strict `>` keeps the earlier (higher-frequency) candidate on ties.
+            // Strict `>` keeps the earlier candidate, the default first, on ties.
             if (score > bestScore) {
                 bestScore = score
                 best = cand
@@ -77,15 +82,24 @@ internal object PinyinDisambiguator {
     /**
      * Builds the `{surface → corrected reading}` override map from every
      * ambiguous occurrence in a sentence, with a conflict/duplicate guard so a
-     * correction can NEVER make a repeated heteronym worse than the frequency
-     * default.
+     * correction can NEVER make a repeated heteronym worse than the default.
      *
      * A surface is overridden ONLY when every one of its occurrences resolves
      * to the SAME contextual reading and that reading differs from the
-     * frequency default ([HeteronymOccurrence.candidates] `.first()`). If two
+     * default ([HeteronymOccurrence.candidates] `.first()`). If two
      * occurrences disagree (还 huán … 还 hái) or any occurrence can't be
      * resolved, the surface is suppressed entirely — all its occurrences fall
-     * back to the frequency default, i.e. exactly pre-feature behavior.
+     * back to the default.
+     *
+     * An occurrence whose [HeteronymOccurrence.context] equals its
+     * [HeteronymOccurrence.standalone] reading resolves to the default.
+     * HanLP reads a sentence by longest match over its own pinyin table, so
+     * a word no longer phrase covers gets the reading HanLP gives it
+     * anywhere: 东西 is dōng xī and 结果 jiē guǒ in every sentence. That
+     * standing reading is a second opinion on the default, a poorer one
+     * than the default's own source ([ChineseReadingDefaults]), and says
+     * nothing about this sentence; only a reading the surrounding text
+     * changed is context.
      *
      * Per-surface, not per-occurrence: this is the single-path tradeoff — we
      * forgo correcting a genuinely split-reading surface rather than risk
@@ -93,11 +107,11 @@ internal object PinyinDisambiguator {
      */
     fun resolveOverrides(occurrences: List<HeteronymOccurrence>): Map<String, String> {
         val agreed = HashMap<String, String>()
-        val freqDefault = HashMap<String, String>()
+        val defaults = HashMap<String, String>()
         val disqualified = HashSet<String>()
         for (occ in occurrences) {
             if (occ.candidates.size < 2) continue
-            freqDefault.putIfAbsent(occ.surface, occ.candidates.first())
+            defaults.putIfAbsent(occ.surface, occ.candidates.first())
             if (occ.surface in disqualified) continue
             val context = occ.context
             if (context == null) {                 // can't confirm agreement → suppress
@@ -105,7 +119,7 @@ internal object PinyinDisambiguator {
                 agreed -= occ.surface
                 continue
             }
-            val chosen = choose(occ.candidates, context)
+            val chosen = if (context == occ.standalone) occ.candidates.first() else choose(occ.candidates, context)
             val prev = agreed[occ.surface]
             if (prev == null) {
                 agreed[occ.surface] = chosen
@@ -117,8 +131,8 @@ internal object PinyinDisambiguator {
         val out = LinkedHashMap<String, String>()
         for ((surface, reading) in agreed) {
             // Emit only genuine corrections; if context agreed with the
-            // frequency default the existing reading already matches.
-            if (reading != freqDefault[surface]) out[surface] = reading
+            // default the existing reading already matches.
+            if (reading != defaults[surface]) out[surface] = reading
         }
         return out
     }

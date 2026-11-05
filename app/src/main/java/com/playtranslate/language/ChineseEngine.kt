@@ -226,8 +226,8 @@ class ChineseEngine(
     /**
      * CC-CEDICT contains most common hanzi as single-character entries with
      * pinyin + definitions, so we reuse the word-level dict path rather than
-     * maintaining a separate per-character table. The highest-frequency entry
-     * wins when a character has multiple senses under different readings.
+     * maintaining a separate per-character table. A character with several
+     * readings shows the one its lookup leads with ([ChineseEntryGroups]).
      */
     override suspend fun lookupCharacter(literal: Char, targetLang: String): CharacterDetail? {
         val entry = dict.lookup(literal.toString(), profile.preferTraditional)?.entries?.firstOrNull()
@@ -268,7 +268,7 @@ class ChineseEngine(
      * span carrying per-CHARACTER pinyin parts — the in-app display
      * granularity — plus the context-resolved word reading on
      * [AnnotatedSpan.reading] for heteronym-corrected surfaces (null
-     * otherwise; hydration's lookup then uses the frequency default,
+     * otherwise; hydration's lookup then leads with the default reading,
      * exactly like the TokenSpan.reading contract). A term whose normalized
      * surface isn't in the source text degrades to an OFFSETLESS span: it
      * still feeds the words projection, and the display renderer simply has
@@ -395,25 +395,32 @@ class ChineseEngine(
     /**
      * Per-surface, context-resolved pinyin OVERRIDES for the heteronyms in
      * [text] — a `{surface → reading}` map containing ONLY surfaces whose
-     * contextual reading differs from CC-CEDICT's frequency default. The
-     * caller applies it over the existing surface-keyed word readings before
-     * building the card, so the existing (robust, surface-keyed) annotation
-     * path renders the contextually-correct pinyin with no second code path.
+     * contextual reading differs from the default, the reading an unhinted
+     * lookup leads with ([ChineseEntryGroups]). The caller applies it over
+     * the existing surface-keyed word readings before building the card, so
+     * the existing (robust, surface-keyed) annotation path renders the
+     * contextually-correct pinyin with no second code path.
      *
-     * Heteronym fix: CC-CEDICT lists readings per entry and the display
-     * defaults to the most frequent, so homographs (东西 dōngxī/dōngxi, 大夫
-     * dàfū/dàifu) and standalone heteronyms (地 dì/de, 还 hái/huán) could show
-     * the wrong pinyin. Here we reuse the caller's HanLP segmentation, take
-     * HanLP's phrase-aware per-hanzi pinyin for the whole sentence (the
+     * Heteronym fix: CC-CEDICT lists readings per entry and a lookup leads
+     * with one of them, so homographs (东西 dōngxī/dōngxi, 大夫 dàfū/dàifu)
+     * and standalone heteronyms (地 dì/de, 还 hái/huán) could show the wrong
+     * pinyin. Here we reuse the caller's HanLP segmentation, take HanLP's
+     * phrase-aware per-hanzi pinyin for the whole sentence (the
      * convertToPinyinList signal the live overlay already uses), and for each
      * AMBIGUOUS surface pick the CC-CEDICT candidate whose syllables best match
      * that context.
      *
-     * Per-surface, first-occurrence-wins: a surface that genuinely takes two
-     * different readings in one sentence resolves to the first occurrence's —
-     * a rare, bounded limitation that is the price of keeping this to a single
-     * annotation path. Anything not in the map keeps its frequency-default
-     * reading, so coverage and robustness stay exactly the existing path's.
+     * For a word whose default the table names ([ChineseReadingDefaults]),
+     * context means a reading the surrounding text changed. HanLP's reading
+     * of a word that no longer phrase covers is the one it gives the word on
+     * its own, right or wrong (东西 dōng xī, 累 léi); the occurrence carries
+     * that standalone reading too, and one whose reading here equals it keeps
+     * the default ([PinyinDisambiguator.resolveOverrides]).
+     *
+     * Per-surface: a surface whose occurrences disagree in one text gets no
+     * override, the price of keeping this to a single annotation path.
+     * Anything not in the map keeps its default reading, so coverage and
+     * robustness stay exactly the existing path's.
      */
     private suspend fun contextualReadings(words: List<String>, text: String): Map<String, String> {
         if (text.isBlank()) return emptyMap()
@@ -423,7 +430,8 @@ class ChineseEngine(
         // we never re-segment (annotate already paid for HanLP.segment).
         val charPinyin: List<Pinyin>? by lazy { runCatchingNonCancellable { HanLP.convertToPinyinList(text) } }
         val occurrences = mutableListOf<HeteronymOccurrence>()
-        val candidatesBySurface = HashMap<String, List<String>>()
+        val candidatesBySurface = HashMap<String, HeteronymCandidates>()
+        val standaloneBySurface = HashMap<String, List<String>?>()
         var cursor = 0
         for (word in words) {
             if (word.isEmpty()) continue
@@ -443,20 +451,32 @@ class ChineseEngine(
             // hiccup degrades to no correction for this surface rather than
             // aborting the send.
             val candidates = candidatesBySurface.getOrPut(word) {
-                runCatchingNonCancellable { dict.candidateReadings(word, profile.preferTraditional) } ?: emptyList()
+                runCatchingNonCancellable { dict.heteronymCandidates(word, profile.preferTraditional) }
+                    ?: HeteronymCandidates.NONE
             }
-            if (candidates.size < 2) continue    // unambiguous → frequency default is correct
+            if (candidates.readings.size < 2) continue    // unambiguous → the one reading is correct
             // Record EVERY ambiguous occurrence with its positional context;
             // resolveOverrides decides per surface and suppresses any surface
             // whose occurrences disagree, so a repeat is never made worse.
-            occurrences += HeteronymOccurrence(word, candidates, contextSyllables(word, begin, charPinyin))
+            // Where the table names the default, the occurrence also carries
+            // the reading HanLP gives the word with nothing around it, and a
+            // context equal to that is no evidence. Where the default is only
+            // the pack's line order (a word the table has no row for, a
+            // Traditional form read under the Simplified profile, 於), that
+            // standing reading is the better opinion and still counts, as it
+            // did before the table.
+            val standalone =
+                if (candidates.leadNamed) standaloneBySurface.getOrPut(word) { standaloneSyllables(word) } else null
+            occurrences += HeteronymOccurrence(
+                word, candidates.readings, contextSyllables(word, begin, charPinyin), standalone,
+            )
         }
         return PinyinDisambiguator.resolveOverrides(occurrences)
     }
 
     /**
      * HanLP's per-hanzi tone-marked pinyin for [word] at [begin] in the
-     * analyzed text. Returns null (→ caller uses frequency-first) when the
+     * analyzed text. Returns null (→ the surface keeps its default) when the
      * word isn't pure hanzi or any character lacks a pinyin, so the syllable
      * list always aligns 1:1 with the hanzi a candidate reading splits into.
      */
@@ -470,6 +490,12 @@ class ChineseEngine(
         }
         return syllables
     }
+
+    /** HanLP's per-hanzi pinyin for [word] with nothing around it, the
+     *  reading its in-sentence reading is told from; null when HanLP cannot
+     *  read it, which leaves the occurrence's context standing as evidence. */
+    private fun standaloneSyllables(word: String): List<String>? =
+        contextSyllables(word, 0, runCatchingNonCancellable { HanLP.convertToPinyinList(word) })
 
     private fun isHanziChar(c: Char): Boolean = ChineseWordMatch.isHanzi(c)
 

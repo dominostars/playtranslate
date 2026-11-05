@@ -19,7 +19,11 @@ import org.robolectric.RobolectricTestRunner
  * per reading group with the group rule's tie-break, a reading hint picks a
  * group and says so, the other groups are the alternatives, the heteronym
  * candidates follow the lookup's order, and the headword probe answers the
- * narrowing. Lines mirror the shipped pack's 包, 里, 东西, 放 and 在.
+ * narrowing. Lines mirror the shipped pack's 包, 里, 东西, 着花, 放 and 在:
+ * the two readings of 东西 score alike, as two readings of one written word
+ * always do, and "thing" leads through the app's own table
+ * ([ChineseReadingDefaults], read from the real asset), where 着花, which
+ * the table has no row for, keeps the pack's line order.
  *
  * Single test method on purpose, the constraint of
  * [WiktionaryLookupRankingTest]: the manager is a singleton bound to the
@@ -64,10 +68,19 @@ class ChineseDictionaryManagerTest {
         assertEquals(listOf("lǐ" to 4L, "Lǐ" to 5L), dict.alternativeGroups("里", preferTraditional = false).map { it.reading to it.packId })
 
         // Heteronym candidates: lead order, proper nouns left out.
-        assertEquals(listOf("lǐ"), dict.candidateReadings("里"))
-        assertEquals(listOf("bāo"), dict.candidateReadings("包"))
-        assertEquals(listOf("dōng xi", "dōng xī"), dict.candidateReadings("东西"))
+        assertEquals(listOf("lǐ"), dict.heteronymCandidates("里", preferTraditional = false).readings)
+        assertEquals(listOf("bāo"), dict.heteronymCandidates("包", preferTraditional = false).readings)
+        // The table breaks the tie the pack leaves: "thing" leads although
+        // "east and west" is listed first, and the heteronym pass is told the
+        // lead is the table's. 着花 has no row: line order, and not named.
+        assertEquals(listOf("dōng xi", "dōng xī"), dict.heteronymCandidates("东西", preferTraditional = false).readings)
         assertEquals("dōng xi", dict.lookup("东西")!!.entries.single().headwords.first().reading)
+        assertEquals("thing", dict.lookup("东西")!!.entries.single().senses.single().targetDefinitions.first())
+        assertEquals("dōng xi", dict.lookup("東西", preferTraditional = true)!!.entries.single().headwords.first().reading)
+        assertTrue(dict.heteronymCandidates("东西", preferTraditional = false).leadNamed)
+        assertEquals(listOf("zháo huā", "zhuó huā"), dict.heteronymCandidates("着花", preferTraditional = false).readings)
+        assertFalse(dict.heteronymCandidates("着花", preferTraditional = false).leadNamed)
+        assertFalse(dict.heteronymCandidates("放", preferTraditional = false).leadNamed)
         val eastWest = dict.lookupGroup("东西", preferTraditional = false, reading = "dōng xī")!!
         assertTrue(eastWest.hinted)
         assertEquals("east and west", eastWest.response.entries.single().senses.single().targetDefinitions.single())
@@ -81,7 +94,7 @@ class ChineseDictionaryManagerTest {
         val inside = dict.lookup("裡", preferTraditional = true)!!.entries.single()
         assertEquals(listOf("裡", "里"), inside.headwords.map { it.written })
         assertEquals("lining", inside.senses.single().targetDefinitions.first())
-        assertEquals(listOf("lǐ"), dict.candidateReadings("里", preferTraditional = true))
+        assertEquals(listOf("lǐ"), dict.heteronymCandidates("里", preferTraditional = true).readings)
 
         // The headword probe: either script, a word the pack lacks is absent.
         assertEquals(setOf("放", "在", "东西", "裡"), dict.existingHeadwords(listOf("放", "在", "放在", "东西", "裡", "包里")))
@@ -111,7 +124,9 @@ class ChineseDictionaryManagerTest {
         assertNull(dict.lookup("里"))
         assertNull(dict.lookupGroup("里", preferTraditional = false, reading = "Lǐ"))
         assertEquals(emptyList<EntryGroup>(), dict.alternativeGroups("里", preferTraditional = false))
-        assertEquals(emptyList<String>(), dict.candidateReadings("里"))
+        assertEquals(emptyList<String>(), dict.heteronymCandidates("里", preferTraditional = false).readings)
+        assertEquals(emptyList<String>(), dict.heteronymCandidates("东西", preferTraditional = false).readings)
+        assertFalse(dict.heteronymCandidates("东西", preferTraditional = false).leadNamed)
         assertNull(dict.existingHeadwords(listOf("放")))
         assertEquals(emptyList<String>(), dict.searchPrefix("里"))
     }
@@ -147,8 +162,10 @@ class ChineseDictionaryManagerTest {
             line(4, 71, "里", "裡", "li3", listOf("lining", "interior", "inside", "internal", "also written 裏|里[li3]"))
             line(5, 71, "里", null, "Li3", listOf("Li (surname)"))
             line(6, 71, "里", null, "li3", listOf("li, ancient measure of length, approx. 500 m", "neighborhood"))
-            line(7, 60, "东西", "東西", "dong1 xi1", listOf("east and west"))
-            line(8, 70, "东西", "東西", "dong1 xi5", listOf("thing", "stuff"))
+            line(7, 64, "东西", "東西", "dong1 xi1", listOf("east and west"))
+            line(8, 64, "东西", "東西", "dong1 xi5", listOf("thing", "stuff"))
+            line(11, 43, "着花", "著花", "zhao2 hua1", listOf("to blossom", "to come to flower"))
+            line(12, 43, "着花", "著花", "zhuo2 hua1", listOf("to blossom"))
             line(9, 58, "放", null, "fang4", listOf("to put", "to place"))
             line(10, 86, "在", null, "zai4", listOf("to exist; to be alive", "(of sb or sth) to be (located) at"))
         }
