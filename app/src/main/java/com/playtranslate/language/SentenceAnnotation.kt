@@ -37,8 +37,10 @@ enum class AnnotationDepth {
     /**
      * Tokenizer readings only — no dictionary resolution, no re-glob. Spans
      * are per token; display output is byte-equivalent to the legacy
-     * per-token furigana path. The live overlay stays on this depth until
-     * its measurement gate passes (see the refactor doc §6).
+     * per-token furigana path. No surface requests this depth now: the live
+     * overlay annotates at [FULL], as the result sheet does. It remains
+     * behind the legacy hint API ([SourceLanguageEngine.annotateForHintText])
+     * and as the baseline of the on-device latency benchmark.
      */
     TOKENS,
 

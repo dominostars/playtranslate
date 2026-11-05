@@ -361,9 +361,8 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
     }
 
     /** Legacy hint API, now a projection of [annotate] at TOKENS depth —
-     *  byte-parity with the old per-token path. The live overlay consumes
-     *  this until its measurement gate flips it to FULL (refactor doc §6);
-     *  the in-app binder calls [annotate] FULL directly. */
+     *  byte-parity with the old per-token path. No surface calls it now:
+     *  the live overlay and the in-app binder call [annotate] FULL directly. */
     override suspend fun annotateForHintText(text: String): List<HintTextAnnotation> =
         annotate(text, AnnotationDepth.TOKENS).hintAnnotations()
 

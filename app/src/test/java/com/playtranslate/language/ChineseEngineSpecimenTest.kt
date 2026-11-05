@@ -64,6 +64,15 @@ class ChineseEngineSpecimenTest {
                 assertFalse("expected $fused narrowed in $surfaces", fused in surfaces)
             }
 
+            // The tokenizer-only depth asks no dictionary: HanLP's terms stand
+            // there, and its per-character hints are the default depth's.
+            val tokensOnly = engine.annotate(SPECIMEN, AnnotationDepth.TOKENS)
+            val tokenSurfaces = tokensOnly.spans.map { it.surface }
+            for (fused in listOf("放在", "包里")) {
+                assertTrue("expected HanLP's $fused whole in $tokenSurfaces", fused in tokenSurfaces)
+            }
+            assertEquals(engine.annotate(SPECIMEN).hintAnnotations(), tokensOnly.hintAnnotations())
+
             val li = engine.lookup("里", null)!!.entries.single()
             assertEquals("lǐ", li.headwords.first().reading)
             assertEquals("lining", li.senses.first().targetDefinitions.first())

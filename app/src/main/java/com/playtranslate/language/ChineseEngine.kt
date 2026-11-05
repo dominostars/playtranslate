@@ -310,9 +310,12 @@ class ChineseEngine(
             // One probe before the walk. A term the text does not hold
             // verbatim is aligned to nothing and stays whole: its pieces
             // could land on a later occurrence and drag the cursor past the
-            // terms between.
+            // terms between. TOKENS depth is tokenizer-only: it asks no
+            // dictionary, so HanLP's terms stand as they are there.
             val words = terms.mapNotNull { term -> term.word?.takeIf { it.isNotEmpty() } }
-            val listed = runCatchingNonCancellable { listedWords(ChineseWordMatch.probeCandidates(words)) }
+            val listed =
+                if (depth == AnnotationDepth.TOKENS) null
+                else runCatchingNonCancellable { listedWords(ChineseWordMatch.probeCandidates(words)) }
             val units = mutableListOf<Pair<String, Int>>()
             var cursor = 0
             for (word in words) {
@@ -388,7 +391,8 @@ class ChineseEngine(
 
     /** Legacy hint API, now a projection of [annotate] — per-character
      *  pinyin annotations, byte-parity with the old convertToPinyinList
-     *  walk. TOKENS depth skips the heteronym pass the display never used. */
+     *  walk. TOKENS depth skips the dictionary narrowing and the heteronym
+     *  pass, neither of which the display uses: its hints are per character. */
     override suspend fun annotateForHintText(text: String): List<HintTextAnnotation> =
         annotate(text, AnnotationDepth.TOKENS).hintAnnotations()
 
