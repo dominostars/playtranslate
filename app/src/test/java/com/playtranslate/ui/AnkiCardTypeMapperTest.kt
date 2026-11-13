@@ -7,6 +7,11 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/** Part-of-speech tokens joined as they are: a stand-in for the app's
+ *  labels, which need a Context. */
+private val RAW_POS: (List<String>) -> String = { it.joinToString(" · ") }
+
+
 /**
  * Unit tests for [AnkiCardTypeMapper.defaultsForModel] and
  * [AnkiCardTypeMapper.assembleNote]. Pure Kotlin — no Robolectric.
@@ -865,7 +870,7 @@ class AnkiCardTypeMapperTest {
             WordCardDefinition.fromSenses("猫", listOf(imported), fallback = "cat (Jitendex)")
                 .glossary(
                     YomitanStyledData(glossaries, css), mapOf("d1" to "Jitendex.org [2025]"),
-                    CardGlossary.RAW_POS,
+                    RAW_POS,
                 ) { null }
                 .panelHtml(inlineStyler, "Definitions"),
             outputs.definition,
@@ -878,13 +883,29 @@ class AnkiCardTypeMapperTest {
         assertFalse("structured sense replaces its flat text", outputs.definition.contains("cat (flat)"))
     }
 
+    @Test fun `forSentence labels the Definition panel's part of speech with the caller's labels`() {
+        // The word card's field and this one are the same panel, so both
+        // take the app's labels: a description the pack stored whole must
+        // not reach the card as stored.
+        val stored = "noun or participle which takes the aux. verb suru"
+        val packSense = SenseDisplay(pos = listOf("Noun", stored), definition = "study", misc = emptyList())
+
+        val outputs = AnkiCardOutputBuilder.forSentence(
+            sentenceWith(packSense), imageFilename = null,
+            localizePos = { tokens -> tokens.joinToString(" + ") { "L${it.length}" } },
+        )
+
+        assertTrue(outputs.definition, outputs.definition.contains("L4 + L${stored.length}"))
+        assertFalse(outputs.definition, outputs.definition.contains(stored))
+    }
+
     @Test fun `forSentence without transported senses wraps the flat meaning in the panel chrome`() {
         val outputs = AnkiCardOutputBuilder.forSentence(
             sentenceWith(meaning = "1. cat\n2. kitten"), imageFilename = null,
         )
         assertEquals(
             WordCardDefinition(fallback = "1. cat\n2. kitten")
-                .glossary(null, emptyMap(), CardGlossary.RAW_POS) { null }
+                .glossary(null, emptyMap(), RAW_POS) { null }
                 .panelHtml(inlineStyler, "Definitions"),
             outputs.definition,
         )

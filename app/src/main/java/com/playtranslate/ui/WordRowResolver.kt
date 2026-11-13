@@ -259,8 +259,7 @@ suspend fun resolveWordRows(
             // definitions, built once via the shared tier logic the
             // lens popup also uses.
             val senses = buildSenseDisplays(defResult, response.entries, targetLang)
-            val ankiPos = entry.senses.firstOrNull()?.partsOfSpeech
-                ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
+            val ankiPos = appCtx.firstSensePosLabel(entry)
             val surface = token.surface
             return RowOutcome.Found(ResolvedRow(
                 rowState = RowState(

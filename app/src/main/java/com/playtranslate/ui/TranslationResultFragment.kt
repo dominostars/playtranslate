@@ -475,13 +475,10 @@ class TranslationResultFragment : Fragment() {
             ?.takeIf { it > 0 }
             ?: result?.createdAtMs?.takeIf { it > 0 }
 
-    /** First sense's POS (blank-filtered, " · "-joined) + the flattened card
-     *  definition — the shared (POS, definition) extraction the word-Anki paths use. */
-    private fun com.playtranslate.model.DictionaryEntry.ankiPosAndDefinition(): Pair<String, String> {
-        val pos = senses.firstOrNull()?.partsOfSpeech
-            ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
-        return pos to flatCardDefinition(this)
-    }
+    /** First sense's part-of-speech line ([firstSensePosLabel]) + the flattened
+     *  card definition — the shared (POS, definition) extraction the word-Anki paths use. */
+    private fun com.playtranslate.model.DictionaryEntry.ankiPosAndDefinition(context: android.content.Context): Pair<String, String> =
+        context.firstSensePosLabel(this) to flatCardDefinition(this)
 
     /** Build + launch the per-word Anki review Activity: the word's own fields plus
      *  the current Ready result's sentence context (source + translation +
@@ -543,7 +540,7 @@ class TranslationResultFragment : Fragment() {
             showAnkiNotInstalledDialog(activity)
             return
         }
-        val (pos, definition) = entry?.ankiPosAndDefinition() ?: ("" to "")
+        val (pos, definition) = entry?.ankiPosAndDefinition(activity) ?: ("" to "")
         dismissWordPopup()
         launchWordAnkiIntent(
             activity, word,
@@ -684,7 +681,7 @@ class TranslationResultFragment : Fragment() {
             launchWordAnki(activity, word, reading, entry, notes)
             return
         }
-        val (pos, definition) = entry.ankiPosAndDefinition()
+        val (pos, definition) = entry.ankiPosAndDefinition(activity)
         val ready = currentReady()
         val screenshotPath = ready?.screenshotPath
         val readingClean = reading?.takeIf { it != word } ?: ""

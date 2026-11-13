@@ -760,8 +760,7 @@ class WordDetailBinder(
         val hw = entry.selectHeadword(lookupForm, lookupForm, readingHint)
         val reading = hw?.reading?.takeIf { it != hw.written } ?: ""
 
-        val pos = entry.senses.firstOrNull()?.partsOfSpeech
-            ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
+        val pos = ctx.firstSensePosLabel(entry)
 
         val targetLangCode = Prefs(ctx).targetLang
         val nativeTargetSenses = (defResult as? DefinitionResult.Native)

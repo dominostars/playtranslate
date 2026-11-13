@@ -64,14 +64,19 @@ class WordRowMembersTest {
         override fun close() {}
     }
 
-    private fun entry(written: String, reading: String, gloss: String) = DictionaryResponse(
+    private fun entry(
+        written: String,
+        reading: String,
+        gloss: String,
+        pos: List<String> = emptyList(),
+    ) = DictionaryResponse(
         listOf(
             DictionaryEntry(
                 slug = written, isCommon = null, tags = emptyList(), jlpt = emptyList(),
                 headwords = listOf(Headword(written, reading)),
                 senses = listOf(
                     Sense(
-                        targetDefinitions = listOf(gloss), partsOfSpeech = emptyList(),
+                        targetDefinitions = listOf(gloss), partsOfSpeech = pos,
                         tags = emptyList(), restrictions = emptyList(), info = emptyList(),
                     ),
                 ),
@@ -100,6 +105,15 @@ class WordRowMembersTest {
             WordLookupContext(engine, "en", ChineseScriptVariant.SIMPLIFIED),
             tokens,
         )
+    }
+
+    @Test
+    fun `a row's part of speech for a word card is its first sense's, as the app labels it`() {
+        // 勉強's first sense as the ja pack stores it: a description whole.
+        val stored = listOf("Noun", "noun or participle which takes the aux. verb suru", "transitive verb")
+        val engine = FakeEngine(mapOf("勉強" to entry("勉強", "べんきょう", "study", stored)), emptyMap())
+        val data = rows(engine, listOf(TokenSpan("勉強", "勉強", "べんきょう")))
+        assertEquals("Noun · Suru verb · Transitive", data.rows.single().ankiPos)
     }
 
     @Test

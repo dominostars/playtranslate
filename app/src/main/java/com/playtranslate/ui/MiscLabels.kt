@@ -17,8 +17,8 @@ import com.playtranslate.model.MiscVocabulary.MiscCode
  * and are not [MiscCode]s, so they fall through to "drop" here and only ever
  * surface as a part-of-speech (no double-render).
  *
- * For Anki export do NOT use this — call [MiscVocabulary.englishLabel] so cards
- * stay English/portable (mirrors the `localizePos` rule).
+ * The Anki card builders take this renderer too: a card carries the labels
+ * the app shows, part of speech included (`localizePos`).
  *
  * The exhaustive `when` in [stringRes] is a compile-time tripwire: adding a
  * [MiscCode] without a string resource won't build.

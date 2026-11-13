@@ -119,11 +119,11 @@ object AnkiCardOutputBuilder {
             structured = structuredGlossaries,
             dictStyles = dictStyles,
         ).takeIf { structuredGlossaries.isNotEmpty() }
-        // The word card's own part-of-speech rule (labels as stored), which
-        // is what keeps the field the same in both modes.
+        // The word card's part-of-speech labels (the app's, [localizePos]),
+        // which is what keeps the field the same in both modes.
         val glossary = firstHighlighted?.let { w ->
             WordCardDefinition.fromSenses(w.word, w.senses, fallback = w.meaning)
-                .glossary(styled, dictTitles, CardGlossary.RAW_POS, renderMisc)
+                .glossary(styled, dictTitles, localizePos, renderMisc)
         }
         val definition = glossary?.panelHtml(inlineStyler, definitionsHeader).orEmpty()
         // starsString emits only ★ glyphs — safe by construction.

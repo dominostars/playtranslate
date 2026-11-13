@@ -1,54 +1,87 @@
 package com.playtranslate.model
 
 /**
- * Canonical part-of-speech vocabulary for the **universal grammatical
- * categories** (Noun, Verb, Adjective, …) that we localize. It does two jobs
- * from one table:
+ * Canonical part-of-speech vocabulary: the grammatical categories we show a
+ * label for. It does two jobs from one table:
  *
  *  - [parse] turns a stored `pos` field into whole English tokens, fixing the
  *    comma-split bug: some POS values contain commas (e.g.
  *    "expressions (phrases, clauses, etc.)"), so it splits on comma and
  *    re-merges the known comma-bearing values so they survive intact. (Packs
  *    stay comma-delimited; this is the permanent fix, no pack-format change.)
- *  - [canonical] maps a whole token — whether it's the raw verbose JMdict
- *    entity name, the abbreviated form, or the lowercase Wiktionary token — to
- *    a stable [PosCode], so the render layer can localize it. Apostrophe and
- *    case variants are normalized away.
+ *  - [canonical] maps a whole token to a stable [PosCode], so the render
+ *    layer can show that code's label (a string resource, so a localizable
+ *    one). Apostrophe and case variants are normalized away.
  *
- * Deliberately partial: Japanese conjugation/inflection classes (Ichidan /
- * Godan-* / Suru / Kuru, transitive/intransitive, i-/na-/pre-noun adjective)
- * and the archaic classical forms are **not** in [ALIASES] — [canonical]
- * returns null for them and the render layer falls back to the raw English
- * token (textbook-recognizable; localizing that jargon is net-negative).
+ * A pack stores a token in whichever form its builder left it, and the
+ * packs on devices are not rebuilt when this table changes, so every form
+ * is an alias here: JMdict's own description of the entity ("noun or
+ * participle which takes the aux. verb suru"), the short form of the
+ * builders' `POS_ABBREV` tables ("Suru verb"), and the lowercase Wiktionary
+ * token. The Japanese pack mixes the first two: `POS_ABBREV` is keyed on
+ * JMdict's wording, a key that no longer matches it (a backtick where
+ * JMdict now writes an apostrophe, "expression" for "expressions") passes
+ * the description through, and so does an entity the table never listed
+ * (suru nouns, transitive and intransitive, no-adjectives). The target
+ * packs' table is shorter still. Measured in the packVersion 4 ja pack:
+ * 83 distinct tokens, all of them aliases here, on a fifth of whose senses
+ * at least one was a description.
+ *
+ * The Japanese classes are grouped as a reader needs them, not one code per
+ * JMdict entity: a Godan verb's ending is the last kana of the word beside
+ * the label, and JMdict's 23 Nidan entities are one class. The grouping is
+ * the one Jitendex draws its tags with (read out of its 2026-10-03 file),
+ * but for the three auxiliaries, which were one code here before it.
+ *
+ * A token outside the table ([canonical] returns null) renders as stored.
+ * Of JMdict's part-of-speech entities these have no alias, since no entry
+ * carries them (the pack above, and Jitendex of 2026-10-03): adverbial and
+ * temporal noun, proper noun, the 'kari' adjective and the Uru-class Godan
+ * verb.
  *
  * Upstream source of these strings: the JMdict DTD + `scripts/build_jmdict.py`
  * (`POS_ABBREV`), `scripts/build_target_pack.py`, and
- * `scripts/wiktionary_filters.py` (`CONTENT_POS`). When those change, the
- * coverage test (PosVocabularyTest) is the tripwire.
+ * `scripts/wiktionary_filters.py` (`CONTENT_POS`). PosVocabularyTest pins
+ * every token of the measured pack and every description of the DTD.
  */
 object PosVocabulary {
 
-    /** Universal POS we localize. Anything outside this set renders English. */
+    /** Every category with a label. Anything outside this set renders as
+     *  stored. The second block is Japanese grammar (JMdict's classes). */
     enum class PosCode {
         NOUN, PRONOUN, VERB, ADJECTIVE, ADVERB, PARTICLE, CONJUNCTION,
         INTERJECTION, PREPOSITION, POSTPOSITION, DETERMINER, ARTICLE,
         PREFIX, SUFFIX, COUNTER, NUMERAL,
         EXPRESSION, PHRASE, PROVERB, ABBREVIATION, CONTRACTION, AUXILIARY,
+
+        TRANSITIVE, INTRANSITIVE, COPULA, UNCLASSIFIED,
+        SURU_VERB, SU_VERB, KURU_VERB, ZURU_VERB,
+        ICHIDAN_VERB, ICHIDAN_VERB_SPECIAL,
+        GODAN_VERB, GODAN_VERB_SPECIAL, GODAN_VERB_IRREGULAR,
+        NIDAN_VERB, YODAN_VERB, NU_VERB, RI_VERB,
+        I_ADJECTIVE, NA_ADJECTIVE, NO_ADJECTIVE, TARU_ADJECTIVE,
+        KU_ADJECTIVE, SHIKU_ADJECTIVE, NARI_ADJECTIVE,
+        PRENOMINAL, TO_ADVERB,
     }
 
     /**
      * POS values that contain an internal comma. The stored `pos` field joins
      * multiple POS with ',', so [parse] must re-merge the fragments these
-     * shatter into. Exact stored forms (machine-generated, stable). The last
-     * two only occur if a future pack switches to the abbreviated POS_ABBREV
-     * forms (today the build's quote bug keeps verb classes verbose); included
-     * so they still render whole. Ordered most-fragments-first so the longest
-     * match wins.
+     * shatter into. Exact stored forms (machine-generated, stable). Every
+     * form with a comma that [ALIASES] has an alias for is listed, so
+     * that no alias is a form [parse] cannot deliver: JMdict's four
+     * descriptions that hold one, an older wording of the first, and two
+     * `POS_ABBREV` short forms. No pack stores the two noun descriptions
+     * today (both builders shorten them) nor the two short forms (their
+     * keys spell the quote as a backtick, so the description passes
+     * through). Ordered most-fragments-first so the longest match wins.
      */
     private val COMMA_TOKENS = listOf(
         "expressions (phrases, clauses, etc.)",
         "expression (phrase, clause, etc.)",
         "irregular ru verb, plain form ends with -ri",
+        "noun, used as a prefix",
+        "noun, used as a suffix",
         "Godan verb (u, irr.)",
         "Godan verb (ru, irr.)",
     ).sortedByDescending { it.count { c -> c == ',' } }
@@ -60,8 +93,8 @@ object PosVocabulary {
 
     /**
      * Whole token (any known form) → canonical code. Keys are [normalize]d.
-     * Each universal code lists its raw JMdict entity name(s), abbreviated
-     * form, and Wiktionary token as applicable.
+     * Each code lists JMdict's description(s) of its entities, the
+     * `POS_ABBREV` short form(s), and the Wiktionary token as applicable.
      */
     private val ALIASES: Map<String, PosCode> = buildMap {
         fun put(code: PosCode, vararg forms: String) {
@@ -69,9 +102,9 @@ object PosVocabulary {
         }
         put(PosCode.NOUN, "noun", "noun (common) (futsuumeishi)")
         put(PosCode.PRONOUN, "pronoun", "pron")
-        // Generic verb/adjective come from Wiktionary; JMdict's classed
-        // verbs/adjectives are intentionally left to the English fallback.
-        put(PosCode.VERB, "verb")
+        // The generic verb and adjective come from Wiktionary; JMdict's
+        // one generic verb is its "verb unspecified".
+        put(PosCode.VERB, "verb", "verb unspecified")
         put(PosCode.ADJECTIVE, "adj")
         put(PosCode.ADVERB, "adverb", "adverb (fukushi)", "adv")
         put(PosCode.PARTICLE, "particle")
@@ -84,8 +117,8 @@ object PosVocabulary {
         put(PosCode.POSTPOSITION, "postp", "postposition")
         put(PosCode.DETERMINER, "det", "determiner")
         put(PosCode.ARTICLE, "article")
-        put(PosCode.PREFIX, "prefix")
-        put(PosCode.SUFFIX, "suffix")
+        put(PosCode.PREFIX, "prefix", "noun, used as a prefix", "noun prefix")
+        put(PosCode.SUFFIX, "suffix", "noun, used as a suffix", "noun suffix")
         put(PosCode.COUNTER, "counter")
         put(PosCode.NUMERAL, "numeric", "num")
         put(
@@ -103,6 +136,80 @@ object PosVocabulary {
             "auxiliary", "auxiliary verb", "auxiliary adjective",
             "aux. verb", "aux. adjective",
         )
+
+        // ── Japanese (JMdict's classes) ─────────────────────────────────
+        put(PosCode.TRANSITIVE, "transitive verb")
+        put(PosCode.INTRANSITIVE, "intransitive verb")
+        put(PosCode.COPULA, "copula")
+        put(PosCode.UNCLASSIFIED, "unclassified")
+        put(
+            PosCode.SURU_VERB,
+            "noun or participle which takes the aux. verb suru",
+            "suru verb - included", "suru verb",
+            "suru verb - special class", "suru verb (special)",
+        )
+        put(
+            PosCode.SU_VERB,
+            "su verb - precursor to the modern suru",
+            "suru verb - precursor to the above", "suru precursor",
+        )
+        put(PosCode.KURU_VERB, "kuru verb - special class", "kuru verb")
+        put(
+            PosCode.ZURU_VERB,
+            "ichidan verb - zuru verb (alternative form of -jiru verbs)", "ichidan verb (zuru)",
+        )
+        put(PosCode.ICHIDAN_VERB, "ichidan verb")
+        put(PosCode.ICHIDAN_VERB_SPECIAL, "ichidan verb - kureru special class", "ichidan verb (kureru)")
+        for (ending in listOf("bu", "gu", "ku", "mu", "nu", "ru", "su", "tsu", "u")) {
+            put(PosCode.GODAN_VERB, "godan verb with '$ending' ending", "godan verb ($ending)")
+        }
+        put(
+            PosCode.GODAN_VERB_SPECIAL,
+            "godan verb - -aru special class", "godan verb - aru special class", "godan verb (aru)",
+            "godan verb - iku/yuku special class", "godan verb (iku)",
+            "godan verb with 'u' ending (special class)", "godan verb (u, irr.)",
+        )
+        put(
+            PosCode.GODAN_VERB_IRREGULAR,
+            "godan verb with 'ru' ending (irregular verb)", "godan verb (ru, irr.)",
+        )
+        // JMdict names an upper and a lower class of Nidan verb per ending,
+        // and two that fit neither pattern. A pairing JMdict lacks (an
+        // upper class 'nu') is an alias nothing stores.
+        for (ending in listOf("bu", "dzu", "gu", "hu/fu", "ku", "mu", "nu", "ru", "su", "tsu", "yu", "zu")) {
+            put(
+                PosCode.NIDAN_VERB,
+                "nidan verb (upper class) with '$ending' ending (archaic)",
+                "nidan verb (lower class) with '$ending' ending (archaic)",
+            )
+        }
+        put(
+            PosCode.NIDAN_VERB,
+            "nidan verb with 'u' ending (archaic)",
+            "nidan verb (lower class) with 'u' ending and 'we' conjugation (archaic)",
+        )
+        for (ending in listOf("bu", "gu", "hu/fu", "ku", "mu", "nu", "ru", "su", "tsu")) {
+            put(PosCode.YODAN_VERB, "yodan verb with '$ending' ending (archaic)")
+        }
+        put(PosCode.NU_VERB, "irregular nu verb")
+        put(PosCode.RI_VERB, "irregular ru verb, plain form ends with -ri")
+        put(
+            PosCode.I_ADJECTIVE,
+            "adjective (keiyoushi)", "i-adjective",
+            "adjective (keiyoushi) - yoi/ii class", "i-adjective (ii)",
+        )
+        put(PosCode.NA_ADJECTIVE, "adjectival nouns or quasi-adjectives (keiyodoshi)", "na-adjective")
+        put(PosCode.NO_ADJECTIVE, "nouns which may take the genitive case particle 'no'")
+        put(PosCode.TARU_ADJECTIVE, "'taru' adjective")
+        put(PosCode.KU_ADJECTIVE, "'ku' adjective (archaic)")
+        put(PosCode.SHIKU_ADJECTIVE, "'shiku' adjective (archaic)")
+        put(PosCode.NARI_ADJECTIVE, "archaic/formal form of na-adjective")
+        put(
+            PosCode.PRENOMINAL,
+            "noun or verb acting prenominally", "prenominal",
+            "pre-noun adjectival (rentaishi)", "pre-noun adj.",
+        )
+        put(PosCode.TO_ADVERB, "adverb taking the 'to' particle", "adverb (to)")
     }
 
     /** The full set of input forms the table covers — used by the coverage test. */
@@ -135,7 +242,7 @@ object PosVocabulary {
         return out
     }
 
-    /** Canonical code for a whole token, or null to render the raw English. */
+    /** Canonical code for a whole token, or null to render the token as stored. */
     fun canonical(token: String): PosCode? = ALIASES[normalize(token)]
 
     private fun normalize(token: String): String =

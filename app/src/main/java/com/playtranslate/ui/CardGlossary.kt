@@ -302,11 +302,6 @@ internal class CardGlossary(
          *  the app's locale the way the "Built-in" title on screen does. */
         const val BUILT_IN_DICTIONARY = "PlayTranslate"
 
-        /** Part-of-speech labels as they are stored, joined: the word
-         *  card's own localizer (it has never localized them; the words
-         *  table passes the app's). */
-        val RAW_POS: (List<String>) -> String = { it.joinToString(" · ") }
-
         /** The stylesheets of [dictionaries] (id to title) for a field in
          *  OUR markup, each scoped to its `.gl-sc` wrapper. */
         fun ownStyleBlocks(dictionaries: Map<String, String>, dictStyles: Map<String, String>): String =

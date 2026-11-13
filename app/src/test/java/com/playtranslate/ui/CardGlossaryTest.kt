@@ -14,6 +14,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
+/** Part-of-speech tokens joined as they are: a stand-in for the app's
+ *  labels, which need a Context. */
+private val RAW_POS: (List<String>) -> String = { it.joinToString(" · ") }
+
+
 /**
  * Pins the one renderer of a card's definitions: the three layouts on exact
  * strings (a note type's CSS is never rewritten, so the panel's and the
@@ -71,7 +76,7 @@ class CardGlossaryTest {
         def: WordCardDefinition,
         styled: YomitanStyledData? = this.styled,
         titles: Map<String, String> = this.titles,
-    ) = def.glossary(styled, titles, CardGlossary.RAW_POS, misc)
+    ) = def.glossary(styled, titles, RAW_POS, misc)
 
     private val full = WordCardDefinition("the fallback", entry(listOf(jitendex, meikyo), listOf(cat, kitten)))
 
@@ -348,7 +353,7 @@ class CardGlossaryTest {
         val blank = sense(emptyList())
         val def = WordCardDefinition("fb", entry(emptyList(), listOf(blank, kitten)))
 
-        val raw = def.glossary(null, emptyMap(), CardGlossary.RAW_POS, misc)
+        val raw = def.glossary(null, emptyMap(), RAW_POS, misc)
         assertEquals(listOf("kitten"), raw.items.map { it.text })
         assertEquals("noun", raw.items.single().pos)
         val localized = def.glossary(null, emptyMap(), { "L(${it.joinToString("/")})" }, misc)

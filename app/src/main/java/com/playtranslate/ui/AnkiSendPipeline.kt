@@ -460,13 +460,14 @@ suspend fun Context.sendWordCard(
                 )
             }
         }
-        // The word card has never localized the pack's part-of-speech
-        // labels (the words table does); kept as it is.
+        // Part-of-speech labels as the app shows them, the labels the
+        // sentence card's words table carries.
+        val localizePos: (List<String>) -> String = ctx::localizePos
         val glossaryFull by lazy {
-            definition.glossary(styled, dictTitles, CardGlossary.RAW_POS, renderMisc)
+            definition.glossary(styled, dictTitles, localizePos, renderMisc)
         }
         val glossarySimplified by lazy {
-            definition.glossary(simplifiedStyled, dictTitles, CardGlossary.RAW_POS, renderMisc)
+            definition.glossary(simplifiedStyled, dictTitles, localizePos, renderMisc)
         }
         ctx.dispatchSendToAnki(
             deckId = deckId,

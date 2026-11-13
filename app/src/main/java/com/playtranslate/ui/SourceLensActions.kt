@@ -475,8 +475,7 @@ class SourceLensActions(
         // and can't persist a reading the entry doesn't list if the occurrence
         // reading ever arrives unvalidated.
         val reading = occHeadword?.reading?.takeIf { it != occHeadword.written } ?: ""
-        val pos = entry.senses.firstOrNull()?.partsOfSpeech
-            ?.filter { it.isNotBlank() }?.joinToString(" · ") ?: ""
+        val pos = context.firstSensePosLabel(entry)
         val definition = flatCardDefinition(entry)
         val headword = entry.headwordDisplay(occHeadword, word)
         val sentence = cur.sentence

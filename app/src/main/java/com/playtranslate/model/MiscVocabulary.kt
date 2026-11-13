@@ -109,7 +109,7 @@ object MiscVocabulary {
     /** True for allowlisted domain or gazetteer-region tokens (rendered raw). */
     fun isPassthrough(token: String): Boolean = normalize(token) in current().passthrough
 
-    /** English label for a code (Anki export stays English, never localized). */
+    /** English label for a code. */
     fun englishLabel(code: MiscCode): String = current().label[code] ?: code.name
 
     /** Expand a legacy (pre-tab) target pack's comma-joined misc blob into its
@@ -129,8 +129,9 @@ object MiscVocabulary {
             }
         }
 
-    /** Same filter as `renderMisc` but English-only and Context-free — for Anki
-     *  card HTML, which must stay portable. Register/dialect → English label,
+    /** Same filter as `renderMisc` but English-only and Context-free: the
+     *  filter as the JVM tests exercise it (the card builders take
+     *  `renderMisc`, the app's labels). Register/dialect → English label,
      *  domain/region → raw, everything else dropped. */
     fun englishMisc(tokens: List<String>): List<String> =
         expandLegacyMisc(tokens).mapNotNull { token ->

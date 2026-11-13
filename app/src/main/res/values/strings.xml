@@ -346,12 +346,13 @@
     <string name="card_words_in_sentence">Words in sentence</string>
 
     <!-- Part-of-speech labels shown with a word's definitions (the magnifier
-         lens, the translation-result word cell, the word-detail sheet, and the
-         lookup popup). Universal grammatical categories only; mapped from
+         lens, the translation-result word cell, the word-detail sheet, the
+         lookup popup, and the Anki cards made from them). Mapped from
          dictionary POS tags by PosVocabulary. Each is a short grammatical
-         category name, rendered uppercased on some surfaces. Japanese
-         conjugation classes (Godan/Ichidan/Suru/…) and archaic forms are
-         intentionally absent and stay in English/romaji (textbook-recognizable). -->
+         category name, rendered uppercased on some surfaces, and several
+         stand in one line joined by " · " ("Noun · Suru verb · Transitive").
+         The first group is the categories every language has; the labels
+         for Japanese grammar follow it under a comment of their own. -->
     <!-- POS tag shown with a word's definitions: the "noun" category. -->
     <string name="pos_noun">Noun</string>
     <!-- POS tag shown with a word's definitions: the "pronoun" category. -->
@@ -396,6 +397,68 @@
     <string name="pos_contraction">Contraction</string>
     <!-- POS tag shown with a word's definitions: the "auxiliary" (verb/adjective) category. -->
     <string name="pos_auxiliary">Auxiliary</string>
+
+    <!-- Part-of-speech labels for Japanese words only: the classes a Japanese
+         dictionary sorts its verbs and adjectives into. They stand in the same
+         line as the labels above ("Noun · Suru verb · Transitive"). For each,
+         use the term that grammars and textbooks of Japanese written in your
+         language use (in Japanese itself, the native term given in each
+         comment below). Where your language has no settled term, keep the
+         romanized Japanese word (Godan, Ichidan, Suru) and translate only the
+         generic word beside it (verb, adjective). Keep each about as short as
+         the English. -->
+    <!-- POS tag for a Japanese verb that takes a direct object (他動詞). It stands beside the verb's class, as in "Godan verb · Transitive", so the English leaves out the word "verb". -->
+    <string name="pos_transitive">Transitive</string>
+    <!-- POS tag for a Japanese verb that takes no direct object (自動詞). It stands beside the verb's class, as in "Ichidan verb · Intransitive", so the English leaves out the word "verb". -->
+    <string name="pos_intransitive">Intransitive</string>
+    <!-- POS tag for the Japanese copula (だ, です; 繋辞 or コピュラ). -->
+    <string name="pos_copula">Copula</string>
+    <!-- POS tag for a Japanese word the dictionary has assigned no part of speech. -->
+    <string name="pos_unclassified">Unclassified</string>
+    <!-- POS tag for a Japanese noun that becomes a verb when する is added (勉強 becomes 勉強する), and for a verb that ends in する (サ変動詞, サ行変格活用). -->
+    <string name="pos_suru_verb">Suru verb</string>
+    <!-- POS tag for a classical Japanese verb ending in す, the older form of the する verbs (文語のサ変動詞). Rare. -->
+    <string name="pos_su_verb">Su verb</string>
+    <!-- POS tag for the Japanese verb 来る and its compounds, a class of its own (カ変動詞, カ行変格活用). -->
+    <string name="pos_kuru_verb">Kuru verb</string>
+    <!-- POS tag for a Japanese verb ending in ずる (論ずる, 信ずる), an alternative form of the verbs in じる (論じる). -->
+    <string name="pos_zuru_verb">Zuru verb</string>
+    <!-- POS tag for a Japanese verb of the Ichidan class (一段動詞: 食べる, 見る). -->
+    <string name="pos_ichidan_verb">Ichidan verb</string>
+    <!-- POS tag for the Japanese Ichidan verb くれる, whose imperative is the exception くれ. "Special" marks an exception inside the class. -->
+    <string name="pos_ichidan_verb_special">Ichidan verb (special)</string>
+    <!-- POS tag for a Japanese verb of the Godan class (五段動詞: 書く, 話す). -->
+    <string name="pos_godan_verb">Godan verb</string>
+    <!-- POS tag for a Japanese Godan verb with a few exceptional forms: 行く (行って), 問う (問うて), and the honorific verbs in ある such as くださる (ください). "Special" marks an exception inside the class. -->
+    <string name="pos_godan_verb_special">Godan verb (special)</string>
+    <!-- POS tag for the irregular Japanese Godan verb ある (its negative is ない) and its compounds. -->
+    <string name="pos_godan_verb_irregular">Godan verb (irregular)</string>
+    <!-- POS tag for a classical Japanese verb of the Nidan class (二段動詞, 上二段 and 下二段). Archaic. -->
+    <string name="pos_nidan_verb">Nidan verb</string>
+    <!-- POS tag for a classical Japanese verb of the Yodan class (四段動詞). Archaic. -->
+    <string name="pos_yodan_verb">Yodan verb</string>
+    <!-- POS tag for the irregular classical Japanese verbs ending in ぬ (死ぬ, 往ぬ; ナ変動詞, ナ行変格活用). Archaic. -->
+    <string name="pos_nu_verb">Nu verb</string>
+    <!-- POS tag for the irregular classical Japanese verbs whose plain form ends in り (あり, 居り; ラ変動詞, ラ行変格活用). Archaic. -->
+    <string name="pos_ri_verb">Ri verb</string>
+    <!-- POS tag for a Japanese adjective ending in い (形容詞: 高い, 新しい). -->
+    <string name="pos_i_adjective">I-adjective</string>
+    <!-- POS tag for a Japanese adjective that takes な before a noun (形容動詞: 静か, 便利). -->
+    <string name="pos_na_adjective">Na-adjective</string>
+    <!-- POS tag for a Japanese noun that describes another noun through the particle の (普通の, 本当の; ノ形容詞). -->
+    <string name="pos_no_adjective">No-adjective</string>
+    <!-- POS tag for a Japanese adjective that takes たる before a noun and と as an adverb (堂々たる; タルト型形容動詞). Literary. -->
+    <string name="pos_taru_adjective">Taru-adjective</string>
+    <!-- POS tag for a classical Japanese adjective of the く conjugation (ク活用の形容詞). Archaic. -->
+    <string name="pos_ku_adjective">Ku-adjective</string>
+    <!-- POS tag for a classical Japanese adjective of the しく conjugation (シク活用の形容詞). Archaic. -->
+    <string name="pos_shiku_adjective">Shiku-adjective</string>
+    <!-- POS tag for a classical or formal Japanese adjective that takes なり, the older form of the な adjectives (ナリ活用の形容動詞). -->
+    <string name="pos_nari_adjective">Nari-adjective</string>
+    <!-- POS tag for a Japanese word that only stands before a noun to describe it (連体詞: この, 大きな), and for a noun or verb used that way. -->
+    <string name="pos_prenominal">Prenominal</string>
+    <!-- POS tag for a Japanese adverb that takes the particle と (ゆっくりと, はっきりと). -->
+    <string name="pos_to_adverb">To-adverb</string>
 
     <!-- Misc register/usage tags shown under a word's definition (the magnifier
          lens, the translation-result word cell, and the word-detail sheet). A

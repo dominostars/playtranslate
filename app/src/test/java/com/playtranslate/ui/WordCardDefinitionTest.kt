@@ -12,6 +12,11 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/** Part-of-speech tokens joined as they are: a stand-in for the app's
+ *  labels, which need a Context. */
+private val RAW_POS: (List<String>) -> String = { it.joinToString(" · ") }
+
+
 /**
  * Pins the one-producer contract of the word card's Definition field: the
  * review sheet and the hold-to-create one-tap both describe the field as a
@@ -32,7 +37,7 @@ class WordCardDefinitionTest {
         header: String,
         renderMisc: (List<String>) -> String?,
         titles: Map<String, String> = emptyMap(),
-    ): String = glossary(styled, titles, CardGlossary.RAW_POS, renderMisc).panelHtml(styler, header)
+    ): String = glossary(styled, titles, RAW_POS, renderMisc).panelHtml(styler, header)
 
     private fun entry(
         imported: List<ImportedSenseGroup> = emptyList(),
@@ -195,7 +200,7 @@ class WordCardDefinitionTest {
             exampleTranslations = mapOf((1 to 2) to "la troisième"),
         )
 
-        val row = def.glossary(null, emptyMap(), CardGlossary.RAW_POS, noMisc).items.last()
+        val row = def.glossary(null, emptyMap(), RAW_POS, noMisc).items.last()
 
         assertEquals(
             listOf(Example("一つ目", "the first"), Example("三つ目", "la troisième")),
@@ -224,7 +229,7 @@ class WordCardDefinitionTest {
             removedExamples = setOf(0 to 0),
         )
 
-        val row = def.glossary(null, emptyMap(), CardGlossary.RAW_POS, noMisc).items.single()
+        val row = def.glossary(null, emptyMap(), RAW_POS, noMisc).items.single()
 
         assertEquals("chat", row.text)
         assertEquals(listOf(Example("Un chat.", "A cat.")), row.examples)
