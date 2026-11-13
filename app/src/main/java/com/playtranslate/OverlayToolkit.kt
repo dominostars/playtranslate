@@ -19,6 +19,7 @@ import com.playtranslate.ui.FuriganaMetrics
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ocr.FrameReader
 import com.playtranslate.ocr.FrameReading
+import com.playtranslate.ocr.NoTextMemo
 import com.playtranslate.ocr.ReadRequest
 import com.playtranslate.ocr.ReaderAttribution
 import com.playtranslate.ocr.ReaderTranslations
@@ -730,6 +731,12 @@ object OverlayToolkit {
      * accessibility screenshots), and the app must never OCR its own
      * chrome. Frames are display-sized on both capture paths, so screen →
      * cropped-bitmap mapping is the crop offset alone.
+     *
+     * [noTextMemo], when non-null, is asked before the read and told after
+     * it ([NoTextMemo]): an OCR input identical, byte for byte, to the one
+     * the last read of this memo found nothing in, asked the same question,
+     * returns that read's answer and never reaches [reader]. The live tiers'
+     * reads pass their display's; a one-shot read passes none.
      */
     suspend fun runOcrPipeline(
         raw: Bitmap,
@@ -740,6 +747,7 @@ object OverlayToolkit {
         seedWriter: ((Bitmap, OcrManager.OcrResult?) -> Unit)? = null,
         excludeRect: Rect? = null,
         blackoutRects: List<Rect> = emptyList(),
+        noTextMemo: NoTextMemo? = null,
     ): OcrPipelineRead {
         val crop = computeOcrCrop(raw.width, raw.height, activeRegion, statusBarHeight)
         val needsCrop = crop.top > 0 || crop.left > 0 || crop.bottom < raw.height || crop.right < raw.width
@@ -763,48 +771,63 @@ object OverlayToolkit {
             }
         }
 
-        val reading: FrameReading
+        val exCropped = excludeRect?.let { Rect(it).apply { offset(-crop.left, -crop.top) } }
+        val asked = NoTextMemo.Asked.of(reader, request, exCropped)
         try {
-            reading = reader.read(bitmap, request)
+            // The same input, asked the same question, already came back
+            // with nothing: that answer again, and no read.
+            noTextMemo?.recall(bitmap, asked)?.let { return OcrPipelineRead(result = null, it) }
+            val reading = reader.read(bitmap, request)
             seedWriter?.invoke(bitmap, reading.ocr)
+
+            var ocrResult = reading.ocr
+            var translations = reading.translations
+            if (exCropped != null && ocrResult != null) {
+                val kept = dropGroupsIntersecting(ocrResult, exCropped)
+                // Dropping groups re-indexes the rest, so translations keyed by the
+                // reader's group ids no longer line up with them: the caller
+                // translates locally instead. The live startup card is the only
+                // source of excludeRect, so this is a read made through the cloud
+                // while the card was up: a reconciler-tier or pinhole-tier cycle,
+                // or a press-and-hold during a live session.
+                if (kept !== ocrResult && translations != null) {
+                    translations.cancel()
+                    translations = null
+                }
+                ocrResult = kept
+            }
+            val sourceLang = SourceLanguageProfiles[request.sourceLangId].translationCode
+            val dedupKey = ocrResult?.fullText
+                ?.filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
+                .orEmpty()
+            if (ocrResult == null || dedupKey.isEmpty()) {
+                // Nothing for the caller to translate: the translations have no taker.
+                translations?.cancel()
+                // Remembered only as the answer of the reader that was asked,
+                // by a reader that looked: a fallback's reading is another
+                // reader's (the cloud is asked again next time), and a
+                // reading with no attribution is the empty engine's, which
+                // read nothing.
+                val answeredBy = reading.attribution
+                if (answeredBy != null && !reading.fromFallback) {
+                    noTextMemo?.remember(bitmap, asked, answeredBy)
+                }
+                return OcrPipelineRead(result = null, reading.attribution)
+            }
+            // Text: nothing to remember, and what was remembered is not
+            // this display's last read any more.
+            noTextMemo?.forget()
+
+            val result = OcrPipelineResult(
+                ocrResult, dedupKey, crop.left, crop.top, raw.width, raw.height,
+                cropWidth = crop.width(), cropHeight = crop.height(),
+                translations = translations,
+            )
+            return OcrPipelineRead(result, reading.attribution)
         } finally {
             // Always clean up the crop (NOT raw — caller manages that)
             if (bitmap !== raw && !bitmap.isRecycled) bitmap.recycle()
         }
-
-        var ocrResult = reading.ocr
-        var translations = reading.translations
-        if (excludeRect != null && ocrResult != null) {
-            val exCropped = Rect(excludeRect).apply { offset(-crop.left, -crop.top) }
-            val kept = dropGroupsIntersecting(ocrResult, exCropped)
-            // Dropping groups re-indexes the rest, so translations keyed by the
-            // reader's group ids no longer line up with them: the caller
-            // translates locally instead. The live startup card is the only
-            // source of excludeRect, so this is a read made through the cloud
-            // while the card was up: a reconciler-tier or pinhole-tier cycle,
-            // or a press-and-hold during a live session.
-            if (kept !== ocrResult && translations != null) {
-                translations.cancel()
-                translations = null
-            }
-            ocrResult = kept
-        }
-        val sourceLang = SourceLanguageProfiles[request.sourceLangId].translationCode
-        val dedupKey = ocrResult?.fullText
-            ?.filter { c -> OcrManager.isSourceLangChar(c, sourceLang) }
-            .orEmpty()
-        if (ocrResult == null || dedupKey.isEmpty()) {
-            // Nothing for the caller to translate: the translations have no taker.
-            translations?.cancel()
-            return OcrPipelineRead(result = null, reading.attribution)
-        }
-
-        val result = OcrPipelineResult(
-            ocrResult, dedupKey, crop.left, crop.top, raw.width, raw.height,
-            cropWidth = crop.width(), cropHeight = crop.height(),
-            translations = translations,
-        )
-        return OcrPipelineRead(result, reading.attribution)
     }
 
     /** Opaque fill for the floating icon's window rect in OCR input — a

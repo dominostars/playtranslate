@@ -39,6 +39,7 @@ import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.ocr.DeviceFrameReader
 import com.playtranslate.ocr.FrameReader
 import com.playtranslate.ocr.FrameReaders
+import com.playtranslate.ocr.NoTextMemo
 import com.playtranslate.ocr.ReadRequest
 import com.playtranslate.ocr.ReaderAttribution
 import com.playtranslate.ocr.ReaderTranslations
@@ -2076,7 +2077,7 @@ class CaptureService : Service() {
 
         // 1. Stop removed AND rebuilt modes.
         for (id in toStop + toRebuild) {
-            liveModes.remove(id)?.stop()
+            stopLiveMode(id)
             lastDisplayRotation.remove(id)
         }
 
@@ -2152,7 +2153,7 @@ class CaptureService : Service() {
         if (liveModes.isEmpty()) return
         val ids = liveModes.keys.toList()
         val wasLive = _liveModeState.value == true
-        for (id in ids) liveModes.remove(id)?.stop()
+        for (id in ids) stopLiveMode(id)
         lastDisplayRotation.clear()
         if (wasLive) {
             _liveModeState.value = false
@@ -2453,6 +2454,10 @@ class CaptureService : Service() {
      *  hold-release). With per-display modes, all of them refresh together
      *  since hold pause is global. */
     fun refreshLiveOverlay() {
+        // What a read returns may have changed with no pixel changing (an
+        // OCR engine pick, the furigana filter, the cloud's switch or key):
+        // the reads remembered as empty are asked again.
+        liveNoTextMemos.values.forEach { it.forget() }
         if (!isLive) return
         Log.d(TAG, "REFRESH: refreshLiveOverlay called for ${liveModes.size} mode(s)")
         liveModes.values.forEach { it.refresh() }
@@ -2841,6 +2846,7 @@ class CaptureService : Service() {
         frameIncludesSystemUi: Boolean = true,
         frameIncludesOwnOverlays: Boolean,
         translate: Boolean = true,
+        noTextMemo: NoTextMemo? = null,
     ): OverlayToolkit.OcrPipelineRead {
         val prefs = Prefs(this)
         val seedWriter: ((Bitmap, OcrManager.OcrResult?) -> Unit)? =
@@ -2884,6 +2890,7 @@ class CaptureService : Service() {
                 blackoutRects = if (frameIncludesOwnOverlays) {
                     CaptureBackendResolver.activeOverlayUi?.ownChromeRects(displayId).orEmpty()
                 } else emptyList(),
+                noTextMemo = noTextMemo,
             )
             // A completed pass — a null result means "nothing to translate",
             // which is also an answer — ends the startup card's narration.
@@ -2912,7 +2919,12 @@ class CaptureService : Service() {
      *  (a stopped pod or a refused key is a cooldown the router reads,
      *  [PtCloudService]), same frame parameters, [translate] included (false
      *  for the furigana tier). Each tier warms for its first read at its
-     *  start ([FrameReaders.warm]). */
+     *  start ([FrameReaders.warm]).
+     *
+     *  A live read whose OCR input is the one the display's last read found
+     *  nothing in, byte for byte, is that answer again without a read
+     *  ([liveNoTextMemos]): a session left on a screen with no text and no
+     *  motion reads it once, where every cycle read it. */
     internal suspend fun runLiveOcrRead(
         raw: Bitmap,
         displayId: Int,
@@ -2924,7 +2936,26 @@ class CaptureService : Service() {
         frameIncludesSystemUi = frameIncludesSystemUi,
         frameIncludesOwnOverlays = frameIncludesOwnOverlays,
         translate = translate,
+        noTextMemo = liveNoTextMemos.getOrPut(displayId) { NoTextMemo() },
     )
+
+    /** Per display, the live tiers' memory of their last read that found
+     *  nothing ([NoTextMemo]), made at a display's first live read. Forgotten
+     *  by [refreshLiveOverlay], the call every change to what a read returns
+     *  ends in (an OCR engine pick, the furigana filter, the cloud's switch
+     *  or key); dropped with its display's live mode ([stopLiveMode]). Main
+     *  thread, like the reads. */
+    private val liveNoTextMemos = HashMap<Int, NoTextMemo>()
+
+    /** Stops [displayId]'s live mode and drops what belongs to it: the one
+     *  way a mode leaves [liveModes]. */
+    private fun stopLiveMode(displayId: Int) {
+        liveModes.remove(displayId)?.stop()
+        liveNoTextMemos.remove(displayId)?.let {
+            Log.i(TAG, "D$displayId ${it.summary()}")
+            it.forget()
+        }
+    }
 
     /**
      * Translate OCR groups and send the result to the in-app panel.

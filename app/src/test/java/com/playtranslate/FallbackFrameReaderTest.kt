@@ -37,7 +37,9 @@ import java.io.IOException
  * exception is a bug that must surface rather than be papered over by a
  * second reader. The fallback's log line names the exception class only: a
  * message can carry a URL. A reading from the fallback is the fallback's own,
- * whatever the primary's failure was.
+ * whatever the primary's failure was, marked as a fallback's
+ * ([FrameReading.fromFallback]) so that nobody takes it for the primary's
+ * answer.
  *
  * Robolectric only for a [Bitmap] instance (legacy graphics: nothing is
  * drawn or read from it) and for [ShadowLog].
@@ -61,6 +63,14 @@ class FallbackFrameReaderTest {
     private fun reading(label: String) =
         FrameReading(ocr = null, attribution = ReaderAttribution(label, label), translations = null)
 
+    /** [result] is [fallbackReading] part for part, marked as a fallback's. */
+    private fun assertFallbackReading(fallbackReading: FrameReading, result: FrameReading) {
+        assertSame(fallbackReading.ocr, result.ocr)
+        assertSame(fallbackReading.attribution, result.attribution)
+        assertSame(fallbackReading.translations, result.translations)
+        assertTrue("marked as the fallback's", result.fromFallback)
+    }
+
     @Test fun `a primary that reads is the reading, and the fallback never runs`() = runBlocking {
         val primaryReading = reading("primary")
         val primary = FakeReader { primaryReading }
@@ -69,6 +79,7 @@ class FallbackFrameReaderTest {
         val result = FallbackFrameReader(primary, fallback).read(bitmap, request)
 
         assertSame(primaryReading, result)
+        assertFalse("the primary's own answer", result.fromFallback)
         assertEquals(0, fallback.calls)
     }
 
@@ -80,7 +91,7 @@ class FallbackFrameReaderTest {
 
         val result = FallbackFrameReader(primary, fallback).read(bitmap, request)
 
-        assertSame(fallbackReading, result)
+        assertFallbackReading(fallbackReading, result)
         assertEquals(1, fallback.calls)
         val lines = ShadowLog.getLogsForTag("FrameReader").map { it.msg }
         assertTrue("the fallback is logged: $lines", lines.any { "IOException" in it })
@@ -101,7 +112,7 @@ class FallbackFrameReaderTest {
 
         val result = FallbackFrameReader(primary, fallback).read(bitmap, request)
 
-        assertSame(fallbackReading, result)
+        assertFallbackReading(fallbackReading, result)
         assertEquals(1, fallback.calls)
     }
 
@@ -112,7 +123,7 @@ class FallbackFrameReaderTest {
 
         val result = FallbackFrameReader(primary, fallback).read(bitmap, request)
 
-        assertSame(fallbackReading, result)
+        assertFallbackReading(fallbackReading, result)
         assertEquals(1, fallback.calls)
     }
 

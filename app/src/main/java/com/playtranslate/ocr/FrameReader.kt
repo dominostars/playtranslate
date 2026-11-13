@@ -226,6 +226,11 @@ class FrameReading(
      *  caller's job that never fails: whoever drops the reading without
      *  awaiting the translations cancels them. */
     val translations: ReaderTranslations?,
+    /** True when the reader asked could not read the frame and its fallback
+     *  did ([FallbackFrameReader]): the reading is not what the reader asked
+     *  would have said, so it is never remembered as that reader's answer
+     *  ([NoTextMemo]). */
+    val fromFallback: Boolean = false,
 )
 
 /**
@@ -417,7 +422,8 @@ class DeviceFrameReader(
  * failed while the caller was being cancelled does not start the fallback. Any
  * other exception is a bug in the primary and propagates too.
  *
- * The fallback's reading is returned as it is. Why the primary could not
+ * The fallback's reading is returned marked as one
+ * ([FrameReading.fromFallback]). Why the primary could not
  * read is not carried on it: a cloud read's failure has already recorded its
  * cooldown and reported its attempt
  * ([com.playtranslate.cloud.PtCloudClient.postFrame]), which is how the
@@ -438,6 +444,8 @@ class FallbackFrameReader(
         currentCoroutineContext().ensureActive()
         // Class name only: an exception message can carry a URL.
         Log.i(TAG, "primary reader unavailable (${e.javaClass.simpleName}); reading on device")
-        fallback.read(bitmap, request)
+        fallback.read(bitmap, request).let {
+            FrameReading(it.ocr, it.attribution, it.translations, fromFallback = true)
+        }
     }
 }

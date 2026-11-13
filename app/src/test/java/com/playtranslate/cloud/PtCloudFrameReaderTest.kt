@@ -696,7 +696,11 @@ class PtCloudFrameReaderTest {
 
             val reading = FallbackFrameReader(cloud, device).read(bitmap, request)
 
-            assertSame(deviceReading, reading)
+            // The device's reading, marked as a fallback's.
+            assertSame(deviceReading.attribution, reading.attribution)
+            assertSame(deviceReading.ocr, reading.ocr)
+            assertSame(deviceReading.translations, reading.translations)
+            assertTrue(reading.fromFallback)
             assertSame(request, deviceRequest)
             assertTrue("no request went out", calls.isEmpty())
             assertTrue("a refusal is not a failure: nothing reported", attempts.isEmpty())

@@ -887,8 +887,10 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
      *  pixel (the OCR engine, the furigana filter, MangaOCR on or off) must
      *  reach a running live session as a refresh, called once the engine's
      *  state follows the setting: the furigana tier's change gate reads only
-     *  on pixel change, and the other tiers' next cycle would read anyway.
-     *  The service answers with nothing when live mode is not running. */
+     *  on pixel change, and every tier's read of a screen its last read
+     *  found nothing in is that answer again until the refresh forgets it
+     *  ([com.playtranslate.ocr.NoTextMemo]). The service answers with
+     *  nothing when live mode is not running. */
     private fun refreshLiveForOcrChange() {
         CaptureService.instance?.refreshLiveOverlay()
     }

@@ -94,10 +94,17 @@ import kotlinx.coroutines.launch
  *    mode — the cycle-start guard rebuilds via
  *    [CaptureService.onStreamKindChanged].
  */
+/**
+ * @param streamSource the capture source of this display, read at each use:
+ *  the resolver's. A parameter only so a JVM test can hand the mode frames;
+ *  production passes nothing.
+ */
 class ReconcilerLiveMode(
     private val service: CaptureService,
     private val displayId: Int,
     private val presenter: LivePresenter,
+    private val streamSource: () -> LiveCaptureSource? =
+        { CaptureBackendResolver.liveCaptureSourceFor(displayId) },
 ) : LiveMode {
 
     override val flavor: OverlayFlavor get() = presenter.flavor
@@ -285,8 +292,7 @@ class ReconcilerLiveMode(
     /** This mode exists only on the MediaProjection stream; the resolver
      *  returns it whenever consent is held. Consent loss is caught by the
      *  stream-kind check at the top of [runCycle]. */
-    private fun liveSource(): LiveCaptureSource? =
-        CaptureBackendResolver.liveCaptureSourceFor(displayId)
+    private fun liveSource(): LiveCaptureSource? = streamSource()
 
     /** Run one read→reconcile→update cycle. Returns the delay (ms) before the
      *  next cycle. */

@@ -54,10 +54,15 @@ private const val GRAYZONE_MIN_PCT = 0.01f
  */
 /**
  * @param service the enclosing capture service (for state access and coordinator calls)
+ * @param streamSource the capture source of this display, read at each use:
+ *  the resolver's. A parameter only so a JVM test can hand the mode frames;
+ *  production passes nothing.
  */
 class PinholeOverlayMode(
     private val service: CaptureService,
     private val displayId: Int,
+    private val streamSource: () -> LiveCaptureSource? =
+        { CaptureBackendResolver.liveCaptureSourceFor(displayId) },
 ) : LiveMode {
 
     override val flavor: OverlayFlavor = OverlayFlavor.TRANSLATION
@@ -312,7 +317,7 @@ class PinholeOverlayMode(
      *  cursor the gate compares against. */
     private fun liveSource(): LiveCaptureSource? =
         if (forceA11yCapture) CaptureBackendResolver.active().liveCaptureSource
-        else CaptureBackendResolver.liveCaptureSourceFor(displayId)
+        else streamSource()
 
     /** Consecutive A2 gate skips since the last full cycle — drives the
      *  reconciliation net (see runCycle's gate block). */
