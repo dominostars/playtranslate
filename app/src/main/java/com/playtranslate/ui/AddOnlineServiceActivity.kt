@@ -27,7 +27,8 @@ import java.util.UUID
 /**
  * The add-service picker: every online service a user can add an
  * instance of (the same service any number of times, each with its own
- * key). OpenAI-compatible providers are reached through OpenAI's provider
+ * key; Lingva, which has nothing to set, only while the list holds none:
+ * [offered]). OpenAI-compatible providers are reached through OpenAI's provider
  * preset, so DeepSeek and the rest have no row of their own, except a
  * preset the OpenAI row's requirement would misdescribe: Bilibili
  * Index-Translate takes no key, so it gets its own row ([CatalogEntry.Preset]).
@@ -41,7 +42,9 @@ import java.util.UUID
  * onResume); absent → the user backed out, stay open. Watching the
  * specific id (not a list count) keeps back-out and repeat-add robust.
  *
- * Lingva has nothing to configure, so it's added enabled immediately.
+ * Lingva has nothing to configure, so it's added enabled immediately, and
+ * a second Lingva would be the first one over again, so its row is drawn
+ * only while the list holds none ([offered]).
  * Index-Translate has nothing to configure either, but its page carries
  * the disclosure the user reads before adding it.
  */
@@ -84,7 +87,7 @@ class AddOnlineServiceActivity : AppCompatActivity() {
         val card = PtGroupCard(this)
         val rowContainer: LinearLayout = card
 
-        val services = CATALOG.map { entry ->
+        val services = offered(OnlineServiceStore.all()).map { entry ->
             ServiceRow(
                 title = entry.title(this),
                 // OpenAI's row names the providers it reaches on its own
@@ -143,14 +146,19 @@ class AddOnlineServiceActivity : AppCompatActivity() {
             is CatalogEntry.Service -> when (entry.type) {
                 ServiceType.LINGVA -> {
                     // No config page: add enabled immediately and dismiss.
-                    OnlineServiceMutations.addInstance(
-                        this,
-                        OnlineServiceInstance(
-                            id = UUID.randomUUID().toString(),
-                            type = ServiceType.LINGVA,
-                            enabled = true,
-                        ),
-                    )
+                    // Checked against the list as it is now, not as it was
+                    // drawn: a second tap that lands before the picker has
+                    // closed finds the first tap's Lingva and adds nothing.
+                    if (entry in offered(OnlineServiceStore.all())) {
+                        OnlineServiceMutations.addInstance(
+                            this,
+                            OnlineServiceInstance(
+                                id = UUID.randomUUID().toString(),
+                                type = ServiceType.LINGVA,
+                                enabled = true,
+                            ),
+                        )
+                    }
                     finish()
                 }
                 ServiceType.DEEPL -> {
@@ -205,15 +213,30 @@ class AddOnlineServiceActivity : AppCompatActivity() {
          *  endpoints) makes it the entry most users are here for; the
          *  presets with a row of their own (LLM providers that need no key)
          *  come after Gemini and above DeepL. Derived from [OpenAiPreset],
-         *  so a preset gets its row from its own declaration. Also the order
-         *  the services page's Add row names them in
-         *  ([OnlineServicesController]), so a new service surfaces in both
+         *  so a preset gets its row from its own declaration. This picker and
+         *  the services page's Add row ([OnlineServicesController]) both
+         *  show it through [offered], so a new service surfaces in both
          *  places at once. */
         val CATALOG: List<CatalogEntry> =
             listOf(ServiceType.OPENAI, ServiceType.GEMINI).map { CatalogEntry.Service(it) } +
                 OpenAiPreset.entries.filterNot { it.listedUnderOpenAi }
                     .map { CatalogEntry.Preset(it) } +
                 listOf(ServiceType.DEEPL, ServiceType.LINGVA).map { CatalogEntry.Service(it) }
+
+        /** The [CATALOG] rows a list holding [instances] can still take, in
+         *  catalog order. Every row but Lingva's adds a service with
+         *  something of its own to set (a key, a model, an endpoint), so a
+         *  second instance can differ from the first. A Lingva instance has
+         *  nothing to set: a second one would be the first over again, so
+         *  once [instances] hold a Lingva, on or off, its row drops out, as
+         *  a Recommended dictionary leaves its list once installed
+         *  ([com.playtranslate.yomitan.RecommendedYomitanDictionaries.offered]).
+         *  The picker draws these rows and checks a Lingva tap against them;
+         *  the services page's Add row names them. */
+        fun offered(instances: List<OnlineServiceInstance>): List<CatalogEntry> {
+            val holdsLingva = instances.any { it.type == ServiceType.LINGVA }
+            return CATALOG.filterNot { holdsLingva && it.type == ServiceType.LINGVA }
+        }
 
         /** The providers OpenAI reaches beyond itself — "DeepSeek, Mistral,
          *  Groq, OpenRouter, Claude, Custom". They have no catalog entry of
@@ -231,7 +254,7 @@ class AddOnlineServiceActivity : AppCompatActivity() {
                 .joinToString(", ") { OnlineBackendFactory.presetDisplayName(context, it) }
 
         /** The name a catalog row goes by in the services page's Add-row
-         *  subtitle, which names the whole catalog on one line and so has to
+         *  subtitle, which names the [offered] rows on one line and so has to
          *  carry OpenAI's providers inside its own entry: "OpenAI (DeepSeek,
          *  Mistral, …), Gemini, Bilibili Index-Translate, DeepL, Lingva". This
          *  picker has room to give that list a line of its own, so its rows

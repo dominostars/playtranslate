@@ -96,10 +96,6 @@ class OnlineServicesController(
     init {
         recycler.layoutManager = LinearLayoutManager(activity)
         recycler.adapter = adapter
-        rowAdd.findViewById<TextView>(R.id.tvRowSubtitle).text =
-            AddOnlineServiceActivity.CATALOG.joinToString(", ") {
-                AddOnlineServiceActivity.catalogTitle(activity, it)
-            }
         rowAdd.setOnClickListener {
             activity.startActivity(Intent(activity, AddOnlineServiceActivity::class.java))
         }
@@ -186,7 +182,20 @@ class OnlineServicesController(
         working.clear()
         working.addAll(OnlineServiceStore.all())
         adapter.notifyDataSetChanged()
+        bindAddRow()
         refreshStatuses()
+    }
+
+    /** The Add row's subtitle names what the picker offers
+     *  ([AddOnlineServiceActivity.offered]), which depends on what the list
+     *  holds (no Lingva row while it holds a Lingva), so it is bound with the
+     *  list: on each [rebind], and on leaving edit mode, where a delete may
+     *  have freed a row. Edit mode hides the row, so nothing binds it then. */
+    private fun bindAddRow() {
+        rowAdd.findViewById<TextView>(R.id.tvRowSubtitle).text =
+            AddOnlineServiceActivity.offered(OnlineServiceStore.all()).joinToString(", ") {
+                AddOnlineServiceActivity.catalogTitle(activity, it)
+            }
     }
 
     /** Flip edit mode; returns the new state so the caller can restyle
@@ -214,6 +223,7 @@ class OnlineServicesController(
         isEditing = false
         rowAdd.isVisible = true
         dividerAdd.isVisible = true
+        bindAddRow()
         itemTouchHelper?.attachToRecyclerView(null)
         itemTouchHelper = null
         OnlineServiceMutations.reorder(activity, working.map { it.id })
