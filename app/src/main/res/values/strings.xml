@@ -1399,6 +1399,15 @@
          be attached. -->
     <string name="anki_added_no_audio">Added to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (audio unavailable)</string>
 
+    <!-- Success toast shown after adding a card whose audio is NOT in the
+         voice the user chose. The voice chosen for the game's language is
+         one of the connected voice service's (an online AI voice), the
+         service could not speak (wrong key, no network, quota spent), and
+         the device's own text-to-speech voice was used in its place. The
+         card has audio; this tells the user it is the device voice.
+         "Voice service" is the name in audio_source_voice_service_name. -->
+    <string name="anki_added_voice_fell_back">Added to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (voice service unavailable, device voice used)</string>
+
     <!-- Success toast for a card whose screenshot could not be handed to
          AnkiDroid's media store, so the card's Picture field landed
          empty. Shown only when the note type actually had a field to
@@ -4937,6 +4946,207 @@
          switch row at the top of the TTS settings screen, and the header of its
          section in the Anki audio picker. -->
     <string name="audio_source_commons_name">Wikimedia Commons</string>
+
+    <!-- Name of the online text-to-speech service the user has connected
+         with their own API key (an AI voice provider). Header of its group
+         of voices on the Text-to-speech voice page, and of its section in
+         the Anki audio picker, above the device's own voices. "Voice
+         service", not "Online": device voice rows on the same page already
+         say Online or Offline for a device voice that needs the network. -->
+    <string name="audio_source_voice_service_name">Voice service</string>
+
+    <!-- Toast in the Anki audio picker when the row the user tapped could
+         not be played (a recording that failed to download, a voice
+         service that refused the request). Also a toast on the
+         Text-to-speech voice page, when the sample of a voice service's
+         voice was sent by the service and then would not play. -->
+    <string name="audio_error_playing">Couldn\'t play this audio</string>
+
+    <!-- Voice service (an online text-to-speech provider the user connects
+         with their own API key), on the Text-to-speech voice page. -->
+
+    <!-- Row in the Voice service group of the voice page while no service
+         is connected. Tapping it opens the page where one is set up. -->
+    <string name="voice_service_connect_title">Connect a voice service</string>
+
+    <!-- Subtitle of that row: what a voice service is for. -->
+    <string name="voice_service_connect_subtitle">Use an online AI voice with your own API key</string>
+
+    <!-- Row under the connected service's list of voices on the voice
+         page. Tapping it opens the service's settings (URL, key, model).
+         Its subtitle is the service's host name, e.g. api.elevenlabs.io. -->
+    <string name="voice_service_settings_row">Service settings</string>
+
+    <!-- Cell in the Voice service group when the service answered with an
+         empty list of voices. -->
+    <string name="voice_service_no_voices">No voices</string>
+
+    <!-- Row in the device voices group of the voice page when the device
+         has no text-to-speech engine. Its subtitle is
+         tts_no_engine_row_subtitle; tapping it opens the alert that offers
+         to install or enable one. -->
+    <string name="tts_no_engine_row_title">No text-to-speech engine</string>
+
+    <!-- Title of the alert shown on the voice page when the user tapped one
+         of the voice service's voices and the service could not speak the
+         sample, and on the service settings page when its list of models
+         could not be loaded. The message under it is one of the
+         voice_service_failure_* sentences, then what the service itself
+         answered. -->
+    <string name="voice_service_failed_title">The voice service did not answer</string>
+
+    <!-- Reasons for that alert, one sentence each. -->
+    <!-- The service answered that the API key is wrong or not allowed. -->
+    <string name="voice_service_failure_auth">The service refused the API key.</string>
+    <!-- The service answered that too many requests were made or that the
+         account's quota is spent. -->
+    <string name="voice_service_failure_rate_limited">The service\'s rate limit or quota is used up.</string>
+    <!-- No answer arrived within the app's time limit. -->
+    <string name="voice_service_failure_timeout">The service did not answer in time.</string>
+    <!-- No connection could be made: wrong address, or no network. -->
+    <string name="voice_service_failure_unreachable">The service could not be reached. Check the URL and your connection.</string>
+    <!-- The service answered with a server error. %1$d = the HTTP status. -->
+    <string name="voice_service_failure_server_error">The service had an error (HTTP <xliff:g id="status" example="503">%1$d</xliff:g>).</string>
+    <!-- The service answered that it will not do this request (a wrong
+         model, voice or field). %1$d = the HTTP status. -->
+    <string name="voice_service_failure_rejected">The service refused the request (HTTP <xliff:g id="status" example="400">%1$d</xliff:g>).</string>
+    <!-- Second paragraph of that alert on the Text-to-speech voice page,
+         under voice_service_failure_rejected, when the service refused to
+         speak the sample of a voice the user tapped. It says what the
+         refused request asked for, since a refusal is nearly always about
+         one of the two. %1$s = the voice's name as its row on that page
+         shows it. %2$s = the model's name as the Model row of the service
+         settings page shows it (often an id such as "tts-1"). "here" is
+         the voice page the alert is over; "Service settings" is the row
+         named in voice_service_settings_row. -->
+    <string name="voice_service_failure_rejected_asked">The request named the voice <xliff:g id="voice" example="Coral">%1$s</xliff:g> and the model <xliff:g id="model" example="gpt-4o-mini-tts">%2$s</xliff:g>. If the service does not have one of them, choose another voice here, or another model in Service settings.</string>
+    <!-- The request was never sent: the URL in the service's settings is
+         not one the app will call. -->
+    <string name="voice_service_failure_no_request">The request could not be made. Check the service\'s URL.</string>
+    <!-- The service answered, but not with an audio file the app can use.
+         The format names are file formats and stay as written. -->
+    <string name="voice_service_failure_bad_response">The service did not answer with audio the app can use (MP3, WAV, Ogg or M4A).</string>
+    <!-- The service was asked for its list of voices or of models and
+         answered with something that is not such a list. Shown under
+         "Couldn't load" where the list would be, followed by what the
+         service answered. -->
+    <string name="voice_service_failure_bad_list">The service\'s answer was not a list the app can read.</string>
+
+    <!-- Voice service settings page. -->
+
+    <!-- Row choosing which kind of request the service takes. Its value
+         is one of the two names below. -->
+    <string name="voice_service_row_service">Service</string>
+    <!-- A service that takes the same request as OpenAI's speech API. -->
+    <string name="voice_service_preset_openai"><xliff:g id="brand_openai" example="OpenAI">OpenAI</xliff:g>-compatible</string>
+    <!-- A service that takes the same request as ElevenLabs's speech API. -->
+    <string name="voice_service_preset_elevenlabs"><xliff:g id="brand_elevenlabs" example="ElevenLabs">ElevenLabs</xliff:g>-compatible</string>
+
+    <!-- Label over the field holding the address the speech request is
+         sent to. -->
+    <string name="voice_service_url_label">Request URL</string>
+    <!-- Label over the field holding the service's API key. -->
+    <string name="voice_service_api_key_label">API key</string>
+    <!-- Row choosing the service's speech model. Its value is the model's
+         name, or voice_service_model_none. Tapping it lists the service's
+         models. -->
+    <string name="voice_service_row_model">Model</string>
+    <!-- Value of the Model row while no model is chosen. -->
+    <string name="voice_service_model_none">Choose</string>
+    <!-- Label over a free-text field: how the voice should speak (accent,
+         pace, tone), sent to services that take such an instruction. -->
+    <string name="voice_service_instructions_label">Voice instructions</string>
+    <!-- Header of the group holding the request text and the hand-typed
+         voice ids, for users who need to change what is sent. -->
+    <string name="voice_service_advanced_header">Advanced</string>
+    <!-- Label over the field holding the request the app sends. -->
+    <string name="voice_service_request_label">Request</string>
+    <!-- Help under that field. The words in braces are tokens the app
+         replaces and must stay exactly as written, braces included. -->
+    <string name="voice_service_request_legend">Header lines, then the JSON body. The app fills in {text}, {voice}, {model}, {instructions}, {speed}, {language}, {language_name} and {key}.</string>
+    <!-- Label over a field of voice ids, one on each line, for a service
+         that cannot list its own voices. -->
+    <string name="voice_service_manual_voices_label">Voice ids, one per line</string>
+    <!-- Help under that field. The typed ids are offered on the voice page
+         together with any voices the app already knows for this kind of
+         service, and only when the service cannot list its own. -->
+    <string name="voice_service_manual_voices_hint">For a service that cannot list its own voices. Added to the voices the app already knows for it.</string>
+
+    <!-- Row at the bottom of the service settings page that disconnects
+         the service. Also the confirming button of the alert it raises. -->
+    <string name="voice_service_remove">Remove service</string>
+    <!-- Title of the alert that confirms it. -->
+    <string name="voice_service_remove_confirm_title">Remove the voice service?</string>
+    <!-- Message of that alert: what removing does. -->
+    <string name="voice_service_remove_confirm_message">Its API key is deleted, and every language that uses one of its voices goes back to the device\'s voice.</string>
+
+    <!-- Title of the alert shown when Save is pressed on the service
+         settings page and something on the page is not right. The message
+         is one of the voice_service_issue_* sentences. -->
+    <string name="voice_service_cannot_save_title">Can\'t save yet</string>
+    <!-- The request URL is not a web address the app will call. -->
+    <string name="voice_service_issue_bad_url">The request URL must be an https address, or an http address on your own network.</string>
+    <!-- The request never includes the text to speak. {text} is a token
+         and stays as written. -->
+    <string name="voice_service_issue_no_text">The request has to include {text}, in the URL or in the body.</string>
+    <!-- The tokens named are in a header line, where they cannot go.
+         They stay as written. -->
+    <string name="voice_service_issue_text_in_header">{text} and {instructions} cannot go in a header line.</string>
+    <!-- The API key holds a character that cannot be sent, usually a
+         stray one picked up when pasting. -->
+    <string name="voice_service_issue_header_not_ascii">The API key holds a character that cannot be sent. Paste it again without spaces or line breaks.</string>
+    <!-- No model was chosen and the request needs one. -->
+    <string name="voice_service_issue_no_model">Choose a model.</string>
+    <!-- Message of the "Can't save yet" alert when Save asked the service
+         for its list of models, the service has none to give, and no model
+         was chosen: the user has to type one. "Model" is the row named in
+         voice_service_row_model. What the service answered follows. -->
+    <string name="voice_service_no_model_list_type_model">The service did not return a list of models. Tap Model and type the model\'s id.</string>
+    <!-- Title of the alert shown when Save asked the service for its list
+         of models, which is how the URL and the API key are checked, and
+         the service answered without one. Its buttons are Save anyway and
+         Cancel. -->
+    <string name="voice_service_unchecked_title">The key could not be checked</string>
+    <!-- Message of that alert. What the service answered follows. -->
+    <string name="voice_service_unchecked_message">The service did not return a list of models, so the URL and the API key could not be checked.</string>
+    <!-- First line, on the voice service's settings page, of what is said
+         when the service was asked for its list of models with the API key
+         field left empty and answered with no list. It stands above
+         voice_service_no_model_list_type_model or
+         voice_service_unchecked_message in their alerts, and above the
+         reason under "Couldn't load" in the Model list. A statement, not
+         an instruction: some self-hosted services need no key. -->
+    <string name="voice_service_no_key_entered">No API key is entered.</string>
+    <!-- Title of the alert shown when Save is pressed on the service
+         settings page, the service returned its list of models, and the
+         model chosen on the page is not in that list (a model left over
+         from another service, a mistyped id, a model the service has
+         retired). Its buttons are Save anyway and Cancel. -->
+    <string name="voice_service_model_not_listed_title">The service does not list this model</string>
+    <!-- Message of that alert. %1$s = the chosen model's name as the
+         Model row shows it (often an id such as "tts-1-hd"). "Model" is
+         the row named in voice_service_row_model. -->
+    <string name="voice_service_model_not_listed_message">The service\'s list of models does not include <xliff:g id="model" example="tts-1-hd">%1$s</xliff:g>. If you save, speech requests may be refused. To choose a model the service lists, cancel and tap Model.</string>
+    <!-- Title of the alert shown when Save is pressed on the service
+         settings page and the chosen model cannot use a voice that one or
+         more game languages are set to speak with. Its buttons are Save
+         anyway and Cancel. -->
+    <string name="voice_service_voices_not_taken_title">Some voices do not work with this model</string>
+    <!-- Message of that alert, shown in the alert's body on the service
+         settings page. %1$s = the model's name, as the service gives it
+         (often an id such as "tts-1"). A list follows the message on its
+         own lines, one line per game language: the language's name, then
+         the voice chosen for it. -->
+    <string name="voice_service_voices_not_taken_message">The model <xliff:g id="model" example="tts-1">%1$s</xliff:g> cannot use the voices below. If you save, each of these languages goes back to the device\'s voice.</string>
+    <!-- Alert message when the device could not encrypt the API key, so
+         the page saved nothing. -->
+    <string name="voice_service_key_not_stored">The API key could not be stored securely on this device, so nothing was saved.</string>
+
+    <!-- On the list of the service's models: label over a field for typing
+         a model id the list does not show. -->
+    <string name="voice_service_model_other_label">Other model id</string>
+    <!-- Button beside that field: use the typed model id. -->
+    <string name="voice_service_model_use">Use</string>
 
     <!-- Cell shown inside a source's section in the Anki audio picker when that
          source returned no recordings for the word. -->

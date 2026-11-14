@@ -10,6 +10,9 @@ import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
 import com.playtranslate.PtJson
 import com.playtranslate.R
+import com.playtranslate.audio.online.OnlineTtsChoice
+import com.playtranslate.audio.online.OnlineTtsConfig
+import com.playtranslate.audio.online.OnlineTtsService
 import com.playtranslate.cloud.KeyCheck
 import com.playtranslate.cloud.PtCloudAccount
 import com.playtranslate.cloud.PtCloudConfig
@@ -17,9 +20,11 @@ import com.playtranslate.cloud.PtCloudService
 import com.playtranslate.cloud.PtCloudTestSupport
 import com.playtranslate.cloud.SOURCE_TRIAL
 import com.playtranslate.language.HintTextKind
+import com.playtranslate.language.SourceLangId
 import com.playtranslate.translation.CooldownState
 import com.playtranslate.translation.Cooldownable
 import com.playtranslate.translation.TranslationBackend
+import com.playtranslate.tts.VoiceChoice
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -97,6 +102,42 @@ class RootSettingsViewModelTest {
     @Test fun `tts cell seeds as Loading`() {
         val vm = RootSettingsViewModel(app)
         assertEquals(RootSettingsViewModel.TtsCell.Loading, vm.state.value.tts)
+    }
+
+    @Test fun `tts cell — the language's voice is a voice service's → the service's host and the voice's name`() {
+        val prefs = Prefs(ctx)
+        prefs.sourceLang = "ja"
+        // A keyless service: an empty key needs no keystore to store.
+        assertTrue(
+            OnlineTtsService.save(
+                prefs,
+                OnlineTtsConfig(
+                    url = "http://192.168.1.5:8880/v1/audio/speech", model = OnlineTtsChoice("kokoro"),
+                ),
+                key = "",
+            ),
+        )
+        prefs.setVoiceChoice(SourceLangId.JA, VoiceChoice.Online(OnlineTtsChoice("jf_alpha", "Alpha")))
+        val vm = RootSettingsViewModel(app)
+        vm.refresh()
+        // No engine is asked: the cell names the service's voice whether or
+        // not the device has one.
+        assertEquals(
+            RootSettingsViewModel.TtsCell.Available("192.168.1.5", "Alpha"),
+            vm.state.value.tts,
+        )
+    }
+
+    @Test fun `tts cell — another language's service voice does not name this language's cell`() {
+        val prefs = Prefs(ctx)
+        prefs.sourceLang = "ja"
+        assertTrue(OnlineTtsService.save(prefs, OnlineTtsConfig(model = OnlineTtsChoice("m")), key = ""))
+        prefs.setVoiceChoice(SourceLangId.ZH, VoiceChoice.Online(OnlineTtsChoice("coral")))
+        val vm = RootSettingsViewModel(app)
+        vm.refresh()
+        assertFalse(
+            (vm.state.value.tts as? RootSettingsViewModel.TtsCell.Available)?.voiceLabel == "coral",
+        )
     }
 
     @Test fun `refresh re-resolves the anki cell after the grant lands`() {
@@ -664,20 +705,6 @@ class RootSettingsViewModelTest {
         val s = RootSettingsViewModel(app).state.value.appearanceSummary
         assertTrue(s.startsWith("System")) // default theme mode
         assertTrue(s.endsWith("Aqua"))     // default accent
-    }
-
-    // ── TTS cell tap mapping ──────────────────────────────────────────────
-
-    @Test fun `tts Loading is non-interactive (no picker before availability resolves)`() {
-        assertEquals(null, ttsTapFor(RootSettingsViewModel.TtsCell.Loading))
-    }
-
-    @Test fun `tts Available opens the picker, NoEngine opens setup`() {
-        assertEquals(
-            TtsTap.OPEN_PICKER,
-            ttsTapFor(RootSettingsViewModel.TtsCell.Available("Google TTS", "Voice 1")),
-        )
-        assertEquals(TtsTap.OPEN_SETUP, ttsTapFor(RootSettingsViewModel.TtsCell.NoEngine))
     }
 
     private companion object {

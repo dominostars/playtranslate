@@ -81,4 +81,44 @@ class AnkiMediaShortfallTest {
                 .shortfallRes(),
         )
     }
+
+    @Test fun `audio in the device voice where a service voice was chosen is named`() {
+        assertEquals(
+            R.string.anki_added_voice_fell_back,
+            AnkiSendResult.Success(voiceFellBack = true).shortfallRes(),
+        )
+    }
+
+    @Test fun `the wrong voice ranks under a loss and over the simplified note`() {
+        // A card with no audio at all has nothing in any voice to speak of.
+        assertEquals(
+            R.string.anki_added_no_audio,
+            AnkiSendResult.Success(voiceFellBack = true, audioDropped = true).shortfallRes(),
+        )
+        assertEquals(
+            R.string.anki_added_no_screenshot,
+            AnkiSendResult.Success(voiceFellBack = true, imageDropped = true).shortfallRes(),
+        )
+        assertEquals(
+            R.string.anki_added_voice_fell_back,
+            AnkiSendResult.Success(voiceFellBack = true, definitionsSimplified = true).shortfallRes(),
+        )
+    }
+
+    @Test fun `what the send resolved locally is folded into a landed card's result`() {
+        val landed: AnkiSendResult = AnkiSendResult.Success(imageDropped = true)
+        assertEquals(
+            AnkiSendResult.Success(imageDropped = true, voiceFellBack = true),
+            landed.foldInLocalAudioMisses(sentenceMissing = false, wordAudioMissing = false, voiceFellBack = true),
+        )
+        assertEquals(
+            AnkiSendResult.Success(imageDropped = true, audioDropped = true, wordAudioDropped = true),
+            landed.foldInLocalAudioMisses(sentenceMissing = true, wordAudioMissing = true, voiceFellBack = false),
+        )
+        assertEquals(
+            "a clean resolution leaves the result as the dispatcher made it",
+            landed,
+            landed.foldInLocalAudioMisses(sentenceMissing = false, wordAudioMissing = false, voiceFellBack = false),
+        )
+    }
 }

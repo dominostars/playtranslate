@@ -22,17 +22,20 @@ import com.playtranslate.audio.Attribution
 import com.playtranslate.audio.AudioCandidate
 import com.playtranslate.audio.AudioRequest
 import com.playtranslate.audio.AudioSelection
+import com.playtranslate.audio.AudioSelections
 import com.playtranslate.audio.AudioSource
 import com.playtranslate.audio.AudioSourceRegistry
+import com.playtranslate.audio.PlayOutcome
 import com.playtranslate.audio.PronunciationPlayer
-import com.playtranslate.audio.SpokenText
+import com.playtranslate.audio.sources.OnlineTtsAudioSource
 import com.playtranslate.audio.sources.RecordingAudioSource
 import com.playtranslate.audio.sources.TtsAudioSource
 import com.playtranslate.language.ReadingOverride
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.themeColor
-import com.playtranslate.tts.TtsEngine
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
@@ -113,6 +116,7 @@ class AudioSourcePickerView(
 
     /** Stop any in-flight audition. Idempotent; call on host teardown. */
     fun release() {
+        auditionJob?.cancel()
         PronunciationPlayer.stop()
     }
 
@@ -122,7 +126,9 @@ class AudioSourcePickerView(
         // Only sources that serve this request's kind get a section — e.g. a
         // sentence request omits Commons (word-level only) rather than showing
         // it as a permanently-empty "No results" row and querying it for nothing.
-        AudioSourceRegistry.all().filter { it.serves(req.kind) }.forEach { source ->
+        // And only sources that are set up: the voice service has no section
+        // until a service is connected.
+        AudioSourceRegistry.all().filter { it.serves(req.kind) && it.isSetUp(ctx) }.forEach { source ->
             val header = inflater.inflate(R.layout.settings_group_header, sections, false)
             header.findViewById<TextView>(R.id.tvGroupTitle).text = source.label(ctx)
             sections.addView(header)
@@ -214,22 +220,52 @@ class AudioSourcePickerView(
     }
 
     /** Audition a just-committed speed-slider value: speak this card's text
-     *  at the new rate, with the picker's current TTS voice when one is
-     *  selected, else the language's saved global voice — the voice the
-     *  saved audio would actually use. */
+     *  at the new rate, in the voice the saved audio would actually be
+     *  spoken by. That is the picked voice when the pick is one (a device
+     *  voice or a voice service's), else the language's own voice, which
+     *  the slider governs whatever recording is picked for this card. */
     private fun previewTtsSpeed() {
-        val voice = if (selectedSourceId == TtsAudioSource.ID) {
-            selectedKey?.takeIf { it != TtsAudioSource.DEFAULT_KEY }
-        } else {
-            Prefs(ctx).ttsVoiceName(req.lang)
+        val picked = pickedSelection()
+        audition {
+            val pickedVoice = (picked as? AudioSelection.Explicit)
+                ?.takeIf { it.sourceId == TtsAudioSource.ID || it.sourceId == OnlineTtsAudioSource.ID }
+            if (pickedVoice != null) {
+                AudioSourceRegistry.sourceFor(pickedVoice.sourceId)
+                    .play(ctx, AudioSelections.explicitCandidate(pickedVoice), req, awaitCompletion = false, onStart = null)
+            } else {
+                val service = OnlineTtsAudioSource.takeIf { it.isEnabled(ctx) }?.defaultCandidate(ctx, req)
+                if (service != null) {
+                    OnlineTtsAudioSource.play(ctx, service, req, awaitCompletion = false, onStart = null)
+                } else {
+                    TtsAudioSource.play(
+                        ctx, TtsAudioSource.defaultCandidate(ctx, req), req, awaitCompletion = false, onStart = null,
+                    )
+                }
+            }
         }
-        scope.launch {
-            TtsEngine.speak(
-                ctx,
-                SpokenText.forRequest(ctx, req),
-                req.lang,
-                voiceNameOverride = voice,
-            )
+    }
+
+    /** The one audition in flight: a row tap's or the speed slider's. A new
+     *  one ends it and whatever it was playing, so a slow sample (a voice
+     *  service's, a download) cannot land over a later pick. A failed one
+     *  says so: a row that plays nothing with no word of why reads as a
+     *  broken picker. */
+    private var auditionJob: Job? = null
+
+    private fun audition(play: suspend () -> PlayOutcome) {
+        auditionJob?.cancel()
+        PronunciationPlayer.stop()
+        auditionJob = scope.launch {
+            val outcome = try {
+                play()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                PlayOutcome.Failed(recoverable = true)
+            }
+            if (outcome is PlayOutcome.Failed) {
+                Toast.makeText(ctx, R.string.audio_error_playing, Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -299,8 +335,6 @@ class AudioSourcePickerView(
         // Audition the FULL candidate (it carries the URL + attribution), so for
         // Commons this downloads + caches the EXACT selected clip the send path
         // reuses — not a reconstructed, locator-less candidate.
-        scope.launch {
-            source.play(ctx, candidate, req, awaitCompletion = false, onStart = null)
-        }
+        audition { source.play(ctx, candidate, req, awaitCompletion = false, onStart = null) }
     }
 }

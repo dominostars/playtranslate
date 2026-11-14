@@ -36,6 +36,33 @@ class AudioCacheTest {
         assertTrue(cache.isNegativeFresh("wikimedia_commons", SourceLangId.JA, "x"))
     }
 
+    @Test fun dropped_clip_goes_with_its_attribution_and_no_other_clip() = runBlocking {
+        val cache = AudioCache(ctx)
+        val attr = Attribution("Jane", "CC BY", "Wikimedia Commons", "https://x")
+        val bad = cache.putClip("wikimedia_commons", "Bad.ogg", byteArrayOf(1, 2, 3), attr)
+        cache.putClip("wikimedia_commons", "Good.ogg", byteArrayOf(1, 2, 3), attr)
+
+        cache.dropClip(bad)
+        assertNull(cache.getClip("wikimedia_commons", "Bad.ogg"))
+        assertNull(cache.readAttribution("wikimedia_commons", "Bad.ogg"))
+        assertNotNull(cache.getClip("wikimedia_commons", "Good.ogg"))
+        assertEquals("Jane", cache.readAttribution("wikimedia_commons", "Good.ogg")?.author)
+    }
+
+    @Test fun dropped_source_loses_its_clips_and_no_other_sources() = runBlocking {
+        val cache = AudioCache(ctx)
+        cache.putClip("online_tts", "a.mp3", byteArrayOf(1), null)
+        cache.putClip("online_tts", "b.wav", byteArrayOf(1), null)
+        cache.putClip("wikimedia_commons", "Kept.ogg", byteArrayOf(1), null)
+
+        cache.dropClips("online_tts")
+        assertNull(cache.getClip("online_tts", "a.mp3"))
+        assertNull(cache.getClip("online_tts", "b.wav"))
+        assertNotNull(cache.getClip("wikimedia_commons", "Kept.ogg"))
+        // The source is usable again at once.
+        assertNotNull(cache.putClip("online_tts", "a.mp3", byteArrayOf(1), null).takeIf { it.exists() })
+    }
+
     @Test fun lru_evicts_oldest_over_budget() = runBlocking {
         val cache = AudioCache(ctx, maxBytes = 10)
         val a = cache.putClip("s", "a.ogg", ByteArray(6), null)

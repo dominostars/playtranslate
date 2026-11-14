@@ -301,16 +301,17 @@ object TtsEngine {
             activeEngineLabel(engine)
         }
 
-    /** Speak a short in-language sample with [voice] — the voice picker's
-     *  audition. A null [voice] auditions the language's default voice.
-     *  Best-effort; no-op when no engine is available. */
+    /** Speak the language's sample sentence ([voiceSampleText]) with [voice]
+     *  — the voice picker's audition, the same sentence a voice service's
+     *  voice is asked for there. A null [voice] auditions the language's
+     *  default voice. Best-effort; no-op when no engine is available. */
     suspend fun previewVoice(context: Context, voice: Voice?, lang: SourceLangId) {
         lock.withLock {
             val engine = currentEngine(context) ?: return@withLock
             applyUserRate(context, engine)
             if (voice != null) engine.voice = voice else engine.setLanguage(lang.locale)
             engine.speak(
-                lang.displayName(lang.locale),
+                voiceSampleText(lang),
                 TextToSpeech.QUEUE_FLUSH, null, "pt-tts-preview",
             )
         }

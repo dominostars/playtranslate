@@ -23,8 +23,10 @@ import com.playtranslate.ocr.registry.ocrLabel
 import com.playtranslate.translation.Cooldownable
 import com.playtranslate.translation.TranslationBackend
 import com.playtranslate.translation.TranslationBackendRegistry
+import com.playtranslate.audio.online.OnlineTtsService
 import com.playtranslate.tts.TtsEngine
 import com.playtranslate.tts.TtsVoiceLabels
+import com.playtranslate.tts.VoiceChoice
 import com.playtranslate.yomitan.YomitanDataStore
 import com.playtranslate.yomitan.YomitanDictionaryStore
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -108,14 +110,16 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
         data class Navigate(val deckName: String, val cardName: String) : AnkiCell
     }
 
-    /** TTS CONFIGURE cell (no sub-page; behaves like the old TTS row). */
+    /** TTS CONFIGURE cell. A tap opens the voice page in every state. */
     sealed interface TtsCell {
         /** Engine availability not resolved yet (async check in flight). */
         object Loading : TtsCell
-        /** A usable engine — digest is "engine · voice"; tap opens the voice
-         *  picker. [engineLabel] is null when the engine name can't be read. */
+        /** The game language has a voice: the digest is "engine · voice"
+         *  for a device voice, "service host · voice" for a voice service's.
+         *  [engineLabel] is null when that name can't be read. */
         data class Available(val engineLabel: String?, val voiceLabel: String) : TtsCell
-        /** No usable engine — tapping shows the "No Text-to-Speech" alert. */
+        /** No usable engine, and the language's voice is not a voice
+         *  service's: nothing can speak yet. */
         object NoEngine : TtsCell
     }
 
@@ -407,8 +411,13 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun resolveTtsCell(): TtsCell {
         val ctx = getApplication<Application>()
-        if (!TtsEngine.isEngineAvailable(ctx)) return TtsCell.NoEngine
         val lang = prefs.sourceLangId
+        // The language's voice is a voice service's: the cell names the
+        // service and the voice, whether or not the device has an engine.
+        (prefs.voiceChoice(lang) as? VoiceChoice.Online)?.let { online ->
+            return TtsCell.Available(OnlineTtsService.config(prefs)?.host, online.voice.name)
+        }
+        if (!TtsEngine.isEngineAvailable(ctx)) return TtsCell.NoEngine
         val voices = TtsEngine.voicesFor(ctx, lang)
         val voiceLabel = TtsVoiceLabels.titleFor(ctx, voices, prefs.ttsVoiceName(lang))
         return TtsCell.Available(TtsEngine.activeEngineLabel(ctx), voiceLabel)

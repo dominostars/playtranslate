@@ -1197,9 +1197,11 @@ class SentenceAnkiContentView(
             initialChecked = prefs.ankiSentenceAudioEnabled,
             onCheckedChange = { prefs.ankiSentenceAudioEnabled = it },
             onVoicePillTap = { launchAudioPicker(PickTarget.Sentence, sentenceSelection) },
-            // Multi-source: Auto resolves Commons-first → TTS; the resolver
-            // applies the kana spoken-form for JA itself. Commons has no
-            // sentence recordings, so the sentence cell effectively uses TTS.
+            // Multi-source: Auto resolves Commons-first, then the language's
+            // voice; the resolver applies the kana spoken-form for JA itself.
+            // Commons has no sentence recordings, so the sentence cell is
+            // effectively spoken by that voice (a voice service's when one
+            // is chosen, else the device's).
             selection = { sentenceSelection },
             audioRequest = { AudioRequest.sentence(etOriginal.text.toString(), lang, readingOverride) },
             // Game-audio mode: the chip drives the inline panel's playback

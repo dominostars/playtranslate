@@ -127,12 +127,18 @@ sealed interface AnkiSendResult {
      *  dictionary CSS) — either with the user's consent (the sheets'
      *  oversize prompt) or automatically (one-tap, which has no UI to
      *  ask).
+     *  [voiceFellBack] is true when the card carries audio that is not in
+     *  the voice the user chose: the language's voice is a voice service's,
+     *  the service gave no clip for the sentence or for a word, and the
+     *  device voice spoke in its place
+     *  ([com.playtranslate.audio.ResolvedAudio.fellBack]).
      *  Callers surface these flags via [Success.shortfallRes]. */
     data class Success(
         val audioDropped: Boolean = false,
         val wordAudioDropped: Boolean = false,
         val imageDropped: Boolean = false,
         val definitionsSimplified: Boolean = false,
+        val voiceFellBack: Boolean = false,
     ) : AnkiSendResult
     /** The send failed — the caller shows the error and restores the
      *  save button. [messageRes] names the cause where the dispatcher
@@ -207,6 +213,9 @@ internal object AnkiNoteSizeGuard {
  * user to find the rest in their deck later. A media loss outranks the
  * simplified-definitions note: missing media is data the card will never
  * have, while simplified definitions still carry every sense as text.
+ * Audio in the device voice where a voice service's was chosen ranks
+ * between the two: the card has its audio, in the wrong voice, which is
+ * less than a loss and more than a change of layout.
  */
 @StringRes
 fun AnkiSendResult.Success.shortfallRes(): Int? {
@@ -215,6 +224,7 @@ fun AnkiSendResult.Success.shortfallRes(): Int? {
         imageDropped && audioMissing -> R.string.anki_added_no_screenshot_or_audio
         imageDropped -> R.string.anki_added_no_screenshot
         audioMissing -> R.string.anki_added_no_audio
+        voiceFellBack -> R.string.anki_added_voice_fell_back
         definitionsSimplified -> R.string.anki_added_simplified
         else -> null
     }

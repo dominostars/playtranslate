@@ -2,6 +2,7 @@ package com.playtranslate.audio
 
 import android.content.Context
 import com.playtranslate.tts.TtsEngine
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -11,7 +12,8 @@ import kotlinx.coroutines.withTimeoutOrNull
  * whatever was playing — no cross-backend talk-over.
  *
  * Default playback walks enabled sources in priority order (Commons, then the
- * TTS floor) and plays the first source's [AudioSource.defaultCandidate]. A
+ * voice service when the language's voice is one of its own, then the TTS
+ * floor) and plays the first source's [AudioSource.defaultCandidate]. A
  * recoverable failure (offline/decode), no-result, OR a blown time budget
  * degrades to the next source; TTS is the guaranteed floor.
  *
@@ -57,13 +59,27 @@ object PronunciationPlayer {
         onStart: (() -> Unit)?,
         remoteBudgetMs: Long,
     ): PlayOutcome? {
+        // A source's failure is "no result" or a recoverable failure, and the
+        // walk goes on. A cancellation is neither: it is rethrown, so a
+        // cancelled tap does not walk on to the next source and speak.
         val tryOnce: suspend () -> PlayOutcome = {
-            val candidate = runCatching { source.defaultCandidate(ctx, req) }.getOrNull()
+            val candidate = try {
+                source.defaultCandidate(ctx, req)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
             if (candidate == null) {
                 PlayOutcome.NoResult
             } else {
-                runCatching { source.play(ctx, candidate, req, awaitCompletion, onStart) }
-                    .getOrElse { PlayOutcome.Failed(recoverable = true) }
+                try {
+                    source.play(ctx, candidate, req, awaitCompletion, onStart)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    PlayOutcome.Failed(recoverable = true)
+                }
             }
         }
         return if (source.remote && !awaitCompletion) {

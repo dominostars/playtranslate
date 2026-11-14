@@ -43,8 +43,14 @@ internal class SeenRequest(val request: Request, val body: String) {
     val json: JsonObject get() = PtJson.lenient.parseToJsonElement(body).jsonObject
 }
 
-/** What a canned interceptor answers. */
-internal class CannedReply(val code: Int, val body: String, val headers: Map<String, String> = emptyMap())
+/** What a canned interceptor answers: [body] as JSON text, or [bytes] as
+ *  they are when set (an audio file, which is no text in any charset). */
+internal class CannedReply(
+    val code: Int,
+    val body: String,
+    val headers: Map<String, String> = emptyMap(),
+    val bytes: ByteArray? = null,
+)
 
 /** A client whose interceptor records each request into [seen] and answers
  *  it with [reply], which may look at the request (a batch body, say). */
@@ -62,7 +68,10 @@ internal fun recordingClient(
         .protocol(Protocol.HTTP_1_1)
         .code(canned.code)
         .message(if (canned.code in 200..299) "OK" else "Error")
-        .body(canned.body.toResponseBody("application/json".toMediaType()))
+        .body(
+            canned.bytes?.toResponseBody("application/octet-stream".toMediaType())
+                ?: canned.body.toResponseBody("application/json".toMediaType()),
+        )
         .apply { canned.headers.forEach { (name, value) -> addHeader(name, value) } }
         .build()
 }.build()

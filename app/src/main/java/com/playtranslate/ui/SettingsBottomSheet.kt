@@ -121,22 +121,6 @@ class SettingsBottomSheet : DialogFragment() {
         }
     }
 
-    /** Voice picker now returns the choice via setResult rather than
-     *  writing the pref directly — Settings persists from its callback
-     *  and refreshes the TTS row. The pref key is keyed by source lang;
-     *  we snapshot the lang at launch time. */
-    private var ttsVoicePickerLang: com.playtranslate.language.SourceLangId? = null
-    private val ttsVoicePickerLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val lang = ttsVoicePickerLang.also { ttsVoicePickerLang = null }
-            ?: return@registerForActivityResult
-        if (result.resultCode != android.app.Activity.RESULT_OK) return@registerForActivityResult
-        val picked = result.data?.getStringExtra(TtsVoiceActivity.EXTRA_PICKED_VOICE)
-        Prefs(requireContext()).setTtsVoiceName(lang, picked)
-        rootVm.refresh()
-    }
-
     // ── Lifecycle ────────────────────────────────────────────────────────
 
     override fun onCreateView(
@@ -354,16 +338,11 @@ class SettingsBottomSheet : DialogFragment() {
                     LanguageSetupActivity.launch(requireContext(), mode)
                 }
                 override fun openTtsVoicePicker() {
+                    // The page reads the language's stored voice and writes
+                    // its own Save; this sheet's onResume refresh redraws
+                    // the Text-to-speech row when it returns.
                     val ctx = requireContext()
-                    val lang = Prefs(ctx).sourceLangId
-                    ttsVoicePickerLang = lang
-                    ttsVoicePickerLauncher.launch(
-                        TtsVoiceActivity.intent(ctx, lang, Prefs(ctx).ttsVoiceName(lang)),
-                    )
-                }
-                override fun openTtsSetup() {
-                    val act = activity ?: return
-                    showTtsNoEngineDialog(TtsAlertTarget.InActivity(act)) { }
+                    startActivity(TtsVoiceActivity.intent(ctx, Prefs(ctx).sourceLangId))
                 }
                 override fun onUpdateLanguagePacksTapped(
                     stalePacks: List<com.playtranslate.language.StalePack>

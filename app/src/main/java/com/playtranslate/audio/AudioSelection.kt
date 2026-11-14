@@ -2,20 +2,20 @@ package com.playtranslate.audio
 
 import android.content.Context
 import com.playtranslate.R
-import com.playtranslate.audio.sources.RecordingAudioSource
+import com.playtranslate.audio.sources.OnlineTtsAudioSource
 import com.playtranslate.audio.sources.TtsAudioSource
 import com.playtranslate.audio.sources.WikimediaCommonsAudioSource
-import com.playtranslate.tts.TtsEngine
-import com.playtranslate.tts.TtsVoiceLabels
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 
 /**
  * A per-cell audio choice in the Anki flow.
- *  - [Auto] (default): the registry's Commons-first → TTS resolution, decided
- *    lazily at play/send time — so cards honor "prefer human audio" without
- *    eager per-word queries when the sheet opens.
+ *  - [Auto] (default): the registry's resolution (Commons first when it is
+ *    enabled, then the language's voice: a voice service's when one is
+ *    chosen, with device TTS the floor under it), decided lazily at
+ *    play/send time — so cards honor "prefer human audio" without eager
+ *    per-word queries when the sheet opens.
  *  - [Explicit]: the user pinned a specific source + candidate via the picker.
  *
  * A pure value (sourceId + key) — safe to hold as per-cell state and pass to the
@@ -37,8 +37,16 @@ sealed interface AudioSelection {
 
 /** A resolved clip plus the credit that must travel with it (CC recordings).
  *  [ephemeral] true = a throwaway TTS synth file the caller should delete;
- *  false = a cached Commons clip that must stay in the audio cache. */
-data class ResolvedAudio(val file: File, val attribution: Attribution?, val ephemeral: Boolean = true)
+ *  false = a cached Commons clip that must stay in the audio cache.
+ *  [fellBack] true = the language's voice is a voice service's, the service
+ *  gave no clip, and this one is from a later source: the card's audio is
+ *  not in the voice the user chose, and the send says so. */
+data class ResolvedAudio(
+    val file: File,
+    val attribution: Attribution?,
+    val ephemeral: Boolean = true,
+    val fellBack: Boolean = false,
+)
 
 /** Bridges [AudioSelection] to the source registry for the Anki preview chip
  *  and send pipeline. */
@@ -70,7 +78,9 @@ object AudioSelections {
     /** Render a selection to an attachable file (+ attribution) for **send/export**.
      *
      *  [Auto] walks enabled sources Commons-first → TTS floor (fallback is correct:
-     *  Auto promises no specific clip). [Explicit] uses the chosen source **only**:
+     *  Auto promises no specific clip; a fallback from the language's chosen
+     *  voice service is marked, [ResolvedAudio.fellBack], so the send can say
+     *  so). [Explicit] uses the chosen source **only**:
      *  if it can't produce the file (evicted + offline, dead URL) this returns
      *  **null** rather than substituting a different clip — the send pipeline then
      *  reports the audio as missing instead of silently shipping the wrong
@@ -94,17 +104,25 @@ object AudioSelections {
         when (selection) {
             AudioSelection.Auto -> {
                 var out: ResolvedAudio? = null
+                // The voice service offered the language's chosen voice and
+                // gave no clip (a failure, or its budget ran out): whatever
+                // answers after it is a fallback. A source with nothing to
+                // offer (no recording, or a device-voice language) is not.
+                var voiceServiceMissed = false
                 for (source in enabledInOrder(ctx)) {
+                    var offered = false
                     val resolved = withTimeoutOrNull(sourceBudgetMs) {
                         val c = sourceFailureToNull { source.defaultCandidate(ctx, req) }
                             ?: return@withTimeoutOrNull null
+                        offered = true
                         sourceFailureToNull { source.toFile(ctx, c, req) }?.let {
                             ResolvedAudio(it, c.attribution, ephemeral = source.id == TtsAudioSource.ID)
                         }
                     }
                     if (resolved != null) {
-                        out = resolved; break
+                        out = resolved.copy(fellBack = voiceServiceMissed); break
                     }
+                    if (offered && source.id == OnlineTtsAudioSource.ID) voiceServiceMissed = true
                 }
                 out
             }
@@ -138,38 +156,50 @@ object AudioSelections {
         }
 
     /** Play a selection live (preview chip). Explicit falls back to the Auto
-     *  resolver on a recoverable failure. */
+     *  resolver on a recoverable failure, less the source that just failed:
+     *  asking it again would be a second wait and, for a voice service, a
+     *  second request on the user's account.
+     *
+     *  [enabledInOrder]/[sourceFor] default to the real [AudioSourceRegistry];
+     *  they're injectable so tests can drive the resolution deterministically. */
     suspend fun play(
         ctx: Context,
         selection: AudioSelection,
         req: AudioRequest,
         awaitCompletion: Boolean,
         onStart: (() -> Unit)?,
+        enabledInOrder: (Context) -> List<AudioSource> = AudioSourceRegistry::enabledInOrder,
+        sourceFor: (String) -> AudioSource = AudioSourceRegistry::sourceFor,
     ): PlayOutcome = when (selection) {
-        AudioSelection.Auto -> PronunciationPlayer.play(ctx, req, awaitCompletion, onStart)
+        AudioSelection.Auto ->
+            PronunciationPlayer.play(ctx, req, awaitCompletion, onStart, sources = enabledInOrder(ctx))
         is AudioSelection.Explicit -> {
-            val source = AudioSourceRegistry.sourceFor(selection.sourceId)
+            val source = sourceFor(selection.sourceId)
             val candidate = explicitCandidate(selection)
             PronunciationPlayer.stop()
-            val outcome = runCatching { source.play(ctx, candidate, req, awaitCompletion, onStart) }
-                .getOrElse { PlayOutcome.Failed(recoverable = true) }
-            if (outcome is PlayOutcome.Failed && outcome.recoverable)
-                PronunciationPlayer.play(ctx, req, awaitCompletion, onStart)
-            else outcome
+            val outcome = try {
+                source.play(ctx, candidate, req, awaitCompletion, onStart)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                PlayOutcome.Failed(recoverable = true)
+            }
+            if (outcome is PlayOutcome.Failed && outcome.recoverable) {
+                PronunciationPlayer.play(
+                    ctx, req, awaitCompletion, onStart,
+                    sources = enabledInOrder(ctx).filterNot { it.id == source.id },
+                )
+            } else outcome
         }
     }
 
-    /** Pill label for the selection. */
+    /** Pill label for the selection: "Default" for Auto, and for a pick
+     *  whatever its own source calls it ([AudioSource.selectionLabel]). */
     suspend fun label(ctx: Context, selection: AudioSelection, lang: com.playtranslate.language.SourceLangId): String =
         when (selection) {
             AudioSelection.Auto -> ctx.getString(R.string.tts_voice_default)
-            is AudioSelection.Explicit -> when (selection.sourceId) {
-                WikimediaCommonsAudioSource.ID -> ctx.getString(R.string.audio_source_commons_name)
-                RecordingAudioSource.ID -> ctx.getString(R.string.audio_source_game_name)
-                else ->
-                    if (selection.key == TtsAudioSource.DEFAULT_KEY) ctx.getString(R.string.tts_voice_default)
-                    else TtsVoiceLabels.titleFor(ctx, TtsEngine.voicesFor(ctx, lang), selection.key)
-            }
+            is AudioSelection.Explicit ->
+                AudioSourceRegistry.sourceFor(selection.sourceId).selectionLabel(ctx, selection, lang)
         }
 
     private suspend fun attributionFor(ctx: Context, sel: AudioSelection.Explicit): Attribution? =

@@ -43,6 +43,28 @@ interface AudioSource {
      */
     fun serves(kind: AudioRequest.Kind): Boolean = true
 
+    /**
+     * Whether this source has what it needs to offer anything. A source the
+     * user has to set up first (the voice service, until a service is
+     * connected) is left out of the picker until then, so nobody who never
+     * set it up sees a section that can only be empty. Default: nothing to
+     * set up.
+     */
+    fun isSetUp(ctx: Context): Boolean = true
+
+    /**
+     * What a cell's pill reads for an explicit pick of this source. Default:
+     * the source's name, which is all a source with one kind of clip per
+     * request has to say. A source whose picks differ by voice names the
+     * voice. On the source, like every other behavior, so the pill needs no
+     * list of sources and a new source cannot be read as another one.
+     */
+    suspend fun selectionLabel(
+        ctx: Context,
+        selection: AudioSelection.Explicit,
+        lang: com.playtranslate.language.SourceLangId,
+    ): String = label(ctx)
+
     /** All options for the picker (metadata only — no audio is downloaded here). */
     suspend fun candidates(ctx: Context, req: AudioRequest): List<AudioCandidate>
 

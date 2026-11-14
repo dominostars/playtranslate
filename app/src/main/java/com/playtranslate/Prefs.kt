@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.hardware.display.DisplayManager
 import com.playtranslate.BuildConfig
 import com.google.mlkit.nl.translate.TranslateLanguage
+import com.playtranslate.audio.online.OnlineTtsChoice
 import com.playtranslate.cloud.PtCloudConfig
 import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.HintTextKind
@@ -13,6 +14,7 @@ import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.model.TranslationLangContext
 import com.playtranslate.security.SecretCipher
 import com.playtranslate.security.SecretCodec
+import com.playtranslate.tts.VoiceChoice
 import com.playtranslate.ui.AccentColor
 import com.playtranslate.ui.CaptureResultGeometry
 import com.playtranslate.ui.CardMode
@@ -326,10 +328,119 @@ class Prefs internal constructor(
     fun ttsVoiceName(lang: SourceLangId): String? =
         sp.getString("tts_voice_${lang.code}", null)
 
-    fun setTtsVoiceName(lang: SourceLangId, voiceName: String?) {
-        sp.edit {
-            if (voiceName == null) remove("tts_voice_${lang.code}")
-            else putString("tts_voice_${lang.code}", voiceName)
+    /**
+     * The voice that speaks [lang] by default: the connected voice
+     * service's voice picked for it, or else the device voice of
+     * [ttsVoiceName]. A service voice counts only while a service is
+     * connected ([onlineTtsConfigJson]), so a pick left over from a service
+     * that is gone can never be read back as the choice.
+     */
+    fun voiceChoice(lang: SourceLangId): VoiceChoice {
+        val online = if (onlineTtsConfigJson == null) null else sp.getString(onlineVoiceKey(lang), null)?.let {
+            runCatching { PtJson.lenient.decodeFromString(OnlineTtsChoice.serializer(), it) }.getOrNull()
+        }
+        return online?.let(VoiceChoice::Online) ?: VoiceChoice.Device(ttsVoiceName(lang))
+    }
+
+    /**
+     * The one writer of a language's voice. The two kinds are stored under
+     * two keys that are never both present: writing either removes the
+     * other. So a device voice left under a service voice cannot exist, and
+     * when a service voice fails, what speaks is the engine's own default
+     * voice for the language ([ttsVoiceName] reads null).
+     */
+    fun setVoiceChoice(lang: SourceLangId, choice: VoiceChoice) = sp.edit {
+        when (choice) {
+            is VoiceChoice.Device -> {
+                remove(onlineVoiceKey(lang))
+                if (choice.name == null) remove("tts_voice_${lang.code}")
+                else putString("tts_voice_${lang.code}", choice.name)
+            }
+            is VoiceChoice.Online -> {
+                remove("tts_voice_${lang.code}")
+                putString(
+                    onlineVoiceKey(lang),
+                    PtJson.lenient.encodeToString(OnlineTtsChoice.serializer(), choice.voice),
+                )
+            }
+        }
+    }
+
+    private fun onlineVoiceKey(lang: SourceLangId) = "online_voice_${lang.code}"
+
+    // ── The connected voice service ──────────────────────────────────────
+    // One record under several keys: its config, its API key, and each
+    // language's voice of it. The two writers below put all of a change in
+    // one editor, so the stored record is the old one or the new one and
+    // never some of each, in memory and on disk (an editor is one write of
+    // the file). [onlineTtsStored] reads the config and the key under the
+    // lock those writers hold, so a request is never made from one
+    // service's URL and another's key.
+
+    /** The connected voice service as JSON
+     *  ([com.playtranslate.audio.online.OnlineTtsConfig]); null when none
+     *  is connected. Plain text, not a secret: the API key is not in it.
+     *  Written by [storeOnlineTts] and [clearOnlineTts] alone. */
+    val onlineTtsConfigJson: String?
+        get() = sp.getString(KEY_ONLINE_TTS_CONFIG, null)
+
+    /** The connected voice service's API key. Encrypted at rest like
+     *  [ptCloudClientKey], with no bootstrap default. The slot's name is
+     *  bound into the ciphertext, so it is never renamed. A request reads
+     *  it with its config ([onlineTtsStored]), not here. */
+    val onlineTtsApiKey: String
+        get() = readSecret(KEY_ONLINE_TTS_API_KEY, "")
+
+    /** A connected voice service as stored: its config and the key that
+     *  goes with it. */
+    class OnlineTtsStored(val configJson: String, val apiKey: String)
+
+    /** The connected voice service, its config and its key read as one;
+     *  null when none is connected. */
+    fun onlineTtsStored(): OnlineTtsStored? = synchronized(ONLINE_TTS_LOCK) {
+        val json = onlineTtsConfigJson ?: return null
+        OnlineTtsStored(json, onlineTtsApiKey)
+    }
+
+    /**
+     * Stores the connected voice service whole: its config, its key, and
+     * the end of the service voice of each language in [forget] (a voice
+     * that does not carry over to what is being stored). False, with
+     * nothing written, when the key cannot be encrypted: no secret is
+     * stored as plain text, and a service stored without the key the user
+     * typed would fail on every request with nothing to say why.
+     * Called only by [com.playtranslate.audio.online.OnlineTtsService].
+     */
+    fun storeOnlineTts(configJson: String, apiKey: String, forget: Collection<SourceLangId>): Boolean {
+        val storedKey =
+            if (apiKey.isEmpty()) "" else codec.encrypt(KEY_ONLINE_TTS_API_KEY, apiKey) ?: return false
+        writeOnlineTts {
+            putString(KEY_ONLINE_TTS_CONFIG, configJson)
+            putString(KEY_ONLINE_TTS_API_KEY, storedKey)
+            forget.forEach { remove(onlineVoiceKey(it)) }
+        }
+        return true
+    }
+
+    /** Forgets the connected voice service whole: its config, its key and
+     *  every language's voice of it. Called only by
+     *  [com.playtranslate.audio.online.OnlineTtsService]. */
+    fun clearOnlineTts() = writeOnlineTts {
+        remove(KEY_ONLINE_TTS_CONFIG)
+        putString(KEY_ONLINE_TTS_API_KEY, "")
+        SourceLangId.entries.forEach { remove(onlineVoiceKey(it)) }
+    }
+
+    /** One write of the voice service's record. Under [ONLINE_TTS_LOCK],
+     *  which [onlineTtsStored] reads under, and under the secrets' lock
+     *  with the key's memo entry dropped, as every write of a secret slot
+     *  is ([writeSecret]). */
+    private inline fun writeOnlineTts(crossinline change: SharedPreferences.Editor.() -> Unit) {
+        synchronized(ONLINE_TTS_LOCK) {
+            synchronized(DECRYPTED_SECRETS) {
+                sp.edit { change() }
+                DECRYPTED_SECRETS.remove(KEY_ONLINE_TTS_API_KEY)
+            }
         }
     }
 
@@ -2118,6 +2229,11 @@ class Prefs internal constructor(
          *  decryption, hold it, so a decryption that ran across a write of
          *  its slot is not kept. */
         private val DECRYPTED_SECRETS = ConcurrentHashMap<String, DecryptedSecret>()
+
+        /** Held by every write of the connected voice service's record and
+         *  by the read of its config with its key ([onlineTtsStored]).
+         *  Taken before the secrets' lock, never inside it. */
+        private val ONLINE_TTS_LOCK = Any()
         const val KEY_DEEPL_ENABLED          = "deepl_enabled"
         const val KEY_LINGVA_ENABLED         = "lingva_enabled"
         const val KEY_BERGAMOT_ENABLED       = "bergamot_enabled"
@@ -2249,6 +2365,9 @@ class Prefs internal constructor(
         const val KEY_PT_CLOUD_TRANSLATE_ENABLED           = "pt_cloud_translate_enabled"
         const val KEY_PT_CLOUD_CLIENT_KEY                  = "pt_cloud_client_key"
         const val KEY_PT_CLOUD_ACCOUNT                     = "pt_cloud_account"
+        /** Public so the settings sheet can [observe] the voice service. */
+        const val KEY_ONLINE_TTS_CONFIG                    = "online_tts_config"
+        private const val KEY_ONLINE_TTS_API_KEY           = "online_tts_api_key"
         private const val KEY_PT_CLOUD_UPLOAD_CAP          = "pt_cloud_upload_long_side_cap"
         const val KEY_HOTKEY_TRANSLATION                   = "hotkey_translation"
         const val KEY_HOTKEY_FURIGANA                      = "hotkey_furigana"

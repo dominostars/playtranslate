@@ -76,6 +76,15 @@ object TtsAudioSource : AudioSource {
         return TtsEngine.synthesizeToFile(ctx, text, req.lang, voice)
     }
 
+    /** A picked voice by its title, or "Default" for the engine's own. */
+    override suspend fun selectionLabel(
+        ctx: Context,
+        selection: com.playtranslate.audio.AudioSelection.Explicit,
+        lang: com.playtranslate.language.SourceLangId,
+    ): String =
+        if (selection.key == DEFAULT_KEY) ctx.getString(R.string.tts_voice_default)
+        else TtsVoiceLabels.titleFor(ctx, TtsEngine.voicesFor(ctx, lang), selection.key)
+
     private fun TtsEngine.SpeakResult.toPlayOutcome(): PlayOutcome = when (this) {
         TtsEngine.SpeakResult.Spoken -> PlayOutcome.Played
         is TtsEngine.SpeakResult.LanguageUnsupported -> PlayOutcome.TtsLanguageUnsupported(engineLabel)

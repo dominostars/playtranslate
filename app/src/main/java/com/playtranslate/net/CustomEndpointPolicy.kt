@@ -4,12 +4,14 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /**
- * Policy for the OpenAI custom base URL — the one user-configurable endpoint.
+ * Policy for the endpoints whose URL the user types: the OpenAI custom base
+ * URL and the voice service's request URL
+ * ([com.playtranslate.audio.online.OnlineTtsRequest]).
  *
  * https is allowed to any host. http is allowed ONLY to a loopback / private-LAN
- * / link-local address, so a self-hosted LLM server on the user's machine works
+ * / link-local address, so a self-hosted server on the user's machine works
  * (those almost always speak plain http on a LAN IP) while a typo'd or pasted
- * PUBLIC http URL is rejected — otherwise the OpenAI Bearer key would travel in
+ * PUBLIC http URL is rejected — otherwise the API key would travel in
  * cleartext over the internet. The manifest permits cleartext app-wide (it can't
  * express IP ranges), so THIS code check is what scopes http to the LAN.
  *

@@ -51,9 +51,11 @@ class OriginalSpeaker(
             onSpeakingChanged(true)
             try {
                 // Default playback through the single owner: Commons has no
-                // sentence recordings, so this resolves to TTS — routing it here
-                // keeps one stop() authority across both backends. The TTS source
-                // applies the voice pref and kana spoken-form itself.
+                // sentence recordings, so this resolves to the language's
+                // voice (the voice service's when one is chosen, else the
+                // device's) — routing it here keeps one stop() authority
+                // across the backends. Each voice source applies the kana
+                // spoken-form itself.
                 val outcome = PronunciationPlayer.play(
                     alertTarget.context,
                     AudioRequest.sentence(req.text, req.lang),

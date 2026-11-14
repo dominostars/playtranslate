@@ -56,6 +56,24 @@ class AudioCache(context: Context, private val maxBytes: Long = MAX_BYTES) {
             dest
         }
 
+    /**
+     * Deletes [clip], a file this cache handed out ([getClip], [putClip]),
+     * with its attribution, so the next request for it asks its source
+     * again. For a clip that turned out to be no audio
+     * ([RecordingPlayer.playCached]): kept, it would answer every later
+     * request for the same words and never be fetched again.
+     */
+    fun dropClip(clip: File) {
+        clip.delete()
+        sidecar(clip).delete()
+    }
+
+    /** Deletes everything kept for [sourceId]. For a source whose clips
+     *  stand for nothing any more (a voice service that was removed). */
+    fun dropClips(sourceId: String) {
+        File(root, safe(sourceId)).deleteRecursively()
+    }
+
     suspend fun readAttribution(sourceId: String, key: String): Attribution? = withContext(Dispatchers.IO) {
         val side = sidecar(clipFile(sourceId, key)).takeIf { it.exists() } ?: return@withContext null
         runCatching { PtJson.lenient.decodeFromString(Attribution.serializer(), side.readText()) }.getOrNull()

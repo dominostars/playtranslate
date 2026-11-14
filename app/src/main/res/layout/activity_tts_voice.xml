@@ -39,6 +39,29 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp" />
 
+            <!-- The connected voice service's voices, or the row that
+                 connects one. Above the device's voices: a service can list
+                 many, and it is what a user who connected one came for. -->
+            <include layout="@layout/settings_group_header"
+                android:id="@+id/headerService" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:id="@+id/serviceRows"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+            </com.google.android.material.card.MaterialCardView>
+
             <include layout="@layout/settings_group_header"
                 android:id="@+id/headerVoices" />
 

@@ -9,9 +9,12 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.os.Handler
 import android.os.Looper
+import androidx.annotation.VisibleForTesting
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -64,14 +67,47 @@ object RecordingPlayer {
         awaitCompletion: Boolean,
         onStart: (() -> Unit)?,
         maxGain: Double = Loudness.MAX_GAIN,
+    ): PlayOutcome = play(file, awaitCompletion, onStart, maxGain, onUnreadable = null)
+
+    /**
+     * [play], for a clip a remote source keeps in [AudioCache] and can fetch
+     * again. One that does not decode to audio ([Decoded.Unreadable]) is
+     * dropped from the cache, so the next request asks the source again.
+     * The cache looks no further than a file's presence, and a download or
+     * a service's reply is not checked past its first bytes: kept, such a
+     * clip would fail every later play of the same words with nothing asked
+     * again, and go on a card as it is.
+     *
+     * Only a play finds one. A clip fetched for a card and never played is
+     * not decoded.
+     */
+    suspend fun playCached(
+        ctx: Context,
+        clip: File,
+        awaitCompletion: Boolean,
+        onStart: (() -> Unit)?,
+    ): PlayOutcome = play(clip, awaitCompletion, onStart, Loudness.MAX_GAIN) {
+        AudioCache(ctx).dropClip(clip)
+    }
+
+    private suspend fun play(
+        file: File,
+        awaitCompletion: Boolean,
+        onStart: (() -> Unit)?,
+        maxGain: Double,
+        onUnreadable: (() -> Unit)?,
     ): PlayOutcome = withContext(Dispatchers.IO) {
         withContext(Dispatchers.Main) { stop() }
         val myGen = generation
 
-        val pcm = runCatching { decodeToPcm(file, maxGain) }.getOrNull()
-        if (pcm == null || pcm.data.isEmpty() || pcm.sampleRate <= 0) {
-            android.util.Log.w(TAG, "RecordingPlayer decode failed/empty file=${file.name}")
-            return@withContext PlayOutcome.Failed(recoverable = true)
+        val pcm = when (val decoded = runCatching { decoder(file, maxGain) }.getOrDefault(Decoded.Declined)) {
+            is Decoded.Audio -> decoded
+            Decoded.Unreadable -> {
+                android.util.Log.w(TAG, "RecordingPlayer: no audio decoded from file=${file.name}")
+                onUnreadable?.invoke()
+                return@withContext PlayOutcome.Failed(recoverable = true)
+            }
+            Decoded.Declined -> return@withContext PlayOutcome.Failed(recoverable = true)
         }
 
         val attrs = AudioAttributes.Builder()
@@ -104,6 +140,12 @@ object RecordingPlayer {
         runCatching { newTrack.setVolume(1.0f) }
         // A play()/stop() could have raced in while we decoded; honor it.
         if (generation != myGen) { runCatching { newTrack.release() }; return@withContext PlayOutcome.Failed(recoverable = true) }
+        // The caller gave up while this decoded (a remote source's time
+        // budget ran out, or its tap was cancelled). Nothing above suspends,
+        // so without this check the clip would start anyway, on this
+        // player's own scope, and the source the caller moved on to would
+        // speak over it.
+        if (!isActive) { runCatching { newTrack.release() }; ensureActive() }
         track = newTrack
 
         if (awaitCompletion) {
@@ -117,7 +159,7 @@ object RecordingPlayer {
 
     /** Writes the whole PCM buffer to [t] (blocking), waits for it to drain, then
      *  releases — unless a newer clip ([generation] moved past [myGen]) preempts. */
-    private fun renderBlocking(t: AudioTrack, pcm: Pcm, myGen: Int, onStart: (() -> Unit)?) {
+    private fun renderBlocking(t: AudioTrack, pcm: Decoded.Audio, myGen: Int, onStart: (() -> Unit)?) {
         runCatching {
             t.play()
             onStart?.let { cb -> mainHandler.post { if (generation == myGen) cb() } }
@@ -144,13 +186,40 @@ object RecordingPlayer {
         }
     }
 
-    private class Pcm(val data: ByteArray, val sampleRate: Int, val channelCount: Int)
+    /** What decoding a file gave. */
+    internal sealed interface Decoded {
+        /** The file's audio, as 16-bit PCM. */
+        class Audio(val data: ByteArray, val sampleRate: Int, val channelCount: Int) : Decoded
+
+        /**
+         * The file did not decode to audio: the platform reads no audio
+         * track in it, its decoder failed on it, or decoding it to its end
+         * gave nothing. A cached copy is not worth keeping ([playCached]).
+         * This can be wrong about a sound file (a decoder that failed for a
+         * reason of its own); the price then is one more fetch.
+         */
+        data object Unreadable : Decoded
+
+        /**
+         * Not decoded, for a reason that is no fault of the file as audio:
+         * it is longer than this player takes ([AudioDecodeLimits]), or
+         * memory ran out. A cached copy stays: it may be sound, and it
+         * would be declined again each time it was fetched.
+         */
+        data object Declined : Decoded
+    }
+
+    /** What decodes a file for [play]. A seam for JVM tests, which have no
+     *  media codecs. */
+    @Volatile
+    @VisibleForTesting
+    internal var decoder: (File, Double) -> Decoded = ::decodeToPcm
 
     /** Decodes [file] to 16-bit PCM and applies the SINGLE loudness pass for
      *  this playback (callers must hand us raw audio — normalizing before this
      *  stacks gain, since the limiter leaves RMS under target and a second pass
      *  boosts again). [maxGain] lets the game-audio path raise the ceiling. */
-    private fun decodeToPcm(file: File, maxGain: Double): Pcm? {
+    private fun decodeToPcm(file: File, maxGain: Double): Decoded {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
         try {
@@ -163,16 +232,16 @@ object RecordingPlayer {
                     trackIndex = i; inputFormat = f; break
                 }
             }
-            if (trackIndex < 0 || inputFormat == null) return null
+            if (trackIndex < 0 || inputFormat == null) return Decoded.Unreadable
             extractor.selectTrack(trackIndex)
-            val mime = inputFormat.getString(MediaFormat.KEY_MIME) ?: return null
+            val mime = inputFormat.getString(MediaFormat.KEY_MIME) ?: return Decoded.Unreadable
             // A small compressed clip can decode into a huge PCM buffer; reject
             // an over-long clip up front (the download cap bounds compressed bytes,
             // not decoded ones). Unknown duration falls through to the byte cap below.
             val durationUs = if (inputFormat.containsKey(MediaFormat.KEY_DURATION)) inputFormat.getLong(MediaFormat.KEY_DURATION) else 0L
             if (AudioDecodeLimits.durationExceedsLimit(durationUs)) {
                 android.util.Log.w(TAG, "rejecting over-long clip ${file.name} duration=${durationUs}us")
-                return null
+                return Decoded.Declined
             }
             var sampleRate = inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
             var channelCount = inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
@@ -208,7 +277,7 @@ object RecordingPlayer {
                             if (AudioDecodeLimits.pcmExceedsLimit(out.size().toLong() + info.size)) {
                                 android.util.Log.w(TAG, "decoded PCM exceeds cap; aborting ${file.name}")
                                 codec.releaseOutputBuffer(outIdx, false)
-                                return null
+                                return Decoded.Declined
                             }
                             val chunk = ByteArray(info.size)
                             outBuf.position(info.offset)
@@ -226,11 +295,16 @@ object RecordingPlayer {
                 }
             }
             val pcmBytes = out.toByteArray()
+            if (pcmBytes.isEmpty() || sampleRate <= 0) return Decoded.Unreadable
             Loudness.normalize(pcmBytes, maxGain) // quiet + inconsistent sources; even them out
-            return Pcm(pcmBytes, sampleRate, channelCount.coerceAtLeast(1))
+            return Decoded.Audio(pcmBytes, sampleRate, channelCount.coerceAtLeast(1))
+        } catch (e: Exception) {
+            // The extractor refusing the file, or the decoder failing on it.
+            android.util.Log.w(TAG, "decodeToPcm failed file=${file.name}", e)
+            return Decoded.Unreadable
         } catch (t: Throwable) {
-            android.util.Log.w(TAG, "decodeToPcm failed file=${file.name}", t)
-            return null
+            android.util.Log.w(TAG, "decodeToPcm gave up on file=${file.name}", t)
+            return Decoded.Declined
         } finally {
             runCatching { codec?.stop() }
             runCatching { codec?.release() }

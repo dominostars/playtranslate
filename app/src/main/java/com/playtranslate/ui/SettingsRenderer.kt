@@ -92,19 +92,6 @@ import androidx.core.view.isGone
  *  required" alert — selects the alert's explanatory copy. */
 enum class AccessibilityRequirement { MULTI_DISPLAY, HOTKEY, ENHANCED_AUTO_TRANSLATE }
 
-/** What a tap on the TTS hub cell resolves to. `null` (the
- *  [RootSettingsViewModel.TtsCell.Loading] case) means non-interactive: the
- *  picker-vs-setup choice isn't known until engine availability resolves, so a
- *  tap in the initial bind window must not open the (empty) voice picker on a
- *  device with no usable engine. */
-internal enum class TtsTap { OPEN_PICKER, OPEN_SETUP }
-
-internal fun ttsTapFor(state: RootSettingsViewModel.TtsCell): TtsTap? = when (state) {
-    RootSettingsViewModel.TtsCell.Loading -> null
-    is RootSettingsViewModel.TtsCell.Available -> TtsTap.OPEN_PICKER
-    RootSettingsViewModel.TtsCell.NoEngine -> TtsTap.OPEN_SETUP
-}
-
 /** A warning-triangle icon + [label], the whole run in `ptWarning` — the
  *  recoverable-state subtitle treatment (hub cell and per-row). */
 internal fun warningSummary(ctx: Context, label: String): CharSequence {
@@ -158,10 +145,11 @@ class SettingsRenderer(
          *  — open [AnkiSettingsActivity]. */
         fun openAnkiSettings()
         fun openLanguageSetup(mode: String)
-        /** Tap on the TTS "Voice" cell — open the per-language voice picker. */
+        /** Tap on the Text-to-speech cell, in every state: open the voice
+         *  page for the game language. The page itself says when the device
+         *  has no speech engine, beside the voice service a device with none
+         *  can still use. */
         fun openTtsVoicePicker()
-        /** Tap on the TTS no-engine cell — show the "No Text-to-Speech" alert. */
-        fun openTtsSetup()
 
         /** Show an OverlayAlert explaining that [requirement] needs the
          *  accessibility service enabled. The accent button opens
@@ -1088,8 +1076,11 @@ class SettingsRenderer(
         bindHubCell(root.findViewById(R.id.rowConfigAnki), cell)
     }
 
-    /** TTS cell (no sub-page): engine available → "engine · voice" + voice
-     *  picker; no engine → CTA + the "No Text-to-Speech" alert. */
+    /** TTS cell: "engine · voice" for a device voice, "service · voice"
+     *  for a voice service's, a warning when there is no engine and no
+     *  service voice. It opens the voice page in every state: that page is
+     *  where a device with no engine is told so, and where it can connect a
+     *  voice service instead. */
     private fun bindTtsCell(state: RootSettingsViewModel.TtsCell) {
         val summary: CharSequence? = when (state) {
             RootSettingsViewModel.TtsCell.Loading -> null
@@ -1097,20 +1088,13 @@ class SettingsRenderer(
                 state.engineLabel?.let { "$it · ${state.voiceLabel}" } ?: state.voiceLabel
             RootSettingsViewModel.TtsCell.NoEngine -> ctx.getString(R.string.tts_no_engine_row_subtitle)
         }
-        // Loading → ttsTapFor is null → non-interactive (see TtsTap): a tap
-        // before availability resolves must not open the dead picker.
-        val onClick: (() -> Unit)? = when (ttsTapFor(state)) {
-            TtsTap.OPEN_PICKER -> ({ callbacks.openTtsVoicePicker() })
-            TtsTap.OPEN_SETUP -> ({ callbacks.openTtsSetup() })
-            null -> null
-        }
         bindHubCell(
             root.findViewById(R.id.rowConfigTts),
             HubCell(
                 iconRes = R.drawable.ic_text_to_speech,
                 title = ctx.getString(R.string.settings_cell_tts),
                 summary = summary,
-                onClick = onClick,
+                onClick = { callbacks.openTtsVoicePicker() },
             ),
         )
     }

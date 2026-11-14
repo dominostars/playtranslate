@@ -373,6 +373,7 @@ suspend fun Context.sendSentenceCard(
         sentenceMissing = input.includeSentenceAudio && audioFile == null,
         wordAudioMissing = input.targetWordAudioWords.isNotEmpty() &&
             wordAudioFiles.size < input.targetWordAudioWords.size,
+        voiceFellBack = sentenceResolved?.fellBack == true || wordResolved.values.any { it.fellBack },
     )
 }
 
@@ -535,6 +536,7 @@ suspend fun Context.sendWordCard(
     return result.foldInLocalAudioMisses(
         sentenceMissing = input.includeWordAudio && audioFile == null,
         wordAudioMissing = false,
+        voiceFellBack = wordResolved?.fellBack == true,
     )
 }
 
@@ -579,14 +581,19 @@ internal fun simplifiedGlossaryJson(
  * image has no local fold: its one local failure (a crop the pin could not
  * write) goes to the dispatcher as a request with no file, where the
  * picture-field gate applies ([imageDroppedVerdict]).
+ *
+ * [voiceFellBack] rides the same fold: it too is known only here, where
+ * the audio was resolved ([com.playtranslate.audio.ResolvedAudio.fellBack]).
  */
-private fun AnkiSendResult.foldInLocalAudioMisses(
+internal fun AnkiSendResult.foldInLocalAudioMisses(
     sentenceMissing: Boolean,
     wordAudioMissing: Boolean,
+    voiceFellBack: Boolean,
 ): AnkiSendResult = when (this) {
     is AnkiSendResult.Success -> copy(
         audioDropped = audioDropped || sentenceMissing,
         wordAudioDropped = wordAudioDropped || wordAudioMissing,
+        voiceFellBack = voiceFellBack,
     )
     else -> this
 }

@@ -57,7 +57,7 @@ object WikimediaCommonsAudioSource : AudioSource {
         onStart: (() -> Unit)?,
     ): PlayOutcome {
         val file = toFile(ctx, candidate, req) ?: return PlayOutcome.Failed(recoverable = true)
-        return RecordingPlayer.play(ctx, file, awaitCompletion, onStart)
+        return RecordingPlayer.playCached(ctx, file, awaitCompletion, onStart)
     }
 
     /** Cached clip if present, else download + cache (with attribution sidecar). */
