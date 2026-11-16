@@ -123,12 +123,13 @@ class AudioSourcePickerView(
     fun buildInto(sections: LinearLayout) {
         val inflater = LayoutInflater.from(ctx)
         val strokePx = (1 * ctx.resources.displayMetrics.density).toInt().coerceAtLeast(1)
-        // Only sources that serve this request's kind get a section — e.g. a
-        // sentence request omits Commons (word-level only) rather than showing
-        // it as a permanently-empty "No results" row and querying it for nothing.
-        // And only sources that are set up: the voice service has no section
-        // until a service is connected.
-        AudioSourceRegistry.all().filter { it.serves(req.kind) && it.isSetUp(ctx) }.forEach { source ->
+        // Only sources that serve this request get a section — e.g. a
+        // sentence request omits Commons and the imported recordings (both
+        // word-level only), rather than showing them as a permanently-empty
+        // "No results" row and querying them for nothing. And only sources
+        // that are set up: the voice service has no section until a service
+        // is connected, the imported recordings none until a file is loaded.
+        AudioSourceRegistry.all().filter { it.serves(req) && it.isSetUp(ctx) }.forEach { source ->
             val header = inflater.inflate(R.layout.settings_group_header, sections, false)
             header.findViewById<TextView>(R.id.tvGroupTitle).text = source.label(ctx)
             sections.addView(header)

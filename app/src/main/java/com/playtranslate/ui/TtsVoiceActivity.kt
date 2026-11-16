@@ -10,6 +10,8 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.VisibleForTesting
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -55,11 +57,27 @@ import kotlinx.coroutines.launch
  * The speed section at the top is the one thing that persists without Save:
  * the global speech rate has no per-page variant, so releasing the slider
  * stores it (see [TtsSpeedSection]).
+ *
+ * Under both lists is the Imported recordings group
+ * ([ImportedRecordingsSection]): an `android.db` file of human recordings
+ * the user loads and removes here. It is no choice of this page and has no
+ * tick: a word with a recording is played from it whichever voice is
+ * ticked, in whichever language. Like the speed, it does not wait for
+ * Save: a file is loaded or removed when the user says so.
  */
 class TtsVoiceActivity : AppCompatActivity() {
 
     private lateinit var prefs: Prefs
     private lateinit var lang: SourceLangId
+    /** The Imported recordings group, and the picker that hands it the
+     *  document to load. Any type is offered: the file is `android.db`,
+     *  which no provider has a type for, and what decides whether the pick
+     *  was one is the load's own check. */
+    @VisibleForTesting
+    internal lateinit var recordings: ImportedRecordingsSection
+    private val pickRecordings = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) recordings.startImport(uri)
+    }
     private lateinit var serviceRows: LinearLayout
     private lateinit var voiceRows: LinearLayout
 
@@ -117,9 +135,13 @@ class TtsVoiceActivity : AppCompatActivity() {
         voiceRows = findViewById(R.id.voiceRows)
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
-        toolbar.title = getString(R.string.tts_voice_picker_title)
+        // The name the settings page opens this page under.
+        toolbar.title = getString(R.string.settings_cell_tts)
         toolbar.setNavigationOnClickListener { finish() }
 
+        findViewById<View>(R.id.headerRecordings)
+            .findViewById<TextView>(R.id.tvGroupTitle).text =
+            getString(R.string.tts_recordings_section_header)
         findViewById<View>(R.id.headerService)
             .findViewById<TextView>(R.id.tvGroupTitle).text =
             getString(R.string.audio_source_voice_service_name)
@@ -137,12 +159,20 @@ class TtsVoiceActivity : AppCompatActivity() {
         // transient selection, not the stored one).
         TtsSpeedSection.bind(findViewById(R.id.speedSection), prefs) { sample(selected) }
 
+        recordings = ImportedRecordingsSection(this, findViewById(R.id.recordingRows)) {
+            pickRecordings.launch(arrayOf("*/*"))
+        }
+
         loadDeviceVoices()
         loadService()
     }
 
     override fun onResume() {
         super.onResume()
+        // On every return to the page, the first showing included: what is
+        // known to be wrong with a loaded file is learnt while it is read,
+        // which is while the page is not in front.
+        recordings.render()
         if (!awaitingServicePage) return
         awaitingServicePage = false
         // Back from the service's settings. A ticked service voice belongs
@@ -238,7 +268,7 @@ class TtsVoiceActivity : AppCompatActivity() {
         }
     }
 
-    // ── The two groups ───────────────────────────────────────────────────
+    // ── The groups ───────────────────────────────────────────────────────
 
     private fun renderServiceRows() {
         serviceRows.removeAllViews()

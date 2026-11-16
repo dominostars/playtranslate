@@ -23,6 +23,7 @@ import com.playtranslate.ocr.registry.ocrLabel
 import com.playtranslate.translation.Cooldownable
 import com.playtranslate.translation.TranslationBackend
 import com.playtranslate.translation.TranslationBackendRegistry
+import com.playtranslate.audio.localaudio.LocalAudioStore
 import com.playtranslate.audio.online.OnlineTtsService
 import com.playtranslate.tts.TtsEngine
 import com.playtranslate.tts.TtsVoiceLabels
@@ -77,6 +78,28 @@ private fun TranslationBackend.isCoolingDown(now: Long): Boolean {
 @StringRes
 internal fun overlayModeLabelRes(mode: OverlayMode, hintKind: HintTextKind): Int =
     (if (hintKind == HintTextKind.NONE) OverlayMode.TRANSLATION else mode).labelRes(hintKind)
+
+/**
+ * The digest under the settings page's Text-to-speech cell: what speaks.
+ * "engine · voice" for a device voice, "service · voice" for a voice
+ * service's, [noEngine] when nothing can speak yet, nothing while that is
+ * still being found out. When an android.db file of recordings is loaded,
+ * [recordingsLoaded] (the words that say so) comes first: the file is asked
+ * before any voice.
+ */
+internal fun ttsCellSummary(
+    cell: RootSettingsViewModel.TtsCell,
+    noEngine: String,
+    recordingsLoaded: String?,
+): String? {
+    val voice = when (cell) {
+        RootSettingsViewModel.TtsCell.Loading -> null
+        is RootSettingsViewModel.TtsCell.Available ->
+            cell.engineLabel?.let { "$it · ${cell.voiceLabel}" } ?: cell.voiceLabel
+        RootSettingsViewModel.TtsCell.NoEngine -> noEngine
+    }
+    return listOfNotNull(recordingsLoaded, voice).joinToString(" · ").ifEmpty { null }
+}
 
 /**
  * Root Settings drill-down state, projected from [Prefs] + live system state.
@@ -135,6 +158,11 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
         val captureSummary: String,
         val anki: AnkiCell,
         val tts: TtsCell,
+        /** Whether an android.db file of recordings is loaded
+         *  ([LocalAudioStore.isImported]): the TTS cell's digest says so
+         *  ahead of the voice ([ttsCellSummary]), since a loaded file speaks
+         *  before any voice does. */
+        val recordingsLoaded: Boolean,
         /** PlayTranslate Cloud CONFIGURE cell digest (debug builds only): the
          *  pitch while no key is saved and while both switches are on, else
          *  "Off" or the one route that is on ([cloudDigest]). */
@@ -209,6 +237,9 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
             captureSummary = captureDigest(),
             cloudSummary = cloudDigest(),
             cloudAdmitted = PtCloudService.config.admitted,
+            // Loaded and removed on the voice page, which this is the
+            // return from.
+            recordingsLoaded = LocalAudioStore.isImported(getApplication()),
         )
         // The async writers below MUST resolve their value BEFORE touching
         // _state and write via update{}: `_state.value = _state.value.copy(
@@ -240,6 +271,7 @@ class RootSettingsViewModel(app: Application) : AndroidViewModel(app) {
             captureSummary = captureDigest(),
             anki = resolveAnkiCell(),
             tts = TtsCell.Loading,
+            recordingsLoaded = LocalAudioStore.isImported(getApplication()),
             cloudSummary = cloudDigest(),
             cloudAdmitted = PtCloudService.config.admitted,
         )

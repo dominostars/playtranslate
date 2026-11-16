@@ -215,6 +215,18 @@ object RecordingPlayer {
     @VisibleForTesting
     internal var decoder: (File, Double) -> Decoded = ::decodeToPcm
 
+    /**
+     * [file] decoded to 16-bit PCM exactly as it is recorded, with no gain
+     * applied, or null when it does not decode (no audio in it, or longer
+     * than this player takes). For a caller that writes the audio out again
+     * in another format ([CardAudio]), not one that plays it: a card keeps
+     * its clip's own level, as a clip that needs no conversion does.
+     */
+    internal fun decodeAsIs(file: File): Decoded.Audio? = decoder(file, NO_GAIN) as? Decoded.Audio
+
+    /** A boost ceiling of one: [Loudness] only ever boosts, so nothing changes. */
+    private const val NO_GAIN = 1.0
+
     /** Decodes [file] to 16-bit PCM and applies the SINGLE loudness pass for
      *  this playback (callers must hand us raw audio — normalizing before this
      *  stacks gain, since the limiter leaves RMS under target and a second pass

@@ -59,7 +59,6 @@ import com.playtranslate.model.selectHeadword
 import com.playtranslate.model.unambiguousFallbackPos
 import com.playtranslate.themeColor
 import com.playtranslate.translation.ChineseScriptConverter
-import com.playtranslate.tts.ttsTextForWord
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -1423,7 +1422,8 @@ class WordDetailBinder(
 
                 // The page's one speech job, shared with its header chips: a
                 // row's tap starts it and returns, so the row draws no spinner.
-                override suspend fun speak(row: RowState) = speakHeadword(row.displayWord, sourceLangId)
+                override suspend fun speak(row: RowState) =
+                    speakHeadword(row.displayWord, row.reading, sourceLangId)
             },
             WordRowList.LARGE_SCALE,
         )
@@ -1612,7 +1612,8 @@ class WordDetailBinder(
             hw.setCompoundDrawablesRelative(null, null, icon, null)
             hw.compoundDrawablePadding = dp(8)
             hw.isClickable = true
-            hw.setOnClickListener { speakHeadword(speakText, lang) }
+            // No reading to send: the title is the word's kana already.
+            hw.setOnClickListener { speakHeadword(speakText, null, lang) }
         } else {
             hw.setCompoundDrawablesRelative(null, null, null, null)
             hw.isClickable = false
@@ -1620,10 +1621,13 @@ class WordDetailBinder(
         }
     }
 
-    private fun speakHeadword(text: String, lang: SourceLangId) {
+    /** Speaks the word [written], read as [reading] when one is known. Both
+     *  go in the request: a voice is given the reading, so the audio matches
+     *  the furigana, and a recording is found by the written word. */
+    private fun speakHeadword(written: String, reading: String?, lang: SourceLangId) {
         if (speakJob?.isActive == true) return
         speakJob = scope.launch {
-            val outcome = PronunciationPlayer.play(ctx, AudioRequest.word(text, null, lang))
+            val outcome = PronunciationPlayer.play(ctx, AudioRequest.word(written, reading, lang))
             val failure: String? = when (outcome) {
                 PlayOutcome.TtsNoEngine -> "No text-to-speech engine is available"
                 is PlayOutcome.TtsLanguageUnsupported ->
@@ -1645,13 +1649,12 @@ class WordDetailBinder(
         bolded: Boolean,
         sourceLangId: SourceLangId,
     ): View {
-        // Speak the kana reading (when known), not the kanji surface, so the audio
-        // matches the unit (初夏 → はつか vs the engine's しょか guess).
-        val chip = buildSpeakChip(
-            ttsTextForWord(written, reading, sourceLangId),
-            sourceLangId,
-            leading = reading == null,
-        )
+        // The request carries the written word and this unit's reading. A
+        // voice speaks the kana reading (when known), not the kanji surface,
+        // so the audio matches the unit (初夏 → はつか vs the engine's しょか
+        // guess); a recording is looked up by the written word, and the
+        // reading picks the right one of a word that has several.
+        val chip = buildSpeakChip(written, reading, sourceLangId, leading = reading == null)
         val unit = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1735,18 +1738,19 @@ class WordDetailBinder(
     }
 
     /**
-     * Speak chip for the header reading row. Tapping it reads [speakText]
-     * aloud — the caller resolves this to the kana reading or the surface
-     * form — swapping the icon for an indeterminate spinner while the
-     * request is in flight. A bordered circle roughly the height of the
-     * reading line sits inside a larger 44dp tap target.
+     * Speak chip for the header reading row. Tapping it reads the word
+     * [written] aloud, as [reading] when one is known (the request carries
+     * both; each source takes what it needs), swapping the icon for an
+     * indeterminate spinner while the request is in flight. A bordered
+     * circle roughly the height of the reading line sits inside a larger
+     * 44dp tap target.
      *
      * When [leading] — the chip starts the row, with no reading before it —
      * the circle is pinned to the start edge so it lines up under the
      * headword; otherwise it is centred in the tap target and offset a
      * little past the reading.
      */
-    private fun buildSpeakChip(speakText: String, lang: SourceLangId, leading: Boolean): View {
+    private fun buildSpeakChip(written: String, reading: String?, lang: SourceLangId, leading: Boolean): View {
         val muted = ctx.themeColor(R.attr.ptTextMuted)
         val tint = ColorStateList.valueOf(muted)
         val icon = ImageView(ctx).apply {
@@ -1797,12 +1801,12 @@ class WordDetailBinder(
                     icon.isGone = true
                     spinner.isVisible = true
                     try {
-                        // Default playback: Commons-first (when enabled) → TTS
-                        // fallback, resolved by PronunciationPlayer (the TTS
-                        // source applies the voice pref itself). speakText is the
-                        // already-prepared word — the surface for non-JA.
+                        // Default playback: recordings first (local audio,
+                        // Commons when enabled) → the language's voice,
+                        // resolved by PronunciationPlayer (a voice source
+                        // prepares its own text and applies the voice pref).
                         val outcome = PronunciationPlayer.play(
-                            ctx, AudioRequest.word(speakText, null, lang),
+                            ctx, AudioRequest.word(written, reading, lang),
                         )
                         val failure: String? = when (outcome) {
                             PlayOutcome.TtsNoEngine ->

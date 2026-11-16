@@ -8,7 +8,9 @@ import com.playtranslate.audio.AudioCandidate
 import com.playtranslate.audio.AudioRequest
 import com.playtranslate.audio.AudioSelection
 import com.playtranslate.audio.AudioSourceRegistry
+import com.playtranslate.audio.AudioSelections
 import com.playtranslate.audio.CandidateLabel
+import com.playtranslate.audio.CardAudio
 import com.playtranslate.audio.PlayOutcome
 import com.playtranslate.audio.RecordingPlayer
 import com.playtranslate.audio.sources.OnlineTtsAudioSource
@@ -61,6 +63,7 @@ class OnlineTtsAudioSourceTest {
     private val savedClient = OnlineTtsService.client
     private val savedDecoder = RecordingPlayer.decoder
     private val savedSpokenText = OnlineTtsAudioSource.spokenText
+    private val savedTranscoder = CardAudio.transcoder
     private val seen = mutableListOf<SeenRequest>()
 
     private val mp3 = byteArrayOf('I'.code.toByte(), 'D'.code.toByte(), '3'.code.toByte(), 4, 0, 0, 0, 0, 0, 0)
@@ -88,6 +91,7 @@ class OnlineTtsAudioSourceTest {
     @After fun tearDown() {
         RecordingPlayer.decoder = savedDecoder
         OnlineTtsAudioSource.spokenText = savedSpokenText
+        CardAudio.transcoder = savedTranscoder
         OnlineTtsService.client = savedClient
         OnlineTtsService.prefsFor = { Prefs(it) }
         sp().edit().clear().commit()
@@ -398,5 +402,34 @@ class OnlineTtsAudioSourceTest {
             "21m00Tcm4TlvDq8ikWAM",
             OnlineTtsAudioSource.selectionLabel(ctx, pick.copy(locator = null), SourceLangId.JA),
         )
+    }
+
+    // ── On a card, when the service answers in a format not every client plays ──
+
+    @Test fun `two cards spoken in one voice by a service that answers in Ogg each carry their own words`() = runBlocking {
+        connect()
+        prefs.setVoiceChoice(SourceLangId.JA, VoiceChoice.Online(coral))
+        // The service's answer holds the text it was asked to speak.
+        answering { request ->
+            CannedReply(200, "", bytes = "OggS".toByteArray() + request.json["input"]!!.jsonPrimitive.content.toByteArray())
+        }
+        CardAudio.transcoder = { clip, _ -> "m4a of ".toByteArray() + clip.readBytes() }
+        suspend fun card(request: AudioRequest) = AudioSelections.toFile(
+            ctx, AudioSelection.Auto, request, enabledInOrder = { listOf(OnlineTtsAudioSource) },
+        )!!.file
+
+        val first = card(word)
+        val second = card(AudioRequest.word("食べる", "たべる", SourceLangId.JA))
+        assertEquals("m4a", first.extension)
+        assertEquals("m4a of OggSいく", String(first.readBytes()))
+        assertEquals("the voice is the same; the words are not", "m4a of OggSたべる", String(second.readBytes()))
+        assertEquals("the first word again is its own conversion again, with nothing asked", first, card(word))
+        assertEquals(2, seen.size)
+        // A pick of the voice by hand resolves under the voice's id too.
+        val picked = AudioSelections.toFile(
+            ctx, AudioSelection.Explicit("online_tts", "coral", locator = "Coral"),
+            AudioRequest.word("飲む", "のむ", SourceLangId.JA),
+        )!!.file
+        assertEquals("m4a of OggSのむ", String(picked.readBytes()))
     }
 }

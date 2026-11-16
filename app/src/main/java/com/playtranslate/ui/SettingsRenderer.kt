@@ -1032,7 +1032,7 @@ class SettingsRenderer(
                 onClick = { callbacks.openYomitanSettings() },
             ),
         )
-        bindTtsCell(state.tts)
+        bindTtsCell(state.tts, state.recordingsLoaded)
         bindHubCell(
             root.findViewById(R.id.rowConfigAppearance),
             HubCell(
@@ -1078,16 +1078,17 @@ class SettingsRenderer(
 
     /** TTS cell: "engine · voice" for a device voice, "service · voice"
      *  for a voice service's, a warning when there is no engine and no
-     *  service voice. It opens the voice page in every state: that page is
-     *  where a device with no engine is told so, and where it can connect a
-     *  voice service instead. */
-    private fun bindTtsCell(state: RootSettingsViewModel.TtsCell) {
-        val summary: CharSequence? = when (state) {
-            RootSettingsViewModel.TtsCell.Loading -> null
-            is RootSettingsViewModel.TtsCell.Available ->
-                state.engineLabel?.let { "$it · ${state.voiceLabel}" } ?: state.voiceLabel
-            RootSettingsViewModel.TtsCell.NoEngine -> ctx.getString(R.string.tts_no_engine_row_subtitle)
-        }
+     *  service voice, and ahead of each that an android.db file of
+     *  recordings is loaded, when one is ([ttsCellSummary]). It opens the
+     *  voice page in every state: that page is where a device with no
+     *  engine is told so, and where it can connect a voice service
+     *  instead. */
+    private fun bindTtsCell(state: RootSettingsViewModel.TtsCell, recordingsLoaded: Boolean) {
+        val summary: CharSequence? = ttsCellSummary(
+            state,
+            noEngine = ctx.getString(R.string.tts_no_engine_row_subtitle),
+            recordingsLoaded = if (recordingsLoaded) ctx.getString(R.string.local_audio_loaded_digest) else null,
+        )
         bindHubCell(
             root.findViewById(R.id.rowConfigTts),
             HubCell(

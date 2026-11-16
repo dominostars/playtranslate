@@ -3637,6 +3637,7 @@
     <string name="settings_cell_capture_overlay">Capture &amp; overlay</string>
     <string name="settings_cell_anki">Anki Flashcards</string>
     <string name="settings_cell_translation_services">Translation services</string>
+    <!-- Also the toolbar title of the page this cell opens. -->
     <string name="settings_cell_tts">Text-to-speech</string>
     <!-- CONFIGURE cell for the Yomitan hub; brand name, so left untranslated. -->
     <string name="settings_cell_yomitan" translatable="false">Yomitan</string>
@@ -4429,9 +4430,6 @@
     <!-- Subtitle on the same row. -->
     <string name="tts_no_engine_row_subtitle">No speech engine is available. Tap to add one.</string>
 
-    <!-- Toolbar title on the TTS Voice picker activity. -->
-    <string name="tts_voice_picker_title">Voice</string>
-
     <!-- Section header on the TTS Voice picker activity, displayed in
          ALL CAPS above the list of voices for a single source language.
          %1$s = the uppercased display name of the source language
@@ -5163,6 +5161,95 @@
     <!-- Cell shown inside a source's section in the Anki audio picker when
          fetching its recordings failed (e.g. no network). -->
     <string name="audio_error_loading">Couldn\'t load</string>
+
+    <!-- ══════════ Imported recordings (an android.db file) ══════════ -->
+
+    <!-- What the app calls a file of recorded word pronunciations that the
+         user has loaded: android.db is the file's own name and stays as it
+         is. Title of the cell on the Text-to-speech page that shows the
+         loaded file, and header of its section in the Anki audio picker,
+         where a card's audio can be picked from the file's recordings. -->
+    <string name="audio_source_local_name">android.db file</string>
+
+    <!-- Header of the last group on the Text-to-speech page, under the
+         voices: where a file of recorded word pronunciations is loaded
+         into the app and removed. -->
+    <string name="tts_recordings_section_header">Imported recordings</string>
+
+    <!-- Row in that group while no file is loaded. Tapping it opens the
+         file picker. android.db is the file's name and stays as it is. -->
+    <string name="local_audio_load_title">Load android.db file</string>
+
+    <!-- Subtitle of that row: what loading such a file does. android.db is
+         the file's name and stays as it is. The second sentence says that
+         the app neither includes the file nor says where to get one. "An
+         entry" is a recording of that word in the file. "Your other TTS
+         settings" are the text-to-speech voices chosen on the same page. -->
+    <string name="local_audio_load_subtitle">If you have an android.db file of voice recordings, you can load it here. You must source this file yourself. This only works for words, and any word without an entry in the android.db file will fall back to your other TTS settings.</string>
+
+    <!-- Start of the subtitle of the Text-to-speech cell on the main
+         settings page while a file of recordings is loaded. The engine and
+         the voice follow it after a separator. android.db is the file's
+         name and stays as it is. -->
+    <string name="local_audio_loaded_digest">android.db file loaded</string>
+
+    <!-- Title of the progress popup while the picked file is copied into
+         the app. android.db is the file's name and stays as it is. -->
+    <string name="local_audio_importing_title">Loading android.db file</string>
+
+    <!-- Message of that popup: how much of the file is copied so far.
+         %1$s = the size copied so far, %2$s = the size of the whole file,
+         each already formatted with its unit ("1.2 GB"). -->
+    <string name="local_audio_copying_message"><xliff:g id="copied" example="1.2 GB">%1$s</xliff:g> of <xliff:g id="total" example="5.8 GB">%2$s</xliff:g> copied</string>
+
+    <!-- Message of that popup once the copy is done, while the app checks
+         that the file is one it can read. -->
+    <string name="local_audio_checking_message">Checking the file…</string>
+
+    <!-- Line in the alert colour under the loaded file's size, on the
+         Text-to-speech page, when the app could not read something from
+         the file: the file is damaged or incomplete, and words that should
+         have a recording are being spoken by text-to-speech instead.
+         %1$s = the database's or the system's own English words for what
+         failed ("database disk image is malformed"), shown as they are. -->
+    <string name="local_audio_read_problem">Reading this file failed: <xliff:g id="cause" example="database disk image is malformed">%1$s</xliff:g></string>
+
+    <!-- What the trash button on the loaded file's row does, for screen
+         readers, and the label of the red button that confirms it in the
+         alert below: deletes the file from the app. android.db is the
+         file's name and stays as it is. -->
+    <string name="local_audio_remove">Remove android.db file</string>
+
+    <!-- Title of the alert that confirms it. -->
+    <string name="local_audio_remove_confirm_title">Remove the android.db file?</string>
+
+    <!-- Message of the alert that confirms removing the loaded file of
+         recordings. -->
+    <string name="local_audio_remove_confirm_message">The file is deleted from the app, and every word is spoken by text-to-speech again.</string>
+
+    <!-- Title of the alert shown when loading the picked file failed. -->
+    <string name="local_audio_import_failed_title">Couldn\'t load the file</string>
+
+    <!-- Message of that alert: the picked file is some other kind of file.
+         android.db is the file's name and stays as it is. -->
+    <string name="local_audio_error_not_database">This is not an android.db file of voice recordings.</string>
+
+    <!-- Message of the load-failed alert on the Text-to-speech page: the
+         picked file is a database, but not one of voice recordings.
+         %1$s = the database's own English words for what is missing
+         ("no such table: android"), shown as they are. -->
+    <string name="local_audio_error_invalid_format">This database is not an android.db file of voice recordings (<xliff:g id="reason" example="no such table: android">%1$s</xliff:g>).</string>
+
+    <!-- Message of the load-failed alert on the Text-to-speech page: the
+         picked file is only the first part of the whole file, as after a
+         copy or a download that was cut short. %1$s = the size of the
+         picked file, %2$s = the size the whole file should have, each
+         already formatted with its unit ("2.1 GB"). -->
+    <string name="local_audio_error_incomplete">This file is incomplete: it is <xliff:g id="have" example="2.1 GB">%1$s</xliff:g> of <xliff:g id="expected" example="5.8 GB">%2$s</xliff:g>. Get the whole file, then load it again.</string>
+
+    <!-- Message of that alert: copying the file into the app failed. The
+         system's own words for why may follow on a line below. -->
+    <string name="local_audio_error_copy">The file could not be copied.</string>
 
     <!-- ══════════ Select-to-translate (ACTION_PROCESS_TEXT) ══════════ -->
 

@@ -186,11 +186,15 @@
             android:parentActivityName=".MainActivity"
             android:theme="@style/Theme.PlayTranslate" />
 
-        <!-- Per-language Text-to-Speech voice picker (launched from Settings → Text-to-Speech). -->
+        <!-- Per-language Text-to-Speech voice picker (launched from Settings → Text-to-Speech).
+             It handles a rotation itself, as YomitanSettingsActivity does: an
+             android.db file of recordings is loaded from this page, and a
+             recreated page would end a copy of several gigabytes. -->
         <activity
             android:name=".ui.TtsVoiceActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:theme="@style/Theme.PlayTranslate" />
 
         <!-- The connected voice service's settings (URL, key, model, request).

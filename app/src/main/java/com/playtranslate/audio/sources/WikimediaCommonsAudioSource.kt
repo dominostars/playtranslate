@@ -27,12 +27,12 @@ object WikimediaCommonsAudioSource : AudioSource {
     override fun setEnabled(ctx: Context, on: Boolean) { Prefs(ctx).commonsAudioEnabled = on }
 
     // Commons holds word-level recordings only; it has nothing for a sentence.
-    override fun serves(kind: AudioRequest.Kind) = kind == AudioRequest.Kind.WORD
+    override fun serves(req: AudioRequest) = req.kind == AudioRequest.Kind.WORD
 
     private val client = CommonsClient()
 
     override suspend fun candidates(ctx: Context, req: AudioRequest): List<AudioCandidate> {
-        if (!serves(req.kind)) return emptyList() // Commons is word-level
+        if (!serves(req)) return emptyList() // Commons is word-level
         val cache = AudioCache(ctx)
         if (cache.isNegativeFresh(ID, req.lang, req.surface)) {
             android.util.Log.i("PtAudio", "Commons negative-cache hit word='${req.surface}' (skipping query)")

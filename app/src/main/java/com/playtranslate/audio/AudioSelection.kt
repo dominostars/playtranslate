@@ -11,11 +11,12 @@ import java.io.File
 
 /**
  * A per-cell audio choice in the Anki flow.
- *  - [Auto] (default): the registry's resolution (Commons first when it is
- *    enabled, then the language's voice: a voice service's when one is
- *    chosen, with device TTS the floor under it), decided lazily at
- *    play/send time — so cards honor "prefer human audio" without eager
- *    per-word queries when the sheet opens.
+ *  - [Auto] (default): the registry's resolution (recordings first: local
+ *    audio when its file is imported, Commons when it is enabled; then the
+ *    language's voice: a voice service's when one is chosen, with device TTS
+ *    the floor under it), decided lazily at play/send time — so cards honor
+ *    "prefer human audio" without eager per-word queries when the sheet
+ *    opens.
  *  - [Explicit]: the user pinned a specific source + candidate via the picker.
  *
  * A pure value (sourceId + key) — safe to hold as per-cell state and pass to the
@@ -35,7 +36,8 @@ sealed interface AudioSelection {
     ) : AudioSelection
 }
 
-/** A resolved clip plus the credit that must travel with it (CC recordings).
+/** A resolved clip, in a format every Anki client plays ([CardAudio]), plus
+ *  the credit that must travel with it (CC recordings).
  *  [ephemeral] true = a throwaway TTS synth file the caller should delete;
  *  false = a cached Commons clip that must stay in the audio cache.
  *  [fellBack] true = the language's voice is a voice service's, the service
@@ -77,7 +79,7 @@ object AudioSelections {
 
     /** Render a selection to an attachable file (+ attribution) for **send/export**.
      *
-     *  [Auto] walks enabled sources Commons-first → TTS floor (fallback is correct:
+     *  [Auto] walks enabled sources recordings-first → TTS floor (fallback is correct:
      *  Auto promises no specific clip; a fallback from the language's chosen
      *  voice service is marked, [ResolvedAudio.fellBack], so the send can say
      *  so). [Explicit] uses the chosen source **only**:
@@ -115,7 +117,7 @@ object AudioSelections {
                         val c = sourceFailureToNull { source.defaultCandidate(ctx, req) }
                             ?: return@withTimeoutOrNull null
                         offered = true
-                        sourceFailureToNull { source.toFile(ctx, c, req) }?.let {
+                        sourceFailureToNull { cardFile(ctx, source, c, req) }?.let {
                             ResolvedAudio(it, c.attribution, ephemeral = source.id == TtsAudioSource.ID)
                         }
                     }
@@ -130,7 +132,7 @@ object AudioSelections {
                 val source = sourceFor(selection.sourceId)
                 val candidate = explicitCandidate(selection)
                 val f = withTimeoutOrNull(sourceBudgetMs) {
-                    sourceFailureToNull { source.toFile(ctx, candidate, req) }
+                    sourceFailureToNull { cardFile(ctx, source, candidate, req) }
                 }
                 if (f != null) {
                     val attr = selection.attribution ?: attributionFor(ctx, selection)
@@ -140,6 +142,18 @@ object AudioSelections {
                 }
             }
         }
+
+    /**
+     * [candidate] of [source] as a file a card can carry: the source's own
+     * file, passed through [CardAudio.forCard], which converts a clip of a
+     * type not every Anki client plays. Here, for every source and for a
+     * pick as for the default, so no source decides what a card can carry
+     * and none can forget to. A clip that cannot be converted is the source
+     * having given nothing: the default walk goes on to the next source,
+     * and a pick is reported missing.
+     */
+    private suspend fun cardFile(ctx: Context, source: AudioSource, candidate: AudioCandidate, req: AudioRequest): File? =
+        source.toFile(ctx, candidate, req)?.let { CardAudio.forCard(ctx, source.id, it) }
 
     /** A source failure (network, decode, engine error) resolves to null so
      *  the caller can fall through to the next source — but cancellation must

@@ -6,9 +6,12 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
+import com.google.android.material.appbar.MaterialToolbar
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.audio.RecordingPlayer
+import com.playtranslate.audio.localaudio.LocalAudioDb
+import com.playtranslate.audio.localaudio.LocalAudioFixture
 import com.playtranslate.audio.online.OnlineTtsChoice
 import com.playtranslate.audio.online.OnlineTtsClient
 import com.playtranslate.audio.online.OnlineTtsConfig
@@ -24,6 +27,7 @@ import com.playtranslate.translation.SeenRequest
 import com.playtranslate.translation.recordingClient
 import com.playtranslate.tts.VoiceChoice
 import com.playtranslate.tts.voiceSampleText
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -49,7 +53,9 @@ import java.util.concurrent.atomic.AtomicInteger
  * groups: the row that connects a service, the service's voices by name, the
  * stored service voice drawn whatever the list does, a tap asking the
  * service for a sample, Save writing the page's own choice, and the tick
- * after the service's settings page removed the service.
+ * after the service's settings page removed the service. And the page's
+ * title, and where the Imported recordings group stands on it; what the
+ * group does is ImportedRecordingsSectionTest's.
  */
 @RunWith(RobolectricTestRunner::class)
 class TtsVoiceActivityTest {
@@ -96,6 +102,7 @@ class TtsVoiceActivityTest {
     @Before fun setUp() {
         sp().edit().clear().commit()
         File(ctx.cacheDir, "audioCache").deleteRecursively()
+        LocalAudioFixture.clear(ctx)
         prefs = Prefs(ctx, FakeCodec())
         OnlineTtsService.prefsFor = { prefs }
         OnlineTtsService.client = OnlineTtsClient(
@@ -131,6 +138,7 @@ class TtsVoiceActivityTest {
         OnlineTtsService.prefsFor = { Prefs(it) }
         sp().edit().clear().commit()
         File(ctx.cacheDir, "audioCache").deleteRecursively()
+        LocalAudioFixture.clear(ctx)
     }
 
     private fun connect(config: OnlineTtsConfig = OnlineTtsConfig(model = OnlineTtsChoice("gpt-4o-mini-tts"))) {
@@ -141,8 +149,8 @@ class TtsVoiceActivityTest {
      *  source of its voices, so the call's failure is what the page shows. */
     private val listOnly = OnlineTtsConfig(OnlineTtsPreset.ELEVENLABS, model = OnlineTtsChoice("m"))
 
-    private fun open(): TtsVoiceActivity =
-        Robolectric.buildActivity(TtsVoiceActivity::class.java, TtsVoiceActivity.intent(ctx, SourceLangId.JA))
+    private fun open(lang: SourceLangId = SourceLangId.JA): TtsVoiceActivity =
+        Robolectric.buildActivity(TtsVoiceActivity::class.java, TtsVoiceActivity.intent(ctx, lang))
             .also { controller = it }.setup().get()
 
     private fun pumpUntil(what: String, done: () -> Boolean) {
@@ -172,6 +180,7 @@ class TtsVoiceActivityTest {
             }
     }
 
+    private fun recordings(page: TtsVoiceActivity) = rows(page, R.id.recordingRows)
     private fun service(page: TtsVoiceActivity) = rows(page, R.id.serviceRows)
     private fun device(page: TtsVoiceActivity) = rows(page, R.id.voiceRows)
     private fun TtsVoiceActivity.pressSave() = findViewById<View>(R.id.btnSave).performClick()
@@ -636,5 +645,40 @@ class TtsVoiceActivityTest {
         controller!!.resume()
         pumpUntil("the service's voices") { service(page).any { it.title == "Beta" } }
         assertEquals(listOf("Alpha", "Beta", "Service settings"), service(page).map { it.title })
+    }
+
+    // ── The page's title, and the Imported recordings group ──────────────
+
+    @Test fun `the page is titled as the settings row that opens it`() {
+        val page = open()
+        assertEquals("Text-to-speech", page.findViewById<MaterialToolbar>(R.id.toolbar).title.toString())
+    }
+
+    @Test fun `the Imported recordings group is the last on the page, under the device's voices`() {
+        val page = open()
+        val header = page.findViewById<View>(R.id.headerRecordings)
+        val card = page.findViewById<View>(R.id.cardRecordings)
+        assertEquals("Imported recordings", header.findViewById<TextView>(R.id.tvGroupTitle).text.toString())
+        assertEquals(View.VISIBLE, header.visibility)
+        assertEquals(View.VISIBLE, card.visibility)
+        val column = card.parent as LinearLayout
+        assertEquals("nothing is under it", column.childCount - 1, column.indexOfChild(card))
+        assertEquals("its header is right above it", column.childCount - 2, column.indexOfChild(header))
+        val voicesCard = page.findViewById<View>(R.id.voiceRows).parent as View
+        assertTrue("under the device's voices", column.indexOfChild(voicesCard) < column.indexOfChild(header))
+        assertEquals(listOf("Load android.db file"), recordings(page).map { it.title })
+        assertFalse("it is no voice and takes no tick", recordings(page).single().ticked)
+    }
+
+    @Test fun `the group is on the page of every language, with or without a file`() {
+        val chinese = open(SourceLangId.ZH)
+        assertEquals(View.VISIBLE, chinese.findViewById<View>(R.id.cardRecordings).visibility)
+        assertEquals(listOf("Load android.db file"), recordings(chinese).map { it.title })
+        controller!!.pause().stop().destroy()
+
+        LocalAudioFixture.install(ctx)
+        val english = open(SourceLangId.EN)
+        assertEquals(View.VISIBLE, english.findViewById<View>(R.id.cardRecordings).visibility)
+        assertEquals(listOf("android.db file"), recordings(english).map { it.title })
     }
 }

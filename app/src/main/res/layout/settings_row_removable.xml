@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A row for one thing the user added and can remove: title + optional
+     subtitle on the left, a trash button in the alert colour on the right
+     (ivRowDelete; the caller gives it its content description and what it
+     does). The row itself is nothing to tap, so it has no ripple; the
+     button has its own. The trash's size and tint follow the delete button
+     of item_online_service. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="@dimen/pt_row_min_height"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="@dimen/pt_row_h_padding"
+    android:paddingEnd="6dp"
+    android:paddingVertical="@dimen/pt_row_v_padding">
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:layout_marginEnd="8dp">
+
+        <TextView
+            android:id="@+id/tvRowTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            style="@style/Text.PT.RowTitle" />
+
+        <TextView
+            android:id="@+id/tvRowSubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            style="@style/Text.PT.RowSubtitle" />
+
+        <!-- Something wrong with the thing the row is for, in the alert
+             colour. Shown by the caller when there is something to say. -->
+        <TextView
+            android:id="@+id/tvRowWarning"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textColor="?attr/ptDanger"
+            android:visibility="gone"
+            style="@style/Text.PT.RowSubtitle" />
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/ivRowDelete"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:padding="11dp"
+        android:src="@drawable/ic_delete"
+        app:tint="?attr/ptDanger"
+        android:scaleType="centerInside"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:clickable="true"
+        android:focusable="true" />
+
+</LinearLayout>

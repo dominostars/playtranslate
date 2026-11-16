@@ -64,7 +64,7 @@ object RecordingAudioSource : AudioSource {
     override fun isEnabled(ctx: Context) = false
     override fun setEnabled(ctx: Context, on: Boolean) {}
 
-    override fun serves(kind: AudioRequest.Kind): Boolean = kind == AudioRequest.Kind.SENTENCE
+    override fun serves(req: AudioRequest): Boolean = req.kind == AudioRequest.Kind.SENTENCE
 
     override suspend fun candidates(ctx: Context, req: AudioRequest): List<AudioCandidate> {
         val wav = GameAudioSnapshot.active?.takeIf { GameAudioSnapshot.isUsable(it) }

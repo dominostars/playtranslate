@@ -10,6 +10,7 @@ import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
 import com.playtranslate.PtJson
 import com.playtranslate.R
+import com.playtranslate.audio.localaudio.LocalAudioFixture
 import com.playtranslate.audio.online.OnlineTtsChoice
 import com.playtranslate.audio.online.OnlineTtsConfig
 import com.playtranslate.audio.online.OnlineTtsService
@@ -28,6 +29,7 @@ import com.playtranslate.tts.VoiceChoice
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -55,12 +57,14 @@ class RootSettingsViewModelTest {
     @Before fun clearPrefs() {
         ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
             .edit().clear().commit()
+        LocalAudioFixture.clear(ctx)
     }
 
     @After fun tearDown() {
         PtCloudService.installForTest(null)
         ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
             .edit().clear().commit()
+        LocalAudioFixture.clear(ctx)
     }
 
     private fun installAnkiDroid() {
@@ -126,6 +130,55 @@ class RootSettingsViewModelTest {
             RootSettingsViewModel.TtsCell.Available("192.168.1.5", "Alpha"),
             vm.state.value.tts,
         )
+    }
+
+    // ── The loaded android.db file in the TTS cell's digest ──────────────
+
+    private val noEngine = "No speech engine is available. Tap to add one."
+    private val loaded = "android.db file loaded"
+
+    @Test fun `the tts digest is the engine and the voice, or the service and the voice, or that nothing can speak`() {
+        val device = RootSettingsViewModel.TtsCell.Available("Google", "Voice II")
+        assertEquals("Google · Voice II", ttsCellSummary(device, noEngine, recordingsLoaded = null))
+        assertEquals(
+            "Voice II",
+            ttsCellSummary(RootSettingsViewModel.TtsCell.Available(null, "Voice II"), noEngine, recordingsLoaded = null),
+        )
+        assertEquals(noEngine, ttsCellSummary(RootSettingsViewModel.TtsCell.NoEngine, noEngine, recordingsLoaded = null))
+        assertNull(ttsCellSummary(RootSettingsViewModel.TtsCell.Loading, noEngine, recordingsLoaded = null))
+    }
+
+    @Test fun `with an android db file loaded the tts digest says so first, whatever follows`() {
+        val device = RootSettingsViewModel.TtsCell.Available("Google", "Voice II")
+        assertEquals("android.db file loaded · Google · Voice II", ttsCellSummary(device, noEngine, loaded))
+        assertEquals(
+            "android.db file loaded · Voice II",
+            ttsCellSummary(RootSettingsViewModel.TtsCell.Available(null, "Voice II"), noEngine, loaded),
+        )
+        assertEquals(
+            "android.db file loaded · $noEngine",
+            ttsCellSummary(RootSettingsViewModel.TtsCell.NoEngine, noEngine, loaded),
+        )
+        assertEquals(
+            "a loaded file is known before the engine is",
+            "android.db file loaded",
+            ttsCellSummary(RootSettingsViewModel.TtsCell.Loading, noEngine, loaded),
+        )
+        assertEquals("the words the digest is given are the app's own", loaded, ctx.getString(R.string.local_audio_loaded_digest))
+    }
+
+    @Test fun `the state says whether an android db file is loaded, at the start and on each return to the page`() {
+        val vm = RootSettingsViewModel(app)
+        assertFalse(vm.state.value.recordingsLoaded)
+        // Loaded on the voice page; the settings page refreshes on its return.
+        LocalAudioFixture.install(ctx)
+        vm.refresh()
+        assertTrue(vm.state.value.recordingsLoaded)
+        assertTrue("a page opened with a file there starts with it", RootSettingsViewModel(app).state.value.recordingsLoaded)
+        // And removed there.
+        LocalAudioFixture.clear(ctx)
+        vm.refresh()
+        assertFalse(vm.state.value.recordingsLoaded)
     }
 
     @Test fun `tts cell — another language's service voice does not name this language's cell`() {

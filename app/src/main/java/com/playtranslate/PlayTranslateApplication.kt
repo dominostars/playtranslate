@@ -254,6 +254,13 @@ class PlayTranslateApplication : Application() {
         // otherwise linger until the OS purges the cache. A couple of stats
         // + unlinks; negligible on cold start.
         com.playtranslate.capture.GameAudioSnapshot.sweepOrphans(this)
+        // And for a local audio import the process died under: its part
+        // file is up to several gigabytes that nothing will finish. On
+        // [appScope], as the model partials above, for the same reason:
+        // how long freeing that much takes is the storage's to say. The
+        // sweep waits for an import already running, so it cannot delete
+        // a part that is being written.
+        appScope.launch { com.playtranslate.audio.localaudio.LocalAudioStore.sweepPart(this@PlayTranslateApplication) }
         // Track the currently-resumed PlayTranslate activity so display-id
         // queries always reflect the live state instead of a value cached
         // at lifecycle boundaries — Android can move an activity between

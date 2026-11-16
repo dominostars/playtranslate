@@ -11,9 +11,10 @@ import kotlinx.coroutines.withTimeoutOrNull
  * [TtsEngine]). Every speak site routes through here so a new utterance halts
  * whatever was playing — no cross-backend talk-over.
  *
- * Default playback walks enabled sources in priority order (Commons, then the
- * voice service when the language's voice is one of its own, then the TTS
- * floor) and plays the first source's [AudioSource.defaultCandidate]. A
+ * Default playback walks enabled sources in priority order (local audio,
+ * Commons, then the voice service when the language's voice is one of its
+ * own, then the TTS floor) and plays the first source's
+ * [AudioSource.defaultCandidate]. A
  * recoverable failure (offline/decode), no-result, OR a blown time budget
  * degrades to the next source; TTS is the guaranteed floor.
  *

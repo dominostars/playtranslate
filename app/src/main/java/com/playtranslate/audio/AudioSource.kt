@@ -36,12 +36,14 @@ interface AudioSource {
     fun setEnabled(ctx: Context, on: Boolean)
 
     /**
-     * Whether this source can serve [kind] at all. A source that categorically
-     * can't (e.g. Commons has no sentence-level recordings) is omitted from the
-     * picker for that kind — so it never appears as a permanently-empty
-     * "No results" section, and the picker doesn't query it. Default: every kind.
+     * Whether this source can serve [req] at all, by what the request is:
+     * its kind, its language. A source that categorically can't (Commons
+     * and an imported file of recordings have nothing for a sentence) is
+     * omitted from the picker for that request — so it never appears as a
+     * permanently-empty "No results" section, and the picker doesn't query
+     * it. Default: every request.
      */
-    fun serves(kind: AudioRequest.Kind): Boolean = true
+    fun serves(req: AudioRequest): Boolean = true
 
     /**
      * Whether this source has what it needs to offer anything. A source the

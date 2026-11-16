@@ -82,6 +82,32 @@
 
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- An android.db file of human recordings the user loads, and
+                 removes, here (ImportedRecordingsSection). Last on the page:
+                 it is no voice to pick, and most users have no such file.
+                 A word it has a recording of is played from it whichever
+                 voice is ticked above. -->
+            <include layout="@layout/settings_group_header"
+                android:id="@+id/headerRecordings" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardRecordings"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:id="@+id/recordingRows"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+            </com.google.android.material.card.MaterialCardView>
+
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 
