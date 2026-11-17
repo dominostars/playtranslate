@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The floating Anki pill at a page's bottom end: the word page's, the results
+     page's and the capture sheet's. Tap opens the editable review, a hold sends
+     the card at once (PillAnkiButton wires both). The FrameLayout is the tap
+     target and the slot PillAnkiButton lays its spinner over during a one-tap
+     send; the inner LinearLayout is the icon and the label. A page scrolling
+     under it leaves @dimen/pt_anki_pill_clearance at the end of its content.
+     Shown by its host once there is something to add. -->
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/btnAnkiPill"
+    android:layout_width="wrap_content"
+    android:layout_height="40dp"
+    android:layout_gravity="bottom|end"
+    android:layout_marginEnd="16dp"
+    android:layout_marginBottom="16dp"
+    android:background="@drawable/bg_anki_pill"
+    android:paddingStart="12dp"
+    android:paddingEnd="16dp"
+    android:elevation="6dp"
+    android:alpha="0.85"
+    android:clickable="true"
+    android:focusable="true"
+    android:contentDescription="@string/cd_add_to_anki"
+    android:visibility="gone">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <!-- The add-to-Anki glyph (the card stack with a "+"), the one the
+             results headers' Anki buttons used. app:tint is AppCompat-only and
+             plain inflaters drop it, so PillAnkiButton tints the glyph in code
+             as well. -->
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@drawable/ic_card_stack_add"
+            app:tint="?attr/ptAccentOn"
+            android:contentDescription="@null"
+            android:scaleType="centerInside" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/anki_section_header"
+            android:textColor="?attr/ptAccentOn"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:layout_marginStart="2dp" />
+
+    </LinearLayout>
+
+</FrameLayout>

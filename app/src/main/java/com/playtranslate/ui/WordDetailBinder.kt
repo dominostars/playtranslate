@@ -504,11 +504,6 @@ class WordDetailBinder(
         // FrameLayout so PillAnkiButton can overlay a centered spinner
         // during one-tap sends.
         val btnAddAnki = root.findViewById<FrameLayout>(R.id.btnWordAddToAnki)
-        // The card-stack glyph's app:tint is AppCompat-only — the workspace's
-        // plain inflater drops it, leaving the icon unthemed. Tint in code
-        // for both hosts.
-        ((btnAddAnki.getChildAt(0) as? ViewGroup)?.getChildAt(0) as? ImageView)
-            ?.imageTintList = ColorStateList.valueOf(ctx.themeColor(R.attr.ptAccentOn))
         val tvHeadword = root.findViewById<TextView>(R.id.tvDetailHeadword)
         // The detailContent paddingTop math below reserves the toolbar's
         // 56dp slot so the headword overlay can shrink into it on scroll.
@@ -692,25 +687,27 @@ class WordDetailBinder(
 
             val ankiManager = AnkiManager(ctx)
             btnAddAnki.isVisible = true
-            val pill = PillAnkiButton(btnAddAnki)
             // Tap opens the editable review (default action). Long-press is
             // the headless one-tap shortcut — documented by the pro-tip
             // footer in Settings → Anki.
-            btnAddAnki.setOnClickListener {
-                if (!ankiManager.isAnkiDroidInstalled()) {
-                    ui.showAnkiNotInstalled()
-                } else {
-                    ui.openAnkiReview(ankiReviewArgs(word, lookupForm, primary, screenshotPath, defResult))
-                }
-            }
-            btnAddAnki.setOnLongClickListener {
-                if (!ankiManager.isAnkiDroidInstalled()) {
-                    ui.showAnkiNotInstalled()
-                } else {
-                    oneTapWordFromDetail(pill, word, lookupForm, primary, entries, screenshotPath, defResult)
-                }
-                true
-            }
+            lateinit var pill: PillAnkiButton
+            pill = PillAnkiButton(
+                btnAddAnki,
+                onTap = {
+                    if (!ankiManager.isAnkiDroidInstalled()) {
+                        ui.showAnkiNotInstalled()
+                    } else {
+                        ui.openAnkiReview(ankiReviewArgs(word, lookupForm, primary, screenshotPath, defResult))
+                    }
+                },
+                onHold = {
+                    if (!ankiManager.isAnkiDroidInstalled()) {
+                        ui.showAnkiNotInstalled()
+                    } else {
+                        oneTapWordFromDetail(pill, word, lookupForm, primary, entries, screenshotPath, defResult)
+                    }
+                },
+            )
 
             // The Words and Other matches rows can machine-translate, so they
             // load after the Anki button is bound, into the host buildContent

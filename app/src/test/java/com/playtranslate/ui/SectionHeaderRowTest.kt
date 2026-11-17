@@ -48,10 +48,9 @@ class SectionHeaderRowTest {
     private lateinit var furigana: HeaderAction
     private lateinit var speak: HeaderAction
     private lateinit var edit: HeaderAction
-    private lateinit var anki: HeaderAction
+    private lateinit var size: HeaderAction
     private lateinit var eye: HeaderAction
     private val clicks = mutableListOf<Pair<String, View>>()
-    private val longClicks = mutableListOf<Pair<String, View>>()
 
     private var icon = 0
     private var gap = 0
@@ -73,11 +72,9 @@ class SectionHeaderRowTest {
         furigana = action(R.id.btnToggleFurigana, "furigana")
         speak = action(R.id.btnSpeakOriginal, "speak")
         edit = action(R.id.btnEditOriginal, "edit")
-        anki = action(R.id.btnAnkiOriginal, "anki").apply {
-            onLongClick = { v -> longClicks += "anki" to v }
-        }
+        size = action(R.id.btnFontSizeOriginal, "size")
         eye = HeaderAction(R.id.btnToggleOriginal, R.drawable.ic_visibility, "eye", pinned = true)
-        row.setActions(listOf(furigana, speak, edit, anki, eye), R.id.btnMoreOriginal)
+        row.setActions(listOf(furigana, speak, edit, size, eye), R.id.btnMoreOriginal)
         icon = row.moreButton.layoutParams.width
         gap = (16 * activity.resources.displayMetrics.density).toInt()
         pad = row.paddingLeft + row.paddingRight
@@ -106,7 +103,7 @@ class SectionHeaderRowTest {
     fun `everything inline while it fits, no more button`() {
         layoutAt(allInline)
         for (id in listOf(R.id.btnToggleFurigana, R.id.btnSpeakOriginal, R.id.btnEditOriginal,
-            R.id.btnAnkiOriginal, R.id.btnToggleOriginal)) {
+            R.id.btnFontSizeOriginal, R.id.btnToggleOriginal)) {
             assertTrue(shown(id))
         }
         assertFalse(shown(R.id.btnMoreOriginal))
@@ -119,10 +116,10 @@ class SectionHeaderRowTest {
         assertTrue(shown(R.id.btnToggleFurigana))
         assertTrue(shown(R.id.btnSpeakOriginal))
         assertFalse(shown(R.id.btnEditOriginal))
-        assertFalse(shown(R.id.btnAnkiOriginal))
+        assertFalse(shown(R.id.btnFontSizeOriginal))
         assertTrue(shown(R.id.btnMoreOriginal))
         assertTrue(shown(R.id.btnToggleOriginal))
-        assertEquals(listOf(edit, anki), row.foldedActions())
+        assertEquals(listOf(edit, size), row.foldedActions())
         val more = viewOf(R.id.btnMoreOriginal)
         val eyeView = viewOf(R.id.btnToggleOriginal)
         assertEquals("the eye ends the row", allInline - 1 - row.paddingRight, eyeView.right)
@@ -153,7 +150,7 @@ class SectionHeaderRowTest {
         layoutAt(allInline)
         assertTrue(shown(R.id.btnMoreOriginal))
         assertTrue(shown(R.id.btnToggleOriginal))
-        assertEquals(listOf(furigana, speak, edit, anki), row.foldedActions())
+        assertEquals(listOf(furigana, speak, edit, size), row.foldedActions())
         val room = allInline - pad - 2 * icon - 2 * gap
         assertEquals(room, label.maxWidth)
         assertTrue(label.width <= room)
@@ -167,7 +164,7 @@ class SectionHeaderRowTest {
     fun `generated views carry the header ids`() {
         assertSame(row.moreButton, viewOf(R.id.btnMoreOriginal))
         for (id in listOf(R.id.btnToggleFurigana, R.id.btnSpeakOriginal, R.id.btnEditOriginal,
-            R.id.btnAnkiOriginal, R.id.btnToggleOriginal)) {
+            R.id.btnFontSizeOriginal, R.id.btnToggleOriginal)) {
             assertTrue("missing ${row.resources.getResourceEntryName(id)}", viewOf(id).parent === row)
         }
     }
@@ -178,9 +175,9 @@ class SectionHeaderRowTest {
         assertTrue(shown(R.id.btnMoreOriginal))
         edit.available = false
         assertEquals("no layout pass needed", View.GONE, viewOf(R.id.btnEditOriginal).visibility)
-        assertEquals("never offered in the menu", listOf(anki), row.foldedActions())
+        assertEquals("never offered in the menu", listOf(size), row.foldedActions())
         layoutAt(allInline - 1)
-        assertTrue("three actions + eye fit where four didn't", shown(R.id.btnAnkiOriginal))
+        assertTrue("three actions + eye fit where four didn't", shown(R.id.btnFontSizeOriginal))
         assertFalse(shown(R.id.btnMoreOriginal))
         edit.available = true
         layoutAt(allInline - 1)
@@ -189,12 +186,12 @@ class SectionHeaderRowTest {
     }
 
     @Test
-    fun `nav targets are the inline actions, more, then the eye, with hold where there's a long-press`() {
+    fun `nav targets are the inline actions, more, then the eye, none of them a hold`() {
         layoutAt(allInline)
         assertEquals(
             listOf(
                 viewOf(R.id.btnToggleFurigana) to false, viewOf(R.id.btnSpeakOriginal) to false,
-                viewOf(R.id.btnEditOriginal) to false, viewOf(R.id.btnAnkiOriginal) to true,
+                viewOf(R.id.btnEditOriginal) to false, viewOf(R.id.btnFontSizeOriginal) to false,
                 viewOf(R.id.btnToggleOriginal) to false,
             ),
             row.navActions().map { it.view to it.holdActivates },
@@ -211,9 +208,11 @@ class SectionHeaderRowTest {
         layoutAt(allInline)
         viewOf(R.id.btnEditOriginal).performClick()
         assertEquals(listOf("edit" to viewOf(R.id.btnEditOriginal)), clicks)
-        viewOf(R.id.btnAnkiOriginal).performLongClick()
-        assertEquals(listOf("anki" to viewOf(R.id.btnAnkiOriginal)), longClicks)
-        assertFalse("no long-press, not long-clickable", viewOf(R.id.btnEditOriginal).isLongClickable)
+        // A header action has no hold: Anki, the one action that had one,
+        // is each surface's floating pill.
+        for (a in listOf(furigana, speak, edit, size, eye)) {
+            assertFalse(viewOf(a.viewId).isLongClickable)
+        }
     }
 
     @Test

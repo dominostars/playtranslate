@@ -10,8 +10,8 @@ import androidx.annotation.IdRes
  * its row in the ⋯ menu ([ActionOverflowMenu]). The binder
  * ([TranslationSectionBinder]) writes these fields and never touches a view;
  * the row renders the inline button from them, the open menu renders its
- * row, and both run the same [onClick] / [onLongClick] — so an action
- * behaves identically wherever the fit put it.
+ * row, and both run the same [onClick] — so an action behaves
+ * identically wherever the fit put it.
  *
  * [icon] is what the menu row always shows, and what an [Presentation.ICON]
  * button shows inline; a [Presentation.TEXT_PILL] shows [label] inline
@@ -77,15 +77,6 @@ class HeaderAction(
      *  inline button, or ⋯ when it ran from the menu (a popover the action
      *  opens anchors there). */
     var onClick: ((anchor: View) -> Unit)? = null
-
-    /** The long-press action (the Anki one-tap), or null for none. Also
-     *  what makes the controller's A a hold on this action. */
-    var onLongClick: ((anchor: View) -> Unit)? = null
-        set(value) {
-            if (field === value) return
-            field = value
-            notifyChanged(affectsWidth = false)
-        }
 
     /** The owning row (set by [SectionHeaderRow.setActions]). */
     internal var observer: ((HeaderAction, affectsWidth: Boolean) -> Unit)? = null

@@ -59,14 +59,15 @@
              pair) are direct children of this layout, which arranges them:
              stacked, or Original and Translation paired on top when the page
              is wide enough. The Clear row is its one other child and stacks
-             beneath them. -->
+             beneath them. The bottom padding is the floating Anki pill's
+             clearance, so content scrolled to the end clears the pill. -->
         <com.playtranslate.ui.ResultSectionsLayout
             android:id="@+id/resultsScrollContent"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingHorizontal="@dimen/pt_section_h_padding"
             android:paddingTop="0dp"
-            android:paddingBottom="8dp">
+            android:paddingBottom="@dimen/pt_anki_pill_clearance">
 
             <include layout="@layout/results_sections" />
 
@@ -101,6 +102,21 @@
         </com.playtranslate.ui.ResultSectionsLayout>
 
     </ScrollView>
+
+    <!-- The floating Anki pill (TranslationResultContent shows it with the
+         results), in a layer of its own: full size, so the pill's shadow is
+         not clipped, and with no elevation, so the page's popovers, which
+         PopoverHost adds to this root after it, draw over the pill and take
+         its taps while one is open. In the root directly, the pill's
+         elevation would lift it above them. Not clickable, so touches
+         anywhere else pass through to the results. -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <include layout="@layout/anki_pill" />
+
+    </FrameLayout>
 
     <!-- The capture-mode row (two screens): what the next capture paints
          over the game display. It overlays the top of the root; the status

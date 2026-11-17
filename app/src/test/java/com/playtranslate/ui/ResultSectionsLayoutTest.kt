@@ -587,10 +587,12 @@ class ResultSectionsLayoutTest {
     @Test
     fun `the measured height is the last shown child's bottom plus the bottom padding, and an exact height is taken top-aligned`() {
         fillWords()
-        assertEquals(dp(8), sections.paddingBottom)
+        // The page's bottom padding: the floating Anki pill's clearance.
+        val pad = sections.resources.getDimensionPixelSize(R.dimen.pt_anki_pill_clearance)
+        assertEquals(pad, sections.paddingBottom)
         for (width in listOf(dp(412), dp(800))) {
             layOut(width)
-            assertEquals("at ${width}px", wordsCard.bottom + dp(8), sections.measuredHeight)
+            assertEquals("at ${width}px", wordsCard.bottom + pad, sections.measuredHeight)
             val natural = sections.measuredHeight
             val all = listOf(
                 targetHeader, targetCard, sourceHeader, sourceCard, askHeader, askCard, wordsHeader, wordsCard,
@@ -611,6 +613,6 @@ class ResultSectionsLayoutTest {
         setHidden(original = true, translation = true)
         wordsCard.visibility = View.GONE
         layOut(dp(800))
-        assertEquals(wordsHeader.bottom + dp(8), sections.measuredHeight)
+        assertEquals(wordsHeader.bottom + pad, sections.measuredHeight)
     }
 }

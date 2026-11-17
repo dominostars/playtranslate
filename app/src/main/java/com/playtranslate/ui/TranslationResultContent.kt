@@ -4,10 +4,13 @@ import android.content.Context
 import android.graphics.Point
 import android.graphics.Rect
 import android.view.View
+import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import com.playtranslate.ocr.registry.OcrModelManager
@@ -36,10 +39,11 @@ import kotlinx.coroutines.launch
  * [TranslationResultFragment] and the floating workspace's
  * [WorkspaceSentencePage] are shells over this, each supplying what only
  * it knows through [Host]: where the lens's window lives, what its rows'
- * actions do, what a word tap opens, the Anki entries, editing, the OCR and
- * language pickers, the Clear action, the show-on-screen toggle, and who
- * completes a deferred translation. Same constraints as every other
- * shared binder: plain views, ids from the shared layout.
+ * actions do, what a word tap opens, the Anki entries (the floating pill's
+ * tap and hold), editing, the OCR and language pickers, the Clear action,
+ * the show-on-screen toggle, and who completes a deferred translation.
+ * Same constraints as every other shared binder: plain views, ids from the
+ * shared layout.
  *
  * Render rules the funnel owns (pinned here so neither shell re-derives
  * them): a Translating placeholder always starts at the top and records
@@ -64,6 +68,9 @@ class TranslationResultContent(
     private val prefs: Prefs,
     private val vm: TranslationResultViewModel,
     private val host: Host,
+    /** Whether the soft keyboard is up over this page's window
+     *  ([keyboardShownOver]). A parameter so a test can raise one. */
+    private val keyboardShown: () -> Boolean = { keyboardShownOver(root) },
 ) {
     interface Host {
         /** The host view tree is still live — guards every async re-entry. */
@@ -146,8 +153,8 @@ class TranslationResultContent(
         /** A language header tap (and the no-text status's language name). */
         fun onChangeLanguage(isSource: Boolean) {}
 
-        /** The section headers' Anki button: tap = review, long-press =
-         *  one-tap. */
+        /** The floating Anki pill: a tap opens the review ([onAddToAnki]),
+         *  a hold sends the card at once ([onAnkiOneTap]). */
         fun onAddToAnki() {}
         fun onAnkiOneTap() {}
 
@@ -185,6 +192,18 @@ class TranslationResultContent(
     private val statusHint: TextView = root.findViewById(R.id.tvStatusHint)
     private val liveHint: TextView = root.findViewById(R.id.tvLiveHint)
     private val actionButtons: View = root.findViewById(R.id.resultActionButtons)
+
+    /** The floating Anki pill ([syncAnkiPill] says when it shows). */
+    private val ankiPill: FrameLayout = root.findViewById(R.id.btnAnkiPill)
+
+    /** Re-reads the pill's rule after every layout of the window: the
+     *  keyboard coming or going lays the window out again, and a keyboard
+     *  closed by its own button or Back leaves the question field focused,
+     *  so its closing is seen only here. Registered while [root] is
+     *  attached. */
+    private val keyboardWatch = ViewTreeObserver.OnGlobalLayoutListener {
+        if (host.isAlive) syncAnkiPill()
+    }
 
     /** The page's one in-window popover (the text-size picker, a header's
      *  ⋯ menu), floating over the results inside the layout's root
@@ -274,17 +293,26 @@ class TranslationResultContent(
         )
         binder.tvOriginal.onTapAtOffset = { offset -> sourceLens.onTapAtOffset(offset) }
         binder.editAvailable = host.editAvailable
-        // Copy / show-hide / furigana toggle / speak live in the binder; the
-        // Anki action lives on the section headers (tap = review, long-press
-        // = one-tap); editing is the host's.
+        // Copy / show-hide / furigana toggle / speak live in the binder;
+        // editing is the host's; Anki is the floating pill (tap = review,
+        // hold = one-tap).
         binder.setupSectionButtons(
             onEdit = {
                 sourceLens.dismiss()
                 host.onEditRequested()
             },
-            onAddToAnki = { host.onAddToAnki() },
-            onAnkiOneTap = { host.onAnkiOneTap() },
         )
+        PillAnkiButton(ankiPill, onTap = { host.onAddToAnki() }, onHold = { host.onAnkiOneTap() })
+        root.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {
+                v.viewTreeObserver.addOnGlobalLayoutListener(keyboardWatch)
+            }
+
+            override fun onViewDetachedFromWindow(v: View) {
+                v.viewTreeObserver.removeOnGlobalLayoutListener(keyboardWatch)
+            }
+        })
+        if (root.isAttachedToWindow) root.viewTreeObserver.addOnGlobalLayoutListener(keyboardWatch)
         val fontPicker = FontSizeRangePopover(ctx, prefs).apply {
             // fitTextSizes fits each section against the (unchanged) scroll
             // height, so the sections resize in place and the anchor never
@@ -305,6 +333,8 @@ class TranslationResultContent(
             object : AskSectionBinder.Host {
                 override fun onInteraction() = host.onInteraction()
                 override fun onLlmNeeded() = host.onAskNeedsLlm()
+                // The pill makes way while the question is typed in.
+                override fun onFieldFocusChanged(focused: Boolean) = syncAnkiPill()
             },
         )
         // The session is the view-model's and outlives this page: draw
@@ -434,6 +464,21 @@ class TranslationResultContent(
                 requestDeferredCompletion()
             }
         }
+        syncAnkiPill()
+    }
+
+    /**
+     * The floating Anki pill shows while a result is on show (a Translating
+     * placeholder or a Ready result: the reach the section headers' Anki
+     * buttons had), and makes way while the Ask question is typed in, its
+     * field focused with the keyboard up, since the field can then sit under
+     * it. Both read live: the state the funnel last drew, the field's focus
+     * and the window's keyboard.
+     */
+    private fun syncAnkiPill() {
+        val onShow = lastRendered is ResultState.Translating || lastRendered is ResultState.Ready
+        val typing = ask.fieldHasFocus && keyboardShown()
+        ankiPill.isVisible = onShow && !typing
     }
 
     /** Mirror a word-lookup state ([WordLookupsRenderer]): the tap spans +
@@ -624,14 +669,20 @@ class TranslationResultContent(
     }
 
     /** Tear down: the lens, the popovers, the sections' speak job, the Words
-     *  card's page. Idempotent. */
+     *  card's page, the keyboard watch. Idempotent. */
     fun release() {
         sourceLens.dismiss()
         popovers.release()
         binder.release()
         wordRows.release()
+        root.viewTreeObserver.removeOnGlobalLayoutListener(keyboardWatch)
     }
 }
+
+/** Whether the soft keyboard is up over [view]'s window, from the insets the
+ *  window last dispatched. False while [view] is not attached. */
+internal fun keyboardShownOver(view: View): Boolean =
+    ViewCompat.getRootWindowInsets(view)?.isVisible(WindowInsetsCompat.Type.ime()) == true
 
 /**
  * Reset scroll to (0, 0) without firing the registered scroll listener —

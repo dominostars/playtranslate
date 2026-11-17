@@ -20,17 +20,15 @@ import com.playtranslate.themeColor
  * row per action the header folded, in the header's order, each with the
  * action's icon at the start and its short name. A row runs exactly what
  * the inline button runs, from the same [HeaderAction]: a tap closes the
- * menu and then runs [HeaderAction.onClick], a long-press closes it and runs
- * [HeaderAction.onLongClick] (the Anki one-tap). Either way the action's
- * anchor is ⋯, so a popover it opens (the text-size picker) points there.
+ * menu and then runs [HeaderAction.onClick], with ⋯ as the action's anchor,
+ * so a popover it opens (the text-size picker) points there.
  *
  * Shown by the surface's [PopoverHost], so it inherits the in-window,
  * modal, one-at-a-time rules. While open it follows its row: a row
  * re-paints when its action's look changes (a speak that ends drops its
  * accent), and the menu closes when the header's folded set changes under
  * it. A row does nothing unless its menu is still the one showing, so a
- * click that lands after dismissal (a controller hold's key-up on a row the
- * long-press already closed) can't run an action twice.
+ * click that lands after dismissal can't run an action twice.
  *
  * Built in code (the over-game panel's plain inflater drops `app:`
  * attributes). A new instance per open.
@@ -70,8 +68,7 @@ class ActionOverflowMenu(private val row: SectionHeaderRow) : PopoverContent, Se
         return natural.coerceIn((MIN_W_DP * density).toInt(), (MAX_W_DP * density).toInt())
     }
 
-    override fun navActions(): List<NavAction> =
-        rowViews.map { (a, v) -> NavAction(v, holdActivates = a.onLongClick != null) }
+    override fun navActions(): List<NavAction> = rowViews.values.map { NavAction(it) }
 
     override fun onDismissed() {
         row.removeListener(this)
@@ -122,15 +119,6 @@ class ActionOverflowMenu(private val row: SectionHeaderRow) : PopoverContent, Se
             if (!isCurrent) return@setOnClickListener
             h.dismiss()
             a.onClick?.invoke(row.moreButton)
-        }
-        if (a.onLongClick != null) {
-            v.setOnLongClickListener {
-                val h = host ?: return@setOnLongClickListener false
-                if (!isCurrent) return@setOnLongClickListener false
-                h.dismiss()
-                a.onLongClick?.invoke(row.moreButton)
-                true
-            }
         }
         bind(v, a)
         return v

@@ -26,8 +26,8 @@ import org.robolectric.Shadows.shadowOf
  * [ActionOverflowMenu], the table behind a section header's ⋯: its rows are
  * the header's folded, available actions in order, painted from their
  * models (and repainted live); a tap closes the menu and THEN runs the
- * action with ⋯ as its anchor, a long-press does the same with the
- * long-press action; a row outliving its menu does nothing; a change to the
+ * action with ⋯ as its anchor; no row has a hold; a row outliving its menu
+ * does nothing; a change to the
  * header's fold closes the menu, while a re-layout that folds the same
  * actions leaves it open.
  */
@@ -46,7 +46,7 @@ class ActionOverflowMenuTest {
     private lateinit var row: SectionHeaderRow
     private lateinit var popovers: PopoverHost
     private lateinit var edit: HeaderAction
-    private lateinit var anki: HeaderAction
+    private lateinit var size: HeaderAction
 
     /** (action, anchor, a popover was still showing when it ran). */
     private val runs = mutableListOf<Triple<String, View, Boolean>>()
@@ -67,13 +67,11 @@ class ActionOverflowMenuTest {
             onClick = { v -> runs += Triple(name, v, popovers.isShowing) }
         }
         edit = action(R.id.btnEditOriginal, "Edit text")
-        anki = action(R.id.btnAnkiOriginal, "Add to Anki").apply {
-            onLongClick = { v -> runs += Triple("one-tap", v, popovers.isShowing) }
-        }
+        size = action(R.id.btnFontSizeOriginal, "Text size")
         row.setActions(
             listOf(
                 action(R.id.btnToggleFurigana, "Furigana"), action(R.id.btnSpeakOriginal, "Read aloud"),
-                edit, anki,
+                edit, size,
                 HeaderAction(R.id.btnToggleOriginal, R.drawable.ic_visibility, "eye", pinned = true),
             ),
             R.id.btnMoreOriginal,
@@ -81,7 +79,7 @@ class ActionOverflowMenuTest {
         popovers = PopoverHost(root)
         val gap = (16 * activity.resources.displayMetrics.density).toInt()
         allInline = row.paddingLeft + row.paddingRight + 5 * row.moreButton.layoutParams.width + 5 * gap
-        layoutAt(allInline - 1)   // folds Edit and Add to Anki
+        layoutAt(allInline - 1)   // folds Edit and Text size
     }
 
     private fun layoutAt(width: Int, hostHeight: Int = 1500) {
@@ -101,9 +99,9 @@ class ActionOverflowMenuTest {
 
     @Test
     fun `rows are the folded available actions, in order, painted from their models`() {
-        anki.active = true
+        size.active = true
         open()
-        assertEquals(listOf("Edit text", "Add to Anki"), rows().map(::labelOf))
+        assertEquals(listOf("Edit text", "Text size"), rows().map(::labelOf))
         val ctx = row.context
         assertEquals(ctx.themeColor(R.attr.ptTextMuted), tintOf(rows()[0]))
         assertEquals(ctx.themeColor(R.attr.ptAccent), tintOf(rows()[1]))
@@ -112,7 +110,7 @@ class ActionOverflowMenuTest {
     @Test
     fun `a row repaints live while the menu is open`() {
         open()
-        anki.active = true
+        size.active = true
         assertEquals(row.context.themeColor(R.attr.ptAccent), tintOf(rows()[1]))
     }
 
@@ -125,12 +123,9 @@ class ActionOverflowMenuTest {
     }
 
     @Test
-    fun `a long-press closes the menu, then runs the long-press action`() {
+    fun `no row has a long-press`() {
         open()
-        assertFalse("no long-press action, not long-clickable", rows()[0].isLongClickable)
-        assertTrue(rows()[1].performLongClick())
-        assertEquals(listOf(Triple("one-tap", row.moreButton as View, false)), runs)
-        assertFalse(popovers.isShowing)
+        for (r in rows()) assertFalse(r.isLongClickable)
     }
 
     @Test
@@ -143,9 +138,9 @@ class ActionOverflowMenuTest {
     }
 
     @Test
-    fun `nav targets are the rows, with hold where there's a long-press`() {
+    fun `nav targets are the rows, none of them a hold`() {
         open()
-        assertEquals(listOf(false, true), popovers.navActions()?.map { it.holdActivates })
+        assertEquals(listOf(false, false), popovers.navActions()?.map { it.holdActivates })
     }
 
     @Test
@@ -183,7 +178,7 @@ class ActionOverflowMenuTest {
         assertTrue(scroll.scrollY > 0)
         assertTrue("the last row now sits inside the card", last.bottom - scroll.scrollY <= scroll.height)
         last.performClick()
-        assertEquals(listOf(Triple("Add to Anki", row.moreButton as View, false)), runs)
+        assertEquals(listOf(Triple("Text size", row.moreButton as View, false)), runs)
     }
 
     @Test

@@ -53,67 +53,26 @@
                  measured height of the overlay headword + a small gap,
                  so the reading/badges/definitions row sits flush below
                  it regardless of how tall the headword wraps to.
-                 paddingBottom matches the sentence view so the floating
-                 Anki pill doesn't cover the last row when scrolled. -->
+                 paddingBottom is the floating Anki pill's clearance, so
+                 the pill doesn't cover the last row when scrolled. -->
             <LinearLayout
                 android:id="@+id/detailContent"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:paddingHorizontal="@dimen/pt_section_h_padding"
-                android:paddingBottom="64dp" />
+                android:paddingBottom="@dimen/pt_anki_pill_clearance" />
 
         </androidx.core.widget.NestedScrollView>
 
     </LinearLayout>
 
-    <!-- Floating Anki pill button — matches the sentence-screen design
-         (bottom|end pill, alpha 0.85, 6dp elevation). FrameLayout +
-         inner LinearLayout so PillAnkiButton can overlay a centered
-         spinner during one-tap sends; see fragment_translation_result.xml
-         for the matching shape. -->
-    <FrameLayout
-        android:id="@+id/btnWordAddToAnki"
-        android:layout_width="wrap_content"
-        android:layout_height="40dp"
-        android:layout_gravity="bottom|end"
-        android:layout_marginEnd="16dp"
-        android:layout_marginBottom="16dp"
-        android:background="@drawable/bg_anki_pill"
-        android:paddingStart="12dp"
-        android:paddingEnd="16dp"
-        android:elevation="6dp"
-        android:alpha="0.85"
-        android:clickable="true"
-        android:focusable="true"
-        android:visibility="gone">
-
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <ImageView
-                android:layout_width="20dp"
-                android:layout_height="20dp"
-                android:src="@drawable/ic_card_stack"
-                app:tint="?attr/ptAccentOn"
-                android:contentDescription="@null"
-                android:scaleType="centerInside" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/anki_section_header"
-                android:textColor="?attr/ptAccentOn"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                android:layout_marginStart="2dp" />
-
-        </LinearLayout>
-
-    </FrameLayout>
+    <!-- The floating Anki pill, the one the results pages share. This page
+         has no popovers, so the pill sits in the root directly; the results
+         page wraps it in a layer of its own (fragment_translation_result.xml). -->
+    <include
+        layout="@layout/anki_pill"
+        android:id="@+id/btnWordAddToAnki" />
 
     <!-- Headword overlay. Lives ABOVE the toolbar in z-order so the
          in-place scale-down can render inside the toolbar slot. The

@@ -232,11 +232,23 @@ class CaptureSheetSectionsTest {
         return card.height > o.v(section.contentId).height + card.paddingTop + card.paddingBottom
     }
 
+    /** The buffer the sheet keeps under its cards, down to the panel's
+     *  bottom: what its height and the cards' fill count below them. */
+    private fun cardBuffer(o: CaptureResultOverlay): Int = dp(
+        constInt(
+            if (o.sections.fixedArrangement == Arrangement.PAIRED) "SIDE_BY_SIDE_BOTTOM_BUFFER_DP"
+            else "STACKED_BOTTOM_BUFFER_DP",
+        ),
+    )
+
     /** What is past the fold when the two texts fit the body exactly: the
-     *  header rows of the sections hidden beneath them. That much a sheet of
-     *  two texts always scrolls by, and no more. */
+     *  header rows of the sections hidden beneath them, and the Anki pill's
+     *  room under those (the sections' bottom padding, less the buffer the
+     *  fit keeps above the fold). That much a sheet of two texts always
+     *  scrolls by, and no more. */
     private fun rowsPastTheFold(o: CaptureResultOverlay): Int =
-        o.v(R.id.askHeaderRow).height + o.v(R.id.wordsHeaderRow).height
+        o.v(R.id.askHeaderRow).height + o.v(R.id.wordsHeaderRow).height +
+            o.sections.paddingBottom - cardBuffer(o)
 
     /** How far the content can scroll: the sections past the viewport. */
     private fun scrollRange(o: CaptureResultOverlay): Int {
@@ -527,9 +539,10 @@ class CaptureSheetSectionsTest {
 
     @Test fun `a panel resting at the need shows both texts at their largest size, filling the body`() {
         // The need is the WHOLE content at the largest text size, the
-        // sections' own padding included: a need that left any part out would
-        // rest the panel that much short, and the fit would shrink the text
-        // to squeeze it in.
+        // buffer under the cards included: a need that left any part out
+        // would rest the panel that much short, and the fit would shrink the
+        // text to squeeze it in. The Anki pill's room is not in it: that
+        // is scroll past the fold, with the hidden sections' header rows.
         val maxPx = prefs.resultsFontMaxSp * ctx.resources.displayMetrics.scaledDensity
         for (case in heightCases) {
             val o = open(case.screen, case.original, case.translation)
@@ -654,11 +667,12 @@ class CaptureSheetSectionsTest {
         assertTrue("the Original card is stretched past its content (${sourceCard.height} vs ${sourceContent.height})",
             sourceCard.height > sourceContent.height + o.binder.sourceCardInset())
         assertEquals("the cards end on one line", sourceCard.bottom, targetCard.bottom)
-        // The buffer under the cards is the layout's bottom padding; the
+        // The buffer under the cards is the sheet's card buffer; the
         // sections hidden beneath begin right under the cards, their header
-        // rows past the fold but for that buffer's worth of blank padding.
+        // rows past the fold but for that buffer's worth, and the Anki
+        // pill's room (the layout's bottom padding) after them.
         assertEquals("at the body's bottom less the buffer",
-            o.scroll.height - s.paddingBottom, sourceCard.bottom)
+            o.scroll.height - cardBuffer(o), sourceCard.bottom)
     }
 
     // ── C. The swipe-away gate ──────────────────────────────────────────

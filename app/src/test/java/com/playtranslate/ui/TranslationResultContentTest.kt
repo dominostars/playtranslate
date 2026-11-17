@@ -60,14 +60,17 @@ import org.robolectric.annotation.GraphicsMode
  * (fit before show, across the posted steps) with the Clear row following
  * the host; the deferred-translation request reaches the host only while a
  * pending is bound AND the translation section is visible or the request
- * is forced; the section headers' Anki button, the language headers, the
- * Clear button and a word row's tap route to the host; a hidden Edit
+ * is forced; the floating Anki pill (a tap and a hold), the language
+ * headers, the Clear button and a word row's tap route to the host; the
+ * pill shows with a result, makes way for the status screen and for the
+ * question being typed (its field focused with the keyboard up), and stays
+ * under an open popover; the content's end leaves the pill's room; a hidden Edit
  * button when the host has no editor; a settled word list builds after
  * the host's enter-settle gate; an analyzed lookup sets the tap spans
  * whether or not the Words card is shown and asks for the rows only while
  * it is; and on a narrow page both headers fold
- * behind ⋯, whose menu runs the same actions (Add to Anki reaches the
- * host, Text size opens the size picker anchored on the target's ⋯).
+ * behind ⋯, whose menu runs the same actions (Edit reaches the host, Text
+ * size opens the size picker anchored on the target's ⋯).
  * The fit follows the sections' arrangement: stacked, each text is fitted
  * to half the scroll viewport; paired, each to the viewport less its own
  * header row and card chrome; and a change of the page's width (a
@@ -109,6 +112,8 @@ class TranslationResultContentTest {
         var clears = 0
         var completions = 0
         var ankiTaps = 0
+        var ankiHolds = 0
+        var edits = 0
         var languageTaps = mutableListOf<Boolean>()
         var clearAction = false
         var startHint = false
@@ -136,6 +141,8 @@ class TranslationResultContentTest {
         override fun onClear() { clears++ }
         override fun completeDeferredTranslation() { completions++ }
         override fun onAddToAnki() { ankiTaps++ }
+        override fun onAnkiOneTap() { ankiHolds++ }
+        override fun onEditRequested() { edits++ }
         override fun onChangeLanguage(isSource: Boolean) { languageTaps += isSource }
         override val showsClearAction: Boolean get() = clearAction
         override val showsStartHint: Boolean get() = startHint
@@ -151,6 +158,9 @@ class TranslationResultContentTest {
     private lateinit var content: TranslationResultContent
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    /** Whether the keyboard is up over the page, as the content reads it. */
+    private var keyboard = false
+
     @Before
     fun setUp() {
         clearPrefs()
@@ -163,7 +173,7 @@ class TranslationResultContentTest {
         activity.setContentView(root)
         vm = TranslationResultViewModel(scope)
         host = FakeHost(activity, scope)
-        content = TranslationResultContent(root, activity, Prefs(activity), vm, host)
+        content = TranslationResultContent(root, activity, Prefs(activity), vm, host, keyboardShown = { keyboard })
     }
 
     @After
@@ -275,14 +285,130 @@ class TranslationResultContentTest {
         assertEquals(1, host.completions)
     }
 
+    // ── The floating Anki pill ──────────────────────────────────────────
+
+    // Mutations: show the pill on the status screen; hide it on a
+    // Translating placeholder.
+    @Test
+    fun `the Anki pill shows with a result and makes way for the status screen`() {
+        val pill = view(R.id.btnAnkiPill)
+        content.render(ResultState.Idle)
+        assertEquals("idle: none", View.GONE, pill.visibility)
+        content.render(ResultState.Translating("猫が食べる。", TextSegments.ofText("猫が食べる。")))
+        assertEquals("a placeholder is a result on show", View.VISIBLE, pill.visibility)
+        content.render(ResultState.Ready(result("猫が食べる。", "The cat eats.")))
+        idle()
+        assertEquals(View.VISIBLE, pill.visibility)
+        // Both texts hidden: the headers offered no Anki then; the pill does.
+        Prefs(app).hideOriginalSection = true
+        Prefs(app).hideTranslationSection = true
+        content.render(ResultState.Ready(result("猫が食べる。", "The cat eats!")))
+        idle()
+        assertEquals("with both texts hidden too", View.VISIBLE, pill.visibility)
+        content.render(ResultState.Status("Capturing", showHint = false))
+        assertEquals("a status: none", View.GONE, pill.visibility)
+        content.render(ResultState.Ready(result("猫が食べる。", "The cat eats.")))
+        content.render(ResultState.Error("boom"))
+        assertEquals("an error: none", View.GONE, pill.visibility)
+    }
+
+    // Mutations: hide the pill on the field's focus alone; never bring it
+    // back while the field keeps its focus; drop the keyboard watch.
+    @Test
+    fun `the pill makes way while the question is typed in and comes back when the keyboard closes`() {
+        content.render(ResultState.Ready(result("猫が食べる。", "The cat eats.")))
+        idle()
+        val pill = view(R.id.btnAnkiPill)
+        val field = view(R.id.etAskQuestion)
+        assertTrue("precondition: the question field is on the page", field.isShown)
+
+        field.requestFocus()
+        assertTrue("precondition: the field has the focus", field.isFocused)
+        assertEquals("focused with no keyboard yet: the pill stays", View.VISIBLE, pill.visibility)
+
+        // The keyboard comes up: the window lays out again.
+        keyboard = true
+        root.requestLayout()
+        idle()
+        assertEquals("typing: the pill makes way", View.GONE, pill.visibility)
+
+        // A keyboard closed by its own button or Back leaves the field focused.
+        keyboard = false
+        root.requestLayout()
+        idle()
+        assertTrue("precondition: still focused", field.isFocused)
+        assertEquals("the keyboard closed: back", View.VISIBLE, pill.visibility)
+
+        // Focus leaving with the keyboard still up (a send) brings it back too.
+        keyboard = true
+        root.requestLayout()
+        idle()
+        assertEquals(View.GONE, pill.visibility)
+        content.ask.clearFieldFocus()
+        assertEquals("the focus gone: back", View.VISIBLE, pill.visibility)
+    }
+
+    // Mutation: put the pill in the root directly, its elevation over the
+    // popover host's scrim.
+    @Test
+    fun `an open popover takes a tap on the pill's spot, and the pill opens nothing under it`() {
+        content.render(ResultState.Ready(result("猫が食べる。", "The cat eats.")))
+        idle()
+        layoutPage()
+        val pill = view(R.id.btnAnkiPill)
+        assertEquals(View.VISIBLE, pill.visibility)
+        /** A finger's tap at the pill's centre, through the page's root. */
+        fun tapAt() {
+            val loc = IntArray(2)
+            val rootLoc = IntArray(2)
+            pill.getLocationInWindow(loc)
+            root.getLocationInWindow(rootLoc)
+            val x = loc[0] - rootLoc[0] + pill.width / 2f
+            val y = loc[1] - rootLoc[1] + pill.height / 2f
+            val t = android.os.SystemClock.uptimeMillis()
+            for (action in listOf(android.view.MotionEvent.ACTION_DOWN, android.view.MotionEvent.ACTION_UP)) {
+                val e = android.view.MotionEvent.obtain(t, t, action, x, y, 0)
+                root.dispatchTouchEvent(e)
+                e.recycle()
+            }
+            idle()
+        }
+
+        view(R.id.btnFontSize).performClick()
+        assertTrue("precondition: the size picker is open", content.popovers.isShowing)
+        layoutPage()
+        tapAt()
+        assertFalse("the popover's scrim took the tap and closed it", content.popovers.isShowing)
+        assertEquals("the pill under it opened nothing", 0, host.ankiTaps)
+
+        // With nothing over it, the same tap is the pill's.
+        tapAt()
+        assertEquals(1, host.ankiTaps)
+    }
+
+    // Mutation: drop the clearance from the content's end.
+    @Test
+    fun `content scrolled to the end clears the pill`() {
+        val clearance = activity.resources.getDimensionPixelSize(R.dimen.pt_anki_pill_clearance)
+        assertEquals("the content leaves the pill's room at its end",
+            clearance, view(R.id.resultsScrollContent).paddingBottom)
+        val pill = view(R.id.btnAnkiPill)
+        val lp = pill.layoutParams as ViewGroup.MarginLayoutParams
+        assertTrue("the room holds the pill and its margin (${lp.height} + ${lp.bottomMargin} < $clearance)",
+            lp.height + lp.bottomMargin < clearance)
+    }
+
     @Test
     fun `header and row actions route to the host`() {
         host.edit = false
         content.render(ResultState.Ready(result("猫が食べる。", "The cat eats.")))
         idle()
         assertEquals("no editor: the Edit button is hidden", View.GONE, view(R.id.btnEditOriginal).visibility)
-        view(R.id.btnAnkiOriginal).performClick()
-        assertEquals("the header's Anki button routes to the host", 1, host.ankiTaps)
+        view(R.id.btnAnkiPill).performClick()
+        assertEquals("the Anki pill's tap routes to the host", 1, host.ankiTaps)
+        view(R.id.btnAnkiPill).performLongClick()
+        assertEquals("and its hold", 1, host.ankiHolds)
+        assertEquals("a hold is no tap", 1, host.ankiTaps)
         view(R.id.labelOriginal).performClick()
         view(R.id.labelTranslation).performClick()
         assertEquals(listOf(true, false), host.languageTaps)
@@ -571,22 +697,27 @@ class TranslationResultContentTest {
     @Test
     @Config(qualifiers = "w160dp-h640dp")
     fun `a narrow source header folds, and its menu runs what the inline button would`() {
+        content.binder.editAvailable = true
         content.render(ResultState.Ready(result("猫が食べる。", "The cat eats.")))
         idle()
         layoutPage()
         val more = view(R.id.btnMoreOriginal)
         assertEquals("the header ran out of room", View.VISIBLE, more.visibility)
-        assertEquals(View.GONE, view(R.id.btnAnkiOriginal).visibility)
+        assertEquals(View.GONE, view(R.id.btnEditOriginal).visibility)
         more.performClick()
         assertTrue(content.popovers.isShowing)
-        menuRow(activity.getString(R.string.cd_add_to_anki)).performClick()
+        menuRow(activity.getString(R.string.header_action_edit)).performClick()
         assertFalse(content.popovers.isShowing)
-        assertEquals(1, host.ankiTaps)
+        assertEquals(1, host.edits)
     }
 
     @Test
     @Config(qualifiers = "w160dp-h640dp")
     fun `the menu's Text size opens the size picker on the target header's more`() {
+        // Show on screen offered (two screens): beside Text size it makes two
+        // actions to fold. Text size alone never folds, a single action
+        // being no wider than ⋯ ([HeaderFit]).
+        content.binder.setShowOnScreenAvailable(true)
         content.render(ResultState.Ready(result("猫が食べる。", "The cat eats.")))
         idle()
         layoutPage()

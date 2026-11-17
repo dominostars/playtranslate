@@ -115,9 +115,6 @@ class TranslationSectionBinder(
         ctx.getString(R.string.header_action_edit),
         ctx.getString(R.string.cd_edit_original),
     )
-    private val sourceAnki = HeaderAction(
-        R.id.btnAnkiOriginal, R.drawable.ic_card_stack_add, ctx.getString(R.string.cd_add_to_anki),
-    )
     private val sourceEye = HeaderAction(
         R.id.btnToggleOriginal, R.drawable.ic_visibility,
         ctx.getString(R.string.cd_toggle_original_visibility), pinned = true,
@@ -136,9 +133,6 @@ class TranslationSectionBinder(
     )
     private val textSizeInSource = HeaderAction(
         R.id.btnFontSizeOriginal, R.drawable.ic_format_size, ctx.getString(R.string.cd_text_size),
-    )
-    private val targetAnki = HeaderAction(
-        R.id.btnAnkiTranslation, R.drawable.ic_card_stack_add, ctx.getString(R.string.cd_add_to_anki),
     )
     private val textSize = HeaderAction(
         R.id.btnFontSize, R.drawable.ic_format_size, ctx.getString(R.string.cd_text_size),
@@ -166,10 +160,10 @@ class TranslationSectionBinder(
         // The Original header takes the two whole-result actions at its
         // tail, so they are the first to fold behind ⋯ in the busier header.
         sourceRow.setActions(
-            listOf(furigana, speak, edit, sourceAnki, showOnScreenInSource, textSizeInSource, sourceEye),
+            listOf(furigana, speak, edit, showOnScreenInSource, textSizeInSource, sourceEye),
             R.id.btnMoreOriginal,
         )
-        targetRow.setActions(listOf(showOnScreen, targetAnki, textSize, targetEye), R.id.btnMoreTranslation)
+        targetRow.setActions(listOf(showOnScreen, textSize, targetEye), R.id.btnMoreTranslation)
         sourceRow.onMoreClick = ::toggleOverflow
         targetRow.onMoreClick = ::toggleOverflow
     }
@@ -328,7 +322,6 @@ class TranslationSectionBinder(
     fun applyOriginalVisibility() {
         val hidden = prefs.hideOriginalSection
         cardOriginal.visibility = if (hidden) View.GONE else View.VISIBLE
-        sourceAnki.available = !hidden
         edit.available = editAvailable && !hidden
         speak.available = !hidden
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
@@ -438,12 +431,10 @@ class TranslationSectionBinder(
     fun applyTranslationVisibility() {
         val hidden = prefs.hideTranslationSection
         cardTranslation.visibility = if (hidden) View.GONE else View.VISIBLE
-        // The add-to-Anki action goes with the card; its space returns to the
-        // fit, and the eye stays put either way (pinned at the end).
-        targetAnki.available = !hidden
         // Text size and Show on screen survive the hide, in the Original
         // header: the size range governs the SOURCE text too, and the boxes
-        // present the whole result.
+        // present the whole result. The eye stays put either way (pinned at
+        // the end).
         targetEye.icon = if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility
         targetRow.labelDimmed = hidden
         syncResultActions()
@@ -583,20 +574,13 @@ class TranslationSectionBinder(
 
     // ── Buttons + text fitting ───────────────────────────────────────────
 
-    /** Wire the header actions: Add to Anki (tap = review, long-press =
-     *  one-tap) on both headers, Edit, the eyes, the furigana toggle and speak.
-     *  [onEdit] is what the source's Edit action does — the surface decides
-     *  what editing means (an Activity overlay in-app, an in-place IME over
-     *  the game). Copying lives on a long-press of each text. */
-    fun setupSectionButtons(
-        onEdit: () -> Unit,
-        onAddToAnki: () -> Unit,
-        onAnkiOneTap: () -> Unit,
-    ) {
-        for (anki in listOf(sourceAnki, targetAnki)) {
-            anki.onClick = { onAddToAnki() }
-            anki.onLongClick = { onAnkiOneTap() }
-        }
+    /** Wire the header actions: Edit, the eyes, the furigana toggle and
+     *  speak. [onEdit] is what the source's Edit action does — the surface
+     *  decides what editing means (an Activity overlay in-app, an in-place
+     *  IME over the game). Copying lives on a long-press of each text; Anki
+     *  is each surface's floating pill ([PillAnkiButton]), not a header
+     *  action. */
+    fun setupSectionButtons(onEdit: () -> Unit) {
         // TODO(device): tvOriginal is a ClickableTextView whose onTouchEvent
         // routes through a GestureDetector and always consumes the event. Long-
         // press copy relies on View.onTouchEvent's own long-press timer firing

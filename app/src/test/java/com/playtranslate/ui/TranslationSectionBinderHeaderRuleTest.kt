@@ -106,7 +106,7 @@ class TranslationSectionBinderHeaderRuleTest {
         binder = TranslationSectionBinder(
             root, activity, prefs, scope, TtsAlertTarget.InActivity(activity), PopoverHost(root as FrameLayout),
         )
-        binder.setupSectionButtons({}, {}, {})
+        binder.setupSectionButtons({})
         binder.setShowOnScreenAction { showOnScreenRuns++ }
     }
 
@@ -354,7 +354,7 @@ class TranslationSectionBinderHeaderRuleTest {
     fun `a hidden Original's header is its label and its eye, nothing else`() {
         offerOnly(ResultAction.values().toSet())
         val sourceActions = listOf(
-            R.id.btnToggleFurigana, R.id.btnSpeakOriginal, R.id.btnEditOriginal, R.id.btnAnkiOriginal,
+            R.id.btnToggleFurigana, R.id.btnSpeakOriginal, R.id.btnEditOriginal,
         )
         // While Translation is hidden the shown Original header carries
         // everything, the whole-result actions included...
@@ -380,7 +380,7 @@ class TranslationSectionBinderHeaderRuleTest {
     fun `a hidden Translation's header is its label and its eye, nothing else`() {
         offerOnly(ResultAction.values().toSet())
         setHidden(original = false, translation = false)
-        for (id in listOf(R.id.btnAnkiTranslation, R.id.btnFontSize, R.id.btnShowOnScreen)) {
+        for (id in listOf(R.id.btnFontSize, R.id.btnShowOnScreen)) {
             assertTrue("shown: ${view(id).resources.getResourceEntryName(id)}", shown(id))
         }
         for (original in listOf(false, true)) {
@@ -390,7 +390,6 @@ class TranslationSectionBinderHeaderRuleTest {
                 setOf(view(R.id.labelTranslation), view(R.id.btnToggleTranslation)),
                 visibleItems(R.id.targetHeaderRow),
             )
-            assertEquals(View.GONE, view(R.id.btnAnkiTranslation).visibility)
         }
         // Both hidden: each header is its label and its eye.
         assertEquals(

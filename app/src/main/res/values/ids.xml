@@ -24,11 +24,9 @@
     <item name="btnToggleFurigana" type="id" />
     <item name="btnSpeakOriginal" type="id" />
     <item name="btnEditOriginal" type="id" />
-    <item name="btnAnkiOriginal" type="id" />
     <item name="btnToggleOriginal" type="id" />
     <item name="btnMoreOriginal" type="id" />
     <item name="btnShowOnScreen" type="id" />
-    <item name="btnAnkiTranslation" type="id" />
     <item name="btnFontSize" type="id" />
     <item name="btnToggleTranslation" type="id" />
     <item name="btnMoreTranslation" type="id" />

@@ -7,8 +7,8 @@
     android:orientation="vertical">
 
     <!-- Top bar: back button on the left, optional pill toggle in the
-         middle (drag-flow word context). The fragment carries its own
-         bottom-bar Anki button, so we don't need a duplicate here.
+         middle (drag-flow word context). The fragment and the word page
+         each carry their own floating Anki pill, so we don't need one here.
          48dp gives the 32dp pill room to breathe; the 44dp back button
          stays vertically centered. -->
     <LinearLayout

@@ -1118,15 +1118,20 @@ class AnkiSendButton(private val button: FrameLayout) {
 }
 
 /**
- * Drives the floating entry-point Anki pill button (the small bottom-
- * end pill on the translation-result screen and the word-detail sheet)
- * through a one-tap send. Same idle ↔ loading swap pattern as
- * [AnkiSendButton] but designed for the pill shape: the FrameLayout
- * [button]'s first child is the icon+label LinearLayout, hidden with
- * INVISIBLE during loading (so the pill keeps its width), and a
- * centred 18dp ProgressBar overlays in its place.
+ * The floating Anki pill ([R.layout.anki_pill]): the bottom-end pill on
+ * the word page, the results page and the capture sheet. A tap runs
+ * [onTap] (the editable review) and a hold [onHold] (the one-tap send).
+ * It tints its own glyph, and drives the pill through a one-tap send with
+ * the same idle ↔ loading swap as [AnkiSendButton], shaped for the pill:
+ * the FrameLayout [button]'s first child is the icon+label LinearLayout,
+ * hidden with INVISIBLE during loading (so the pill keeps its width), and
+ * a centred 18dp ProgressBar overlays in its place.
  */
-class PillAnkiButton(private val button: FrameLayout) {
+class PillAnkiButton(
+    private val button: FrameLayout,
+    onTap: () -> Unit,
+    onHold: () -> Unit,
+) {
     private val content: View = button.getChildAt(0)
     private val spinner: ProgressBar = ProgressBar(button.context).apply {
         isIndeterminate = true
@@ -1138,7 +1143,17 @@ class PillAnkiButton(private val button: FrameLayout) {
     }
 
     init {
+        // The glyph's app:tint is AppCompat-only: the plain inflaters of the
+        // workspace and the capture sheet drop it, which leaves the icon
+        // unthemed. Tinted here for every host.
+        ((content as? ViewGroup)?.getChildAt(0) as? ImageView)?.imageTintList =
+            ColorStateList.valueOf(button.context.themeColor(R.attr.ptAccentOn))
         button.addView(spinner)
+        button.setOnClickListener { onTap() }
+        button.setOnLongClickListener {
+            onHold()
+            true
+        }
     }
 
     /** Swap the pill to its spinner and block taps; pass `false` to

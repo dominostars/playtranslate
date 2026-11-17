@@ -187,6 +187,7 @@ class CaptureSheetAskWordsTest {
     private val CaptureResultOverlay.navHost: CaptureSheetNavHost get() = field("navHost")
     private val CaptureResultOverlay.nav: CaptureSheetControllerNav? get() = field("nav")
     private val CaptureResultOverlay.editContainer: View get() = field("editContainer")
+    private val CaptureResultOverlay.ankiPill: View get() = field("ankiPill")
 
     /** The settled panel height. */
     private val CaptureResultOverlay.panelHeight: Int get() = field("panelHeightPx")
@@ -1103,7 +1104,7 @@ class CaptureSheetAskWordsTest {
         settle()
         answer("It names the animal.")
 
-        tap(o.v(R.id.btnAnkiOriginal))
+        tap(o.ankiPill)
 
         // The AnkiDroid permission is not held here, so the card goes
         // through the trampoline, whose extras rebuild the editor's args.
@@ -1128,7 +1129,7 @@ class CaptureSheetAskWordsTest {
         answer("It is about a fox.")
         val question = (alone.askSession.state.value as AskState.Answered).question.title
 
-        tap(alone.v(R.id.btnAnkiOriginal))
+        tap(alone.ankiPill)
 
         val first = shadowOf(ctx as Application).nextStartedActivity
         assertEquals(AnkiPermissionActivity::class.java.name, first?.component?.className)
@@ -1143,7 +1144,7 @@ class CaptureSheetAskWordsTest {
         tap(chips(both)[0])
         answer("It is about a fox.")
 
-        tap(both.v(R.id.btnAnkiOriginal))
+        tap(both.ankiPill)
 
         val second = shadowOf(ctx as Application).nextStartedActivity
         assertEquals(
@@ -1181,7 +1182,7 @@ class CaptureSheetAskWordsTest {
         )
 
         // To the sentence card: both answers under their words, the whole cut.
-        tap(o.v(R.id.btnAnkiOriginal))
+        tap(o.ankiPill)
         val card = shadowOf(ctx as Application).nextStartedActivity
         assertEquals(AnkiPermissionActivity::class.java.name, card?.component?.className)
         val notes = card!!.extras!!.getAnkiNotes()
@@ -1397,7 +1398,7 @@ class CaptureSheetAskWordsTest {
 
     // ── The controller on the sheet ─────────────────────────────────────
 
-    @Test fun `the controller reaches the texts' header actions, then Ask's, then the Words eye and its rows, in that order, in each state`() {
+    @Test fun `the controller reaches the texts' header actions, then Ask's, then the Words eye and its rows, then the Anki pill, in that order, in each state`() {
         val o = open(screen, text(2), text(2), askHidden = false, wordsHidden = false)
         giveLlm()
         showRows(o, words)
@@ -1411,13 +1412,16 @@ class CaptureSheetAskWordsTest {
 
         fun texts() = o.binder.navigableActions().map { it.view }
         fun views() = o.navHost.navActions().map { it.view }
+        val pill = o.ankiPill
 
-        // Nothing asked, the field empty: the eye, the chips and the field.
+        // Nothing asked, the field empty: the eye, the chips and the field;
+        // the Anki pill last, at the bottom, a hold.
         assertEquals(
-            texts() + askEye + chips(o) + o.askField + wordsEye + targets.map { doc },
+            texts() + askEye + chips(o) + o.askField + wordsEye + targets.map { doc } + pill,
             views(),
         )
-        val actions = o.navHost.navActions()
+        assertTrue("A on the pill is a hold", o.navHost.navActions().last().holdActivates)
+        val actions = o.navHost.navActions().dropLast(1)
         assertTrue("every action but the rows' is a view of its own",
             actions.dropLast(targets.size).all { it.target == null })
         assertEquals("the rows' targets, in the page's order",
@@ -1427,7 +1431,7 @@ class CaptureSheetAskWordsTest {
         // Something to send: send follows the field.
         o.askField.setText("Why the fox?")
         assertEquals(
-            texts() + askEye + chips(o) + o.askField + o.v(R.id.btnAskSend) + wordsEye + targets.map { doc },
+            texts() + askEye + chips(o) + o.askField + o.v(R.id.btnAskSend) + wordsEye + targets.map { doc } + pill,
             views(),
         )
 
@@ -1437,7 +1441,7 @@ class CaptureSheetAskWordsTest {
         answer("It is about a fox.")
         assertTrue("precondition: answered", o.askSession.state.value is AskState.Answered)
         assertEquals(
-            texts() + o.v(R.id.btnFontSizeAsk) + askEye + o.v(R.id.btnAskClose) + wordsEye + targets.map { doc },
+            texts() + o.v(R.id.btnFontSizeAsk) + askEye + o.v(R.id.btnAskClose) + wordsEye + targets.map { doc } + pill,
             views(),
         )
 
@@ -1449,7 +1453,7 @@ class CaptureSheetAskWordsTest {
         assertEquals("precondition: Words hidden", View.GONE, o.v(R.id.cardWords).visibility)
         val shownPills = pills(o).filter { it.isShown }
         assertTrue("precondition: a pill shows in the collapsed header", shownPills.isNotEmpty())
-        assertEquals(texts() + shownPills + askEye + wordsEye, views())
+        assertEquals(texts() + shownPills + askEye + wordsEye + pill, views())
     }
 
     @Test fun `A on the question field focuses it and drops the cursor, and while typing the dpad is the field's`() {
@@ -1475,6 +1479,104 @@ class CaptureSheetAskWordsTest {
         assertFalse("and its ring", ringShown(o))
         assertFalse("while typing the dpad is the field's",
             nav.handleKey(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN)))
+    }
+
+    // ── The floating Anki pill ──────────────────────────────────────────
+
+    /** [v]'s rect on screen. */
+    private fun screenRect(v: View): android.graphics.Rect {
+        val loc = IntArray(2)
+        v.getLocationOnScreen(loc)
+        return android.graphics.Rect(loc[0], loc[1], loc[0] + v.width, loc[1] + v.height)
+    }
+
+    /** Put the sheet on a status, as a capture with nothing to show does. */
+    private fun showStatus(o: CaptureResultOverlay, message: String) {
+        CaptureResultOverlay::class.java.getDeclaredMethod(
+            "setStatus", String::class.java, com.playtranslate.model.OcrProvenance::class.java,
+            String::class.java, Boolean::class.javaPrimitiveType,
+        ).apply { isAccessible = true }.invoke(o, message, null, null, false)
+        settle()
+    }
+
+    // Mutations: show the pill on a status; leave it up over the source
+    // editor; leave it up over the question being typed.
+    @Test fun `the Anki pill shows with the results and makes way for a status, the source edit and the question`() {
+        val o = open(screen, text(2), text(2), askHidden = false)
+        giveLlm()
+        assertEquals("shown with a result", View.VISIBLE, o.ankiPill.visibility)
+        assertTrue("on the body, at its bottom end",
+            screenRect(o.ankiPill).bottom < screenRect(o.body).bottom &&
+                screenRect(o.ankiPill).right < screenRect(o.body).right)
+
+        // The source editor covers the sections: the pill would draw over it.
+        tap(o.v(R.id.btnEditOriginal))
+        assertEquals("precondition: the editor is up", "SOURCE_EDIT", o.typingIn)
+        assertEquals("gone while the editor is up", View.GONE, o.ankiPill.visibility)
+        val done = (0 until (o.editContainer as ViewGroup).childCount)
+            .map { (o.editContainer as ViewGroup).getChildAt(it) }
+            .filterIsInstance<Button>().single()
+        tap(done)
+        assertEquals("precondition: the editor is gone", "NOTHING", o.typingIn)
+        assertEquals("back once it closes", View.VISIBLE, o.ankiPill.visibility)
+
+        // The question: the field can sit under the pill while it is typed in.
+        touch(o, o.askField)
+        assertEquals("precondition: typing the question", "ASK_QUESTION", o.typingIn)
+        assertEquals("gone while the question is typed in", View.GONE, o.ankiPill.visibility)
+        o.root.dispatchApplyWindowInsets(keyboardInsets(o, 400))
+        o.root.dispatchApplyWindowInsets(keyboardInsets(o, null))
+        assertEquals("precondition: the keyboard closing ended the typing", "NOTHING", o.typingIn)
+        assertEquals("back once the typing is over", View.VISIBLE, o.ankiPill.visibility)
+
+        // A status takes the results away, and the pill with them.
+        showStatus(o, "Nothing here")
+        assertEquals("precondition: the status is up", View.GONE, o.scroll.visibility)
+        assertEquals("gone on a status", View.GONE, o.ankiPill.visibility)
+    }
+
+    // Mutations: leave the pill's alpha alone through the park; offer it
+    // to the controller while parked; drop its hold.
+    @Test fun `the pill fades with the sections into the park, and the controller reaches it only on the expanded sheet`() {
+        val o = open(screen, text(2), text(2), askHidden = false)
+        val rest = o.ankiPill.alpha
+        assertTrue("precondition: the pill rests translucent ($rest)", rest in 0.5f..0.99f)
+        fun pillTarget() = o.navHost.navActions().singleOrNull { it.view === o.ankiPill }
+        assertTrue("a hold target on the expanded sheet", pillTarget()?.holdActivates == true)
+
+        o.navHost.collapseToSliver()
+        settle()
+        assertTrue("precondition: parked", o.navHost.inSliver)
+        assertEquals("faded out with the sections", 0f, o.ankiPill.alpha)
+        assertNull("no target while parked", pillTarget())
+
+        o.navHost.expandFromSliver()
+        settle()
+        assertFalse("precondition: expanded", o.navHost.inSliver)
+        assertEquals("back at its resting alpha", rest, o.ankiPill.alpha)
+        assertTrue("a hold target again", pillTarget()?.holdActivates == true)
+    }
+
+    // Mutations: count the pill's room in the sheet's height; leave it out
+    // of the sections' padding.
+    @Test fun `scrolled to the end, the content clears the pill, and the pill's room costs the sheet no height`() {
+        val o = open(screen, text(2), text(2), askHidden = false, wordsHidden = true)
+        val clearance = ctx.resources.getDimensionPixelSize(R.dimen.pt_anki_pill_clearance)
+        assertEquals("the sections leave the pill's room at their end", clearance, o.sections.paddingBottom)
+        // The panel rests at what the content needs, and that need counts
+        // the buffer under the cards, not the pill's room: the room is
+        // scroll past the fold.
+        assertEquals("precondition: the panel rests at the need", o.need, o.panelHeight)
+        val range = o.sections.height - o.scroll.height
+        assertTrue("the room is scroll at the end ($range, $clearance)", range >= clearance - dp(5))
+
+        o.scroll.scrollTo(0, range)
+        settle()
+        val last = o.v(R.id.wordsHeaderRow)
+        assertTrue("precondition: the last row is the hidden Words section's header", last.isShown)
+        val pill = screenRect(o.ankiPill)
+        assertTrue("the last row ends above the pill (${screenRect(last).bottom} vs ${pill.top})",
+            screenRect(last).bottom <= pill.top)
     }
 
     private fun <T : Any> assertNotNullAnd(value: T?, message: String): T {

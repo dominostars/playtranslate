@@ -85,7 +85,6 @@ class SectionHeaderRow @JvmOverloads constructor(
 
     private var actions: List<HeaderAction> = emptyList()
     private val viewOf = HashMap<HeaderAction, View>()
-    private val actionOf = HashMap<View, HeaderAction>()
     private val renderedIcon = HashMap<HeaderAction, Int>()
     private var folded: List<HeaderAction> = emptyList()
     private val listeners = ArrayList<Listener>()
@@ -125,13 +124,12 @@ class SectionHeaderRow @JvmOverloads constructor(
     fun foldedActions(): List<HeaderAction> = folded.filter { it.available }
 
     /** What a controller cursor can reach here, in visual order: the inline
-     *  actions, ⋯, then the eye. A hold (the Anki one-tap) wherever the
-     *  action has a long-press. */
+     *  actions, ⋯, then the eye. */
     fun navActions(): List<NavAction> = buildList {
         for (i in 0 until childCount) {
             val v = getChildAt(i)
             if (v === label || v is Space || !v.isShown) continue
-            add(NavAction(v, holdActivates = actionOf[v]?.onLongClick != null))
+            add(NavAction(v))
         }
     }
 
@@ -208,10 +206,8 @@ class SectionHeaderRow @JvmOverloads constructor(
         )
         v.id = a.viewId
         v.setOnClickListener { a.onClick?.invoke(it) }
-        v.setOnLongClickListener { view -> a.onLongClick?.let { it(view); true } ?: false }
         addView(v)
         viewOf[a] = v
-        actionOf[v] = a
     }
 
     /** One header item, with its start gap. */
@@ -258,7 +254,6 @@ class SectionHeaderRow @JvmOverloads constructor(
             }
         }
         v.contentDescription = a.contentDescription
-        v.isLongClickable = a.onLongClick != null
         if (!a.available) setShown(v, false)
     }
 

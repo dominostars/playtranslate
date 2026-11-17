@@ -507,6 +507,11 @@ class CaptureResultOverlay(
      *  so a plain floor write during flight is overwritten and useless. */
     private var heightAnimatorTargetPx = 0
 
+    /** The panel height a park (the animated slide down to the sliver) set
+     *  out from, while that slide runs; null otherwise. The Anki pill fades
+     *  over the whole slide ([applyCollapseCrossfade]). */
+    private var parkFromPx: Int? = null
+
     private var sessionJob: Job? = null
     /** The active service one-shot session (OCR + translate). Held so dismissal
      *  cancels the headless service work, not just our UI collector. */
@@ -541,6 +546,13 @@ class CaptureResultOverlay(
     }
     /** The sections' layout, the scroll's content (see [buildContent]). */
     private val sections = ResultSectionsLayout(ctx)
+    /** The floating Anki pill at the sheet's bottom end, over the scroll
+     *  ([syncAnkiPill] says when it shows). Inflated with the layout's own
+     *  gravity and margins, which put it inside the body's padding, above
+     *  the navigation bar's buffer. */
+    private val ankiPill = inflater().inflate(R.layout.anki_pill, body, false) as FrameLayout
+    /** The pill's resting alpha (the layout's), which the park scales. */
+    private val ankiPillAlpha = ankiPill.alpha
     private val handle = HandleView(ctx)
     // The "an overlay is up" signal for as long as this sheet is up, sliver
     // included (see [EdgeIndicator]): a frame around the display edges
@@ -783,6 +795,7 @@ class CaptureResultOverlay(
             }
             clipToOutline = true
             addView(scroll, FrameLayout.LayoutParams(MATCH, MATCH))
+            addView(ankiPill)
             addView(
                 statusText,
                 FrameLayout.LayoutParams(MATCH, WRAP, Gravity.CENTER),
@@ -941,10 +954,14 @@ class CaptureResultOverlay(
         buildContent(paired = sideBySide)
 
         val b = TranslationSectionBinder(panel, ctx, prefs, scope, alertTarget, popovers)
-        b.setupSectionButtons(
-            onEdit = { startInPlaceEdit() },
-            onAddToAnki = { openSentenceAnkiReview() },
-            onAnkiOneTap = { oneTapSentenceFromOverlay() },
+        b.setupSectionButtons(onEdit = { startInPlaceEdit() })
+        // Anki is the floating pill: a tap opens the review, a hold sends
+        // the card at once (and closes the sheet where its host allows a
+        // gesture to, see oneTapSentenceFromOverlay).
+        PillAnkiButton(
+            ankiPill,
+            onTap = { openSentenceAnkiReview() },
+            onHold = { oneTapSentenceFromOverlay() },
         )
         b.onSectionVisibilityChanged = {
             refitWhenLaidOut()
@@ -1819,6 +1836,9 @@ class CaptureResultOverlay(
     private fun animateSliverHeight(target: Int, onEnd: (() -> Unit)? = null) {
         heightAnimator?.cancel()
         heightAnimatorTargetPx = target
+        // A park records where it set out from, for the Anki pill's fade. Set
+        // after the cancel above, whose end listener clears the last slide's.
+        parkFromPx = panelHeightPx.takeIf { target == sliverHeightPx() && it > target }
         heightAnimator = ValueAnimator.ofInt(panelHeightPx, target).apply {
             duration = SLIVER_DURATION_MS
             interpolator = AccelerateDecelerateInterpolator()
@@ -1829,6 +1849,13 @@ class CaptureResultOverlay(
                 }
                 setPanelHeight(anim.animatedValue as Int)
             }
+            // The slide is over, run out or cancelled: the pill follows the
+            // sections again.
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    parkFromPx = null
+                }
+            })
             if (onEnd != null) {
                 addListener(object : android.animation.AnimatorListenerAdapter() {
                     private var cancelled = false
@@ -1868,6 +1895,17 @@ class CaptureResultOverlay(
         }
         scroll.alpha = f
         statusText.alpha = f
+        // The Anki pill goes with the sections, and on a park sooner: pinned to
+        // the body's bottom, it would stay in full view while the slide takes
+        // the sections away under the falling top edge, so a park fades it
+        // over the whole slide ([parkFromPx]). Every other height change (a
+        // drag, an expand) fades it with the sections through the band.
+        // Parked, no touch reaches it (the root takes every touch on the
+        // strip) and the controller skips it ([navHost]).
+        val parkFade = parkFromPx?.let { from ->
+            if (from <= sliver) 0f else ((h - sliver).toFloat() / (from - sliver)).coerceIn(0f, 1f)
+        } ?: 1f
+        ankiPill.alpha = ankiPillAlpha * minOf(f, parkFade)
         // Entering the collapse band: place the row against the boxes while
         // it is still gone, so it fades in where it belongs instead of
         // sliding there.
@@ -2062,6 +2100,7 @@ class CaptureResultOverlay(
         )
         statusText.visibility = View.VISIBLE
         scroll.visibility = View.GONE
+        syncAnkiPill()
         // A status means no shown result — whatever boxes the session produced
         // earlier (e.g. skeletons before a translation failure) are off the table.
         overlayData = null
@@ -2137,6 +2176,7 @@ class CaptureResultOverlay(
         nav?.clearCursor()   // fresh content: word indices + layout are stale
         statusText.visibility = View.GONE
         scroll.visibility = View.VISIBLE
+        syncAnkiPill()
         // The loading arc ends here — at Translating, where the skeleton boxes
         // take over as the on-screen sign of work in flight. The sliver goes
         // back to advertising its tap.
@@ -2292,8 +2332,16 @@ class CaptureResultOverlay(
      *  stretches the cards to the panel, so the layout's own height says how
      *  tall the panel is, not what the content needs. */
     private fun neededPanelHeight(b: TranslationSectionBinder): Int =
-        sections.paddingTop + topBlockNeed(b) + belowNeed() + sections.paddingBottom +
+        sections.paddingTop + topBlockNeed(b) + belowNeed() + cardBufferPx() +
             dp(HANDLE_HEIGHT_DP) + topInsetPx + bottomInsetPx
+
+    /** The space the sheet keeps below its last counted card, down to the
+     *  panel's bottom. The sections' bottom padding is larger (the Anki
+     *  pill's clearance, [buildContent]), and what it adds past this sits
+     *  below the fold, like the header rows of hidden sections: scroll room
+     *  at the end, no height and no smaller cards. */
+    private fun cardBufferPx(): Int =
+        dp(if (paired) SIDE_BY_SIDE_BOTTOM_BUFFER_DP else STACKED_BOTTOM_BUFFER_DP)
 
     /** The sections beneath Original and Translation, top to bottom, each
      *  as its header and its card. A section this sheet was not given is a
@@ -2377,7 +2425,7 @@ class CaptureResultOverlay(
      *  hidden section claims none of it, so the visible one fills it. */
     private fun cardHeights(b: TranslationSectionBinder, bodyH: Int): Pair<Int, Int> {
         val available =
-            (bodyH - sections.paddingTop - sections.paddingBottom - headersHeight(b)).coerceAtLeast(0)
+            (bodyH - sections.paddingTop - cardBufferPx() - headersHeight(b)).coerceAtLeast(0)
         if (paired) return Pair(available, available)
         val srcRef = sourceCardNeed(b)
         val tgtRef = targetCardNeed(b)
@@ -2929,6 +2977,18 @@ class CaptureResultOverlay(
         sheetHost.setFocusPolicy(
             root, focusable = typing || nav != null || holdsKeysForDefinitions, wantsIme = typing,
         )
+        // Every change of [typingIn] runs this, so the pill, which turns on
+        // it too, is re-read here.
+        syncAnkiPill()
+    }
+
+    /** The floating Anki pill shows while the results do (a status hides
+     *  the scroll, and the pill with it) and while nothing is being typed:
+     *  the source editor covers the sections, and the pill's elevation would
+     *  draw it over the editor and its Done button and take their taps; the
+     *  Ask question's field can sit under it. */
+    private fun syncAnkiPill() {
+        ankiPill.isVisible = scroll.visibility == View.VISIBLE && typingIn == TypingIn.NOTHING
     }
 
     /** The Ask section's question field took or lost focus: give the window
@@ -3028,12 +3088,24 @@ class CaptureResultOverlay(
         override fun navActions(): List<NavAction> {
             // In visual order, top to bottom: the two texts' headers, then
             // the Ask section's header and controls, then the Words header
-            // and its rows' targets. A hidden section's restore eye is its
-            // header's own (the header stays), so each binder's list holds it.
+            // and its rows' targets, then the Anki pill at the bottom. A
+            // hidden section's restore eye is its header's own (the header
+            // stays), so each binder's list holds it.
             return binder?.navigableActions().orEmpty() +
                 askBinder?.navigableActions().orEmpty() +
-                wordRows?.navigableActions().orEmpty()
+                wordRows?.navigableActions().orEmpty() +
+                ankiPillNavActions()
         }
+
+        /** The Anki pill while it shows on the expanded sheet. A is a hold
+         *  on it, as a touch is: held, it sends the card at once. It fades
+         *  through the collapse band with the sections
+         *  ([applyCollapseCrossfade]), and a faded pill is no target, as
+         *  for the handle. Its bottom margin keeps it clear of
+         *  [ensureVisible]'s pad, so ringing it never scrolls. */
+        private fun ankiPillNavActions(): List<NavAction> =
+            if (sliverMode || !ankiPill.isShown || scroll.alpha < 1f) emptyList()
+            else listOf(NavAction(ankiPill, holdActivates = true))
 
         private val handleLoc = IntArray(2)
         override fun handleRect(out: Rect): Boolean {
@@ -3179,10 +3251,12 @@ class CaptureResultOverlay(
             if (paired) ResultSectionsLayout.Arrangement.PAIRED
             else ResultSectionsLayout.Arrangement.STACKED
         val hPad = dp(SECTION_H_PAD_DP)
-        // Bottom padding = the buffer below the filled cards.
+        // Bottom padding = the Anki pill's clearance, so content scrolled to
+        // the end clears the pill. The height and the cards' fill count only
+        // the buffer below the cards ([cardBufferPx]): the rest of the
+        // padding sits past the fold with the hidden sections' header rows.
         sections.setPadding(
-            hPad, 0, hPad,
-            dp(if (paired) SIDE_BY_SIDE_BOTTOM_BUFFER_DP else STACKED_BOTTOM_BUFFER_DP),
+            hPad, 0, hPad, ctx.resources.getDimensionPixelSize(R.dimen.pt_anki_pill_clearance),
         )
         inflater().inflate(R.layout.results_sections, sections, true)
         // One extra dp over the shared pad for a header in the top row. When

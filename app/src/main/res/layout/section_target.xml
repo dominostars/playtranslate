@@ -10,7 +10,7 @@
     tools:parentTag="android.widget.LinearLayout">
 
     <!-- The header: the language name, then the section's actions (the
-         "Show on screen" pill, Add to Anki, Text size, and the pinned eye),
+         "Show on screen" pill, Text size, and the pinned eye),
          which SectionHeaderRow builds from TranslationSectionBinder's
          HeaderActions and folds behind a ⋯ menu when they don't fit. Text
          size lives in THIS header, not the source's, because this row is the

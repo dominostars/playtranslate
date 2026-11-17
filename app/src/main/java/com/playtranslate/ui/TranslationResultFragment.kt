@@ -563,8 +563,8 @@ class TranslationResultFragment : Fragment() {
     }
 
     /**
-     * One-tap sentence-card send from the section-header Anki button's
-     * long-press. Falls back to the existing sheet flow ([onAnkiClicked])
+     * One-tap sentence-card send from a hold on the floating Anki pill.
+     * Falls back to the existing sheet flow ([onAnkiClicked])
      * on any gate failure (AnkiDroid missing, permission denied, no deck
      * picked) so the user can still resolve the prerequisite. Progress +
      * outcome are reported via Toasts; NeedsMapping still opens the
