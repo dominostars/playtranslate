@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -13,6 +14,7 @@ import com.playtranslate.AnkiManager
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
 import com.playtranslate.applyDialogEdgeToEdge
+import com.playtranslate.ask.Explanation
 import com.playtranslate.fullScreenDialogTheme
 
 /**
@@ -49,7 +51,8 @@ class WordDetailBottomSheet : DialogFragment() {
         private const val ARG_LOOKUP_FORM     = "lookup_form"
         /** [WordDetailBinder.Args.lookupReading], written when non-null. */
         private const val ARG_LOOKUP_READING  = "lookup_reading"
-        /** [WordDetailBinder.Args.explanation], written when non-null. */
+        /** [WordDetailBinder.Args.explanation], written when non-null
+         *  ([putExplanation]). */
         private const val ARG_EXPLANATION     = "explanation"
 
         /** [lookupForm] and [lookupReading] are the key the page resolves
@@ -70,11 +73,11 @@ class WordDetailBottomSheet : DialogFragment() {
             sentencePending: com.playtranslate.model.PendingTranslation? = null,
             lookupForm: String? = null,
             lookupReading: String? = null,
-            explanation: String? = null,
+            explanation: Explanation? = null,
         ) = WordDetailBottomSheet().apply {
                 arguments = Bundle().apply {
                     putString(ARG_WORD, word)
-                    if (explanation != null) putString(ARG_EXPLANATION, ankiNoteCapped(explanation))
+                    putExplanation(ARG_EXPLANATION, explanation)
                     if (reading != null) putString(ARG_READING, reading)
                     if (lookupForm != null) {
                         putString(ARG_LOOKUP_FORM, lookupForm)
@@ -131,7 +134,7 @@ class WordDetailBottomSheet : DialogFragment() {
                 sentenceWordResults = sentenceWordResults,
                 sentencePending = sentencePending,
                 embedded = bundle.getBoolean(ARG_EMBEDDED, false),
-                explanation = bundle.getString(ARG_EXPLANATION),
+                explanation = bundle.getExplanation(ARG_EXPLANATION),
             )
             // No key stored (an opener with none, or a bundle from before the
             // key existed): the display is the key, as Args defaults it.
@@ -291,6 +294,18 @@ class WordDetailBottomSheet : DialogFragment() {
 
         override fun present(builder: OverlayAlert.Builder) {
             builder.show()
+        }
+
+        /** Above the sheet, as the results page's own alert shows; its button
+         *  opens Translation services from the activity, where the sheet stays
+         *  behind it. */
+        override fun onAskNeedsLlm() {
+            val activity = requireActivity()
+            present(
+                OverlayAlert.Builder(activity).askNeedsLlm(activity) {
+                    activity.startActivity(Intent(activity, TranslationServicesActivity::class.java))
+                },
+            )
         }
 
         override fun launchOneTap(

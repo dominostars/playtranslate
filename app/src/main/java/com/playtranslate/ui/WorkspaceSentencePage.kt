@@ -11,6 +11,7 @@ import com.playtranslate.AnkiManager
 import com.playtranslate.CaptureService
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.ask.Explanation
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.overlay.OverlayHost
 import kotlinx.coroutines.CoroutineScope
@@ -143,7 +144,7 @@ class WorkspaceSentencePage(
         surface: String?,
         lookupForm: String,
         lookupReading: String?,
-        explanation: String?,
+        explanation: Explanation?,
     ) {
         val host = hostRef ?: return
         val opened = liveSentenceContext()
@@ -232,7 +233,7 @@ class WorkspaceSentencePage(
             surface: String?,
             lookupForm: String,
             lookupReading: String?,
-            explanation: String?,
+            explanation: Explanation?,
         ) = pushWordPage(word, reading, surface, lookupForm, lookupReading, explanation)
 
         override fun onChangeLanguage(isSource: Boolean) {

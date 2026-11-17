@@ -22,6 +22,7 @@ import com.playtranslate.language.TokenSpan
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlay.OwnWindows
 import com.playtranslate.overlayThemedContext
+import com.playtranslate.themeColor
 import com.playtranslate.translation.FakeCompleterBackend
 import com.playtranslate.translation.TranslationBackendRegistry
 import kotlinx.coroutines.CompletableDeferred
@@ -383,6 +384,21 @@ class WordLookupSessionTest {
         assertEquals(1, ended)
         val texts = alertTexts()
         assertTrue("the alert the Ask section raises: $texts", ctx.getString(R.string.ask_no_llm_title) in texts)
+        // Its button in the accent and the accent's text colour, as the alert
+        // resolves its own colours: the card hands it the service's context,
+        // whose theme has none of the app's.
+        val button = alertButton(ctx.getString(R.string.ask_no_llm_open_services)) as android.widget.Button
+        val themed = overlayThemedContext(ctx)
+        // A zero fill is drawn as no fill at all, a transparent colour.
+        val fill = when (val bg = button.background) {
+            is android.graphics.drawable.GradientDrawable -> bg.color!!.defaultColor
+            is android.graphics.drawable.ColorDrawable -> bg.color
+            else -> error("unexpected background $bg")
+        }
+        assertEquals(
+            themed.themeColor(R.attr.ptAccent) to themed.themeColor(R.attr.ptAccentOn),
+            fill to button.currentTextColor,
+        )
 
         // Its button opens Translation services, as a new task: there is no
         // activity of ours under an over-game card to start it from.

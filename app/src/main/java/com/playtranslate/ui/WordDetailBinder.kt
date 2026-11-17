@@ -27,6 +27,11 @@ import androidx.core.widget.NestedScrollView
 import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.ask.AskSession
+import com.playtranslate.ask.AskState
+import com.playtranslate.ask.Explanation
+import com.playtranslate.ask.WordInSentence
+import com.playtranslate.ask.explanation
 import com.playtranslate.audio.AudioRequest
 import com.playtranslate.audio.PlayOutcome
 import com.playtranslate.audio.PronunciationPlayer
@@ -126,12 +131,13 @@ class WordDetailBinder(
          *  [sentenceOriginal] brought, where the page was opened from a row
          *  with that answer standing in it ([WordRowList.explanationOf]);
          *  null with none. One of the launch sentence's fields, like the
-         *  four above: it reaches a card through [pageSentence], under the
-         *  page's own word ([target]), and so only while the page's
-         *  sentence is still the one it was asked about. An opener that
-         *  hands the page a context of its own puts the answer there
-         *  instead ([SentenceContext.explanations]). */
-        val explanation: String? = null,
+         *  four above: it reaches the page through [pageSentence], under
+         *  the page's own word ([target]), and so only while the page's
+         *  sentence is still the one it was asked about; there the "In
+         *  this sentence" group shows it and a card's note starts with its
+         *  text. An opener that hands the page a context of its own puts
+         *  the answer there instead ([SentenceContext.explanations]). */
+        val explanation: Explanation? = null,
     ) {
         /** The page's own word as a card names it ([pageCardTarget]). */
         val target: CardTarget get() = pageCardTarget(surface, lookupForm, lookupReading)
@@ -142,8 +148,8 @@ class WordDetailBinder(
      *  until the workspace grows its own editor page). [target] is [word] as
      *  it was found in the sentence, which the review's sentence card places
      *  among the sentence's words ([withCardTarget]). [notes] is the text
-     *  the review's Notes boxes start with ([putAnkiNotes]): what the
-     *  page's sentence holds about [target]
+     *  the review's Notes boxes start with ([putAnkiNotes]): the text of
+     *  what the page's sentence holds about [target]
      *  ([SentenceContext.explanations]), "" with nothing. Made by
      *  [wordAnkiArgs], which reads the sentence and the note together. */
     data class WordAnkiArgs(
@@ -212,6 +218,20 @@ class WordDetailBinder(
         /** Terminal for binder-built alerts (send-failed). */
         fun present(builder: OverlayAlert.Builder)
 
+        /** The "In this sentence" group's row was tapped with no AI model
+         *  to put the question to: show the alert that says so
+         *  ([askNeedsLlm]) on this surface, with the way to Translation
+         *  services from it. */
+        fun onAskNeedsLlm()
+
+        /** A control of the page took itself off the screen as it was
+         *  pressed (the "In this sentence" group's, [WordExplainGroup]): a
+         *  host that draws a controller's cursor of its own moves it to
+         *  [next], the control standing in its place. Default: nothing to
+         *  do, for a host whose window keeps Android's focus, which the
+         *  control hands on itself. */
+        fun onControlGone(next: View) {}
+
         /** Run [send] detached from this surface (the card must land even if
          *  the page is dismissed mid-send) and present the result — the
          *  fragment routes through [launchOneTapSend]'s structural rules;
@@ -251,24 +271,39 @@ class WordDetailBinder(
          * the sentence the page ends up with is the one that side's were
          * asked about ([explanationsAbout]): [host]'s, and the answer the
          * page was opened with ([Args.explanation], about the page's own
-         * word in [Args.sentenceOriginal]). A card reads its note from
-         * here and nowhere else, so it never has one sentence and an
-         * answer about another.
+         * word in [Args.sentenceOriginal]). Once the page has its "In this
+         * sentence" group, whose session is [asked], the page's own word
+         * ([Args.target]) is that session's alone: under it stands what the
+         * session holds now, its answer while the sentence is the one it
+         * was asked about and nothing otherwise, so an answer asked on the
+         * page is the card's note and one put away is no note, whatever the
+         * two sources still carry. Every other word's stands as they give
+         * it. A card reads its note from here and nowhere else, so it never
+         * has one sentence and an answer about another.
          */
-        internal fun pageSentence(host: SentenceContext?, args: Args?): SentenceContext {
+        internal fun pageSentence(host: SentenceContext?, args: Args?, asked: AskSession? = null): SentenceContext {
             val original = host?.original ?: args?.sentenceOriginal
             val launch = args?.let {
                 SentenceContext(it.sentenceOriginal, null, null).explaining(it.target, it.explanation)
             }
-            return SentenceContext(
+            val carried = host?.explanationsAbout(original).orEmpty() +
+                launch?.explanationsAbout(original).orEmpty()
+            val sentence = SentenceContext(
                 original = original,
                 translation = host?.translation ?: args?.sentenceTranslation,
                 wordResults = host?.wordResults ?: args?.sentenceWordResults,
                 pending = if (host != null) host.pending else args?.sentencePending,
-                explanations = host?.explanationsAbout(original).orEmpty() +
-                    launch?.explanationsAbout(original).orEmpty(),
+                explanations = carried,
             )
+            val own = args?.target ?: return sentence
+            if (asked == null) return sentence
+            return sentence.copy(explanations = carried - own).explaining(own, asked.answerAbout(original))
         }
+
+        /** The finished answer this session holds while [sentence] is the
+         *  text it asked about; null with none, or about another text. */
+        private fun AskSession.answerAbout(sentence: String?): Explanation? =
+            (state.value as? AskState.Answered)?.takeIf { this.sentence?.text == sentence }?.explanation
 
         /**
          * The editable review of one word on [sentence], [target] being
@@ -304,7 +339,7 @@ class WordDetailBinder(
             sourceLangId = sourceLangId,
             sentencePending = sentence.pending,
             target = target,
-            notes = sentence.explanations[target].orEmpty(),
+            notes = sentence.explanations[target]?.text.orEmpty(),
         )
 
         /**
@@ -386,6 +421,11 @@ class WordDetailBinder(
      *  before it builds those sections. */
     private val sectionLists = mutableListOf<WordRowList<RowState>>()
 
+    /** The "In this sentence" group, while the page has a sentence
+     *  ([addExplainGroup]); null on a page without one. Released with the
+     *  page. */
+    private var explain: WordExplainGroup? = null
+
     /** Host teardown: cancel audio, let the pages go. Idempotent; the
      *  host must also cancel [scope]. */
     fun release() {
@@ -397,6 +437,8 @@ class WordDetailBinder(
         headerBadgeFlow = null
         releaseDefinitions()
         releaseSectionLists()
+        explain?.release()
+        explain = null
     }
 
     /** Lets the Definitions card's page go. */
@@ -622,6 +664,10 @@ class WordDetailBinder(
                 val display = HeadwordDisplay(
                     word, (args.lookupReading ?: readingHint)?.takeIf { it.isNotBlank() && it != word },
                 )
+                // A word no dictionary lists can still be explained in its
+                // sentence: the group goes under the notice, above what the
+                // page descends to.
+                addExplainGroup(content, display.written, display.reading)
                 launch {
                     loadSecondarySections(
                         addSecondaryHost(content), primary = null, entries, wordSpan, engine, sourceLangId,
@@ -639,7 +685,7 @@ class WordDetailBinder(
             val display = pageHeadwordDisplay(primary, word, lookupForm)
             val secondaryHost = buildContent(
                 content, entries, engine, sourceLangId, defResult, initialTranslations,
-                targetLangCode, enToTargetWrapper, display, inflectedForms, tables,
+                targetLangCode, enToTargetWrapper, display, inflectedForms, tables, lookupForm,
             )
             scrollView?.scrollTo(0, 0)
 
@@ -754,10 +800,7 @@ class WordDetailBinder(
         defResult: DefinitionResult?,
         lookupForm: String,
     ): Triple<String, String, String> {
-        // Honor the occurrence reading the lens showed (明日 → あす); fall back to
-        // the primary headword when there was none.
-        val hw = entry.selectHeadword(lookupForm, lookupForm, readingHint)
-        val reading = hw?.reading?.takeIf { it != hw.written } ?: ""
+        val reading = pageReading(entry, lookupForm).orEmpty()
 
         val pos = ctx.firstSensePosLabel(entry)
 
@@ -796,14 +839,32 @@ class WordDetailBinder(
         return Triple(reading, pos, definition)
     }
 
+    /** The reading the page gives its own word in [entry], the entry its
+     *  key [lookupForm] resolved: the occurrence reading the opener showed
+     *  ([readingHint], 明日 → あす) where the entry lists it for that
+     *  spelling, else the reading of the headword [lookupForm] names. Null
+     *  for a headword written in its reading. The word's reading on its
+     *  card, and in the "In this sentence" group's question. */
+    private fun pageReading(entry: DictionaryEntry, lookupForm: String): String? {
+        val hw = entry.selectHeadword(lookupForm, lookupForm, readingHint)
+        return hw?.reading?.takeIf { it != hw.written }
+    }
+
     /** The page's own word as its opener found it ([CardTarget]): the text
      *  the opener found it as, else its key [lookupForm], which is the text
      *  for an opener that had only the lemma. */
     private fun pageTarget(lookupForm: String): CardTarget =
         pageCardTarget(args?.surface, lookupForm, args?.lookupReading)
 
+    /** The page's sentence as its Anki actions read it now
+     *  ([pageSentence]): [host], the host's live context, over the launch
+     *  arguments, with the page's own word's answer the "In this sentence"
+     *  group's. */
+    private fun ankiSentence(host: SentenceContext? = ui.sentenceContext()): SentenceContext =
+        pageSentence(host, args, explain?.session)
+
     /** The editable review for the page's own word, on the page's sentence
-     *  ([pageSentence]), its note what that sentence holds about the word.
+     *  ([ankiSentence]), its note what that sentence holds about the word.
      *  The card's word is the display [word]; its fields come from the
      *  headword [lookupForm] names. */
     private fun ankiReviewArgs(
@@ -815,7 +876,7 @@ class WordDetailBinder(
     ): WordAnkiArgs {
         val (reading, pos, definition) = buildAnkiWordFields(entry, defResult, lookupForm)
         return wordAnkiArgs(
-            pageSentence(ui.sentenceContext(), args),
+            ankiSentence(),
             target = pageTarget(lookupForm),
             word = word,
             reading = reading,
@@ -858,10 +919,10 @@ class WordDetailBinder(
         }
         val sourceLangId = prefs.sourceLangId
 
-        // The page's sentence, as the review path reads it ([pageSentence]).
+        // The page's sentence, as the review path reads it ([ankiSentence]).
         // When present, route to a sentence card with the word as target.
         val hostContext = ui.sentenceContext()
-        val sentence = pageSentence(hostContext, args)
+        val sentence = ankiSentence(hostContext)
         // Build a WordsPayload only when both halves come from the
         // same atomic source (the host's SentenceContext, populated
         // from a single Settled emission). Args-only fallback has no
@@ -972,6 +1033,7 @@ class WordDetailBinder(
         display: HeadwordDisplay,
         inflectedForms: List<InflectedForm>,
         tables: List<Pair<DictionaryEntry, ConjugationTable>> = emptyList(),
+        lookupForm: String,
     ): LinearLayout {
         // [primary] is the first entry. Header / Anki / character-breakdown
         // sections are word-level, so they pull from primary even when the
@@ -1134,6 +1196,10 @@ class WordDetailBinder(
             definitions = DefinitionsBlock(document, rows, language, rowOfSense)
         }
 
+        // ── In this sentence (the user's AI model, about the page's sentence) ──
+        // The word as the header shows it, read as its card reads it.
+        addExplainGroup(content, display.written, pageReading(primary, lookupForm))
+
         // ── Conjugation / Declension / Forms (Wiktionary packs with inflection tables) ──
         // The header names what the table is of (a verb's conjugation, a German
         // noun's declension, an English word's forms), and the card names its
@@ -1232,6 +1298,37 @@ class WordDetailBinder(
 
         // ── Words and Other matches (loaded after the Anki button) ───────
         return addSecondaryHost(content)
+    }
+
+    /**
+     * Appends the "In this sentence" group to [content] when the page has a
+     * sentence (its [pageSentence]'s text now), and nothing at all when it
+     * has none: the page's group header over a card the group fills
+     * ([WordExplainGroup]). Its question is about that sentence under the
+     * pair the page reads in, naming [word] as the header shows it, its
+     * [reading], and the form the opener found it as ([Args.surface]). The
+     * answer the page was opened with about its own word, as a card would
+     * read it, is taken up as if asked here. The found page places the
+     * group under the definitions ([buildContent]), the not-found page
+     * under its notice.
+     */
+    private fun addExplainGroup(content: LinearLayout, word: String, reading: String?) {
+        val launch = args ?: return
+        val sentence = pageSentence(ui.sentenceContext(), launch)
+        val text = sentence.original?.takeIf { it.isNotBlank() } ?: return
+        addGroupHeader(content, ctx.getString(R.string.word_explain_title))
+        explain = WordExplainGroup(
+            ctx, addGroupCard(content), scope,
+            WordInSentence(
+                askSentence(text, Prefs(ctx.applicationContext).langContext()),
+                word, reading, listOfNotNull(launch.surface),
+            ),
+            carried = sentence.explanations[launch.target],
+            host = object : WordExplainGroup.Host {
+                override fun onAskNeedsLlm() = ui.onAskNeedsLlm()
+                override fun onControlGone(next: View) = ui.onControlGone(next)
+            },
+        )
     }
 
     /** Appends to [content] and returns the host the Words and Other
@@ -1413,7 +1510,7 @@ class WordDetailBinder(
                     } else {
                         ui.openAnkiReview(
                             rowAnkiArgs(
-                                row, pageSentence(ui.sentenceContext(), args),
+                                row, ankiSentence(),
                                 args?.screenshotPath, sourceLangId,
                             ),
                         )

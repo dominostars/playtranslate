@@ -92,6 +92,7 @@ import kotlin.math.abs
 import kotlin.math.ceil
 import com.playtranslate.ask.AskSession
 import com.playtranslate.ask.AskState
+import com.playtranslate.ask.Explanation
 
 /**
  * The over-game capture result panel: a bottom-anchored sheet that grows to
@@ -1010,7 +1011,7 @@ class CaptureResultOverlay(
                 override val isAlive: Boolean get() = !dismissed
                 override val scope: CoroutineScope get() = this@CaptureResultOverlay.scope
                 override val ttsAlertTarget: TtsAlertTarget get() = alertTarget
-                override fun onWordTapped(row: RowState, explanation: String?) = openWordRow(row, explanation)
+                override fun onWordTapped(row: RowState, explanation: Explanation?) = openWordRow(row, explanation)
                 override fun onAskNeedsLlm() = showAskNeedsLlm()
             },
         )
@@ -2557,8 +2558,9 @@ class CaptureResultOverlay(
     /** A Words row's tap: open that word's detail, by the path and with the
      *  sheet's same reaction as the lens's open tap ([SentenceDetailOpener],
      *  [onWordPageLaunched]). [explanation] is the answer that stood in the
-     *  row, for the word page's Anki card ([LensActionContext.explanation]). */
-    private fun openWordRow(row: RowState, explanation: String?) {
+     *  row, for the word page, which shows it and starts its Anki card's
+     *  note with it ([LensActionContext.explanation]). */
+    private fun openWordRow(row: RowState, explanation: Explanation?) {
         val result = lastResult ?: return
         dismissWordLens()
         SentenceDetailOpener(

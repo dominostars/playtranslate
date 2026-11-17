@@ -72,6 +72,7 @@ import com.playtranslate.language.StalePack
 import com.playtranslate.ocr.registry.OcrModelManager
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.translation.OfflineModelReclaimer
+import com.playtranslate.ask.Explanation
 import com.playtranslate.ui.AccessibilityHelp
 import com.playtranslate.ui.AppReadiness
 import com.playtranslate.ui.sentenceTranslationBackend
@@ -501,7 +502,7 @@ class MainActivity :
         wordResults: Map<String, Triple<String, String, Int>>,
         lookupForm: String,
         lookupReading: String?,
-        explanation: String?,
+        explanation: Explanation?,
     ) {
         pauseLiveMode()
         WordDetailBottomSheet.newInstance(

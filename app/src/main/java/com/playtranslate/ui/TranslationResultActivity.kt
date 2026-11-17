@@ -29,6 +29,7 @@ import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.CaptureSession
 import com.playtranslate.CaptureState
 import com.playtranslate.fillsBoxesOf
+import com.playtranslate.ask.Explanation
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.Prefs
 import com.playtranslate.RegionEntry
@@ -240,7 +241,7 @@ class TranslationResultActivity :
         wordResults: Map<String, Triple<String, String, Int>>,
         lookupForm: String,
         lookupReading: String?,
-        explanation: String?,
+        explanation: Explanation?,
     ) {
         WordDetailBottomSheet.newInstance(
             word,
@@ -791,9 +792,11 @@ class TranslationResultActivity :
          *  page's conjugation line; absent when the lens had only a lemma. */
         const val EXTRA_DRAG_SURFACE = "extra_drag_surface"
         /** What the lens's explain question about its word brought, for the
-         *  embedded word page's Anki card; absent with no answer. Read
-         *  into the launch sentence's context ([launchSentenceContext]),
-         *  never handed to the page by itself. */
+         *  embedded word page, which shows it under the word's definitions
+         *  and starts its Anki card's note with its text; absent with no
+         *  answer. Written with who gave it and whether it was cut
+         *  ([putExplanation]). Read into the launch sentence's context
+         *  ([launchSentenceContext]), never handed to the page by itself. */
         const val EXTRA_DRAG_EXPLANATION = "extra_drag_explanation"
 
         /**
@@ -823,7 +826,7 @@ class TranslationResultActivity :
                     intent.getStringExtra(EXTRA_DRAG_SURFACE), lookupForm,
                     intent.getStringExtra(EXTRA_DRAG_LOOKUP_READING),
                 ),
-                intent.getStringExtra(EXTRA_DRAG_EXPLANATION),
+                intent.extras?.getExplanation(EXTRA_DRAG_EXPLANATION),
             )
         }
         /** The key the embedded word page resolves its entry with

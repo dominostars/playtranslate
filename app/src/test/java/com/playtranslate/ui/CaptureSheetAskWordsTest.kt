@@ -28,6 +28,7 @@ import com.playtranslate.ask.AskQuestion
 import com.playtranslate.ask.AskSession
 import com.playtranslate.ask.AskSentence
 import com.playtranslate.ask.AskState
+import com.playtranslate.ask.Explanation
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.model.TextSegment
@@ -1073,6 +1074,11 @@ class CaptureSheetAskWordsTest {
         val explained = shadowOf(ctx as Application).nextStartedActivity
         assertEquals("fox", explained?.getStringExtra(TranslationResultActivity.EXTRA_DRAG_WORD))
         assertEquals("It names the animal.", explained?.getStringExtra(TranslationResultActivity.EXTRA_DRAG_EXPLANATION))
+        // The whole answer, who gave it included, for the page to draw.
+        assertEquals(
+            Explanation("It names the animal.", "Test LLM"),
+            explained?.extras?.getExplanation(TranslationResultActivity.EXTRA_DRAG_EXPLANATION),
+        )
 
         o.wordRows.tapForTest(1, DefAction.OPEN)
         settle()
@@ -1219,7 +1225,10 @@ class CaptureSheetAskWordsTest {
         lens.tapRowForTest(row.id, DefAction.EXPLAIN)
         settle()
         answer("It describes the fox.")
-        assertEquals("precondition: the answer stands in the lens's row", "It describes the fox.", lens.explanationOf(null))
+        assertEquals(
+            "precondition: the answer stands in the lens's row",
+            Explanation("It describes the fox.", "Test LLM"), lens.explanationOf(null),
+        )
 
         lens.tapRowForTest(row.id, DefAction.OPEN)
         settle()
@@ -1227,6 +1236,10 @@ class CaptureSheetAskWordsTest {
         val page = shadowOf(ctx as Application).nextStartedActivity
         assertEquals(TranslationResultActivity::class.java.name, page?.component?.className)
         assertEquals("It describes the fox.", page?.getStringExtra(TranslationResultActivity.EXTRA_DRAG_EXPLANATION))
+        assertEquals(
+            Explanation("It describes the fox.", "Test LLM"),
+            page?.extras?.getExplanation(TranslationResultActivity.EXTRA_DRAG_EXPLANATION),
+        )
     }
 
     @Test fun `the sheet caches its sentence's translation whether Words is shown or hidden, and a blank translation caches nothing`() {

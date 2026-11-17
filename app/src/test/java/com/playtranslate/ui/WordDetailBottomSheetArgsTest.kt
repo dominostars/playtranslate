@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import com.playtranslate.ask.Explanation
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -45,17 +46,20 @@ class WordDetailBottomSheetArgsTest {
         assertEquals(false, nested.embedded)
     }
 
-    // Mutations: drop the explanation from the bundle; hand it on to a
-    // nested sheet, whose word it is not about.
+    // Mutations: drop the explanation from the bundle, or who gave it, or
+    // its cut; hand it on to a nested sheet, whose word it is not about.
     @Test
-    fun `the opener's explanation round-trips, and a nested sheet carries none of it`() {
+    fun `the opener's explanation round-trips whole, and a nested sheet carries none of it`() {
+        val cutAnswer = Explanation("Here it is the potential of 弾く.", "Gemini", cut = true)
         val parent = roundTrip(
             WordDetailBottomSheet.newInstance(
                 word = "弾ける", reading = "はじける", sentenceOriginal = "一番うまく弾けた！",
-                explanation = "Here it is the potential of 弾く.",
+                explanation = cutAnswer,
             ),
         )
-        assertEquals("Here it is the potential of 弾く.", parent.explanation)
+        assertEquals(cutAnswer, parent.explanation)
+        val whole = Explanation("It means to burst.", "Qwen 3.5")
+        assertEquals(whole, roundTrip(WordDetailBottomSheet.newInstance(word = "弾ける", explanation = whole)).explanation)
         assertEquals(null, roundTrip(WordDetailBottomSheet.newInstance(word = "弾ける")).explanation)
         val nested = roundTrip(
             WordDetailBottomSheet.nestedInstance(parent, "弾く", "ひく", "弾けた", "弾く", "ひく"),
@@ -70,7 +74,7 @@ class WordDetailBottomSheetArgsTest {
     @Test
     fun `the detail screen's launch sentence holds its answer under the word as its embedded page names its own`() {
         val words = mapOf("弾ける" to Triple("はじける", "to burst", 0))
-        fun launch(surface: String?, lookupForm: String?, answer: String?) = android.content.Intent().apply {
+        fun launch(surface: String?, lookupForm: String?, answer: Explanation?) = android.content.Intent().apply {
             putExtra(TranslationResultActivity.EXTRA_SENTENCE_TEXT, "一番うまく弾けた！")
             putExtra(TranslationResultActivity.EXTRA_DRAG_WORD, "弾ける")
             putExtra(TranslationResultActivity.EXTRA_DRAG_READING, "はじける")
@@ -79,7 +83,8 @@ class WordDetailBottomSheetArgsTest {
                 putExtra(TranslationResultActivity.EXTRA_DRAG_LOOKUP_FORM, it)
                 putExtra(TranslationResultActivity.EXTRA_DRAG_LOOKUP_READING, "ひく")
             }
-            answer?.let { putExtra(TranslationResultActivity.EXTRA_DRAG_EXPLANATION, it) }
+            // As the lens writes it ([putExplanation]).
+            putExtras(android.os.Bundle().apply { putExplanation(TranslationResultActivity.EXTRA_DRAG_EXPLANATION, answer) })
         }
         // The page as the activity mounts it from the same extras.
         fun page(surface: String?) = roundTrip(
@@ -89,32 +94,59 @@ class WordDetailBottomSheetArgsTest {
             ),
         )
 
-        fun context(surface: String?, lookupForm: String?, answer: String?) =
+        fun context(surface: String?, lookupForm: String?, answer: Explanation?) =
             TranslationResultActivity.launchSentenceContext(launch(surface, lookupForm, answer), "I played it best!", words)
 
         assertEquals(CardTarget("弾けた", "弾く", "ひく"), page("弾けた").target)
-        val explained = context("弾けた", "弾く", "Here it is the potential of 弾く.")
-        assertEquals(mapOf(page("弾けた").target to "Here it is the potential of 弾く."), explained.explanations)
+        val potential = Explanation("Here it is the potential of 弾く.", "Gemini", cut = true)
+        val explained = context("弾けた", "弾く", potential)
+        assertEquals(mapOf(page("弾けた").target to potential), explained.explanations)
         assertEquals("the sentence the answer is about", "一番うまく弾けた！", explained.original)
         assertEquals("I played it best!", explained.translation)
         assertEquals(words, explained.wordResults)
+        val toPlay = Explanation("To play.", "Gemini")
         assertEquals(
             "an opener with only the lemma",
-            mapOf(page(null).target to "To play."),
-            context(null, "弾く", "To play.").explanations,
+            mapOf(page(null).target to toPlay),
+            context(null, "弾く", toPlay).explanations,
         )
-        assertEquals(emptyMap<CardTarget, String>(), context("弾けた", "弾く", null).explanations)
-        assertEquals(emptyMap<CardTarget, String>(), context("弾けた", null, "To play.").explanations)
-        assertEquals("一番うまく弾けた！", context("弾けた", null, "To play.").original)
+        assertEquals(emptyMap<CardTarget, Explanation>(), context("弾けた", "弾く", null).explanations)
+        assertEquals(emptyMap<CardTarget, Explanation>(), context("弾けた", null, toPlay).explanations)
+        assertEquals("一番うまく弾けた！", context("弾けた", null, toPlay).original)
     }
 
     // Mutation: the sheet's arguments take an answer of any length.
     @Test
     fun `an answer longer than a bundle may carry reaches the page cut at the limit`() {
         val args = roundTrip(
-            WordDetailBottomSheet.newInstance(word = "弾ける", explanation = "a".repeat(ANKI_NOTE_MAX_CHARS + 500)),
+            WordDetailBottomSheet.newInstance(
+                word = "弾ける", explanation = Explanation("a".repeat(ANKI_NOTE_MAX_CHARS + 500), "Gemini"),
+            ),
         )
-        assertEquals("a".repeat(ANKI_NOTE_MAX_CHARS) + "…", args.explanation)
+        assertEquals(Explanation("a".repeat(ANKI_NOTE_MAX_CHARS) + "…", "Gemini"), args.explanation)
+    }
+
+    // Mutations: the launch extras take an answer of any length; the cut
+    // drops who gave it, or the cut flag.
+    @Test
+    fun `an answer longer than a launch may carry reaches the results screen's word page cut at the limit, whole otherwise`() {
+        val intent = android.content.Intent().apply {
+            putExtra(TranslationResultActivity.EXTRA_SENTENCE_TEXT, "一番うまく弾けた！")
+            putExtra(TranslationResultActivity.EXTRA_DRAG_LOOKUP_FORM, "弾く")
+            putExtras(
+                android.os.Bundle().apply {
+                    putExplanation(
+                        TranslationResultActivity.EXTRA_DRAG_EXPLANATION,
+                        Explanation("a".repeat(ANKI_NOTE_MAX_CHARS + 500), "Gemini", cut = true),
+                    )
+                },
+            )
+        }
+        assertEquals(
+            Explanation("a".repeat(ANKI_NOTE_MAX_CHARS) + "…", "Gemini", cut = true),
+            TranslationResultActivity.launchSentenceContext(intent, null, null)
+                .explanations[pageCardTarget(null, "弾く", null)],
+        )
     }
 
     @Test

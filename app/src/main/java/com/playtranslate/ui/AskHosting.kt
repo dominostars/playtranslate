@@ -9,6 +9,7 @@ import com.playtranslate.ask.AskSentence
 import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.model.TranslationLangContext
+import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
 
 // What every surface that hosts the Ask section needs beside its binder
@@ -38,21 +39,31 @@ internal fun askSentence(text: String, langContext: TranslationLangContext): Ask
  * The "Ask needs an AI model" alert, on this builder: its words, and a
  * button that opens Translation services, where an online service is added
  * or an on-device model switched on. Shown when the user reaches for a
- * question (a ready-made one, or the field) with nothing that could answer
- * it. The host shows the built alert its own way and passes how the
- * settings page opens from its surface.
+ * question (a ready-made one, the field, an explain button) with nothing
+ * that could answer it. The host shows the built alert its own way and
+ * passes how the settings page opens from its surface.
+ *
+ * The button's colours are resolved on [ctx] themed as the alert themes
+ * its own ([overlayThemedContext]): the accent fill and the theme's text
+ * colour over it. The drag lens and the tap-to-look-up card pass their
+ * service's display context, whose theme is the platform's and has none of
+ * the app's colours; read there, the accent is 0, which the alert draws as
+ * no fill at all.
  */
 internal fun OverlayAlert.Builder.askNeedsLlm(
     ctx: Context,
     openTranslationServices: () -> Unit,
-): OverlayAlert.Builder =
-    setTitle(ctx.getString(R.string.ask_no_llm_title))
-        .setMessage(ctx.getString(R.string.ask_no_llm_message))
+): OverlayAlert.Builder {
+    val themed = overlayThemedContext(ctx)
+    return setTitle(themed.getString(R.string.ask_no_llm_title))
+        .setMessage(themed.getString(R.string.ask_no_llm_message))
         .addButton(
-            ctx.getString(R.string.ask_no_llm_open_services),
-            ctx.themeColor(R.attr.ptAccent),
+            themed.getString(R.string.ask_no_llm_open_services),
+            themed.themeColor(R.attr.ptAccent),
+            themed.themeColor(R.attr.ptAccentOn),
         ) { openTranslationServices() }
-        .addCancelButton(ctx.getString(R.string.btn_cancel))
+        .addCancelButton(themed.getString(R.string.btn_cancel))
+}
 
 /**
  * The "Ask needs an AI model" alert on [target], for a surface with no Ask

@@ -12,6 +12,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.AnkiManager
 import com.playtranslate.R
 import com.playtranslate.ask.AskSentence
+import com.playtranslate.ask.Explanation
 import com.playtranslate.ask.WordInSentence
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.Headword
@@ -251,7 +252,7 @@ class SourceLensAnkiNotesTest {
         val context = page.sentenceContext()!!
         assertEquals("the sentence the answer is about", sentence.text, context.original)
         assertEquals(
-            mapOf(CardTarget("食べた", "たべる", "たべ") to "It is the plain past of to eat."),
+            mapOf(CardTarget("食べた", "たべる", "たべ") to Explanation("It is the plain past of to eat.", "Test LLM")),
             context.explanations,
         )
     }
@@ -274,6 +275,6 @@ class SourceLensAnkiNotesTest {
         tap("猫", DefAction.OPEN)
 
         val page = pushed.single() as WorkspaceWordDetailPage
-        assertEquals(emptyMap<CardTarget, String>(), page.sentenceContext()!!.explanations)
+        assertEquals(emptyMap<CardTarget, Explanation>(), page.sentenceContext()!!.explanations)
     }
 }

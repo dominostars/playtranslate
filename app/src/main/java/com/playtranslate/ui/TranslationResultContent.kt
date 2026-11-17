@@ -15,6 +15,7 @@ import com.playtranslate.Prefs
 import com.playtranslate.OverlayMode
 import com.playtranslate.R
 import com.playtranslate.ask.AskState
+import com.playtranslate.ask.Explanation
 import com.playtranslate.deferredCompletionNeeded
 import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.TranslationResult
@@ -106,7 +107,7 @@ class TranslationResultContent(
             surface: String?,
             lookupForm: String,
             lookupReading: String?,
-            explanation: String?,
+            explanation: Explanation?,
         )
 
         /** Any user interaction (live-mode hosts pause on it). */
@@ -242,7 +243,7 @@ class TranslationResultContent(
                 override val scope: CoroutineScope get() = host.scope
                 override val ttsAlertTarget: TtsAlertTarget get() = host.ttsAlertTarget
                 override fun onInteraction() = host.onInteraction()
-                override fun onWordTapped(row: RowState, explanation: String?) =
+                override fun onWordTapped(row: RowState, explanation: Explanation?) =
                     host.onWordTapped(
                         row.displayWord, row.reading.ifEmpty { null }, row.surface,
                         row.lookupForm, row.lookupReading, explanation,

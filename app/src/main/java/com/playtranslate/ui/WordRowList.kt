@@ -7,8 +7,10 @@ import androidx.annotation.VisibleForTesting
 import com.playtranslate.AnkiManager
 import com.playtranslate.R
 import com.playtranslate.ask.AskState
+import com.playtranslate.ask.Explanation
 import com.playtranslate.ask.WordExplanations
 import com.playtranslate.ask.WordInSentence
+import com.playtranslate.ask.explanation
 import com.playtranslate.translation.TranslationBackendRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -178,21 +180,21 @@ internal class WordRowList<T>(
 
     /**
      * The answer standing in [row]'s row: what its explain question
-     * brought. Null with nothing asked, with a question still out, with one
-     * that failed or that the service would not answer, and once the user
-     * has put the answer away; an answer cut at the service's length limit
-     * is the text there is. [row] is one of [wordRows] as a host callback
-     * hands it, found by identity, so rows that are equal are still told
-     * apart.
+     * brought, whole (its text, who gave it, whether it was cut), as the
+     * word's page draws it again. Null with nothing asked, with a question
+     * still out, with one that failed or that the service would not answer,
+     * with an empty answer, and once the user has put the answer away.
+     * [row] is one of [wordRows] as a host callback hands it, found by
+     * identity, so rows that are equal are still told apart.
      */
-    fun explanationOf(row: T): String? {
+    fun explanationOf(row: T): Explanation? {
         val id = ids.getOrNull(rows.indexOfFirst { it === row }) ?: return null
-        return (explanations.state(id) as? AskState.Answered)?.text?.takeIf { it.isNotBlank() }
+        return (explanations.state(id) as? AskState.Answered)?.takeIf { it.text.isNotBlank() }?.explanation
     }
 
     /** Every row with an answer standing in it ([explanationOf]), in drawn
      *  order, with that answer. */
-    fun explainedRows(): List<Pair<T, String>> =
+    fun explainedRows(): List<Pair<T, Explanation>> =
         rows.mapNotNull { row -> explanationOf(row)?.let { row to it } }
 
     /** The user is about to see rows here (their lookup is running): start

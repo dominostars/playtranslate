@@ -8,6 +8,24 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
+ * What a word's explain question brought, as it travels from the row it
+ * stood in to the word's page: the answer's [text], who gave it
+ * ([answeredBy]), and whether the service cut it at its length limit
+ * ([cut]). The lines a finished answer is drawn with
+ * ([AskState.Answered]) less its question, which is the drawing surface's
+ * own; so the page draws the answer as the row did, the cut-off line
+ * included. A card's note is its [text].
+ */
+data class Explanation(val text: String, val answeredBy: String, val cut: Boolean = false)
+
+/** This answer, as [question]'s finished answer asked where it is drawn. */
+fun Explanation.answering(question: AskQuestion): AskState.Answered =
+    AskState.Answered(question, text, answeredBy, cut)
+
+/** This finished answer as it travels ([Explanation]). */
+val AskState.Answered.explanation: Explanation get() = Explanation(text, answeredBy, cut)
+
+/**
  * The questions asked about the words of one list: how each word is used in
  * the sentence it was read in. Every asked word has an [AskSession] of its
  * own, so a word's question lives exactly as a sentence's does (asked, the

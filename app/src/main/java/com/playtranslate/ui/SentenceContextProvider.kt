@@ -1,5 +1,7 @@
 package com.playtranslate.ui
 
+import com.playtranslate.ask.Explanation
+
 /**
  * Implemented by activities that host an embedded
  * [WordDetailBottomSheet] and can supply the current sentence
@@ -40,11 +42,12 @@ data class SentenceContext(
     val pending: com.playtranslate.model.PendingTranslation? = null,
     /** What the explain questions of this sentence's words brought, as far
      *  as whoever made the context held an answer: each under the word it
-     *  is about, as a card names that word ([CardTarget]). The note a card
-     *  made for one of those words starts with. They are answers about
-     *  [original] and travel only with it: a context put together for
-     *  another text takes none of them along ([explanationsAbout]). */
-    val explanations: Map<CardTarget, String> = emptyMap(),
+     *  is about, as a card names that word ([CardTarget]), whole, as the
+     *  word's page draws it. Its text is the note a card made for one of
+     *  those words starts with. They are answers about [original] and
+     *  travel only with it: a context put together for another text takes
+     *  none of them along ([explanationsAbout]). */
+    val explanations: Map<CardTarget, Explanation> = emptyMap(),
 )
 
 /**
@@ -59,13 +62,13 @@ data class SentenceContext(
  * [WordDetailBinder.pageSentence]), so that a card is never handed its
  * sentence from one of them and its note from the other.
  */
-fun SentenceContext.explanationsAbout(sentence: String?): Map<CardTarget, String> =
+fun SentenceContext.explanationsAbout(sentence: String?): Map<CardTarget, Explanation> =
     if (sentence == original) explanations else emptyMap()
 
 /**
  * This context holding [answer] as well: what was answered about [target]
  * in its sentence, where the context is made (a row's answer at the row's
- * tap). The context itself with no answer.
+ * tap). The context itself with no answer, or one with no text.
  */
-fun SentenceContext.explaining(target: CardTarget, answer: String?): SentenceContext =
-    if (answer.isNullOrBlank()) this else copy(explanations = explanations + (target to answer))
+fun SentenceContext.explaining(target: CardTarget, answer: Explanation?): SentenceContext =
+    if (answer == null || answer.text.isBlank()) this else copy(explanations = explanations + (target to answer))

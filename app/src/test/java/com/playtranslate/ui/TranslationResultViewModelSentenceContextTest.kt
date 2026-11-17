@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.Prefs
+import com.playtranslate.ask.Explanation
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.model.PendingTranslation
 import com.playtranslate.model.TextSegments
@@ -67,7 +68,8 @@ class TranslationResultViewModelSentenceContextTest {
     }
 
     private val neko = CardTarget("猫", "猫", "ねこ")
-    private val explained = fallback.copy(explanations = mapOf(neko to "The one doing the eating."))
+    private val eating = Explanation("The one doing the eating.", "Test LLM")
+    private val explained = fallback.copy(explanations = mapOf(neko to eating))
 
     // Mutations: drop the fallback's answers once a result is Ready; keep
     // them beside any text.
@@ -75,7 +77,7 @@ class TranslationResultViewModelSentenceContextTest {
     fun `the fallback's explanations ride while the sentence is the fallback's`() {
         val vm = TranslationResultViewModel()
         assertEquals("before a result", explained.explanations, vm.sentenceContext(explained).explanations)
-        assertEquals(emptyMap<CardTarget, String>(), vm.sentenceContext(null).explanations)
+        assertEquals(emptyMap<CardTarget, Explanation>(), vm.sentenceContext(null).explanations)
 
         vm.displayResult(result("猫が食べる。", "The cat eats."), ctx)
         assertEquals("the same sentence, settled", explained.explanations, vm.sentenceContext(explained).explanations)
@@ -90,7 +92,7 @@ class TranslationResultViewModelSentenceContextTest {
 
         val c = vm.sentenceContext(explained)
         assertEquals("犬が食べる。", c.original)
-        assertEquals(emptyMap<CardTarget, String>(), c.explanations)
+        assertEquals(emptyMap<CardTarget, Explanation>(), c.explanations)
     }
 
     // The detail screen's word tab, through the functions its card is
@@ -110,7 +112,8 @@ class TranslationResultViewModelSentenceContextTest {
             putExtra(TranslationResultActivity.EXTRA_DRAG_WORD, "猫")
             putExtra(TranslationResultActivity.EXTRA_DRAG_LOOKUP_FORM, "猫")
             putExtra(TranslationResultActivity.EXTRA_DRAG_LOOKUP_READING, "ねこ")
-            putExtra(TranslationResultActivity.EXTRA_DRAG_EXPLANATION, "The one doing the eating.")
+            // As the lens writes it ([putExplanation]).
+            putExtras(android.os.Bundle().apply { putExplanation(TranslationResultActivity.EXTRA_DRAG_EXPLANATION, eating) })
         }
         val page = WordDetailBottomSheet.argsFrom(
             WordDetailBottomSheet.newInstance(

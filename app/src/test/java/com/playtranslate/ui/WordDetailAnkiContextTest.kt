@@ -1,9 +1,21 @@
 package com.playtranslate.ui
 
+import com.playtranslate.ask.AskQuestion
+import com.playtranslate.ask.AskSentence
+import com.playtranslate.ask.AskSession
+import com.playtranslate.ask.AskState
+import com.playtranslate.ask.Explanation
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.model.PendingTranslation
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -18,7 +30,11 @@ import org.junit.Test
  * [WordDetailBottomSheetArgsTest]). And what was answered about a word of
  * that sentence ([SentenceContext.explanations]): part of the sentence a
  * card reads, under the word it is about, and there only while the
- * sentence is the one it was asked about.
+ * sentence is the one it was asked about. Once the page has asked about
+ * its own word (its "In this sentence" group's session), that word's entry
+ * is the session's alone: its answer while the sentence is the one it was
+ * asked about, else none, whatever the launch arguments and the host still
+ * carry, and every other word's entry is as they give it.
  */
 class WordDetailAnkiContextTest {
 
@@ -86,10 +102,11 @@ class WordDetailAnkiContextTest {
 
     // ── What was answered about a word of the sentence ──────────────────
 
-    private val answer = "Here it is the potential of 弾く."
+    private val answer = Explanation("Here it is the potential of 弾く.", "Gemini")
     private val explained = launch.copy(explanation = answer)
     private val ichiban = CardTarget("一番", "一番", "いちばん")
-    private val none = emptyMap<CardTarget, String>()
+    private val mostOfAll = Explanation("Most of all.", "Gemini")
+    private val none = emptyMap<CardTarget, Explanation>()
 
     // Mutations: name the page's word by its display, or by its key alone.
     @Test
@@ -108,7 +125,7 @@ class WordDetailAnkiContextTest {
     fun `the answer a page was opened with is in its sentence, under the page's own word`() {
         assertEquals(mapOf(launch.target to answer), WordDetailBinder.pageSentence(null, explained).explanations)
         assertEquals(none, WordDetailBinder.pageSentence(null, launch).explanations)
-        assertEquals(none, WordDetailBinder.pageSentence(null, launch.copy(explanation = " ")).explanations)
+        assertEquals(none, WordDetailBinder.pageSentence(null, launch.copy(explanation = Explanation(" ", "Gemini"))).explanations)
     }
 
     // Mutations: keep the launch answer whatever the host's sentence is;
@@ -130,10 +147,10 @@ class WordDetailAnkiContextTest {
     fun `the host's answers ride with the host's sentence, beside the page's own`() {
         val host = SentenceContext(
             original = "一番うまく弾けた！", translation = null, wordResults = null,
-            explanations = mapOf(ichiban to "Most of all."),
+            explanations = mapOf(ichiban to mostOfAll),
         )
         assertEquals(
-            mapOf(ichiban to "Most of all.", launch.target to answer),
+            mapOf(ichiban to mostOfAll, launch.target to answer),
             WordDetailBinder.pageSentence(host, explained).explanations,
         )
         // A host with answers and no sentence: the page's sentence is the
@@ -158,19 +175,19 @@ class WordDetailAnkiContextTest {
     // context already held.
     @Test
     fun `a context takes an answer under its word, beside those it holds, and no blank one`() {
-        val base = SentenceContext("一番うまく弾けた！", null, null, explanations = mapOf(ichiban to "Most of all."))
+        val base = SentenceContext("一番うまく弾けた！", null, null, explanations = mapOf(ichiban to mostOfAll))
         assertEquals(
-            mapOf(ichiban to "Most of all.", launch.target to answer),
+            mapOf(ichiban to mostOfAll, launch.target to answer),
             base.explaining(launch.target, answer).explanations,
         )
         assertEquals(base, base.explaining(launch.target, null))
-        assertEquals(base, base.explaining(launch.target, ""))
+        assertEquals(base, base.explaining(launch.target, Explanation("", "Gemini")))
     }
 
     // Mutations: an answer rides beside any sentence; beside none.
     @Test
     fun `answers stand beside the text they were asked about and no other`() {
-        val base = SentenceContext("一番うまく弾けた！", null, null, explanations = mapOf(ichiban to "Most of all."))
+        val base = SentenceContext("一番うまく弾けた！", null, null, explanations = mapOf(ichiban to mostOfAll))
         assertEquals(base.explanations, base.explanationsAbout("一番うまく弾けた！"))
         assertEquals(none, base.explanationsAbout("一番うまく弾いた！"))
         assertEquals(none, base.explanationsAbout(null))
@@ -180,13 +197,13 @@ class WordDetailAnkiContextTest {
     // it the answer of another word of that sentence.
     @Test
     fun `a word's review takes its sentence and its note from the one context`() {
-        val sentence = WordDetailBinder.pageSentence(null, explained).explaining(ichiban, "Most of all.")
+        val sentence = WordDetailBinder.pageSentence(null, explained).explaining(ichiban, mostOfAll)
         fun review(target: CardTarget) = WordDetailBinder.wordAnkiArgs(
             sentence, target, word = "弾ける", reading = "はじける", pos = "Ichidan verb", definition = "to burst",
             screenshotPath = "/shot.png", freqScore = 2, isCommon = true, sourceLangId = SourceLangId.JA,
         )
         val own = review(launch.target)
-        assertEquals(answer, own.notes)
+        assertEquals(answer.text, own.notes)
         assertEquals("一番うまく弾けた！", own.sentenceOriginal)
         assertEquals("I played it best!", own.sentenceTranslation)
         assertEquals(launch.sentenceWordResults, own.sentenceWordResults)
@@ -225,7 +242,7 @@ class WordDetailAnkiContextTest {
             freqScore = 3, isCommon = true, surface = "弾けた", lookupForm = "弾く", lookupReading = "ひく",
         )
         val sentence = WordDetailBinder.pageSentence(null, launch)
-            .explaining(CardTarget("弾けた", "弾く", "ひく"), "To play an instrument.")
+            .explaining(CardTarget("弾けた", "弾く", "ひく"), Explanation("To play an instrument.", "Gemini"))
         assertEquals("To play an instrument.", WordDetailBinder.rowAnkiArgs(hiku, sentence, null, SourceLangId.JA).notes)
     }
 
@@ -238,6 +255,91 @@ class WordDetailAnkiContextTest {
         val args = WordDetailBinder.rowAnkiArgs(naze, WordDetailBinder.pageSentence(null, launch), null, SourceLangId.JA)
         assertEquals("", args.reading)
         assertEquals(CardTarget("なぜ", "何故", null), args.target)
+    }
+
+    // ── What the page asked about its own word ─────────────────────────
+
+    private val sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+
+    @After fun cancelSessions() = sessionScope.cancel()
+
+    private val pageQuestion = AskQuestion.Word("弾ける", "はじける", listOf("弾けた"), "In this sentence")
+
+    /** The page's session about [text]: never answering what it is asked. */
+    private fun session(text: String = "一番うまく弾けた！") = AskSession(sessionScope) { _, _ -> awaitCancellation() }
+        .apply { bind(AskSentence(text, "ja", "en")) }
+
+    private fun AskSession.answered(text: String, by: String = "Claude", cut: Boolean = false) = apply {
+        restore(sentence!!, AskState.Answered(pageQuestion, text, by, cut))
+    }
+
+    private val carriedHost = SentenceContext("一番うまく弾けた！", null, null)
+        .explaining(launch.target, answer)
+        .explaining(ichiban, mostOfAll)
+
+    // Mutations: keep a carried answer under the page's word beside its
+    // session's; take the carried one over the session's.
+    @Test
+    fun `once the page asks, its own word's entry is its session's answer, over both carried ones`() {
+        val asked = session().answered("It is the potential form here.", cut = true)
+        val sentence = WordDetailBinder.pageSentence(carriedHost, explained, asked)
+        assertEquals(
+            mapOf(ichiban to mostOfAll, launch.target to Explanation("It is the potential form here.", "Claude", cut = true)),
+            sentence.explanations,
+        )
+    }
+
+    // Mutations: a session with no answer leaves the carried answer in
+    // place; one put away takes the other words' with it.
+    @Test
+    fun `a page whose session holds no answer has none under its own word, whatever is carried, and keeps every other word's`() {
+        val idle = session()
+        assertEquals(
+            mapOf(ichiban to mostOfAll),
+            WordDetailBinder.pageSentence(carriedHost, explained, idle).explanations,
+        )
+        val asking = session().apply { ask(pageQuestion) }
+        assertTrue("precondition: asking", asking.state.value is AskState.Asking)
+        assertEquals(mapOf(ichiban to mostOfAll), WordDetailBinder.pageSentence(carriedHost, explained, asking).explanations)
+        val closed = session().answered("It is the potential form here.").apply { close() }
+        assertEquals(mapOf(ichiban to mostOfAll), WordDetailBinder.pageSentence(carriedHost, explained, closed).explanations)
+    }
+
+    // Mutation: the session's answer stands beside a sentence it was not
+    // asked about.
+    @Test
+    fun `the session's answer stands only beside the sentence it was asked about`() {
+        val asked = session().answered("It is the potential form here.")
+        val edited = SentenceContext(original = "一番うまく弾いた！", translation = null, wordResults = null)
+        assertEquals(
+            emptyMap<CardTarget, Explanation>(),
+            WordDetailBinder.pageSentence(edited, explained, asked).explanations,
+        )
+    }
+
+    // Mutations: the review's note is read from anywhere but the sentence
+    // the session stands in; a cell's note follows the page's own.
+    @Test
+    fun `the page's own review takes its session's answer as its note, and a cell's review its own word's`() {
+        val hiku = RowState(
+            displayWord = "弾く", reading = "ひく", meaning = "to play", senses = emptyList(),
+            freqScore = 3, isCommon = true, surface = "弾けた", lookupForm = "弾く", lookupReading = "ひく",
+        )
+        val hikuAnswer = Explanation("To play an instrument.", "Gemini")
+        val host = carriedHost.explaining(CardTarget("弾けた", "弾く", "ひく"), hikuAnswer)
+        fun own(asked: AskSession) = WordDetailBinder.wordAnkiArgs(
+            WordDetailBinder.pageSentence(host, explained, asked), launch.target, word = "弾ける", reading = "はじける",
+            pos = "", definition = "", screenshotPath = null, freqScore = 0, isCommon = false, sourceLangId = SourceLangId.JA,
+        ).notes
+        fun cell(asked: AskSession) =
+            WordDetailBinder.rowAnkiArgs(hiku, WordDetailBinder.pageSentence(host, explained, asked), null, SourceLangId.JA).notes
+
+        val asked = session().answered("It is the potential form here.")
+        assertEquals("It is the potential form here.", own(asked))
+        assertEquals(hikuAnswer.text, cell(asked))
+        asked.close()
+        assertEquals("put away, no note", "", own(asked))
+        assertEquals(hikuAnswer.text, cell(asked))
     }
 
     @Test

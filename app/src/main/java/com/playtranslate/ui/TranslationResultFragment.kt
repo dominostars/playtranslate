@@ -22,6 +22,7 @@ import com.playtranslate.OverlayMode
 import com.playtranslate.OverlaySurface
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.ask.Explanation
 import com.playtranslate.model.OcrProvenance
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.model.headwordDisplay
@@ -67,9 +68,10 @@ class TranslationResultFragment : Fragment() {
          *  [lookupForm] and [lookupReading] are the key the detail page
          *  resolves with ([WordDetailBinder.Args.lookupForm]); a caller with
          *  no key of its own leaves them at [word] and [reading].
-         *  [explanation] is the answer that stood in the tapped row, for the
-         *  detail's Anki card ([WordDetailBinder.Args.explanation]); null
-         *  with none. */
+         *  [explanation] is the answer that stood in the tapped row, which
+         *  the detail shows under the word's definitions and starts its Anki
+         *  card's note with ([WordDetailBinder.Args.explanation]); null with
+         *  none. */
         fun onWordTapped(
             word: String,
             reading: String?,
@@ -80,7 +82,7 @@ class TranslationResultFragment : Fragment() {
             wordResults: Map<String, Triple<String, String, Int>>,
             lookupForm: String = word,
             lookupReading: String? = reading,
-            explanation: String? = null,
+            explanation: Explanation? = null,
         )
         fun onInteraction()
         fun getAnkiPermissionLauncher(): androidx.activity.result.ActivityResultLauncher<String>?
@@ -849,7 +851,7 @@ class TranslationResultFragment : Fragment() {
             if (secondary == null) resolved else secondaries.getOrNull(secondary)
         // The answer standing in a row is read at the tap, before the lens
         // is dismissed and its rows' answers go with it.
-        fun openDetail(unit: SourceWordLookup.Resolved, explanation: String?) {
+        fun openDetail(unit: SourceWordLookup.Resolved, explanation: Explanation?) {
             dismissWordPopup()
             host?.onInteraction()
             val ready = currentReady()
@@ -879,7 +881,7 @@ class TranslationResultFragment : Fragment() {
                 host?.onInteraction()
                 launchWordAnki(
                     activity, unit.word, unit.reading, unit.entry,
-                    notes = lens.explanationOf(secondary).orEmpty(),
+                    notes = lens.explanationOf(secondary)?.text.orEmpty(),
                 )
             }
         }
@@ -888,7 +890,7 @@ class TranslationResultFragment : Fragment() {
                 host?.onInteraction()
                 oneTapWordFromPopup(
                     activity, unit.word, unit.reading, unit.entry, unit.entries,
-                    notes = lens.explanationOf(secondary).orEmpty(),
+                    notes = lens.explanationOf(secondary)?.text.orEmpty(),
                 )
             }
         }
@@ -948,7 +950,7 @@ class TranslationResultFragment : Fragment() {
             surface: String?,
             lookupForm: String,
             lookupReading: String?,
-            explanation: String?,
+            explanation: Explanation?,
         ) {
             val ready = currentReady()
             host?.onWordTapped(

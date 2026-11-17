@@ -3,10 +3,11 @@ package com.playtranslate.ui
 import android.os.Bundle
 import android.widget.EditText
 import com.playtranslate.ask.AskState
+import com.playtranslate.ask.Explanation
 
 /**
  * A word of a sentence with an answer standing in its row: the word as the
- * row heads it, and what its explain question brought
+ * row heads it, and the text of what its explain question brought
  * ([WordRowList.explanationOf]).
  */
 data class ExplainedWord(val word: String, val answer: String)
@@ -54,7 +55,8 @@ internal const val ANKI_NOTE_MAX_CHARS = 10_000
  * cut there with an ellipsis after it, which shows in the Notes box that
  * the text goes on. Never cut inside a character that takes two code
  * units. Every write of an answer into a bundle goes through here:
- * [putAnkiNotes], and a word's answer on its way to the word's page.
+ * [putAnkiNotes], and a word's answer on its way to the word's page
+ * ([putExplanation]).
  */
 internal fun ankiNoteCapped(text: String): String {
     if (text.length <= ANKI_NOTE_MAX_CHARS) return text
@@ -78,6 +80,31 @@ fun Bundle.putAnkiNotes(notes: String?) {
 
 /** The text [putAnkiNotes] wrote; "" when the bundle carries none. */
 fun Bundle.getAnkiNotes(): String = getString(KEY_ANKI_NOTES).orEmpty()
+
+private const val EXPLANATION_BY_SUFFIX = "_answered_by"
+private const val EXPLANATION_CUT_SUFFIX = "_cut"
+
+/**
+ * Writes [answer], a word's answer on its way to the word's page (the
+ * page's launch arguments, the results screen's launch extras), under [key]
+ * and two keys made from it: its text, held to [ANKI_NOTE_MAX_CHARS]
+ * ([ankiNoteCapped]), who gave it, and whether it was cut. Null writes
+ * nothing.
+ */
+fun Bundle.putExplanation(key: String, answer: Explanation?) {
+    if (answer == null) return
+    putString(key, ankiNoteCapped(answer.text))
+    putString(key + EXPLANATION_BY_SUFFIX, answer.answeredBy)
+    putBoolean(key + EXPLANATION_CUT_SUFFIX, answer.cut)
+}
+
+/** The answer [putExplanation] wrote under [key]; null when the bundle
+ *  carries none. */
+fun Bundle.getExplanation(key: String): Explanation? {
+    val text = getString(key) ?: return null
+    val answeredBy = getString(key + EXPLANATION_BY_SUFFIX) ?: return null
+    return Explanation(text, answeredBy, getBoolean(key + EXPLANATION_CUT_SUFFIX))
+}
 
 /**
  * The sentence a card editor was opened with has been edited there. The

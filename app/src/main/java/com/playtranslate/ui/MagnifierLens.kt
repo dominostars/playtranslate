@@ -43,6 +43,7 @@ import android.widget.TextView
 import androidx.annotation.VisibleForTesting
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.graphics.drawable.DrawableCompat
+import com.playtranslate.ask.Explanation
 import com.playtranslate.ask.WordInSentence
 import com.playtranslate.dictionary.Deinflector
 import com.playtranslate.overlay.OverlayHost
@@ -364,7 +365,7 @@ class MagnifierLens(
      *  callbacks above name a row. Null with no answer there, and once the
      *  lens is dismissed, which puts its rows' answers away: an owner whose
      *  action dismisses the lens reads this first. */
-    fun explanationOf(secondary: Int?): String? = lensView?.explanationOf(secondary)
+    fun explanationOf(secondary: Int?): Explanation? = lensView?.explanationOf(secondary)
 
     /** True when there's no [overlayHost] — the lens attaches directly to the
      *  activity window (TYPE_APPLICATION_PANEL) instead of going through a
@@ -1592,7 +1593,7 @@ class MagnifierLens(
         )
 
         /** [MagnifierLens.explanationOf]. */
-        fun explanationOf(secondary: Int?): String? =
+        fun explanationOf(secondary: Int?): Explanation? =
             list.wordRows.firstOrNull { it.secondary == secondary }?.let(list::explanationOf)
 
         /** What the list shows: the last bind's sections, kept so the

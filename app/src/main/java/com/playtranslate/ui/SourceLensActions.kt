@@ -3,11 +3,13 @@ package com.playtranslate.ui
 import android.content.Context
 import android.util.Log
 import android.content.Intent
+import android.os.Bundle
 import android.widget.Toast
 import com.playtranslate.AnkiManager
 import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.ask.Explanation
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.FrequencyTag
@@ -49,13 +51,14 @@ data class LensActionContext(
     val lookupReading: String?,
     /** What the explain question of the row acted on brought, when its
      *  answer stood in the row at the tap ([WordRowList.explanationOf]);
-     *  null with none. The note a card made for [word] starts with: the
-     *  editable review's, here or from the detail the action opens, which
-     *  is handed it inside [sentence]'s context
-     *  ([SentenceContext.explanations]). For a lens's row
-     *  [SourceLensActions] reads it at the tap, whatever its provider
-     *  gave; a Words row's opener hands in its row's. */
-    val explanation: String? = null,
+     *  null with none. Its text is the note a card made for [word] starts
+     *  with: the editable review's, here or from the detail the action
+     *  opens, which is handed the whole answer inside [sentence]'s context
+     *  ([SentenceContext.explanations]) and shows it under the word's
+     *  definitions. For a lens's row [SourceLensActions] reads it at the
+     *  tap, whatever its provider gave; a Words row's opener hands in its
+     *  row's. */
+    val explanation: Explanation? = null,
 )
 
 /**
@@ -213,9 +216,11 @@ internal class SentenceDetailOpener(
             }
             cur.surface?.let { putExtra(TranslationResultActivity.EXTRA_DRAG_SURFACE, it) }
             if (word != null) {
-                cur.explanation?.let {
-                    putExtra(TranslationResultActivity.EXTRA_DRAG_EXPLANATION, ankiNoteCapped(it))
-                }
+                putExtras(
+                    Bundle().apply {
+                        putExplanation(TranslationResultActivity.EXTRA_DRAG_EXPLANATION, cur.explanation)
+                    },
+                )
             }
             cachedTranslation?.let {
                 putExtra(TranslationResultActivity.EXTRA_DRAG_SENTENCE_TRANSLATION, it)
@@ -345,7 +350,7 @@ class SourceLensActions(
         val sourceLangCode: String,
         val audioAnchorMs: Long?,
         /** The text the editor's Notes boxes start with
-         *  ([LensActionContext.explanation]); "" with none. */
+         *  ([LensActionContext.explanation]'s); "" with none. */
         val notes: String,
     )
 
@@ -503,7 +508,7 @@ class SourceLensActions(
             sentenceWordResults = sentenceWordResults,
             sourceLangCode = Prefs(context).sourceLangId.code,
             audioAnchorMs = cur.audioAnchorMs,
-            notes = cur.explanation.orEmpty(),
+            notes = cur.explanation?.text.orEmpty(),
         )
     }
 

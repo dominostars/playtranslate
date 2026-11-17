@@ -239,6 +239,23 @@ class WorkspaceWordDetailPage(
             builder.showInParent(host.modalLayer)
         }
 
+        /** In the workspace's own modal layer, as the Sentence page's alert
+         *  shows. Its button leaves the workspace for the settings page, on
+         *  the app's screen, the way this page's Anki launch does. */
+        override fun onAskNeedsLlm() {
+            present(
+                host.alert().askNeedsLlm(ctx) {
+                    CaptureBackendResolver.activeOverlayUi?.dismissWorkspace()
+                    launchOnForegroundDisplay(
+                        ctx, Intent(ctx.applicationContext, TranslationServicesActivity::class.java), host.displayId,
+                    )
+                },
+            )
+        }
+
+        // The workspace's cursor is its own: put it where the control says.
+        override fun onControlGone(next: View) = host.invalidateNav(prefer = next)
+
         override fun launchOneTap(
             send: suspend () -> Pair<AnkiSendResult, CardMode>,
             presentResult: (Pair<AnkiSendResult, CardMode>) -> Unit,

@@ -7,6 +7,7 @@ import android.view.Display
 import android.view.KeyEvent
 import com.playtranslate.R
 import com.playtranslate.ask.AskSentence
+import com.playtranslate.ask.Explanation
 import com.playtranslate.ask.WordInSentence
 import com.playtranslate.translation.FakeCompleterBackend
 import com.playtranslate.translation.TranslationBackendRegistry
@@ -174,7 +175,8 @@ class MagnifierLensExplainTest {
         assertNull("a question still out", lens.explanationOf(0))
         answer(" It is the plain past. ")
 
-        assertEquals("the first secondary's", "It is the plain past.", lens.explanationOf(0))
+        // The whole answer, as the word's page draws it again.
+        assertEquals("the first secondary's", Explanation("It is the plain past.", "Test LLM"), lens.explanationOf(0))
         assertNull("the tapped unit's row has none", lens.explanationOf(null))
         assertNull("a row with no button has none", lens.explanationOf(1))
         assertNull("no such row", lens.explanationOf(7))

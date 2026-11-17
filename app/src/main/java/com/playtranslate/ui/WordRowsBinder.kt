@@ -14,6 +14,7 @@ import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.ask.AskSentence
+import com.playtranslate.ask.Explanation
 import com.playtranslate.ask.WordInSentence
 import com.playtranslate.vocab.HiddenWordsStore
 import kotlinx.coroutines.CoroutineScope
@@ -113,9 +114,10 @@ class WordRowsBinder(
 
         /** A row body tap: open that word's detail. [explanation] is the
          *  answer standing in the row when it was tapped
-         *  ([WordRowList.explanationOf]), null with none: what a card made
-         *  for the word from its detail starts its note with. */
-        fun onWordTapped(row: RowState, explanation: String?)
+         *  ([WordRowList.explanationOf]), null with none: what the detail
+         *  shows under the word's definitions, and what a card made for the
+         *  word from there starts its note with. */
+        fun onWordTapped(row: RowState, explanation: Explanation?)
 
         /** Any user interaction (live-mode hosts pause on it). */
         fun onInteraction() {}
@@ -354,7 +356,7 @@ class WordRowsBinder(
      *  answers in its rows still has them, as it shows them again when it
      *  is revealed. */
     fun explainedWords(): List<ExplainedWord> =
-        list.explainedRows().map { (row, answer) -> ExplainedWord(row.displayWord, answer) }
+        list.explainedRows().map { (row, answer) -> ExplainedWord(row.displayWord, answer.text) }
 
     /** What a controller cursor can reach here, in visual order: the
      *  header's shown actions (its eye, which stays whether the card shows

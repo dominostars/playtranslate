@@ -17,6 +17,7 @@ import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.ask.AskQuestion
 import com.playtranslate.ask.AskState
+import com.playtranslate.ask.Explanation
 import com.playtranslate.language.AnnotatedSpan
 import com.playtranslate.language.InflectionTag
 import com.playtranslate.language.SentenceAnnotation
@@ -104,7 +105,7 @@ class TranslationResultContentTest {
         /** Each tap's detail key (lookupForm, lookupReading). */
         val tappedKeys = mutableListOf<Pair<String, String?>>()
         /** Each tap's answer, as it stood in the tapped row. */
-        val tappedExplanations = mutableListOf<String?>()
+        val tappedExplanations = mutableListOf<Explanation?>()
         var clears = 0
         var completions = 0
         var ankiTaps = 0
@@ -126,7 +127,7 @@ class TranslationResultContentTest {
             surface: String?,
             lookupForm: String,
             lookupReading: String?,
-            explanation: String?,
+            explanation: Explanation?,
         ) {
             tappedWords += Triple(word, reading, surface)
             tappedKeys += lookupForm to lookupReading
@@ -467,14 +468,16 @@ class TranslationResultContentTest {
             )
             idle()
             content.wordRows.tapForTest(0, DefAction.OPEN)
-            assertEquals("nothing asked, nothing handed on", listOf<String?>(null), host.tappedExplanations)
+            assertEquals("nothing asked, nothing handed on", listOf<Explanation?>(null), host.tappedExplanations)
 
             content.wordRows.tapForTest(0, DefAction.EXPLAIN)
             idle()
             assertNotNull("precondition: the answer is in the row", content.wordRows.shownRows.single().explain?.answer)
             content.wordRows.tapForTest(0, DefAction.OPEN)
 
-            assertEquals(listOf(null, "It is the plain form."), host.tappedExplanations)
+            // The whole answer: its text and who gave it, as the word's page
+            // draws it again.
+            assertEquals(listOf(null, Explanation("It is the plain form.", "Test LLM")), host.tappedExplanations)
             assertEquals("and it is what a card of the sentence starts with", "It is the plain form.", content.sentenceCardNote())
         } finally {
             TranslationBackendRegistry.removeOnlineBackend(llm.id)

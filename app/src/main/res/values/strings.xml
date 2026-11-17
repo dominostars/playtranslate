@@ -1052,9 +1052,17 @@
 
     <!-- Small title over the answer that button (cd_word_explain) brings,
          inside the word's row and under the word itself: the answer says
-         how the word is used in the sentence being read. Shown in capital
-         letters where the script has them; keep it to a few words. -->
+         how the word is used in the sentence being read. Also the title of
+         the group on a word's own page that holds the same answer, under
+         the word's definitions. Shown in capital letters where the script
+         has them; keep it to a few words. -->
     <string name="word_explain_title">In this sentence</string>
+
+    <!-- Tappable row on a word's own page, in the group titled "In this
+         sentence" (word_explain_title) under the word's definitions: it
+         asks the user's AI model how the word is used in the sentence the
+         user was reading, and the answer takes the row's place. -->
+    <string name="word_explain_ask">Explain how this word is used</string>
 
     <!-- Skeleton/placeholder line under the Words header while
          tokenization is in flight. -->

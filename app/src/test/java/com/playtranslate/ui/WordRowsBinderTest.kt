@@ -15,6 +15,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.ask.AskSentence
+import com.playtranslate.ask.Explanation
 import com.playtranslate.language.InflectedForm
 import com.playtranslate.language.SentenceAnnotation
 import com.playtranslate.language.SourceLangId
@@ -107,7 +108,7 @@ class WordRowsBinderTest {
     private lateinit var binder: WordRowsBinder
     private val tapped = mutableListOf<String>()
     /** The answer each row tap in [tapped] handed the host. */
-    private val tappedExplanations = mutableListOf<String?>()
+    private val tappedExplanations = mutableListOf<Explanation?>()
     /** [WordRowsBinder.onRowsWanted] invocations. */
     private var rowsWanted = 0
     /** [WordRowsBinder.Host.onAskNeedsLlm] invocations. */
@@ -143,7 +144,7 @@ class WordRowsBinderTest {
             override val isAlive: Boolean get() = true
             override val scope: CoroutineScope get() = this@WordRowsBinderTest.scope
             override val ttsAlertTarget: TtsAlertTarget get() = TtsAlertTarget.InActivity(activity)
-            override fun onWordTapped(row: RowState, explanation: String?) {
+            override fun onWordTapped(row: RowState, explanation: Explanation?) {
                 tapped += row.displayWord
                 tappedExplanations += explanation
             }
@@ -783,7 +784,7 @@ class WordRowsBinderTest {
     fun `a row tap hands the host the answer standing in the row, and nothing in any other state`() {
         giveLlm()
         binder.render(settledIn(sentence))
-        fun tapRow(word: String): String? {
+        fun tapRow(word: String): Explanation? {
             tapOn(word, DefAction.OPEN)
             assertEquals(word, tapped.last())
             return tappedExplanations.last()
@@ -793,7 +794,9 @@ class WordRowsBinderTest {
         tapOn("猫", DefAction.EXPLAIN)
         assertNull("a question still out", tapRow("猫"))
         answer("  the cat's ")
-        assertEquals("the cat's", tapRow("猫"))
+        // The whole answer, its text trimmed and who gave it, as the word's
+        // page draws it again.
+        assertEquals(Explanation("the cat's", "Test LLM"), tapRow("猫"))
         assertNull("its neighbour's row has none", tapRow("魚"))
 
         tapOn("魚", DefAction.EXPLAIN)
@@ -1187,7 +1190,7 @@ class WordRowsBinderTest {
                 override val isAlive: Boolean get() = true
                 override val scope: CoroutineScope get() = this@WordRowsBinderTest.scope
                 override val ttsAlertTarget: TtsAlertTarget get() = TtsAlertTarget.InActivity(activity)
-                override fun onWordTapped(row: RowState, explanation: String?) {}
+                override fun onWordTapped(row: RowState, explanation: Explanation?) {}
                 override fun onAskNeedsLlm() {}
             },
         )
