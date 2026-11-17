@@ -53,6 +53,7 @@ import com.playtranslate.ui.WorkspaceHost
 import com.playtranslate.ui.WorkspacePage
 import com.playtranslate.ui.SonarPingIntroView
 import com.playtranslate.ui.TextBox
+import com.playtranslate.ui.twoScreenMode
 import com.playtranslate.ui.TranslationErrorPills
 import com.playtranslate.ui.TranslationOverlayView
 import com.playtranslate.ui.TranslationServicesActivity
@@ -1063,7 +1064,8 @@ class OverlayUiController(
      *  game display gets a window of its own ([CaptureOverlayWindow]: the
      *  layer and the mode pill). Deliberately NOT in
      *  [translationOverlayHandles]: live cycles must never adopt or replace
-     *  it, and its teardown must notify the app so its row refreshes. */
+     *  it, and its teardown must notify the app so its Show on screen
+     *  refreshes. */
     private var captureWindow: CaptureOverlayWindow? = null
     private var captureWindowDisplayId = -1
     private var captureWindowWm: WindowManager? = null
@@ -1117,8 +1119,9 @@ class OverlayUiController(
     private var captureWindowOnDismissed: (() -> Unit)? = null
 
     /** The showing window's mode-changed notification
-     *  ([switchCaptureWindowMode]): the page shows the window's mode in its
-     *  row and re-reads it from [capturePresentationMode] on this poke. */
+     *  ([switchCaptureWindowMode]): the page re-reads the window's mode from
+     *  [capturePresentationMode] on this poke (its Show on screen, and the
+     *  deferred translation chips in Translations need). */
     private var captureWindowOnModeChanged: (() -> Unit)? = null
 
     /** Whether the capture's window is owned (shown): THE truth the results
@@ -1134,10 +1137,12 @@ class OverlayUiController(
 
     /**
      * Present a capture's [data] (read in [sourceLangId]) over [displayId]
-     * for the app's results page, in the capture's overlay mode, or in
-     * [modeOverride] when the capture asked for one (tap-to-lookup's
-     * Definitions), which is never written to the setting. Nothing is
-     * created in None, nothing when the mode has nothing to draw from the
+     * for the app's results page, in [modeOverride] when the capture asked
+     * for one (tap-to-lookup's Definitions), which is never written to the
+     * setting, else in the capture's overlay mode as two screens read it
+     * ([twoScreenMode]: a remembered None reads as auto-translate's mode,
+     * Show on screen being what keeps the overlay off there). Nothing is
+     * created for an override of None, nothing when the mode has nothing to draw from the
      * data (translations whose every box came back blank), nothing for a
      * capture read in a language other than the game's now
      * ([CaptureTakeover.LANGUAGE_CHANGE]), and nothing for one whose frame
@@ -1145,8 +1150,8 @@ class OverlayUiController(
      * ([OneShotOverlayData.frameGeometry]). With [captureId] the page puts up
      * the capture of that id as it lands ([beginAppCapture]), and nothing
      * when something has taken the game screen since it started
-     * ([endCaptures]); without, the user asked (the page's row), and nothing
-     * is checked. The game screen
+     * ([endCaptures]); without, the user asked (the page's Show on screen),
+     * and nothing is checked. The game screen
      * is the capture's now: a running auto-translate stops first, as a
      * capture stops it; the paint is never refused for it and no pref is
      * written. [screenshotPath] and [capturedAtMs] are the frame the
@@ -1169,14 +1174,14 @@ class OverlayUiController(
     ): Boolean {
         val prefs = Prefs(context)
         // The page keeps a result through a change of the game language,
-        // which ended its window; a pick on its row would otherwise put it
+        // which ended its window; its Show on screen would otherwise put it
         // back up, with cards that look its words up in the new language.
         if (sourceLangId != null && sourceLangId != prefs.sourceLangId) return false
         // The display turned or changed size since the frame was asked for:
         // its boxes may belong to the old layout and would sit over other
         // text (in Definitions a tap would open another word), whether the
-        // capture lands after the turn or the page's row asks again after the
-        // turn took its window down (dropReconfiguredCaptureWindow). The
+        // capture lands after the turn or the page's Show on screen asks again
+        // after the turn took its window down (dropReconfiguredCaptureWindow). The
         // result stays on the page, and the display turning back lets it up.
         val frameGeometry = data.frameGeometry
         if (frameGeometry != null && frameGeometry != context.displayGeometryOf(displayId)) return false
@@ -1191,7 +1196,9 @@ class OverlayUiController(
         // A sheet from a one-screen capture (the app came to the front on a
         // second screen since): the app's page is the panel now.
         endCaptures(CaptureTakeover.APP_CAPTURE)
-        val mode = modeOverride ?: prefs.overlayModeFor(OverlaySurface.CAPTURE)
+        val mode = twoScreenMode(
+            modeOverride, prefs.overlayModeFor(OverlaySurface.CAPTURE), prefs.overlayModeFor(OverlaySurface.LIVE),
+        )
         if (mode == OverlayMode.NONE) return false
         CaptureService.instance?.let { svc ->
             if (svc.isLive || svc.isLiveStartPending) svc.stopLive()
@@ -1205,6 +1212,7 @@ class OverlayUiController(
             displayCtx, wm, overlayHost, displayId, scope, prefs,
             onDismissRequested = { dismissCapturePresentation() },
             onNothingToShow = { dismissCapturePresentation() },
+            onModePicked = { pickCaptureMode(it) },
         )
         window.bind(data, sourceLangId, mode, screenshotPath, capturedAtMs)
         if (window.showsNothing) {
@@ -1264,21 +1272,30 @@ class OverlayUiController(
         if (window.showsNothing) dismissCapturePresentation()
     }
 
-    /** The results page's row picked [mode]: the pref is written and a
-     *  showing window re-flavors in place ([switchCaptureWindowMode]). With
-     *  no window up only the pref moves; the page presents its own data
-     *  next. */
-    fun setCaptureMode(mode: OverlayMode) {
-        Prefs(context).captureOverlayMode = mode
+    /** The window's mode pill picked [mode]. A mode it paints is written,
+     *  as a pick on the one-screen sheet's pill writes it, and the window
+     *  re-flavors in place ([switchCaptureWindowMode]). None is two screens'
+     *  "nothing over the game", which is Show on screen off: the switch goes
+     *  off, so later captures stay down too, and the window goes; the
+     *  remembered mode stays, the one Show on screen turned back on puts up,
+     *  and the one-screen sheet's own. */
+    private fun pickCaptureMode(mode: OverlayMode) {
+        val prefs = Prefs(context)
+        if (mode == OverlayMode.NONE) {
+            prefs.dualScreenShowOnScreen = false
+            dismissCapturePresentation()
+            return
+        }
+        prefs.captureOverlayMode = mode
         switchCaptureWindowMode(mode)
     }
 
-    /** Re-flavor the showing window to [mode] in place, for the row's pick
-     *  and for tap-to-lookup's switch alike: its key focus follows the mode,
-     *  a mode with nothing to draw (None by definition) takes it down, and
-     *  otherwise the page is told, since its row shows the window's mode and
-     *  a switch it did not make would leave the row on the old one. No-op
-     *  with none up. */
+    /** Re-flavor the showing window to [mode] in place, for the pill's pick
+     *  of a mode it paints and for tap-to-lookup's switch alike: its key
+     *  focus follows the mode, a mode with nothing to draw from the capture
+     *  takes it down, and otherwise the page is told, since a switch it did
+     *  not make can need the deferred translation (chips in Translations).
+     *  No-op with none up. */
     private fun switchCaptureWindowMode(mode: OverlayMode) {
         val window = captureWindow ?: return
         window.setMode(mode)
@@ -3255,7 +3272,10 @@ class OverlayUiController(
             pendingReshow = null
         }
         appCapture?.let { app ->
-            val mode = app.modeOverride ?: Prefs(context).overlayModeFor(OverlaySurface.CAPTURE)
+            val prefs = Prefs(context)
+            val mode = twoScreenMode(
+                app.modeOverride, prefs.overlayModeFor(OverlaySurface.CAPTURE), prefs.overlayModeFor(OverlaySurface.LIVE),
+            )
             if (ends(shown = false, app.displayId, mode)) appCapture = null
         }
         val window = captureWindow

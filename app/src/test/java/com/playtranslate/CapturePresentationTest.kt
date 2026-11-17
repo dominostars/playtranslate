@@ -37,24 +37,31 @@ import java.time.Duration
 /**
  * The capture's presentation on the game display when the app's results
  * page is the panel ([OverlayUiController.presentCapture] and its window,
- * [CaptureOverlayWindow]): nothing in None, the capture's mode otherwise;
- * a fill or a reading build that leaves nothing takes it down; the row's
- * pick re-flavors in place or takes it down; a running auto-translate stops
- * first; the window carries no mode control (the app's row is the control
- * on two screens), and any tap on the game screen hands it back;
- * the dismissed-notification fires once per window. In Definitions (the
- * row's pick, or tap-to-lookup's override of one capture, which writes no
- * setting) the window holds key focus, a tap on a word opens its card and
- * Back closes a card before the window; tap-to-lookup over a window in
- * another mode switches it in place, and over one in Definitions takes it
- * down. A change of the game language takes the window down, and a capture
- * read in a language other than the game's is never put up. A change of the
- * game display's size or rotation takes the window down; an event that keeps
+ * [CaptureOverlayWindow]): the capture's mode, a remembered None reading as
+ * auto-translate's (Show on screen keeps two screens' overlay off, not
+ * None), nothing for a capture that asked for None; a fill or a reading
+ * build that leaves nothing takes it down; a running auto-translate stops
+ * first; the dismissed-notification fires once per window. The window
+ * carries the one-screen sheet's mode pill: it offers the capture's modes
+ * with the window's own marked, a real tap on a segment is the pill's (a
+ * word under it included) and re-flavors the window in place, writing the
+ * pref, None takes it down and turns Show on screen off, the remembered
+ * mode untouched, the X collapses it and the next window opens collapsed;
+ * any other tap on
+ * the game screen hands it back, and a window already replaced switches
+ * and dismisses nothing. In Definitions (the pill's pick, or tap-to-lookup's
+ * override of one capture, which writes no setting) the window holds key
+ * focus, a tap on a word opens its card and Back closes a card before the
+ * window; tap-to-lookup over a window in another mode switches it in place,
+ * the pill marking Definitions, and over one in Definitions takes it down.
+ * A change of the game language takes the window down, and a capture read
+ * in a language other than the game's is never put up. A change of the game
+ * display's size or rotation takes the window down; an event that keeps
  * both leaves it; and a capture whose frame was taken in another layout
- * than the display's now never goes up, as it lands or from the row, while
- * one that recorded no layout goes up as before. A switch of the window's
- * mode in place, the row's or tap-to-lookup's, tells the page; a
- * tap-to-lookup hold that slides into a drag takes the window down.
+ * than the display's now never goes up, as it lands or from the page's Show
+ * on screen, while one that recorded no layout goes up as before. A switch
+ * of the window's mode in place, the pill's or tap-to-lookup's, tells the
+ * page; a tap-to-lookup hold that slides into a drag takes the window down.
  */
 @RunWith(RobolectricTestRunner::class)
 class CapturePresentationTest {
@@ -147,15 +154,99 @@ class CapturePresentationTest {
         return (params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) == 0
     }
 
-    /** A window up in Definitions over [wordData], its words boxed. */
-    private fun definitionsWindow(): CaptureOverlayWindow {
-        assertTrue(present(OverlayMode.TRANSLATION, wordData()))
+    /** A window up in Definitions over [data], its words boxed. */
+    private fun definitionsWindow(data: OneShotOverlayData = wordData()): CaptureOverlayWindow {
+        assertTrue(present(OverlayMode.TRANSLATION, data))
         val w = window()!!
         w.layer.tokenizeLine = words
-        controller.setCaptureMode(OverlayMode.DEFINITIONS)
+        pick(OverlayMode.DEFINITIONS)
         settle()
         assertTrue(w.layer.hasBoxes)
         return w
+    }
+
+    /** The showing window's pill picks [mode], as a tap on its segment does. */
+    private fun pick(mode: OverlayMode) {
+        window()!!.pill.onSelect!!.invoke(mode)
+        idle()
+    }
+
+    private fun descendants(v: android.view.View): List<android.view.View> =
+        if (v is android.view.ViewGroup) listOf(v) + (0 until v.childCount).flatMap { descendants(v.getChildAt(it)) }
+        else listOf(v)
+
+    /** The pill's segments, in order. */
+    private fun segments(w: CaptureOverlayWindow): List<android.widget.TextView> =
+        descendants(w.pill).filterIsInstance<android.widget.TextView>().filter { it.isClickable }
+
+    private fun segment(w: CaptureOverlayWindow, label: String) = segments(w).single { it.text.toString() == label }
+
+    private fun closeButton(w: CaptureOverlayWindow): android.widget.ImageView =
+        descendants(w.pill).filterIsInstance<android.widget.ImageView>()
+            .single { it.contentDescription == ctx.getString(R.string.capture_overlay_pill_collapse_cd) }
+
+    /** What the pill's disc says is selected, as its content description
+     *  names the mode the window paints in. */
+    private fun pillSays(w: CaptureOverlayWindow): String =
+        descendants(w.pill).filterIsInstance<android.widget.ImageView>()
+            .single { it !== closeButton(w) }.contentDescription.toString()
+
+    private fun pillSaying(label: String) = ctx.getString(R.string.capture_overlay_pill_collapsed_cd, label)
+
+    /** [w] as its window lays it out over the display, the pill placed. */
+    private fun laidOut(w: CaptureOverlayWindow): CaptureOverlayWindow {
+        idle()
+        assertTrue("the window is laid out", w.width > 0 && w.height > 0 && w.pill.width > 0)
+        return w
+    }
+
+    /** [r], in [w]'s coordinates, as a rectangle of the 1280x720 frame the
+     *  test data is read from: the window maps the frame onto its size. */
+    private fun frameRectOf(w: CaptureOverlayWindow, r: Rect) = Rect(
+        r.left * 1280 / w.width, r.top * 720 / w.height,
+        r.right * 1280 / w.width, r.bottom * 720 / w.height,
+    )
+
+    /** [v]'s bounds in [w]'s coordinates. */
+    private fun rectIn(w: CaptureOverlayWindow, v: android.view.View): Rect {
+        var x = 0
+        var y = 0
+        var cur = v
+        while (cur !== w) {
+            x += cur.left
+            y += cur.top
+            cur = cur.parent as android.view.View
+        }
+        return Rect(x, y, x + v.width, y + v.height)
+    }
+
+    /** A real tap at the middle of [v], dispatched to the window. */
+    private fun tapOn(w: CaptureOverlayWindow, v: android.view.View) {
+        val r = rectIn(w, v)
+        tapWindow(w, r.exactCenterX(), r.exactCenterY())
+    }
+
+    /** One word, "hello", a box per character across [r] of the frame. */
+    private fun wordDataAt(r: Rect): OneShotOverlayData {
+        val step = r.width() / 5
+        val group = OcrManager.OcrGroup(
+            "hello", r,
+            lines = listOf(
+                OcrManager.LineBox(
+                    "hello", r, groupIndex = 0,
+                    symbols = "hello".mapIndexed { i, ch ->
+                        OcrManager.SymbolBox(ch.toString(), Rect(r.left + i * step, r.top, r.left + (i + 1) * step, r.bottom), i)
+                    },
+                ),
+            ),
+        )
+        return OneShotOverlayData(
+            boxes = listOf(TextBox("hi", r)),
+            cropLeft = 0, cropTop = 0, screenshotW = 1280, screenshotH = 720,
+            cropWidth = 1280, cropHeight = 720,
+            text = listOf(r),
+            groups = listOf(group),
+        )
     }
 
     private fun tapWindow(w: CaptureOverlayWindow, x: Float, y: Float) {
@@ -205,16 +296,30 @@ class CapturePresentationTest {
         return mode
     }
 
-    @Test fun `none puts nothing on the game display`() {
-        assertFalse(present(OverlayMode.NONE))
-        assertFalse(controller.capturePresentationShowing)
-        assertNull(controller.capturePresentationMode)
-        assertEquals(0, dismissals)
+    @Test fun `a remembered None goes up in auto-translate's mode`() {
+        prefs.sourceLang = "ja"
+        assertTrue(present(OverlayMode.NONE))
+        assertEquals(OverlayMode.TRANSLATION, controller.capturePresentationMode)
+        assertEquals("the remembered None is one screen's, left as it is", OverlayMode.NONE, prefs.captureOverlayMode)
+
+        // Auto-translate in the reading hint: the window binds in it at
+        // once (its readings build off the main thread after).
+        prefs.overlayMode = OverlayMode.FURIGANA
+        assertTrue(controller.presentCapture(Display.DEFAULT_DISPLAY, data("hi"), SourceLangId.JA) { dismissals++ })
+        assertEquals(OverlayMode.FURIGANA, controller.capturePresentationMode)
     }
 
-    @Test fun `none leaves a running auto-translate alone`() {
+    @Test fun `a capture that asked for None puts nothing up and leaves a running auto-translate alone`() {
         val live = running(OverlayFlavor.TRANSLATION)
-        assertFalse(present(OverlayMode.NONE))
+        prefs.captureOverlayMode = OverlayMode.TRANSLATION
+        assertFalse(
+            controller.presentCapture(
+                Display.DEFAULT_DISPLAY, data("hi"), SourceLangId.JA, modeOverride = OverlayMode.NONE,
+            ) { dismissals++ },
+        )
+        idle()
+        assertFalse(controller.capturePresentationShowing)
+        assertNull(controller.capturePresentationMode)
         assertEquals("nothing took the game screen, so nothing stopped", 0, live.stops)
         assertTrue(service!!.get().isLive)
     }
@@ -239,19 +344,20 @@ class CapturePresentationTest {
         assertEquals(1, dismissals)
     }
 
-    @Test fun `none from the row takes the window down and writes the pref`() {
-        assertTrue(present(OverlayMode.TRANSLATION))
-        controller.setCaptureMode(OverlayMode.NONE)
-        idle()
+    @Test fun `none on the pill takes the window down and turns Show on screen off, the remembered mode untouched`() {
+        prefs.dualScreenShowOnScreen = true
+        assertTrue(present(OverlayMode.FURIGANA))
+        pick(OverlayMode.NONE)
         assertFalse(controller.capturePresentationShowing)
-        assertEquals(OverlayMode.NONE, prefs.captureOverlayMode)
+        assertFalse("later captures stay down", prefs.dualScreenShowOnScreen)
+        assertEquals("the mode Show on screen puts back up", OverlayMode.FURIGANA, prefs.captureOverlayMode)
         assertEquals(1, dismissals)
     }
 
     @Test fun `a reading pick re-flavors in place and keeps the window when readings land`() {
         assertTrue(present(OverlayMode.TRANSLATION))
         window()!!.layer.readingBoxes = { _, _ -> listOf(readingBox) }
-        controller.setCaptureMode(OverlayMode.FURIGANA)
+        pick(OverlayMode.FURIGANA)
         settle()
         assertTrue(controller.capturePresentationShowing)
         assertEquals(OverlayMode.FURIGANA, controller.capturePresentationMode)
@@ -263,16 +369,10 @@ class CapturePresentationTest {
     @Test fun `readings that land empty take the window down`() {
         assertTrue(present(OverlayMode.TRANSLATION))
         window()!!.layer.readingBoxes = { _, _ -> emptyList() }
-        controller.setCaptureMode(OverlayMode.FURIGANA)
+        pick(OverlayMode.FURIGANA)
         settle()
         assertFalse(controller.capturePresentationShowing)
         assertEquals(1, dismissals)
-    }
-
-    @Test fun `a pick with no window up only moves the pref`() {
-        controller.setCaptureMode(OverlayMode.FURIGANA)
-        assertEquals(OverlayMode.FURIGANA, prefs.captureOverlayMode)
-        assertFalse(controller.capturePresentationShowing)
     }
 
     @Test fun `a running auto-translate stops before the capture takes the game screen`() {
@@ -283,24 +383,111 @@ class CapturePresentationTest {
         assertTrue(controller.capturePresentationShowing)
     }
 
-    @Test fun `the window carries no mode control, and a tap where one would sit hands the screen back`() {
+    @Test fun `the window carries the mode pill, offering the capture's modes with the window's own marked`() {
         assertTrue(present(OverlayMode.TRANSLATION))
         val w = window()!!
-        w.measure(
-            android.view.View.MeasureSpec.makeMeasureSpec(1280, android.view.View.MeasureSpec.EXACTLY),
-            android.view.View.MeasureSpec.makeMeasureSpec(720, android.view.View.MeasureSpec.EXACTLY),
-        )
-        w.layout(0, 0, 1280, 720)
-        fun descendants(v: android.view.View): List<android.view.View> =
-            if (v is android.view.ViewGroup) listOf(v) + (0 until v.childCount).flatMap { descendants(v.getChildAt(it)) }
-            else listOf(v)
-        assertTrue("no pill on the game screen", descendants(w).none { it is com.playtranslate.ui.OverlayModePill })
-        // The top-right corner, where the pill sits on one screen.
-        val now = SystemClock.uptimeMillis()
-        w.dispatchTouchEvent(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, 1240f, 30f, 0))
-        idle()
+        assertEquals(android.view.View.VISIBLE, w.pill.visibility)
+        assertEquals(listOf("Translation", "Furigana", "Definitions", "None"), segments(w).map { it.text.toString() })
+        assertEquals(pillSaying("Translation"), pillSays(w))
+        assertFalse("expanded until its X is tapped", w.pill.collapsed)
+    }
+
+    @Test fun `a real tap on a segment re-flavors the window in place and writes the pref, and one off the pill hands the screen back`() {
+        assertTrue(present(OverlayMode.TRANSLATION))
+        val w = laidOut(window()!!)
+        w.layer.readingBoxes = { _, _ -> listOf(readingBox) }
+
+        tapOn(w, segment(w, "Furigana"))
+        settle()
+
+        assertSame("the same window, re-flavored", w, window())
+        assertEquals(OverlayMode.FURIGANA, controller.capturePresentationMode)
+        assertEquals(OverlayMode.FURIGANA, prefs.captureOverlayMode)
+        assertEquals(pillSaying("Furigana"), pillSays(w))
+        assertEquals(1, modeChanges)
+        assertEquals(0, dismissals)
+
+        // Off the pill, under it: the game screen.
+        val pill = rectIn(w, w.pill)
+        tapWindow(w, pill.exactCenterX(), pill.bottom + 40f)
         assertFalse(controller.capturePresentationShowing)
         assertEquals(1, dismissals)
+    }
+
+    @Test fun `the pill sits under the status bar`() {
+        assertTrue(present(OverlayMode.TRANSLATION))
+        val w = window()!!
+        val statusBar = android.view.WindowInsets.Type.statusBars()
+        w.dispatchApplyWindowInsets(
+            android.view.WindowInsets.Builder()
+                .setInsets(statusBar, android.graphics.Insets.of(0, 40, 0, 0))
+                .setVisible(statusBar, true)
+                .build(),
+        )
+        val density = ctx.resources.displayMetrics.density
+        val lp = w.pill.layoutParams as android.widget.FrameLayout.LayoutParams
+        assertEquals(40 + (com.playtranslate.ui.OverlayModePill.TOP_DP * density).toInt(), lp.topMargin)
+        assertEquals((com.playtranslate.ui.OverlayModePill.END_DP * density).toInt(), lp.marginEnd)
+        assertEquals(android.view.Gravity.TOP or android.view.Gravity.END, lp.gravity)
+    }
+
+    @Test fun `the X collapses the pill, and the next window opens collapsed`() {
+        assertTrue(present(OverlayMode.TRANSLATION))
+        val w = laidOut(window()!!)
+
+        tapOn(w, closeButton(w))
+
+        assertTrue(w.pill.collapsed)
+        assertTrue("the one-screen sheet's memory", prefs.captureOverlayPillCollapsed)
+        assertTrue("collapsing it is not a tap on the game", controller.capturePresentationShowing)
+        controller.dismissCapturePresentation()
+        assertTrue(present(OverlayMode.TRANSLATION))
+        assertTrue(window()!!.pill.collapsed)
+    }
+
+    @Test fun `in Definitions a tap on the pill over a word is the pill's`() {
+        // Where the Translation segment sits, measured on a window like the
+        // one the word will be boxed in.
+        assertTrue(present(OverlayMode.TRANSLATION))
+        val probe = laidOut(window()!!)
+        val under = rectIn(probe, segment(probe, "Translation"))
+        val frameRect = frameRectOf(probe, under)
+        controller.dismissCapturePresentation()
+        assertTrue(present(OverlayMode.TRANSLATION, wordDataAt(frameRect)))
+        val w = laidOut(window()!!)
+        w.layer.tokenizeLine = words
+        pick(OverlayMode.DEFINITIONS)
+        settle()
+        assertTrue("a word lies under the segment", w.layer.wordAt(under.exactCenterX(), under.exactCenterY()))
+
+        tapOn(w, segment(w, "Translation"))
+        idle()
+
+        assertFalse("no card for the word under the pill", w.layer.hasCard)
+        assertEquals(OverlayMode.TRANSLATION, controller.capturePresentationMode)
+        assertTrue(controller.capturePresentationShowing)
+    }
+
+    @Test fun `a window already replaced switches, dismisses and remembers nothing`() {
+        assertTrue(present(OverlayMode.TRANSLATION))
+        val old = window()!!
+        assertTrue(present(OverlayMode.TRANSLATION))
+        val current = window()!!
+        assertEquals("the replacement notified the old one", 1, dismissals)
+
+        // Clicks the old pill posted before it went (a segment, its X), and
+        // a tap still reaching it while its removal lands.
+        old.pill.onSelect!!.invoke(OverlayMode.NONE)
+        closeButton(old).performClick()
+        idle()
+        tapWindow(old, 20f, 400f)
+
+        assertSame(current, window())
+        assertEquals(OverlayMode.TRANSLATION, controller.capturePresentationMode)
+        assertEquals("nothing written", OverlayMode.TRANSLATION, prefs.captureOverlayMode)
+        assertFalse("nor its collapse remembered", prefs.captureOverlayPillCollapsed)
+        assertEquals(1, dismissals)
+        assertEquals(0, modeChanges)
     }
 
     @Test fun `presenting again replaces the window and notifies the old one once`() {
@@ -325,7 +512,7 @@ class CapturePresentationTest {
 
     @Test fun `a capture read in a language other than the game's is not put up`() {
         // The page keeps a result through a change of the game language,
-        // and its row's pick presents it through here.
+        // and its Show on screen presents it through here.
         prefs.sourceLang = "en"
         assertFalse("read in Japanese, the game's English now", present(OverlayMode.TRANSLATION))
         assertFalse(controller.capturePresentationShowing)
@@ -413,7 +600,7 @@ class CapturePresentationTest {
     // ── The layout a capture's frame was taken in ────────────────────────
 
     /** [data] put up as a capture of the page's: landing as the capture of
-     *  [captureId], or with none, as the page's row asks. */
+     *  [captureId], or with none, as the page's Show on screen asks. */
     private fun presentAs(data: OneShotOverlayData, captureId: Long? = null): Boolean {
         prefs.captureOverlayMode = OverlayMode.TRANSLATION
         val shown = controller.presentCapture(
@@ -424,23 +611,23 @@ class CapturePresentationTest {
         return shown
     }
 
-    @Test fun `a capture whose frame was taken before a turn stays off the game, as it lands or from the row`() {
+    @Test fun `a capture whose frame was taken before a turn stays off the game, as it lands or from Show on screen`() {
         val taken = data("hi").copy(frameGeometry = geometry())
         val id = controller.beginAppCapture(Display.DEFAULT_DISPLAY, null)
         reconfigure("+land")
         assertNotEquals(taken.frameGeometry, geometry())
 
         assertFalse("landing after the turn", presentAs(taken, id))
-        assertFalse("the row asking after it", presentAs(taken))
+        assertFalse("Show on screen asking after it", presentAs(taken))
         assertFalse(controller.capturePresentationShowing)
         assertEquals(0, dismissals)
     }
 
-    @Test fun `a capture taken in the layout the display has goes up, as it lands or from the row`() {
+    @Test fun `a capture taken in the layout the display has goes up, as it lands or from Show on screen`() {
         val taken = data("hi").copy(frameGeometry = geometry())
         assertTrue("landing", presentAs(taken, controller.beginAppCapture(Display.DEFAULT_DISPLAY, null)))
         controller.dismissCapturePresentation()
-        assertTrue("the row asking", presentAs(taken))
+        assertTrue("Show on screen asking", presentAs(taken))
     }
 
     @Test fun `a frame whose layout nothing recorded goes up after a turn as before`() {
@@ -448,7 +635,7 @@ class CapturePresentationTest {
         assertTrue(presentAs(data("hi")))
     }
 
-    @Test fun `after a flip took the window down, the row's pick leaves it down until the display flips back`() {
+    @Test fun `after a flip took the window down, Show on screen leaves it down until the display flips back`() {
         val taken = data("hi").copy(frameGeometry = geometry())
         assertTrue(presentAs(taken))
         val display = ctx.getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
@@ -481,6 +668,7 @@ class CapturePresentationTest {
 
         assertSame(w, window())
         assertEquals(OverlayMode.DEFINITIONS, controller.capturePresentationMode)
+        assertEquals("the pill marks it", pillSaying("Definitions"), pillSays(w))
         assertTrue(w.layer.hasBoxes)
         assertTrue(windowFocusable())
         assertEquals(OverlayMode.TRANSLATION, prefs.captureOverlayMode)
@@ -491,8 +679,7 @@ class CapturePresentationTest {
         definitionsWindow()
         assertTrue(windowFocusable())
 
-        controller.setCaptureMode(OverlayMode.TRANSLATION)
-        idle()
+        pick(OverlayMode.TRANSLATION)
 
         assertTrue(controller.capturePresentationShowing)
         assertFalse(windowFocusable())
@@ -560,7 +747,7 @@ class CapturePresentationTest {
         controller.endCaptures(CaptureTakeover.HOLD_PREVIEW, setOf(Display.DEFAULT_DISPLAY))
         assertTrue("a Translations window stands under the preview", controller.capturePresentationShowing)
 
-        controller.setCaptureMode(OverlayMode.DEFINITIONS)
+        pick(OverlayMode.DEFINITIONS)
         settle()
         controller.endCaptures(CaptureTakeover.HOLD_PREVIEW, setOf(Display.DEFAULT_DISPLAY + 7))
         assertTrue("a preview on another display leaves it up", controller.capturePresentationShowing)
@@ -604,9 +791,9 @@ class CapturePresentationTest {
         assertEquals(1, dismissals)
     }
 
-    @Test fun `tap-to-lookup's switch in place tells the page the mode changed, as the row's pick does`() {
-        // The page's row shows the window's mode; tap-to-lookup switches it
-        // without the page.
+    @Test fun `tap-to-lookup's switch in place tells the page the mode changed, as the pill's pick does`() {
+        // The page reads the window's mode (Translations need the deferred
+        // translation); tap-to-lookup switches it without the page.
         assertTrue(present(OverlayMode.TRANSLATION, wordData()))
         window()!!.layer.tokenizeLine = words
 
@@ -616,10 +803,10 @@ class CapturePresentationTest {
         assertEquals(1, modeChanges)
         assertEquals(0, dismissals)
 
-        controller.setCaptureMode(OverlayMode.TRANSLATION)
+        pick(OverlayMode.TRANSLATION)
         assertEquals("one path for both", 2, modeChanges)
 
-        controller.setCaptureMode(OverlayMode.NONE)
+        pick(OverlayMode.NONE)
         assertEquals(1, dismissals)
         assertEquals("a switch that takes it down is the dismissal", 2, modeChanges)
     }

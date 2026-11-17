@@ -13,6 +13,7 @@ import android.widget.LinearLayout
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import com.playtranslate.OverlayMode
 import com.playtranslate.R
+import com.playtranslate.language.HintTextKind
 import com.playtranslate.themeColor
 import kotlin.math.roundToInt
 
@@ -21,9 +22,11 @@ import kotlin.math.roundToInt
  * a capture holds it: expanded, a bar of the segments of every mode the
  * capture offers ([buildPillToggle]) with an X at the end; collapsed by that
  * X, a disc with the selected mode's glyph that a tap expands again. It is
- * panel chrome that floats because the over-game panel parks itself out of
- * reach, so it lives in the host's root above the panel; the host routes
- * touches inside its bounds to it and places it under the status bar.
+ * panel chrome that floats over the game: the one-screen sheet hosts it in
+ * its root above the panel, which parks itself out of reach, and on two
+ * screens the game display's window hosts it above the boxes, the app's
+ * results page being the panel there. A host routes touches inside its
+ * bounds to it and pins it where [hostLayoutParams] and [placeUnder] say.
  *
  * Both states are one capsule, a pill at every width, which this view
  * draws and clips its content to. The bar is measured whole in either
@@ -110,6 +113,22 @@ internal class OverlayModePill(context: Context) : FrameLayout(context) {
             visibility = View.VISIBLE
             applyReveal()
         }
+    }
+
+    /** [render] with each of [modes] under its name for a source language
+     *  whose reading hint is [hint]: the one way every host names them. */
+    fun renderModes(modes: List<OverlayMode>, hint: HintTextKind, selected: OverlayMode, collapsed: Boolean) =
+        render(modes.map { context.getString(it.labelRes(hint)) to it }, selected, collapsed)
+
+    /** Keep the pill [TOP_DP] under [topInsetPx], the top the host's
+     *  content keeps clear (the status bar or a cutout), from its insets
+     *  listener. Laid out by [hostLayoutParams]. */
+    fun placeUnder(topInsetPx: Int) {
+        val lp = layoutParams as? MarginLayoutParams ?: return
+        val top = topInsetPx + (TOP_DP * dp).toInt()
+        if (lp.topMargin == top) return
+        lp.topMargin = top
+        requestLayout()
     }
 
     /** The user's tap on the X (collapse) or on the disc: report it and
@@ -244,6 +263,11 @@ internal class OverlayModePill(context: Context) : FrameLayout(context) {
     }
 
     companion object {
+        /** Where a host pins the pill: this far under the top its content
+         *  keeps clear ([placeUnder]) and from the end edge. */
+        const val TOP_DP = 12
+        const val END_DP = 16
+
         /** The capsule's buffer around the track and the X, the same on
          *  every side. */
         const val INSET_DP = 4
@@ -256,6 +280,18 @@ internal class OverlayModePill(context: Context) : FrameLayout(context) {
         /** Where along the morph the glyph has faded out and the bar starts
          *  to fade in. */
         private const val FADE_SPLIT = 0.4f
+
+        /** The pill's place in a host's full-screen root: at the top end,
+         *  [TOP_DP] down until the insets arrive ([placeUnder]). */
+        fun hostLayoutParams(context: Context): FrameLayout.LayoutParams {
+            val density = context.resources.displayMetrics.density
+            return FrameLayout.LayoutParams(
+                LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END,
+            ).apply {
+                topMargin = (TOP_DP * density).toInt()
+                marginEnd = (END_DP * density).toInt()
+            }
+        }
 
         fun glyphOf(mode: OverlayMode): Int = when (mode) {
             OverlayMode.TRANSLATION -> R.drawable.ic_translate

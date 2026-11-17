@@ -31,11 +31,11 @@ internal enum class OnScreenStep {
  * replays it as the capture it already was. Boxes of another capture are
  * that capture arriving, whatever the page rendered in between: it replaces
  * whatever is up, by going up itself where the game display is another
- * screen ([showsOnScreen]) in a mode that paints something, else by taking
- * the old one down. Its mode is the one it asked for itself
- * ([OnScreenBoxes.modeOverride], tap-to-lookup's Definitions), else the
- * remembered one ([rememberedMode]). Whether the game screen is still the
- * capture's is the controller's to say when it goes up
+ * screen ([showsOnScreen]) when it goes up as it lands ([goesUpAsItLands]:
+ * a mode it asked for itself, or Show on screen on, [showOnScreen]), else
+ * by taking the old one down. Its mode is [twoScreenMode]'s, which the
+ * controller reads as it puts it up; whether the game screen is still the
+ * capture's is the controller's to say then too
  * ([com.playtranslate.OverlayUiController.presentCapture], by
  * [OnScreenBoxes.captureId]).
  */
@@ -44,13 +44,36 @@ internal fun onScreenStep(
     next: OnScreenBoxes?,
     shownNow: Boolean,
     showsOnScreen: Boolean,
-    rememberedMode: OverlayMode,
+    showOnScreen: Boolean,
 ): OnScreenStep = when {
     next == null -> OnScreenStep.HIDE
     isSameCapture(previous, next) -> if (shownNow) OnScreenStep.FILL else OnScreenStep.NONE
-    showsOnScreen && (next.modeOverride ?: rememberedMode) != OverlayMode.NONE -> OnScreenStep.PRESENT
+    showsOnScreen && goesUpAsItLands(next.modeOverride, showOnScreen) -> OnScreenStep.PRESENT
     else -> OnScreenStep.HIDE
 }
+
+/**
+ * Whether a capture's overlay goes up on the game display of two screens by
+ * itself as the capture lands: when the capture asked for a mode of its own
+ * ([override], tap-to-lookup's Definitions, which shows its word boxes
+ * whatever Show on screen says; None asks for nothing), else when Show on
+ * screen is on ([showOnScreen], [com.playtranslate.Prefs.dualScreenShowOnScreen]).
+ */
+internal fun goesUpAsItLands(override: OverlayMode?, showOnScreen: Boolean): Boolean =
+    override != OverlayMode.NONE && (override != null || showOnScreen)
+
+/**
+ * The mode a capture's overlay paints in on the game display of two
+ * screens: the one the capture asked for itself ([override]), else the
+ * remembered one ([remembered]), else, for a remembered None,
+ * auto-translate's ([autoTranslateMode], Translation or the reading hint),
+ * the mode the old boxes switch's "on" meant. On two screens None is not a
+ * mode the overlay can be in: Show on screen is what keeps it off, and
+ * None in its pill turns that off. A remembered None comes from one screen,
+ * where it paints nothing beside the sheet, and is left for it.
+ */
+internal fun twoScreenMode(override: OverlayMode?, remembered: OverlayMode, autoTranslateMode: OverlayMode): OverlayMode =
+    override ?: remembered.takeUnless { it == OverlayMode.NONE } ?: autoTranslateMode
 
 /**
  * Whether [next] is more of the capture whose boxes the page rendered last
@@ -69,12 +92,15 @@ internal fun isSameCapture(previous: OnScreenBoxes?, next: OnScreenBoxes): Boole
     previous != null && previous.captureId == next.captureId
 
 /**
- * Whether the results page shows its capture-mode row (two screens): only
- * with a capture's result on the page, whose boxes ([boxes]) are what the
- * row puts on the game display, and only where the game display is another
- * screen ([showsOnScreen]). Not before a capture, not while one is being
- * read (its status carries no boxes), and not over a result without boxes
- * (live mode's, an edit's).
+ * Whether the results page offers Show on screen for a capture (two
+ * screens): only with a capture's result on the page, whose boxes
+ * ([boxes]) are what it puts on the game display, only where the game
+ * display is another screen ([showsOnScreen]), and not while auto-translate
+ * runs ([liveRunning]), which owns the game screen: putting a capture up
+ * would stop it. Not before a capture, not while one is being read (its
+ * status carries no boxes), and not over a result without boxes (live
+ * mode's, an edit's). Auto-translate's own meaning of the button (the
+ * hide-game-overlays setting) is the page's other branch.
  */
-internal fun showsCaptureModeRow(showsOnScreen: Boolean, boxes: OnScreenBoxes?): Boolean =
-    showsOnScreen && boxes != null
+internal fun offersShowOnScreen(showsOnScreen: Boolean, boxes: OnScreenBoxes?, liveRunning: Boolean): Boolean =
+    showsOnScreen && boxes != null && !liveRunning

@@ -435,10 +435,5 @@ internal class CaptureOverlayLayer(
         /** The modes every layer paints; Definitions joins with a [LookupHost]. */
         val SUPPORTED_MODES: Set<OverlayMode> =
             setOf(OverlayMode.TRANSLATION, OverlayMode.FURIGANA, OverlayMode.NONE)
-
-        /** The modes a layer with a [LookupHost] paints: the game-display
-         *  hosts (the sheet, the dual-screen window), so what their controls
-         *  offer. */
-        val HOSTED_MODES: Set<OverlayMode> = SUPPORTED_MODES + OverlayMode.DEFINITIONS
     }
 }

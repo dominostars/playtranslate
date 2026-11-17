@@ -58,8 +58,8 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
 
     /** The on-screen boxes of the state the results page last rendered (two
      *  screens): what a capture's arrival is read against
-     *  ([onScreenStep]), and what the page's mode row shows and
-     *  its picks put up. Held here, not in the page, so a page recreated
+     *  ([onScreenStep]), and what the page's Show on screen puts back up.
+     *  Held here, not in the page, so a page recreated
      *  over the same result (a theme, dark-mode or locale change recreates
      *  the activity, and this model outlives it) replays it as the capture
      *  it already was and puts nothing back up on the game display. */
@@ -456,7 +456,7 @@ data class OnScreenBoxes(
     /** The capture these boxes are from, as it started on the game display
      *  ([com.playtranslate.OverlayUiController.beginAppCapture]): put up as
      *  it lands, they go up only while the game screen is still its own.
-     *  Null for boxes the user asks to see (the page's row). */
+     *  Null for boxes the user asks to see (the page's Show on screen). */
     val captureId: Long? = null,
 )
 

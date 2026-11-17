@@ -76,6 +76,8 @@ import com.playtranslate.ask.Explanation
 import com.playtranslate.ui.AccessibilityHelp
 import com.playtranslate.ui.AppReadiness
 import com.playtranslate.ui.sentenceTranslationBackend
+import com.playtranslate.ui.goesUpAsItLands
+import com.playtranslate.ui.twoScreenMode
 import com.playtranslate.ui.HomeAction
 import com.playtranslate.ui.Tab
 import com.playtranslate.ui.decideHome
@@ -578,11 +580,6 @@ class MainActivity :
     override fun captureModeOnScreen(): OverlayMode? =
         CaptureBackendResolver.activeOverlayUi?.capturePresentationMode
 
-    override fun setCaptureModeOnScreen(mode: OverlayMode) {
-        val ui = CaptureBackendResolver.activeOverlayUi
-        if (ui != null) ui.setCaptureMode(mode) else prefs.captureOverlayMode = mode
-    }
-
     override fun liveShowOnScreenState(): Boolean? {
         if (!isLiveMode) return null
         // Mirror the Settings row's own gating: the hide-overlays toggle only
@@ -1007,7 +1004,10 @@ class MainActivity :
         // Let a running live session adapt if the viewport predicate flipped.
         // No-op if live mode isn't active.
         CaptureService.instance?.onMultiWindowChanged()
-        // The same predicate gates the "show on screen" toggle's availability.
+        // The same predicate gates the "show on screen" toggle's availability:
+        // on one screen there is no game display apart from this page, so a
+        // capture's window still up goes with the toggle that controls it.
+        if (!supportsShowOnScreen()) hideResultBoxesOnScreen()
         resultFragment?.refreshShowOnScreen()
     }
 
@@ -1829,13 +1829,20 @@ class MainActivity :
         val svc = captureService ?: return
         oneShotCaptureDisplayId = displayId ?: svc.primaryGameDisplayId()
         oneShotModeOverride = modeOverride
-        // Translation chips go up on the game display as the capture lands
-        // (two screens), so they must have their text; in any other overlay
-        // mode a hidden translation section can defer the backend call, and
-        // a later switch to Translations completes it through the page's
+        // Translation chips that go up on the game display as the capture
+        // lands (two screens, with Show on screen on or a mode the capture
+        // asked for) must have their text; otherwise a hidden translation
+        // section can defer the backend call, and a later Show on screen or
+        // switch to Translations completes it through the page's
         // deferred-completion funnel.
-        val mode = modeOverride ?: prefs.overlayModeFor(OverlaySurface.CAPTURE)
-        val allowDefer = mode != OverlayMode.TRANSLATION
+        val landsInChips = supportsShowOnScreen() &&
+            goesUpAsItLands(modeOverride, prefs.dualScreenShowOnScreen) &&
+            twoScreenMode(
+                modeOverride,
+                prefs.overlayModeFor(OverlaySurface.CAPTURE),
+                prefs.overlayModeFor(OverlaySurface.LIVE),
+            ) == OverlayMode.TRANSLATION
+        val allowDefer = !landsInChips
         followCapture(
             svc,
             if (displayId != null) svc.captureOnce(displayId, allowDeferTranslation = allowDefer)

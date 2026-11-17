@@ -1264,6 +1264,15 @@ class Prefs internal constructor(
         get() = sp.getBoolean(KEY_CAPTURE_OVERLAY_PILL_COLLAPSED, false)
         set(v) = sp.edit { putBoolean(KEY_CAPTURE_OVERLAY_PILL_COLLAPSED, v) }
 
+    /** Two screens: whether a capture's overlay goes up on the game display
+     *  as the capture lands (the results page's Show on screen, which turns
+     *  it on and off; None on the game display's pill turns it off). Off
+     *  until the user turns it on. One screen has no such switch: there the
+     *  sheet is the result, and None in its pill is what paints nothing. */
+    var dualScreenShowOnScreen: Boolean
+        get() = sp.getBoolean(KEY_DUAL_SCREEN_SHOW_ON_SCREEN, false)
+        set(v) = sp.edit { putBoolean(KEY_DUAL_SCREEN_SHOW_ON_SCREEN, v) }
+
     // ── Capture-result presentation (two independent axes per flow) ────────
     // "Boxes" (on-frame overlays) and the panel's start posture are separate
     // switches, both per-flow: the over-game capture and the camera snapshot
@@ -2324,6 +2333,8 @@ class Prefs internal constructor(
         private const val KEY_CAMERA_OVERLAY_MODE        = "camera_overlay_mode"
         private const val KEY_IMPORT_OVERLAY_MODE        = "import_overlay_mode"
         private const val KEY_CAPTURE_OVERLAY_PILL_COLLAPSED = "capture_overlay_pill_collapsed"
+        /** Public so the results page can observe its Show on screen. */
+        const val KEY_DUAL_SCREEN_SHOW_ON_SCREEN         = "dual_screen_show_on_screen"
         /** The capture's boxes switch before it became a value of [KEY_CAPTURE_OVERLAY_MODE]. */
         private const val LEGACY_CAPTURE_BOXES_KEY        = "capture_boxes_enabled"
         private const val KEY_SETTINGS_SCROLL_Y        = "settings_scroll_y"

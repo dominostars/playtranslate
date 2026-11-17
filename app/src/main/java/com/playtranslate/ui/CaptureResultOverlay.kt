@@ -859,13 +859,7 @@ class CaptureResultOverlay(
         // included, at the top edge where neither the panel nor a
         // bottom-anchored dialogue reaches. The status-bar inset is added
         // when the insets arrive.
-        root.addView(
-            modePill,
-            FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.END).apply {
-                topMargin = dp(PILL_TOP_DP)
-                marginEnd = dp(PILL_END_DP)
-            },
-        )
+        root.addView(modePill, OverlayModePill.hostLayoutParams(ctx))
         modePill.onSelect = { selectOverlayMode(it) }
         modePill.onCollapsedChanged = { prefs.captureOverlayPillCollapsed = it }
     }
@@ -1080,13 +1074,7 @@ class CaptureResultOverlay(
             val sideRight = clear.right
             val imeLift = clear.imeLift
             // The mode pill sits under the status bar, not behind it.
-            val pillTop = clear.top + dp(PILL_TOP_DP)
-            (modePill.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
-                if (lp.topMargin != pillTop) {
-                    lp.topMargin = pillTop
-                    modePill.requestLayout()
-                }
-            }
+            modePill.placeUnder(clear.top)
             if (navInset != bottomInsetPx || sideLeft != body.paddingLeft || sideRight != body.paddingRight) {
                 bottomInsetPx = navInset
                 body.setPadding(sideLeft, body.paddingTop, sideRight, navInset)
@@ -2062,8 +2050,8 @@ class CaptureResultOverlay(
         } else {
             presentationPrefs.offeredOverlayModes.filter { boxPresenter != null || it in layer.supportedModes }
         }
-        modePill.render(
-            options = offered.map { ctx.getString(it.labelRes(hint)) to it },
+        modePill.renderModes(
+            offered, hint,
             selected = presentationPrefs.overlayMode,
             collapsed = prefs.captureOverlayPillCollapsed,
         )
@@ -3926,9 +3914,6 @@ class CaptureResultOverlay(
         const val SLIVER_DURATION_MS = 220L
         /** Duration of the section fade that rides the sliver transitions. */
         const val SLIVER_FADE_MS = 150L
-        /** The mode pill's inset under the status bar and from the end edge. */
-        const val PILL_TOP_DP = 12
-        const val PILL_END_DP = 16
         /** How far past the sheet's edge the resize grab zone extends. */
         const val EXTRA_GRAB_PAST_EDGE_DP = 26
         /** ...and how far INTO the sheet it reaches below the grabber strip.

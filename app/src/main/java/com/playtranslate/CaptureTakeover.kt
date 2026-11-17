@@ -103,7 +103,8 @@ internal enum class CaptureTakeover(
      *  when its screenshot is in. Two screens' capture needs no row: its
      *  window drops itself on a turn, and a capture is put up only in the
      *  layout its frame was taken in ([OneShotOverlayData.frameGeometry]),
-     *  whether it lands after a turn or the page's row asks again. */
+     *  whether it lands after a turn or the page's Show on screen asks
+     *  again. */
     DISPLAY_TURN(
         debt = CaptureDebt.RESTART, phases = CapturePhases.SHOWN, definitionsOnly = false, endsWindow = false,
     ),
