@@ -182,7 +182,7 @@ PlayTranslate 可以把 **26 种游戏语言**（能从屏幕上读取的文字�
 - **Groq**：[console.groq.com](https://console.groq.com/keys)，可在应用内选择模型
 - **OpenRouter**：[openrouter.ai](https://openrouter.ai/keys)，可在应用内选择模型
 - **Claude**：[platform.claude.com](https://platform.claude.com/settings/keys)，可在应用内选择模型
-- **Bilibili Index-Translate**：[index-translate.bilibili.com](https://index-translate.bilibili.com/)，免费，无需 API 密钥
+- **Bilibili Index-Translate**：[index-translate.bilibili.com](https://github.com/bilibili/Index-Translate)，免费，无需 API 密钥，可能不会长期提供
 - **自定义**：任何其他兼容 OpenAI 的端点，填入你自己的后端 URL 即可
 
 ## 可选：Anki 抽认卡

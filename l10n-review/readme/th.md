@@ -73,3 +73,25 @@ Clean areas: The lead's verb เพิ่ม is the app's (`add_online_service_t
 ### Disposition (2026-10-14)
 
 Applied the 1 💬 (the claim first, then ดูรายละเอียดได้ที่ and the link, in the DeepL line's order).
+
+## Delta review 2026-11-16 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> `[PASS] th -> readme/README.th.md`, one warning: `39 bold spans, English has 38`. This is the warning the 2026-10-08 and 2026-10-14 reviews explained (the extra span is “สแกนแอปด้วย Play Protect” in the "Won't install?" line). The `**` count is unchanged from HEAD on both sides (English 76, Thai 78), so this delta adds no span. **No 🛑 issues.**
+
+No findings. `git diff readme/README.th.md` changes one line, the bullet. The link target is now `https://github.com/bilibili/Index-Translate`, byte-identical to the English, and the link text `index-translate.bilibili.com` is unchanged. The new clause «แต่อาจให้บริการเพียงชั่วคราว» means "but the service may be offered only for a while". That is the English "May be temporary". It hangs on the existing claim with แต่, at a clause boundary, so the space before it is correct. It has no final period, which matches the file's other bullets. «ดูรายละเอียดได้ที่» still fits now that the link goes to the project's GitHub page.
+
+### Disposition (2026-11-16)
+
+No findings; nothing to apply.
+
+### Round 2 (2026-11-16)
+
+Mechanical layer: `readme_l10n_check.py th` -> "[PASS] th -> readme/README.th.md", one warning "39 bold spans, English has 38" (the extra span is “สแกนแอปด้วย Play Protect” in the "Won't install?" line, explained since 2026-10-08).
+
+No findings. `git diff readme/README.th.md` changes one line, the Bilibili Index-Translate bullet, and nothing else.
+- The link target is `https://github.com/bilibili/Index-Translate`, byte-identical to the English README's. The link text `index-translate.bilibili.com` is unchanged, as in English.
+- "May be temporary" is «แต่อาจให้บริการเพียงชั่วคราว», hung on the free claim with แต่. The Thai-to-Thai space before «ดูรายละเอียดได้ที่» marks the sentence boundary. The space after «API» borders Latin, as required.
+- There is no final period, as in the other bullets, and no em dash; the English line has one, but this file's other bullets have none.
+- The bold count is unchanged (Thai 39, English 38, the known extra span).
+
+**PASS.** 🛑 0 / ❌ 0 / ⚠️ 0 / 💬 0.

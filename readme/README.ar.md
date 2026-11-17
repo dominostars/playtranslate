@@ -184,7 +184,7 @@
 - ‏**Groq**: احصل على المفتاح من [console.groq.com](https://console.groq.com/keys)، ثم اختر النموذج داخل التطبيق
 - ‏**OpenRouter**: احصل على المفتاح من [openrouter.ai](https://openrouter.ai/keys)، ثم اختر النموذج داخل التطبيق
 - ‏**Claude**: احصل على المفتاح من [platform.claude.com](https://platform.claude.com/settings/keys)، ثم اختر النموذج داخل التطبيق
-- ‏**Bilibili Index-Translate**: خدمة مجانية لا تحتاج إلى مفتاح API، متاحة على [index-translate.bilibili.com](https://index-translate.bilibili.com/)
+- ‏**Bilibili Index-Translate**: خدمة مجانية لا تحتاج إلى مفتاح API، متاحة على [index-translate.bilibili.com](https://github.com/bilibili/Index-Translate)، وقد تكون مؤقتة
 - **مخصص**: أي خادم آخر متوافق مع واجهة OpenAI، وما عليك إلا إدخال عنوان URL الخاص بخادمك
 
 ## اختياري: بطاقات Anki

@@ -113,3 +113,25 @@ Clean areas: The lead drops the API key as the English does: «vous pouvez ajout
 ### Disposition (2026-10-14)
 
 No findings; nothing to apply.
+
+## Delta review 2026-11-16 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] fr -> readme/README.fr.md`). It gives the two standing warnings "table 1 header cells left in English: ['Code']" and "table 2 header cells left in English: ['Code']", false positives as before: « Code » is French, and the tables are outside this delta. **No 🛑 issues.**
+
+| section | severity | current | suggested | note |
+|---|---|---|---|---|
+| Services de traduction en ligne (facultatif) > Bilibili bullet | 💬 | "- **Bilibili Index-Translate** : [index-translate.bilibili.com](https://github.com/bilibili/Index-Translate), gratuit et sans clé d'API. Ce service pourrait n'être que temporaire." | "- **Bilibili Index-Translate** : [index-translate.bilibili.com](https://github.com/bilibili/Index-Translate), gratuit et sans clé d'API. Ce service pourrait n'être que temporaire." | The two cells look identical. The space before this bullet's colon is U+0020; its seven siblings (DeepL to Personnalisé) and the rest of the file's prose use U+00A0, so a wrap can leave the colon at the start of a line. The suggested text has U+00A0 there. This predates this delta (the line at `HEAD` has the same plain space), and the 2026-10-14 review did not raise it. |
+
+Clean areas: `git diff readme/README.fr.md` changes this one line and nothing else. The URL is byte-identical to the English `https://github.com/bilibili/Index-Translate`, and the link text `index-translate.bilibili.com` is unchanged, as in English. « Ce service pourrait n'être que temporaire. » is idiomatic and carries "May be temporary" as a possibility, as the English means it (the free service may not stay available). Naming the service as subject is how a French sentence says it after the comma-led « gratuit et sans clé d'API ». The final period is right for a full sentence, where the English fragment has none. The apostrophe is straight, as in the rest of the file. The brand stays in Latin script, and the line still follows « Claude » and comes before « Personnalisé », as in English.
+
+Source-side note: the English bullet ends "free, no API key needed. May be temporary" with no final period after the second sentence. This is cosmetic, and the French is right to end with one.
+
+### Disposition (2026-11-16)
+
+The one 💬 applied: the Bilibili bullet now has the no-break space before its colon, like its sibling bullets. Checker: PASS.
+
+### Round 2 (2026-11-16)
+
+Checker: `readme_l10n_check.py fr` -> `[PASS] fr -> readme/README.fr.md`, with the two standing warnings "table 1 header cells left in English: ['Code']" and "table 2 header cells left in English: ['Code']". They are false positives: « Code » is French.
+
+No findings. `git diff readme/README.fr.md` changes one line, the Bilibili bullet, and nothing else. The URL is byte-identical to the English `https://github.com/bilibili/Index-Translate`, the link text `index-translate.bilibili.com` is unchanged, and the round-1 fix landed: U+00A0 before the colon, as in its seven siblings (DeepL to Claude) and in « Personnalisé ». « Ce service pourrait n'être que temporaire. » carries "May be temporary" as a possibility. It uses a straight apostrophe, like the rest of the file, and the bullet still sits between Claude and Personnalisé.

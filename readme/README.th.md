@@ -182,7 +182,7 @@ PlayTranslate แปลจาก **ภาษาของเกม 26 ภาษ�
 - **Groq**: รับคีย์ได้ที่ [console.groq.com](https://console.groq.com/keys) และเลือกโมเดลได้ในแอป
 - **OpenRouter**: รับคีย์ได้ที่ [openrouter.ai](https://openrouter.ai/keys) และเลือกโมเดลได้ในแอป
 - **Claude**: รับคีย์ได้ที่ [platform.claude.com](https://platform.claude.com/settings/keys) และเลือกโมเดลได้ในแอป
-- **Bilibili Index-Translate**: ใช้ได้ฟรีโดยไม่ต้องมีคีย์ API ดูรายละเอียดได้ที่ [index-translate.bilibili.com](https://index-translate.bilibili.com/)
+- **Bilibili Index-Translate**: ใช้ได้ฟรีโดยไม่ต้องมีคีย์ API แต่อาจให้บริการเพียงชั่วคราว ดูรายละเอียดได้ที่ [index-translate.bilibili.com](https://github.com/bilibili/Index-Translate)
 - **กำหนดเอง**: เซิร์ฟเวอร์อื่นใดก็ได้ที่เข้ากันได้กับ OpenAI โดยป้อน URL เซิร์ฟเวอร์ของคุณในช่อง “URL ที่กำหนดเอง”
 
 ## แฟลชการ์ด Anki (ไม่บังคับ)

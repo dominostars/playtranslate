@@ -127,6 +127,8 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="word_detail_no_definitions">Tanım bulunamadı.</string>
+    <string name="definitions_need_webview">Tanımlar için Android System WebView gerekir.</string>
+    <string name="dictionary_title_builtin">Yerleşik</string>
 
     <string name="word_detail_more_examples">Daha fazla örnek</string>
 
@@ -325,11 +327,31 @@
     <string name="section_translation">Çeviri</string>
 
     <string name="section_words">Sözcükler</string>
+    <string name="section_words_count">Sözcükler · <xliff:g id="count" example="6">%1$d</xliff:g></string>
+    <string name="section_ask">Soru sor</string>
+    <string name="ask_question_hint">Kendi sorunuzu sorun…</string>
+    <string name="cd_ask_send">Soruyu gönder</string>
+    <string name="cd_ask_close">Yanıtı kapat</string>
+    <string name="cd_toggle_ask_visibility">Soru sor bölümünün görünürlüğünü değiştir</string>
+    <string name="ask_status_asking">Soruluyor: <xliff:g id="service_name" example="Gemini">%1$s</xliff:g>…</string>
+    <string name="ask_status_asking_unnamed">Soruluyor…</string>
+    <string name="ask_answered_by"><xliff:g id="service_name" example="Gemini">%1$s</xliff:g> tarafından yanıtlandı</string>
+    <string name="ask_answer_cut">Bu yanıt uzunluk sınırına ulaştığı için kesildi.</string>
+    <string name="ask_spoiler_warning">⚠ Yanıtlar gizli çeviriyi ele verebilir.</string>
+    <string name="ask_out_of_scope"><xliff:g id="service_name" example="PlayTranslate Cloud">%1$s</xliff:g> yalnızca bu cümleyle ilgili soruları (anlamı, dil bilgisi veya sözcükleri gibi) yanıtlar.</string>
+    <string name="ask_failed">Yanıt alınamadı.</string>
+    <string name="ask_retry">Tekrar dene</string>
+    <string name="ask_no_llm_title">Soru sormak için AI modeli gerekir</string>
+    <string name="ask_no_llm_message">Bu cümleyle ilgili sorunuz bir AI modeline gönderilir. Çeviri hizmetleri bölümünde çevrimiçi bir AI hizmeti ekleyin veya cihaz üzerindeki bir modeli açın.</string>
+    <string name="ask_no_llm_open_services">Çeviri hizmetleri</string>
+    <string name="ask_preset_grammar_breakdown">Dil bilgisi çözümlemesi</string>
+    <string name="cd_word_explain">Bu cümledeki kullanımını açıkla</string>
+    <string name="word_explain_title">Bu cümlede</string>
+    <string name="word_explain_ask">Bu sözcüğün nasıl kullanıldığını açıkla</string>
 
     <string name="words_loading">Sözcükler aranıyor…</string>
 
     <string name="lens_loading">Aranıyor…</string>
-    <string name="lens_also_matches">Diğer eşleşme</string>
     <string name="load_more_count">Daha fazla yükle (<xliff:g id="count" example="2">%1$d</xliff:g>)</string>
     <string name="section_other_matches">Diğer eşleşmeler</string>
 
@@ -423,6 +445,7 @@
     <string name="icon_action_swap_pinyin">Çeviri ile pinyin arasında geçiş yap</string>
 
     <string name="icon_action_change_game_language">Oyun dilini değiştir</string>
+    <string name="icon_action_tap_to_lookup">Dokunarak sözcük aramayı etkinleştir</string>
 
     <string name="icon_action_translating_from">Oyun dili: <xliff:g id="language" example="Japanese">%1$s</xliff:g></string>
 
@@ -495,6 +518,7 @@
     <string name="anki_no_deck_selected"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> içinde deste bulunamadı</string>
 
     <string name="anki_added_no_audio"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\'ye eklendi (ses kullanılamıyor)</string>
+    <string name="anki_added_voice_fell_back"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\'ye eklendi (ses hizmeti kullanılamadı, cihazın sesi kullanıldı)</string>
 
     <string name="anki_added_no_screenshot"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\'ye eklendi (ekran görüntüsü kullanılamıyor)</string>
 
@@ -517,6 +541,9 @@
     <string name="anki_card_too_large_simplify">Sadeleştirerek kaydet</string>
 
     <string name="anki_card_too_large_failed">Bu kart, tanımlar sadeleştirilmiş olsa bile <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> uygulamasının kabul edemeyeceği kadar büyük. Birkaç sözcük çıkarmayı veya cümleyi kısaltmayı deneyin.</string>
+    <string name="anki_notes_no_field_title">Notunuz için alan yok</string>
+    <string name="anki_notes_no_field_message">Bu kart türünde Notlar ile eşlenmiş bir alan yok, bu yüzden notunuz karta kaydedilemez. Kart notunuz olmadan kaydedilsin mi?</string>
+    <string name="anki_notes_no_field_save_anyway">Yine de kaydet</string>
 
     <string name="anki_added_simplified"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>\'ye eklendi (tanımlar sığsın diye sadeleştirildi)</string>
 
@@ -545,6 +572,9 @@
     <string name="anki_group_words_count">Karttaki sözcükler · <xliff:g id="words_count" example="3">%d</xliff:g></string>
 
     <string name="anki_group_definitions">Tanımlar</string>
+    <string name="anki_group_notes">Notlar</string>
+    <string name="anki_notes_hint">Bu karta bir not ekleyin</string>
+    <string name="cd_anki_notes_clear">Notu temizle</string>
 
     <string name="anki_group_screenshot">Ekran görüntüsü</string>
 
@@ -687,6 +717,12 @@
 
     <string name="anki_content_frequency_harmonic">Sıklık sıralama numarası</string>
     <string name="anki_content_frequency_harmonic_desc">Kartları sıklığa göre sıralamak için tek bir sayı; sözcüğün sözlük sıklıklarının harmonik ortalaması (düşük = daha sık). <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>\'in “FreqSort” veya <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>\'in “FrequencySort” alanı için.</string>
+    <string name="anki_content_glossary">Tanımlar (<xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g> biçimi)</string>
+    <string name="anki_content_glossary_desc">Vurgulanan sözcüğün tüm sözlüklerdeki tanımları, <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>\'ın yazdığı biçimde. <xliff:g id="brand_yomitan2" example="Yomitan">Yomitan</xliff:g> için hazırlanmış kart türlerine yöneliktir; örneğin <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>\'in “Glossary” alanı.</string>
+    <string name="anki_content_glossary_primary">Ana sözlük (<xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g> biçimi)</string>
+    <string name="anki_content_glossary_primary_desc">Vurgulanan sözcüğü içeren sözlüklerden yalnızca sıralamanızda ilk gelen, <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>\'ın yazdığı biçimde. Yerleşik sözlük en sona gelir. <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>\'in “MainDefinition” alanı için.</string>
+    <string name="anki_content_notes">Notlar</string>
+    <string name="anki_content_notes_desc">Kaydetmeden önce karta eklediğiniz not. Not eklemezseniz boş kalır.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          CARD-TYPE STATE FLAGS
@@ -748,6 +784,7 @@
     <string name="deepl_settings_get_key_subtitle">Ücretsiz plan ayda 500.000 karakter içerir, ancak kaydolmak için bir kredi kartı gerektirir</string>
 
     <string name="deepl_settings_about"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g>, özellikle Avrupa dillerinde yüksek kaliteli çıktısıyla bilinen bir çeviri hizmetidir.</string>
+    <string name="pt_cloud_display_name_alpha"><xliff:g id="service" example="PlayTranslate Cloud">PlayTranslate Cloud</xliff:g> (Alfa)</string>
 
     <string name="llm_backend_preset_custom">Özel</string>
 
@@ -793,18 +830,18 @@
     <string name="llm_backend_invalid_key_alert_button">Tamam</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
-         ADVANCED LLM CONFIGURATION
+         ADVANCED AI CONFIGURATION
          ═══════════════════════════════════════════════════════════════ -->
 
-    <string name="settings_header_advanced_llm">Gelişmiş LLM yapılandırması</string>
+    <string name="settings_header_advanced_llm">Gelişmiş AI yapılandırması</string>
 
     <string name="settings_llm_context_title">Son satırları bağlam olarak kullan</string>
 
-    <string name="settings_llm_context_subtitle">Yalnızca çevrimiçi. Zamirlerin ve adların daha tutarlı olması için çevrimiçi LLM çevirmenlerine kaydedilen metnin son birkaç satırını verir.</string>
+    <string name="settings_llm_context_subtitle">Yalnızca çevrimiçi. Zamirlerin ve adların daha tutarlı olması için çevrimiçi AI çevirmenlerine kaydedilen metnin son birkaç satırını verir.</string>
 
     <string name="llm_prompt_row_system_title">Sistem istemi</string>
 
-    <string name="llm_prompt_row_system_subtitle">Bulut ve cihaz üzerindeki LLM çevirmenlerine gönderilen kişilik ve talimatlar.</string>
+    <string name="llm_prompt_row_system_subtitle">Bulut ve cihaz üzerindeki AI çevirmenlerine gönderilen kişilik ve talimatlar.</string>
 
     <string name="llm_prompt_row_translation_title">Çeviri istemi</string>
 
@@ -872,7 +909,7 @@
 
     <string name="add_online_service_title">Çeviri hizmeti ekle</string>
 
-    <string name="service_llm_badge">LLM</string>
+    <string name="service_llm_badge">AI</string>
 
     <string name="service_account_required">Hesap gerekli</string>
 
@@ -1183,6 +1220,10 @@
     <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>: bağlanılamıyor</string>
 
     <string name="translation_error_not_running"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: çalışmıyor</string>
+    <string name="translation_error_trial_ended"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: ücretsiz deneme sona erdi</string>
+    <string name="translation_error_membership_inactive"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: üyelik etkin değil</string>
+    <string name="translation_error_terms_required"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: koşullar kabul edilmedi</string>
+    <string name="translation_error_closed"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: hizmet kapandı</string>
 
     <string name="translation_error_discard_card_title">Kart atılsın mı?</string>
 
@@ -1316,6 +1357,10 @@
     <string name="overlay_mode_option_furigana">Furigana</string>
 
     <string name="overlay_mode_option_pinyin">Pinyin</string>
+    <string name="overlay_mode_option_definitions">Tanımlar</string>
+    <string name="overlay_mode_option_none">Yok</string>
+    <string name="capture_overlay_pill_collapsed_cd">Yer paylaşımları: <xliff:g id="mode" example="Translation">%1$s</xliff:g>. Değiştirmek için dokunun.</string>
+    <string name="capture_overlay_pill_collapse_cd">Yer paylaşımı seçeneklerini gizle</string>
 
     <string name="settings_hide_overlays_during_auto_mode">Otomatik modda yer paylaşımlarını gizle</string>
 
@@ -1597,22 +1642,27 @@
     <string name="settings_pt_cloud_summary_translation_only">Yalnızca çeviri</string>
 
     <string name="settings_pt_cloud_summary_ocr_only">Yalnızca sunucu düzeyinde OCR</string>
+    <string name="settings_pt_cloud_summary_trial">Ücretsiz deneme bitişi: <xliff:g id="end" example="Nov 3">%1$s</xliff:g></string>
+    <string name="settings_pt_cloud_summary_trial_ended">Deneme sona erdi</string>
+    <string name="settings_pt_cloud_summary_inactive">Üyelik etkin değil</string>
+    <string name="settings_pt_cloud_summary_terms_required">Koşullar kabul edilmedi</string>
+    <string name="pt_cloud_headline">Sunucu düzeyinde görüntü işleme ve çeviri</string>
+    <string name="pt_cloud_intro">En doğru metin tanıma ve çeviri modelleri, bir mobil cihazda çalışamayacak kadar ağırdır. <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> bunları bir sunucuda çalıştırır; böylece daha iyi sonuçlar alırsınız ve bu işin hiçbiri cihazınıza kalmaz.</string>
+    <string name="pt_cloud_features_title">Özellikler</string>
 
-    <string name="pt_cloud_ocr_toggle_title">Metin tanıma</string>
+    <string name="pt_cloud_ocr_toggle_title">Güçlü görüntü işleme</string>
 
-    <string name="pt_cloud_ocr_toggle_subtitle">Sunucudaki GPU ile daha güçlü OCR. Cihazınızın tüm gücü oyuna ayrılır.</string>
+    <string name="pt_cloud_ocr_toggle_subtitle">Sunucudaki GPU ile daha güçlü OCR, cihazınızın gücünü kullanmadan.</string>
 
-    <string name="pt_cloud_translate_toggle_title">Metin çevirisi</string>
+    <string name="pt_cloud_translate_toggle_title">Premium çeviriler</string>
 
     <string name="pt_cloud_translate_toggle_subtitle">Ücretli çeviri modelleri dahil; her iş için en iyisi seçilir.</string>
+    <string name="pt_cloud_privacy_features">Ekran görüntüleri ve metinler asla saklanmaz veya satılmaz.</string>
+    <string name="pt_cloud_features_paused_terms">Koşullar kabul edilene kadar duraklatıldı.</string>
 
     <string name="pt_cloud_ocr_row_subtitle">Sunucu düzeyinde OCR, cihazı hiç zorlamaz</string>
 
     <string name="pt_cloud_translate_row_subtitle_no_key">En iyi ücretli çeviri modelleri dahil</string>
-
-    <string name="pt_cloud_key_label">İstemci anahtarı</string>
-
-    <string name="pt_cloud_key_hint">Size verilen anahtarı yapıştırın</string>
 
     <string name="pt_cloud_status_title">Hizmet</string>
 
@@ -1623,12 +1673,72 @@
     <string name="pt_cloud_status_not_running">Çalışmıyor</string>
 
     <string name="pt_cloud_status_unreachable">Bağlanılamıyor</string>
+    <string name="pt_cloud_status_offline">Şu anda çevrimdışı</string>
+    <string name="pt_cloud_status_closed">Kapandı</string>
 
     <string name="pt_cloud_status_other">Beklenmeyen yanıt (<xliff:g id="http_code" example="500">%1$s</xliff:g>)</string>
 
     <string name="pt_cloud_status_checking">Kontrol ediliyor</string>
 
     <string name="pt_cloud_status_unchecked">Kontrol edilmedi</string>
+    <string name="pt_cloud_account_title">Hesap</string>
+    <string name="pt_cloud_email_label">E-posta adresi</string>
+    <string name="pt_cloud_email_hint">adiniz@example.com</string>
+    <string name="pt_cloud_free_trial"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> hizmetini ücretsiz deneyin</string>
+    <plurals name="pt_cloud_code_sent_to">
+        <item quantity="one"><xliff:g id="email" example="you@example.com">%1$s</xliff:g> adresine bir kod gönderdik. Kod <xliff:g id="minutes" example="1">%2$d</xliff:g> dakika geçerlidir.</item>
+        <item quantity="other"><xliff:g id="email" example="you@example.com">%1$s</xliff:g> adresine bir kod gönderdik. Kod <xliff:g id="minutes" example="10">%2$d</xliff:g> dakika geçerlidir.</item>
+    </plurals>
+    <string name="pt_cloud_code_label">Kod</string>
+    <string name="pt_cloud_start_free_trial">Ücretsiz denemeyi başlat</string>
+    <string name="pt_cloud_send_new_code">Yeni kod gönder</string>
+    <string name="pt_cloud_change_email">Başka bir e-posta kullan</string>
+    <string name="pt_cloud_signed_in_with_key">Anahtarla oturum açıldı</string>
+    <string name="pt_cloud_trial_until">Ücretsiz deneme bitişi: <xliff:g id="end" example="Nov 3, 3:42 PM">%1$s</xliff:g></string>
+    <string name="pt_cloud_member_until">Üyelik bitişi: <xliff:g id="end" example="Dec 5, 3:42 PM">%1$s</xliff:g></string>
+    <string name="pt_cloud_member">Üye</string>
+    <string name="pt_cloud_trial_ended_on">Deneme <xliff:g id="date" example="Nov 3">%1$s</xliff:g> tarihinde sona erdi</string>
+    <string name="pt_cloud_trial_ended">Deneme sona erdi</string>
+    <string name="pt_cloud_inactive_since">Üyelik <xliff:g id="date" example="Nov 3">%1$s</xliff:g> tarihinden beri etkin değil</string>
+    <string name="pt_cloud_inactive">Etkin üyelik yok</string>
+    <string name="pt_cloud_terms_required">Koşullar kabul edilmedi</string>
+    <string name="pt_cloud_check_again">Tekrar kontrol et</string>
+    <string name="pt_cloud_join_pending">Zaten üye oldunuz mu? İşlenmesi birkaç saniye sürebilir.</string>
+    <string name="pt_cloud_terms_pending"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> hizmetini kullanmaya devam etmek için koşulları okuyup kabul edin.</string>
+    <string name="pt_cloud_show_terms">Koşulları göster</string>
+    <string name="pt_cloud_join_title"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> üyesi olun</string>
+    <string name="pt_cloud_after_trial_title">Denemeden sonra</string>
+    <string name="pt_cloud_join_nudge_trial">Deneme bittikten sonra da <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> hizmetini kullanmaya devam etmek için bir Ko-fi üyeliği edinin.</string>
+    <string name="pt_cloud_join_title_lapsed"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> ile devam edin</string>
+    <string name="pt_cloud_join_nudge_lapsed">Bu özellikleri yeniden açmak için bir Ko-fi üyeliği edinin.</string>
+    <string name="pt_cloud_join_email_hint">Ödemenin bu hesaba otomatik olarak ulaşması için <xliff:g id="email" example="you@example.com">%1$s</xliff:g> adresiyle abone olun.</string>
+    <string name="pt_cloud_join_email_hint_no_email">Ödemenin bu hesaba otomatik olarak ulaşması için anahtarınızın ait olduğu e-posta adresiyle abone olun.</string>
+    <string name="pt_cloud_sign_out">Oturumu kapat</string>
+    <string name="pt_cloud_sign_out_title"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> oturumu kapatılsın mı?</string>
+    <string name="pt_cloud_sign_out_message">Bu cihaz anahtarını unutur. Hesabınız olduğu gibi kalır ve e-posta adresinizle yeniden oturum açabilirsiniz.</string>
+    <string name="pt_cloud_signin_bad_email">Bu bir e-posta adresine benzemiyor.</string>
+    <string name="pt_cloud_signin_rate_limited">Çok fazla istek. Kod geldiyse aşağıya girin; gelmediyse bir dakika sonra yeni kod gönderin.</string>
+    <string name="pt_cloud_signin_too_many_codes">Bu adrese bugün çok fazla kod gönderildi. Yarın tekrar deneyin.</string>
+    <string name="pt_cloud_signin_offline_new"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> şu anda çevrimdışı, bu yüzden yeni hesap oluşturulamıyor. Daha sonra tekrar deneyin.</string>
+    <string name="pt_cloud_signin_mail_failed">E-posta gönderilemedi. Bir dakika sonra tekrar deneyin.</string>
+    <string name="pt_cloud_signin_unavailable">Oturum açma şu anda kullanılamıyor. Daha sonra tekrar deneyin.</string>
+    <string name="pt_cloud_signin_unreachable"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> hizmetine ulaşılamadı. Çevrimiçi olduğunuzdan emin olup tekrar deneyin.</string>
+    <string name="pt_cloud_signin_disabled">Bu hesapla oturum açılamaz. Bunun bir hata olduğunu düşünüyorsanız PlayTranslate desteğiyle iletişime geçin.</string>
+    <string name="pt_cloud_code_invalid">Bu kod işe yaramadı. Yanlış yazılmış veya süresi dolmuş olabilir. Kodu kontrol edin ya da yeni kod gönderin.</string>
+    <string name="pt_cloud_verify_offline"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> şu anda çevrimdışı. Kodunuz hâlâ geçerli; bir dakika sonra tekrar deneyin.</string>
+    <string name="pt_cloud_key_not_stored">Anahtar bu cihazda saklanamadı. Yeni kod gönderin.</string>
+    <string name="pt_cloud_account_unchecked">Hesap şu anda kontrol edilemedi.</string>
+    <string name="pt_cloud_key_no_longer_accepted">Bu cihazın anahtarı artık kabul edilmiyor. Yeniden oturum açın.</string>
+    <string name="pt_cloud_terms_unavailable">Koşullar yüklenemedi. Bir dakika sonra tekrar deneyin.</string>
+    <string name="pt_cloud_terms_not_recorded">Kabulünüz kaydedilemedi. Tekrar deneyin.</string>
+    <string name="pt_cloud_closed_title"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> kapandı</string>
+    <string name="pt_cloud_closed_default">Hizmet artık kullanılamıyor.</string>
+    <string name="pt_cloud_privacy_signin">E-posta adresiniz, size oturum açma kodu göndermek için kullanılır.</string>
+    <string name="pt_cloud_terms_title">Koşullar ve Gizlilik</string>
+    <string name="pt_cloud_terms_agree">Kabul et</string>
+    <string name="pt_cloud_agree_terms"><xliff:g id="terms" example="Terms and Privacy">%1$s</xliff:g> kabul ediyorum</string>
+    <string name="pt_cloud_terms_link">Koşullar ve Gizlilik metnini</string>
+    <string name="pt_cloud_agree_required">Devam etmek için koşulları kabul edin.</string>
 
     <string name="floating_menu_pt_cloud_available"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: kullanılabilir</string>
 
@@ -1873,8 +1983,6 @@
 
     <string name="tts_no_engine_row_subtitle">Kullanılabilir konuşma motoru yok. Eklemek için dokunun.</string>
 
-    <string name="tts_voice_picker_title">Ses</string>
-
     <string name="tts_voices_section_header"><xliff:g id="language" example="JAPANESE">%1$s</xliff:g> SESLERİ</string>
     <string name="tts_speed_title">Hız</string>
 
@@ -2109,10 +2217,78 @@
          ═══════════════════════════════════════════════════════════════ -->
     <string name="audio_source_tts_name">Metin okuma</string>
     <string name="audio_source_commons_name">Wikimedia Commons</string>
+    <string name="audio_source_voice_service_name">Ses hizmeti</string>
+    <string name="audio_error_playing">Bu ses oynatılamadı</string>
+    <string name="voice_service_connect_title">Ses hizmeti bağla</string>
+    <string name="voice_service_connect_subtitle">Kendi API anahtarınızla çevrimiçi bir AI sesi kullanın</string>
+    <string name="voice_service_settings_row">Hizmet ayarları</string>
+    <string name="voice_service_no_voices">Ses yok</string>
+    <string name="tts_no_engine_row_title">Metin okuma motoru yok</string>
+    <string name="voice_service_failed_title">Ses hizmeti yanıt vermedi</string>
+    <string name="voice_service_failure_auth">Hizmet API anahtarını reddetti.</string>
+    <string name="voice_service_failure_rate_limited">Hizmetin istek sınırı veya kotası doldu.</string>
+    <string name="voice_service_failure_timeout">Hizmet zamanında yanıt vermedi.</string>
+    <string name="voice_service_failure_unreachable">Hizmete ulaşılamadı. URL\'yi ve bağlantınızı kontrol edin.</string>
+    <string name="voice_service_failure_server_error">Hizmette bir hata oluştu (HTTP <xliff:g id="status" example="503">%1$d</xliff:g>).</string>
+    <string name="voice_service_failure_rejected">Hizmet isteği reddetti (HTTP <xliff:g id="status" example="400">%1$d</xliff:g>).</string>
+    <string name="voice_service_failure_rejected_asked">İstekte ses olarak <xliff:g id="voice" example="Coral">%1$s</xliff:g>, model olarak <xliff:g id="model" example="gpt-4o-mini-tts">%2$s</xliff:g> belirtildi. Hizmette bunlardan biri yoksa burada başka bir ses veya Hizmet ayarları bölümünde başka bir model seçin.</string>
+    <string name="voice_service_failure_no_request">İstek oluşturulamadı. Hizmetin URL\'sini kontrol edin.</string>
+    <string name="voice_service_failure_bad_response">Hizmet, uygulamanın kullanabileceği bir ses dosyasıyla yanıt vermedi (MP3, WAV, Ogg veya M4A).</string>
+    <string name="voice_service_failure_bad_list">Hizmetin yanıtı, uygulamanın okuyabileceği bir liste değildi.</string>
+    <string name="voice_service_row_service">Hizmet</string>
+    <string name="voice_service_preset_openai"><xliff:g id="brand_openai" example="OpenAI">OpenAI</xliff:g> uyumlu</string>
+    <string name="voice_service_preset_elevenlabs"><xliff:g id="brand_elevenlabs" example="ElevenLabs">ElevenLabs</xliff:g> uyumlu</string>
+    <string name="voice_service_url_label">İstek URL\'si</string>
+    <string name="voice_service_api_key_label">API Anahtarı</string>
+    <string name="voice_service_row_model">Model</string>
+    <string name="voice_service_model_none">Seçin</string>
+    <string name="voice_service_instructions_label">Ses talimatları</string>
+    <string name="voice_service_advanced_header">Gelişmiş</string>
+    <string name="voice_service_request_label">İstek</string>
+    <string name="voice_service_request_legend">Başlık satırları, ardından JSON gövdesi. Uygulama {text}, {voice}, {model}, {instructions}, {speed}, {language}, {language_name} ve {key} değerlerini doldurur.</string>
+    <string name="voice_service_manual_voices_label">Ses kimlikleri, her satıra bir tane</string>
+    <string name="voice_service_manual_voices_hint">Kendi seslerini listeleyemeyen hizmetler için. Uygulamanın bu hizmet için zaten bildiği seslere eklenir.</string>
+    <string name="voice_service_remove">Hizmeti kaldır</string>
+    <string name="voice_service_remove_confirm_title">Ses hizmeti kaldırılsın mı?</string>
+    <string name="voice_service_remove_confirm_message">API anahtarı silinir ve seslerinden birini kullanan her dil cihazın sesine geri döner.</string>
+    <string name="voice_service_cannot_save_title">Henüz kaydedilemiyor</string>
+    <string name="voice_service_issue_bad_url">İstek URL\'si bir https adresi ya da kendi ağınızdaki bir http adresi olmalıdır.</string>
+    <string name="voice_service_issue_no_text">İstek, URL\'de veya gövdede {text} içermelidir.</string>
+    <string name="voice_service_issue_text_in_header">{text} ve {instructions} bir başlık satırında yer alamaz.</string>
+    <string name="voice_service_issue_header_not_ascii">API anahtarında gönderilemeyen bir karakter var. Boşluk veya satır sonu olmadan yeniden yapıştırın.</string>
+    <string name="voice_service_issue_no_model">Bir model seçin.</string>
+    <string name="voice_service_no_model_list_type_model">Hizmet bir model listesi döndürmedi. Model satırına dokunup modelin kimliğini yazın.</string>
+    <string name="voice_service_unchecked_title">Anahtar kontrol edilemedi</string>
+    <string name="voice_service_unchecked_message">Hizmet bir model listesi döndürmedi, bu yüzden URL ve API anahtarı kontrol edilemedi.</string>
+    <string name="voice_service_no_key_entered">API anahtarı girilmedi.</string>
+    <string name="voice_service_model_not_listed_title">Hizmet bu modeli listelemiyor</string>
+    <string name="voice_service_model_not_listed_message">Hizmetin model listesinde <xliff:g id="model" example="tts-1-hd">%1$s</xliff:g> yok. Kaydederseniz konuşma istekleri reddedilebilir. Hizmetin listelediği bir modeli seçmek için iptal edip Model satırına dokunun.</string>
+    <string name="voice_service_voices_not_taken_title">Bazı sesler bu modelle çalışmıyor</string>
+    <string name="voice_service_voices_not_taken_message"><xliff:g id="model" example="tts-1">%1$s</xliff:g> modeli aşağıdaki sesleri kullanamaz. Kaydederseniz bu dillerin her biri cihazın sesine geri döner.</string>
+    <string name="voice_service_key_not_stored">API anahtarı bu cihazda güvenli şekilde saklanamadı, bu yüzden hiçbir şey kaydedilmedi.</string>
+    <string name="voice_service_model_other_label">Diğer model kimliği</string>
+    <string name="voice_service_model_use">Kullan</string>
     <string name="audio_no_results">Sonuç yok</string>
     <string name="audio_source_picker_title">Ses</string>
     <string name="audio_loading">Yükleniyor…</string>
     <string name="audio_error_loading">Yüklenemedi</string>
+    <string name="audio_source_local_name">android.db dosyası</string>
+    <string name="tts_recordings_section_header">İçe aktarılan kayıtlar</string>
+    <string name="local_audio_load_title">android.db dosyasını içe aktar</string>
+    <string name="local_audio_load_subtitle">Ses kayıtlarından oluşan bir android.db dosyanız varsa buradan içe aktarabilirsiniz. Bu dosyayı kendiniz edinmelisiniz. Yalnızca sözcükler için çalışır; android.db dosyasında kaydı olmayan sözcüklerde diğer metin okuma ayarlarınız kullanılır.</string>
+    <string name="local_audio_loaded_digest">android.db içe aktarıldı</string>
+    <string name="local_audio_importing_title">android.db dosyası içe aktarılıyor</string>
+    <string name="local_audio_copying_message"><xliff:g id="copied" example="1.2 GB">%1$s</xliff:g> / <xliff:g id="total" example="5.8 GB">%2$s</xliff:g> kopyalandı</string>
+    <string name="local_audio_checking_message">Dosya kontrol ediliyor…</string>
+    <string name="local_audio_read_problem">Bu dosya okunamadı: <xliff:g id="cause" example="database disk image is malformed">%1$s</xliff:g></string>
+    <string name="local_audio_remove">android.db dosyasını kaldır</string>
+    <string name="local_audio_remove_confirm_title">android.db dosyası kaldırılsın mı?</string>
+    <string name="local_audio_remove_confirm_message">Dosya uygulamadan silinir ve tüm sözcükler yeniden metin okuma ile seslendirilir.</string>
+    <string name="local_audio_import_failed_title">Dosya içe aktarılamadı</string>
+    <string name="local_audio_error_not_database">Bu, ses kayıtlarından oluşan bir android.db dosyası değil.</string>
+    <string name="local_audio_error_invalid_format">Bu veritabanı, ses kayıtlarından oluşan bir android.db dosyası değil (<xliff:g id="reason" example="no such table: android">%1$s</xliff:g>).</string>
+    <string name="local_audio_error_incomplete">Bu dosya eksik: boyutu <xliff:g id="have" example="2.1 GB">%1$s</xliff:g>, olması gereken <xliff:g id="expected" example="5.8 GB">%2$s</xliff:g>. Dosyanın tamamını edinip yeniden içe aktarın.</string>
+    <string name="local_audio_error_copy">Dosya kopyalanamadı.</string>
 
     <string name="process_text_translation_failed">Seçilen metin çevrilemedi. Bağlantınızı veya dil ayarlarınızı kontrol edin.</string>
 
@@ -2139,6 +2315,32 @@
     <string name="pos_abbreviation">Kısaltma</string>
     <string name="pos_contraction">Kısaltılmış biçim</string>
     <string name="pos_auxiliary">Yardımcı fiil</string>
+    <string name="pos_transitive">Geçişli</string>
+    <string name="pos_intransitive">Geçişsiz</string>
+    <string name="pos_copula">Koşaç</string>
+    <string name="pos_unclassified">Sınıflandırılmamış</string>
+    <string name="pos_suru_verb">Suru fiili</string>
+    <string name="pos_su_verb">Su fiili</string>
+    <string name="pos_kuru_verb">Kuru fiili</string>
+    <string name="pos_zuru_verb">Zuru fiili</string>
+    <string name="pos_ichidan_verb">İchidan fiil</string>
+    <string name="pos_ichidan_verb_special">İchidan fiil (özel)</string>
+    <string name="pos_godan_verb">Godan fiil</string>
+    <string name="pos_godan_verb_special">Godan fiil (özel)</string>
+    <string name="pos_godan_verb_irregular">Godan fiil (düzensiz)</string>
+    <string name="pos_nidan_verb">Nidan fiil</string>
+    <string name="pos_yodan_verb">Yodan fiil</string>
+    <string name="pos_nu_verb">Nu fiili</string>
+    <string name="pos_ri_verb">Ri fiili</string>
+    <string name="pos_i_adjective">İ-sıfatı</string>
+    <string name="pos_na_adjective">Na-sıfatı</string>
+    <string name="pos_no_adjective">No-sıfatı</string>
+    <string name="pos_taru_adjective">Taru-sıfatı</string>
+    <string name="pos_ku_adjective">Ku-sıfatı</string>
+    <string name="pos_shiku_adjective">Shiku-sıfatı</string>
+    <string name="pos_nari_adjective">Nari-sıfatı</string>
+    <string name="pos_prenominal">İsim niteleyici</string>
+    <string name="pos_to_adverb">To-zarfı</string>
 
     <!-- Misc register/usage tags shown under a word's definition; see values/strings.xml. -->
     <string name="misc_kana_only">Yalnızca kana</string>

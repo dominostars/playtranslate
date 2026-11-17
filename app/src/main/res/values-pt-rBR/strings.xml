@@ -146,6 +146,8 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="word_detail_no_definitions">Nenhuma definição encontrada.</string>
+    <string name="definitions_need_webview">As definições exigem o Android System WebView.</string>
+    <string name="dictionary_title_builtin">Integrado</string>
 
     <string name="word_detail_more_examples">Mais exemplos</string>
 
@@ -332,11 +334,31 @@
     <string name="section_translation">Tradução</string>
 
     <string name="section_words">Palavras</string>
+    <string name="section_words_count">Palavras · <xliff:g id="count" example="6">%1$d</xliff:g></string>
+    <string name="section_ask">Perguntas</string>
+    <string name="ask_question_hint">Faça sua própria pergunta…</string>
+    <string name="cd_ask_send">Enviar pergunta</string>
+    <string name="cd_ask_close">Fechar resposta</string>
+    <string name="cd_toggle_ask_visibility">Mostrar/ocultar perguntas</string>
+    <string name="ask_status_asking">Perguntando ao <xliff:g id="service_name" example="Gemini">%1$s</xliff:g>…</string>
+    <string name="ask_status_asking_unnamed">Perguntando…</string>
+    <string name="ask_answered_by">Respondido por <xliff:g id="service_name" example="Gemini">%1$s</xliff:g></string>
+    <string name="ask_answer_cut">Esta resposta atingiu o limite de tamanho e foi cortada.</string>
+    <string name="ask_spoiler_warning">⚠ As respostas podem revelar a tradução oculta.</string>
+    <string name="ask_out_of_scope">O <xliff:g id="service_name" example="PlayTranslate Cloud">%1$s</xliff:g> só responde a perguntas sobre esta frase, como significado, gramática ou vocabulário.</string>
+    <string name="ask_failed">Não foi possível obter uma resposta.</string>
+    <string name="ask_retry">Tentar novamente</string>
+    <string name="ask_no_llm_title">Para perguntar, é preciso um modelo de IA</string>
+    <string name="ask_no_llm_message">Sua pergunta sobre esta frase é enviada a um modelo de IA. Adicione um serviço de IA online, ou ative um modelo no dispositivo, em Serviços de tradução.</string>
+    <string name="ask_no_llm_open_services">Serviços de tradução</string>
+    <string name="ask_preset_grammar_breakdown">Análise gramatical</string>
+    <string name="cd_word_explain">Explicar nesta frase</string>
+    <string name="word_explain_title">Nesta frase</string>
+    <string name="word_explain_ask">Explicar como esta palavra é usada</string>
 
     <string name="words_loading">Consultando palavras…</string>
 
     <string name="lens_loading">Consultando…</string>
-    <string name="lens_also_matches">Outra correspondência</string>
     <string name="load_more_count">Carregar mais (<xliff:g id="count" example="2">%1$d</xliff:g>)</string>
     <string name="section_other_matches">Outras correspondências</string>
 
@@ -430,6 +452,7 @@
     <string name="icon_action_swap_pinyin">Alternar entre tradução e pinyin</string>
 
     <string name="icon_action_change_game_language">Alterar o idioma do jogo</string>
+    <string name="icon_action_tap_to_lookup">Ativar a consulta por toque</string>
 
     <string name="icon_action_translating_from">Idioma do jogo: <xliff:g id="language" example="Japanese">%1$s</xliff:g></string>
 
@@ -502,6 +525,7 @@
     <string name="anki_no_deck_selected">Nenhum baralho encontrado no <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
 
     <string name="anki_added_no_audio">Adicionado ao <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (áudio indisponível)</string>
+    <string name="anki_added_voice_fell_back">Adicionado ao <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (serviço de voz indisponível, usada a voz do dispositivo)</string>
 
     <string name="anki_added_no_screenshot">Adicionado ao <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (captura de tela indisponível)</string>
 
@@ -524,6 +548,9 @@
     <string name="anki_card_too_large_simplify">Salvar versão simplificada</string>
 
     <string name="anki_card_too_large_failed">Este cartão é grande demais para o <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> aceitar, mesmo com definições simplificadas. Tente remover algumas palavras ou encurtar a frase.</string>
+    <string name="anki_notes_no_field_title">Nenhum campo para sua anotação</string>
+    <string name="anki_notes_no_field_message">Este tipo de cartão não tem nenhum campo definido como Anotações, então sua anotação não pode ser salva no cartão. Salvar o cartão sem ela?</string>
+    <string name="anki_notes_no_field_save_anyway">Salvar mesmo assim</string>
 
     <string name="anki_added_simplified">Adicionado ao <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (definições simplificadas para caber)</string>
 
@@ -552,6 +579,9 @@
     <string name="anki_group_words_count">Palavras no cartão · <xliff:g id="words_count" example="3">%d</xliff:g></string>
 
     <string name="anki_group_definitions">Definições</string>
+    <string name="anki_group_notes">Anotações</string>
+    <string name="anki_notes_hint">Adicione uma anotação a este cartão</string>
+    <string name="cd_anki_notes_clear">Limpar anotação</string>
 
     <string name="anki_group_screenshot">Captura de tela</string>
 
@@ -694,6 +724,12 @@
 
     <string name="anki_content_frequency_harmonic">Número de ordenação por frequência</string>
     <string name="anki_content_frequency_harmonic_desc">Um único número para ordenar os cartões por frequência, a média harmônica das frequências da palavra nos dicionários (quanto menor, mais frequente). Para a “FreqSort” do <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> ou a “FrequencySort” do <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+    <string name="anki_content_glossary">Definições (formato <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>)</string>
+    <string name="anki_content_glossary_desc">As definições de todos os dicionários para a palavra destacada, escritas do jeito que o <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g> as escreve. Para tipos de cartão feitos para o <xliff:g id="brand_yomitan2" example="Yomitan">Yomitan</xliff:g>, como o campo “Glossary” do <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>.</string>
+    <string name="anki_content_glossary_primary">Dicionário principal (formato <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>)</string>
+    <string name="anki_content_glossary_primary_desc">Somente as definições do primeiro dicionário na sua ordem que tenha a palavra destacada, escritas do jeito que o <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g> as escreve. O dicionário integrado vem por último. Para o campo “MainDefinition” do <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>.</string>
+    <string name="anki_content_notes">Anotações</string>
+    <string name="anki_content_notes_desc">A anotação que você digita no cartão antes de salvá-lo. Fica em branco se você não digitar nenhuma.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          CARD-TYPE STATE FLAGS
@@ -755,6 +791,7 @@
     <string name="deepl_settings_get_key_subtitle">O plano gratuito inclui 500.000 caracteres por mês, mas exige um cartão de crédito para se cadastrar</string>
 
     <string name="deepl_settings_about">O <xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> é um serviço de tradução conhecido pela alta qualidade, especialmente em idiomas europeus.</string>
+    <string name="pt_cloud_display_name_alpha"><xliff:g id="service" example="PlayTranslate Cloud">PlayTranslate Cloud</xliff:g> (Alfa)</string>
 
     <string name="llm_backend_preset_custom">Personalizado</string>
 
@@ -800,16 +837,16 @@
     <string name="llm_backend_invalid_key_alert_button">OK</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
-         ADVANCED LLM CONFIGURATION — editable prompt templates.
+         ADVANCED AI CONFIGURATION — editable prompt templates.
          The {token} keywords are parsed at runtime: keep them verbatim.
          ═══════════════════════════════════════════════════════════════ -->
 
-    <string name="settings_header_advanced_llm">Configuração avançada de LLM</string>
+    <string name="settings_header_advanced_llm">Configuração avançada de IA</string>
 
     <string name="settings_llm_context_title">Usar as linhas recentes como contexto</string>
-    <string name="settings_llm_context_subtitle">Somente online. Envia as últimas linhas do texto registrado aos tradutores LLM para pronomes e nomes mais consistentes.</string>
+    <string name="settings_llm_context_subtitle">Somente online. Envia as últimas linhas do texto registrado aos tradutores de IA para pronomes e nomes mais consistentes.</string>
     <string name="llm_prompt_row_system_title">Prompt do sistema</string>
-    <string name="llm_prompt_row_system_subtitle">A persona e as instruções enviadas aos tradutores LLM, na nuvem e no dispositivo.</string>
+    <string name="llm_prompt_row_system_subtitle">A persona e as instruções enviadas aos tradutores de IA, na nuvem e no dispositivo.</string>
     <string name="llm_prompt_row_translation_title">Prompt de tradução</string>
     <string name="llm_prompt_row_translation_subtitle">O prompt aplicado a cada frase que você consulta.</string>
     <string name="llm_prompt_row_batch_title">Prompt em lote</string>
@@ -851,7 +888,7 @@
     <string name="tr_service_order_footer">As traduções tentam cada serviço ativado na ordem exibida, recorrendo a outro quando um está indisponível. Os serviços de tradução online recebem o texto capturado. Revise a política de privacidade de cada provedor antes de ativar.</string>
     <string name="tr_service_add_online">Adicionar serviço de tradução online</string>
     <string name="add_online_service_title">Adicionar serviço de tradução</string>
-    <string name="service_llm_badge">LLM</string>
+    <string name="service_llm_badge">IA</string>
     <string name="service_account_required">Requer conta</string>
     <string name="service_account_required_free">Requer conta (opção gratuita)</string>
     <string name="service_no_account_required">Não requer conta</string>
@@ -1153,6 +1190,10 @@
     <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>: não foi possível conectar</string>
 
     <string name="translation_error_not_running"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: parado</string>
+    <string name="translation_error_trial_ended"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: teste gratuito encerrado</string>
+    <string name="translation_error_membership_inactive"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: assinatura inativa</string>
+    <string name="translation_error_terms_required"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: termos não aceitos</string>
+    <string name="translation_error_closed"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: serviço encerrado</string>
 
     <string name="translation_error_discard_card_title">Descartar cartão?</string>
 
@@ -1287,6 +1328,10 @@
     <string name="overlay_mode_option_furigana">Furigana</string>
 
     <string name="overlay_mode_option_pinyin">Pinyin</string>
+    <string name="overlay_mode_option_definitions">Definições</string>
+    <string name="overlay_mode_option_none">Nenhuma</string>
+    <string name="capture_overlay_pill_collapsed_cd">Sobreposições: <xliff:g id="mode" example="Translation">%1$s</xliff:g>. Toque para alterar.</string>
+    <string name="capture_overlay_pill_collapse_cd">Ocultar opções de sobreposição</string>
 
     <string name="settings_hide_overlays_during_auto_mode">Ocultar sobreposições no modo automático</string>
 
@@ -1564,22 +1609,27 @@
     <string name="settings_pt_cloud_summary_translation_only">Somente tradução</string>
 
     <string name="settings_pt_cloud_summary_ocr_only">Somente OCR no servidor</string>
+    <string name="settings_pt_cloud_summary_trial">Teste gratuito até <xliff:g id="end" example="Nov 3">%1$s</xliff:g></string>
+    <string name="settings_pt_cloud_summary_trial_ended">Teste encerrado</string>
+    <string name="settings_pt_cloud_summary_inactive">Assinatura inativa</string>
+    <string name="settings_pt_cloud_summary_terms_required">Termos não aceitos</string>
+    <string name="pt_cloud_headline">Processamento de imagens e tradução com a potência de um servidor</string>
+    <string name="pt_cloud_intro">Os modelos mais precisos de reconhecimento de texto e de tradução são pesados demais para rodar em um dispositivo móvel. O <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> roda esses modelos em um servidor, então você tem resultados melhores e seu dispositivo não precisa fazer nada desse trabalho.</string>
+    <string name="pt_cloud_features_title">Recursos</string>
 
-    <string name="pt_cloud_ocr_toggle_title">Reconhecimento de texto</string>
+    <string name="pt_cloud_ocr_toggle_title">Processamento de imagens poderoso</string>
 
-    <string name="pt_cloud_ocr_toggle_subtitle">OCR mais potente em uma GPU de servidor. Toda a potência do seu dispositivo fica para o jogo.</string>
+    <string name="pt_cloud_ocr_toggle_subtitle">OCR mais potente em uma GPU de servidor, sem pesar no seu dispositivo.</string>
 
-    <string name="pt_cloud_translate_toggle_title">Tradução de texto</string>
+    <string name="pt_cloud_translate_toggle_title">Traduções premium</string>
 
     <string name="pt_cloud_translate_toggle_subtitle">Inclui modelos de tradução pagos e escolhe o melhor para cada tarefa.</string>
+    <string name="pt_cloud_privacy_features">Capturas de tela e textos nunca são armazenados nem vendidos.</string>
+    <string name="pt_cloud_features_paused_terms">Recursos pausados até que os termos sejam aceitos.</string>
 
     <string name="pt_cloud_ocr_row_subtitle">OCR no servidor, sem pesar no dispositivo</string>
 
     <string name="pt_cloud_translate_row_subtitle_no_key">Os melhores modelos de tradução pagos, já incluídos</string>
-
-    <string name="pt_cloud_key_label">Chave de cliente</string>
-
-    <string name="pt_cloud_key_hint">Cole a chave que você recebeu</string>
 
     <string name="pt_cloud_status_title">Serviço</string>
 
@@ -1590,12 +1640,72 @@
     <string name="pt_cloud_status_not_running">Parado</string>
 
     <string name="pt_cloud_status_unreachable">Não foi possível conectar</string>
+    <string name="pt_cloud_status_offline">Offline no momento</string>
+    <string name="pt_cloud_status_closed">Encerrado</string>
 
     <string name="pt_cloud_status_other">Resposta inesperada (<xliff:g id="http_code" example="500">%1$s</xliff:g>)</string>
 
     <string name="pt_cloud_status_checking">Verificando</string>
 
     <string name="pt_cloud_status_unchecked">Não verificado</string>
+    <string name="pt_cloud_account_title">Conta</string>
+    <string name="pt_cloud_email_label">Endereço de e-mail</string>
+    <string name="pt_cloud_email_hint">voce@example.com</string>
+    <string name="pt_cloud_free_trial">Teste o <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> grátis</string>
+    <plurals name="pt_cloud_code_sent_to">
+        <item quantity="one">Enviamos um código para <xliff:g id="email" example="you@example.com">%1$s</xliff:g>. Ele vale por <xliff:g id="minutes" example="1">%2$d</xliff:g> minuto.</item>
+        <item quantity="other">Enviamos um código para <xliff:g id="email" example="you@example.com">%1$s</xliff:g>. Ele vale por <xliff:g id="minutes" example="10">%2$d</xliff:g> minutos.</item>
+    </plurals>
+    <string name="pt_cloud_code_label">Código</string>
+    <string name="pt_cloud_start_free_trial">Iniciar teste gratuito</string>
+    <string name="pt_cloud_send_new_code">Enviar um novo código</string>
+    <string name="pt_cloud_change_email">Usar outro e-mail</string>
+    <string name="pt_cloud_signed_in_with_key">Conectado com uma chave</string>
+    <string name="pt_cloud_trial_until">Teste gratuito até <xliff:g id="end" example="Nov 3, 3:42 PM">%1$s</xliff:g></string>
+    <string name="pt_cloud_member_until">Assinante até <xliff:g id="end" example="Dec 5, 3:42 PM">%1$s</xliff:g></string>
+    <string name="pt_cloud_member">Assinante</string>
+    <string name="pt_cloud_trial_ended_on">Teste encerrado em <xliff:g id="date" example="Nov 3">%1$s</xliff:g></string>
+    <string name="pt_cloud_trial_ended">Teste encerrado</string>
+    <string name="pt_cloud_inactive_since">Assinatura inativa desde <xliff:g id="date" example="Nov 3">%1$s</xliff:g></string>
+    <string name="pt_cloud_inactive">Nenhuma assinatura ativa</string>
+    <string name="pt_cloud_terms_required">Termos não aceitos</string>
+    <string name="pt_cloud_check_again">Verificar novamente</string>
+    <string name="pt_cloud_join_pending">Já assinou? O processamento pode levar alguns segundos.</string>
+    <string name="pt_cloud_terms_pending">Leia e aceite os termos para continuar usando o <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>.</string>
+    <string name="pt_cloud_show_terms">Ver termos</string>
+    <string name="pt_cloud_join_title">Assinar o <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g></string>
+    <string name="pt_cloud_after_trial_title">Depois do teste</string>
+    <string name="pt_cloud_join_nudge_trial">Faça uma assinatura no Ko-fi para continuar com o <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> depois do teste.</string>
+    <string name="pt_cloud_join_title_lapsed">Continue com o <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g></string>
+    <string name="pt_cloud_join_nudge_lapsed">Faça uma assinatura no Ko-fi para reativar estes recursos.</string>
+    <string name="pt_cloud_join_email_hint">Assine com <xliff:g id="email" example="you@example.com">%1$s</xliff:g> para que a assinatura seja vinculada a esta conta automaticamente.</string>
+    <string name="pt_cloud_join_email_hint_no_email">Assine com o endereço de e-mail da sua chave para que a assinatura seja vinculada a esta conta automaticamente.</string>
+    <string name="pt_cloud_sign_out">Sair</string>
+    <string name="pt_cloud_sign_out_title">Sair do <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>?</string>
+    <string name="pt_cloud_sign_out_message">Este dispositivo vai esquecer a chave. Sua conta continua como está, e você pode fazer login de novo com seu endereço de e-mail.</string>
+    <string name="pt_cloud_signin_bad_email">Isso não parece um endereço de e-mail.</string>
+    <string name="pt_cloud_signin_rate_limited">Muitas solicitações. Se um código chegou, digite-o abaixo; caso contrário, envie um novo daqui a um minuto.</string>
+    <string name="pt_cloud_signin_too_many_codes">Muitos códigos enviados para este endereço hoje. Tente novamente amanhã.</string>
+    <string name="pt_cloud_signin_offline_new">O <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> está offline no momento, então não é possível criar uma conta nova. Tente novamente mais tarde.</string>
+    <string name="pt_cloud_signin_mail_failed">Não foi possível enviar o e-mail. Tente novamente daqui a um minuto.</string>
+    <string name="pt_cloud_signin_unavailable">O login não está disponível no momento. Tente novamente mais tarde.</string>
+    <string name="pt_cloud_signin_unreachable">Não foi possível acessar o <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>. Verifique se você está online e tente novamente.</string>
+    <string name="pt_cloud_signin_disabled">Esta conta não pode fazer login. Se você acha que isso é um erro, entre em contato com o suporte do PlayTranslate.</string>
+    <string name="pt_cloud_code_invalid">Esse código não funcionou. Ele pode ter sido digitado errado ou ter expirado. Confira-o ou envie um novo código.</string>
+    <string name="pt_cloud_verify_offline">O <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> está offline no momento. Seu código continua válido, então tente novamente daqui a um minuto.</string>
+    <string name="pt_cloud_key_not_stored">Não foi possível armazenar a chave neste dispositivo. Envie um novo código.</string>
+    <string name="pt_cloud_account_unchecked">Não foi possível verificar a conta agora.</string>
+    <string name="pt_cloud_key_no_longer_accepted">A chave deste dispositivo não é mais aceita. Faça login novamente.</string>
+    <string name="pt_cloud_terms_unavailable">Não foi possível carregar os termos. Tente novamente daqui a um minuto.</string>
+    <string name="pt_cloud_terms_not_recorded">Não foi possível registrar sua aceitação. Tente novamente.</string>
+    <string name="pt_cloud_closed_title">O <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> foi encerrado</string>
+    <string name="pt_cloud_closed_default">O serviço não está mais disponível.</string>
+    <string name="pt_cloud_privacy_signin">Seu endereço de e-mail é usado para enviar um código de login.</string>
+    <string name="pt_cloud_terms_title">Termos e Privacidade</string>
+    <string name="pt_cloud_terms_agree">Aceitar</string>
+    <string name="pt_cloud_agree_terms">Concordo com os <xliff:g id="terms" example="Terms and Privacy">%1$s</xliff:g></string>
+    <string name="pt_cloud_terms_link">Termos e Privacidade</string>
+    <string name="pt_cloud_agree_required">Aceite os termos para continuar.</string>
 
     <string name="floating_menu_pt_cloud_available"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: disponível</string>
 
@@ -1915,8 +2025,6 @@
 
     <string name="tts_no_engine_row_subtitle">Nenhum mecanismo de voz disponível. Toque para adicionar um.</string>
 
-    <string name="tts_voice_picker_title">Voz</string>
-
     <string name="tts_voices_section_header">VOZES EM <xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
     <string name="tts_speed_title">Velocidade</string>
 
@@ -2158,6 +2266,57 @@
     <string name="audio_source_tts_name">Conversão de texto em voz</string>
 
     <string name="audio_source_commons_name">Wikimedia Commons</string>
+    <string name="audio_source_voice_service_name">Serviço de voz</string>
+    <string name="audio_error_playing">Não foi possível reproduzir este áudio</string>
+    <string name="voice_service_connect_title">Conectar um serviço de voz</string>
+    <string name="voice_service_connect_subtitle">Use uma voz de IA online com sua própria chave de API</string>
+    <string name="voice_service_settings_row">Configurações do serviço</string>
+    <string name="voice_service_no_voices">Nenhuma voz</string>
+    <string name="tts_no_engine_row_title">Sem mecanismo de conversão de texto em voz</string>
+    <string name="voice_service_failed_title">O serviço de voz não respondeu</string>
+    <string name="voice_service_failure_auth">O serviço recusou a chave de API.</string>
+    <string name="voice_service_failure_rate_limited">O serviço atingiu o limite de solicitações ou esgotou a cota.</string>
+    <string name="voice_service_failure_timeout">O serviço não respondeu a tempo.</string>
+    <string name="voice_service_failure_unreachable">Não foi possível acessar o serviço. Verifique a URL e sua conexão.</string>
+    <string name="voice_service_failure_server_error">Ocorreu um erro no serviço (HTTP <xliff:g id="status" example="503">%1$d</xliff:g>).</string>
+    <string name="voice_service_failure_rejected">O serviço recusou a solicitação (HTTP <xliff:g id="status" example="400">%1$d</xliff:g>).</string>
+    <string name="voice_service_failure_rejected_asked">A solicitação pedia a voz <xliff:g id="voice" example="Coral">%1$s</xliff:g> e o modelo <xliff:g id="model" example="gpt-4o-mini-tts">%2$s</xliff:g>. Se o serviço não tiver um deles, escolha outra voz aqui ou outro modelo em Configurações do serviço.</string>
+    <string name="voice_service_failure_no_request">Não foi possível fazer a solicitação. Verifique a URL do serviço.</string>
+    <string name="voice_service_failure_bad_response">O serviço não respondeu com um áudio que o app consiga usar (MP3, WAV, Ogg ou M4A).</string>
+    <string name="voice_service_failure_bad_list">A resposta do serviço não era uma lista que o app conseguisse ler.</string>
+    <string name="voice_service_row_service">Serviço</string>
+    <string name="voice_service_preset_openai">Compatível com <xliff:g id="brand_openai" example="OpenAI">OpenAI</xliff:g></string>
+    <string name="voice_service_preset_elevenlabs">Compatível com <xliff:g id="brand_elevenlabs" example="ElevenLabs">ElevenLabs</xliff:g></string>
+    <string name="voice_service_url_label">URL da solicitação</string>
+    <string name="voice_service_api_key_label">Chave de API</string>
+    <string name="voice_service_row_model">Modelo</string>
+    <string name="voice_service_model_none">Escolher</string>
+    <string name="voice_service_instructions_label">Instruções para a voz</string>
+    <string name="voice_service_advanced_header">Avançado</string>
+    <string name="voice_service_request_label">Solicitação</string>
+    <string name="voice_service_request_legend">Linhas de cabeçalho e, depois, o corpo JSON. O app preenche {text}, {voice}, {model}, {instructions}, {speed}, {language}, {language_name} e {key}.</string>
+    <string name="voice_service_manual_voices_label">IDs de voz, um por linha</string>
+    <string name="voice_service_manual_voices_hint">Para serviços que não conseguem listar as próprias vozes. Os IDs são somados às vozes que o app já conhece para o serviço.</string>
+    <string name="voice_service_remove">Remover serviço</string>
+    <string name="voice_service_remove_confirm_title">Remover o serviço de voz?</string>
+    <string name="voice_service_remove_confirm_message">A chave de API do serviço é excluída, e todos os idiomas que usam uma das vozes dele voltam a usar a voz do dispositivo.</string>
+    <string name="voice_service_cannot_save_title">Ainda não é possível salvar</string>
+    <string name="voice_service_issue_bad_url">A URL da solicitação precisa ser um endereço https, ou um endereço http na sua própria rede.</string>
+    <string name="voice_service_issue_no_text">A solicitação precisa incluir {text}, na URL ou no corpo.</string>
+    <string name="voice_service_issue_text_in_header">{text} e {instructions} não podem ficar em uma linha de cabeçalho.</string>
+    <string name="voice_service_issue_header_not_ascii">A chave de API contém um caractere que não pode ser enviado. Cole-a novamente sem espaços nem quebras de linha.</string>
+    <string name="voice_service_issue_no_model">Escolha um modelo.</string>
+    <string name="voice_service_no_model_list_type_model">O serviço não retornou uma lista de modelos. Toque em Modelo e digite o ID do modelo.</string>
+    <string name="voice_service_unchecked_title">Não foi possível verificar a chave</string>
+    <string name="voice_service_unchecked_message">O serviço não retornou uma lista de modelos, então não foi possível verificar a URL e a chave de API.</string>
+    <string name="voice_service_no_key_entered">Nenhuma chave de API foi inserida.</string>
+    <string name="voice_service_model_not_listed_title">O serviço não lista este modelo</string>
+    <string name="voice_service_model_not_listed_message">A lista de modelos do serviço não inclui <xliff:g id="model" example="tts-1-hd">%1$s</xliff:g>. Se você salvar, as solicitações de voz podem ser recusadas. Para escolher um modelo da lista do serviço, cancele e toque em Modelo.</string>
+    <string name="voice_service_voices_not_taken_title">Algumas vozes não funcionam com este modelo</string>
+    <string name="voice_service_voices_not_taken_message">O modelo <xliff:g id="model" example="tts-1">%1$s</xliff:g> não pode usar as vozes abaixo. Se você salvar, cada um desses idiomas volta a usar a voz do dispositivo.</string>
+    <string name="voice_service_key_not_stored">Não foi possível armazenar a chave de API com segurança neste dispositivo, então nada foi salvo.</string>
+    <string name="voice_service_model_other_label">Outro ID de modelo</string>
+    <string name="voice_service_model_use">Usar</string>
 
     <string name="audio_no_results">Nenhum resultado</string>
 
@@ -2166,6 +2325,23 @@
     <string name="audio_loading">Carregando…</string>
 
     <string name="audio_error_loading">Não foi possível carregar</string>
+    <string name="audio_source_local_name">Arquivo android.db</string>
+    <string name="tts_recordings_section_header">Gravações importadas</string>
+    <string name="local_audio_load_title">Carregar arquivo android.db</string>
+    <string name="local_audio_load_subtitle">Se você tiver um arquivo android.db de gravações de voz, pode carregá-lo aqui. Você precisa obter esse arquivo por conta própria. Isso só funciona para palavras, e qualquer palavra sem uma entrada no arquivo android.db será falada com as suas outras configurações de conversão de texto em voz.</string>
+    <string name="local_audio_loaded_digest">Arquivo android.db carregado</string>
+    <string name="local_audio_importing_title">Carregando arquivo android.db</string>
+    <string name="local_audio_copying_message"><xliff:g id="copied" example="1.2 GB">%1$s</xliff:g> de <xliff:g id="total" example="5.8 GB">%2$s</xliff:g> copiados</string>
+    <string name="local_audio_checking_message">Verificando o arquivo…</string>
+    <string name="local_audio_read_problem">Falha ao ler este arquivo: <xliff:g id="cause" example="database disk image is malformed">%1$s</xliff:g></string>
+    <string name="local_audio_remove">Remover arquivo android.db</string>
+    <string name="local_audio_remove_confirm_title">Remover o arquivo android.db?</string>
+    <string name="local_audio_remove_confirm_message">O arquivo é excluído do app, e todas as palavras voltam a ser faladas pela conversão de texto em voz.</string>
+    <string name="local_audio_import_failed_title">Não foi possível carregar o arquivo</string>
+    <string name="local_audio_error_not_database">Este não é um arquivo android.db de gravações de voz.</string>
+    <string name="local_audio_error_invalid_format">Este banco de dados não é um arquivo android.db de gravações de voz (<xliff:g id="reason" example="no such table: android">%1$s</xliff:g>).</string>
+    <string name="local_audio_error_incomplete">Este arquivo está incompleto: tem <xliff:g id="have" example="2.1 GB">%1$s</xliff:g> de <xliff:g id="expected" example="5.8 GB">%2$s</xliff:g>. Obtenha o arquivo inteiro e carregue-o novamente.</string>
+    <string name="local_audio_error_copy">Não foi possível copiar o arquivo.</string>
 
     <string name="process_text_translation_failed">Não foi possível traduzir o texto selecionado. Verifique sua conexão ou as configurações de idioma.</string>
 
@@ -2192,6 +2368,32 @@
     <string name="pos_abbreviation">Abreviação</string>
     <string name="pos_contraction">Contração</string>
     <string name="pos_auxiliary">Verbo auxiliar</string>
+    <string name="pos_transitive">Transitivo</string>
+    <string name="pos_intransitive">Intransitivo</string>
+    <string name="pos_copula">Cópula</string>
+    <string name="pos_unclassified">Sem classificação</string>
+    <string name="pos_suru_verb">Verbo suru</string>
+    <string name="pos_su_verb">Verbo su</string>
+    <string name="pos_kuru_verb">Verbo kuru</string>
+    <string name="pos_zuru_verb">Verbo zuru</string>
+    <string name="pos_ichidan_verb">Verbo ichidan</string>
+    <string name="pos_ichidan_verb_special">Verbo ichidan (especial)</string>
+    <string name="pos_godan_verb">Verbo godan</string>
+    <string name="pos_godan_verb_special">Verbo godan (especial)</string>
+    <string name="pos_godan_verb_irregular">Verbo godan (irregular)</string>
+    <string name="pos_nidan_verb">Verbo nidan</string>
+    <string name="pos_yodan_verb">Verbo yodan</string>
+    <string name="pos_nu_verb">Verbo nu</string>
+    <string name="pos_ri_verb">Verbo ri</string>
+    <string name="pos_i_adjective">Adjetivo-i</string>
+    <string name="pos_na_adjective">Adjetivo-na</string>
+    <string name="pos_no_adjective">Adjetivo-no</string>
+    <string name="pos_taru_adjective">Adjetivo-taru</string>
+    <string name="pos_ku_adjective">Adjetivo-ku</string>
+    <string name="pos_shiku_adjective">Adjetivo-shiku</string>
+    <string name="pos_nari_adjective">Adjetivo-nari</string>
+    <string name="pos_prenominal">Pré-nominal</string>
+    <string name="pos_to_adverb">Advérbio-to</string>
 
     <!-- Misc register/usage tags (short chips); see values/strings.xml. -->
     <string name="misc_kana_only">Somente kana</string>

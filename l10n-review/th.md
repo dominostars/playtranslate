@@ -986,3 +986,179 @@ No findings.
 #### Verdict (round 2)
 
 **PASS.** The one round-1 change landed as the Disposition says, and the fresh read of all 39 keys finds nothing: 0 🛑, 0 ❌, 0 ⚠️, 0 💬. Nothing is left open for Thai.
+
+## Delta review 2026-11-16 (Ask and word explain, voice service, imported recordings, PlayTranslate Cloud account, Anki notes, Japanese part-of-speech labels: 206 new keys and 7 changed)
+
+Mechanical layer: `mech_check.py --locale th --aapt2` -> "th: 213 keys checked, 0 errors, 1 warnings, aapt2 ok" (the warning: `pt_cloud_email_hint` identical to English, judged below); `l10n_diff.py` against the `l10n-sync` English -> "values-th missing=0 orphan=0 modified=7", the 7 being the delta's MODIFIED keys, each already carrying the new English meaning (the tag has not moved). **No 🛑 issues.**
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| translation_error_membership_inactive | ⚠️ | <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: สมาชิกภาพไม่ได้ใช้งาน | <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: ไม่มีสมาชิกภาพ | This is the translator's open question. In Thai software, «ไม่ได้ใช้งาน» is the "not being used" kind of inactive (Google's บัญชีที่ไม่ได้ใช้งาน is an unused account; that example is from memory). Here it reads "the membership is going unused", which suggests a paid membership the user is not using. «ไม่มีสมาชิกภาพ» ("no membership") is true for both cases the comment names, lapsed and never had. It keeps the glossary's สมาชิกภาพ, and it shares its root with the page title `pt_cloud_inactive` «ไม่มีสมาชิกภาพที่ใช้งานอยู่», so the state reads as one state. 227 dp at 14 sp, inside the pill's two lines. |
+| settings_pt_cloud_summary_inactive | ⚠️ | สมาชิกภาพไม่ได้ใช้งาน | ไม่มีสมาชิกภาพ | The same state in the hub digest. Same fix as the pill, so that the pill, the digest and the page title all say ไม่มีสมาชิกภาพ. |
+| pt_cloud_inactive_since | ⚠️ | สมาชิกภาพไม่ได้ใช้งานตั้งแต่ <xliff:g id="date" example="Nov 3">%1$s</xliff:g> | สมาชิกภาพสิ้นสุดเมื่อ <xliff:g id="date" example="Nov 3">%1$s</xliff:g> | With a date this is where «ไม่ได้ใช้งาน» misleads most: «…ตั้งแต่ 3 พ.ย.» reads "the membership has gone unused since Nov 3". The comment says the date is when a paid membership ENDED. «สิ้นสุดเมื่อ» says exactly that. It is also the shape of the trial's card title, `pt_cloud_trial_ended_on` «ช่วงทดลองใช้สิ้นสุดเมื่อ …», so the trial and the membership stay distinct and parallel. |
+| pt_cloud_join_nudge_trial | 💬 | สมัครสมาชิก Ko-fi เพื่อใช้ <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> ต่อหลังช่วงทดลองใช้ | สมัครสมาชิกผ่าน Ko-fi เพื่อใช้ <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> ต่อหลังช่วงทดลองใช้ | On Thai sites, «สมัครสมาชิก X» is also everyday wording for opening an account on X. So «สมัครสมาชิก Ko-fi» can read as "sign up for Ko-fi", not as "pay for a membership on Ko-fi". «ผ่าน» makes Ko-fi the place where the membership is bought. The Join button under the line already shows the right meaning, so this is optional. |
+| pt_cloud_join_nudge_lapsed | 💬 | สมัครสมาชิก Ko-fi เพื่อเปิดใช้ฟีเจอร์เหล่านี้อีกครั้ง | สมัครสมาชิกผ่าน Ko-fi เพื่อเปิดใช้ฟีเจอร์เหล่านี้อีกครั้ง | The same fix as the trial line. The two nudges are the card's two states, so they should match. |
+| pt_cloud_intro | 💬 | โมเดลจดจำข้อความและโมเดลการแปลที่แม่นยำที่สุดหนักเกินกว่าจะทำงานบนอุปกรณ์มือถือได้ <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> จึงเรียกใช้โมเดลเหล่านั้นบนเซิร์ฟเวอร์แทน คุณจึงได้ผลลัพธ์ที่ดีกว่า โดยที่อุปกรณ์ของคุณไม่ต้องทำงานเหล่านี้เลย | โมเดลจดจำข้อความและโมเดลการแปลที่แม่นยำที่สุดหนักเกินกว่าจะทำงานบนอุปกรณ์มือถือได้ <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> จึงเรียกใช้โมเดลเหล่านั้นบนเซิร์ฟเวอร์แทน ทำให้คุณได้ผลลัพธ์ที่ดีกว่า โดยที่อุปกรณ์ของคุณไม่ต้องทำงานเหล่านี้เลย | Two clauses in a row both turn on จึง («…จึงเรียกใช้… คุณจึงได้…»), so the paragraph reads like a chain of "so … so". «ทำให้» turns the second into the result of the first, the way the English "so you get" does. |
+| local_audio_load_subtitle | 💬 | หากคุณมีไฟล์ android.db ที่มีเสียงบันทึก คุณนำเข้าไฟล์ได้ที่นี่ คุณต้องหาไฟล์นี้มาเอง ใช้ได้กับคำเท่านั้น และคำที่ไม่มีรายการในไฟล์ android.db จะใช้การตั้งค่าการอ่านออกเสียงข้อความอื่นๆ ของคุณแทน | หากมีไฟล์ android.db ที่มีเสียงบันทึก นำเข้าได้ที่นี่ คุณต้องหาไฟล์นี้มาเอง ใช้ได้กับคำเท่านั้น และคำที่ไม่มีรายการในไฟล์ android.db จะใช้การตั้งค่าการอ่านออกเสียงข้อความอื่นๆ ของคุณแทน | Three คุณ in the first three clauses copy the English pronouns. Thai drops the first two, and keeps คุณ where it carries weight ("you must source it yourself"). «ที่มีเสียงบันทึก» stays, because the two load-failed messages describe the file in those words. |
+
+### Clean areas (checked, no findings)
+
+- **Ask section and the word page's "In this sentence" group.**
+  - The header «ถาม» stands with ต้นฉบับ / คำแปล / คำ. Sentences name it in quotes («“ถาม” ต้องใช้โมเดล AI»), so the verb reads as a name.
+  - The screen-reader toggle «สลับการแสดงส่วนถาม» follows its three siblings (สลับการแสดงคำแปล / ต้นฉบับ / คำ). It adds ส่วน only because a bare verb cannot follow การแสดง.
+  - Status line, footer and failure:
+    - «กำลังถาม Gemini…» and «กำลังถาม…» are the status lines.
+    - «ตอบโดย Gemini» has the shape of «แปลโดย» / «อ่านโดย».
+    - «ไม่สามารถรับคำตอบได้» and «ลองอีกครั้ง» use `update_error_retry`'s words.
+  - The cut-off line, the spoiler warning (⚠ with its space) and the out-of-scope line all say what the English says. The out-of-scope list «เช่น ความหมาย ไวยากรณ์ หรือคำศัพท์» uses Thai list spacing.
+  - The alert read as one, title + body + button:
+    - Title «“ถาม” ต้องใช้โมเดล AI».
+    - The body ends «…ได้ใน “บริการแปล”».
+    - The button «บริการแปล» is byte-identical to `settings_cell_translation_services`.
+  - The chip «แจกแจงไวยากรณ์» is 91 dp against the English 113 dp at the chip's size. The explain row cd, the group title «ในประโยคนี้» and the row «อธิบายว่าคำนี้ใช้อย่างไร» say what the English says.
+  - The hint «ถามคำถามของคุณเอง…» is 159 dp at 16 sp. The field gets about 272 dp beside the 36 dp send button on a 360 dp phone.
+- **"AI" and the 7 MODIFIED keys.**
+  - AI is one Latin word, spaced, everywhere: the chip «AI», «การกำหนดค่า AI ขั้นสูง», «ตัวแปล AI» in both subtitles, and «โมเดล AI» / «บริการ AI» in the alert. The voice row's «เสียง AI ออนไลน์» uses it too.
+  - `git diff` shows that the only change in the three subtitles and the header is LLM → AI. The only LLM left in a string is the debug row `settings_debug_force_mmap_weights`, as the glossary says. Banner comments still say "LLM", which nobody sees.
+  - The three cloud feature rows carry the new English. «การประมวลผลภาพประสิทธิภาพสูง», «…โดยไม่ใช้พลังของอุปกรณ์คุณ» and «การแปลระดับพรีเมียม» replace «อ่านข้อความบนหน้าจอ», «…อุปกรณ์จึงใช้พลังทั้งหมดกับเกมได้» and «แปลข้อความ», and nothing of the old meanings is left.
+- **Word list and definitions.**
+  - «คำ · 6» is `section_words` plus the count.
+  - «พจนานุกรมในตัว» is the "built-in dictionary" of `yomitan_single_dict_subtitle`. It is one compound, and it renders in the definitions WebView, which wraps.
+  - «ต้องใช้ Android System WebView เพื่อแสดงคำจำกัดความ» is one short line, with the app's name as Android shows it.
+  - No `pos_*` label holds `·`, `・` or `/`. The parentheses match the English.
+- **Anki.**
+  - The user's note is «หมายเหตุ» in all five places: group, hint, clear cd, picker option and its description. It stays apart from Anki's «โน้ต» (`anki_first_field_unmapped`) and from «บันทึก» (Save).
+  - The alert read as one: title «ไม่มีฟิลด์สำหรับหมายเหตุของคุณ»; body «…ไม่มีฟิลด์ที่แมปกับ “หมายเหตุ” …หรือไม่»; button «บันทึกเลย» (`llm_prompt_save_anyway`'s words) next to the standard Cancel. "set to Notes" quotes `anki_content_notes` exactly, with the file's own verb แมป (`anki_content_source_pick_title`).
+  - «คำจำกัดความ (รูปแบบ Yomitan)» and «พจนานุกรมหลัก (รูปแบบ Yomitan)» have the shape of «รายการความถี่ (สไตล์ JPMN)». The descriptions keep “Glossary” and “MainDefinition” as written, in the file's «“X” ของ Lapis» form.
+  - The fallback toast «เพิ่มไปยัง Anki แล้ว (บริการเสียงพูดไม่พร้อมใช้งาน จึงใช้เสียงของอุปกรณ์)» uses its siblings' frame, and its service name is `audio_source_voice_service_name`. It is 439 dp at 14 sp. The toast holds two lines. At 296 dp the first line ends after ไม่พร้อม (259 dp) and the second line is 180 dp. At 320 dp the break falls after ใช้งาน.
+- **Capture overlay and icon actions.**
+  - «คำจำกัดความ» and «ไม่มี» join «คำแปล» / «ฟุริงานะ» / «พินอิน».
+  - The cd frame «การซ้อนทับ: …» uses `floating_menu_panel_overlays`.
+  - «เปิดโหมดแตะเพื่อค้นหาคำ» is a verb phrase like the other icon actions. It is the only tap-to-lookup string, so it collides with nothing.
+  - Width: the control sizes itself to its widest label, which is 74 dp at 13 sp, plus 16 dp of padding per segment. That makes about 430 dp with the X. This fits a landscape game screen. On a 360 dp portrait phone it gives way and the labels shrink toward 10 sp (57 dp), but the English pill (about 384 dp) gives way there too. `PillToggle` shrinks before it ellipsizes.
+- **PlayTranslate Cloud, read as state families.**
+  - **Free trial** is «ทดลองใช้ฟรีจนถึง …» in both the hub and the page. With a Thai date such as «13 พ.ย.» the placeholder starts with a digit, so its space is right.
+  - **Trial ended** is «ช่วงทดลองใช้ฟรีสิ้นสุดแล้ว» in the pill, after the English "Free trial ended". It is «ช่วงทดลองใช้สิ้นสุดแล้ว» in the hub and «…สิ้นสุดเมื่อ …» on the page.
+  - **Terms not accepted** is «ยังไม่ได้ยอมรับข้อกำหนด» in the pill, the hub and the notice title. The paused note «หยุดชั่วคราวจนกว่าจะยอมรับข้อกำหนด» and the pending line match it.
+  - **Closed** is «ปิดให้บริการแล้ว» in the pill, the status row and the card title.
+  - **Membership inactive** is the one family that needs the fix above.
+  - **Member** is «สมาชิก», and «เป็นสมาชิกจนถึง …» pairs with it. Join is «สมัครสมาชิก …».
+  - Sign-in and sign-out use Google's Thai words, ลงชื่อเข้าใช้ and ออกจากระบบ.
+  - Three lines say to ask for another code, and each one's «ส่งรหัสใหม่» matches the button: the rate-limit notice, the invalid-code notice and the key-not-stored notice.
+  - The agreement sentence renders «ฉันยอมรับข้อกำหนดและนโยบายความเป็นส่วนตัว». It has no space before the placeholder, which is correct, because the placeholder fills with Thai. The link's longer form, with นโยบาย, is what the sentence needs. The comment allows it to differ from the page title.
+  - The title «ข้อกำหนดและความเป็นส่วนตัว» is 277 dp at the toolbar's 22 sp, against about 280 dp after the back button on a 360 dp phone. That is the same margin as the English alpha title, «PlayTranslate Cloud (Alpha)» at 273 dp (the Thai one is 276 dp). The link's wording would be 353 dp, so keeping the title short was right.
+  - The email hint is identical to English on purpose (example.com, per the comment). This was the mechanical warning.
+- **Cloud widths.**
+  - The pills are 227 to 288 dp at 14 sp, which fits their two lines of about 174 dp each.
+  - The hub digests are 126 to 157 dp at 13 sp in a single line.
+  - The free-trial and Join buttons are 234 to 238 dp, inside a full-width button.
+  - «ดูข้อกำหนด» is 69 dp, against the English 75 dp.
+- **Voice service.**
+  - «บริการเสียงพูด» keeps the service apart from เสียง (audio, the voices themselves), as the comment asks. It is not «ออนไลน์».
+  - The rows, the Advanced header «ขั้นสูง» (`enhanced_auto_translate_title`), «คีย์ API», «URL ของคำขอ» and «โมเดล» use the file's terms.
+  - Remove is «นำบริการออก», which equals `tr_service_delete_cd`.
+  - The failure lines read as a family under «บริการเสียงพูดไม่ตอบกลับ»: each states the service's outcome, with «(HTTP 503)» spaced.
+  - The format list «(MP3 WAV Ogg หรือ M4A)» is split by spaces, as the file splits its lists (`image_import_unsupported`).
+  - The cross-references are exact: «แตะ “โมเดล”» twice is `voice_service_row_model`, and «ใน “การตั้งค่าบริการ”» is `voice_service_settings_row`.
+  - The tokens {text}, {voice}, {model}, {instructions}, {speed}, {language}, {language_name} and {key} are byte-identical to English and are not translated.
+  - Each alert read as title + body + buttons:
+    - Can't save: «ยังบันทึกไม่ได้» over the issue line.
+    - Unchecked: «ตรวจสอบคีย์ไม่ได้», then the body, then Save anyway / Cancel.
+    - Not listed: the title, then a body that ends «ให้ยกเลิกแล้วแตะ “โมเดล”».
+    - Voices not taken: the title, then a body that names the device voice as `voice_service_remove_confirm_message` does.
+- **Imported recordings.**
+  - Load is «นำเข้า» in the row, the progress title, the digest and the failure title. This is the Yomitan import verb, because «โหลด» reads as download. The header «เสียงบันทึกที่นำเข้า» shares it.
+  - Remove is «นำไฟล์ android.db ออก» in the cd and on the red button, and «…ออกหรือไม่» in the title. The message ends on text-to-speech, as the English does.
+  - Progress: «คัดลอกแล้ว 1.2 GB จาก 5.8 GB» and «กำลังตรวจสอบไฟล์…».
+  - The failure lines keep the database's English words after «:» and in brackets, as the comments say.
+  - No string names a language, the file's community name or a website.
+  - The TTS digest «นำเข้าไฟล์ android.db แล้ว» leads its one-line subtitle at 147 dp, against the English 125 dp. The engine and voice that follow ellipsize, as in English.
+- **Register and spacing.**
+  - No ครับ/ค่ะ in any of the 213 strings.
+  - A script filled every placeholder with a real value: Gemini, PlayTranslate Cloud, you@example.com, «13 พ.ย.», 10, 503, Coral, tts-1, «1.2 GB», and a Thai mode name for the overlay cd.
+    - No Thai letter touches a Latin letter or a digit.
+    - No double space, and every value is NFC with no zero-width characters.
+    - Each of the 70 spaces between two Thai letters, in 44 strings, falls at a clause or list boundary. All 70 were listed and read.
+
+### Source-side notes
+
+- `voice_service_failed_title` ("The voice service did not answer") is the one title over every `voice_service_failure_*` line (`VoiceServiceUi.showVoiceServiceFailure`). Several of those lines contradict it:
+  - "The service refused the API key." and "The service refused the request (HTTP 400)." are answers, as is "The service had an error (HTTP 503)."
+  - "The request could not be made." means nothing was sent.
+  - The Thai «บริการเสียงพูดไม่ตอบกลับ» inherits this faithfully.
+  - A title that fits every reason (for example "The voice service failed" or "Couldn't use the voice service") would fix it in every locale.
+
+### Thai appendix
+
+- **Rulings on the translator's two open questions.**
+  - **The part-of-speech scheme: keep it as it is.**
+    - กลุ่ม 1 / กลุ่ม 2 are the class names that Thai textbooks of Japanese teach for Godan and Ichidan (the I/II/III grouping of the Thai editions of the standard course books). That is the comment's first choice. This comes from what I know of Thai teaching materials. With no web access in this run, it was not checked against a source.
+    - The classes that English names after their ending are named after the same ending in kana: する, す, くる, ずる, ぬ, り, い, な, の, たる, く, しく, なり, と. That is what a Thai learner reads in a textbook. Thai script would merge the three -su classes (ซุ). Mapping them to กลุ่ม 3 would collapse Suru and Kuru, which the dictionary keeps apart.
+    - Nidan and Yodan are named by a number of rows, not by an ending, and Thai has no settled term for them. The comment's fallback, the romanized word beside คำกริยา, is the right one for two archaic tags.
+    - Each label is a single phrase with no separator character. «คำกริยากลุ่ม 1 · สกรรมกริยา» reads correctly in the line. สกรรมกริยา / อกรรมกริยา are the standard Thai grammar terms.
+  - **«สมาชิกภาพไม่ได้ใช้งาน»: change it.** The three ⚠️ rows above give the fix. They keep สมาชิกภาพ and replace the predicate «ไม่ได้ใช้งาน», which reads as "going unused". `pt_cloud_inactive` «ไม่มีสมาชิกภาพที่ใช้งานอยู่» stays: «ที่ใช้งานอยู่» is the file's word for "active", as in `tts_language_unsupported_with_engine_message`, so after the fix all four strings share ไม่มีสมาชิกภาพ / สมาชิกภาพ.
+- **Punctuation and lists: the translator's reading of the file is right.**
+  - None of the file's 1,277 strings ends in «.» or «?».
+  - The only commas are inside three `example` attributes.
+  - 32 questions end in หรือไม่. «ใช่ไหม» has precedent (`onboarding_welcome_play_title`, `onboarding_welcome_learn_title`).
+  - Lists are split by spaces with หรือ / และ before the last item (`image_import_unsupported`).
+  - The delta follows all of this. Inside the request legend, the token list is space-separated and the tokens are untouched.
+- **Placeholder contact points, with real values.**
+  - **Service:** «PlayTranslate Cloud: …», «กำลังถาม Gemini…», «ตอบโดย Gemini», «ทดลองใช้ PlayTranslate Cloud ฟรี», «ออกจากระบบ PlayTranslate Cloud หรือไม่».
+  - **Email:** «ส่งรหัสไปยัง you@example.com แล้ว รหัสนี้ใช้ได้ 10 นาที», «สมัครด้วย you@example.com เพื่อให้…».
+  - **Dates and times**, which arrive in Thai format and begin with a digit: «ทดลองใช้ฟรีจนถึง 13 พ.ย.», «…จนถึง 15:42», «เป็นสมาชิกจนถึง 5 ธ.ค. 15:42», «ช่วงทดลองใช้สิ้นสุดเมื่อ 3 พ.ย.».
+  - **Sizes:** «คัดลอกแล้ว 1.2 GB จาก 5.8 GB», «มีเพียง 2.1 GB จาก 5.8 GB».
+  - **Models and voices:** «โมเดล tts-1 ใช้เสียงด้านล่างไม่ได้», «คำขอระบุเสียง Coral และโมเดล gpt-4o-mini-tts».
+  - **Counts:** «คำ · 6», «(HTTP 503)».
+  - **Mode:** «การซ้อนทับ: คำแปล แตะเพื่อเปลี่ยน».
+  - **The one Thai-filled placeholder** is `pt_cloud_agree_terms`, and it is correctly tight.
+  - The ภาษา rule does not come up: no delta placeholder takes a language name.
+- **Plural:** `pt_cloud_code_sent_to` has `other` only, as Thai needs, and the classifier นาที follows the count.
+
+### Verdict
+
+**PASS with 3 ⚠️ and 4 💬.** 0 🛑, 0 ❌. The ⚠️ rows are one fix, the membership-inactive family, and they should be applied together. The 💬 rows are optional.
+
+### Disposition (2026-11-16)
+
+All 7 findings in the table applied byte-exact (1 applied: `⚠️`; 2 ⚠️: `settings_pt_cloud_summary_inactive`, `pt_cloud_inactive_since`; 4 💬: `pt_cloud_join_nudge_trial`, `pt_cloud_join_nudge_lapsed`, `pt_cloud_intro`, `local_audio_load_subtitle`). After applying: `th: 213 keys checked, 0 errors, 1 warnings, aapt2 ok`; only delta keys changed (scope check).
+
+### Round 2 (2026-11-16), final review after applying round 1
+
+Mechanical layer: `mech_check.py --locale th --aapt2` -> "th: 213 keys checked, 0 errors, 1 warnings, aapt2 ok" (the warning: `pt_cloud_email_hint` identical to English, on purpose); `l10n_diff.py` against `git show l10n-sync:…` -> "values-th missing=0 orphan=0 modified=7" (the 7 changed keys, each holding the new English meaning); README `readme_l10n_check.py th` -> "[PASS] th -> readme/README.th.md", one warning "39 bold spans, English has 38" (the known extra span from 2026-10-06).
+
+
+Round-1 changes checked (a script compared each row's `suggested` with the file value, byte for byte; `scope_check.py th` -> "OK; 213 delta keys differ from HEAD", so nothing outside the delta moved):
+- `translation_error_membership_inactive`: landed. The pill now reads «PlayTranslate Cloud: ไม่มีสมาชิกภาพ» (222.6 dp at 14 sp, shorter than the English 261.5 dp, inside its two-line pill).
+- `settings_pt_cloud_summary_inactive`: landed (84.5 dp at 13 sp, against the English 120.6 dp).
+- `pt_cloud_inactive_since`: landed. «สมาชิกภาพสิ้นสุดเมื่อ 3 พ.ย.» parallels `pt_cloud_trial_ended_on` «ช่วงทดลองใช้สิ้นสุดเมื่อ 3 พ.ย.», and the two states stay apart by their subject. The card title wraps (no maxLines on `tvAccountTitle`).
+- `pt_cloud_join_nudge_trial`: landed.
+- `pt_cloud_join_nudge_lapsed`: landed. The two nudges match each other, and both match the Join button «สมัครสมาชิก PlayTranslate Cloud» and `pt_cloud_join_pending` «สมัครสมาชิกแล้วใช่ไหม».
+- `pt_cloud_intro`: landed. Only one จึง is left, and «ทำให้» carries the result.
+- `local_audio_load_subtitle`: landed. «ที่มีเสียงบันทึก» still matches the two load-failed messages. The space after «อื่นๆ» follows the file, where all 7 uses of ๆ before Thai text have a space.
+- Neighbours: «ไม่ได้ใช้งาน» no longer appears anywhere in the file. The membership family now reads as one state: the pill and the digest say «ไม่มีสมาชิกภาพ», and the page says «ไม่มีสมาชิกภาพที่ใช้งานอยู่» (no end date) or «สมาชิกภาพสิ้นสุดเมื่อ …» (with a date). No other string quoted the old wording.
+
+#### Findings (round 2)
+
+No findings.
+
+Fresh read of all 213 keys by screen:
+- **Ask section and the word page's group:** I read the alert as one: title «“ถาม” ต้องใช้โมเดล AI», a body ending «…ได้ใน “บริการแปล”», and the button «บริการแปล». The quote and the button both byte-match `settings_cell_translation_services`. «ตอบโดย», «กำลังถาม…», «ลองอีกครั้ง» and the toggle «สลับการแสดงส่วนถาม» stand beside their siblings (สลับการแสดงคำแปล / ต้นฉบับ / คำ). The group title, row and cd say what the English says. `section_ask` «ถาม» is trivially inside its one line.
+- **Word list and definitions:** «คำ · 6» is right. I read the 26 new `pos_*` labels against the 22 existing ones. «กริยาเชื่อม» has the shape of the existing «กริยาช่วย». No label holds `·`, `・` or `/`. Round 1's ruling on the group, kana and romanized scheme stands, and I do not re-raise it.
+- **Anki:** «หมายเหตุ» appears in all five places, and the alert's “หมายเหตุ” byte-matches `anki_content_notes`. «บันทึกเลย» is the word that `llm_prompt_save_anyway` uses, and that string is also the voice-service alerts' Save anyway button (`OnlineTtsServiceActivity`). The fallback toast uses the frame of the other «เพิ่มไปยัง Anki แล้ว (…)» toasts. The Yomitan descriptions keep “Glossary” / “MainDefinition” and the brands as the English has them. The `Yomitan`, `Lapis` and `Anki` brand counts match the English.
+- **Capture overlay and icon actions:** «คำจำกัดความ» is 73.7 dp at 13 sp, against the English 62.2 dp. As round 1 found, `PillToggle` shrinks before it cuts. «เปิดโหมดแตะเพื่อค้นหาคำ» is a verb phrase like the other `icon_action_*` strings. On the Hotkeys page, the โหมด wrapper keeps the mode name apart from the «แตะเพื่อ… / กดค้างเพื่อ…» gesture rows.
+- **PlayTranslate Cloud:** I read the five state families again as sets after the fix. Each is one state everywhere, and each stays distinct from the others. The three «ส่งรหัสใหม่» mentions match the button. `pt_cloud_agree_terms` with the link filled in reads «ฉันยอมรับข้อกำหนดและนโยบายความเป็นส่วนตัว», tight before the Thai fill. I re-measured both toolbar titles at 22 sp: «PlayTranslate Cloud (อัลฟา)» 276.1 dp (the English is 272.8 dp) and «ข้อกำหนดและความเป็นส่วนตัว» 277.2 dp. Neither toolbar has a menu. With the AppCompat and Material3 toolbar defaults, the title gets about 296 dp on a 360 dp phone: a 56 dp navigation button, 4 dp title margins, `contentInsetStartWithNavigation` 0 and no end inset. That makes round 1's 280 dp conservative; both titles fit (from the code, not seen on a device).
+- **Voice service:** «บริการเสียงพูด» is used throughout. The cross-references «แตะ “โมเดล”» (twice) and «ใน “การตั้งค่าบริการ”» byte-match their rows. A script found the tokens in `voice_service_request_legend`, `voice_service_issue_no_text` and `voice_service_issue_text_in_header` identical to the English. The remove title «นำบริการเสียงพูดออกหรือไม่» has the shape of `tr_service_remove_title_fmt`. «ไม่มีเอนจินการอ่านออกเสียงข้อความ» uses the TTS-engine term of the existing `tts_*` strings.
+- **Imported recordings:** «นำเข้า» is the verb throughout, and «นำ…ออก» is the remove verb. The database's English stays after «:» and inside brackets. No string names a language, a website or the file's community name. The orphan `tts_voice_picker_title` is gone, and no Thai string quoted its old title «เสียง».
+- **MODIFIED keys and AI:** The analyzer's 7 `loc:` lines carry the new English. AI is one spaced Latin word in the chip, the header, both subtitles and the Ask alert.
+- **Register and spacing:** I re-ran a script over all 213 values with real fills. It found no ครับ/ค่ะ, no Thai letter touching a Latin letter or digit, no double space, nothing outside NFC, no zero-width character, no comma, and no final «.» or «?» (the only flags were the Thai date fill «พ.ย.»). The 70 spaces between Thai letters in 44 keys each fall at a clause or list boundary.
+
+Process note (not a translation finding): `S/frag/th.xml` still holds the pre-fix text of the 7 keys round 1 changed. A draft-vs-file check found exactly those 7 out of the 213. If `apply_fragment.py` is re-run for th, the 3 ⚠️ fixes and the 4 💬 fixes are reverted. This is the 2026-10-07 lockstep lesson.
+
+#### Verdict (round 2)
+
+**PASS.** 🛑 0 / ❌ 0 / ⚠️ 0 / 💬 0. All 7 round-1 fixes landed byte-exact, and none broke a neighbour.
+
+**Correction to the round-1 Disposition (2026-11-16):** its list names the first applied finding as "1 applied: `⚠️`", a slip of the coordinator's script; that finding is ⚠️ `translation_error_membership_inactive`, applied byte-exact like the others.

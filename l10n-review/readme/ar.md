@@ -135,3 +135,23 @@ Clean areas: The lead sentence drops the API key as the English does («يمكن
 ### Disposition (2026-10-14)
 
 Applied the 1 ⚠️ (the Arabic text first, then «متاحة على» and the link, in the DeepL bullet's order, so the bold name sits next to the bullet).
+
+## Delta review 2026-11-16 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> `[PASS] ar -> readme/README.ar.md` (the same with `--require-header`). **No 🛑 issues.**
+
+| section | severity | current | suggested | note |
+|---|---|---|---|---|
+| اختياري: خدمات الترجمة عبر الإنترنت > Bilibili Index-Translate bullet | 💬 | "**Bilibili Index-Translate**: خدمة مجانية لا تحتاج إلى مفتاح API، وقد تكون مؤقتة، متاحة على [index-translate.bilibili.com](https://github.com/bilibili/Index-Translate)" | "**Bilibili Index-Translate**: خدمة مجانية لا تحتاج إلى مفتاح API، متاحة على [index-translate.bilibili.com](https://github.com/bilibili/Index-Translate)، وقد تكون مؤقتة" | The caveat wedged between the noun phrase and its second description («…، وقد تكون مؤقتة، متاحة على…») leaves «متاحة» dangling after a clause. At the end it reads as the English does ("May be temporary" comes last), and it gives the line the sibling bullets' shape, where an Arabic clause follows the link after «،» («…[link]، ثم اختر النموذج داخل التطبيق»). Bidi is unchanged in substance: computed with `java.text.Bidi`, the link stays its own LTR run and the closing clause is RTL. The U+200F before `**` lies outside the quoted text and stays. |
+
+Clean areas: `git diff readme/README.ar.md` changes only line 187, the bullet. The URL is now `https://github.com/bilibili/Index-Translate`, byte-identical to the English, and the link text `index-translate.bilibili.com` is unchanged. «وقد تكون مؤقتة» is faithful to "May be temporary": the feminine agrees with خدمة, and the hedge («قد») is kept. Punctuation is the Arabic comma only, and nothing ends the line, as in the sibling bullets. The only hidden character is the line's existing U+200F. The 2026-10-14 order (the Arabic text first, so the bold name stands alone beside the bullet) is intact, and so is the RTL wrapper.
+
+### Disposition (2026-11-16)
+
+The one 💬 applied byte-exact: the caveat «وقد تكون مؤقتة» now closes the bullet after the link. Checker: PASS.
+
+### Round 2 (2026-11-16)
+
+Checker: `readme_l10n_check.py ar` -> `[PASS] ar -> readme/README.ar.md` (the same with `--require-header`).
+
+No findings. `git diff readme/README.ar.md` changes one line, the Bilibili Index-Translate bullet (line 187), and it now holds round 1's suggested text byte-exact: «… خدمة مجانية لا تحتاج إلى مفتاح API، متاحة على [index-translate.bilibili.com](https://github.com/bilibili/Index-Translate)، وقد تكون مؤقتة». The URL is byte-identical to the English, the link text is unchanged, «وقد تكون مؤقتة» keeps the hedge of "May be temporary" and agrees with خدمة, and the only hidden character is the line's existing U+200F (checked by code point on both sides of the diff). Computed with `java.text.Bidi` in an RTL paragraph: `[R:RLM] [L:Bilibili Index-Translate] [R:: خدمة مجانية لا تحتاج إلى مفتاح ] [L:API] [R:، متاحة على ] [L:index-translate.bilibili.com] [R:، وقد تكون مؤقتة]`, so the bold name stands alone beside the bullet and the closing clause reads after the link.

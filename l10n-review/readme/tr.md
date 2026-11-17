@@ -114,3 +114,19 @@ Clean areas: The lead drops the API key as the English does («**Ayarlar → Çe
 ### Disposition (2026-10-14)
 
 Applied the lead 💬 («İstediğiniz kadar hizmet ekleyin.», an imperative like the English). Declined the intro 💬: Turkish «bir» sits before the head noun at the end of the descriptive phrase, unlike the sentence-initial "A" / «Um» / 一款 that were dropped, so the intro stays as it was.
+
+## Delta review 2026-11-16 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> `[PASS] tr -> readme/README.tr.md` with the standing `warning 39 bold spans, English has 38`. The extra span is **Özel URL** in the Custom bullet, added on purpose on 2026-10-06 and settled in the sections above. This bullet has one bold span in both files. **No 🛑 issues.**
+
+No findings. `git diff readme/README.tr.md` touches line 185 alone. The link target is now `https://github.com/bilibili/Index-Translate`, byte-identical to the English. The link text `index-translate.bilibili.com` and the bold brand are unchanged. The new clause folds the English's separate "May be temporary" into the bullet's existing parenthesis: «(ücretsiz, API anahtarı gerekmez, geçici olabilir)». That keeps the bracket style every sibling bullet uses («(modeli uygulama içinden seçin)»). «geçici olabilir» says "may be temporary" with the service as its implied subject, the same subject as «ücretsiz», so the list reads as three short predicates about the service. It takes lowercase and commas like the fragments before it, and no suffix touches the brand or the URL.
+
+### Disposition (2026-11-16)
+
+No findings; nothing to apply.
+
+### Round 2 (2026-11-16)
+
+Mechanical layer: `readme_l10n_check.py tr` -> `[PASS] tr -> readme/README.tr.md` with the standing `warning 39 bold spans, English has 38` (**Özel URL** in the Custom bullet, added on purpose 2026-10-06).
+
+No findings. `git diff readme/README.tr.md` changes line 185 and nothing else (1 insertion, 1 deletion). The link target is `https://github.com/bilibili/Index-Translate`, byte-identical to English line 185; the link text `index-translate.bilibili.com` and the bold brand are unchanged, as in English. "May be temporary" is carried as «geçici olabilir», the third item in the bullet's existing parenthesis, lowercase like «ücretsiz» and «API anahtarı gerekmez»; no suffix touches the brand or the URL.

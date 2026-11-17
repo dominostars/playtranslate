@@ -182,7 +182,7 @@ Varsayılan olarak çeviri için [Lingva](https://github.com/thedaviddelta/lingv
 - **Groq**: [console.groq.com](https://console.groq.com/keys) (modeli uygulama içinden seçin)
 - **OpenRouter**: [openrouter.ai](https://openrouter.ai/keys) (modeli uygulama içinden seçin)
 - **Claude**: [platform.claude.com](https://platform.claude.com/settings/keys) (modeli uygulama içinden seçin)
-- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://index-translate.bilibili.com/) (ücretsiz, API anahtarı gerekmez)
+- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://github.com/bilibili/Index-Translate) (ücretsiz, API anahtarı gerekmez, geçici olabilir)
 - **Özel**: OpenAI uyumlu başka herhangi bir uç nokta (**Özel URL** alanına sunucunuzun URL'sini girin)
 
 ## İsteğe bağlı: Anki Bilgi Kartları

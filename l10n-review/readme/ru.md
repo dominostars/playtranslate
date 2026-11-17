@@ -96,3 +96,19 @@ Clean areas: The lead drops the API key as the English does: «можно доб
 ### Disposition (2026-10-14)
 
 No findings; nothing to apply.
+
+## Delta review 2026-11-16 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> `[PASS] ru -> readme/README.ru.md`. **No 🛑 issues.**
+
+No findings. `git diff readme/README.ru.md` touches this one bullet and nothing else. The URL is now `https://github.com/bilibili/Index-Translate`, byte-identical to the English, and the link text `index-translate.bilibili.com` is unchanged. The new clause «Доступ может быть временным» says what "May be temporary" means here (the free service may not stay available) with an explicit subject, where a bare «Может быть временным» would have no noun to agree with after «бесплатно, без API-ключа». It is a separate sentence after a period, as in English, and the bullet ends with no period like the English and its siblings («— модель выбирается прямо в приложении»). The earlier part of the bullet, reviewed 2026-10-14, is unchanged.
+
+### Disposition (2026-11-16)
+
+No findings; nothing to apply.
+
+### Round 2 (2026-11-16)
+
+Checker: `[PASS] ru -> readme/README.ru.md`.
+
+No findings. `git diff readme/README.ru.md` changes only line 185, the Bilibili Index-Translate bullet. Its URL, `https://github.com/bilibili/Index-Translate`, is byte-identical to the English `README.md`, and the link text `index-translate.bilibili.com` is unchanged. «Доступ может быть временным» is a separate sentence after a period, as in English. It has its own subject and needs no case agreement with the clause before it, and the bullet ends without a period, like the English and its sibling bullets. The rest of the file is untouched.

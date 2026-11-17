@@ -134,6 +134,8 @@
     <!-- ═══ WORD DETAIL ═══ -->
 
     <string name="word_detail_no_definitions">لم يتم العثور على تعريفات.</string>
+    <string name="definitions_need_webview">تتطلب التعريفات Android System WebView.</string>
+    <string name="dictionary_title_builtin">القاموس المدمج</string>
 
     <string name="word_detail_more_examples">المزيد من الأمثلة</string>
 
@@ -331,11 +333,31 @@
     <string name="section_translation">الترجمة</string>
 
     <string name="section_words">الكلمات</string>
+    <string name="section_words_count">الكلمات · <xliff:g id="count" example="6">%1$d</xliff:g></string>
+    <string name="section_ask">اسأل</string>
+    <string name="ask_question_hint">اطرح سؤالك الخاص…</string>
+    <string name="cd_ask_send">إرسال السؤال</string>
+    <string name="cd_ask_close">إغلاق الإجابة</string>
+    <string name="cd_toggle_ask_visibility">إظهار/إخفاء قسم «اسأل»</string>
+    <string name="ask_status_asking">جارٍ طرح السؤال على <xliff:g id="service_name" example="Gemini">%1$s</xliff:g>…</string>
+    <string name="ask_status_asking_unnamed">جارٍ طرح السؤال…</string>
+    <string name="ask_answered_by">تمت الإجابة بواسطة <xliff:g id="service_name" example="Gemini">%1$s</xliff:g></string>
+    <string name="ask_answer_cut">بلغت هذه الإجابة الحد الأقصى للطول، فقُطعت قبل اكتمالها.</string>
+    <string name="ask_spoiler_warning">⚠ قد تكشف الإجابات الترجمة المخفية.</string>
+    <string name="ask_out_of_scope">لا تجيب خدمة <xliff:g id="service_name" example="PlayTranslate Cloud">%1$s</xliff:g> إلا عن الأسئلة المتعلقة بهذه الجملة، مثل معناها أو قواعدها أو مفرداتها.</string>
+    <string name="ask_failed">تعذّر الحصول على إجابة.</string>
+    <string name="ask_retry">إعادة المحاولة</string>
+    <string name="ask_no_llm_title">تتطلب ميزة «اسأل» نموذج ذكاء اصطناعي</string>
+    <string name="ask_no_llm_message">ترسل ميزة «اسأل» سؤالك عن هذه الجملة إلى نموذج ذكاء اصطناعي. أضف خدمة ذكاء اصطناعي عبر الإنترنت، أو فعّل نموذجًا يعمل على الجهاز، من «خدمات الترجمة».</string>
+    <string name="ask_no_llm_open_services">خدمات الترجمة</string>
+    <string name="ask_preset_grammar_breakdown">تحليل نحوي</string>
+    <string name="cd_word_explain">شرح الكلمة في هذه الجملة</string>
+    <string name="word_explain_title">في هذه الجملة</string>
+    <string name="word_explain_ask">شرح استخدام هذه الكلمة</string>
 
     <string name="words_loading">جارٍ البحث عن الكلمات…</string>
 
     <string name="lens_loading">جارٍ البحث…</string>
-    <string name="lens_also_matches">تطابق آخر</string>
     <string name="load_more_count">تحميل المزيد (<xliff:g id="count" example="2">%1$d</xliff:g>)</string>
     <string name="section_other_matches">تطابقات أخرى</string>
 
@@ -419,6 +441,7 @@
     <string name="icon_action_swap_pinyin">التبديل بين الترجمة والبينيين</string>
 
     <string name="icon_action_change_game_language">تغيير لغة اللعبة</string>
+    <string name="icon_action_tap_to_lookup">تفعيل البحث عن الكلمات بالضغط</string>
 
     <string name="icon_action_translating_from">الترجمة الآن من <xliff:g id="language" example="Japanese">%1$s</xliff:g></string>
 
@@ -485,6 +508,7 @@
     <string name="anki_no_deck_selected">لم يتم العثور على أي مجموعات في <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
 
     <string name="anki_added_no_audio">تمت الإضافة إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (الصوت غير متاح)</string>
+    <string name="anki_added_voice_fell_back">تمت الإضافة إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (خدمة الصوت غير متاحة، فاستُخدم صوت الجهاز)</string>
 
     <string name="anki_added_no_screenshot">تمت الإضافة إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (لقطة الشاشة غير متاحة)</string>
 
@@ -507,6 +531,9 @@
     <string name="anki_card_too_large_simplify">حفظ بطاقة مبسّطة</string>
 
     <string name="anki_card_too_large_failed">هذه البطاقة أكبر من أن يقبلها <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>، حتى بتعريفات مبسّطة. جرّب إزالة بعض الكلمات أو اختصار الجملة.</string>
+    <string name="anki_notes_no_field_title">لا يوجد حقل لملاحظتك</string>
+    <string name="anki_notes_no_field_message">لا يحتوي نوع البطاقة هذا على حقل مُعيَّن لمحتوى «الملاحظات»، لذا لا يمكن حفظ ملاحظتك في البطاقة. حفظ البطاقة بدونها؟</string>
+    <string name="anki_notes_no_field_save_anyway">الحفظ على أي حال</string>
 
     <string name="anki_added_simplified">تمت الإضافة إلى <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (تم تبسيط التعريفات لتناسب الحجم)</string>
 
@@ -533,6 +560,9 @@
     <string name="anki_group_words_count">الكلمات في البطاقة · <xliff:g id="words_count" example="3">%d</xliff:g></string>
 
     <string name="anki_group_definitions">التعريفات</string>
+    <string name="anki_group_notes">الملاحظات</string>
+    <string name="anki_notes_hint">أضف ملاحظة إلى هذه البطاقة</string>
+    <string name="cd_anki_notes_clear">مسح الملاحظة</string>
 
     <string name="anki_group_screenshot">لقطة الشاشة</string>
 
@@ -671,6 +701,12 @@
 
     <string name="anki_content_frequency_harmonic">رقم ترتيب التكرار</string>
     <string name="anki_content_frequency_harmonic_desc">رقم واحد لترتيب البطاقات حسب التكرار، وهو المتوسط التوافقي لتكرارات الكلمة في القواميس (الأقل = الأكثر تكرارًا). لحقل «FreqSort» في <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> أو «FrequencySort» في <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+    <string name="anki_content_glossary">التعريفات (بتنسيق <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>)</string>
+    <string name="anki_content_glossary_desc">تعريفات كل القواميس للكلمة المميَّزة، مكتوبةً بالطريقة التي يكتبها بها <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>. لحقول أنواع البطاقات المصمَّمة لـ <xliff:g id="brand_yomitan2" example="Yomitan">Yomitan</xliff:g>، مثل حقل «Glossary» في <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>.</string>
+    <string name="anki_content_glossary_primary">القاموس الرئيسي (بتنسيق <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>)</string>
+    <string name="anki_content_glossary_primary_desc">تعريفات قاموس واحد فقط، هو أول قاموس في ترتيبك يحتوي على الكلمة المميَّزة، مكتوبةً بالطريقة التي يكتبها بها <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>. يأتي القاموس المدمج في آخر الترتيب. لحقل «MainDefinition» في <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>.</string>
+    <string name="anki_content_notes">الملاحظات</string>
+    <string name="anki_content_notes_desc">الملاحظة التي تكتبها على البطاقة قبل حفظها. يبقى الحقل فارغًا إذا لم تكتب أي ملاحظة.</string>
 
     <!-- ═══ CARD-TYPE STATE FLAGS ═══ -->
 
@@ -724,6 +760,7 @@
     <string name="deepl_settings_get_key_subtitle">تتضمن الخطة المجانية 500,000 حرف شهريًا، لكنها تتطلب بطاقة ائتمان للتسجيل</string>
 
     <string name="deepl_settings_about"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> هي خدمة ترجمة معروفة بجودتها العالية، خاصةً في اللغات الأوروبية.</string>
+    <string name="pt_cloud_display_name_alpha"><xliff:g id="service" example="PlayTranslate Cloud">PlayTranslate Cloud</xliff:g> (ألفا)</string>
 
     <string name="llm_backend_preset_custom">مخصص</string>
 
@@ -766,15 +803,15 @@
 
     <string name="llm_backend_invalid_key_alert_button">موافق</string>
 
-    <!-- ═══ ADVANCED LLM CONFIGURATION — user-editable prompt templates ═══ -->
+    <!-- ═══ ADVANCED AI CONFIGURATION — user-editable prompt templates ═══ -->
 
-    <string name="settings_header_advanced_llm">التكوين المتقدم لـ LLM</string>
+    <string name="settings_header_advanced_llm">التكوين المتقدم للذكاء الاصطناعي</string>
 
     <string name="settings_llm_context_title">استخدام الأسطر الأخيرة كسياق</string>
-    <string name="settings_llm_context_subtitle">عبر الإنترنت فقط. امنح مترجِمات LLM عبر الإنترنت آخر بضعة أسطر من النص المسجَّل للحصول على ضمائر وأسماء أكثر اتساقًا.</string>
+    <string name="settings_llm_context_subtitle">عبر الإنترنت فقط. امنح مترجِمات الذكاء الاصطناعي عبر الإنترنت آخر بضعة أسطر من النص المسجَّل للحصول على ضمائر وأسماء أكثر اتساقًا.</string>
 
     <string name="llm_prompt_row_system_title">موجّه النظام</string>
-    <string name="llm_prompt_row_system_subtitle">الشخصية والتعليمات المُرسَلة إلى مترجِمات LLM، السحابية والعاملة على الجهاز.</string>
+    <string name="llm_prompt_row_system_subtitle">الشخصية والتعليمات المُرسَلة إلى مترجِمات الذكاء الاصطناعي، السحابية والعاملة على الجهاز.</string>
     <string name="llm_prompt_row_translation_title">موجّه الترجمة</string>
     <string name="llm_prompt_row_translation_subtitle">الطلب الذي يُحيط بكل عبارة تبحث عنها.</string>
     <string name="llm_prompt_row_batch_title">موجّه الدفعة</string>
@@ -817,7 +854,7 @@
 
     <string name="add_online_service_title">إضافة خدمة ترجمة</string>
 
-    <string name="service_llm_badge">LLM</string>
+    <string name="service_llm_badge">AI</string>
 
     <string name="service_account_required">يتطلب حسابًا</string>
 
@@ -1104,6 +1141,10 @@
     <string name="translation_error_unreachable">خدمة <xliff:g id="service" example="Lingva">%1$s</xliff:g>: تعذّر الاتصال</string>
 
     <string name="translation_error_not_running">خدمة <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: متوقفة</string>
+    <string name="translation_error_trial_ended">خدمة <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: انتهت الفترة التجريبية المجانية</string>
+    <string name="translation_error_membership_inactive">خدمة <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: العضوية غير نشطة</string>
+    <string name="translation_error_terms_required">خدمة <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: لم تتم الموافقة على الشروط</string>
+    <string name="translation_error_closed">خدمة <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: مغلقة نهائيًا</string>
 
     <string name="translation_error_discard_card_title">تجاهل البطاقة؟</string>
 
@@ -1221,6 +1262,10 @@
     <string name="overlay_mode_option_furigana">فوريغانا</string>
 
     <string name="overlay_mode_option_pinyin">بينيين</string>
+    <string name="overlay_mode_option_definitions">التعريفات</string>
+    <string name="overlay_mode_option_none">لا شيء</string>
+    <string name="capture_overlay_pill_collapsed_cd">التراكبات: <xliff:g id="mode" example="Translation">%1$s</xliff:g>. اضغط للتغيير.</string>
+    <string name="capture_overlay_pill_collapse_cd">إخفاء خيارات التراكب</string>
 
     <string name="settings_hide_overlays_during_auto_mode">إخفاء التراكبات أثناء الوضع التلقائي</string>
 
@@ -1496,22 +1541,27 @@
     <string name="settings_pt_cloud_summary_translation_only">الترجمة فقط</string>
 
     <string name="settings_pt_cloud_summary_ocr_only">قراءة النص فقط بقوة الخوادم</string>
+    <string name="settings_pt_cloud_summary_trial">فترة تجريبية مجانية حتى <xliff:g id="end" example="Nov 3">%1$s</xliff:g></string>
+    <string name="settings_pt_cloud_summary_trial_ended">انتهت الفترة التجريبية</string>
+    <string name="settings_pt_cloud_summary_inactive">العضوية غير نشطة</string>
+    <string name="settings_pt_cloud_summary_terms_required">لم تتم الموافقة على الشروط</string>
+    <string name="pt_cloud_headline">معالجة الصور والترجمة بقوة الخوادم</string>
+    <string name="pt_cloud_intro">أدق نماذج التعرّف على النص والترجمة أثقل من أن تعمل على جهاز محمول. لذا تشغّلها خدمة <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> على خادم بدلًا منه، فتحصل على نتائج أفضل دون أن يتحمّل جهازك أي جزء من العمل.</string>
+    <string name="pt_cloud_features_title">الميزات</string>
 
-    <string name="pt_cloud_ocr_toggle_title">قراءة النص على الشاشة</string>
+    <string name="pt_cloud_ocr_toggle_title">معالجة قوية للصور</string>
 
-    <string name="pt_cloud_ocr_toggle_subtitle">قراءة أقوى للنص على وحدة GPU في الخادم. وتتفرغ قدرة جهازك كلها للعبة.</string>
+    <string name="pt_cloud_ocr_toggle_subtitle">قراءة أقوى للنص على وحدة GPU في الخادم، دون استهلاك قدرة جهازك.</string>
 
-    <string name="pt_cloud_translate_toggle_title">ترجمة النص</string>
+    <string name="pt_cloud_translate_toggle_title">ترجمات متميزة</string>
 
     <string name="pt_cloud_translate_toggle_subtitle">تتضمن نماذج ترجمة مدفوعة، ويُختار أفضلها لكل مهمة.</string>
+    <string name="pt_cloud_privacy_features">لا تُخزَّن لقطات الشاشة والنصوص ولا تُباع أبدًا.</string>
+    <string name="pt_cloud_features_paused_terms">متوقفة مؤقتًا حتى تتم الموافقة على الشروط.</string>
 
     <string name="pt_cloud_ocr_row_subtitle">قراءة النص بقوة الخوادم، دون أي عبء على الجهاز</string>
 
     <string name="pt_cloud_translate_row_subtitle_no_key">أفضل نماذج الترجمة المدفوعة مضمّنة</string>
-
-    <string name="pt_cloud_key_label">مفتاح العميل</string>
-
-    <string name="pt_cloud_key_hint">الصق المفتاح الذي حصلت عليه</string>
 
     <string name="pt_cloud_status_title">الخدمة</string>
 
@@ -1522,12 +1572,76 @@
     <string name="pt_cloud_status_not_running">متوقفة</string>
 
     <string name="pt_cloud_status_unreachable">تعذّر الاتصال</string>
+    <string name="pt_cloud_status_offline">غير متاحة حاليًا</string>
+    <string name="pt_cloud_status_closed">مغلقة</string>
 
     <string name="pt_cloud_status_other">استجابة غير متوقعة (<xliff:g id="http_code" example="500">%1$s</xliff:g>)</string>
 
     <string name="pt_cloud_status_checking">جارٍ التحقق</string>
 
     <string name="pt_cloud_status_unchecked">لم يتم التحقق</string>
+    <string name="pt_cloud_account_title">الحساب</string>
+    <string name="pt_cloud_email_label">عنوان البريد الإلكتروني</string>
+    <string name="pt_cloud_email_hint">you@example.com</string>
+    <string name="pt_cloud_free_trial">تجربة <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> مجانًا</string>
+    <plurals name="pt_cloud_code_sent_to">
+        <item quantity="zero">أرسلنا رمزًا إلى <xliff:g id="email" example="you@example.com">%1$s</xliff:g>. الرمز صالح لمدة <xliff:g id="minutes" example="10">%2$d</xliff:g> دقيقة.</item>
+        <item quantity="one">أرسلنا رمزًا إلى <xliff:g id="email" example="you@example.com">%1$s</xliff:g>. الرمز صالح لمدة دقيقة واحدة.</item>
+        <item quantity="two">أرسلنا رمزًا إلى <xliff:g id="email" example="you@example.com">%1$s</xliff:g>. الرمز صالح لمدة دقيقتين.</item>
+        <item quantity="few">أرسلنا رمزًا إلى <xliff:g id="email" example="you@example.com">%1$s</xliff:g>. الرمز صالح لمدة <xliff:g id="minutes" example="10">%2$d</xliff:g> دقائق.</item>
+        <item quantity="many">أرسلنا رمزًا إلى <xliff:g id="email" example="you@example.com">%1$s</xliff:g>. الرمز صالح لمدة <xliff:g id="minutes" example="10">%2$d</xliff:g> دقيقة.</item>
+        <item quantity="other">أرسلنا رمزًا إلى <xliff:g id="email" example="you@example.com">%1$s</xliff:g>. الرمز صالح لمدة <xliff:g id="minutes" example="10">%2$d</xliff:g> دقيقة.</item>
+    </plurals>
+    <string name="pt_cloud_code_label">الرمز</string>
+    <string name="pt_cloud_start_free_trial">بدء الفترة التجريبية المجانية</string>
+    <string name="pt_cloud_send_new_code">إرسال رمز جديد</string>
+    <string name="pt_cloud_change_email">استخدام بريد إلكتروني آخر</string>
+    <string name="pt_cloud_signed_in_with_key">تم تسجيل الدخول باستخدام مفتاح</string>
+    <string name="pt_cloud_trial_until">فترة تجريبية مجانية حتى <xliff:g id="end" example="Nov 3, 3:42 PM">%1$s</xliff:g></string>
+    <string name="pt_cloud_member_until">العضوية سارية حتى <xliff:g id="end" example="Dec 5, 3:42 PM">%1$s</xliff:g></string>
+    <string name="pt_cloud_member">العضوية سارية</string>
+    <string name="pt_cloud_trial_ended_on">انتهت الفترة التجريبية في <xliff:g id="date" example="Nov 3">%1$s</xliff:g></string>
+    <string name="pt_cloud_trial_ended">انتهت الفترة التجريبية</string>
+    <string name="pt_cloud_inactive_since">العضوية غير نشطة منذ <xliff:g id="date" example="Nov 3">%1$s</xliff:g></string>
+    <string name="pt_cloud_inactive">لا توجد عضوية نشطة</string>
+    <string name="pt_cloud_terms_required">لم تتم الموافقة على الشروط</string>
+    <string name="pt_cloud_check_again">التحقق مرة أخرى</string>
+    <string name="pt_cloud_join_pending">انضممت بالفعل؟ قد تستغرق المعالجة بضع ثوانٍ.</string>
+    <string name="pt_cloud_terms_pending">اقرأ الشروط ووافق عليها لمواصلة استخدام <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>.</string>
+    <string name="pt_cloud_show_terms">عرض الشروط</string>
+    <string name="pt_cloud_join_title">الانضمام إلى <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g></string>
+    <string name="pt_cloud_after_trial_title">بعد الفترة التجريبية</string>
+    <string name="pt_cloud_join_nudge_trial">أضف عضوية على Ko-fi لمواصلة استخدام <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> بعد انتهاء الفترة التجريبية.</string>
+    <string name="pt_cloud_join_title_lapsed">مواصلة استخدام <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g></string>
+    <string name="pt_cloud_join_nudge_lapsed">أضف عضوية على Ko-fi لإعادة تفعيل هذه الميزات.</string>
+    <string name="pt_cloud_join_email_hint">اشترك باستخدام <xliff:g id="email" example="you@example.com">%1$s</xliff:g> ليصل اشتراكك إلى هذا الحساب تلقائيًا.</string>
+    <string name="pt_cloud_join_email_hint_no_email">اشترك باستخدام عنوان البريد الإلكتروني المرتبط بمفتاحك ليصل اشتراكك إلى هذا الحساب تلقائيًا.</string>
+    <string name="pt_cloud_sign_out">تسجيل الخروج</string>
+    <string name="pt_cloud_sign_out_title">تسجيل الخروج من <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>؟</string>
+    <string name="pt_cloud_sign_out_message">سيُزال المفتاح من هذا الجهاز. يبقى حسابك كما هو، ويمكنك تسجيل الدخول مجددًا باستخدام عنوان بريدك الإلكتروني.</string>
+    <string name="pt_cloud_signin_bad_email">لا يبدو هذا عنوان بريد إلكتروني.</string>
+    <string name="pt_cloud_signin_rate_limited">طلبات كثيرة جدًا. إذا وصلك رمز، فأدخله أدناه؛ وإلا فأرسل رمزًا جديدًا بعد دقيقة.</string>
+    <string name="pt_cloud_signin_too_many_codes">أُرسل عدد كبير جدًا من الرموز إلى هذا العنوان اليوم. حاول مرة أخرى غدًا.</string>
+    <string name="pt_cloud_signin_offline_new">خدمة <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> غير متاحة حاليًا، لذا لا يمكن إنشاء حساب جديد. حاول مرة أخرى لاحقًا.</string>
+    <string name="pt_cloud_signin_mail_failed">تعذّر إرسال البريد الإلكتروني. حاول مرة أخرى بعد دقيقة.</string>
+    <string name="pt_cloud_signin_unavailable">تسجيل الدخول غير متاح حاليًا. حاول مرة أخرى لاحقًا.</string>
+    <string name="pt_cloud_signin_unreachable">تعذّر الوصول إلى <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>. تأكد من اتصالك بالإنترنت وحاول مرة أخرى.</string>
+    <string name="pt_cloud_signin_disabled">لا يمكن لهذا الحساب تسجيل الدخول. إذا كنت تعتقد أن ذلك خطأ، فتواصل مع دعم PlayTranslate.</string>
+    <string name="pt_cloud_code_invalid">لم ينجح هذا الرمز. ربما كُتب بشكل خاطئ أو انتهت صلاحيته. تحقق منه، أو أرسل رمزًا جديدًا.</string>
+    <string name="pt_cloud_verify_offline">خدمة <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> غير متاحة حاليًا. لا يزال رمزك صالحًا، لذا حاول مرة أخرى بعد دقيقة.</string>
+    <string name="pt_cloud_key_not_stored">تعذّر تخزين المفتاح على هذا الجهاز. أرسل رمزًا جديدًا.</string>
+    <string name="pt_cloud_account_unchecked">تعذّر التحقق من الحساب الآن.</string>
+    <string name="pt_cloud_key_no_longer_accepted">لم يعد مفتاح هذا الجهاز مقبولًا. سجّل الدخول مجددًا.</string>
+    <string name="pt_cloud_terms_unavailable">تعذّر تحميل الشروط. حاول مرة أخرى بعد دقيقة.</string>
+    <string name="pt_cloud_terms_not_recorded">تعذّر تسجيل موافقتك. حاول مرة أخرى.</string>
+    <string name="pt_cloud_closed_title">أُغلقت خدمة <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g></string>
+    <string name="pt_cloud_closed_default">لم تعد الخدمة متاحة.</string>
+    <string name="pt_cloud_privacy_signin">يُستخدم عنوان بريدك الإلكتروني لإرسال رمز تسجيل الدخول إليك.</string>
+    <string name="pt_cloud_terms_title">الشروط والخصوصية</string>
+    <string name="pt_cloud_terms_agree">أوافق</string>
+    <string name="pt_cloud_agree_terms">أوافق على <xliff:g id="terms" example="Terms and Privacy">%1$s</xliff:g></string>
+    <string name="pt_cloud_terms_link">الشروط والخصوصية</string>
+    <string name="pt_cloud_agree_required">وافق على الشروط للمتابعة.</string>
 
     <string name="floating_menu_pt_cloud_available">خدمة <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: متاحة</string>
 
@@ -1878,8 +1992,6 @@
 
     <string name="tts_no_engine_row_subtitle">لا يوجد محرك صوت متاح. اضغط لإضافة واحد.</string>
 
-    <string name="tts_voice_picker_title">الصوت</string>
-
     <string name="tts_voices_section_header">أصوات <xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
     <string name="tts_speed_title">السرعة</string>
 
@@ -2105,6 +2217,57 @@
     <string name="audio_source_tts_name">تحويل النص إلى كلام</string>
 
     <string name="audio_source_commons_name">Wikimedia Commons</string>
+    <string name="audio_source_voice_service_name">خدمة الصوت</string>
+    <string name="audio_error_playing">تعذّر تشغيل هذا الصوت</string>
+    <string name="voice_service_connect_title">ربط خدمة صوت</string>
+    <string name="voice_service_connect_subtitle">استخدم صوت ذكاء اصطناعي عبر الإنترنت بمفتاح API الخاص بك</string>
+    <string name="voice_service_settings_row">إعدادات الخدمة</string>
+    <string name="voice_service_no_voices">لا توجد أصوات</string>
+    <string name="tts_no_engine_row_title">لا يوجد محرك تحويل نص إلى كلام</string>
+    <string name="voice_service_failed_title">لم تستجب خدمة الصوت</string>
+    <string name="voice_service_failure_auth">رفضت الخدمة مفتاح API.</string>
+    <string name="voice_service_failure_rate_limited">تم استنفاد حد الطلبات أو الحصة لدى الخدمة.</string>
+    <string name="voice_service_failure_timeout">لم تستجب الخدمة في الوقت المحدد.</string>
+    <string name="voice_service_failure_unreachable">تعذّر الوصول إلى الخدمة. تحقق من عنوان URL ومن اتصالك.</string>
+    <string name="voice_service_failure_server_error">حدث خطأ في الخدمة (HTTP <xliff:g id="status" example="503">%1$d</xliff:g>).</string>
+    <string name="voice_service_failure_rejected">رفضت الخدمة الطلب (HTTP <xliff:g id="status" example="400">%1$d</xliff:g>).</string>
+    <string name="voice_service_failure_rejected_asked">حدّد الطلب الصوت <xliff:g id="voice" example="Coral">%1$s</xliff:g> والنموذج <xliff:g id="model" example="gpt-4o-mini-tts">%2$s</xliff:g>. إذا لم يكن أحدهما متوفرًا لدى الخدمة، فاختر صوتًا آخر هنا، أو نموذجًا آخر في «إعدادات الخدمة».</string>
+    <string name="voice_service_failure_no_request">تعذّر إنشاء الطلب. تحقق من عنوان URL الخاص بالخدمة.</string>
+    <string name="voice_service_failure_bad_response">لم تُرجع الخدمة صوتًا يمكن للتطبيق استخدامه (MP3 أو WAV أو Ogg أو M4A).</string>
+    <string name="voice_service_failure_bad_list">لم تكن استجابة الخدمة قائمة يمكن للتطبيق قراءتها.</string>
+    <string name="voice_service_row_service">الخدمة</string>
+    <string name="voice_service_preset_openai">متوافقة مع <xliff:g id="brand_openai" example="OpenAI">OpenAI</xliff:g></string>
+    <string name="voice_service_preset_elevenlabs">متوافقة مع <xliff:g id="brand_elevenlabs" example="ElevenLabs">ElevenLabs</xliff:g></string>
+    <string name="voice_service_url_label">عنوان URL للطلب</string>
+    <string name="voice_service_api_key_label">مفتاح API</string>
+    <string name="voice_service_row_model">النموذج</string>
+    <string name="voice_service_model_none">اختر</string>
+    <string name="voice_service_instructions_label">تعليمات الصوت</string>
+    <string name="voice_service_advanced_header">خيارات متقدمة</string>
+    <string name="voice_service_request_label">الطلب</string>
+    <string name="voice_service_request_legend">أسطر الترويسة أولًا، ثم متن JSON. يملأ التطبيق القيم التالية: {text}، {voice}، {model}، {instructions}، {speed}، {language}، {language_name}، {key}.</string>
+    <string name="voice_service_manual_voices_label">معرّفات الأصوات، معرّف في كل سطر</string>
+    <string name="voice_service_manual_voices_hint">لخدمة لا يمكنها عرض قائمة أصواتها. تُضاف إلى الأصوات التي يعرفها التطبيق لها مسبقًا.</string>
+    <string name="voice_service_remove">إزالة الخدمة</string>
+    <string name="voice_service_remove_confirm_title">إزالة خدمة الصوت؟</string>
+    <string name="voice_service_remove_confirm_message">سيُحذف مفتاح API الخاص بها، وستعود كل لغة تستخدم أحد أصواتها إلى صوت الجهاز.</string>
+    <string name="voice_service_cannot_save_title">لا يمكن الحفظ بعد</string>
+    <string name="voice_service_issue_bad_url">يجب أن يكون عنوان URL للطلب عنوان https، أو عنوان http على شبكتك الخاصة.</string>
+    <string name="voice_service_issue_no_text">يجب أن يتضمن الطلب {text}، في عنوان URL أو في المتن.</string>
+    <string name="voice_service_issue_text_in_header">لا يمكن وضع {text} أو {instructions} في سطر ترويسة.</string>
+    <string name="voice_service_issue_header_not_ascii">يحتوي مفتاح API على حرف لا يمكن إرساله. الصقه مرة أخرى دون مسافات أو فواصل أسطر.</string>
+    <string name="voice_service_issue_no_model">اختر نموذجًا.</string>
+    <string name="voice_service_no_model_list_type_model">لم تُرجع الخدمة قائمة بالنماذج. اضغط على «النموذج» واكتب معرّف النموذج.</string>
+    <string name="voice_service_unchecked_title">تعذّر التحقق من المفتاح</string>
+    <string name="voice_service_unchecked_message">لم تُرجع الخدمة قائمة بالنماذج، لذا تعذّر التحقق من عنوان URL ومفتاح API.</string>
+    <string name="voice_service_no_key_entered">لم يتم إدخال مفتاح API.</string>
+    <string name="voice_service_model_not_listed_title">لا تُدرج الخدمة هذا النموذج</string>
+    <string name="voice_service_model_not_listed_message">لا تتضمن قائمة نماذج الخدمة <xliff:g id="model" example="tts-1-hd">%1$s</xliff:g>. إذا حفظت، فقد تُرفض طلبات النطق. لاختيار نموذج تُدرجه الخدمة، ألغِ ثم اضغط على «النموذج».</string>
+    <string name="voice_service_voices_not_taken_title">بعض الأصوات لا تعمل مع هذا النموذج</string>
+    <string name="voice_service_voices_not_taken_message">لا يمكن للنموذج <xliff:g id="model" example="tts-1">%1$s</xliff:g> استخدام الأصوات أدناه. إذا حفظت، فستعود كل لغة من هذه اللغات إلى صوت الجهاز.</string>
+    <string name="voice_service_key_not_stored">تعذّر تخزين مفتاح API بأمان على هذا الجهاز، لذا لم يُحفظ أي شيء.</string>
+    <string name="voice_service_model_other_label">معرّف نموذج آخر</string>
+    <string name="voice_service_model_use">استخدام</string>
 
     <string name="audio_no_results">لا توجد نتائج</string>
 
@@ -2113,6 +2276,23 @@
     <string name="audio_loading">جارٍ التحميل…</string>
 
     <string name="audio_error_loading">تعذّر التحميل</string>
+    <string name="audio_source_local_name">ملف android.db</string>
+    <string name="tts_recordings_section_header">التسجيلات المستوردة</string>
+    <string name="local_audio_load_title">تحميل ملف android.db</string>
+    <string name="local_audio_load_subtitle">إذا كان لديك ملف android.db يضم تسجيلات صوتية، فيمكنك تحميله هنا. عليك الحصول على هذا الملف بنفسك. لا يعمل هذا إلا مع الكلمات، وأي كلمة ليس لها تسجيل في ملف android.db ستُنطق وفق إعدادات تحويل النص إلى كلام الأخرى لديك.</string>
+    <string name="local_audio_loaded_digest">ملف android.db مُحمَّل</string>
+    <string name="local_audio_importing_title">جارٍ تحميل ملف android.db</string>
+    <string name="local_audio_copying_message">تم نسخ <xliff:g id="copied" example="1.2 GB">%1$s</xliff:g> من <xliff:g id="total" example="5.8 GB">%2$s</xliff:g></string>
+    <string name="local_audio_checking_message">جارٍ التحقق من الملف…</string>
+    <string name="local_audio_read_problem">فشلت قراءة هذا الملف: <xliff:g id="cause" example="database disk image is malformed">%1$s</xliff:g></string>
+    <string name="local_audio_remove">إزالة ملف android.db</string>
+    <string name="local_audio_remove_confirm_title">إزالة ملف android.db؟</string>
+    <string name="local_audio_remove_confirm_message">سيُحذف الملف من التطبيق، وستُنطق كل الكلمات بتحويل النص إلى كلام من جديد.</string>
+    <string name="local_audio_import_failed_title">تعذّر تحميل الملف</string>
+    <string name="local_audio_error_not_database">هذا ليس ملف android.db يضم تسجيلات صوتية.</string>
+    <string name="local_audio_error_invalid_format">قاعدة البيانات هذه ليست ملف android.db يضم تسجيلات صوتية (<xliff:g id="reason" example="no such table: android">%1$s</xliff:g>).</string>
+    <string name="local_audio_error_incomplete">هذا الملف غير مكتمل: حجمه <xliff:g id="have" example="2.1 GB">%1$s</xliff:g> من أصل <xliff:g id="expected" example="5.8 GB">%2$s</xliff:g>. احصل على الملف كاملًا، ثم حمّله مرة أخرى.</string>
+    <string name="local_audio_error_copy">تعذّر نسخ الملف.</string>
 
     <string name="process_text_translation_failed">تعذّرت ترجمة النص المحدد. تحقق من اتصالك أو من إعدادات اللغة.</string>
 
@@ -2139,6 +2319,32 @@
     <string name="pos_abbreviation">اختصار</string>
     <string name="pos_contraction">اختزال</string>
     <string name="pos_auxiliary">فعل مساعد</string>
+    <string name="pos_transitive">متعدٍّ</string>
+    <string name="pos_intransitive">لازم</string>
+    <string name="pos_copula">رابطة</string>
+    <string name="pos_unclassified">غير مصنَّف</string>
+    <string name="pos_suru_verb">فعل سورو</string>
+    <string name="pos_su_verb">فعل سو</string>
+    <string name="pos_kuru_verb">فعل كورو</string>
+    <string name="pos_zuru_verb">فعل زورو</string>
+    <string name="pos_ichidan_verb">فعل إيتشيدان</string>
+    <string name="pos_ichidan_verb_special">فعل إيتشيدان (خاص)</string>
+    <string name="pos_godan_verb">فعل غودان</string>
+    <string name="pos_godan_verb_special">فعل غودان (خاص)</string>
+    <string name="pos_godan_verb_irregular">فعل غودان (شاذ)</string>
+    <string name="pos_nidan_verb">فعل نيدان</string>
+    <string name="pos_yodan_verb">فعل يودان</string>
+    <string name="pos_nu_verb">فعل نو</string>
+    <string name="pos_ri_verb">فعل ري</string>
+    <string name="pos_i_adjective">صفة إي</string>
+    <string name="pos_na_adjective">صفة نا</string>
+    <string name="pos_no_adjective">صفة نو</string>
+    <string name="pos_taru_adjective">صفة تارو</string>
+    <string name="pos_ku_adjective">صفة كو</string>
+    <string name="pos_shiku_adjective">صفة شيكو</string>
+    <string name="pos_nari_adjective">صفة ناري</string>
+    <string name="pos_prenominal">نعت سابق</string>
+    <string name="pos_to_adverb">ظرف تو</string>
 
     <!-- Misc register/usage tags (short chips); see values/strings.xml. -->
     <string name="misc_kana_only">كانا فقط</string>

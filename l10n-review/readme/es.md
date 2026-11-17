@@ -129,3 +129,26 @@ Clean areas: The lead drops the API key as the English does: «puedes añadir en
 ### Disposition (2026-10-14)
 
 No findings; nothing to apply.
+
+## Delta review 2026-11-16 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] es -> readme/README.es.md`).
+
+No findings. Checked:
+- **The diff.** `git diff readme/README.es.md` touches only the Bilibili bullet.
+- **The link.** The URL is now `https://github.com/bilibili/Index-Translate`, byte-identical to English line 185. The link text `index-translate.bilibili.com` is unchanged.
+- **The new clause.** «(gratis, sin clave de API; puede ser temporal)» keeps the parenthesis of the sibling bullets («(eliges el modelo en la app)») and the wording of the reviewed «gratis, sin clave de API». The semicolon sets the new clause apart from the comma list. «puede ser temporal» says what "May be temporary" says (that the free service may not last), with the service as its implied subject.
+- **Form.** Neutral vocabulary and no trailing punctuation inside the bullet, as in its siblings.
+
+### Disposition (2026-11-16)
+
+No findings; nothing to apply.
+
+### Round 2 (2026-11-16)
+
+Mechanical layer: `readme_l10n_check.py es` -> `[PASS] es -> readme/README.es.md`.
+
+No findings.
+- `git diff readme/README.es.md` changes one line, the Bilibili Index-Translate bullet.
+- Its URL is `https://github.com/bilibili/Index-Translate`, byte-identical to English line 185, and the link text `index-translate.bilibili.com` is unchanged.
+- «(gratis, sin clave de API; puede ser temporal)» adds "May be temporary" after a semicolon, inside the parenthesis its siblings use. «gratis, sin clave de API» keeps the wording reviewed before.

@@ -1057,3 +1057,223 @@ Fresh read of all 39 values (checked, no finding):
 ### After the final review (2026-10-27)
 
 At the developer's request, `hint_deepl_key` was changed after round 2: «Füge hier deinen DeepL-API-Schlüssel ein» measured 312 dp in the DeepL page's 276 dp one-line monospace key field (Droid Sans Mono, 13 sp) and was cut inside its verb. It is now «DeepL-API-Schlüssel einfügen» (218 dp), in the infinitive the file's other hints use («Wörter suchen», «Sprachen suchen»). Not yet independently reviewed.
+
+## Delta review 2026-11-16 (Ask and word explain, voice service, imported recordings, PlayTranslate Cloud account, Anki notes, Japanese part-of-speech labels: 206 new keys and 7 changed)
+
+Mechanical layer: `mech_check.py --locale de --aapt2` -> `de: 213 keys checked, 0 errors, 2 warnings, aapt2 ok` (both warnings are "identical to English": `pt_cloud_display_name_alpha` and `pt_cloud_code_label`, judged below); `l10n_diff.py` against `l10n-sync` -> `missing=0 orphan=0 modified=7`, the 7 being the delta's MODIFIED keys, each already carrying the new English meaning (the tag has not moved). **No 🛑 issues.**
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| pt_cloud_terms_title | ⚠️ | Bedingungen und Datenschutz | Bedingungen &amp; Datenschutz | The terms page's MaterialToolbar title is one ellipsized line at 22 sp Roboto Regular (M3 TitleLarge). The 56 dp back button and 4 dp title margins on each side leave 296 dp at 360 dp. The current title measures 298.3 dp (kerning changes nothing), so a 360 dp phone shows „Bedingungen und Datensch…“. It fits only from about 362 dp. The „&amp;“ form is 275.3 dp and is the usual German way to write such a title („AGB &amp; Datenschutz“). „Nutzungsbedingungen …“ is 368 to 391 dp, so the translator was right to drop it. |
+| settings_pt_cloud_summary_trial | 💬 | Kostenloser Testzeitraum bis <xliff:g id="end" example="Nov 3">%1$s</xliff:g> | Testzeitraum bis <xliff:g id="end" example="Nov 3">%1$s</xliff:g> | The hub summary is one ellipsized line at 13 sp in about 216 dp. The code formats the date as „MMM d“, which is „Sept. 28“ or „März 28“ in German (see the source-side notes). With those dates the line is 219.6 to 219.9 dp, so the ellipsis cuts the day: „bis Sept. 2…“. The short form is about 140 dp. It also reads like the hub's next state, „Testzeitraum beendet“, and the pill drops „kostenlos“ in the same way. |
+| ask_no_llm_message | 💬 | Fragen zu diesem Satz beantwortet ein KI-Modell. Füge unter „Übersetzungsdienste“ einen Online-KI-Dienst hinzu oder schalte ein Modell auf dem Gerät ein. | Fragen zu diesem Satz beantwortet ein KI-Modell. Füge unter „Übersetzungsdienste“ einen Online-KI-Dienst hinzu oder aktiviere ein Modell auf dem Gerät. | On Übersetzungsdienste the on-device models are aktiviert/deaktiviert: `offline_backend_enabled_cd` „Aktiviert“, „… deaktivieren?“, „Nur deaktivieren“, `hymt_legal_agree` „… aktivieren“. The alert should use the verb the user will find on that page. |
+| anki_notes_hint | 💬 | Füge dieser Karte eine Anmerkung hinzu | Anmerkung zu dieser Karte hinzufügen | The file writes field hints in the infinitive: `yomitan_alias_hint` „Spitznamen hinzufügen“, „Wörter suchen“, „Sprachen suchen“, `hint_deepl_key` „… einfügen“. The suggestion is 275 dp, against 286 dp now. |
+| ask_question_hint | 💬 | Stelle deine eigene Frage… | Eigene Frage stellen… | Same infinitive convention for field hints. 154 dp, against 188 dp now; either fits beside the 36 dp send button. Optional: the current hint is natural. |
+| tts_recordings_section_header | 💬 | Importierte Aufnahmen | Importierte Sprachaufnahmen | In this file „Aufnahme“ on its own mostly means the screen capture (Bildschirmaufnahme, Aufnahmebereich, „aus einer neuen Aufnahme“). The group's own subtitle and errors already say „Sprachaufnahmen“. The capitalized header is about 219 dp with its 0.12 em letter spacing and wraps freely. |
+
+### Source-side notes
+
+- `ask_no_llm_title` / `ask_no_llm_message`: the comments say the alert appears when the user taps a question or the field in the Ask section. It is also raised from places with no Ask section: the word page's "In this sentence" row (`WordDetailBottomSheet.kt:305`, `WorkspaceWordDetailPage.kt:247`), the word rows' explain button, and the drag lens over a game (`AskHosting.kt:81`). There, "Ask needs an AI model" and "Ask sends your question" name a section the user is not in. The German title („Für Fragen ist ein KI-Modell nötig“) and body („Fragen zu diesem Satz beantwortet …“) are generic and read correctly on every surface. This confirms the translator's note.
+- Code, not strings: the hub's trial digest formats its date with `CooldownTimeLabel.format`, which uses a fixed `SimpleDateFormat("MMM d")`. In German that gives „Nov. 3“ (month first, which German does not write). The PlayTranslate Cloud page formats through `getBestDateTimePattern` and gives „3. Nov.“. So one trial end reads „bis Nov. 3“ in the hub and „bis 3. Nov., 15:42“ on the page. The existing cooldown line's date has the same root cause.
+- Width, no change suggested (the state's words are shared by three surfaces): the pill `translation_error_terms_required` „PlayTranslate Cloud: Bedingungen nicht akzeptiert“ ellipsizes on a 360 dp phone held in portrait. The pill is 328 dp wide; logo, gear, × and padding take 154 dp, which leaves 174 dp of text per line, with `maxLines=2`. Line 1 is „PlayTranslate Cloud:“ (128 dp). Line 2, „Bedingungen nicht akzeptiert“, needs 180.9 dp, so it shows as „Bedingungen nicht akzep…“. It fits at 384 dp and wider (198 dp or more of text), and in any landscape layout. Shortening only the pill would split one state across the pill, the hub and the page, so this is left for the developer to weigh.
+
+### Clean areas (checked, no findings)
+
+**The translator's length decisions, measured** (Android's Roboto from the Robolectric jar; Roboto Bold extracted for the bold buttons):
+- **`pt_cloud_show_terms` „Anzeigen“ (confirmed).**
+  - Layout: the button is 14 sp bold with 16 dp padding a side and a 12 dp margin, in the terms card's 300 dp row (360 dp, less 14 dp of page padding and 16 dp of card padding on each side). The title beside it is 15 sp medium and wraps.
+  - „Bedingungen anzeigen“: 143.6 dp of text, which leaves the title about 112 dp. „Bedingungen nicht akzeptiert“ (196.2 dp) would then break over three lines, since even „Bedingungen nicht“ does not fit.
+  - „Anzeigen“: 58.6 dp of text, which leaves about 197 dp. The title fits on one line at 360 dp, by about 1 dp, and at worst wraps to two.
+  - Meaning: the card's line „Lies und akzeptiere die Bedingungen, …“ says what is shown, and no other string quotes "Show terms".
+- **`pt_cloud_terms_title`: the translator was right that „Nutzungsbedingungen …“ overflows.** The chosen form still clips by 2 dp at 360 dp (finding above).
+- **`translation_error_trial_ended` without „kostenlos“ (confirmed).** At 174 dp of text, „Kostenloser Testzeitraum beendet“ needs 213 dp on line 2. It ellipsizes at 360 and 393 dp and fits only from about 404 dp. „Testzeitraum beendet“ (136.1 dp) fits at every width. It is also exactly the hub's and the page's wording for the state, so the drop makes the family more consistent.
+- **The two trial buttons** (15 sp bold, full width, 24 dp of M3 padding a side, so 252 dp of text at 360 dp; each is a 56 dp slot that can hold two lines):
+  - „PlayTranslate Cloud kostenlos testen“ is 251.3 dp kerned. It fits by under 1 dp at 360 dp. At worst it wraps to two lines inside the 56 dp button and is not cut.
+  - „Kostenlosen Testzeitraum starten“ is 228.0 dp.
+  - „PlayTranslate Cloud beitreten“ (Join) is 199.8 dp.
+  - All three read naturally („kostenlos testen“ is the stock German call to action).
+
+**The other one-line widgets:**
+- `section_ask` „FRAGEN“ (about 42 dp).
+- `ask_question_hint` (188 dp at 16 sp in about 270 dp).
+- `ask_preset_grammar_breakdown` „Grammatikanalyse“ (101 dp at 12 sp medium, plus 20 dp of chip padding).
+- `service_llm_badge` „KI“.
+- `pt_cloud_email_hint` „name@example.com“ (13 sp, `singleLine`; the reserved domain is kept and „name@“ is the usual German placeholder).
+- The toolbar title `pt_cloud_display_name_alpha` (272.8 dp of 296 dp).
+- The hub's other digests: „Testzeitraum beendet“ 126 dp, „Mitgliedschaft inaktiv“ 124 dp, „Bedingungen nicht akzeptiert“ 168 dp.
+- `section_words_count` „Wörter · 6“.
+- `dictionary_title_builtin` „Integriert“, the same word as `settings_ocr_note_builtin` and the „integrierte Wörterbuch“ of `yomitan_single_dict_subtitle`. The WebView capitalizes it as INTEGRIERT, with no ß to trip on.
+- The overlay mode options „Definitionen“ and „Keine“: the PillToggle shrinks 13 to 10 sp and sizes itself with `pillToggleFitWidthPx`. „Keine“ agrees with „Overlays“.
+- Two-line text toast: „Zu Anki hinzugefügt (Sprachausgabe-Dienst nicht verfügbar, Gerätestimme verwendet)“ wraps in 2 lines at 296 dp (272.8 and 261.5 dp). The other pills fit in two lines at 174 dp:
+  - „…: Testzeitraum beendet“
+  - „…: Mitgliedschaft inaktiv“
+  - „…: Dienst eingestellt“
+
+**PlayTranslate Cloud, read as state families:**
+- Trial: „Kostenloser Testzeitraum bis …“ on both the hub and the page.
+- Trial ended: „Testzeitraum beendet“ on the pill, the hub and the page; „Testzeitraum am 3. Nov. beendet“ with a date.
+- Inactive: „Mitgliedschaft inaktiv“ on the pill and the hub, „Mitgliedschaft inaktiv seit 3. Nov.“ and „Keine aktive Mitgliedschaft“ on the page.
+- Terms: „Bedingungen nicht akzeptiert“ on all three.
+- Closed: „Dienst eingestellt“, „Eingestellt“ and „PlayTranslate Cloud wurde eingestellt“.
+
+Each state reads the same everywhere, and no two states share wording. After the colon the pills keep the family's convention: German noun capitals, lowercase otherwise („läuft nicht“, „zu viele Anfragen“).
+
+On the page:
+- The sign-in, code, account, Join, sign-out and error notices are idiomatic and use one term each: Konto, Anmeldecode/Code, Schlüssel, Testzeitraum, Mitgliedschaft, beitreten (as „Discord beitreten“), Bedingungen, eingestellt.
+- „Neuen Code senden“ is echoed exactly as „sende einen neuen Code“ in `pt_cloud_code_invalid` and `pt_cloud_key_not_stored`.
+- `pt_cloud_agree_terms` with its link filled in reads „Ich stimme den Bedingungen und Datenschutzhinweisen zu“. That is correct dative plural with one shared article. The link takes the form the sentence needs, as its comment allows.
+- „Zustimmen“ and „Stimme den Bedingungen zu, …“ share the agree verb.
+- The MODIFIED feature rows carry the new meaning and the old one is gone: „Leistungsstarke Bildverarbeitung“ and „Stärkere OCR auf einer Server-GPU, ohne die Leistung deines Geräts zu beanspruchen.“ replace „Text erkennen“ and „… bleibt fürs Spiel“, and „Premium-Übersetzungen“ replaces „Text übersetzen“.
+- „Gerade offline“ matches „ist gerade offline“ in the notices.
+- `pt_cloud_headline` „… auf Serverniveau“ is acceptable marketing German (the „auf Profi-Niveau“ pattern).
+
+**Ask and „In diesem Satz“:**
+- „Fragen“ works as the section name next to Original, Übersetzung and Wörter, and in „Fragen ein-/ausblenden“ (the `cd_toggle_*_visibility` pattern).
+- „Gemini wird gefragt…“ / „Wird gefragt…“ follow „Wird nachgeschlagen…“.
+- „Beantwortet von Gemini“ mirrors „Übersetzt von“.
+- „Erneut versuchen“ byte-matches `update_error_retry`.
+- The out-of-scope line reads correctly with PlayTranslate Cloud filled in.
+- The spoiler line uses the section-hide verb „ausgeblendet“.
+- The alert as a set: the title, the body and the button „Übersetzungsdienste“, which byte-matches `settings_cell_translation_services` and is quoted the same way in the body.
+- On the word page: „IN DIESEM SATZ“ as the group header, „Erklären, wie dieses Wort verwendet wird“ as the row, and „In diesem Satz erklären“ for the screen reader.
+
+**AI:** „KI“ is the one word throughout:
+- the chip;
+- „Erweiterte KI-Konfiguration“;
+- „Online-KI-Übersetzern“ and „KI-Übersetzer“ in the two subtitles, where only LLM→KI changed against the old text;
+- „KI-Modell“ and „Online-KI-Dienst“ in the alert;
+- „Online-KI-Stimme“.
+
+The `hymt_legal_message` precedent is „KI-Modell“. No user-facing „LLM“ is left except the debug row.
+
+**Anki:**
+- „Anmerkung/Anmerkungen“ for the user's note is kept apart from Anki's own „Notiz“ (`anki_first_field_unmapped`), which avoids a real collision.
+- The group header, the picker option and the alert's quote are the same word.
+- „keinem Feld zugeordnet“ uses the picker's „zuordnen“.
+- The alert reads as one: title, body, „Trotzdem speichern“ (= `llm_prompt_save_anyway`) and Abbrechen.
+- The Yomitan rows follow the file's „„Field“ von Lapis“ shape. The brand spans are intact.
+
+**Voice service:**
+- „Sprachausgabe-Dienst“ builds on the file's TTS term with its hyphenated compounds (Sprachausgabe-Engine, -Einstellungen, -Audio). Next to the device's „Sprachausgabe“ it reads as the connected kind, and the connect row's subtitle („Eine Online-KI-Stimme mit deinem eigenen API-Schlüssel nutzen“) makes the difference explicit.
+- The failure lines read as one family (Der Dienst hat …).
+- „Diensteinstellungen“ and „Modell“ are quoted byte-exact in `voice_service_failure_rejected_asked`, `voice_service_no_model_list_type_model` and `voice_service_model_not_listed_message`.
+- The tokens `{text}`, `{voice}`, `{model}`, `{instructions}`, `{speed}`, `{language}`, `{language_name}` and `{key}` are untouched.
+- „Sprechanweisungen“, „Der Dienst führt dieses Modell nicht“ and „Speichern noch nicht möglich“ are idiomatic.
+
+**Imported recordings:**
+- No language, no community name for the file and no website appear anywhere.
+- „Diese Datei musst du dir selbst besorgen“ says the user sources the file.
+- android.db stays as written („android.db-Datei“).
+- The read failure follows „Download fehlgeschlagen: %1$s“.
+- The remove alert („entfernen“ on the button, „gelöscht“ in the message) mirrors the English.
+
+**Japanese POS:**
+- The labels use the romanized class plus „-Verb“/„-Adjektiv“, as German learner material does, and „Transitiv“/„Intransitiv“ stand beside the class as the English does.
+- „Kopula“, „Pränominal“, „(Sonderfall)“ and „(unregelmäßig)“ are used.
+- No label holds „·“ or „/“.
+
+**Register:** a script over the 213 keys found no Sie, Ihr or Ihnen. Every imperative is du: Füge, Lies, Schließe … ab, Verwende, Prüfe, Stimme … zu, Tippe, brich ab, Besorge dir.
+
+### German appendix
+
+- **Placeholders, with real values:**
+  - „Gemini wird gefragt…“, „Beantwortet von Hy-MT2“.
+  - „PlayTranslate Cloud beantwortet nur Fragen …“.
+  - The code plurals: „… Er ist 1 Minute gültig.“ and „… Er ist 10 Minuten gültig.“ The categories are one/other, and each form is right.
+  - „Kostenloser Testzeitraum bis 3. Nov., 15:42“, „Testzeitraum am 3. Nov. 2025 beendet“, „Mitgliedschaft inaktiv seit 3. Nov.“, „Mitglied bis 5. Dez., 15:42“. These are the page's locale patterns; for the hub's date see the source-side notes.
+  - „Verwende beim Abschluss you@example.com, damit …“.
+  - „1,2 GB von 5,8 GB kopiert“, „Sie umfasst nur 2,1 GB von 5,8 GB“.
+  - „Das Modell tts-1 kann die folgenden Stimmen nicht verwenden.“
+  - „Die Anfrage nannte die Stimme Coral und das Modell gpt-4o-mini-tts.“
+  - „(HTTP 503)“.
+  - „Overlays: Übersetzung. Zum Ändern tippen.“
+- **The one capital „Sie“** in the delta (`local_audio_error_incomplete`, „unvollständig: Sie umfasst nur …“) is the pronoun for „die Datei“. It is capitalized because a full sentence follows the colon (Duden), and the singular verb „umfasst“ keeps it from reading as formal address.
+- **The two mechanical warnings are correct German:** „PlayTranslate Cloud (Alpha)“ and „Code“ are written the same way in German.
+
+
+### Disposition (2026-11-16)
+
+All 6 findings in the table applied byte-exact (1 ⚠️: `pt_cloud_terms_title`; 5 💬: `settings_pt_cloud_summary_trial`, `ask_no_llm_message`, `anki_notes_hint`, `ask_question_hint`, `tts_recordings_section_header`). The CooldownTimeLabel.format date order is a code finding reported to the developer. The error pill «PlayTranslate Cloud: Bedingungen nicht akzeptiert» ellipsizes its last word at 360 dp portrait (181 dp needed, 174 dp available); the reviewer suggested no change because the wording is shared with the hub and the page, so it stays and is reported as open. After applying: `de: 213 keys checked, 0 errors, 3 warnings, aapt2 ok` (the new warning is the ampersand in the toolbar title, valid XML and usual German UI); only delta keys changed (scope check).
+
+### Round 2 (2026-11-16), final review after applying round 1
+
+Mechanical layer: `mech_check.py --locale de --aapt2` -> `de: 213 keys checked, 0 errors, 3 warnings, aapt2 ok` (the warnings: `pt_cloud_display_name_alpha` and `pt_cloud_code_label` identical to English, and the `&amp;` in `pt_cloud_terms_title`, all three judged correct in round 1 and its Disposition); `l10n_diff.py` against `l10n-sync` -> `values-de   missing=0  orphan=0  modified=7` (the 7 changed keys, each holding the new meaning); README `readme_l10n_check.py de` -> `[PASS] de -> readme/README.de.md` (the same with `--require-header`).
+
+Round-1 changes checked (each compared byte for byte with round 1's `suggested` cell, then read beside its neighbours):
+- `pt_cloud_terms_title` „Bedingungen &amp; Datenschutz“: landed. 275.3 dp at 22 sp, inside the toolbar's 296 dp at 360 dp. No string quotes the page title; `pt_cloud_terms_link` („Bedingungen und Datenschutzhinweisen“, the dative the sentence needs) was never meant to byte-match it.
+- `settings_pt_cloud_summary_trial` „Testzeitraum bis …“: landed. 147.5 dp with „Sept. 28“ and 132.4 dp with „15:42“, inside the hub's 216 dp. Its page sibling `pt_cloud_trial_until` still says „Kostenloser Testzeitraum bis …“ (💬 below).
+- `ask_no_llm_message` „… oder aktiviere ein Modell auf dem Gerät.“: landed. It matches the page's `offline_backend_enabled_cd` „Aktiviert“, and „Übersetzungsdienste“ still byte-matches `settings_cell_translation_services` and `ask_no_llm_open_services`.
+- `anki_notes_hint` „Anmerkung zu dieser Karte hinzufügen“: landed. It sits in a multi-line field, and „Anmerkung“ matches `anki_group_notes`, `anki_content_notes` and `cd_anki_notes_clear`.
+- `ask_question_hint` „Eigene Frage stellen…“: landed. 153.9 dp at 16 sp.
+- `tts_recordings_section_header` „Importierte Sprachaufnahmen“: landed. It now matches „Sprachaufnahmen“ in `local_audio_load_subtitle`, `local_audio_error_not_database` and `local_audio_error_invalid_format`, and no other string quotes the header.
+
+#### Findings (round 2)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| pt_cloud_trial_until | 💬 | Kostenloser Testzeitraum bis <xliff:g id="end" example="Nov 3, 3:42 PM">%1$s</xliff:g> | Testzeitraum bis <xliff:g id="end" example="Nov 3, 3:42 PM">%1$s</xliff:g> | The neighbour of round 1's hub fix. The English is the same on the hub and on the account card ("Free trial until"). The hub now reads „Testzeitraum bis 3. Nov.“ and the card „Kostenloser Testzeitraum bis 3. Nov., 15:42“. The state is still recognisable, so this is optional. With the change, the trial reads the same on both surfaces, as the trial-ended state already does („Testzeitraum beendet“ on the pill, the hub and the card). „Kostenlos“ is still said where the trial is offered: „… kostenlos testen“ and „Kostenlosen Testzeitraum starten“. |
+| pt_cloud_intro | 💬 | Die genauesten Modelle für Texterkennung und Übersetzung sind zu schwer für ein Mobilgerät. <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> führt sie stattdessen auf einem Server aus: Du bekommst bessere Ergebnisse, und dein Gerät muss nichts davon leisten. | Die genauesten Modelle für Texterkennung und Übersetzung sind zu rechenintensiv für ein Mobilgerät. <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> führt sie stattdessen auf einem Server aus: Du bekommst bessere Ergebnisse, und dein Gerät muss nichts davon leisten. |  „Zu schwer für ein Mobilgerät“ copies the English "too heavy". In German it first reads as physical weight. German tech writing says a model is „zu rechenintensiv“ (or „zu groß“) for a phone. „Rechenintensiv“ also gives the closing „nichts davon“ (none of the computing) something to point back to. The rest of the string is unchanged. |
+
+**The open pill, ruled: `translation_error_terms_required` stands.** I re-derived the layout from `TranslationErrorPills.buildRow` and it confirms round 1:
+- The pill is the display less 2 × 16 dp, so 328 dp at 360 dp.
+- Its text gets 174 dp: 328 dp less the 10 dp logo inset, the 28 dp logo, 10 + 2 dp of text padding, the 48 dp gear, the 8 dp gap and the 48 dp ×.
+- The text is 14 sp, `maxLines=2`, ellipsized at the end.
+- Line 1 can only hold „PlayTranslate Cloud:“ (128.1 dp), so the state gets line 2 to itself.
+- „Bedingungen nicht akzeptiert“ is 180.9 dp (181.1 kerned), so it shows as „Bedingungen nicht akzep…“.
+
+Every wording I measured either still clips or changes the state:
+- „Bedingungen nicht bestätigt“ is 174.3 dp, so it still clips at exactly 174 dp. It would also bring a second verb into a page that says „akzeptiere“ / „akzeptiert sind“ / „Zustimmung“.
+- „Bedingungen nicht angenommen“ (205.3) and „Bedingungen nicht zugestimmt“ (193.5, and wrong without the dative article) are longer.
+- „AGB nicht akzeptiert“ (126.8) fits. But AGB is a legal term for contract terms, not terms of use and a privacy notice, and it would split the term from the „Bedingungen“ that the 8 other strings naming the terms use (the hub, and on the page the notice, its line, the paused note, the load and agree notes, the title and the link).
+- „Zustimmung fehlt“ (110.6), „Zustimmung erforderlich“ (154.3) and „Zustimmung ausstehend“ (155.2) fit, but they drop what is not agreed to. On the hub, under the PlayTranslate Cloud cell, they do not say what is missing.
+- „Bedingungen offen“ (117.9) and „Bedingungen ausstehend“ (157.5) fit, but they are vague, and the second also reads as terms the server still owes.
+- „Bedingungen unbestätigt“ (155.6) fits, but it says the terms themselves are unverified.
+- „Bedingungen akzeptieren“ (157.2) fits, but it turns a state into an instruction. Every other pill (`… beendet`, `… inaktiv`, `… eingestellt`, `Tageslimit erreicht`, `Anfrage abgelehnt`) is noun plus participle, as this one is now. On the page it would also repeat the line under it.
+
+The current form is the family's shape, and what the ellipsis leaves („Bedingungen nicht akzep…“) is still unambiguous. It is whole on the hub (168.0 dp of 216 dp) and on the page, it fits at 384 dp and wider, and it fits in any landscape layout, which is where the app is used most (over a game on a handheld). Shortening the pill alone would cost more than it gains.
+
+**Fresh read by screen** (all 213 keys, beside the strings already on each screen):
+- **Ask and „In diesem Satz“:**
+  - The section name „Fragen“ sits beside Original / Übersetzung / Wörter.
+  - The status lines follow „Wird nachgeschlagen…“. „Beantwortet von“ mirrors „Übersetzt von“, and „Erneut versuchen“ = `update_error_retry`.
+  - The alert reads as one: title, the applied body, and the button = the page name.
+  - On the word page: the header, the row and the screen-reader label.
+  - The spoiler and cut-off lines are natural, and the out-of-scope line reads correctly with PlayTranslate Cloud filled in.
+- **Word list:**
+  - „Wörter · 6“.
+  - „Integriert“, which is `settings_ocr_note_builtin`'s word.
+  - The 27 Japanese POS labels use the romanized class plus „-Verb“/„-Adjektiv“, capitalized like `pos_verb` / `pos_adjective`, and none holds „·“ or „/“.
+  - The WebView line keeps the app's own name.
+- **Anki:**
+  - „Anmerkung(en)“ in the header, the hint, the clear button, the picker option and its quote in the alert. It stays apart from Anki's „Notiz“.
+  - „Trotzdem speichern“ = `llm_prompt_save_anyway`.
+  - The voice fall-back toast follows the other „Zu Anki hinzugefügt (…)“ toasts.
+  - The Yomitan rows keep the „„Glossary“ von Lapis“ shape.
+- **Capture:** „Definitionen“ / „Keine“, the two pill descriptions, and „Nachschlagen per Antippen aktivieren“, an infinitive like its sibling icon actions („Schnellmenü öffnen“, „Spielsprache ändern“).
+- **PlayTranslate Cloud, read as state families:**
+  - Each state reads the same on the pill, the hub and the page, apart from the trial row above. No two states share wording.
+  - The pills keep the noun-plus-participle shape.
+  - On the page: sign-in, code, account, Join, the terms card and the closed card. One term each: Konto, Code/Anmeldecode, Schlüssel, Testzeitraum, Mitgliedschaft, beitreten, Bedingungen, eingestellt.
+  - „sende einen neuen Code“ echoes „Neuen Code senden“, and the dative in „Ich stimme den Bedingungen und Datenschutzhinweisen zu“ is correct.
+  - The code plural: „1 Minute“ / „10 Minuten“.
+  - With real values, the card titles read „Mitglied bis 5. Dez., 15:42“, „Testzeitraum am 3. Nov. 2025 beendet“ and „Mitgliedschaft inaktiv seit 3. Nov.“.
+- **Voice service:**
+  - „Sprachausgabe-Dienst“ throughout.
+  - The failure lines read as one family.
+  - „Diensteinstellungen“ and „Modell“ byte-match their rows where they are quoted.
+  - The eight {tokens} are byte-exact.
+  - „eine pro Zeile“ agrees with „die ID“.
+- **Imported recordings:** no language, no community name for the file and no site anywhere. „Diese Datei musst du dir selbst besorgen“ says the user sources it. The remove alert pairs „entfernen“ with „gelöscht“.
+- **The 7 changed keys:** each carries the new meaning, and „KI“ is the one word across the chip, the header, both subtitles and the Ask alert.
+- **Register:** a script over the 213 values finds no Sie, Ihr or Ihnen except the settled pronoun in `local_audio_error_incomplete`.
+- **Typography:** every „ has its “, there are no straight quotes, and no em dashes.
+
+#### Verdict (round 2)
+
+**PASS**: 🛑 0 / ❌ 0 / ⚠️ 0 / 💬 2 (`pt_cloud_trial_until`, `pt_cloud_intro`, both optional). Round 1's open item, the terms pill's ellipsis at 360 dp portrait, is ruled: it stands, for the reasons above.
+
+#### Disposition (round 2, 2026-11-16)
+
+Both optional 💬 applied byte-exact at the developer's request: `pt_cloud_trial_until` („Testzeitraum bis …“, now the same as the hub) and `pt_cloud_intro` („zu rechenintensiv“). After applying: mech_check 0 errors, aapt2 ok, only delta keys changed, `:app:processDebugResources` green.

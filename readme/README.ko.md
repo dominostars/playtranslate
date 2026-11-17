@@ -182,7 +182,7 @@ PlayTranslate는 **게임 언어 26개**(화면에서 읽어 들이는 텍스트
 - **Groq**: [console.groq.com](https://console.groq.com/keys)(모델은 앱에서 선택)
 - **OpenRouter**: [openrouter.ai](https://openrouter.ai/keys)(모델은 앱에서 선택)
 - **Claude**: [platform.claude.com](https://platform.claude.com/settings/keys)(모델은 앱에서 선택)
-- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://index-translate.bilibili.com/)(무료, API 키 불필요)
+- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://github.com/bilibili/Index-Translate)(무료, API 키 불필요, 한시적으로만 제공될 수 있음)
 - **사용자 지정**: 그 밖의 OpenAI 호환 엔드포인트(“사용자 지정 URL”에 사용할 백엔드 URL을 입력)
 
 ## Anki 플래시카드(선택 사항)

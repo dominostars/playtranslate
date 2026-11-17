@@ -182,7 +182,7 @@ De forma predeterminada, la traducción usa [Lingva](https://github.com/thedavid
 - **Groq**: [console.groq.com](https://console.groq.com/keys) (eliges el modelo en la app)
 - **OpenRouter**: [openrouter.ai](https://openrouter.ai/keys) (eliges el modelo en la app)
 - **Claude**: [platform.claude.com](https://platform.claude.com/settings/keys) (eliges el modelo en la app)
-- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://index-translate.bilibili.com/) (gratis, sin clave de API)
+- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://github.com/bilibili/Index-Translate) (gratis, sin clave de API; puede ser temporal)
 - **Personalizado**: cualquier otro servidor compatible con OpenAI; introduce la URL de tu servidor en “URL personalizada”
 
 ## Tarjetas de Anki (opcional)

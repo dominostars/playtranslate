@@ -156,3 +156,19 @@ Clean areas: The three changed lines are zh-CN's, with the swaps applied and no 
 ### Disposition (2026-10-14)
 
 No findings; nothing to apply.
+
+## Delta review 2026-11-16 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] zh-rHK -> readme/README.zh-HK.md`, no warnings; also PASS with `--require-header`). **No 🛑 issues.**
+
+No findings. `git diff readme/README.zh-HK.md` touches one line, the bullet, and nothing else in the file. The URL is byte-identical to the English (`https://github.com/bilibili/Index-Translate`) and the link text `index-translate.bilibili.com` is unchanged. The new clause 未必會長期提供 ("will not necessarily stay available") carries "May be temporary" and is the Hong Kong way to say it: zh-CN's 可能不会长期提供 is not converted word for word, and 未必 is the natural HK hedge. It joins the bullet with a full-width ，, as the bullet's other clauses do (免費，無需 API 金鑰), with no closing punctuation, like its sibling bullets. The English's sentence break before "May be temporary" becomes a comma, as zh-CN has it. The line is Big5-only Han with 「」-free ASCII link syntax and Pangu spacing around API.
+
+### Disposition (2026-11-16)
+
+No findings; nothing to apply.
+
+### Round 2 (2026-11-16)
+
+Mechanical layer: `readme_l10n_check.py zh-rHK` -> `[PASS] zh-rHK -> readme/README.zh-HK.md` (also PASS with `--require-header`).
+
+No findings. `git diff readme/README.zh-HK.md` changes one line, the Bilibili Index-Translate bullet (1 insertion, 1 deletion), and nothing else. The URL is byte-identical to the English (`https://github.com/bilibili/Index-Translate`), and the link text `index-translate.bilibili.com` is kept, as the English keeps it. The new clause 未必會長期提供 carries "May be temporary" in natural Hong Kong wording. It joins with a full-width ， like the bullet's other clauses, ends with no punctuation like its sibling bullets, and leaves 免費，無需 API 金鑰 unchanged.

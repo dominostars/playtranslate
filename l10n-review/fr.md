@@ -1028,3 +1028,174 @@ Fresh read of all 39 values (checked, no finding):
 #### Verdict (round 2)
 
 **PASS** (0 🛑, 0 ❌, 0 ⚠️, 0 💬). All seven round-1 fixes and the translator's own `pt_cloud_key_hint` change are in the file as the Disposition says, and none of them broke anything around it. The fresh read of the 39 keys found nothing new. One recorded item stays open, the cloud page's cooldown line in English. It is a code finding and does not block the sync.
+
+## Delta review 2026-11-16 (Ask and word explain, voice service, imported recordings, PlayTranslate Cloud account, Anki notes, Japanese part-of-speech labels: 206 new keys and 7 changed)
+
+Mechanical layer: `mech_check.py --locale fr --aapt2` -> "fr: 213 keys checked, 0 errors, 2 warnings, aapt2 ok" (the two warnings, `pt_cloud_code_label` « Code » and `voice_service_row_service` « Service », are identical to English because the French word is the same; both correct); `l10n_diff.py` against `l10n-sync` -> `missing=0 orphan=0 modified=7`, the seven being the delta's MODIFIED keys, each now carrying the new English meaning. **No 🛑 issues.**
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| pt_cloud_signed_in_with_key | 💬 | Connexion avec une clé | Connecté avec une clé | The English is a state ("Signed in with a key"). The noun « Connexion » reads as a sign-in method, and as the card's title (when no standing is known) it can pass for a heading or an action. « Connecté … » is the usual French state wording (« Connecté en tant que … »). |
+| pt_cloud_signin_rate_limited | 💬 | Trop de requêtes. Si vous avez reçu un code, saisissez-le ci-dessous ; sinon, demandez-en un nouveau dans une minute. | Trop de requêtes. Si vous avez reçu un code, saisissez-le ci-dessous ; sinon, envoyez-en un nouveau dans une minute. | The English "send a new one" points at the "Send a new code" button on the same card, and the file's other two mentions use its verb (`pt_cloud_code_invalid` « envoyez un nouveau code », `pt_cloud_key_not_stored` « Envoyez un nouveau code »). « demandez-en » leaves the user looking for a "Demander" button that does not exist. |
+| pt_cloud_show_terms | 💬 | Voir les conditions | Consulter | Measured, since the translator flagged it. Nothing clips: the button is `wrap_content` (14 sp bold, 16 dp padding a side), and the column beside it has weight 1 and gives way. At 360 dp, though, the column keeps only about 135 dp (360 − 28 page − 32 card − 12 margin − about 153 button), so the warning title « Conditions non acceptées » (174 dp at 15 sp medium) wraps to two lines, and the line under it runs to four. The same happens at 393 dp (168 dp column); the title fits only at 411. « Consulter » (about 63 dp bold, so a 95 dp button) leaves 193 dp at 360: the title fits on one line and the line wraps to three. The comment asks for a short label, and the line beside it already says what is shown. Optional: the current label is correct. |
+| pt_cloud_terms_link | 💬 | conditions d\'utilisation et de confidentialité | conditions d\'utilisation et la politique de confidentialité | Filled in, the checkbox reads « J'accepte les conditions d'utilisation et la politique de confidentialité », the standard French sign-up wording. It names the privacy notice by its usual French name, where « conditions … de confidentialité » is a contraction. It is still grammatical after « les », and it wraps to two lines at 13 sp in the 268 dp column, as the current one already does (393 against 326 dp; the row's minimum height is 64 dp). |
+| pt_cloud_ocr_toggle_subtitle | 💬 | Reconnaissance plus performante sur un GPU de serveur, sans solliciter la puissance de votre appareil. | Reconnaissance plus performante sur un GPU de serveur, sans solliciter votre appareil. | The new title above it is « Traitement d\'image puissant », so title and subtitle now say puissant / puissance, and the signed-out headline (« La puissance d\'un serveur … ») is a third on the same screen. The 2026-10-27 review removed this very echo from the subtitle once. « sans solliciter votre appareil » still says that the device does none of the work, which is what the comment asks. |
+| pos_nu_verb | 💬 | Verbe nu | Verbe en -nu | After a noun, « nu » reads as the French adjective "bare" (« infinitif nu » is the grammar term for a bare infinitive), so « Verbe nu » can read as "bare verb". « en -nu » is the convention the translator already uses for the adjective classes (« Adjectif en -i »), and the comment defines the class by that ending. The class is archaic and rare, so this is optional. |
+
+### Source-side notes
+
+- Code, not a string (from the code; the translator reported it too). `RootSettingsViewModel.cloudStandingDigest` formats the hub digest's trial end with `CooldownTimeLabel.format`. For a date, that is a fixed `SimpleDateFormat("MMM d")`, so French shows « Fin de l'essai gratuit : nov. 3 » where French writes « 3 nov. ». The account card's dates go through `formatSkeleton` (`getBestDateTimePattern`) and come out day-first, so « Essai gratuit jusqu'au 3 nov. … », « Essai terminé le 3 nov. » and « Abonnement inactif depuis le 3 nov. » read correctly. The translator's colon shape in the digest works with both a time (« 15:42 ») and a date, and it avoids « jusqu'à » / « jusqu'au ».
+- The brief describes the Ask hint as sharing its row with two 36 dp buttons. `section_ask.xml` has one, the send button. The second 36 dp `ImageButton` (line 157) is the answer's ×, in the other group. The widths below use the real row.
+
+### Clean areas (checked, no findings)
+
+All widths are measured with Android's own fonts (`Measure.java`, Roboto; bold taken as medium + 4 %) at the widget's text size, against the paddings read from the layouts.
+
+**Ask section and the word page's "In this sentence" group.**
+- Wording. « Questions » is a noun header like its neighbours Original / Traduction / Mots. `cd_toggle_ask_visibility` « Afficher ou masquer les questions » copies `cd_toggle_words_visibility`.
+- The "Ask needs an AI model" alert reads as one unit. The title « Les questions nécessitent un modèle d'IA » works whether « questions » is read as the section or as the user's questions. The body is « Vos questions … sont envoyées à un modèle d'IA. Ajoutez un service d'IA en ligne, ou activez un modèle sur l'appareil, dans « Services de traduction » ». The button « Services de traduction » is byte-identical to `settings_cell_translation_services`, and so is the quoted name in the body.
+- Service names. « Question posée à %s… » and « Réponse fournie par %s » keep « de » / « d' » away from the name, so Gemini, OpenAI and DeepSeek all read correctly. « Réponse fournie par » pairs with « Traduit par » / « Reconnu par ». « %s ne répond qu'aux questions sur cette phrase … » reads correctly with PlayTranslate Cloud.
+- Failure and retry. « Impossible d'obtenir une réponse. » is the file's error form, and the reason line under it is the pill family (« Gemini : trop de requêtes »). « Réessayer » is `update_error_retry`.
+- Word page. « Dans cette phrase » (DANS CETTE PHRASE, 109 dp at 11 sp) and « Expliquer comment ce mot est employé » (266 dp at 15 sp medium, in a row with no line limit, so it can wrap) both pass.
+- Widths:
+  - Header « QUESTIONS »: 60 dp at 11 sp medium, `maxLines 1`.
+  - Hint « Posez votre propre question… »: 211 dp at 16 sp. At 360 dp the field gets about 276 dp, after the 16 + 4 dp paddings and the one 36 dp send button.
+  - Preset chip « Analyse grammaticale » (the natural French term): 120 dp at 12 sp medium, plus 20 dp padding, against the English 113.
+
+**Word list and definitions.**
+- « Mots · 6 » keeps `section_words`.
+- « Intégré » (INTÉGRÉ, 44 dp) matches `settings_ocr_note_builtin`.
+- « Les définitions nécessitent Android System WebView. » keeps the app's name as Android shows it.
+- The POS labels sit with the file's « Nom / Verbe / Adjectif » set: capitalized, and no `·`, `・` or `/`; the hyphen in « en -i » is no separator. Each label passes:
+  - « Verbe godan / ichidan / suru / kuru » keeps the romanized class, as the comment asks.
+  - « Adjectif en -i / -na » is how French grammars of Japanese name these classes.
+  - « Transitif » / « Intransitif » agree with the implied « verbe ».
+  - « (spécial) » and « (irrégulier) » are masculine like « Verbe ».
+  - « Copule », « Non classé », « Prénominal » and « Adverbe en -to » are standard terms.
+
+**Anki.**
+- Terms. « Remarques » is both the group header and the Map field option (`anki_group_notes` = `anki_content_notes`). The translator kept « note » for Anki's note object (`anki_first_field_unmapped` « identifie la note »), and that split is sound.
+- The alert reads as one unit. « Aucun champ pour votre remarque » / « … aucun champ mappé sur « Remarques » : votre remarque ne peut donc pas être enregistrée sur la carte. Enregistrer la carte sans elle ? » / « Enregistrer quand même ». « mappé » is the picker's own verb (« Mapper « %s » »), and the button is `llm_prompt_save_anyway`.
+- The two Yomitan options are « Définitions (format Yomitan) » / « Dictionnaire principal (format Yomitan) ». They sit apart from the plain « Définition », and their descriptions follow the file's « mot mis en évidence » and « Pour le champ « … » de Lapis » patterns.
+- Toast. « Ajouté à Anki (service vocal indisponible, voix de l'appareil utilisée) » follows the « (audio indisponible) » family. As a `LENGTH_SHORT` text toast it wraps to two lines at 296 dp (412 dp in total).
+
+**Capture overlay.**
+- « Superpositions : %s. Appuyez pour modifier. » matches `floating_menu_panel_overlays`.
+- « Aucune » agrees with « superposition ». After the colon it reads « Superpositions : Aucune », where French keeps « aucune » singular.
+- The segments are « Définitions » 63 dp and « Aucune » 44 dp at 13 sp medium, no wider than English « Translation » (66). `OverlayModePill` sizes the segments to the widest label, and `buildPillToggle` shrinks from 13 to 10 sp before it ellipsizes.
+- « Activer la recherche au toucher » sits with the infinitive icon actions (« Capturer l'écran », « Survoler un mot … »).
+
+**PlayTranslate Cloud: each state as a set.**
+
+| state | pill | hub | page |
+|---|---|---|---|
+| trial | — | « Fin de l'essai gratuit : … » | « Essai gratuit jusqu'au … » |
+| trial ended | « essai gratuit terminé » | « Essai terminé » | « Essai terminé (le …) » |
+| membership inactive | « abonnement inactif » | « Abonnement inactif » | « Abonnement inactif depuis le … » / « Aucun abonnement actif » |
+| terms | « conditions non acceptées » | « Conditions non acceptées » | « Conditions non acceptées » |
+| closed | « service fermé » | — | status « Fermé », card « PlayTranslate Cloud a fermé » |
+
+- Each state uses one noun on every surface, and the five stay distinct. Where the English says "Free trial" or "Trial", the French follows it.
+- Membership is « abonnement » throughout, with « Membre », « Déjà membre ? », « Rejoindre » and « Abonnez-vous » around it.
+- The new status values « Hors ligne pour le moment » and « Fermé » agree with « Service », like « Actif » and « Arrêté ».
+- Widths:
+  - Pills: `TranslationErrorPills`, 14 sp, `maxLines 2`. The text gets about 174 dp at 360 dp (328 dp pill, minus the logo, two 48 dp buttons and the paddings). The widest, « PlayTranslate Cloud : conditions non acceptées » (295 dp), takes two lines: « PlayTranslate Cloud : » is 135 dp and the rest 160.
+  - Hub digests (13 sp, one line, 216 dp): at most 160 dp, « Fin de l'essai gratuit : nov. 3 ».
+  - Toolbar titles at Material 3's 22 sp: « PlayTranslate Cloud (alpha) » 270 dp and « Conditions et confidentialité » 275 dp, against about 296 dp at 360 dp (the 56 dp navigation button, 0 dp inset with navigation, 4 dp title margins).
+- Headline (measured, since the translator flagged it): 26 sp bold, `wrap_content` with no line limit, 324 dp wide at 360 dp. « La puissance d'un serveur / pour le traitement d'image / et la traduction » takes three lines (each piece is about 301 to 305 dp before the -0.02 letter spacing) where English takes two. It reads as native marketing copy, and « traitement d'image » matches the feature row.
+- « Essayer PlayTranslate Cloud gratuitement » wraps to two lines (about 293 dp bold at 15 sp) in its full-width 56 dp button, where the text gets 252 dp at 360 and 285 at 393 (it fits at 411). Nothing clips: the button has no line limit, and two 15 sp lines (about 35 dp) fit its 44 dp of content height. Every shorter wording either drops "for Free" or the brand the English names, so no row.
+- The email hint « vous@example.com » is 118 dp at 13 sp, one line.
+- The sign-in flow:
+  - « Commencer l'essai gratuit », « Envoyer un nouveau code » and « Utiliser une autre adresse e-mail » (203 dp, a `wrap_content` text button).
+  - The plural « Il est valable 1 minute. » / « … 10 minutes. ». French "one" covers 0 and 1, and 0 takes the singular.
+  - Every notice, with « Réessayez plus tard » / « Réessayez dans une minute » and « Impossible de joindre PlayTranslate Cloud ». « Ce code n'a pas fonctionné … envoyez un nouveau code » echoes the button.
+  - « Se déconnecter de PlayTranslate Cloud ? », with the button « Se déconnecter ».
+- Terms:
+  - « J'accepte les %s » with the link filled in is grammatical (see the 💬 for the noun).
+  - « Acceptez les conditions pour continuer. », « Lisez et acceptez les conditions pour continuer à utiliser … », « En pause jusqu'à l'acceptation des conditions. » and « Accepter » all pass.
+- The 23 cloud keys of the last sync on the same page still agree with the new ones (« Fonctionnalités », the two new switch titles, « OCR côté serveur … »).
+
+**Voice service.**
+- The Text-to-speech page rows (« Service vocal », « Connecter un service vocal », « Paramètres du service », « Aucune voix », « Aucun moteur de synthèse vocale ») use the file's « synthèse vocale », and « voix IA » uses the chip's word.
+- The failure family reads as a set under « Le service vocal n'a pas répondu »: « Le service a refusé la clé d'API. », « … a atteint sa limite de requêtes ou épuisé son quota. », « … n'a pas répondu à temps. », « Impossible de joindre le service. Vérifiez l'URL et votre connexion. », « … a rencontré une erreur (HTTP 503). », « … a refusé la requête (HTTP 400). ».
+- Cross-references are byte-identical:
+  - « dans « Paramètres du service » » = `voice_service_settings_row`.
+  - « Appuyez sur « Modèle » » (twice) = `voice_service_row_model`.
+  - « annulez » names the standard Cancel.
+  - « Enregistrer quand même » = `llm_prompt_save_anyway`.
+- The tokens `{text}`, `{voice}`, `{model}`, `{instructions}`, `{speed}`, `{language}`, `{language_name}` and `{key}` are untouched, and the format names MP3, WAV, Ogg and M4A stay as written.
+- Labels: « Clé d'API » and « Modèle » match `llm_backend_*`, « identifiant de modèle » matches `llm_model_picker_fetch_failed`, and « Retirer le service » / « Retirer le service vocal ? » match `tr_service_remove_confirm` « Retirer ».
+- With values dropped in: « La requête demandait la voix Coral et le modèle gpt-4o-mini-tts. », « … ne contient pas tts-1-hd. », « Le modèle tts-1 ne peut pas utiliser les voix ci-dessous. ».
+
+**Imported recordings.**
+- « Enregistrements importés » and « Fichier android.db » keep the file name as is.
+- No string names a language, the file's community name or a website. « Vous devez vous procurer ce fichier vous-même » carries "source it yourself".
+- The progress popup works with real sizes: « Chargement du fichier android.db » / « 1,2 Go sur 5,8 Go copiés » (Android's French formatter writes « Go ») / « Vérification du fichier… ».
+- The remove confirmation reads as one unit: « Supprimer le fichier android.db ? » / « Le fichier est supprimé de l'application, et chaque mot est de nouveau prononcé par la synthèse vocale. » / « Supprimer le fichier android.db ». « Supprimer » fits a file that is deleted, as `settings_ocr_disable_delete` does for models.
+- The failure lines (« Impossible de charger le fichier », « Ce fichier est incomplet : 2,1 Go sur 5,8 Go. … », the database's English cause after a colon) read correctly.
+
+**The 7 MODIFIED keys.**
+- The new English meaning landed in each, and the old one is gone. « Traitement d'image puissant » and « Traductions premium » replace the infinitives, and the subtitle no longer says the power goes to the game.
+- "AI" is « IA » in all six places: the chip `service_llm_badge`, the header « Configuration IA avancée », « traducteurs IA » in both subtitles, and « modèle d'IA » / « service d'IA » in the Ask alert. The only « LLM » left in the file is the debug row `settings_debug_force_mmap_weights`, as the glossary says.
+
+**Typography, by script over all 213 values.**
+- Apostrophes: every one is `\'`, with no curly ’ and no raw `'` or `"`.
+- Spacing: every `:`, `?`, `!` and `;` has a space before it. It is a plain space, as in the rest of the file, which has no NBSP.
+- Guillemets: « » with a space inside, everywhere.
+- The ellipsis is the … character.
+- No tu, ton, ta or toi.
+
+### French appendix
+
+- **Elision with service names.** Where `%s` can be any service, no delta string puts « de », « le » or « que » directly before it. The translator wrote around it each time: « Question posée à », « Réponse fournie par », the name as subject (« %s ne répond qu'aux… », « %s est hors ligne… »), « Rejoindre %s », « Essayer %s gratuitement », « continuer à utiliser %s ». `pt_cloud_sign_out_title` « Se déconnecter de %s ? » and `pt_cloud_signin_unreachable` « Impossible de joindre %s » get only `pt_cloud_display_name` (PlayTranslate Cloud), per their comments, so « de » never meets a vowel.
+- **Dates.** On the account card, `getBestDateTimePattern` gives French a day-first date, so « jusqu'au », « le » and « depuis le » are right before « 3 nov. », « 3 nov. 2025 » or a date with a time (from the code; not seen on a device). In the hub digest, the colon takes both of `CooldownTimeLabel.format`'s outputs, a time or the fixed « nov. 3 » (see the source-side note).
+- **Agreement.** « Fermé », « Hors ligne », « Actif » and « Arrêté » agree with « Service ». « Aucune » agrees with « superposition ». In « conditions non acceptées », « essai terminé » and « abonnement inactif », each participle or adjective agrees with its noun. « Transitif » and « (irrégulier) » agree with « verbe ».
+- **Plurals.** `pt_cloud_code_sent_to` has one/other, both with « minute(s) » agreeing.
+
+### Disposition (2026-11-16)
+
+All 6 findings in the table applied byte-exact (1 applied: `💬`; 5 💬: `pt_cloud_signin_rate_limited`, `pt_cloud_show_terms`, `pt_cloud_terms_link`, `pt_cloud_ocr_toggle_subtitle`, `pos_nu_verb`). The CooldownTimeLabel.format date order (fixed "MMM d") is a code finding reported to the developer. After applying: `fr: 213 keys checked, 0 errors, 2 warnings, aapt2 ok`; only delta keys changed (scope check).
+
+### Round 2 (2026-11-16), final review after applying round 1
+
+Mechanical layer: `mech_check.py --locale fr --aapt2` -> "fr: 213 keys checked, 0 errors, 2 warnings, aapt2 ok" (the two standing warnings, `pt_cloud_code_label` « Code » and `voice_service_row_service` « Service », are correct French identical to English); `l10n_diff.py` against `l10n-sync` -> `values-fr missing=0 orphan=0 modified=7` (the seven changed keys, each now carrying the new English); README `readme_l10n_check.py fr` -> `[PASS] fr -> readme/README.fr.md` with the two standing "table 1/2 header cells left in English: ['Code']" warnings (false positives).
+
+Round-1 changes checked (each value compared byte for byte with the table's `suggested` cell; all six landed):
+- `pt_cloud_signed_in_with_key` « Connecté avec une clé »: landed. It reads as a state both under « Essai gratuit jusqu'au … » / « Membre jusqu'au … » and as the card's title alone. (The Disposition's "1 applied: `💬`" stands for this key; the file holds it.)
+- `pt_cloud_signin_rate_limited` « … sinon, envoyez-en un nouveau dans une minute. »: landed. It now echoes the button « Envoyer un nouveau code », as `pt_cloud_code_invalid` and `pt_cloud_key_not_stored` already did.
+- `pt_cloud_show_terms` « Consulter »: landed. No string quotes the old « Voir les conditions » (grep of the file: none), and the key renders only in `activity_pt_cloud_settings.xml:116`.
+- `pt_cloud_terms_link` « conditions d'utilisation et la politique de confidentialité »: landed. Filled into `pt_cloud_agree_terms` it reads « J'accepte les conditions d'utilisation et la politique de confidentialité », and `bindAgreeSentence` finds the link by `indexOf`, so the span still covers it. Measured at 13 sp: « J'accepte les » 78.7 dp + the medium link 317.8 dp, two lines in the 268 dp column (no `maxLines`, the row's minimum 64 dp). The page title `pt_cloud_terms_title` « Conditions et confidentialité » need not match: the comment gives the link its own form.
+- `pt_cloud_ocr_toggle_subtitle` « … sans solliciter votre appareil. »: landed; the puissant / puissance echo is gone from the row.
+- `pos_nu_verb` « Verbe en -nu »: landed, and it is right on its own. It leaves one neighbour asymmetric: see the 💬 on `pos_ri_verb` below.
+
+#### Findings (round 2)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| pos_ri_verb | 💬 | Verbe ri | Verbe en -ri | A neighbour of the applied `pos_nu_verb` fix. The dictionary's two classical irregular classes are ナ変 (`pos_nu_verb`) and ラ変 (`pos_ri_verb`), and their comments define both by the ending ("ending in ぬ", "whose plain form ends in り"). After round 1 the first reads « Verbe en -nu » and the second still « Verbe ri », so the pair follows two conventions. « en -ri » is the shape the file uses for every ending-defined class (« Adjectif en -i », « Adverbe en -to »). The two labels never stand on the same word and the class is archaic, so this is optional. |
+| voice_service_manual_voices_hint | 💬 | Pour un service qui ne peut pas lister ses propres voix. Ils s\'ajoutent aux voix que l\'application connaît déjà pour ce service. | Pour un service qui ne peut pas lister ses propres voix. Ces identifiants s\'ajoutent aux voix que l\'application connaît déjà pour ce service. | The hint is a `Text.PT.RowSubtitle` under the field (`activity_online_tts_service.xml:271`). « Ils » has no antecedent in its own text: the nearest masculine noun is « service », singular, and the « Identifiants de voix » it means are in the label above the field. English can drop the subject ("Added to…"); French needs one, so the noun is named. |
+
+Fresh read by screen, over all 213 keys (`S/delta_en.xml` with each comment beside the French value):
+- **Ask and "In this sentence".** « Questions » as the header, the alert's title, body and button read as one unit, and the button and the quoted page name are byte-identical to `settings_cell_translation_services`. « Question posée à %s… », « Réponse fournie par %s » and « %s ne répond qu'aux questions … » keep « de » away from the name. The failure is « Impossible d'obtenir une réponse. » with « Réessayer ». « Dans cette phrase » and « Expliquer comment ce mot est employé » sit together. Round 1's widths stand, since no string here changed.
+- **Word list and POS.** « Mots · 6 » and « Intégré » pass. All 26 new POS labels are capitalized like the file's « Nom / Verbe », and none holds `·`, `・` or `/`. The ending convention is checked above.
+- **Anki.** « Remarques » is both the group header and the Map option, and « note » stays Anki's object. The alert reads as one unit: « Aucun champ pour votre remarque », « … mappé sur « Remarques » … », « Enregistrer quand même ». The Yomitan options and descriptions pass, and so does the voice fallback toast.
+- **Capture overlay.** « Aucune » agrees with « superpositions » (`settings_overlay_mode_subtitle` « Quelles superpositions afficher … »). « Superpositions : %s. Appuyez pour modifier. » takes each mode name. « Activer la recherche au toucher » is the only place the mode is named, so nothing can disagree with it.
+- **PlayTranslate Cloud.** Each state is still one noun on the pill, the hub and the page, with the new « Connecté avec une clé » and « Consulter » in place. The dates: `CooldownTimeLabel.formatSkeleton` builds its pattern with `getBestDateTimePattern` from `MMMd` / `yMMMd` plus `Hm` / `hm`. French puts the day first, so « jusqu'au », « le » and « depuis le » come before a day number (from the code). The hub digest's fixed « nov. 3 » is the code finding round 1 already reported. Sign-in notices, the sign-out alert, the terms flow and the join card all pass.
+- **Voice service.** The failure lines read as a family under « Le service vocal n'a pas répondu ». The cross-references are byte-identical: « Paramètres du service », « Modèle » ×2, the standard Cancel and « Enregistrer quand même ». The tokens `{text}` `{voice}` `{model}` `{instructions}` `{speed}` `{language}` `{language_name}` `{key}` are untouched. « Clé d'API » and « Retirer » follow the file. The one gap is the hint's pronoun (💬 above).
+- **Imported recordings.** No string names a language, the file's community name or a website. The progress popup, the remove confirmation (« Supprimer » for a file that is deleted) and the failure lines read correctly with sizes such as « 1,2 Go ».
+- **The 7 MODIFIED keys.** Each carries the new English. "AI" is « IA » in all of them: the chip, « Configuration IA avancée », « traducteurs IA » ×2, and « modèle d'IA » / « service d'IA » in the Ask alert.
+- **Typography, by script over all 213 values after the fixes.** No raw `'` or `"` and no curly apostrophe. A space before every `:` `;` `?` `!`, and « » with inner spaces. No NBSP, as in the rest of the file. The … character throughout, and no tu, te, ton, ta or toi.
+
+#### Verdict (round 2)
+
+**PASS**: 🛑 0 / ❌ 0 / ⚠️ 0 / 💬 2 (`pos_ri_verb`, `voice_service_manual_voices_hint`), both optional.
+
+Correction to the `pos_ri_verb` note above: « en -X » is the file's shape for the adjective and adverb classes, not for every class defined by its ending. « Verbe suru », « Verbe su » and « Verbe zuru » keep the bare word, and « Verbe nu » became « Verbe en -nu » because « nu » reads as the French adjective. What the 💬 rests on is the ナ変 / ラ変 pair, two sibling classical irregular classes with parallel comments. It stays optional, and leaving « Verbe ri » as it is is equally defensible.
+
+**Correction to the round-1 Disposition (2026-11-16):** its list names the first applied finding as "1 applied: `💬`", a slip of the coordinator's script; that finding is 💬 `pt_cloud_signed_in_with_key`, applied byte-exact like the others.
+
+#### Disposition (round 2, 2026-11-16)
+
+Applied byte-exact at the developer's request: `voice_service_manual_voices_hint` («Ces identifiants…»). Not applied: `pos_ri_verb`, whose note itself weakens the case (« Verbe su » and « Verbe zuru » also keep the bare word), so it stays a judgment call left as is. After applying: mech_check 0 errors, aapt2 ok, only delta keys changed, `:app:processDebugResources` green.

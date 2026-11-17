@@ -182,7 +182,7 @@ Theo mặc định, PlayTranslate dịch bằng [Lingva](https://github.com/thed
 - **Groq**: [console.groq.com](https://console.groq.com/keys), chọn mô hình ngay trong ứng dụng
 - **OpenRouter**: [openrouter.ai](https://openrouter.ai/keys), chọn mô hình ngay trong ứng dụng
 - **Claude**: [platform.claude.com](https://platform.claude.com/settings/keys), chọn mô hình ngay trong ứng dụng
-- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://index-translate.bilibili.com/), miễn phí, không cần khóa API
+- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://github.com/bilibili/Index-Translate), miễn phí, không cần khóa API, có thể chỉ khả dụng tạm thời
 - **Tùy chỉnh**: Bất kỳ máy chủ nào khác tương thích với OpenAI; hãy nhập URL máy chủ của bạn vào ô “URL tùy chỉnh”
 
 ## Thẻ ghi nhớ Anki (tùy chọn)

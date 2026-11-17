@@ -146,6 +146,8 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="word_detail_no_definitions">定義が見つかりませんでした。</string>
+    <string name="definitions_need_webview">定義の表示にはAndroid System WebViewが必要です。</string>
+    <string name="dictionary_title_builtin">内蔵辞書</string>
 
     <string name="word_detail_more_examples">その他の例文</string>
 
@@ -340,11 +342,31 @@
     <string name="section_translation">翻訳</string>
 
     <string name="section_words">単語</string>
+    <string name="section_words_count">単語 · <xliff:g id="count" example="6">%1$d</xliff:g></string>
+    <string name="section_ask">質問</string>
+    <string name="ask_question_hint">質問を自由に入力…</string>
+    <string name="cd_ask_send">質問を送信</string>
+    <string name="cd_ask_close">回答を閉じる</string>
+    <string name="cd_toggle_ask_visibility">質問の表示・非表示を切り替え</string>
+    <string name="ask_status_asking"><xliff:g id="service_name" example="Gemini">%1$s</xliff:g>に質問中…</string>
+    <string name="ask_status_asking_unnamed">質問中…</string>
+    <string name="ask_answered_by"><xliff:g id="service_name" example="Gemini">%1$s</xliff:g>による回答</string>
+    <string name="ask_answer_cut">この回答は長さの上限に達したため、途中で切れています。</string>
+    <string name="ask_spoiler_warning">⚠ 回答から、非表示にしている翻訳の内容がわかってしまう場合があります。</string>
+    <string name="ask_out_of_scope"><xliff:g id="service_name" example="PlayTranslate Cloud">%1$s</xliff:g>は、この文に関する質問（意味、文法、語彙など）にのみ回答します。</string>
+    <string name="ask_failed">回答を取得できませんでした。</string>
+    <string name="ask_retry">再試行</string>
+    <string name="ask_no_llm_title">質問にはAIモデルが必要です</string>
+    <string name="ask_no_llm_message">この機能は、この文に関する質問をAIモデルに送信します。「翻訳サービス」で、オンラインのAIサービスを追加するか、端末内のモデルをオンにしてください。</string>
+    <string name="ask_no_llm_open_services">翻訳サービス</string>
+    <string name="ask_preset_grammar_breakdown">文法の解説</string>
+    <string name="cd_word_explain">この文での用法を解説</string>
+    <string name="word_explain_title">この文での用法</string>
+    <string name="word_explain_ask">この単語の用法を解説</string>
 
     <string name="words_loading">単語を検索中…</string>
 
     <string name="lens_loading">検索中…</string>
-    <string name="lens_also_matches">他の候補</string>
     <string name="load_more_count">さらに読み込む（<xliff:g id="count" example="2">%1$d</xliff:g>）</string>
     <string name="section_other_matches">他の候補</string>
 
@@ -438,6 +460,7 @@
     <string name="icon_action_swap_pinyin">翻訳とピンインを切り替え</string>
 
     <string name="icon_action_change_game_language">ゲームの言語を変更</string>
+    <string name="icon_action_tap_to_lookup">単語のタップ検索を有効にする</string>
 
     <string name="icon_action_translating_from"><xliff:g id="language" example="Japanese">%1$s</xliff:g>から翻訳します</string>
 
@@ -510,6 +533,7 @@
     <string name="anki_no_deck_selected"><xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>にデッキが見つかりません</string>
 
     <string name="anki_added_no_audio"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>に追加しました（音声は利用できません）</string>
+    <string name="anki_added_voice_fell_back"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>に追加しました（音声サービスを利用できず、端末の音声を使用）</string>
 
     <string name="anki_added_no_screenshot"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>に追加しました（スクリーンショットは利用できません）</string>
 
@@ -532,6 +556,9 @@
     <string name="anki_card_too_large_simplify">簡易版を保存</string>
 
     <string name="anki_card_too_large_failed">このカードは、定義を簡略化しても大きすぎて<xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g>が受け付けられません。単語をいくつか減らすか、文を短くしてお試しください。</string>
+    <string name="anki_notes_no_field_title">メモを入れるフィールドがありません</string>
+    <string name="anki_notes_no_field_message">このカードタイプには「メモ」に設定されたフィールドがないため、メモをカードに保存できません。メモなしでカードを保存しますか？</string>
+    <string name="anki_notes_no_field_save_anyway">このまま保存</string>
 
     <string name="anki_added_simplified"><xliff:g id="brand_anki" example="Anki">Anki</xliff:g>に追加しました（収まるように定義を簡略化しました）</string>
 
@@ -560,6 +587,9 @@
     <string name="anki_group_words_count">カード内の単語 · <xliff:g id="words_count" example="3">%d</xliff:g></string>
 
     <string name="anki_group_definitions">定義</string>
+    <string name="anki_group_notes">メモ</string>
+    <string name="anki_notes_hint">このカードにメモを追加</string>
+    <string name="cd_anki_notes_clear">メモをクリア</string>
 
     <string name="anki_group_screenshot">スクリーンショット</string>
 
@@ -706,6 +736,12 @@
     <string name="anki_content_frequency_harmonic">頻度ソート番号</string>
 
     <string name="anki_content_frequency_harmonic_desc">カードを頻度順に並べるための単一の数値で、単語の各辞書頻度の調和平均（小さいほど高頻度）。<xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>の「FreqSort」や<xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>の「FrequencySort」に使用します。</string>
+    <string name="anki_content_glossary">定義（<xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>形式）</string>
+    <string name="anki_content_glossary_desc">強調表示した単語の、すべての辞書の定義を<xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>と同じ形式で出力します。<xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>の「Glossary」など、<xliff:g id="brand_yomitan2" example="Yomitan">Yomitan</xliff:g>向けのカードタイプ用です。</string>
+    <string name="anki_content_glossary_primary">メイン辞書（<xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>形式）</string>
+    <string name="anki_content_glossary_primary_desc">辞書の並び順で、強調表示した単語を収録している最初の辞書の定義のみを、<xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>と同じ形式で出力します。内蔵辞書は最後になります。<xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>の「MainDefinition」用です。</string>
+    <string name="anki_content_notes">メモ</string>
+    <string name="anki_content_notes_desc">保存前にカードに入力したメモ。入力しなかった場合は空になります。</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          CARD-TYPE STATE FLAGS
@@ -767,6 +803,7 @@
     <string name="deepl_settings_get_key_subtitle">無料プランには月50万文字が含まれますが、登録にはクレジットカードが必要です</string>
 
     <string name="deepl_settings_about"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g>は、特にヨーロッパ言語で高品質な出力で知られる翻訳サービスです。</string>
+    <string name="pt_cloud_display_name_alpha"><xliff:g id="service" example="PlayTranslate Cloud">PlayTranslate Cloud</xliff:g>（α版）</string>
 
     <string name="llm_backend_preset_custom">カスタム</string>
 
@@ -814,19 +851,19 @@
     <string name="llm_backend_invalid_key_alert_button">OK</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
-         ADVANCED LLM CONFIGURATION — user-editable prompt templates.
+         ADVANCED AI CONFIGURATION — user-editable prompt templates.
          The {token} keywords stay verbatim in Latin.
          ═══════════════════════════════════════════════════════════════ -->
 
-    <string name="settings_header_advanced_llm">LLMの詳細設定</string>
+    <string name="settings_header_advanced_llm">AIの詳細設定</string>
 
     <string name="settings_llm_context_title">直近の行をコンテキストとして使用</string>
 
-    <string name="settings_llm_context_subtitle">オンラインのみ。オンラインのLLM翻訳サービスにテキスト履歴の直近数行を渡し、代名詞や名前の一貫性を高めます。</string>
+    <string name="settings_llm_context_subtitle">オンラインのみ。オンラインのAI翻訳サービスにテキスト履歴の直近数行を渡し、代名詞や名前の一貫性を高めます。</string>
 
     <string name="llm_prompt_row_system_title">システムプロンプト</string>
 
-    <string name="llm_prompt_row_system_subtitle">クラウドと端末内のLLM翻訳サービスに送られるペルソナと指示。</string>
+    <string name="llm_prompt_row_system_subtitle">クラウドと端末内のAI翻訳サービスに送られるペルソナと指示。</string>
 
     <string name="llm_prompt_row_translation_title">翻訳プロンプト</string>
 
@@ -894,7 +931,7 @@
 
     <string name="add_online_service_title">翻訳サービスを追加</string>
 
-    <string name="service_llm_badge">LLM</string>
+    <string name="service_llm_badge">AI</string>
 
     <string name="service_account_required">アカウントが必要</string>
 
@@ -1205,6 +1242,10 @@
     <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>：接続できません</string>
 
     <string name="translation_error_not_running"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>：停止中</string>
+    <string name="translation_error_trial_ended"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>：無料トライアルが終了しました</string>
+    <string name="translation_error_membership_inactive"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>：メンバーシップが無効です</string>
+    <string name="translation_error_terms_required"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>：規約に未同意</string>
+    <string name="translation_error_closed"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>：提供を終了しました</string>
 
     <string name="translation_error_discard_card_title">カードを破棄しますか？</string>
 
@@ -1339,6 +1380,10 @@
     <string name="overlay_mode_option_furigana">ふりがな</string>
 
     <string name="overlay_mode_option_pinyin">ピンイン</string>
+    <string name="overlay_mode_option_definitions">定義</string>
+    <string name="overlay_mode_option_none">なし</string>
+    <string name="capture_overlay_pill_collapsed_cd">オーバーレイ：<xliff:g id="mode" example="Translation">%1$s</xliff:g>。タップして変更します。</string>
+    <string name="capture_overlay_pill_collapse_cd">オーバーレイの選択肢を閉じる</string>
 
     <string name="settings_hide_overlays_during_auto_mode">自動モード中はオーバーレイを非表示</string>
 
@@ -1622,22 +1667,27 @@
     <string name="settings_pt_cloud_summary_translation_only">翻訳のみ</string>
 
     <string name="settings_pt_cloud_summary_ocr_only">高性能サーバーのOCRのみ</string>
+    <string name="settings_pt_cloud_summary_trial">無料トライアル（<xliff:g id="end" example="Nov 3">%1$s</xliff:g>まで）</string>
+    <string name="settings_pt_cloud_summary_trial_ended">トライアル終了</string>
+    <string name="settings_pt_cloud_summary_inactive">メンバーシップ無効</string>
+    <string name="settings_pt_cloud_summary_terms_required">規約に未同意</string>
+    <string name="pt_cloud_headline">高性能サーバーによる画像処理と翻訳</string>
+    <string name="pt_cloud_intro">最も精度の高いテキスト認識モデルや翻訳モデルは、モバイル端末で動かすには重すぎます。<xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>はそれらをサーバー上で実行するため、より良い結果が得られ、端末には一切負荷がかかりません。</string>
+    <string name="pt_cloud_features_title">機能</string>
 
-    <string name="pt_cloud_ocr_toggle_title">画面の読み取り</string>
+    <string name="pt_cloud_ocr_toggle_title">高性能な画像処理</string>
 
-    <string name="pt_cloud_ocr_toggle_subtitle">サーバーのGPUで、より強力なOCRを実行します。端末の処理能力をすべてゲームに回せます。</string>
+    <string name="pt_cloud_ocr_toggle_subtitle">サーバーのGPUで、より強力なOCRを実行します。端末の処理能力は使いません。</string>
 
-    <string name="pt_cloud_translate_toggle_title">テキストの翻訳</string>
+    <string name="pt_cloud_translate_toggle_title">プレミアム翻訳</string>
 
     <string name="pt_cloud_translate_toggle_subtitle">有料の翻訳モデルを搭載し、翻訳ごとに最適なモデルが選ばれます。</string>
+    <string name="pt_cloud_privacy_features">スクリーンショットとテキストは、保存も販売も一切されません。</string>
+    <string name="pt_cloud_features_paused_terms">規約に同意するまで一時停止しています。</string>
 
     <string name="pt_cloud_ocr_row_subtitle">高性能サーバーでOCR、端末の負荷ゼロ</string>
 
     <string name="pt_cloud_translate_row_subtitle_no_key">最高の有料翻訳モデルを搭載</string>
-
-    <string name="pt_cloud_key_label">クライアントキー</string>
-
-    <string name="pt_cloud_key_hint">発行されたキーを貼り付けてください</string>
 
     <string name="pt_cloud_status_title">サービス</string>
 
@@ -1648,12 +1698,71 @@
     <string name="pt_cloud_status_not_running">停止中</string>
 
     <string name="pt_cloud_status_unreachable">接続できません</string>
+    <string name="pt_cloud_status_offline">現在オフライン</string>
+    <string name="pt_cloud_status_closed">提供終了</string>
 
     <string name="pt_cloud_status_other">予期しない応答（<xliff:g id="http_code" example="500">%1$s</xliff:g>）</string>
 
     <string name="pt_cloud_status_checking">確認中</string>
 
     <string name="pt_cloud_status_unchecked">未確認</string>
+    <string name="pt_cloud_account_title">アカウント</string>
+    <string name="pt_cloud_email_label">メールアドレス</string>
+    <string name="pt_cloud_email_hint">you@example.com</string>
+    <string name="pt_cloud_free_trial"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>を無料で試す</string>
+    <plurals name="pt_cloud_code_sent_to">
+        <item quantity="other"><xliff:g id="email" example="you@example.com">%1$s</xliff:g>にコードを送信しました。有効期間は<xliff:g id="minutes" example="10">%2$d</xliff:g>分です。</item>
+    </plurals>
+    <string name="pt_cloud_code_label">コード</string>
+    <string name="pt_cloud_start_free_trial">無料トライアルを開始</string>
+    <string name="pt_cloud_send_new_code">新しいコードを送信</string>
+    <string name="pt_cloud_change_email">別のメールアドレスを使用</string>
+    <string name="pt_cloud_signed_in_with_key">キーでサインイン済み</string>
+    <string name="pt_cloud_trial_until">無料トライアル（<xliff:g id="end" example="Nov 3, 3:42 PM">%1$s</xliff:g>まで）</string>
+    <string name="pt_cloud_member_until">メンバー（<xliff:g id="end" example="Dec 5, 3:42 PM">%1$s</xliff:g>まで）</string>
+    <string name="pt_cloud_member">メンバー</string>
+    <string name="pt_cloud_trial_ended_on">トライアル終了（<xliff:g id="date" example="Nov 3">%1$s</xliff:g>）</string>
+    <string name="pt_cloud_trial_ended">トライアル終了</string>
+    <string name="pt_cloud_inactive_since">メンバーシップ終了（<xliff:g id="date" example="Nov 3">%1$s</xliff:g>）</string>
+    <string name="pt_cloud_inactive">有効なメンバーシップがありません</string>
+    <string name="pt_cloud_terms_required">規約に同意していません</string>
+    <string name="pt_cloud_check_again">もう一度確認</string>
+    <string name="pt_cloud_join_pending">加入済みですか？反映まで数秒かかる場合があります。</string>
+    <string name="pt_cloud_terms_pending"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>を引き続き使うには、規約を読んで同意してください。</string>
+    <string name="pt_cloud_show_terms">規約を表示</string>
+    <string name="pt_cloud_join_title"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>に加入</string>
+    <string name="pt_cloud_after_trial_title">トライアル終了後</string>
+    <string name="pt_cloud_join_nudge_trial">トライアル終了後も<xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>を使い続けるには、Ko-fiのメンバーシップに加入してください。</string>
+    <string name="pt_cloud_join_title_lapsed"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>を引き続き利用</string>
+    <string name="pt_cloud_join_nudge_lapsed">これらの機能を再びオンにするには、Ko-fiのメンバーシップに加入してください。</string>
+    <string name="pt_cloud_join_email_hint"><xliff:g id="email" example="you@example.com">%1$s</xliff:g>で加入すると、このアカウントに自動で反映されます。</string>
+    <string name="pt_cloud_join_email_hint_no_email">キーに紐づいたメールアドレスで加入すると、このアカウントに自動で反映されます。</string>
+    <string name="pt_cloud_sign_out">サインアウト</string>
+    <string name="pt_cloud_sign_out_title"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>からサインアウトしますか？</string>
+    <string name="pt_cloud_sign_out_message">この端末からキーが削除されます。アカウントはそのまま残り、メールアドレスで再度サインインできます。</string>
+    <string name="pt_cloud_signin_bad_email">メールアドレスの形式が正しくないようです。</string>
+    <string name="pt_cloud_signin_rate_limited">リクエストが多すぎます。コードが届いている場合は下に入力してください。届いていない場合は、1分ほど待ってから新しいコードを送信してください。</string>
+    <string name="pt_cloud_signin_too_many_codes">本日このアドレスに送信できるコードの上限に達しました。明日もう一度お試しください。</string>
+    <string name="pt_cloud_signin_offline_new"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>は現在オフラインのため、新しいアカウントを作成できません。しばらくしてからもう一度お試しください。</string>
+    <string name="pt_cloud_signin_mail_failed">メールを送信できませんでした。1分ほど待ってからもう一度お試しください。</string>
+    <string name="pt_cloud_signin_unavailable">現在サインインできません。しばらくしてからもう一度お試しください。</string>
+    <string name="pt_cloud_signin_unreachable"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>に接続できませんでした。オンラインであることを確認して、もう一度お試しください。</string>
+    <string name="pt_cloud_signin_disabled">このアカウントはサインインできません。誤りだと思われる場合は、PlayTranslateのサポートにお問い合わせください。</string>
+    <string name="pt_cloud_code_invalid">このコードは使用できませんでした。入力ミスか、有効期限切れの可能性があります。コードを確認するか、新しいコードを送信してください。</string>
+    <string name="pt_cloud_verify_offline"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>は現在オフラインです。コードは引き続き有効なので、1分ほど待ってからもう一度お試しください。</string>
+    <string name="pt_cloud_key_not_stored">この端末にキーを保存できませんでした。新しいコードを送信してください。</string>
+    <string name="pt_cloud_account_unchecked">アカウントを確認できませんでした。</string>
+    <string name="pt_cloud_key_no_longer_accepted">この端末のキーは受け付けられなくなりました。もう一度サインインしてください。</string>
+    <string name="pt_cloud_terms_unavailable">規約を読み込めませんでした。1分ほど待ってからもう一度お試しください。</string>
+    <string name="pt_cloud_terms_not_recorded">同意を記録できませんでした。もう一度お試しください。</string>
+    <string name="pt_cloud_closed_title"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>は提供を終了しました</string>
+    <string name="pt_cloud_closed_default">このサービスは利用できなくなりました。</string>
+    <string name="pt_cloud_privacy_signin">メールアドレスはサインインコードの送信に使用されます。</string>
+    <string name="pt_cloud_terms_title">利用規約とプライバシー</string>
+    <string name="pt_cloud_terms_agree">同意する</string>
+    <string name="pt_cloud_agree_terms"><xliff:g id="terms" example="Terms and Privacy">%1$s</xliff:g>に同意します</string>
+    <string name="pt_cloud_terms_link">利用規約とプライバシーポリシー</string>
+    <string name="pt_cloud_agree_required">続けるには規約に同意してください。</string>
 
     <string name="floating_menu_pt_cloud_available"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>：利用可能</string>
 
@@ -1983,8 +2092,6 @@
 
     <string name="tts_no_engine_row_subtitle">利用できる音声エンジンがありません。タップして追加してください。</string>
 
-    <string name="tts_voice_picker_title">音声</string>
-
     <string name="tts_voices_section_header"><xliff:g id="language" example="JAPANESE">%1$s</xliff:g>の音声</string>
     <string name="tts_speed_title">速度</string>
 
@@ -2223,6 +2330,57 @@
     <string name="audio_source_tts_name">テキスト読み上げ</string>
 
     <string name="audio_source_commons_name">Wikimedia Commons</string>
+    <string name="audio_source_voice_service_name">音声サービス</string>
+    <string name="audio_error_playing">この音声を再生できませんでした</string>
+    <string name="voice_service_connect_title">音声サービスを接続</string>
+    <string name="voice_service_connect_subtitle">お持ちのAPIキーでオンラインのAI音声を使用</string>
+    <string name="voice_service_settings_row">サービスの設定</string>
+    <string name="voice_service_no_voices">音声がありません</string>
+    <string name="tts_no_engine_row_title">テキスト読み上げエンジンがありません</string>
+    <string name="voice_service_failed_title">音声サービスが応答しませんでした</string>
+    <string name="voice_service_failure_auth">サービスがAPIキーを拒否しました。</string>
+    <string name="voice_service_failure_rate_limited">サービスのレート制限または利用枠の上限に達しました。</string>
+    <string name="voice_service_failure_timeout">サービスが時間内に応答しませんでした。</string>
+    <string name="voice_service_failure_unreachable">サービスに接続できませんでした。URLと接続状況を確認してください。</string>
+    <string name="voice_service_failure_server_error">サービスでエラーが発生しました（HTTP <xliff:g id="status" example="503">%1$d</xliff:g>）。</string>
+    <string name="voice_service_failure_rejected">サービスがリクエストを拒否しました（HTTP <xliff:g id="status" example="400">%1$d</xliff:g>）。</string>
+    <string name="voice_service_failure_rejected_asked">リクエストでは音声に<xliff:g id="voice" example="Coral">%1$s</xliff:g>、モデルに<xliff:g id="model" example="gpt-4o-mini-tts">%2$s</xliff:g>を指定しました。サービスがどちらかに対応していない場合は、ここで別の音声を選ぶか、「サービスの設定」で別のモデルを選んでください。</string>
+    <string name="voice_service_failure_no_request">リクエストを送信できませんでした。サービスのURLを確認してください。</string>
+    <string name="voice_service_failure_bad_response">サービスから、アプリで使用できる音声（MP3、WAV、Ogg、M4A）が返されませんでした。</string>
+    <string name="voice_service_failure_bad_list">サービスの応答は、アプリが読み取れる一覧ではありませんでした。</string>
+    <string name="voice_service_row_service">サービス</string>
+    <string name="voice_service_preset_openai"><xliff:g id="brand_openai" example="OpenAI">OpenAI</xliff:g>互換</string>
+    <string name="voice_service_preset_elevenlabs"><xliff:g id="brand_elevenlabs" example="ElevenLabs">ElevenLabs</xliff:g>互換</string>
+    <string name="voice_service_url_label">リクエストURL</string>
+    <string name="voice_service_api_key_label">APIキー</string>
+    <string name="voice_service_row_model">モデル</string>
+    <string name="voice_service_model_none">未選択</string>
+    <string name="voice_service_instructions_label">音声への指示</string>
+    <string name="voice_service_advanced_header">詳細設定</string>
+    <string name="voice_service_request_label">リクエスト</string>
+    <string name="voice_service_request_legend">ヘッダー行の後にJSON本文を記述します。{text}、{voice}、{model}、{instructions}、{speed}、{language}、{language_name}、{key}はアプリが値に置き換えます。</string>
+    <string name="voice_service_manual_voices_label">音声ID（1行に1つ）</string>
+    <string name="voice_service_manual_voices_hint">音声の一覧を取得できないサービス用です。アプリがこの種類のサービス用に把握している音声に追加されます。</string>
+    <string name="voice_service_remove">サービスを削除</string>
+    <string name="voice_service_remove_confirm_title">音声サービスを削除しますか？</string>
+    <string name="voice_service_remove_confirm_message">APIキーが削除され、このサービスの音声を使用している言語はすべて端末の音声に戻ります。</string>
+    <string name="voice_service_cannot_save_title">まだ保存できません</string>
+    <string name="voice_service_issue_bad_url">リクエストURLには、httpsのアドレス、またはローカルネットワーク内のhttpアドレスを指定してください。</string>
+    <string name="voice_service_issue_no_text">リクエストには、URLまたは本文に{text}を含める必要があります。</string>
+    <string name="voice_service_issue_text_in_header">{text}と{instructions}はヘッダー行に入れられません。</string>
+    <string name="voice_service_issue_header_not_ascii">APIキーに送信できない文字が含まれています。スペースや改行を含めずに貼り付け直してください。</string>
+    <string name="voice_service_issue_no_model">モデルを選択してください。</string>
+    <string name="voice_service_no_model_list_type_model">サービスからモデルの一覧が返されませんでした。「モデル」をタップして、モデルのIDを入力してください。</string>
+    <string name="voice_service_unchecked_title">キーを確認できませんでした</string>
+    <string name="voice_service_unchecked_message">サービスからモデルの一覧が返されなかったため、URLとAPIキーを確認できませんでした。</string>
+    <string name="voice_service_no_key_entered">APIキーが入力されていません。</string>
+    <string name="voice_service_model_not_listed_title">このモデルはサービスの一覧にありません</string>
+    <string name="voice_service_model_not_listed_message">サービスのモデル一覧に<xliff:g id="model" example="tts-1-hd">%1$s</xliff:g>が含まれていません。保存すると、読み上げのリクエストが拒否される場合があります。サービスの一覧にあるモデルを選ぶには、キャンセルして「モデル」をタップしてください。</string>
+    <string name="voice_service_voices_not_taken_title">このモデルで使えない音声があります</string>
+    <string name="voice_service_voices_not_taken_message">モデル<xliff:g id="model" example="tts-1">%1$s</xliff:g>では以下の音声を使用できません。保存すると、これらの言語はそれぞれ端末の音声に戻ります。</string>
+    <string name="voice_service_key_not_stored">この端末にAPIキーを安全に保存できなかったため、何も保存されませんでした。</string>
+    <string name="voice_service_model_other_label">その他のモデルID</string>
+    <string name="voice_service_model_use">使用</string>
 
     <string name="audio_no_results">結果がありません</string>
 
@@ -2231,6 +2389,23 @@
     <string name="audio_loading">読み込み中…</string>
 
     <string name="audio_error_loading">読み込めませんでした</string>
+    <string name="audio_source_local_name">android.dbファイル</string>
+    <string name="tts_recordings_section_header">インポートした録音</string>
+    <string name="local_audio_load_title">android.dbファイルを読み込む</string>
+    <string name="local_audio_load_subtitle">録音音声のandroid.dbファイルをお持ちの場合は、ここで読み込めます。このファイルは各自でご用意ください。単語にのみ対応し、android.dbファイルに登録のない単語には、他のテキスト読み上げ設定が使われます。</string>
+    <string name="local_audio_loaded_digest">android.db読み込み済み</string>
+    <string name="local_audio_importing_title">android.dbファイルを読み込み中</string>
+    <string name="local_audio_copying_message"><xliff:g id="total" example="5.8 GB">%2$s</xliff:g>中<xliff:g id="copied" example="1.2 GB">%1$s</xliff:g>をコピー済み</string>
+    <string name="local_audio_checking_message">ファイルを確認中…</string>
+    <string name="local_audio_read_problem">このファイルの読み取りに失敗しました：<xliff:g id="cause" example="database disk image is malformed">%1$s</xliff:g></string>
+    <string name="local_audio_remove">android.dbファイルを削除</string>
+    <string name="local_audio_remove_confirm_title">android.dbファイルを削除しますか？</string>
+    <string name="local_audio_remove_confirm_message">ファイルがアプリから削除され、すべての単語の音声がテキスト読み上げに戻ります。</string>
+    <string name="local_audio_import_failed_title">ファイルを読み込めませんでした</string>
+    <string name="local_audio_error_not_database">これは録音音声のandroid.dbファイルではありません。</string>
+    <string name="local_audio_error_invalid_format">このデータベースは録音音声のandroid.dbファイルではありません（<xliff:g id="reason" example="no such table: android">%1$s</xliff:g>）。</string>
+    <string name="local_audio_error_incomplete">このファイルは不完全です（<xliff:g id="expected" example="5.8 GB">%2$s</xliff:g>中<xliff:g id="have" example="2.1 GB">%1$s</xliff:g>）。ファイル全体を入手してから、もう一度読み込んでください。</string>
+    <string name="local_audio_error_copy">ファイルをコピーできませんでした。</string>
 
     <string name="process_text_translation_failed">選択したテキストを翻訳できませんでした。接続または言語設定を確認してください。</string>
 
@@ -2257,6 +2432,32 @@
     <string name="pos_abbreviation">略語</string>
     <string name="pos_contraction">短縮形</string>
     <string name="pos_auxiliary">助動詞</string>
+    <string name="pos_transitive">他動詞</string>
+    <string name="pos_intransitive">自動詞</string>
+    <string name="pos_copula">コピュラ</string>
+    <string name="pos_unclassified">未分類</string>
+    <string name="pos_suru_verb">サ変動詞</string>
+    <string name="pos_su_verb">文語サ変動詞</string>
+    <string name="pos_kuru_verb">カ変動詞</string>
+    <string name="pos_zuru_verb">ザ変動詞</string>
+    <string name="pos_ichidan_verb">一段動詞</string>
+    <string name="pos_ichidan_verb_special">一段動詞（特殊）</string>
+    <string name="pos_godan_verb">五段動詞</string>
+    <string name="pos_godan_verb_special">五段動詞（特殊）</string>
+    <string name="pos_godan_verb_irregular">五段動詞（不規則）</string>
+    <string name="pos_nidan_verb">二段動詞</string>
+    <string name="pos_yodan_verb">四段動詞</string>
+    <string name="pos_nu_verb">ナ変動詞</string>
+    <string name="pos_ri_verb">ラ変動詞</string>
+    <string name="pos_i_adjective">い形容詞</string>
+    <string name="pos_na_adjective">な形容詞</string>
+    <string name="pos_no_adjective">の形容詞</string>
+    <string name="pos_taru_adjective">タルト型形容動詞</string>
+    <string name="pos_ku_adjective">ク活用形容詞</string>
+    <string name="pos_shiku_adjective">シク活用形容詞</string>
+    <string name="pos_nari_adjective">ナリ活用形容動詞</string>
+    <string name="pos_prenominal">連体詞</string>
+    <string name="pos_to_adverb">と副詞</string>
     <!-- Misc register/usage tags (short chips); see values/strings.xml. -->
     <string name="misc_kana_only">かな表記</string>
     <string name="misc_kanji_only">漢字表記</string>

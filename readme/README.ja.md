@@ -182,7 +182,7 @@ PlayTranslateは、**26種類のゲームの言語**（画面から読み取れ�
 - **Groq**：[console.groq.com](https://console.groq.com/keys)（モデルはアプリ内で選択）
 - **OpenRouter**：[openrouter.ai](https://openrouter.ai/keys)（モデルはアプリ内で選択）
 - **Claude**：[platform.claude.com](https://platform.claude.com/settings/keys)（モデルはアプリ内で選択）
-- **Bilibili Index-Translate**：[index-translate.bilibili.com](https://index-translate.bilibili.com/)（無料、APIキー不要）
+- **Bilibili Index-Translate**：[index-translate.bilibili.com](https://github.com/bilibili/Index-Translate)（無料、APIキー不要、一時的な提供の可能性あり）
 - **カスタム**：その他のOpenAI互換エンドポイント（「カスタムURL」に独自のベースURLを入力）
 
 ## Ankiフラッシュカード（任意）

@@ -152,3 +152,19 @@ Clean areas: The lead's verb is the app's 추가 (`add_online_service_title` 번
 ### Disposition (2026-10-14)
 
 Applied the 1 💬 (the lead merged into "아래 서비스를 원하는 만큼 추가하세요.").
+
+## Delta review 2026-11-16 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> `[PASS] ko -> readme/README.ko.md`.
+
+No findings. `git diff readme/README.ko.md` shows one changed line, the Bilibili Index-Translate bullet (line 185) and nothing else. The link target is `https://github.com/bilibili/Index-Translate`, byte-identical to `README.md` line 185, and the link text `index-translate.bilibili.com` is unchanged. The new clause joins the bullet's existing parenthesis as a third noun-final item, "(무료, API 키 불필요, 한시적으로만 제공될 수 있음)", which keeps the file's parenthetical bullet style (the sibling bullets end "(모델은 앱에서 선택)") and its ~음/noun endings; 한시적으로만 제공될 수 있음 ("may be offered only for a limited time") carries "May be temporary" in the sense the English means, a free service that may not stay available, and the full-width-free punctuation (ASCII parentheses, comma-space) matches the line before the change.
+
+### Disposition (2026-11-16)
+
+No findings; nothing to apply.
+
+### Round 2 (2026-11-16)
+
+Mechanical layer: `readme_l10n_check.py ko` -> `[PASS] ko -> readme/README.ko.md`.
+
+No findings. `git diff readme/README.ko.md` changes one line, the Bilibili Index-Translate bullet (line 185), and nothing else. The link target is `https://github.com/bilibili/Index-Translate`, byte-identical to `README.md`, and the link text `index-translate.bilibili.com` is unchanged. "May be temporary" is the third item of the existing parenthesis, 「(무료, API 키 불필요, 한시적으로만 제공될 수 있음)」, in the list's noun-final style.

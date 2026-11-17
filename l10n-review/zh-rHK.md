@@ -494,3 +494,137 @@ No findings.
 #### Verdict (round 2)
 
 **PASS**; nothing is open in the strings. Each of the 39 values was re-derived from zh-rCN's value of the same key. Every table swap these words need is in (伺服器, 裝置, 辨識, 螢幕, 執行, 金鑰, 貼上, 連線, 回應, 開啟, 設定, 搜尋, 拖曳, 載入; 內置 kept), the hand edits 效能, 收費 and 而且 are Hong Kong usage, and the script-only spans (頂尖, 零負載, 多款, 選用, 推理, 作答, 程度, 變位, 變格, 詞形, 裁剪, 該頁面, 該選項, 檢查中, 不可用, 最低 and the rest) hold no Mainland word. The framework's zh-HK strings on disk confirm the Android-facing words: 貼上 (`paste`), 搜尋 (`search_go`), 正在載入 (`loading`), 關 (`capital_off`, exactly the file's Off) and 執行中 for a running app (「%1$s」執行中). Glyphs are Android's (啟動中, 請改為; none of 啓 説 閲 裏 着 爲), every Han character is in Big5, there is no 您, no quote arises, spacing matches zh-rCN, and widths match it (PingFang HK: toast 336 dp, 2 lines at 296 and 256 dp). No swap collides on a shared screen: the cloud page's 執行 (OCR subtitle) and 執行中 (status) agree, and the LLM page's 關 segment and 關閉 close button are different controls. A data point, not raised: zh-HK also uses 運行 for software (停止運行 where zh-TW says 停止執行), so 未執行 is the table's pick between two Hong Kong forms, kept because it pairs with 執行中; round 1's other data points (不可用, 檢查中 / 啟動中, 金鑰) stand. Outside the strings (read in code), the English cooldown description from `PtCloudErrors`, app-wide and already recorded in other locales and reported, can show "Not running · 重試於 15:42" under 未執行.
+
+## Delta review 2026-11-16 (Ask and word explain, voice service, imported recordings, PlayTranslate Cloud account, Anki notes, Japanese part-of-speech labels: 206 new keys and 7 changed)
+
+Mechanical layer: `mech_check.py --locale zh-rHK --aapt2` -> 213 keys checked, 0 errors, 1 warning (`pt_cloud_email_hint` identical to English, judged below), aapt2 ok; `l10n_diff.py` against `l10n-sync` -> missing=0 orphan=0 modified=7 (the 7 MODIFIED keys, each already carrying the new English meaning, read below). (review in progress)
+
+**No 🛑 issues.** The warning is right as it stands: the comment says to keep example.com, and zh-rCN keeps it too.
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| pt_cloud_display_name_alpha | ⚠️ | <xliff:g id="service" example="PlayTranslate Cloud">PlayTranslate Cloud</xliff:g>（Alpha 版） | <xliff:g id="service" example="PlayTranslate Cloud">PlayTranslate Cloud</xliff:g> Alpha 版 | This is the PlayTranslate Cloud page's toolbar title (`activity_pt_cloud_settings.xml:31`). It is a Material3 Toolbar: TitleLarge 22 sp regular, one line, ellipsized. AppCompat 1.7.1 and Material 1.14.0 on disk give the nav button a 56 dp minWidth, a 4 dp titleMargin on each side, contentInsetStartWithNavigation 0, and no end inset or menu. That leaves W − 64 dp: 296 at 360, 320 at 384, 329 at 393. Current: 323.6 dp (Noto Sans CJK and Roboto at 22 sp), so it clips at 360 and 384 to "PlayTranslate Cloud（Alpha…". English: 272.8. Suggested: 285.1, which fits at 360. （Alpha） without 版, at 296.2, misses by a hair. "X Alpha 版" is a normal Chinese version label. It is also the value zh-rCN now holds, so the two files keep one structure. |
+| dictionary_title_builtin | 💬 | 內置 | 內置詞典 | The title over the app's own definitions, standing among imported dictionaries' own names (`DefRowHtml.kt:421`, an HTML title that wraps, so width is no limit). Bare 內置 is an adjective and reads as a tag next to a name such as 大辭林. The comment ties it to what Settings calls the built-in dictionary, which this file calls 內置詞典 (`yomitan_single_dict_subtitle`, and 內置詞典排在最後 in this delta's `anki_content_glossary_primary_desc`). zh-rCN made the same change (内置词典). |
+| word_explain_title | 💬 | 在本句中 | 句中用法 | On the word page this is a group header beside 釋義 / 變位 / 變格 / 詞形 / 漢字 (`word_detail_group_*`), all nouns. A bare prepositional phrase reads as unfinished there. It also sits right above the row 解釋這個詞語在本句中的用法, so 在本句中 shows twice. 句中用法 is a noun of the same four characters. It also works as the small title over a word row's answer and as the question's title (`WordRowList.kt:379`, `AskQuestion.Word`). zh-rCN made the same change. |
+| pt_cloud_sign_out_message | 💬 | 此裝置將清除其金鑰。你的帳戶會保持不變，之後可以用你的電郵地址重新登入。 | 此裝置上的金鑰將被清除。你的帳戶會保持不變，之後可以用你的電郵地址重新登入。 | A device as the agent that clears "its" key mirrors the English "This device forgets its key". Naming what happens to the key on this device reads as written Chinese and keeps the point that only this device is affected. zh-rCN made the same change. |
+| voice_service_remove_confirm_message | 💬 | 其 API 金鑰將被刪除，所有使用其語音的語言都會改回使用裝置語音。 | 該服務的 API 金鑰將被刪除，所有使用其語音的語言都會改回使用裝置語音。 | A sentence-initial 其 calques "Its" and is followed by a second 其 in the same sentence. Naming the service matches `tr_service_remove_message` (該服務) and reads cleanly under the title 移除語音服務？. zh-rCN made the same change. |
+| voice_service_model_none | 💬 | 選擇 | 請選擇 | This is the Model row's value slot (`OnlineTtsServiceActivity.kt:219`), where the Service row shows 兼容 OpenAI. Bare 選擇 reads as a button label. 請選擇 is the usual placeholder for an unset choice and keeps the English's call to action. The file's other unset value, 未選擇 (`anki_deck_not_selected_subtitle`), would also do. zh-rCN made the same change (请选择). |
+
+These six are also the six fixes zh-rCN took in its own round 1. Since this review began, they were applied to `values-zh-rCN` but not to this file. Each was judged here on Hong Kong grounds (the widths are measured above). Applying them keeps zh-rHK what its parameters block says it is: zh-rCN's structure with the Hong Kong swaps. Nothing else in zh-rCN's delta has changed since the translator's fragment.
+
+### Clean areas (checked, no findings)
+
+**Method.** The 213 keys were read by screen against English, the full comments in `delta_en.xml`, their call sites, the neighbours already in this file, and zh-rCN's value of the same key. Against the translator's source (`frag/zh-rCN.xml`), 104 values differ only by glyph conversion. That is the untouched half, and each of those was read for Mainland survivals; it has none (see the appendix). The other 109 carry swaps or hand edits, and each was read against English.
+
+**Ask section and the word page's group.** 提問 is the header (one ellipsized line, 2 characters). The hint 輸入你自己的問題… measures 144.0 dp at 16 sp against English's 172.1, so the EditText between the 36 dp buttons has more room than English. 切換提問可見性 follows `cd_toggle_translation_visibility` (切換譯文可見性). 正在詢問 Gemini… and 由 Gemini 回答 mirror `translation_source_label` (由 X 翻譯). The cut-off line, the spoiler line (譯文 is the Translation section's own name), the out-of-scope line (PlayTranslate Cloud 只回答…), 無法取得回答。 and 重試 (`update_error_retry`) read naturally. Read as one alert, the no-model alert holds together: the title 提問功能需要 AI 模型; the body naming 「翻譯服務」, 新增線上 AI 服務 and 開啟裝置端模型; and the button 翻譯服務. Both the quoted name and the button byte-match `settings_cell_translation_services`. The preset chip 語法解析 is 56 dp at 14 sp. Apart from the title row above, the word-page row and the screen-reader label read correctly.
+
+**Word list and definitions.** 詞語 · 6 matches `section_words` and the `anki_group_words_count` pattern. 顯示釋義需要 Android System WebView。 keeps the app's name in Latin, as zh-rCN does. The 27 `pos_*` labels are the terms Chinese grammars of Japanese use: 他動詞 / 自動詞, 繫詞 (the right Traditional glyph, not a conversion's 系詞), 未分類, the サ變 / カ變 / ナ變 / ラ變 classes, 一段 / 五段 / 二段 / 四段動詞, い / な / の / たる形容詞, ク活用 / シク活用形容詞, ナリ活用形容動詞, 連體詞 and と副詞. They match the existing 動詞 / 形容詞 / 副詞 / 助動詞. Each is about as short as the English, and none contains a separator: （特殊） and （不規則） are full-width parentheses, not a dot or a slash.
+
+**Anki.** The notes alert reads as one alert: 沒有可存放備註的欄位, then a body quoting 「備註」, then 仍然儲存 (= `llm_prompt_save_anyway`) beside 取消. The quoted word byte-matches `anki_content_notes` and `anki_group_notes`. 備註 (the user's note) stays apart from 筆記 (Anki's note object, `anki_first_field_unmapped`). The new content rows sit correctly beside the existing ones. 釋義（Yomitan 格式） stays distinct from `anki_content_definition` 釋義, and 主詞典（Yomitan 格式） sits beside it. The descriptions open on 醒目標示詞語 as every sibling `_desc` does, take 優先次序 from `yomitan_single_dict_subtitle`, and quote Lapis fields in the `anki_content_pitch_position_desc` shape (Lapis 的「Glossary」). `anki_added_voice_fell_back` has the same frame as the other four "Added to Anki" toasts (已新增到 Anki（…）), and its 語音服務 is `audio_source_voice_service_name`'s word.
+
+**Capture overlay and icon actions.** 釋義 and 無 fit the four-segment control beside 翻譯 and 振假名 / 拼音. 疊加層：%1$s。點按以更改。 uses `settings_overlay_mode_title`'s 疊加層 with no space around a placeholder that fills with Chinese. 啟用點按查詞 sits well among the icon actions, and as the Hotkeys row title it mirrors the English (which is not "Tap to …" either).
+
+**PlayTranslate Cloud.** Each state family was read as a set across the pill, the hub digest and the page:
+- Trial ended: 免費試用已結束 / 試用已結束 / 試用已結束 or 試用已於 11月3日結束.
+- Membership inactive: 無有效會籍 in all three, with 會籍已於 11月3日到期 when the date is known.
+- Terms not accepted: 未接受條款 in all three.
+- Closed: 服務已停止營運 / 已停止營運 / PlayTranslate Cloud 已停止營運.
+
+Each state reads as one state, and every one stays distinct from the others and from the last sync's 未執行 / 執行中 / 啟動中 / 無法連線 / 目前離線. On the membership terms: 會籍 (membership), 會員 (member: `pt_cloud_member`, 成為 PlayTranslate Cloud 會員, 已經成為會員？) and 會籍有效至 for "Member until" are Hong Kong usage. They are better than zh-rCN's 开通 / 会员, which a straight swap would have kept. 訂閱 Ko-fi 會籍 matches 訂閱時請使用 in the line under the button. The terms link 《條款與私隱》 fills 我同意%1$s as 我同意《條款與私隱》, with no space, and it is the page title 條款與私隱 in the 《》 Hong Kong uses for a named document. Cross-references hold: 傳送新驗證碼 is echoed in the rate-limit, invalid-code and key-not-stored notices. Sign-in vocabulary is Android zh-HK's and Hong Kong's: 電郵 / 電郵地址, 登入 / 登出, 驗證碼, 今日 / 明日, 連線上網, 聯絡 … 支援團隊, 流動裝置, 伺服器級影像處理 (影像 as in `history_capture_image_toggle_title`), 亦. The plural `pt_cloud_code_sent_to` has `other` only, which is right for zh. Read with real values, it gives 我們已向 you@example.com 傳送驗證碼，10 分鐘內有效。 and 1 分鐘內有效。. The pills are 208.8 to 236.8 dp at 14 sp and wrap to two lines in the two-line pill, as English (261.5) does. 條款與私隱 is 110 dp in its toolbar. The email hint is the English address, as the comment requires.
+
+**Voice service.** The page and its alerts read as sets. The title 語音服務沒有回應 introduces each `voice_service_failure_*` line, and the lines read as one family: 該服務… throughout, 拒絕了 API 金鑰 / 請求, 速率上限 / 配額, 時限內回應, 無法連線至, 發生錯誤（HTTP 503）, 傳回. 傳回 keeps clear of 返回, which is "back" in this file. The quoted names byte-match their rows: 「服務設定」 (`voice_service_settings_row`) and 「模型」 (`voice_service_row_model`) in the type-model and model-not-listed messages, along with 取消 (`btn_cancel`). Save anyway is the file's 仍然儲存. 兼容 OpenAI / 兼容 ElevenLabs is Hong Kong's 兼容 (Taiwan says 相容) and matches the README. 進階 (Advanced), 位址 and 區域網絡 follow `llm_backend_base_url_invalid`. 標頭行 / JSON 主體 replace zh-rCN's Mainland 请求头行 / 正文. 朗讀指令 avoids reading as voice commands. The eight tokens in `voice_service_request_legend`, and those in the two issue lines, are byte-identical. 連接語音服務 is the file's only 連接. That is deliberate and right: it links a service, while every network sense keeps 連線, including this delta's 無法連線至該服務 and 你的網絡連線.
+
+**Imported recordings.** 已匯入的錄音 (匯入 as in 已匯入詞典集合), android.db 檔案, 載入 / 正在載入 / 已載入, 已複製 1.2 GB / 5.8 GB, 讀取此檔案失敗：…, and 移除 for the button with 刪除 for what happens to the file, as the English splits them. The subtitle names no language, no community name and no website. "Source it yourself" is 自行取得, and the fallback is 你的其他 TTS 設定 (TTS as in `tts_no_engine_open_settings`). The digest leads the TTS hub cell at 143.3 dp.
+
+**The 7 MODIFIED keys.** Each carries its new English, and the old meaning is gone. 強大的影像處理 replaces "Read the screen" and matches the headline's 影像處理. 不耗用裝置效能 replaces "all your power goes to the game". 優質翻譯 replaces "Translate the text". "AI" is one word, Latin and Pangu-spaced, across the chip (AI), the header (進階 AI 設定), the two subtitles (線上 AI 翻譯器, 雲端和裝置端 AI 翻譯器), the Ask alert (AI 模型, AI 服務) and the voice subtitle (線上 AI 語音). The debug row keeps 裝置端 LLM, as English does. The two subtitles kept their reviewed Hong Kong sentences and changed only that word.
+
+### Traditional Chinese (Hong Kong) appendix
+
+**HK-vs-Mainland audit.** Each value was compared with the translator's source, zh-rCN's fragment, character by character.
+- **Swap-table entries applied wherever their words occur:** 文件→檔案 (18), 密钥→金鑰 (11), 发送→傳送, 设备→裝置, 加载→載入, 保存 / 存储→儲存, 账号→帳戶, 邮箱 / 邮件→電郵 (地址), 单词→詞語, 获取→取得, 添加→新增, 当前→目前, 列表→清單, 在线→線上, 通过→透過, 设置→設定, 返回→傳回 (data a service returns), 字段→欄位, 创建→建立, 高级→進階, 数据库→資料庫, 仅→只, 隐私→私隱, 运营→營運, 图像→影像, 服务器→伺服器, 移动设备→流動裝置, 额度→配額.
+- **Hand departures where conversion would have left Mainland usage:** 登录 / 退出登录→登入 / 登出, 开通 (a Mainland app verb)→成為…會員 / 訂閱, 会员 (membership)→會籍, 联系 / 支持团队→聯絡 / 支援團隊, 联网→連線上網, 关联→連結, 请求头 / 正文→標頭 / 主體, 规定时间→時限, 含义→意思, 今天 / 明天→今日 / 明日.
+- **The untouched half (104 values):** ordinary Hong Kong text. It includes the 27 POS labels, 提問, 正在詢問, 語法解析, 重新檢查, 查看條款, 驗證碼, 優質翻譯, 朗讀指令, 請求 URL and 兼容. No 質量, 菜單, 屏幕, 默認, 信息, 視頻, 運行, 鏈接, 響應, 重置, 匹配 or 會話 appears anywhere in the 213 values.
+- **Glyphs:** 啟 (×3) and 閱 (×3). None of 啓 説 閲 裏 着 爲 appears, and every Han character is in Big5 (only the English's ⚠ is outside it).
+- **Typography:** quotes are 「」 throughout and 《》 only around the terms link; no “ ” or straight quotes; no 您.
+- **Han/Latin spacing:** identical to zh-rCN's in every key except the six hand edits that changed it (進階 AI 設定 and the like), all correct.
+- **Sense-dependent words:** 支援 appears only in 支援團隊 (support), and the donation 支持 is untouched. 連接 appears only for linking a service. 內置 is Hong Kong's form, not Taiwan's 內建.
+
+**Placeholder contact points**, each read with a real value:
+- Service names (正在詢問 Gemini…, 由 Gemini 回答, PlayTranslate Cloud 只回答…, PlayTranslate Cloud：無有效會籍) are Latin and Pangu-spaced.
+- Dates are formatted by `CooldownTimeLabel` for zh-HK: 試用已於 11月3日結束, and 2025年11月3日 in another year; 會籍已於 11月3日到期; 免費試用至 11月3日 下午3:42; 會籍有效至 12月5日 下午3:42. Each has a space before a digit and none after 日.
+- `settings_pt_cloud_summary_trial` keeps a space before a time that starts with 下午 (免費試用至 下午3:42). That follows the file's precedent for a time placeholder (`note_mlkit_service_cooldown`, `degraded_warning_cooldown`: 下午3:42 前), so it is not raised.
+- The other placeholders: 我同意《條款與私隱》; HTTP 503 inside （）; 模型 tts-1 無法使用…; 已複製 1.2 GB / 5.8 GB; 只有 2.1 GB，完整檔案應為 5.8 GB; the English database causes after ： and inside （）; 疊加層：振假名。.
+- None of these placeholders fills with Chinese text, so none of the no-space rules for Chinese fills applies.
+
+**The translator's term decisions,** judged:
+- 會籍 for membership: kept. It is the Hong Kong word, and 會員 is correctly kept for the person.
+- 《條款與私隱》 for the link: kept, for the reason above. 條款及私隱 would be the more formal Hong Kong title form, but 與 is not wrong and matches the page title, so it is not raised.
+- 標頭行 / 主體: kept.
+- 連接 for the service: kept.
+- 傳回 over 返回: kept, since 返回 is "back" here.
+- 速率上限: kept; it reads better after 達到 than 速率限制 does.
+- 不耗用裝置效能: kept.
+- The translator's note that the legend's comment lists 4 tokens does not match the comment, which lists none. The 8 tokens in the string are right.
+
+### Source-side notes
+
+- `CooldownTimeLabel.format` builds the hub digest's trial-end date (`settings_pt_cloud_summary_trial`), and every existing cooldown "retry on" date, with a fixed `SimpleDateFormat("MMM d")`. In zh-HK, zh-TW, zh-CN and ja that prints 11月 3, with no 日 and a stray space (checked on a JVM; Android's ICU has the same zh `MMM` = 11月). So the digest reads 免費試用至 11月 3. The account card's dates go through `getBestDateTimePattern` and print 11月3日 correctly. A string cannot fix this; the code would need the same skeleton call (`MMMd`).
+
+### Not verified here
+
+- Nothing was seen on a device.
+- The widths are from the Noto Sans CJK and Roboto files Robolectric ships, with the toolbar insets read from the AppCompat and Material resources on disk, not from a running layout.
+- Android System WebView's label on a zh-HK device was not checked. It is kept in Latin, as zh-rCN keeps it, and as far as I know Google does not localize that app name.
+
+### Corrections to this section
+
+Two counts in the appendix above are wrong, and the mechanical line's "(review in progress)" marker is stale; the review is complete. 閱 occurs 5 times in the 213 values, not 3. 啟 does occur 3 times. Against the translator's zh-rCN fragment, Han/Latin spacing differs in one key, not six: `settings_header_advanced_llm` (進階 AI 設定 against 高级配置's word order), and it is correct. Neither error changes a finding.
+
+Totals: 0 🛑, 0 ❌, 1 ⚠️, 5 💬.
+
+### Disposition (2026-11-16)
+
+All 6 findings in the table applied byte-exact (1 ⚠️: `pt_cloud_display_name_alpha`; 5 💬: `dictionary_title_builtin`, `word_explain_title`, `pt_cloud_sign_out_message`, `voice_service_remove_confirm_message`, `voice_service_model_none`). These six are also the six fixes zh-rCN took in its round 1, judged here on Hong Kong grounds, so the carry-over from zh-rCN is complete. The CooldownTimeLabel.format date order is a code finding reported to the developer. After applying: `zh-rHK: 213 keys checked, 0 errors, 1 warnings, aapt2 ok`; only delta keys changed (scope check).
+
+### Round 2 (2026-11-16), final review after applying round 1
+
+Mechanical layer: `mech_check.py --locale zh-rHK --aapt2` -> `zh-rHK: 213 keys checked, 0 errors, 1 warnings, aapt2 ok` (the warning is `pt_cloud_email_hint` identical to English, settled in round 1); `l10n_diff.py` against `git show l10n-sync:…` -> `values-zh-rHK   missing=0  orphan=0  modified=7` (the 7 changed keys, each holding its new English meaning); README `readme_l10n_check.py zh-rHK` -> `[PASS] zh-rHK -> readme/README.zh-HK.md`. (review in progress)
+
+Round-1 changes checked (each value compared byte for byte with the table's `suggested` by script, then read on its screen):
+- `pt_cloud_display_name_alpha`: landed. The toolbar title measures 285.1 dp at 22 sp (Noto Sans CJK and Roboto), inside the 296 dp a 360 dp phone leaves. The other three places that show it (the Capture & overlay card row, the Translation services cloud row, the hub cell) only got shorter, since the parentheses are gone. It is byte-identical to zh-rCN's value.
+- `dictionary_title_builtin`: landed. 內置詞典 matches `yomitan_single_dict_subtitle` and the 內置詞典排在最後 in `anki_content_glossary_primary_desc`. `settings_ocr_note_builtin` stays a bare 內置: it is a badge, a different place.
+- `word_explain_title`: landed. 句中用法 sits as a noun header beside 釋義 / 變位 / 變格 / 詞形 / 漢字. It is also the question's title (`WordRowList.kt:379`, `WordDetailBinder.kt:1322`), where a noun title works. `cd_word_explain` (解釋在本句中的用法) and `word_explain_ask` (解釋這個詞語在本句中的用法) quote no part of the old title, so nothing still refers to 在本句中 as a name.
+- `pt_cloud_sign_out_message`: landed. It reads under 要登出 PlayTranslate Cloud 嗎？, and 金鑰 / 帳戶 / 電郵地址 / 登入 match the rest of the page.
+- `voice_service_remove_confirm_message`: landed. 該服務 matches `tr_service_remove_message` and the voice failure family. One 其 is left (使用其語音), which is natural there.
+- `voice_service_model_none`: landed. 請選擇 in the value slot fits with the issue line `voice_service_issue_no_model` 請選擇模型。 and keeps clear of 未選擇 (`anki_deck_not_selected_subtitle`, the Anki deck row).
+
+#### Findings (round 2)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| ask_preset_grammar_breakdown | 💬 | 語法解析 | 文法解析 | Optional, a Hong Kong word choice. 語法 is the Mainland word that came with the script conversion. In Hong Kong it is the linguists' and Chinese-curriculum term. Everyday Hong Kong usage, and the HK and Taiwan software UIs this file follows, say 文法 for "grammar" (英文文法, a spelling-and-grammar check written 拼字及文法; this is from memory and was not checked here, since there is no web access). zh-TW users, who also get this file, say only 文法. The width is the same, 56.0 dp at 14 sp. Round 1 listed 語法解析 among the clean untouched values, so this is a judgment call for the developer, not a defect. If it is taken, take the row below as well, so the chip and the out-of-scope line use one word. |
+| ask_out_of_scope | 💬 | <xliff:g id="service_name" example="PlayTranslate Cloud">%1$s</xliff:g> 只回答與這句話有關的問題，例如它的意思、語法或詞彙。 | <xliff:g id="service_name" example="PlayTranslate Cloud">%1$s</xliff:g> 只回答與這句話有關的問題，例如它的意思、文法或詞彙。 | Companion to the row above. It is the only other 語法 in the file. Change both or neither. |
+
+**Fresh read by screen.** All 213 keys were read against English, the comments in `delta_en.xml`, the call sites, this file's neighbours and zh-rCN's final value. Script checks over the 213 values: no Mainland word from the parameters block's swap table (and none of 信息 視頻 軟件 程序 登錄 郵箱 在線 通過 高級 用戶 刷新 緩存 圖像 關聯 聯繫 局域網 額度 運營 開通 性能 移動 默認); no 啓 説 閲 裏 着 爲; every Han character is in Big5 (啟 ×3, 閱 ×5, 為 ×10, 戶 ×7, 內 ×7 in their HK forms); no “ ” or straight quotes, no 您; no ASCII punctuation next to Han; Pangu spacing is the same as zh-rCN's in every key but `settings_header_advanced_llm` (進階 AI 設定, correct). The only places where a fill touches Han with no space are the date fills (試用已於 11月3日結束, 會籍已於 11月3日到期) and 我同意《條款與私隱》, which are all right because those fills are Chinese.
+- **Ask and the word page's group.** The alert reads as one unit: 提問功能需要 AI 模型, a body quoting 「翻譯服務」, and the button 翻譯服務. Both byte-match `settings_cell_translation_services`. 重試 = `update_error_retry`. 切換提問可見性 follows 切換譯文可見性. 正在詢問 Gemini… and 由 Gemini 回答 follow 由 X 翻譯. Only 語法 is raised (above).
+- **Word list and definitions.** 詞語 · 6 matches `section_words`. The 27 `pos_*` labels keep 動詞 / 形容詞 / 副詞 and the HK glyphs (繫詞, 連體詞, サ變 / カ變 / ナ變 / ラ變), and none contains a separator. Android System WebView stays in Latin.
+- **Anki.** The notes alert: title, body quoting 「備註」 (= `anki_content_notes` = `anki_group_notes`), then 仍然儲存 (= `llm_prompt_save_anyway`) beside 取消. 備註 stays apart from 筆記. The voice fallback toast uses the frame of the other four 已新增到 Anki（…） toasts. The two Yomitan rows and their descriptions use 醒目標示詞語 and 優先次序 as their siblings do.
+- **Overlay and icon actions.** 釋義 / 無 join 翻譯 / 振假名 / 拼音 in the four-segment control. 疊加層：無。點按以更改。 reads with each fill. 啟用點按查詞 sits among the other icon actions.
+- **PlayTranslate Cloud.** I read the state families across the pill, the digest and the page. Trial ended is 免費試用已結束 / 試用已結束. Inactive is 無有效會籍, with 會籍已於…到期. Terms is 未接受條款. Closed is 服務已停止營運 / 已停止營運. Each state is one state everywhere, and each differs from the others and from 未執行 / 執行中 / 啟動中 / 無法連線 / 目前離線. Sign-in uses Hong Kong words throughout: 電郵地址, 登入 / 登出, 驗證碼, 今日 / 明日, 連線上網, 聯絡…支援團隊, 流動裝置, 亦. 傳送新驗證碼 is echoed in the three notices that mention it. The plural has `other` only.
+- **Voice service.** 「服務設定」 and 「模型」 byte-match their rows. The failure lines read as one family (該服務…, 傳回, 時限, 速率上限, 配額), with 兼容 / 標頭行 / 主體 / 位址 / 區域網絡 / 字元 / 貼上 throughout. The eight `{…}` tokens are byte-identical.
+- **Imported recordings.** 已匯入的錄音, 載入 / 正在載入 / 已載入, 已複製 1.2 GB / 5.8 GB, and 移除 for the button against 刪除 for the file. No language, community name or website is named.
+- **The 7 MODIFIED keys.** Against the `l10n-sync` values, the three cloud toggles carry the new meanings. The four AI strings changed only LLM→AI inside their reviewed sentences. The debug row alone keeps 裝置端 LLM, as English does.
+
+**README:** the bullet is checked in `l10n-review/readme/zh-rHK.md` (Round 2): no findings.
+
+#### Verdict (round 2)
+
+**PASS**: 0 🛑 / 0 ❌ / 0 ⚠️ / 2 💬. Both 💬 are optional and are one change, 語法→文法, in two keys.
+
+The review is complete. The "(review in progress)" marker on this round's mechanical line above is stale.
+
+#### Disposition (round 2, 2026-11-16)
+
+Not applied: 語法 → 文法 in `ask_preset_grammar_breakdown` and `ask_out_of_scope`. Round 1 passed 語法解析 and the round-2 note on Hong Kong usage is from memory, unchecked, so it is a word choice left to the developer rather than an obvious fix.

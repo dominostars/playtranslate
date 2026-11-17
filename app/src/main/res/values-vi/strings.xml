@@ -146,6 +146,8 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="word_detail_no_definitions">Không tìm thấy định nghĩa nào.</string>
+    <string name="definitions_need_webview">Cần có Android System WebView để hiển thị định nghĩa.</string>
+    <string name="dictionary_title_builtin">Tích hợp sẵn</string>
 
     <string name="word_detail_more_examples">Thêm ví dụ</string>
 
@@ -329,11 +331,31 @@
     <string name="section_translation">Bản dịch</string>
 
     <string name="section_words">Từ</string>
+    <string name="section_words_count">Từ · <xliff:g id="count" example="6">%1$d</xliff:g></string>
+    <string name="section_ask">Hỏi đáp</string>
+    <string name="ask_question_hint">Đặt câu hỏi của riêng bạn…</string>
+    <string name="cd_ask_send">Gửi câu hỏi</string>
+    <string name="cd_ask_close">Đóng câu trả lời</string>
+    <string name="cd_toggle_ask_visibility">Bật/tắt hiển thị mục Hỏi đáp</string>
+    <string name="ask_status_asking">Đang hỏi <xliff:g id="service_name" example="Gemini">%1$s</xliff:g>…</string>
+    <string name="ask_status_asking_unnamed">Đang hỏi…</string>
+    <string name="ask_answered_by">Trả lời bởi <xliff:g id="service_name" example="Gemini">%1$s</xliff:g></string>
+    <string name="ask_answer_cut">Câu trả lời này đã chạm giới hạn độ dài và bị cắt ngắn.</string>
+    <string name="ask_spoiler_warning">⚠ Câu trả lời có thể làm lộ bản dịch đang ẩn.</string>
+    <string name="ask_out_of_scope"><xliff:g id="service_name" example="PlayTranslate Cloud">%1$s</xliff:g> chỉ trả lời các câu hỏi về câu này, chẳng hạn như ý nghĩa, ngữ pháp hay từ vựng của câu.</string>
+    <string name="ask_failed">Không thể nhận được câu trả lời.</string>
+    <string name="ask_retry">Thử lại</string>
+    <string name="ask_no_llm_title">Hỏi đáp cần một mô hình AI</string>
+    <string name="ask_no_llm_message">Hỏi đáp gửi câu hỏi của bạn về câu này tới một mô hình AI. Hãy thêm một dịch vụ AI trực tuyến, hoặc bật một mô hình trên thiết bị, trong Dịch vụ dịch thuật.</string>
+    <string name="ask_no_llm_open_services">Dịch vụ dịch thuật</string>
+    <string name="ask_preset_grammar_breakdown">Phân tích ngữ pháp</string>
+    <string name="cd_word_explain">Giải thích cách dùng trong câu này</string>
+    <string name="word_explain_title">Trong câu này</string>
+    <string name="word_explain_ask">Giải thích cách dùng từ này</string>
 
     <string name="words_loading">Đang tra từ…</string>
 
     <string name="lens_loading">Đang tra…</string>
-    <string name="lens_also_matches">Cũng khớp với</string>
     <string name="load_more_count">Tải thêm (<xliff:g id="count" example="2">%1$d</xliff:g>)</string>
     <string name="section_other_matches">Kết quả khác</string>
 
@@ -427,6 +449,7 @@
     <string name="icon_action_swap_pinyin">Chuyển giữa bản dịch và pinyin</string>
 
     <string name="icon_action_change_game_language">Đổi ngôn ngữ trò chơi</string>
+    <string name="icon_action_tap_to_lookup">Bật chế độ nhấn để tra từ</string>
 
     <string name="icon_action_translating_from">Đang dịch từ <xliff:g id="language" example="Japanese">%1$s</xliff:g></string>
 
@@ -499,6 +522,7 @@
     <string name="anki_no_deck_selected">Không tìm thấy bộ thẻ nào trong <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g></string>
 
     <string name="anki_added_no_audio">Đã thêm vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (không có âm thanh)</string>
+    <string name="anki_added_voice_fell_back">Đã thêm vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (dịch vụ giọng nói không khả dụng, đã dùng giọng nói của thiết bị)</string>
 
     <string name="anki_added_no_screenshot">Đã thêm vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (không có ảnh chụp màn hình)</string>
 
@@ -521,6 +545,9 @@
     <string name="anki_card_too_large_simplify">Lưu bản rút gọn</string>
 
     <string name="anki_card_too_large_failed">Thẻ này quá lớn để <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> chấp nhận, ngay cả với định nghĩa rút gọn. Hãy thử bớt vài từ hoặc rút ngắn câu.</string>
+    <string name="anki_notes_no_field_title">Không có trường cho chú thích của bạn</string>
+    <string name="anki_notes_no_field_message">Loại thẻ này không có trường nào được ánh xạ tới Chú thích, nên không thể lưu chú thích của bạn lên thẻ. Lưu thẻ mà không kèm chú thích?</string>
+    <string name="anki_notes_no_field_save_anyway">Vẫn lưu</string>
 
     <string name="anki_added_simplified">Đã thêm vào <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (đã rút gọn định nghĩa để vừa kích thước)</string>
 
@@ -549,6 +576,9 @@
     <string name="anki_group_words_count">Từ trên thẻ · <xliff:g id="words_count" example="3">%d</xliff:g></string>
 
     <string name="anki_group_definitions">Định nghĩa</string>
+    <string name="anki_group_notes">Chú thích</string>
+    <string name="anki_notes_hint">Thêm chú thích cho thẻ này</string>
+    <string name="cd_anki_notes_clear">Xóa chú thích</string>
 
     <string name="anki_group_screenshot">Ảnh chụp màn hình</string>
 
@@ -691,6 +721,12 @@
 
     <string name="anki_content_frequency_harmonic">Số sắp xếp theo tần suất</string>
     <string name="anki_content_frequency_harmonic_desc">Một con số duy nhất để sắp xếp thẻ theo tần suất, là trung bình điều hòa của các tần suất từ điển của từ (càng thấp = càng thường gặp). Dùng cho “FreqSort” của <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> hoặc “FrequencySort” của <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g>.</string>
+    <string name="anki_content_glossary">Định nghĩa (định dạng <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>)</string>
+    <string name="anki_content_glossary_desc">Định nghĩa của từ được làm nổi bật trong mọi từ điển, được viết đúng theo cách <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g> viết. Dùng cho các loại thẻ được tạo cho <xliff:g id="brand_yomitan2" example="Yomitan">Yomitan</xliff:g>, chẳng hạn như “Glossary” của <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>.</string>
+    <string name="anki_content_glossary_primary">Từ điển chính (định dạng <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>)</string>
+    <string name="anki_content_glossary_primary_desc">Chỉ từ điển đầu tiên theo thứ tự của bạn mà có từ được làm nổi bật, được viết đúng theo cách <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g> viết. Từ điển tích hợp sẵn luôn đứng cuối. Dùng cho “MainDefinition” của <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>.</string>
+    <string name="anki_content_notes">Chú thích</string>
+    <string name="anki_content_notes_desc">Chú thích bạn nhập trên thẻ trước khi lưu. Trường sẽ để trống nếu bạn không nhập gì.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          CARD-TYPE STATE FLAGS
@@ -752,6 +788,7 @@
     <string name="deepl_settings_get_key_subtitle">Gói miễn phí gồm 500.000 ký tự mỗi tháng, nhưng cần thẻ tín dụng để đăng ký</string>
 
     <string name="deepl_settings_about"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> là một dịch vụ dịch nổi tiếng với kết quả chất lượng cao, đặc biệt là với các ngôn ngữ châu Âu.</string>
+    <string name="pt_cloud_display_name_alpha"><xliff:g id="service" example="PlayTranslate Cloud">PlayTranslate Cloud</xliff:g> (Alpha)</string>
 
     <string name="llm_backend_preset_custom">Tùy chỉnh</string>
 
@@ -797,17 +834,17 @@
     <string name="llm_backend_invalid_key_alert_button">OK</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
-         ADVANCED LLM CONFIGURATION — user-editable prompt templates.
+         ADVANCED AI CONFIGURATION — user-editable prompt templates.
          The {token} keywords are literal and stay in Latin, verbatim.
          ═══════════════════════════════════════════════════════════════ -->
 
-    <string name="settings_header_advanced_llm">Cấu hình LLM nâng cao</string>
+    <string name="settings_header_advanced_llm">Cấu hình AI nâng cao</string>
 
     <string name="settings_llm_context_title">Dùng các dòng gần đây làm ngữ cảnh</string>
-    <string name="settings_llm_context_subtitle">Chỉ trực tuyến. Cung cấp cho các trình dịch LLM trực tuyến vài dòng văn bản đã ghi gần nhất để đại từ và tên gọi nhất quán hơn.</string>
+    <string name="settings_llm_context_subtitle">Chỉ trực tuyến. Cung cấp cho các trình dịch AI trực tuyến vài dòng văn bản đã ghi gần nhất để đại từ và tên gọi nhất quán hơn.</string>
 
     <string name="llm_prompt_row_system_title">Câu lệnh hệ thống</string>
-    <string name="llm_prompt_row_system_subtitle">Vai trò và các chỉ dẫn được gửi tới các trình dịch LLM, cả trên đám mây lẫn trên thiết bị.</string>
+    <string name="llm_prompt_row_system_subtitle">Vai trò và các chỉ dẫn được gửi tới các trình dịch AI, cả trên đám mây lẫn trên thiết bị.</string>
     <string name="llm_prompt_row_translation_title">Câu lệnh dịch</string>
     <string name="llm_prompt_row_translation_subtitle">Yêu cầu bao quanh từng cụm từ mà bạn tra cứu.</string>
     <string name="llm_prompt_row_batch_title">Câu lệnh hàng loạt</string>
@@ -850,7 +887,7 @@
 
     <string name="tr_service_add_online">Thêm dịch vụ dịch thuật trực tuyến</string>
     <string name="add_online_service_title">Thêm dịch vụ dịch thuật</string>
-    <string name="service_llm_badge">LLM</string>
+    <string name="service_llm_badge">AI</string>
     <string name="service_account_required">Cần tài khoản</string>
     <string name="service_account_required_free">Cần tài khoản (có gói miễn phí)</string>
     <string name="service_no_account_required">Không cần tài khoản</string>
@@ -1153,6 +1190,10 @@
     <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>: không thể kết nối</string>
 
     <string name="translation_error_not_running"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: đã dừng</string>
+    <string name="translation_error_trial_ended"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: đã hết hạn dùng thử miễn phí</string>
+    <string name="translation_error_membership_inactive"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: gói thành viên không hoạt động</string>
+    <string name="translation_error_terms_required"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: chưa chấp nhận điều khoản</string>
+    <string name="translation_error_closed"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: dịch vụ đã đóng cửa</string>
 
     <string name="translation_error_discard_card_title">Bỏ thẻ này?</string>
 
@@ -1287,6 +1328,10 @@
     <string name="overlay_mode_option_furigana">Furigana</string>
 
     <string name="overlay_mode_option_pinyin">Pinyin</string>
+    <string name="overlay_mode_option_definitions">Định nghĩa</string>
+    <string name="overlay_mode_option_none">Không có</string>
+    <string name="capture_overlay_pill_collapsed_cd">Lớp phủ: <xliff:g id="mode" example="Translation">%1$s</xliff:g>. Nhấn để thay đổi.</string>
+    <string name="capture_overlay_pill_collapse_cd">Ẩn tùy chọn lớp phủ</string>
 
     <string name="settings_hide_overlays_during_auto_mode">Ẩn lớp phủ trong chế độ tự động</string>
 
@@ -1564,22 +1609,27 @@
     <string name="settings_pt_cloud_summary_translation_only">Chỉ dịch</string>
 
     <string name="settings_pt_cloud_summary_ocr_only">Chỉ OCR trên máy chủ mạnh</string>
+    <string name="settings_pt_cloud_summary_trial">Dùng thử miễn phí đến <xliff:g id="end" example="Nov 3">%1$s</xliff:g></string>
+    <string name="settings_pt_cloud_summary_trial_ended">Đã hết hạn dùng thử</string>
+    <string name="settings_pt_cloud_summary_inactive">Gói thành viên không hoạt động</string>
+    <string name="settings_pt_cloud_summary_terms_required">Chưa chấp nhận điều khoản</string>
+    <string name="pt_cloud_headline">Xử lý hình ảnh và dịch thuật trên máy chủ mạnh mẽ</string>
+    <string name="pt_cloud_intro">Các mô hình nhận dạng văn bản và dịch thuật chính xác nhất quá nặng để chạy trên thiết bị di động. <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> chạy chúng trên máy chủ, nhờ đó bạn có kết quả tốt hơn và thiết bị của bạn không phải xử lý gì cả.</string>
+    <string name="pt_cloud_features_title">Tính năng</string>
 
-    <string name="pt_cloud_ocr_toggle_title">Nhận dạng chữ trên màn hình</string>
+    <string name="pt_cloud_ocr_toggle_title">Xử lý hình ảnh mạnh mẽ</string>
 
-    <string name="pt_cloud_ocr_toggle_subtitle">OCR mạnh hơn trên GPU của máy chủ. Toàn bộ sức mạnh của thiết bị dành cho trò chơi.</string>
+    <string name="pt_cloud_ocr_toggle_subtitle">OCR mạnh hơn trên GPU của máy chủ, không tốn sức mạnh xử lý của thiết bị bạn.</string>
 
-    <string name="pt_cloud_translate_toggle_title">Dịch văn bản</string>
+    <string name="pt_cloud_translate_toggle_title">Bản dịch cao cấp</string>
 
     <string name="pt_cloud_translate_toggle_subtitle">Đã bao gồm các mô hình dịch trả phí, tự động chọn mô hình tốt nhất cho từng việc.</string>
+    <string name="pt_cloud_privacy_features">Ảnh chụp màn hình và văn bản không bao giờ bị lưu trữ hay bán đi.</string>
+    <string name="pt_cloud_features_paused_terms">Tạm dừng cho đến khi bạn chấp nhận điều khoản.</string>
 
     <string name="pt_cloud_ocr_row_subtitle">OCR trên máy chủ mạnh, không tốn tài nguyên thiết bị</string>
 
     <string name="pt_cloud_translate_row_subtitle_no_key">Đã bao gồm các mô hình dịch trả phí tốt nhất</string>
-
-    <string name="pt_cloud_key_label">Khóa ứng dụng khách</string>
-
-    <string name="pt_cloud_key_hint">Dán khóa bạn đã nhận được</string>
 
     <string name="pt_cloud_status_title">Dịch vụ</string>
 
@@ -1590,12 +1640,71 @@
     <string name="pt_cloud_status_not_running">Đã dừng</string>
 
     <string name="pt_cloud_status_unreachable">Không thể kết nối</string>
+    <string name="pt_cloud_status_offline">Hiện đang ngoại tuyến</string>
+    <string name="pt_cloud_status_closed">Đã đóng cửa</string>
 
     <string name="pt_cloud_status_other">Phản hồi không mong đợi (<xliff:g id="http_code" example="500">%1$s</xliff:g>)</string>
 
     <string name="pt_cloud_status_checking">Đang kiểm tra</string>
 
     <string name="pt_cloud_status_unchecked">Chưa kiểm tra</string>
+    <string name="pt_cloud_account_title">Tài khoản</string>
+    <string name="pt_cloud_email_label">Địa chỉ email</string>
+    <string name="pt_cloud_email_hint">ban@example.com</string>
+    <string name="pt_cloud_free_trial">Thử <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> miễn phí</string>
+    <plurals name="pt_cloud_code_sent_to">
+        <item quantity="other">Chúng tôi đã gửi mã đến <xliff:g id="email" example="you@example.com">%1$s</xliff:g>. Mã có hiệu lực trong <xliff:g id="minutes" example="10">%2$d</xliff:g> phút.</item>
+    </plurals>
+    <string name="pt_cloud_code_label">Mã</string>
+    <string name="pt_cloud_start_free_trial">Bắt đầu dùng thử miễn phí</string>
+    <string name="pt_cloud_send_new_code">Gửi mã mới</string>
+    <string name="pt_cloud_change_email">Dùng email khác</string>
+    <string name="pt_cloud_signed_in_with_key">Đã đăng nhập bằng khóa</string>
+    <string name="pt_cloud_trial_until">Dùng thử miễn phí đến <xliff:g id="end" example="Nov 3, 3:42 PM">%1$s</xliff:g></string>
+    <string name="pt_cloud_member_until">Thành viên đến <xliff:g id="end" example="Dec 5, 3:42 PM">%1$s</xliff:g></string>
+    <string name="pt_cloud_member">Thành viên</string>
+    <string name="pt_cloud_trial_ended_on">Đã hết hạn dùng thử vào <xliff:g id="date" example="Nov 3">%1$s</xliff:g></string>
+    <string name="pt_cloud_trial_ended">Đã hết hạn dùng thử</string>
+    <string name="pt_cloud_inactive_since">Gói thành viên không hoạt động từ <xliff:g id="date" example="Nov 3">%1$s</xliff:g></string>
+    <string name="pt_cloud_inactive">Không có gói thành viên đang hoạt động</string>
+    <string name="pt_cloud_terms_required">Chưa chấp nhận điều khoản</string>
+    <string name="pt_cloud_check_again">Kiểm tra lại</string>
+    <string name="pt_cloud_join_pending">Đã tham gia? Có thể mất vài giây để xử lý.</string>
+    <string name="pt_cloud_terms_pending">Hãy đọc và chấp nhận điều khoản để tiếp tục dùng <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>.</string>
+    <string name="pt_cloud_show_terms">Xem điều khoản</string>
+    <string name="pt_cloud_join_title">Tham gia <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g></string>
+    <string name="pt_cloud_after_trial_title">Sau thời gian dùng thử</string>
+    <string name="pt_cloud_join_nudge_trial">Đăng ký gói thành viên Ko-fi để tiếp tục dùng <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> sau thời gian dùng thử.</string>
+    <string name="pt_cloud_join_title_lapsed">Tiếp tục dùng <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g></string>
+    <string name="pt_cloud_join_nudge_lapsed">Đăng ký gói thành viên Ko-fi để bật lại các tính năng này.</string>
+    <string name="pt_cloud_join_email_hint">Hãy đăng ký bằng <xliff:g id="email" example="you@example.com">%1$s</xliff:g> để khoản thanh toán tự động được ghi nhận vào tài khoản này.</string>
+    <string name="pt_cloud_join_email_hint_no_email">Hãy đăng ký bằng địa chỉ email gắn với khóa của bạn để khoản thanh toán tự động được ghi nhận vào tài khoản này.</string>
+    <string name="pt_cloud_sign_out">Đăng xuất</string>
+    <string name="pt_cloud_sign_out_title">Đăng xuất khỏi <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>?</string>
+    <string name="pt_cloud_sign_out_message">Khóa trên thiết bị này sẽ bị xóa. Tài khoản của bạn vẫn giữ nguyên, và bạn có thể đăng nhập lại bằng địa chỉ email của mình.</string>
+    <string name="pt_cloud_signin_bad_email">Đây có vẻ không phải là một địa chỉ email.</string>
+    <string name="pt_cloud_signin_rate_limited">Quá nhiều yêu cầu. Nếu đã nhận được mã, hãy nhập mã bên dưới; nếu chưa, hãy gửi mã mới sau một phút.</string>
+    <string name="pt_cloud_signin_too_many_codes">Hôm nay đã gửi quá nhiều mã đến địa chỉ này. Hãy thử lại vào ngày mai.</string>
+    <string name="pt_cloud_signin_offline_new"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> hiện đang ngoại tuyến nên không thể tạo tài khoản mới. Hãy thử lại sau.</string>
+    <string name="pt_cloud_signin_mail_failed">Không thể gửi email. Hãy thử lại sau một phút.</string>
+    <string name="pt_cloud_signin_unavailable">Hiện chưa thể đăng nhập. Hãy thử lại sau.</string>
+    <string name="pt_cloud_signin_unreachable">Không thể kết nối <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>. Hãy kiểm tra kết nối mạng rồi thử lại.</string>
+    <string name="pt_cloud_signin_disabled">Tài khoản này không thể đăng nhập. Nếu bạn cho rằng đây là nhầm lẫn, hãy liên hệ bộ phận hỗ trợ của PlayTranslate.</string>
+    <string name="pt_cloud_code_invalid">Mã đó không dùng được. Có thể mã bị nhập sai hoặc đã hết hạn. Hãy kiểm tra lại, hoặc gửi mã mới.</string>
+    <string name="pt_cloud_verify_offline"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> hiện đang ngoại tuyến. Mã của bạn vẫn còn hiệu lực, hãy thử lại sau một phút.</string>
+    <string name="pt_cloud_key_not_stored">Không thể lưu khóa trên thiết bị này. Hãy gửi mã mới.</string>
+    <string name="pt_cloud_account_unchecked">Hiện không thể kiểm tra tài khoản.</string>
+    <string name="pt_cloud_key_no_longer_accepted">Khóa của thiết bị này không còn được chấp nhận. Hãy đăng nhập lại.</string>
+    <string name="pt_cloud_terms_unavailable">Không thể tải điều khoản. Hãy thử lại sau một phút.</string>
+    <string name="pt_cloud_terms_not_recorded">Không thể ghi nhận việc bạn chấp nhận điều khoản. Hãy thử lại.</string>
+    <string name="pt_cloud_closed_title"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> đã đóng cửa</string>
+    <string name="pt_cloud_closed_default">Dịch vụ không còn khả dụng nữa.</string>
+    <string name="pt_cloud_privacy_signin">Địa chỉ email của bạn được dùng để gửi mã đăng nhập cho bạn.</string>
+    <string name="pt_cloud_terms_title">Điều khoản và Quyền riêng tư</string>
+    <string name="pt_cloud_terms_agree">Đồng ý</string>
+    <string name="pt_cloud_agree_terms">Tôi đồng ý với <xliff:g id="terms" example="Terms and Privacy">%1$s</xliff:g></string>
+    <string name="pt_cloud_terms_link">Điều khoản và Quyền riêng tư</string>
+    <string name="pt_cloud_agree_required">Hãy đồng ý với điều khoản để tiếp tục.</string>
 
     <string name="floating_menu_pt_cloud_available"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>: khả dụng</string>
 
@@ -1924,8 +2033,6 @@
 
     <string name="tts_no_engine_row_subtitle">Không có công cụ chuyển văn bản thành giọng nói nào khả dụng. Nhấn để thêm một công cụ.</string>
 
-    <string name="tts_voice_picker_title">Giọng nói</string>
-
     <string name="tts_voices_section_header">GIỌNG <xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
     <string name="tts_speed_title">Tốc độ</string>
 
@@ -2164,6 +2271,57 @@
     <string name="audio_source_tts_name">Chuyển văn bản thành giọng nói</string>
 
     <string name="audio_source_commons_name">Wikimedia Commons</string>
+    <string name="audio_source_voice_service_name">Dịch vụ giọng nói</string>
+    <string name="audio_error_playing">Không thể phát âm thanh này</string>
+    <string name="voice_service_connect_title">Kết nối dịch vụ giọng nói</string>
+    <string name="voice_service_connect_subtitle">Dùng giọng nói AI trực tuyến với khóa API của riêng bạn</string>
+    <string name="voice_service_settings_row">Cài đặt dịch vụ</string>
+    <string name="voice_service_no_voices">Không có giọng nói</string>
+    <string name="tts_no_engine_row_title">Không có công cụ chuyển văn bản thành giọng nói</string>
+    <string name="voice_service_failed_title">Dịch vụ giọng nói không trả về kết quả</string>
+    <string name="voice_service_failure_auth">Dịch vụ đã từ chối khóa API.</string>
+    <string name="voice_service_failure_rate_limited">Dịch vụ đã chạm giới hạn yêu cầu hoặc đã hết hạn mức.</string>
+    <string name="voice_service_failure_timeout">Dịch vụ không phản hồi kịp thời.</string>
+    <string name="voice_service_failure_unreachable">Không thể kết nối tới dịch vụ. Hãy kiểm tra URL và kết nối mạng của bạn.</string>
+    <string name="voice_service_failure_server_error">Dịch vụ gặp lỗi (HTTP <xliff:g id="status" example="503">%1$d</xliff:g>).</string>
+    <string name="voice_service_failure_rejected">Dịch vụ đã từ chối yêu cầu (HTTP <xliff:g id="status" example="400">%1$d</xliff:g>).</string>
+    <string name="voice_service_failure_rejected_asked">Yêu cầu đã chỉ định giọng <xliff:g id="voice" example="Coral">%1$s</xliff:g> và mô hình <xliff:g id="model" example="gpt-4o-mini-tts">%2$s</xliff:g>. Nếu dịch vụ không có một trong hai, hãy chọn giọng khác tại đây, hoặc chọn mô hình khác trong Cài đặt dịch vụ.</string>
+    <string name="voice_service_failure_no_request">Không thể tạo yêu cầu. Hãy kiểm tra URL của dịch vụ.</string>
+    <string name="voice_service_failure_bad_response">Dịch vụ không trả về âm thanh mà ứng dụng có thể dùng (MP3, WAV, Ogg hoặc M4A).</string>
+    <string name="voice_service_failure_bad_list">Phản hồi của dịch vụ không phải là danh sách mà ứng dụng có thể đọc.</string>
+    <string name="voice_service_row_service">Dịch vụ</string>
+    <string name="voice_service_preset_openai">Tương thích <xliff:g id="brand_openai" example="OpenAI">OpenAI</xliff:g></string>
+    <string name="voice_service_preset_elevenlabs">Tương thích <xliff:g id="brand_elevenlabs" example="ElevenLabs">ElevenLabs</xliff:g></string>
+    <string name="voice_service_url_label">URL yêu cầu</string>
+    <string name="voice_service_api_key_label">Khóa API</string>
+    <string name="voice_service_row_model">Mô hình</string>
+    <string name="voice_service_model_none">Chọn</string>
+    <string name="voice_service_instructions_label">Chỉ dẫn giọng nói</string>
+    <string name="voice_service_advanced_header">Nâng cao</string>
+    <string name="voice_service_request_label">Yêu cầu</string>
+    <string name="voice_service_request_legend">Các dòng header, sau đó là phần thân JSON. Ứng dụng sẽ điền {text}, {voice}, {model}, {instructions}, {speed}, {language}, {language_name} và {key}.</string>
+    <string name="voice_service_manual_voices_label">Id giọng nói, mỗi dòng một id</string>
+    <string name="voice_service_manual_voices_hint">Dành cho dịch vụ không thể tự liệt kê giọng nói. Các id này được thêm vào những giọng nói mà ứng dụng đã biết cho dịch vụ đó.</string>
+    <string name="voice_service_remove">Gỡ dịch vụ</string>
+    <string name="voice_service_remove_confirm_title">Gỡ dịch vụ giọng nói?</string>
+    <string name="voice_service_remove_confirm_message">Khóa API của dịch vụ sẽ bị xóa, và mọi ngôn ngữ đang dùng một giọng nói của dịch vụ này sẽ quay lại dùng giọng nói của thiết bị.</string>
+    <string name="voice_service_cannot_save_title">Chưa thể lưu</string>
+    <string name="voice_service_issue_bad_url">URL yêu cầu phải là địa chỉ https, hoặc địa chỉ http trong mạng của riêng bạn.</string>
+    <string name="voice_service_issue_no_text">Yêu cầu phải chứa {text}, trong URL hoặc trong phần thân.</string>
+    <string name="voice_service_issue_text_in_header">{text} và {instructions} không thể nằm trong dòng header.</string>
+    <string name="voice_service_issue_header_not_ascii">Khóa API chứa một ký tự không thể gửi đi. Hãy dán lại khóa, không kèm khoảng trắng hay dấu xuống dòng.</string>
+    <string name="voice_service_issue_no_model">Hãy chọn một mô hình.</string>
+    <string name="voice_service_no_model_list_type_model">Dịch vụ không trả về danh sách mô hình. Hãy nhấn Mô hình và nhập id của mô hình.</string>
+    <string name="voice_service_unchecked_title">Không thể kiểm tra khóa</string>
+    <string name="voice_service_unchecked_message">Dịch vụ không trả về danh sách mô hình, nên không thể kiểm tra URL và khóa API.</string>
+    <string name="voice_service_no_key_entered">Chưa nhập khóa API.</string>
+    <string name="voice_service_model_not_listed_title">Dịch vụ không liệt kê mô hình này</string>
+    <string name="voice_service_model_not_listed_message">Danh sách mô hình của dịch vụ không có <xliff:g id="model" example="tts-1-hd">%1$s</xliff:g>. Nếu bạn lưu, các yêu cầu tạo giọng nói có thể bị từ chối. Để chọn một mô hình mà dịch vụ có liệt kê, hãy hủy và nhấn Mô hình.</string>
+    <string name="voice_service_voices_not_taken_title">Một số giọng nói không dùng được với mô hình này</string>
+    <string name="voice_service_voices_not_taken_message">Mô hình <xliff:g id="model" example="tts-1">%1$s</xliff:g> không thể dùng các giọng nói bên dưới. Nếu bạn lưu, các ngôn ngữ này sẽ quay lại dùng giọng nói của thiết bị.</string>
+    <string name="voice_service_key_not_stored">Không thể lưu khóa API một cách an toàn trên thiết bị này, nên chưa có gì được lưu.</string>
+    <string name="voice_service_model_other_label">Id mô hình khác</string>
+    <string name="voice_service_model_use">Dùng</string>
 
     <string name="audio_no_results">Không có kết quả</string>
 
@@ -2172,6 +2330,23 @@
     <string name="audio_loading">Đang tải…</string>
 
     <string name="audio_error_loading">Không thể tải</string>
+    <string name="audio_source_local_name">Tệp android.db</string>
+    <string name="tts_recordings_section_header">Bản ghi âm đã nhập</string>
+    <string name="local_audio_load_title">Nhập tệp android.db</string>
+    <string name="local_audio_load_subtitle">Nếu có tệp android.db chứa bản ghi âm giọng nói, bạn có thể nhập tệp đó tại đây. Bạn phải tự tìm nguồn cho tệp này. Tính năng này chỉ áp dụng cho từ, và từ nào không có mục trong tệp android.db sẽ quay về dùng các cài đặt TTS khác của bạn.</string>
+    <string name="local_audio_loaded_digest">Đã nhập tệp android.db</string>
+    <string name="local_audio_importing_title">Đang nhập tệp android.db</string>
+    <string name="local_audio_copying_message">Đã sao chép <xliff:g id="copied" example="1.2 GB">%1$s</xliff:g> / <xliff:g id="total" example="5.8 GB">%2$s</xliff:g></string>
+    <string name="local_audio_checking_message">Đang kiểm tra tệp…</string>
+    <string name="local_audio_read_problem">Không đọc được tệp này: <xliff:g id="cause" example="database disk image is malformed">%1$s</xliff:g></string>
+    <string name="local_audio_remove">Gỡ tệp android.db</string>
+    <string name="local_audio_remove_confirm_title">Gỡ tệp android.db?</string>
+    <string name="local_audio_remove_confirm_message">Tệp sẽ bị xóa khỏi ứng dụng, và mọi từ sẽ lại được đọc bằng tính năng chuyển văn bản thành giọng nói.</string>
+    <string name="local_audio_import_failed_title">Không thể nhập tệp</string>
+    <string name="local_audio_error_not_database">Đây không phải là tệp android.db chứa bản ghi âm giọng nói.</string>
+    <string name="local_audio_error_invalid_format">Cơ sở dữ liệu này không phải là tệp android.db chứa bản ghi âm giọng nói (<xliff:g id="reason" example="no such table: android">%1$s</xliff:g>).</string>
+    <string name="local_audio_error_incomplete">Tệp này chưa đầy đủ: chỉ có <xliff:g id="have" example="2.1 GB">%1$s</xliff:g> trên tổng số <xliff:g id="expected" example="5.8 GB">%2$s</xliff:g>. Hãy lấy toàn bộ tệp rồi nhập lại.</string>
+    <string name="local_audio_error_copy">Không thể sao chép tệp.</string>
 
     <string name="process_text_translation_failed">Không thể dịch văn bản đã chọn. Hãy kiểm tra kết nối hoặc cài đặt ngôn ngữ.</string>
 
@@ -2198,6 +2373,32 @@
     <string name="pos_abbreviation">Chữ viết tắt</string>
     <string name="pos_contraction">Dạng rút gọn</string>
     <string name="pos_auxiliary">Trợ động từ</string>
+    <string name="pos_transitive">Tha động từ</string>
+    <string name="pos_intransitive">Tự động từ</string>
+    <string name="pos_copula">Hệ từ</string>
+    <string name="pos_unclassified">Chưa phân loại</string>
+    <string name="pos_suru_verb">Động từ nhóm III (suru)</string>
+    <string name="pos_su_verb">Động từ su</string>
+    <string name="pos_kuru_verb">Động từ nhóm III (kuru)</string>
+    <string name="pos_zuru_verb">Động từ zuru</string>
+    <string name="pos_ichidan_verb">Động từ nhóm II</string>
+    <string name="pos_ichidan_verb_special">Động từ nhóm II (đặc biệt)</string>
+    <string name="pos_godan_verb">Động từ nhóm I</string>
+    <string name="pos_godan_verb_special">Động từ nhóm I (đặc biệt)</string>
+    <string name="pos_godan_verb_irregular">Động từ nhóm I (bất quy tắc)</string>
+    <string name="pos_nidan_verb">Động từ Nidan</string>
+    <string name="pos_yodan_verb">Động từ Yodan</string>
+    <string name="pos_nu_verb">Động từ nu</string>
+    <string name="pos_ri_verb">Động từ ri</string>
+    <string name="pos_i_adjective">Tính từ đuôi i</string>
+    <string name="pos_na_adjective">Tính từ đuôi na</string>
+    <string name="pos_no_adjective">Tính từ no</string>
+    <string name="pos_taru_adjective">Tính từ taru</string>
+    <string name="pos_ku_adjective">Tính từ ku</string>
+    <string name="pos_shiku_adjective">Tính từ shiku</string>
+    <string name="pos_nari_adjective">Tính từ nari</string>
+    <string name="pos_prenominal">Liên thể từ</string>
+    <string name="pos_to_adverb">Trạng từ to</string>
 
     <!-- Misc register/usage tags (short chips); see values/strings.xml. -->
     <string name="misc_kana_only">Chỉ kana</string>

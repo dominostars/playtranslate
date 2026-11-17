@@ -182,7 +182,7 @@ Par défaut, la traduction passe par [Lingva](https://github.com/thedaviddelta/l
 - **Groq** : [console.groq.com](https://console.groq.com/keys), avec choix du modèle dans l'application
 - **OpenRouter** : [openrouter.ai](https://openrouter.ai/keys), avec choix du modèle dans l'application
 - **Claude** : [platform.claude.com](https://platform.claude.com/settings/keys), avec choix du modèle dans l'application
-- **Bilibili Index-Translate** : [index-translate.bilibili.com](https://index-translate.bilibili.com/), gratuit et sans clé d'API
+- **Bilibili Index-Translate** : [index-translate.bilibili.com](https://github.com/bilibili/Index-Translate), gratuit et sans clé d'API. Ce service pourrait n'être que temporaire.
 - **Personnalisé** : tout autre serveur compatible avec l'API d'OpenAI ; saisissez l'URL de votre serveur dans le champ « URL personnalisée »
 
 ## Cartes Anki (facultatif)

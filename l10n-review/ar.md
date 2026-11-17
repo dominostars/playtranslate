@@ -1135,3 +1135,268 @@ No findings.
 ### After the final review (2026-10-27)
 
 The segmented-control finding from round 1 is fixed in code at the developer's request. Both sliding controls (`buildPillToggle` and the Anki Sentence | Word `buildAnkiModeToggle`) now get the indicator's size and position from the selected segment's laid-out bounds on every layout. Previously they used `pillW * index`, so under RTL a selected segment other than the first drew its indicator off the track. `PillToggleIndicatorTest` reproduced that before the fix (indicator at x=370 and x=443 on a 300 px track) and passes after it, in RTL and LTR, after taps and resizes. The device pass on an ar phone is still owed.
+
+## Delta review 2026-11-16 (Ask and word explain, voice service, imported recordings, PlayTranslate Cloud account, Anki notes, Japanese part-of-speech labels: 206 new keys and 7 changed)
+
+Mechanical layer: `mech_check.py --locale ar --aapt2` -> `ar: 213 keys checked, 0 errors, 5 warnings, aapt2 ok` (the warnings: `pt_cloud_email_hint` identical to English, and `pt_cloud_code_sent_to[one]` / `[two]` without `%2$d`, judged below); `l10n_diff.py` -> `values-ar missing=0 orphan=0 modified=7` (the 7 MODIFIED are this delta's changed keys against the unmoved `l10n-sync` tag; each now carries the new meaning, judged below). **No 🛑 issues.**
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| anki_content_glossary_primary_desc | 💬 | تعريفات أول قاموس في ترتيبك يحتوي على الكلمة المميَّزة فقط، مكتوبةً بالطريقة التي يكتبها بها <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>. يأتي القاموس المدمج في آخر الترتيب. لحقل «MainDefinition» في <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>. | تعريفات قاموس واحد فقط، هو أول قاموس في ترتيبك يحتوي على الكلمة المميَّزة، مكتوبةً بالطريقة التي يكتبها بها <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>. يأتي القاموس المدمج في آخر الترتيب. لحقل «MainDefinition» في <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>. | «فقط» sits right after «الكلمة المميَّزة», where Arabic reads it as restricting that word ("a dictionary that contains only the highlighted word"). The English "Only" restricts the dictionary, which is the contrast with the option above it (every dictionary). The sibling label makes the sense recoverable, but «قاموس واحد فقط، هو…» says it outright. |
+| local_audio_loaded_digest | 💬 | تم تحميل ملف android.db | ملف android.db مُحمَّل | `ttsCellSummary` (RootSettingsViewModel.kt:101) appends " · engine · voice" to this digest. For a voice service the engine is its host (`api.openai.com`, always Latin), so the Latin-final digest, the separators and the host merge into one LTR run (computed with `java.text.Bidi`: `[R:تم تحميل ملف ] [L:android.db · api.openai.com · Coral]`). On screen «ملف» then sits beside the voice name and «android.db» sits at the far left. Ending on an Arabic word splits it off: `[R:ملف ] [L:android.db] [R: مُحمَّل · ] [L:api.openai.com · Coral]`. A device engine whose label starts with a Latin letter merges the same way. The host and voice pair is a code issue (see the appendix). |
+| voice_service_preset_openai | 💬 | متوافق مع <xliff:g id="brand_openai" example="OpenAI">OpenAI</xliff:g> | متوافقة مع <xliff:g id="brand_openai" example="OpenAI">OpenAI</xliff:g> | It is the value of the row titled «الخدمة» (OnlineTtsServiceActivity.kt:219) and an item of that row's menu, so it describes a خدمة, which is feminine. The 2026-10-27 review already holds status values to the gender of «الخدمة» («متوقفة»). |
+| voice_service_preset_elevenlabs | 💬 | متوافق مع <xliff:g id="brand_elevenlabs" example="ElevenLabs">ElevenLabs</xliff:g> | متوافقة مع <xliff:g id="brand_elevenlabs" example="ElevenLabs">ElevenLabs</xliff:g> | Same fix as the OpenAI row; the two items sit in one menu and must agree. |
+
+### Clean areas (checked, no findings)
+
+**Ask section and the word page's "In this sentence" group** (`section_ask`, the `ask_*` and `cd_ask_*` keys, `cd_toggle_ask_visibility`, `word_explain_*`, `cd_word_explain`).
+- The feature is named «اسأل» everywhere it is referred to: the header, «قسم «اسأل»» in the eye's label (the neighbours say «إظهار/إخفاء الترجمة»), and «ميزة «اسأل»» in the alert.
+- «تمت الإجابة بواسطة %1$s» copies `translation_source_label`'s shape, «جارٍ طرح السؤال…» uses the file's «جارٍ …» progress pattern, and «إعادة المحاولة» is `update_error_retry`. An Ask answer is «إجابة», kept apart from a service's reply, «استجابة» (`translation_error_bad_response`, `voice_service_failure_bad_list`).
+- The alert reads as one: the title «تتطلب ميزة «اسأل» نموذج ذكاء اصطناعي», then a body that repeats «نموذج ذكاء اصطناعي» and quotes «خدمات الترجمة», then a button «خدمات الترجمة». Both byte-match `settings_cell_translation_services`.
+- `ask_out_of_scope` puts خدمة before the name, so it reads with PlayTranslate Cloud or Gemini filled in.
+- Widths, with Android's Noto Naskh Arabic UI:
+  - `section_ask`: 24 dp at 14 sp, in a one-line ellipsized header.
+  - `ask_question_hint`: 125 dp at 16 sp. The English is 172 dp, in a field that loses only 56 dp of padding and the 36 dp send button.
+  - `ask_preset_grammar_breakdown`: 53 dp at 12 sp medium on the 26 dp chip («تحليل نحوي», a natural name for a point-by-point grammar explanation).
+- The word page's row «شرح استخدام هذه الكلمة» sits under the title «في هذه الجملة», and the cd «شرح الكلمة في هذه الجملة» says the same.
+
+**Word list and definitions.**
+- `definitions_need_webview` keeps "Android System WebView", the name Android shows for the app in Arabic (from memory, not checked on a device). It sits in a match_parent TextView with no maxLines (DefinitionDocument.kt:446), so it wraps.
+- `dictionary_title_builtin` «القاموس المدمج» is two words, the term `yomitan_single_dict_subtitle` already uses.
+- `section_words_count` follows `anki_group_words_count`'s «… · %d». The count is an Arabic-context number and lands on the left.
+- The 28 `pos_*` labels:
+  - None holds a separator character; the parentheses are the English's.
+  - Each Japanese class takes the file's head noun (فعل / صفة / ظرف, beside `pos_verb` / `pos_adjective` / `pos_adverb`) plus an Arabic-script transliteration, as the file writes فوريغانا and كانجي (غ for g, تش for ch).
+  - «متعدٍّ» / «لازم» are the standard Arabic grammar terms. «خاص» and «شاذ» keep "special" and "irregular" apart. «رابطة» is the linguistic copula, «غير مصنَّف» means unclassified, and «نعت سابق» (prenominal) stays distinct from `pos_determiner` «محدد».
+  - Every label is Arabic-led, so the " · " line stays one RTL paragraph. The labels wrap, so length is not a risk.
+
+**Anki.**
+- The notes alert reads as one: «لا يوجد حقل لملاحظتك» / the body / «الحفظ على أي حال» (`llm_prompt_save_anyway`'s words), with the standard Cancel.
+  - "set to Notes" is «مُعيَّن لمحتوى «الملاحظات»». That quote byte-matches `anki_content_notes`, which byte-matches `anki_group_notes`, as both comments ask.
+  - The closing «حفظ البطاقة بدونها؟» follows the reviewed `anki_card_too_large_prompt` («حفظ بطاقة مبسّطة…؟»).
+- The user's note is «ملاحظة», kept apart from «الملحوظة», Anki's note object in `anki_first_field_*`.
+- The content rows:
+  - «التعريفات (بتنسيق Yomitan)» stays distinct from the existing «التعريف».
+  - «بتنسيق» is `anki_content_definition_desc`'s word.
+  - «Glossary» and «MainDefinition» are quoted as written, with «حقل» added because the comments say they are Lapis fields.
+  - «لـ Yomitan» uses the file's tatweel glue before a Latin brand.
+- `anki_added_voice_fell_back` keeps its siblings' frame «تمت الإضافة إلى Anki (…)». «خدمة الصوت» byte-matches `audio_source_voice_service_name`. At 366 dp it takes 2 lines at a 296 dp toast width.
+
+**Capture overlay and icon actions.**
+- «التعريفات» and «لا شيء» (`settings_digest_none`) join «الترجمة / فوريغانا / بينيين». The pill sizes its segments from its own measure (OverlayModePill.kt:217, at least 78 dp), and the labels are 47 dp and 35 dp.
+- `icon_action_tap_to_lookup` «تفعيل البحث عن الكلمات بالضغط» takes the lookup noun from `onboarding_a11y_row_lookup_title` and the tap from `icon_gesture_tap`. It is clearly not the hover action «عرض تعريف الكلمة عند المرور فوقها», and the same words serve the Hotkeys row and its dialog.
+
+**PlayTranslate Cloud.**
+- **Error pills.** They keep the «خدمة %1$s: …» shape (the 2026-09-29 decision).
+  - They measure 219 to 317 dp at 14 sp. The two-line pill (TranslationErrorPills.kt:381) breaks after the colon, into a 160 dp line and a line of at most 153 dp, inside the 174 dp portrait slot.
+  - «مغلقة نهائيًا» carries "for good" and avoids repeating خدمة.
+- **Hub digests.** They measure 87 to 167 dp at 13 sp, against 178 dp on a 320 dp phone. A Levantine month («٣ تشرين الثاني», 190 dp) would ellipsize only at 320 dp.
+- **The state families read as sets.**
+  - Trial: «فترة تجريبية مجانية حتى …» on the digest and the card, «انتهت الفترة التجريبية (المجانية)» on the pill, the digest and the card. This mirrors the English's "Free trial ended" / "Trial ended".
+  - Membership inactive: «العضوية غير نشطة» on the pill, the digest and «… منذ», and «لا توجد عضوية نشطة» with no date, as in the English.
+  - Terms not accepted: «لم تتم الموافقة على الشروط» on the pill, the digest and the notice card, with «متوقفة مؤقتًا حتى تتم الموافقة على الشروط.» under the features.
+  - Closed: «مغلقة» / «أُغلقت خدمة …» / «لم تعد الخدمة متاحة.».
+  - Offline: «غير متاحة حاليًا», the same in the status row and both sign-in notices. It stays apart from «متوقفة», «تعذّر الاتصال» and the closed set, and it does not suggest the device is offline (the comment says it is online). The quick-menu label «غير متاحة» is a broader screen-reader state that contains it.
+  - Member: «العضوية سارية (حتى …)».
+- **Agreement.** Feminine throughout, with خدمة or the implied الميزات.
+- **Brand placement.** The brand follows خدمة where the English sentence starts with it (`pt_cloud_intro`, `_signin_offline_new`, `_verify_offline`, `_closed_title`). It stays bare mid-sentence, and Ko-fi stays Latin.
+- **Terms.** «الشروط والخصوصية» is both the toolbar title (148 dp at 20 sp) and the link, so «أوافق على الشروط والخصوصية» reads whole. «أوافق» is the button `hymt_legal_message` quotes.
+- **The email hint.** It stays the example address (110 dp in the 13 sp one-line field), which is the mechanical warning, and correct.
+- **The MODIFIED feature rows.** «معالجة قوية للصور» and «ترجمات متميزة» replace the old «قراءة النص على الشاشة» and «ترجمة النص». The subtitle drops «وتتفرغ قدرة جهازك كلها للعبة» for «دون استهلاك قدرة جهازك», and «وحدة GPU في الخادم» and «قدرة» stay as reviewed on 2026-10-27.
+
+**Voice service.**
+- The failure lines read as one family: «رفضت الخدمة…» / «تم استنفاد…» / «لم تستجب الخدمة…» / «تعذّر…», with the HTTP status in brackets after the sentence.
+- Cross-references byte-match. «في «إعدادات الخدمة»» matches `voice_service_settings_row`, and «اضغط على «النموذج»» (twice) matches `voice_service_row_model`.
+- Tokens: all 8 tokens of the legend and `{text}` / `{instructions}` are verbatim. `voice_service_issue_text_in_header` is reworded to open with Arabic.
+  - Computed with `java.text.Bidi`, the paired-bracket rule resolves every brace pair beside Arabic text to RTL. Mirrored, they show each token as `{text}`, and the comma-separated list reads right to left in order.
+- Remove is «إزالة» (row, alert button, title «إزالة خدمة الصوت؟»), and the key is «يُحذف», keeping the file's Remove/Delete split.
+- Other terms:
+  - «خيارات متقدمة» for the Advanced header.
+  - «اختر» (`anki_deck_row_empty`) for Choose.
+  - «استخدام» for the Use button.
+  - «لم يتم إدخال مفتاح API.» for the no-key line, a statement as the comment asks.
+  - «محرك تحويل نص إلى كلام» from `tts_no_engine_dialog_message`.
+  - «صوت الجهاز» for the device voice in the toast, the remove alert and the voices alert.
+
+**Imported recordings.**
+- No language, website or community name appears, and «عليك الحصول على هذا الملف بنفسك» keeps the "source it yourself" sentence.
+- Load is «تحميل», the file's verb for loading («تحميل المزيد», «جارٍ تحميل…»); the file's downloads are «تنزيل», in 64 strings. Import is «المستوردة» in the header, the file's «استيراد».
+- The sizes read «تم نسخ %1$s من %2$s» and «حجمه %1$s من أصل %2$s», and the English cause follows a colon.
+- Every value opens with an Arabic word («ملف android.db», «إزالة ملف android.db؟», whose ؟ is a strong RTL character).
+
+**The 7 MODIFIED keys.** Each carries the new English meaning, and the old one is gone. The AI term is ruled below. «LLM» is gone from the three prose keys. Only the debug row `settings_debug_force_mmap_weights` keeps «نموذج LLM», as the English does.
+
+### Source-side notes
+
+- `docs/l10n-language-parameters.md`, the **AI** row: "one word per locale" assumes every language has a short form that works inside a sentence. Arabic has none in everyday use (below), so the file uses Latin «AI» on the chip and «الذكاء الاصطناعي» in running text. The row should record that ar exception, so the next sync doesn't "fix" it.
+
+### Arabic appendix
+
+**Ruling 1, the AI term: the file stays as translated. That means Latin «AI» on the chip and «ذكاء اصطناعي / الذكاء الاصطناعي» in running text. No key changes.**
+- **The row's own criterion gives this split.** The criterion is "the short form consumer apps in the language show (a local acronym where it is the everyday one, else the Latin AI)".
+  - Arabic has no everyday local acronym.
+  - In running Arabic text, consumer apps use no short form at all: they write «الذكاء الاصطناعي». Latin "AI" appears only in brand names and compact badges.
+  - So the chip takes the badge form, as the row requires ("never the spelled-out phrase there"), and the sentences take the phrase.
+- **The link the row protects survives.** "AI" is the abbreviation of الذكاء الاصطناعي itself, not a second term, and the Ask alert sends the user to a page whose "AI" chips are read as exactly that.
+- **Latin «AI» inside sentences would break the file's formal MSA register.** That is five sentences («نموذج AI», «مترجِمات AI», «لـ AI»). The file's Latin initialisms (API, URL, GPU, and «LLM» until now) are the ones with no everyday Arabic form; AI has one.
+- **The prose is already one term.**
+  - The header «للذكاء الاصطناعي».
+  - Both subtitles: «مترجِمات الذكاء الاصطناعي».
+  - The alert: «نموذج ذكاء اصطناعي» / «خدمة ذكاء اصطناعي».
+  - The voice row: «صوت ذكاء اصطناعي».
+  - The reviewed legal text `hymt_legal_message`: «نموذج ذكاء اصطناعي».
+  - Definiteness changes with the grammar only.
+- **If the developer keeps the row's literal "one word" instead, not recommended,** these six values would replace the current ones. The legal text stays as it is.
+  - `settings_header_advanced_llm`: التكوين المتقدم لـ AI
+  - `settings_llm_context_subtitle`: عبر الإنترنت فقط. امنح مترجِمات AI عبر الإنترنت آخر بضعة أسطر من النص المسجَّل للحصول على ضمائر وأسماء أكثر اتساقًا.
+  - `llm_prompt_row_system_subtitle`: الشخصية والتعليمات المُرسَلة إلى مترجِمات AI، السحابية والعاملة على الجهاز.
+  - `ask_no_llm_title`: تتطلب ميزة «اسأل» نموذج AI
+  - `ask_no_llm_message`: ترسل ميزة «اسأل» سؤالك عن هذه الجملة إلى نموذج AI. أضف خدمة AI عبر الإنترنت، أو فعّل نموذجًا يعمل على الجهاز، من «خدمات الترجمة».
+  - `voice_service_connect_subtitle`: استخدم صوت AI عبر الإنترنت بمفتاح API الخاص بك
+
+**Ruling 2, «فعل نو» and «صفة نو»: no fix needed.**
+- The head nouns differ, so the two labels never look alike.
+- One word should not carry both: the Nu class is a few archaic verbs (死ぬ, 往ぬ), and の adjectives are nouns. This is not checked against the pack.
+- Arabic script has no o/u contrast; و writes both (طوكيو، سوشي). So نو is the correct transliteration of ぬ and of の alike.
+- Telling them apart would take a diacritic or an invented spelling, which helps no reader.
+- The comment's "keep the romanized word" is written for Latin-script languages. Arabic-script transliteration after an Arabic head noun is the file's own precedent (فوريغانا، كانجي، كانا).
+
+**`pt_cloud_code_sent_to`, every category with a real count.** The sentence is «أرسلنا رمزًا إلى you@example.com. الرمز صالح لمدة …».
+- zero (0): «0 دقيقة», CLDR's zero form, never sent in practice.
+- one (1): «دقيقة واحدة», with no digit, by the file's convention.
+- two (2): «دقيقتين», genitive dual after «لمدة».
+- few (3 to 10, including the usual 10): «10 دقائق».
+- many (11 to 99): «15 دقيقة».
+- other (100 and up): «100 دقيقة».
+
+The two warnings for one and two missing `%2$d` are that convention; each quantity matches one number only.
+
+**Placeholder contact points, read with values filled in.**
+- «جارٍ طرح السؤال على Gemini…» and «تمت الإجابة بواسطة Qwen 3.5 2B».
+- «لا تجيب خدمة PlayTranslate Cloud إلا عن…».
+- «حتى ٣ نوفمبر» / «حتى ٣:٤٢ م».
+- «انتهت الفترة التجريبية في ٣ نوفمبر ٢٠٢٥».
+- «منذ ٣ نوفمبر».
+- «تم نسخ 1.2 GB من 5.8 GB». Android formats sizes with Arabic units in ar, which is safer still.
+- «لا يمكن للنموذج tts-1 استخدام…» and «حدّد الطلب الصوت Coral والنموذج gpt-4o-mini-tts.».
+- «(HTTP 503)».
+- «إلى you@example.com.» and «اشترك باستخدام you@example.com ليصل…».
+- «فشلت قراءة هذا الملف: database disk image is malformed».
+
+Each one reads grammatically, and each Latin value is an embedded LTR run inside an RTL paragraph.
+
+**RTL.** First-strong sweep over all 213 values, with each `<xliff:g>` replaced by its example:
+- 210 open with an Arabic letter, or with ⚠ and then Arabic.
+- Three open with Latin:
+  - `service_llm_badge`, a lone chip, correctly LTR.
+  - `pt_cloud_email_hint`, an address, correctly LTR.
+  - `pt_cloud_display_name_alpha`, which lays out as an LTR paragraph, «PlayTranslate Cloud (ألفا)». The tag sits right of the brand, so an RTL reader meets «(ألفا)» first. Its four surfaces hold it in wrap_content views placed at the start (toolbar, hub cell `hubRowTitle`, `item_online_service` `tvRowTitle`, the Capture & overlay row), so alignment is right and only the inner order differs.
+  - The file's no-RLM convention was settled in the 2026-07 sections, and `notif_title` («PlayTranslate نشط») stands the same way. So this is an in-app check, not a finding.
+- No value has bidi controls, NBSP or zero-width characters. The only tatweel is the «لـ» glue before Yomitan.
+
+**Code note (not a string issue; from the code and `java.text.Bidi`, not seen on a device).**
+- `ttsCellSummary` joins the Text-to-speech cell's parts with a bare " · ".
+- For a voice service the parts are its host and its voice name, both Latin, so «api.openai.com · Coral» is always one LTR run. An RTL reader meets the voice before the host, whatever the android.db digest says, and the same happens to a device engine and voice that are both Latin.
+- Wrapping each part with `BidiFormatter.unicodeWrap` (or FSI/PDI) in `ttsCellSummary` would fix every locale's RTL case at once. The `local_audio_loaded_digest` 💬 above covers only the digest's own seam.
+
+**Still owed:** the device pass the earlier sections list. New here:
+- the alpha title's inner order;
+- the pill's colon break;
+- the legend's token list;
+- the Text-to-speech cell with a voice service and a file loaded.
+
+**Verdict:** 0 🛑, 0 ❌, 0 ⚠️, 4 💬. The Arabic of all 213 keys reads as a native's, in the file's register and terms.
+
+### Disposition (2026-11-16)
+
+All 4 findings in the table applied byte-exact (1 applied: `💬`; 3 💬: `local_audio_loaded_digest`, `voice_service_preset_openai`, `voice_service_preset_elevenlabs`). Ruling on the AI term kept as translated (chip Latin "AI", running text ذكاء اصطناعي); the appendix's alternative values were not applied; the source-side request for an ar exception in the parameters doc's AI row is reported to the developer. After applying: `ar: 213 keys checked, 0 errors, 5 warnings, aapt2 ok`; only delta keys changed (scope check).
+
+### Round 2 (2026-11-16), final review after applying round 1
+
+Mechanical layer: `mech_check.py --locale ar --aapt2` -> `ar: 213 keys checked, 0 errors, 5 warnings, aapt2 ok` (the same five warnings round 1 judged: `pt_cloud_email_hint` identical to English, and `pt_cloud_code_sent_to[one]` / `[two]` without `%2$d`, each in placeholders and xliff ids); `l10n_diff.py --english-base <l10n-sync English>` -> `values-ar missing=0 orphan=0 modified=7` (the 7 changed keys, each holding the new meaning); README `readme_l10n_check.py ar` -> `[PASS] ar -> readme/README.ar.md` (the same with `--require-header`).
+
+
+Round-1 changes checked (each value compared byte for byte with round 1's "suggested" cell; the old value is gone from the file; `scope_check.py ar` -> `ar OK; 213 delta keys differ from HEAD`, so nothing outside the delta moved and the four orphans are gone):
+- `anki_content_glossary_primary_desc`: landed. «فقط» now restricts «قاموس واحد», and «هو أول قاموس…» is an appositive. The feminine «مكتوبةً … يكتبها» still agrees with تعريفات, across the inserted clause, and cannot attach to the masculine قاموس. The two content descriptions now contrast as «تعريفات كل القواميس» / «تعريفات قاموس واحد فقط», and «القاموس المدمج» still byte-matches `dictionary_title_builtin`.
+- `local_audio_loaded_digest` «ملف android.db مُحمَّل»: landed. It is a nominal sentence (subject, then predicate) and uses the same noun as `audio_source_local_name` «ملف android.db». Computed with `java.text.Bidi` inside `ttsCellSummary`'s join: `[R:ملف ] [L:android.db] [R: مُحمَّل · ] [L:api.openai.com · Coral]`, with a device engine `[R: مُحمَّل · ] [L:Google] [R: · العربية]`. The digest is now its own RTL span, as round 1 intended. Measured: 124 dp at 14 sp, against 135 dp for the English. The host and voice pair is still one LTR run, which is the code note round 1 left to the developer.
+- `voice_service_preset_openai` / `voice_service_preset_elevenlabs` «متوافقة مع …»: landed, and the two agree. They are the value of the «الخدمة» row (`OnlineTtsServiceActivity.refreshRows`) and the items of its PopupMenu (`showServiceMenu`). No other string quotes them: the translation-service presets (`llm_backend_preset_custom` and others) are separate keys on another page. Measured: 129 dp at 14 sp.
+
+#### Findings (round 2)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| anki_content_glossary_desc | 💬 | تعريفات كل القواميس للكلمة المميَّزة، مكتوبةً بالطريقة التي يكتبها بها <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>. لأنواع البطاقات المصمَّمة لـ <xliff:g id="brand_yomitan2" example="Yomitan">Yomitan</xliff:g>، مثل حقل «Glossary» في <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>. | تعريفات كل القواميس للكلمة المميَّزة، مكتوبةً بالطريقة التي يكتبها بها <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>. لحقول أنواع البطاقات المصمَّمة لـ <xliff:g id="brand_yomitan2" example="Yomitan">Yomitan</xliff:g>، مثل حقل «Glossary» في <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>. | The sentence «لأنواع البطاقات المصمَّمة لـ Yomitan، مثل حقل «Glossary» في Lapis» gives a field as the example of a card type. Arabic shows this more plainly than the English, because it rightly adds «حقل». «لحقول أنواع البطاقات…» compares a field with a field. It also opens with «لحقل/لحقول», like its siblings (`anki_content_glossary_primary_desc`, `anki_content_frequency_values_desc`, `anki_content_pitch_position_desc`: «لحقل «…» في Lapis»). Optional: the meaning is recoverable as it stands, and the English has the same shape (see the source-side note). The description wraps (`AnkiPickerViews`: `maxLines = Int.MAX_VALUE`, no ellipsize). |
+
+Source-side note:
+- `anki_content_glossary_desc` (English): "For card types made for Yomitan, such as Lapis's “Glossary”." gives a field as the example of a card type. "For fields of card types made for Yomitan, such as Lapis's “Glossary”" would match what the picker maps (a field) and its siblings' "For Lapis's “…”".
+
+**Fresh read of all 213 keys by screen: checked, nothing else found.**
+- **Ask section and "In this sentence".**
+  - The feature is «اسأل» on the header, «قسم «اسأل»» in the eye's label (beside «إظهار/إخفاء الترجمة / الكلمات / النص الأصلي»), and «ميزة «اسأل»» in the alert.
+  - The alert reads as one: title, body, then a button whose «خدمات الترجمة» byte-matches `settings_cell_translation_services`, quoted the same way in the body.
+  - «تمت الإجابة بواسطة» follows `translation_source_label`, and «إعادة المحاولة» is `update_error_retry`.
+  - The cut-answer line is followed by "Answered by" on a new line (`answerFooter`), and both read in that order.
+  - `ask_out_of_scope` is produced only by PlayTranslate Cloud (`PtCloudErrors` `out_of_scope`), so «لا تجيب خدمة PlayTranslate Cloud…» always has a service to agree with.
+  - Re-measured: `section_ask` 24 dp at 14 sp, `ask_question_hint` 125 dp at 16 sp, chip 53 dp at 12 sp medium.
+- **Word list and definitions.**
+  - The 28 `pos_*` labels take the file's head nouns (فعل / صفة / ظرف) and contain no separator characters. «متعدٍّ» and «لازم» agree with an implied فعل.
+  - «القاموس المدمج» is the term `yomitan_single_dict_subtitle` uses, and `section_words_count` follows `anki_group_words_count`.
+- **Anki.**
+  - The notes alert reads as one, and «الملاحظات» byte-matches `anki_content_notes` and `anki_group_notes`.
+  - «عيّن / مُعيَّن» is `anki_first_field_unmapped`'s verb, and the user's «ملاحظة» stays apart from Anki's «الملحوظة».
+  - The voice toast keeps the «تمت الإضافة إلى Anki (…)» frame.
+- **Capture overlay.**
+  - «التراكبات» is `floating_menu_panel_overlays`, and «التعريفات» / «لا شيء» re-measure at 47 and 35 dp at 14 sp.
+  - The tap-to-lookup action reuses «البحث عن الكلمات» and «الضغط».
+- **PlayTranslate Cloud.**
+  - Each state reads as one state across the pill, the digest and the card: trial, trial ended, membership inactive, terms not accepted, closed and offline. The states stay apart from each other.
+  - Agreement is feminine with خدمة or the implied الميزات throughout.
+  - «الشروط والخصوصية» is both the toolbar title and the link, so «أوافق على الشروط والخصوصية» reads whole.
+  - The sign-in buttons stack vertically: the primary is `match_parent` at 15 sp bold, «تجربة PlayTranslate Cloud مجانًا» 202 dp and «بدء الفترة التجريبية المجانية» 151 dp.
+  - The alpha title is 225 dp at 20 sp, against 248 dp for the English.
+- **Voice service.**
+  - The failures read as one family. «لم تستجب / لم تُرجع / استجابة» keep a service's reply apart from an Ask «إجابة».
+  - «في «إعدادات الخدمة»» and «اضغط على «النموذج»» (twice) byte-match their rows.
+  - All tokens are verbatim.
+  - Remove is «إزالة», and the key «يُحذف».
+  - «الصوت» for audio matches `anki_group_audio` and `audio_source_game_name`.
+- **Imported recordings.**
+  - No language, website or community name appears.
+  - Load is «تحميل», kept apart from the file's «تنزيل».
+  - «إعدادات تحويل النص إلى كلام الأخرى» puts the feminine «الأخرى» on إعدادات, correctly after the whole construct.
+  - Sizes come from `Formatter.formatShortFileSize`, which localizes the unit and wraps the run in RTL.
+- **The 7 MODIFIED keys.** Each carries the new meaning, and «LLM» survives only in the debug row, as in English. The applied AI text matches round 1's ruling (chip «AI», prose «الذكاء الاصطناعي / ذكاء اصطناعي», `hymt_legal_message` unchanged). The header measures 130 dp at 11 sp medium, and it wraps.
+- **Plurals: `pt_cloud_code_sent_to`, all six categories.**
+  - zero «لمدة 0 دقيقة»
+  - one «لمدة دقيقة واحدة», with no digit
+  - two «لمدة دقيقتين», genitive dual after the construct «لمدة»
+  - few (n mod 100 = 3 to 10) «10 دقائق»
+  - many (n mod 100 = 11 to 99) «15 دقيقة»
+  - other (100 to 102, 200 to 202, …) «100 دقيقة»
+  
+  Each category keeps the email span. The two digit-less items are the mechanical warnings, and they are correct.
+- **RTL and mixed script.** First-strong sweep with each span replaced by its example:
+  - 210 of the 213 keys open with an Arabic letter, or with ⚠ and then Arabic. Three open with Latin: the chip «AI», the email hint, and `pt_cloud_display_name_alpha`, as round 1 recorded and left to the device pass.
+  - Computed with `java.text.Bidi`, each in its own RTL paragraph:
+    - the request legend: every brace pair resolves R, so each token is its own LTR run and the list reads right to left in order;
+    - `{text} … {instructions}` in the header issue;
+    - «(HTTP 503)» and «(no such table: android)»: brackets R;
+    - «…: database disk image is malformed»: the colon stays with the Arabic;
+    - «… Qwen 3.5 2B…»: one LTR run, with the ellipsis on the Arabic side;
+    - «… PlayTranslate Cloud؟» (؟ is strong AL);
+    - the code line with «10 دقائق».
+  - Punctuation is Arabic only (، ؛ ؟ « »). The only ASCII commas are in the date examples, which the device formats.
+  - The only non-letter character is the existing tatweel of «لـ Yomitan». No value has bidi controls, NBSP or zero-width characters.
+- **Register.** Formal MSA, with masculine-singular imperatives throughout (اضغط، أضف، تحقق، اختر، الصقه، ألغِ، حمّله، اشترك، سجّل) and verbal nouns on buttons.
+
+#### Verdict (round 2)
+
+**PASS.** 0 🛑, 0 ❌, 0 ⚠️, 1 💬 (optional, `anki_content_glossary_desc`). All four round-1 fixes landed byte-exact and broke no neighbour. The README bullet passes (see `l10n-review/readme/ar.md`). Still owed and not a string issue: round 1's device pass (the alpha title's inner order, the pill's colon break, the legend's token list, the Text-to-speech cell with a voice service and a file loaded) and its `ttsCellSummary` code note.
+
+**Correction to the round-1 Disposition (2026-11-16):** its list names the first applied finding as "1 applied: `💬`", a slip of the coordinator's script; that finding is 💬 `anki_content_glossary_primary_desc`, applied byte-exact like the others.
+
+#### Disposition (round 2, 2026-11-16)
+
+The optional 💬 applied byte-exact at the developer's request: `anki_content_glossary_desc` («لحقول أنواع البطاقات…»). The English has the same field-versus-card-type mismatch; reported as a source-side note. After applying: mech_check 0 errors, aapt2 ok, only delta keys changed, `:app:processDebugResources` green.

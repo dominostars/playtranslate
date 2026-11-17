@@ -775,3 +775,196 @@ Round-1 changes checked:
 #### Verdict (round 2)
 
 **PASS.** The one round-1 change landed as the Disposition says. The fresh read finds one optional 💬, `llm_backend_reasoning_subtitle` (a clearer word order), and no 🛑, ❌ or ⚠️. Nothing blocks the commit.
+
+## Delta review 2026-11-16 (Ask and word explain, voice service, imported recordings, PlayTranslate Cloud account, Anki notes, Japanese part-of-speech labels: 206 new keys and 7 changed)
+
+Mechanical layer: `mech_check.py --locale vi --aapt2` -> `vi: 213 keys checked, 0 errors, 1 warnings, aapt2 ok` (the warning: `pt_cloud_display_name_alpha` identical to English, judged below); `l10n_diff.py` against `l10n-sync` -> `values-vi missing=0 orphan=0 modified=7`, the 7 being the MODIFIED keys, each already carrying the new English meaning (the tag still holds the old English, so the analyzer cannot see that). **No 🛑 issues.**
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| definitions_need_webview | ⚠️ | Cần có WebView hệ thống Android để hiển thị định nghĩa. | Cần có Android System WebView để hiển thị định nghĩa. | The comment asks for the app's name as Android shows it on the device. From memory (not seen on a Vietnamese device): Settings › Apps, Play and the developer option's WebView picker show the untranslated "Android System WebView". «WebView hệ thống Android» is the translator's own rendering (their report says "unverified"), so a user who searches Settings for it may find nothing. The other 11 locales already in the tree all kept the Latin name. |
+| voice_service_failed_title | ⚠️ | Dịch vụ giọng nói không phản hồi | Dịch vụ giọng nói không trả về kết quả | This one title stands over every reason (`VoiceServiceUi.showVoiceServiceFailure`). «không phản hồi» means "is not responding": it is AOSP's app-not-responding wording and this file's timeout pill (`translation_error_timeout`). Read as title + body, it contradicts most bodies: «Dịch vụ giọng nói không phản hồi» over «Dịch vụ đã từ chối khóa API.» or «Dịch vụ gặp lỗi (HTTP 503).», where the service did answer. «không trả về kết quả» ("returned no result") fits every reason, including the timeout. It also uses the bodies' own verb (`voice_service_failure_bad_response`, `voice_service_unchecked_message`: «không trả về …»). |
+| pt_cloud_sign_out_message | 💬 | Thiết bị này sẽ quên khóa của nó. Tài khoản của bạn vẫn giữ nguyên, và bạn có thể đăng nhập lại bằng địa chỉ email của mình. | Khóa trên thiết bị này sẽ bị xóa. Tài khoản của bạn vẫn giữ nguyên, và bạn có thể đăng nhập lại bằng địa chỉ email của mình. | «quên khóa của nó» mirrors "forgets its key". The trailing «của nó» possessive is the calque marker; Vietnamese drops it. Saying what happens to the key reads as native UI copy and keeps the "only this device" scope. |
+| voice_service_voices_not_taken_message | 💬 | Mô hình <xliff:g id="model" example="tts-1">%1$s</xliff:g> không thể dùng các giọng nói bên dưới. Nếu bạn lưu, mỗi ngôn ngữ này sẽ quay lại dùng giọng nói của thiết bị. | Mô hình <xliff:g id="model" example="tts-1">%1$s</xliff:g> không thể dùng các giọng nói bên dưới. Nếu bạn lưu, các ngôn ngữ này sẽ quay lại dùng giọng nói của thiết bị. | «mỗi ngôn ngữ này» is "each of these languages" word for word, an odd mỗi … này pairing. «các ngôn ngữ này» is the natural plural, and the list under the message already makes each one explicit. |
+| voice_service_model_not_listed_message | 💬 | Danh sách mô hình của dịch vụ không có <xliff:g id="model" example="tts-1-hd">%1$s</xliff:g>. Nếu bạn lưu, các yêu cầu đọc giọng nói có thể bị từ chối. Để chọn một mô hình mà dịch vụ có liệt kê, hãy hủy và nhấn Mô hình. | Danh sách mô hình của dịch vụ không có <xliff:g id="model" example="tts-1-hd">%1$s</xliff:g>. Nếu bạn lưu, các yêu cầu tạo giọng nói có thể bị từ chối. Để chọn một mô hình mà dịch vụ có liệt kê, hãy hủy và nhấn Mô hình. | «yêu cầu đọc giọng nói» ("requests to read voice") is the file's only use of the phrase and reads oddly. "Speech requests" asks the service to make speech: «yêu cầu tạo giọng nói». The cross-references «hủy» (Cancel «Hủy») and «Mô hình» (`voice_service_row_model`) are already exact. |
+| anki_content_notes_desc | 💬 | Chú thích bạn nhập trên thẻ trước khi lưu. Để trống nếu bạn không nhập gì. | Chú thích bạn nhập trên thẻ trước khi lưu. Trường sẽ để trống nếu bạn không nhập gì. | Subjectless «Để trống …» reads first as an instruction ("leave it empty if…"). English states what the field holds. Naming the field with «sẽ» follows this picker's own `anki_content_none_desc` («trường Anki sẽ để trống»). |
+| anki_content_glossary_primary_desc | 💬 | Chỉ từ điển đầu tiên theo thứ tự của bạn có từ được làm nổi bật, được viết đúng theo cách <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g> viết. Từ điển tích hợp sẵn luôn đứng cuối. Dùng cho “MainDefinition” của <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>. | Chỉ từ điển đầu tiên theo thứ tự của bạn mà có từ được làm nổi bật, được viết đúng theo cách <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g> viết. Từ điển tích hợp sẵn luôn đứng cuối. Dùng cho “MainDefinition” của <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>. | With no relative marker, «có từ được làm nổi bật» can first attach to «thứ tự của bạn» ("your order has the word"). «mà» pins it to the dictionary, as `yomitan_single_dict_subtitle` does («từ điển có độ ưu tiên cao nhất mà có kết quả»). |
+| cd_word_explain | 💬 | Giải thích trong câu này | Giải thích cách dùng trong câu này | «giải thích» wants an object, so TalkBack's «Giải thích trong câu này, nút» leaves "explain what" open. «cách dùng» says what is explained, which is what the answer gives. It also echoes the word page's row «Giải thích cách dùng từ này» (`word_explain_ask`). |
+| pt_cloud_free_trial | 💬 | Dùng thử <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> miễn phí | Thử <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> miễn phí | Width, a wrap and not a clip. The button is match_parent in the sign-in form: 360 − 2×14 page − 2×16 form padding = 300 dp, less Material 3's 24 dp side padding = 252 dp of text at 15 sp bold. «Dùng thử PlayTranslate Cloud miễn phí» is 261.7 dp in Roboto Medium, and bold is wider, so on a 360 dp phone it breaks onto two lines inside the 48 dp fill. English is 216.8 dp and holds one line. The suggestion is 227.1 dp Medium, still a "try for free" call to action, and fits on one line. At 411 dp (301 dp of text) the current label fits too. Optional. |
+
+### Source-side notes
+
+- `voice_service_failed_title` ("The voice service did not answer") titles every reason, including "The service refused the API key." and "The service had an error (HTTP 503).", where the service did answer. English gets away with the looser sense of "answer". A translator reaching for the everyday "is not responding" word (as vi did, and as other locales may) produces a title that contradicts its body. A comment line ("did not give the audio or list asked for, for any reason below, not only no reply") would steer every locale.
+
+### Clean areas (checked, no findings)
+
+**Ask section and "In this sentence".** «Hỏi đáp» (Q&A) is the section's name. It sits as a noun beside «Bản gốc», «Bản dịch» and «Từ», and serves as the subject in the alert: «Hỏi đáp cần một mô hình AI» / «Hỏi đáp gửi câu hỏi của bạn về câu này tới một mô hình AI. Hãy thêm một dịch vụ AI trực tuyến, hoặc bật một mô hình trên thiết bị, trong Dịch vụ dịch thuật.»
+- The alert's button «Dịch vụ dịch thuật» and the body's page name byte-match `settings_cell_translation_services`, and Cancel is «Hủy».
+- «Bật/tắt hiển thị mục Hỏi đáp» follows «Bật/tắt hiển thị bản dịch».
+- «Trả lời bởi %s» mirrors «Dịch bởi %s» (`translation_source_label`), whose italic footer style it shares.
+- «Đang hỏi…», «Câu trả lời này đã chạm giới hạn độ dài và bị cắt ngắn.», «⚠ Câu trả lời có thể làm lộ bản dịch đang ẩn.», «Không thể nhận được câu trả lời.» and «Thử lại» (= `update_error_retry`) read natively. Under the failure the second line is a pill string («Gemini: quá nhiều yêu cầu»), and the pair reads well.
+- «mô hình trên thiết bị» is the file's on-device term (`llm_*` line 876).
+- **Widths.**
+  - The header «HỎI ĐÁP» is short.
+  - The hint «Đặt câu hỏi của riêng bạn…» is 191 dp at 16 sp (English 172), well inside the field beside the 36 dp send button.
+  - The chip «Phân tích ngữ pháp» is 104 dp at 12 sp Medium (English 113).
+- The word page: «TRONG CÂU NÀY» over «Giải thích cách dùng từ này» reads as a header and its action. The row's ✕ reuses «Đóng câu trả lời».
+
+**Word list and definitions.** «Từ · 6» uses `section_words`. «Tích hợp sẵn» is the file's built-in word («từ điển tích hợp sẵn» in `yomitan_single_dict_subtitle` and the new primary desc). It is a dictionary title in `.dict-t`, uppercase, and it wraps.
+
+**Part of speech.** No label contains `·`, `・` or `/`; the parentheses are not separators. The `.pos-h` line uppercases and wraps (`DefinitionsDocument` CSS has no nowrap or ellipsis), so the longer «Động từ nhóm III (suru)» cannot clip. Uppercasing also hides the Nidan/Yodan vs su/nu/ri capitalisation difference (class names vs kana endings, a defensible split).
+
+**Anki.**
+- The alert reads as one: «Không có trường cho chú thích của bạn» / «Loại thẻ này không có trường nào được ánh xạ tới Chú thích, nên không thể lưu chú thích của bạn lên thẻ. Lưu thẻ mà không kèm chú thích?» / «Vẫn lưu» (= `llm_prompt_save_anyway`) and Cancel.
+  - «ánh xạ tới Chú thích» byte-matches `anki_content_notes` and uses the picker's verb («Ánh xạ "%1$s"»).
+  - The group header, hint and clear label all say chú thích.
+- The two Yomitan rows sit naturally beside «Định nghĩa» and keep apart from it: «Định nghĩa (định dạng Yomitan)», «Từ điển chính (định dạng Yomitan)». Their descs use the picker's «Dùng cho “X” của Lapis» pattern, with the Lapis field names verbatim.
+- The toast «Đã thêm vào Anki (dịch vụ giọng nói không khả dụng, đã dùng giọng nói của thiết bị)» has the family's «Đã thêm vào Anki (…)» shape, and «dịch vụ giọng nói» is `audio_source_voice_service_name`.
+  - At 14 sp it wraps in 2 lines at 296 dp (290.4 + 225.9 dp), so it is whole on a 360 dp phone at default font size.
+  - Below about 265 dp it takes 3 lines, so at font scale 1.15 on a 360 dp phone the toast drops «thiết bị)», where English (371.6 dp) still fits 2. No shorter wording keeps the meaning, so it is left as a known risk.
+
+**Capture overlay and icon actions.**
+- The segments «Định nghĩa» (62.0 dp) and «Không có» (54.9 dp), at 13 sp Medium, are under the 78 dp segment minimum, and «Không có» is `settings_digest_none`'s None.
+- «Lớp phủ: Định nghĩa. Nhấn để thay đổi.» and «Ẩn tùy chọn lớp phủ» use «lớp phủ».
+- «Bật chế độ nhấn để tra từ» is verb-first like its neighbours («Đổi ngôn ngữ trò chơi», «Bật/tắt Tự động dịch»). On the Hotkeys page, «chế độ» keeps it apart from the «Nhấn để chụp màn hình» row shape.
+
+**PlayTranslate Cloud, the state families as sets.** Each state reads as one state in the pill, the hub digest and the page, and the four stay distinct:
+- **Trial ended:** «đã hết hạn dùng thử miễn phí» / «Đã hết hạn dùng thử» / «Đã hết hạn dùng thử vào 3 thg 11» or «Đã hết hạn dùng thử».
+- **Membership inactive:** «gói thành viên không hoạt động» / «Gói thành viên không hoạt động» / «Gói thành viên không hoạt động từ 3 thg 11» or «Không có gói thành viên đang hoạt động».
+- **Terms not accepted:** «chưa chấp nhận điều khoản» in the pill, the digest and the notice card, plus «Tạm dừng cho đến khi bạn chấp nhận điều khoản.».
+- **Closed:** «dịch vụ đã đóng cửa» / status «Đã đóng cửa» / «PlayTranslate Cloud đã đóng cửa» / «Dịch vụ không còn khả dụng nữa.».
+- **Trial running:** «Dùng thử miễn phí đến …» in the digest and on the card, beside «Thành viên đến …» / «Thành viên».
+
+Other page checks:
+- «Hiện đang ngoại tuyến» keeps the file's ngoại tuyến (`degraded_warning_offline`) and stays apart from «Đã dừng» and «Không thể kết nối».
+- Cross-references are exact:
+  - «Tôi đồng ý với Điều khoản và Quyền riêng tư» equals the terms page title.
+  - «gửi mã mới» in the code, rate-limit and key notices is «Gửi mã mới» in running case.
+  - «Kiểm tra lại» and «Xem điều khoản» are the buttons.
+- Join wording is consistent: the button is «Tham gia …» (as `settings_support_discord_title`), the nudges say «Đăng ký gói thành viên Ko-fi …», and the hint «Đã tham gia?» points back at the button. The email hints name the payment («khoản thanh toán») where English says "it".
+- The sign-in notices read natively and use the file's imperative «Hãy …». The plural has `other` only and reads right at 1 and 10 («Mã có hiệu lực trong 10 phút»). «ban@example.com» localises the example's local part and keeps the reserved domain.
+- **Widths, all measured with Android's fonts.**
+  - **Pills:** at 14 sp in the 174 dp the pill's text gets on a 360 dp phone, each new pill wraps to 2 lines within `maxLines=2`. The tightest second line is «thành viên không hoạt động», 172.8 dp.
+  - **Hub digests:** 116.8 to 183.1 dp at 13 sp, against about 214 dp, single line.
+  - **Toolbar titles** (22 sp, title from 60 dp to 356 dp, so 296 dp): «Điều khoản và Quyền riêng tư» is 285.0 dp and «PlayTranslate Cloud (Alpha)» 272.8 dp.
+  - **Show terms:** 101.5 dp plus its padding beside the notice text, which wraps.
+- **The mech_check warning:** «(Alpha)» stays Latin, which is how Vietnamese tech copy names a release stage.
+
+**The 7 MODIFIED keys.** AI is one word, the Latin «AI», across the chip «AI», the header «Cấu hình AI nâng cao», «các trình dịch AI trực tuyến», «các trình dịch AI», «mô hình AI» and «dịch vụ AI». Vietnamese consumer apps show the Latin AI; the local acronym TTNT is not UI vocabulary. LLM survives only in `settings_debug_force_mmap_weights`, as English keeps it.
+- The two subtitles changed only LLM → AI.
+- «Xử lý hình ảnh mạnh mẽ» / «Bản dịch cao cấp» are the new meanings, a noun-phrase pair.
+- «OCR mạnh hơn trên GPU của máy chủ, không tốn sức mạnh xử lý của thiết bị bạn.» drops the old "all your power goes to the game".
+
+**Voice service.**
+- The page reads as one group: «Dịch vụ giọng nói», «Kết nối dịch vụ giọng nói» / «Dùng giọng nói AI trực tuyến với khóa API của riêng bạn», «Cài đặt dịch vụ», «Không có giọng nói». «Không có công cụ chuyển văn bản thành giọng nói» uses the TTS row subtitle's own engine term.
+- The failure lines form a family («Dịch vụ đã từ chối khóa API.», «… đã chạm giới hạn yêu cầu hoặc đã hết hạn mức.», «… gặp lỗi (HTTP 503).», «… không trả về âm thanh … (MP3, WAV, Ogg hoặc M4A).»). Only the title is off (finding above).
+- Fields use the file's terms:
+  - «URL yêu cầu» and «Khóa API» (= `llm_backend_api_key_label`);
+  - «Mô hình» / «Chọn»;
+  - «Chỉ dẫn giọng nói» (chỉ dẫn as in `llm_prompt_row_system_subtitle`);
+  - «Nâng cao»;
+  - «Id giọng nói, mỗi dòng một id» (id as in `llm_model_picker_fetch_failed`).
+- The legend, `voice_service_issue_no_text` and `_text_in_header` keep `{text}`, `{voice}`, `{model}`, `{instructions}`, `{speed}`, `{language}`, `{language_name}`, `{key}` byte-identical (scripted).
+- Remove/Delete stay apart, as `tr_service_remove_message` has them: «Gỡ dịch vụ» (= `tr_service_delete_cd`) / «Gỡ dịch vụ giọng nói?» over «Khóa API của dịch vụ sẽ bị xóa, …».
+- Alert buttons are «Vẫn lưu» and «Hủy», and «hãy nhấn Mô hình» / «trong Cài đặt dịch vụ» byte-match their rows.
+
+**Imported recordings.**
+- «Bản ghi âm đã nhập» / «Nhập tệp android.db» / «Đang nhập tệp android.db» / «Không thể nhập tệp» / «… rồi nhập lại» use one verb, nhập, Yomitan's import word (`yomitan_page_description`); «nhập tệp» cannot be read as "type". The loaded digest «Đã nhập tệp android.db» is 134.6 dp at 13 sp (English 125.3).
+- Removal follows the Yomitan precedent («gỡ từ điển đã nhập khỏi ứng dụng»): «Gỡ tệp android.db» / «Gỡ tệp android.db?» over «Tệp sẽ bị xóa khỏi ứng dụng, …».
+- The subtitle keeps all three sentences:
+  - «Bạn phải tự tìm nguồn cho tệp này.» says the app does not provide the file;
+  - it never names a language, the file's community name or a website (checked);
+  - «TTS» is the file's (`tts_no_engine_open_settings`).
+- The failure messages and «Đã sao chép 1,2 GB / 5,8 GB» read naturally.
+
+**Mechanical extras (scripted over the 213 values).** All NFC, with no double or edge spaces and no raw apostrophes. Every ASCII-only word is a real Vietnamese syllable (bao, cho, khi, theo, quay …) or a Latin term (AI, API, URL, JSON, GPU, OCR, TTS, romaji su/zuru/nidan…), so no diacritic is stripped and no syllables are merged. The diff of `values-vi` touches only the 213 keys plus the expected removals (`lens_also_matches`, `pt_cloud_key_label` / `_hint`, `tts_voice_picker_title`, all gone from English).
+
+### Vietnamese appendix
+
+**The translator's three open points, judged.**
+1. **«WebView hệ thống Android»:** not Android's name as far as I know (from memory, not seen on a device); see the ⚠️.
+2. **Japanese part of speech:** the scheme is right and matches what Vietnamese Japanese courses use.
+   - Động từ nhóm I / II / III are Minna no Nihongo's Vietnamese-edition groups, and they map correctly: Godan → I, Ichidan → II, する / 来る → III.
+   - «(suru)» / «(kuru)» are needed, since both are nhóm III.
+   - «(đặc biệt)» and «(bất quy tắc)» keep くれる / 行く and ある apart.
+   - Tha động từ / Tự động từ are the standard learner terms (他動詞 / 自動詞), preferred over the general-linguistics ngoại / nội động từ. On paper «Tự động từ» could start as tự động "automatic", but beside a verb class on a POS line it cannot be misread.
+   - «Hệ từ» (copula) and «Liên thể từ» (連体詞) are the Sino-Vietnamese terms; «Tính từ đuôi i / đuôi na» are the everyday ones.
+   - The classical classes are romanised with only the generic word translated, as the comment asks.
+   - Length is the one cost: «Động từ nhóm III (suru)» is 23 characters against "Suru verb"'s 9. The line wraps, so I would keep accuracy.
+3. **«Chú thích» vs «ghi chú»:** keep it.
+   - The file already spends «ghi chú» on Anki's note object (`anki_first_field_unmapped` / `_empty`: «để Anki nhận diện ghi chú»), on the same mapping screens as the new option.
+   - «chú thích» (an annotation or explanatory note) is apt for a free-text note on a card that the word-explain answer can also fill.
+   - It is used consistently: the group header, the hint, the clear label, the alert, the picker option and its desc. The alert's «Chú thích» byte-matches the option.
+
+**Placeholder contact points, read with real values.**
+- «Đang hỏi Gemini…», «Trả lời bởi Gemini», «PlayTranslate Cloud chỉ trả lời các câu hỏi về câu này, …».
+- Pills: «PlayTranslate Cloud: chưa chấp nhận điều khoản», lowercase after the colon, as the family does.
+- Dates: «Dùng thử miễn phí đến 3 thg 11» / «… đến 15:42», «Thành viên đến 5 thg 12, 15:42», «Đã hết hạn dùng thử vào 3 thg 11, 2025», «Gói thành viên không hoạt động từ 3 thg 11».
+- Email: «Chúng tôi đã gửi mã đến you@example.com. Mã có hiệu lực trong 1 phút / 10 phút.», «Hãy đăng ký bằng you@example.com để …».
+- Sizes: «Đã sao chép 1,2 GB / 5,8 GB», «chỉ có 2,1 GB trên tổng số 5,8 GB».
+- Model and voice: «Mô hình tts-1 không thể dùng …», «… không có tts-1-hd.», «Yêu cầu đã chỉ định giọng Coral và mô hình gpt-4o-mini-tts.».
+- Status codes: «(HTTP 503)».
+- Count: «Từ · 6».
+- Mode: «Lớp phủ: Bản dịch.».
+- Raw database text: «Không đọc được tệp này: database disk image is malformed», «(no such table: android)». The English stays raw after a colon or in parentheses, so it does not break the sentence.
+
+**Register.** bạn wherever a pronoun is needed. Instructions use the file's «Hãy …», and status lines need no pronoun. One «Tôi» is in the agreement checkbox, where English has "I agree", which is right for a first-person consent line.
+
+### Verdict
+
+0 🛑, 0 ❌, 2 ⚠️ (`definitions_need_webview`, `voice_service_failed_title`), 7 💬. The other 204 keys pass as written.
+
+### Disposition (2026-11-16)
+
+All 9 findings in the table applied byte-exact (1 applied: `⚠️`; 1 ⚠️: `voice_service_failed_title`; 7 💬: `pt_cloud_sign_out_message`, `voice_service_voices_not_taken_message`, `voice_service_model_not_listed_message`, `anki_content_notes_desc`, `anki_content_glossary_primary_desc`, `cd_word_explain`, `pt_cloud_free_trial`). After applying: `vi: 213 keys checked, 0 errors, 1 warnings, aapt2 ok`; only delta keys changed (scope check).
+
+### Round 2 (2026-11-16), final review after applying round 1
+
+Mechanical layer: `mech_check.py --locale vi --aapt2` -> `vi: 213 keys checked, 0 errors, 1 warnings, aapt2 ok` (the warning: `pt_cloud_display_name_alpha` identical to English, judged in round 1); `l10n_diff.py` against `git show l10n-sync:…` -> `values-vi missing=0 orphan=0 modified=7` (the 7 changed keys, each holding the new English meaning: «Cấu hình AI nâng cao», «… các trình dịch AI trực tuyến …», «… các trình dịch AI, …», «AI», «Xử lý hình ảnh mạnh mẽ», «OCR mạnh hơn trên GPU của máy chủ, không tốn sức mạnh xử lý của thiết bị bạn.», «Bản dịch cao cấp»); README `readme_l10n_check.py vi` -> `[PASS] vi -> readme/README.vi.md` (`warning 39 bold spans, English has 38`, the install-step **Cài đặt** span explained on 2026-10-08). **No 🛑 issues.**
+
+Round-1 changes checked (each value compared to the table's `suggested` by script, byte for byte):
+- `definitions_need_webview` (⚠️): landed. «WebView» appears in no other key; the notice is a 14 sp `TextView`, match_parent with no `maxLines` (`DefinitionDocument.showNotice`), so the Latin name wraps and nothing clips. The Disposition's list prints `⚠️` where it means this key's name; the value is in the file.
+- `voice_service_failed_title` (⚠️): landed. It now reads right over every body, including the timeout reason, which keeps its own «không phản hồi kịp thời» ("did not respond in time"), the correct sense there. «trả về» is the verb of `voice_service_failure_bad_response`, `voice_service_no_model_list_type_model` and `voice_service_unchecked_message`.
+- `pt_cloud_sign_out_message` (💬): landed. «khóa» is the key word of `pt_cloud_key_not_stored`, `pt_cloud_key_no_longer_accepted` and `pt_cloud_signed_in_with_key`.
+- `voice_service_voices_not_taken_message` (💬): landed.
+- `voice_service_model_not_listed_message` (💬): landed. «đọc giọng nói» is gone from the file. «hủy» and «Mô hình» still match Cancel and `voice_service_row_model`.
+- `anki_content_notes_desc` (💬): landed. «Trường sẽ để trống» follows `anki_content_none_desc` («trường Anki sẽ để trống»).
+- `anki_content_glossary_primary_desc` (💬): landed. Its sibling `anki_content_glossary_desc` has no relative clause that needs «mà».
+- `cd_word_explain` (💬): landed. It reads as a set with `word_explain_title` «Trong câu này» and `word_explain_ask` «Giải thích cách dùng từ này».
+- `pt_cloud_free_trial` (💬): landed. Measured «Thử PlayTranslate Cloud miễn phí» at 227.1 dp, 15 sp Roboto Medium, against 252 dp of text on a 360 dp phone: one line. No string quotes this button. The next step's button «Bắt đầu dùng thử miễn phí» and the state lines «Dùng thử miễn phí đến …» keep the noun «dùng thử», and the call to action's verb «Thử» sits next to them naturally.
+
+#### Findings (round 2)
+
+No findings.
+
+**Fresh read by screen (all 213 keys, against the file's existing strings on each screen):**
+- **Ask section and "In this sentence".** «Hỏi đáp» works as the header, the subject of the alert, and inside «Bật/tắt hiển thị mục Hỏi đáp» (the pattern of «Bật/tắt hiển thị bản dịch» / «… từ»).
+  - The alert reads as one: title, body, and the button «Dịch vụ dịch thuật», which equals `settings_cell_translation_services`.
+  - The status, answer, cut-off, spoiler, out-of-scope, failure and retry lines read natively with «Gemini» / «PlayTranslate Cloud» filled in.
+  - The hint «Đặt câu hỏi của riêng bạn…» is in a `maxLines=1` EditText that shares its row with a single 36 dp send button (`section_ask.xml`), so round 1's 191 dp fits.
+- **Word list and definitions.** «Từ · 6», the uppercased «TÍCH HỢP SẴN», and the 26 Japanese `pos_*` labels beside the existing «Danh từ», «Động từ», «Tính từ», «Trạng từ».
+  - Example line: «Danh từ · Động từ nhóm III (suru) · Tha động từ».
+  - No label contains a separator. The scheme round 1 judged (nhóm I/II/III, tha/tự động từ, romanised classical classes) is applied consistently.
+- **Anki.** Chú thích is one word across the group header, hint, clear button, alert, picker option and its desc. «ánh xạ tới Chú thích» byte-matches `anki_content_notes`. «Vẫn lưu» equals `llm_prompt_save_anyway`. The voice-fallback toast keeps the «Đã thêm vào Anki (…)» shape of its five siblings.
+- **Capture overlay and icon actions.** «Định nghĩa» and «Không có» (= `settings_digest_none`) sit beside «Bản dịch» / «Furigana» / «Pinyin». «Bật chế độ nhấn để tra từ» is verb-first like «Đổi ngôn ngữ trò chơi» and stays apart from «Đưa lên một từ để xem định nghĩa».
+- **PlayTranslate Cloud.** I read all 105 `pt_cloud_*`, `settings_pt_cloud_*` and `translation_error_*` keys in file order as the page they build.
+  - Each state is one state in the pill, the digest and the card: «đã hết hạn dùng thử (miễn phí)», «gói thành viên không hoạt động», «chưa chấp nhận điều khoản», «đã đóng cửa». The states stay distinct from each other and from «Đã dừng» / «Hiện đang ngoại tuyến».
+  - Cross-references match: «Điều khoản và Quyền riêng tư» (title = link), «gửi mã mới» / «Gửi mã mới», «Kiểm tra lại», «Xem điều khoản», «Tham gia …».
+  - Read with real values: dates «3 thg 11», «5 thg 12, 15:42», «3 thg 11, 2025»; the email hint ban@example.com; the plural (`other` only) at 1 and 10.
+  - The 7 MODIFIED keys carry the new English. AI is the Latin «AI» everywhere, and LLM survives only in `settings_debug_force_mmap_weights`.
+- **Voice service.** Page, fields, Advanced and request editor use the file's terms («Khóa API», «Mô hình», «chỉ dẫn», «id»).
+  - The `{text}`, `{voice}`, `{model}`, `{instructions}`, `{speed}`, `{language}`, `{language_name}` and `{key}` tokens are byte-identical.
+  - Each alert reads as title + body + buttons. Remove/Delete stay apart: «Gỡ» for the service and the file, «xóa» for the key.
+  - The failure lines form one family under the corrected title.
+- **Imported recordings.** One verb throughout, nhập. «Gỡ tệp android.db» follows the Yomitan removal precedent. «tính năng chuyển văn bản thành giọng nói» uses `settings_cell_tts`'s term. The subtitle names no language, community name or website.
+- **Scripted over the 213 values.** All NFC; no raw apostrophes, double spaces or edge spaces. Every ASCII-only word is a real toneless Vietnamese syllable (cung, gia, danh, quy, mai, sao, tra, thay, quay…) or a Latin term, so no tone mark was dropped.
+
+Not a string, for the record: the vi file's banner comment still says `ADVANCED LLM CONFIGURATION` where English now says AI. The translator's report names it as left. It is invisible to users and to the analyzer.
+
+#### Verdict (round 2)
+
+**PASS**: 0 🛑 / 0 ❌ / 0 ⚠️ / 0 💬. All 9 round-1 changes are in the file byte-exact and broke no neighbour.
+
+**Correction to the round-1 Disposition (2026-11-16):** its list names the first applied finding as "1 applied: `⚠️`", a slip of the coordinator's script; that finding is ⚠️ `definitions_need_webview`, applied byte-exact like the others.

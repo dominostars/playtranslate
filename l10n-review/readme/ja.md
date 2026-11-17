@@ -114,3 +114,19 @@ Clean areas: The lead now says 追加, like the app's `add_online_service_title`
 ### Disposition (2026-10-14)
 
 Applied the 1 💬 (the lead merged into 「次のサービスをいくつでも追加できます。」).
+
+## Delta review 2026-11-16 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] ja -> readme/README.ja.md`). **No 🛑 issues.**
+
+No findings. `git diff readme/README.ja.md` changes one line, the Bilibili Index-Translate bullet, and nothing else. The URL is now `https://github.com/bilibili/Index-Translate`, byte-identical to the English, and the link text `index-translate.bilibili.com` is unchanged. The new clause joins the existing remark: 「（無料、APIキー不要、一時的な提供の可能性あり）」. That keeps the list's pattern (full-width ：, one remark in （）, items joined by 、, 〜あり / 〜不要 noun endings with no final 。, as in 「（モデルはアプリ内で選択）」). It says what "May be temporary" means here: the free service may not stay. It does not suggest a time-limited offer, as 期間限定 would. The app's `llm_backend_index_translate_note` has no counterpart clause, so nothing in the app contradicts it.
+
+### Disposition (2026-11-16)
+
+No findings; nothing to apply.
+
+### Round 2 (2026-11-16)
+
+Mechanical layer: `readme_l10n_check.py ja` -> `[PASS] ja -> readme/README.ja.md`.
+
+No findings. `git diff readme/README.ja.md` changes one line, the Bilibili Index-Translate bullet. Its URL is `https://github.com/bilibili/Index-Translate`, byte-identical to the English, and the link text `index-translate.bilibili.com` is unchanged. 「一時的な提供の可能性あり」 joins the existing remark as 「（無料、APIキー不要、一時的な提供の可能性あり）」, in the list's pattern (full-width ：, one remark in （）, items joined by 、, no final 。). Nothing else in the file moved.

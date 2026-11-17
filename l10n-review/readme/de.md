@@ -64,3 +64,26 @@ Clean areas: The lead drops the API key as the English does: «kannst du unter *
 ### Disposition (2026-10-14)
 
 No findings; nothing to apply.
+
+## Delta review 2026-11-16 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> `[PASS] de -> readme/README.de.md` (the same with `--require-header`).
+
+No findings. I checked the following:
+- `git diff readme/README.de.md` touches only the bullet's line. The link target is now `https://github.com/bilibili/Index-Translate`, the link text `index-translate.bilibili.com` is unchanged, and the brand stays in Latin script.
+- The new clause, „Eventuell nur vorübergehend verfügbar“, says what "May be temporary" means here: the free service may not stay available. It is idiomatic and in the app's du register (it has no pronoun).
+- Punctuation follows the English: a period after „ohne API-Schlüssel“ and none at the end, as on the sibling bullets.
+
+### Disposition (2026-11-16)
+
+No findings; nothing to apply.
+
+### Disposition (2026-11-16)
+
+No findings; nothing to apply.
+
+### Round 2 (2026-11-16)
+
+Mechanical layer: `readme_l10n_check.py de` -> `[PASS] de -> readme/README.de.md` (the same with `--require-header`).
+
+No findings. `git diff readme/README.de.md` is one line, the Bilibili Index-Translate bullet: the link target is `https://github.com/bilibili/Index-Translate` as in the English, the link text `index-translate.bilibili.com` and the brand are unchanged, and „Eventuell nur vorübergehend verfügbar“ follows a period after „ohne API-Schlüssel“ with no closing period, as the English "May be temporary" does. Nothing else in the file changed.

@@ -86,3 +86,24 @@ Clean areas: The intro without 一款 (「Android 实时翻译与语言学习应
 ### Disposition (2026-10-14)
 
 No findings; nothing to apply.
+
+## Delta review 2026-11-16 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] zh-rCN -> readme/README.zh-CN.md`; also PASS with `--require-header`). **No 🛑 issues.**
+
+No findings. Checked:
+- `git diff readme/README.zh-CN.md` is one changed line, the bullet itself; nothing else in the file moved.
+- The URL is now `https://github.com/bilibili/Index-Translate`, byte-identical to the English. The link text `index-translate.bilibili.com` is unchanged, as in English.
+- The new clause 可能不会长期提供 ("may not stay available long-term") says what "May be temporary" means here (the free service may go away), in plain wording without hedging stacked on hedging.
+- The clause joins the bullet's chain of clauses with a full-width ， (免费，无需 API 密钥，可能不会长期提供). That is how this list already joins clauses where English uses " — " and ". ", and it ends with no final punctuation, as the bullet's siblings and the English line do.
+- A script checked the changed line: Han characters GB2312 only, Pangu spaces around API, no space beside full-width punctuation.
+
+### Disposition (2026-11-16)
+
+No findings; nothing to apply.
+
+### Round 2 (2026-11-16)
+
+Mechanical layer: `readme_l10n_check.py zh-rCN` -> `[PASS] zh-rCN -> readme/README.zh-CN.md` (also PASS with `--require-header`).
+
+No findings. `git diff readme/README.zh-CN.md` is one changed line, the Bilibili Index-Translate bullet. Its URL is `https://github.com/bilibili/Index-Translate`, byte-identical to the English. The link text `index-translate.bilibili.com` is unchanged, as in English. The added clause 可能不会长期提供 ("May be temporary") joins the chain with a full-width ， and has no final punctuation, like the English line and the bullet's siblings. Nothing else in the file moved.

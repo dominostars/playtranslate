@@ -1125,3 +1125,168 @@ Passes, with one optional 💬. I re-read all 39 from scratch. Every span sits b
 At the developer's request, two changes landed after round 2. Neither has had an independent review yet.
 - **The header casing is fixed in code, not in the strings.** Group headers now take their capitals only from their style (`Text.PT.GroupHeader`, textAllCaps, which applies the UI language's rules). The code that uppercased them first with the root locale is deleted at all seven sites: word detail, the Anki sheets and pickers, the audio-source picker, the TTS voices header. «Fiil çekimi» therefore shows as FİİL ÇEKİMİ, and DİĞER EŞLEŞMELER, KANJİ and HANZİ show with their dots too (`GroupHeaderCasingTest`). The POS lines (`WordDetailBinder`, `WordAnkiReviewBinder`, `WordDefinitionsView` and the definitions WebView) still uppercase with the root locale, so «FIIL» survives there; they mix UI labels with dictionary tokens and need a per-token rule. That is reported as a follow-up.
 - `hint_deepl_key` is now «DeepL API anahtarınızı yapıştırın» (dropped «buraya»): the old hint measured 312 dp in the 276 dp one-line monospace field (Droid Sans Mono, 13 sp) and lost its verb; the new one measures 257 dp.
+
+## Delta review 2026-11-16 (Ask and word explain, voice service, imported recordings, PlayTranslate Cloud account, Anki notes, Japanese part-of-speech labels: 206 new keys and 7 changed)
+
+Mechanical layer: `mech_check.py --locale tr --aapt2` -> "tr: 213 keys checked, 0 errors, 1 warnings, aapt2 ok" (the warning: `voice_service_row_model` «Model» identical to English, which is the right Turkish word and the file's own «Model» elsewhere); `l10n_diff.py` against `l10n-sync` -> `values-tr missing=0 orphan=0 modified=7`, the seven being the delta's MODIFIED keys, each already carrying the new English meaning (the tag has not moved). **No 🛑 issues.**
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| service_llm_badge | ⚠️ | YZ | AI | The AI glossary row asks for the local acronym only where it is the everyday short form, and otherwise the Latin "AI". In Turkish, YZ is the acronym of formal and academic writing (strategy papers, articles, "yapay zekâ (YZ)" glosses). Consumer apps spell out "Yapay zekâ", and where they shorten it they show the Latin "AI" (Galaxy AI, Meta AI, the OEM camera and gallery features such as «AI Silgi»). That is the Vietnamese case (TTNT exists, vi chose AI), not the German KI or the Spanish IA case. On a chip beside "Gemini", "AI" is read at a glance and "YZ" has to be decoded. "AI" always comes before a head noun here, so it never takes a suffix. From knowledge; no consumer UI was checked live in this run (no web access). One fix, seven keys, one row each. |
+| settings_header_advanced_llm | ⚠️ | Gelişmiş YZ yapılandırması | Gelişmiş AI yapılandırması | Same term fix. The header's locale-aware textAllCaps gives «GELİŞMİŞ AI YAPILANDIRMASI», and "AI" passes through unchanged. |
+| settings_llm_context_subtitle | ⚠️ | Yalnızca çevrimiçi. Zamirlerin ve adların daha tutarlı olması için çevrimiçi YZ çevirmenlerine kaydedilen metnin son birkaç satırını verir. | Yalnızca çevrimiçi. Zamirlerin ve adların daha tutarlı olması için çevrimiçi AI çevirmenlerine kaydedilen metnin son birkaç satırını verir. | Same term fix; the suffix stays on «çevirmen». |
+| llm_prompt_row_system_subtitle | ⚠️ | Bulut ve cihaz üzerindeki YZ çevirmenlerine gönderilen kişilik ve talimatlar. | Bulut ve cihaz üzerindeki AI çevirmenlerine gönderilen kişilik ve talimatlar. | Same term fix. |
+| ask_no_llm_title | ⚠️ | Soru sormak için YZ modeli gerekir | Soru sormak için AI modeli gerekir | Same term fix. |
+| ask_no_llm_message | ⚠️ | Bu cümleyle ilgili sorunuz bir YZ modeline gönderilir. Çeviri hizmetleri bölümünde çevrimiçi bir YZ hizmeti ekleyin veya cihaz üzerindeki bir modeli açın. | Bu cümleyle ilgili sorunuz bir AI modeline gönderilir. Çeviri hizmetleri bölümünde çevrimiçi bir AI hizmeti ekleyin veya cihaz üzerindeki bir modeli açın. | Same term fix, both occurrences. |
+| voice_service_connect_subtitle | ⚠️ | Kendi API anahtarınızla çevrimiçi bir YZ sesi kullanın | Kendi API anahtarınızla çevrimiçi bir AI sesi kullanın | Same term fix; the English says "AI voice" with the chip's word. |
+| ask_out_of_scope | 💬 | `<xliff:g id="service_name" example="PlayTranslate Cloud">%1$s</xliff:g> yalnızca bu cümleyle ilgili soruları yanıtlar: anlamı, dil bilgisi veya sözcükleri gibi.` | `<xliff:g id="service_name" example="PlayTranslate Cloud">%1$s</xliff:g> yalnızca bu cümleyle ilgili soruları (anlamı, dil bilgisi veya sözcükleri gibi) yanıtlar.` | After the colon the sentence ends in a verbless «… gibi.» fragment, which mirrors English's trailing "such as …" clause. A parenthesis inside the sentence is how Turkish places the examples. The restriction ("only about this sentence") and the three examples are unchanged. |
+| anki_content_glossary_desc | 💬 | `Vurgulanan sözcüğün tüm sözlüklerdeki tanımları, <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>\'ın yazdığı biçimde. <xliff:g id="brand_yomitan2" example="Yomitan">Yomitan</xliff:g> için hazırlanmış kart türleri için; örneğin <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>\'in “Glossary” alanı.` | `Vurgulanan sözcüğün tüm sözlüklerdeki tanımları, <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>\'ın yazdığı biçimde. <xliff:g id="brand_yomitan2" example="Yomitan">Yomitan</xliff:g> için hazırlanmış kart türlerine yöneliktir; örneğin <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>\'in “Glossary” alanı.` | «… için hazırlanmış kart türleri için» says "for" twice in four words. «… türlerine yöneliktir» ("is meant for card types made for Yomitan") removes the echo and gives the sentence a verb. |
+| anki_content_glossary_primary_desc | 💬 | `Yalnızca sıralamanızda vurgulanan sözcüğü içeren ilk sözlük, <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>\'ın yazdığı biçimde. Yerleşik sözlük en sona gelir. <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>\'in “MainDefinition” alanı için.` | `Vurgulanan sözcüğü içeren sözlüklerden yalnızca sıralamanızda ilk gelen, <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g>\'ın yazdığı biçimde. Yerleşik sözlük en sona gelir. <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>\'in “MainDefinition” alanı için.` | «sıralamanızda» sits right before the participle «vurgulanan», so the first parse is "the word highlighted in your order", and the reader has to re-attach it to «ilk». Naming the set first and then "only the one that comes first in your order" leaves one parse. «ilk gelen» also sets up the next sentence's «en sona gelir». |
+| anki_content_notes_desc | 💬 | Kartı kaydetmeden önce üzerine yazdığınız not. Not yazmazsanız boş kalır. | Kaydetmeden önce karta eklediğiniz not. Not eklemezseniz boş kalır. | «üzerine yazmak» is the established Turkish UI phrase for "overwrite" («… üzerine yazılsın mı?»), so «üzerine yazdığınız not» can read as "the note you overwrite". «eklemek» is the editor's own verb for the box (`anki_notes_hint` «Bu karta bir not ekleyin»). |
+| local_audio_loaded_digest | 💬 | android.db dosyası içe aktarıldı | android.db içe aktarıldı | It leads the one-line Text-to-speech hub summary (`settings_row_hub.xml`, singleLine + ellipsize end, 13 sp), and the engine and voice follow after « · ». On a 360 dp phone the summary has 216 dp (360 − 28 section padding − 2 stroke − 32 row padding − 36 chip − 28 margins − 18 chevron). The current digest measures 179 dp, 189 dp with the separator, so about 27 dp are left and the engine name shows as «G…». English (125 dp) leaves about 81 dp. «android.db içe aktarıldı» measures 132 dp and leaves about 74 dp. The file name alone still says what was loaded. |
+| icon_action_tap_to_lookup | 💬 | Dokunarak aramayı etkinleştir | Dokunarak sözcük aramayı etkinleştir | Bare «arama» first reads as "search" (or a phone call). The comment says "lookup" here is the noun of "word lookups", which the file renders «sözcük aramaları» (`onboarding_welcome_learn_body`, `settings_yomitan_empty_summary`). The sibling «Üzerine gelinen sözcüğün tanımını göster» is longer, so this adds no new width risk in the icon-action and Hotkeys lists. |
+| pos_ichidan_verb | 💬 | Ichidan fiil | İchidan fiil | `pos_i_adjective` spells the same Japanese vowel い as Turkish İ («İ-sıfatı»), but Ichidan keeps a capital I, which in Turkish is the capital of ı. These labels are always drawn in capitals. Once the open follow-up uppercases labels in the UI locale, «Ichidan fiil» becomes «ICHİDAN FİİL», with I and İ for one vowel in one word, while «İchidan fiil» becomes «İCHİDAN FİİL». Keeping the romanization's own I, as Turkish keeps foreign proper names, is defensible on Anki cards, where the label shows in mixed case. In that case «İ-sıfatı» is the outlier. Either way the two should agree. |
+| pos_ichidan_verb_special | 💬 | Ichidan fiil (özel) | İchidan fiil (özel) | Same as `pos_ichidan_verb`. |
+| pos_prenominal | 💬 | Ad niteleyici | İsim niteleyici | The file's word for "noun" is «İsim» (`pos_noun`, and `word_detail_group_declension` «İsim çekimi»). The comment says this tag also marks a noun used before a noun, so «İsim · Ad niteleyici» can stand in one line, with two words for one term. Both «ad» and «isim» are correct Turkish; the point is only to keep one. |
+
+### Clean areas (checked, no findings)
+
+**Ask section, the word explain row and group, the "needs an AI model" alert.**
+- Header: «Soru sor» is a one-line ellipsized header (11 sp caps). It is short, and «SORU SOR» has no i to mis-case.
+- Field: the hint «Kendi sorunuzu sorun…» measures 165 dp at 16 sp. With two 36 dp buttons the field has about 238 dp on a 360 dp phone.
+- Preset chip: «Dil bilgisi çözümlemesi» measures 124 dp at 12 sp medium, 144 dp with its padding, one line in a flow row of about 296 dp.
+- Status and answer lines: «Soruluyor: %1$s…» puts the name behind a colon. «%1$s tarafından yanıtlandı» is the frame of `translation_source_label`. «Bu yanıt uzunluk sınırına ulaştığı için kesildi.» keeps the cause. «⚠ Yanıtlar gizli çeviriyi ele verebilir.» and «Yanıt alınamadı.» read as written by a native. «Tekrar dene» = `update_error_retry`.
+- Alert: the title «Soru sormak için … modeli gerekir» names the need without calquing "Ask needs". The body's «Çeviri hizmetleri» and the button byte-match `settings_cell_translation_services`, and «… bölümünde» is the file's way to point at a screen (`keep_running_samsung_never_sleeping_line`).
+- Screen-reader labels: `cd_toggle_ask_visibility` adds «bölümünün» because a verb-phrase section name cannot take «görünürlüğünü» directly. The siblings («Çeviri görünürlüğünü değiştir») have noun names.
+- Explain row and group: «Bu cümledeki kullanımını açıkla» and «Bu sözcüğün nasıl kullanıldığını açıkla» use bare imperatives, like the file's action labels. The row has no maxLines and wraps at 15 sp. «Bu cümlede» has no lowercase i, so it caps correctly even under the definitions WebView's root-locale CSS uppercase. «Yanıtı kapat» also reads right as the explain row's X.
+
+**Word list and definitions.**
+- «Sözcükler · 6» is `section_words` plus the count.
+- «Tanımlar için Android System WebView gerekir.» keeps the system app's name, which Android shows untranslated, and is one line's worth.
+- «Yerleşik» is the file's «yerleşik sözlük» (`yomitan_single_dict_subtitle`, and the new `anki_content_glossary_primary_desc`).
+- POS labels, apart from the three rows above: no label holds a separator, and the parentheses in «(özel)» and «(düzensiz)» are the English's own.
+- «Geçişli» and «Geçişsiz» are the school-grammar terms (geçişli/geçişsiz fiil) and stand alone beside the class, as the English drops "verb".
+- «Koşaç» is the grammar term for the copula. It is in the register of the file's existing «İlgeç», «Sontakı» and «Tanımlık».
+- The class names Godan, Ichidan, Nidan and Yodan act as modifiers («Godan fiil», like «geçişli fiil»). The verbs named by their ending take the compound: «Suru fiili», «Kuru fiili», «Su fiili», «Zuru fiili», «Nu fiili», «Ri fiili». This is the verb する and its kin, which is what those tags mean. The split is principled and holds across all 12 verb tags.
+- The adjective tags are uniform compounds («Na-sıfatı», «No-sıfatı», «Taru-sıfatı», «Ku-sıfatı», «Shiku-sıfatı», «Nari-sıfatı»), and so is «To-zarfı». «İ-sıfatı» gives the vowel い its correct Turkish capital.
+- These lines render through `Locale.ROOT` / CSS uppercase today («FIIL», «GEÇIŞLI», «YERLEŞIK»). That is the known code issue and not raised.
+
+**Anki.**
+- The notes alert reads as one unit: title «Notunuz için alan yok»; body «… Notlar ile eşlenmiş bir alan yok …», where «Notlar» byte-matches `anki_content_notes` and `anki_group_notes` and «eşle» is the file's mapping verb (`anki_content_source_pick_title` «… alanını eşle»); button «Yine de kaydet» = `llm_prompt_save_anyway`. Cancel keeps the note, which «Kart notunuz olmadan kaydedilsin mi?» asks about.
+- Hint «Bu karta bir not ekleyin»; X «Notu temizle».
+- New options «Tanımlar (Yomitan biçimi)» and «Ana sözlük (Yomitan biçimi)» sit well beside «Tanım» and «Sıklık listesi (JPMN stili)». Their descriptions end in the neighbours' «Lapis\'in “…” alanı için» frame.
+- Suffixes on the fixed brand spans are harmonic: «Yomitan\'ın» (a → ın), «Lapis\'in» (i → in).
+- `anki_added_voice_fell_back` joins the «Anki\'ye eklendi (…)» family and uses the past tense for what happened on this card.
+
+**Capture overlay and icon actions.**
+- «Tanımlar» (= `word_detail_group_definitions`) and «Yok» (= `settings_digest_none`) are shorter than the English in the four-segment control.
+- The two pill descriptions use the file's «Yer paylaşımları» (`floating_menu_panel_overlays`) and «Değiştirmek için dokunun».
+
+**PlayTranslate Cloud.**
+- Pills: the text column of a 2-line, 14 sp pill on a 360 dp phone is about 174 dp (328 − 10 − 28 logo − 12 padding − 48 gear − 8 − 48 X). The longest new pill, «PlayTranslate Cloud: ücretsiz deneme sona erdi», measures 296 dp, two lines. All four use lowercase after the colon, like the existing family.
+- Hub digests: at most 167 dp («Ücretsiz deneme bitişi: 3 Kas», and the same with «15:42») of the 216 dp single line.
+- States, read as sets:
+  - Trial ended: pill «ücretsiz deneme sona erdi», hub «Deneme sona erdi», page «Deneme %1$s tarihinde sona erdi» / «Deneme sona erdi».
+  - Membership: «üyelik etkin değil» in pill and hub, «Üyelik %1$s tarihinden beri etkin değil», and «Etkin üyelik yok» where English has its own "No active membership".
+  - Terms: «koşullar kabul edilmedi» in pill, hub and notice title, «Koşullar kabul edilene kadar duraklatıldı.»
+  - Closed: «hizmet kapandı», «Kapandı», «%1$s kapandı», «Hizmet artık kullanılamıyor.»
+  - Each state reads the same on every surface. All stay apart from each other and from the existing «çalışmıyor», «Bağlanılamıyor» and «Şu anda çevrimdışı».
+- Cross-references: «Yeni kod gönder» is picked up as «yeni kod gönderin» in `pt_cloud_code_invalid`, `pt_cloud_key_not_stored` and `pt_cloud_signin_rate_limited`. «Tekrar kontrol et» and «Koşulları göster» stand alone. «Koşulları göster» measures 99 dp plus 32 dp padding in its 40 dp button, and the title and line beside it wrap.
+- `pt_cloud_agree_terms` with `pt_cloud_terms_link` filled in reads «Koşullar ve Gizlilik metnini kabul ediyorum». Putting the accusative inside the link is right, and it is what the English comment provides for ("a string of its own so the words can take the form the sentence needs"): «kabul etmek» needs a definite accusative object, and «%1$s kabul ediyorum» then needs no suffix on a placeholder. The link keeps the page title `pt_cloud_terms_title` «Koşullar ve Gizlilik» verbatim and adds the head noun «metni». The tappable span is found by `indexOf(link)` (`PtCloudSettingsActivity.kt:971`), so it covers exactly those words. Turkish apps routinely put the case ending inside the link («… Koşullarını kabul ediyorum»). Keep it.
+- Toolbars: «PlayTranslate Cloud (Alfa)» is the English length (Turkish spells it Alfa); «Koşullar ve Gizlilik» measures 164 dp at 20 sp.
+- Email hint «adiniz@example.com», ASCII as an address must be: 124 dp at 13 sp, single line.
+- `pt_cloud_code_sent_to`: one and other both say «dakika», correctly singular after a numeral.
+- siz is used in every instruction. The two call-to-action buttons («… hizmetini ücretsiz deneyin», «… üyesi olun») use the siz imperative, as Turkish store CTAs do. The flow buttons are bare («Ücretsiz denemeyi başlat», «Yeni kod gönder», «Kabul et»).
+
+**Voice service.**
+- «Ses hizmeti» heads the TTS page group and the picker section. The comment's "not Online" is respected.
+- «Hizmet ayarları» is byte-matched in `voice_service_failure_rejected_asked`. «Model satırına dokunun» in two messages names the «Model» row. «iptal edip» names Cancel.
+- The failure lines are one family, each with «Hizmet» as subject (reddetti / doldu / zamanında yanıt vermedi / ulaşılamadı / bir hata oluştu / reddetti, plus HTTP in parentheses).
+- `{text}`, `{voice}`, `{model}`, `{instructions}`, `{speed}`, `{language}`, `{language_name}` and `{key}` are verbatim in the legend and the two issue lines.
+- «URL\'yi» and «URL\'si» follow the file's «URL\'sini» (`llm_backend_base_url_custom_hint`). «API Anahtarı» as a label = `llm_backend_api_key_label`.
+- The service is «kaldır» and its key «silinir», keeping Remove and Delete apart. All three Save-anyway alerts use the shared «Yine de kaydet». «API anahtarı girilmedi.» is a statement, as the comment requires.
+
+**Imported recordings.**
+- «İçe aktarılan kayıtlar» and «android.db dosyasını içe aktar» share the app's import verb (Yomitan's «içe aktar»), so the header and the row agree. «yükle» would have read as upload or install.
+- None of the 17 strings names a language, the file's community name or a website. «Bu dosyayı kendiniz edinmelisiniz» carries "source this file yourself".
+- The remove confirmation reads as one unit: «android.db dosyası kaldırılsın mı?» / «Dosya uygulamadan silinir ve tüm sözcükler yeniden metin okuma ile seslendirilir.» / «android.db dosyasını kaldır».
+- The failure lines keep the database's English words after a colon or in parentheses. Progress is «1,2 GB / 5,8 GB kopyalandı», and «boyutu 2,1 GB, olması gereken 5,8 GB» states both sizes.
+
+**The 7 MODIFIED keys.** Each carries the new English, and nothing of the old remains: no «LLM», no «oyun» in the OCR subtitle, «Güçlü görüntü işleme» and «Premium çeviriler» as the new titles. The AI word is the same across the chip, the header, the two subtitles, the Ask alert and the voice-service subtitle. The finding above changes all seven together.
+
+### Source-side notes
+- None.
+
+### Turkish appendix
+
+- **Suffix coverage.** No delta string attaches a suffix to a placeholder:
+  - Colon: `ask_status_asking`, the four `translation_error_*`, `capture_overlay_pill_collapsed_cd`, the three «… bitişi: %1$s» lines (whose value can be a time), `local_audio_read_problem`.
+  - Head noun: «%1$s hizmetini» / «hizmetine», «%1$s adresine» / «adresiyle», «%1$s tarihinde» / «tarihinden beri» (date-only values), «%1$s modeli», «%1$s üyesi olun» (the -si sits on «üye»), «%1$s oturumu».
+  - Separate word: «%1$s tarafından», «%1$s ile», «ses olarak %1$s, model olarak %2$s».
+  - Parentheses: «(HTTP %1$d)», «(%1$s)».
+  - Bare subject or predicate: «%1$s yalnızca …», «%1$s şu anda çevrimdışı», «%1$s kapandı», «listesinde %1$s yok», «boyutu %1$s».
+  - Suffixed brand spans (fixed text, known harmony): «Anki\'ye», «Yomitan\'ın», «Lapis\'in»; «OpenAI uyumlu» and «ElevenLabs uyumlu» take none.
+  - The link string carries its own accusative («metnini»), a fixed word.
+- **Casing.**
+  - Through locale-aware textAllCaps (`Text.PT.GroupHeader`), so they cap correctly: `section_ask`, `pt_cloud_features_title`, `pt_cloud_account_title`, `pt_cloud_after_trial_title`, `tts_recordings_section_header` («İÇE AKTARILAN KAYITLAR»), `audio_source_voice_service_name`, `voice_service_advanced_header` («GELİŞMİŞ»), `settings_header_advanced_llm`.
+  - Through root rules (known code issue): the POS labels, and `word_explain_title` and `dictionary_title_builtin` in the WebView. Of these, «Bu cümlede» survives intact.
+  - Nothing is pre-uppercased. «İ-sıfatı» and «İçe» start with the right İ. The one capital I in the delta is «Ichidan» (finding above).
+- **-ma/-me readings.** «Görüntü işleme» and «metin tanıma» are compound nouns, not prohibitions. «Oturum açma» in `pt_cloud_signin_unavailable` and `pt_cloud_privacy_signin` is a noun with its own verb.
+- **Register.** siz in every instruction and possessive («ekleyin», «girin», «deneyin», «Notunuz», «Hesabınız», «anahtarınızın»). Bare imperatives appear only on buttons, rows and screen-reader action labels.
+- **The translator's notes.** `glossary.md` lists `pt_cloud_terms_link` as «Koşulları ve Gizlilik Bildirimini». The file and `report.md` have «Koşullar ve Gizlilik metnini», which is better, as it keeps the page title verbatim. The glossary line is stale.
+
+**Tally:** 7 ⚠️ (one fix, AI for YZ, on seven keys), 9 💬 (eight fixes). No ❌, no 🛑. The other 197 keys pass as they are. A dry run of `apply_findings.py` matched all 16 rows against the file.
+
+### Disposition (2026-11-16)
+
+All 16 findings in the table applied byte-exact (1 applied: `⚠️`; 6 ⚠️: `settings_header_advanced_llm`, `settings_llm_context_subtitle`, `llm_prompt_row_system_subtitle`, `ask_no_llm_title`, `ask_no_llm_message`, `voice_service_connect_subtitle`; 9 💬: `ask_out_of_scope`, `anki_content_glossary_desc`, `anki_content_glossary_primary_desc`, `anki_content_notes_desc`, `local_audio_loaded_digest`, `icon_action_tap_to_lookup`, `pos_ichidan_verb`, `pos_ichidan_verb_special`, `pos_prenominal`). After applying: `tr: 213 keys checked, 0 errors, 1 warnings, aapt2 ok`; only delta keys changed (scope check).
+
+### Round 2 (2026-11-16), final review after applying round 1
+
+Mechanical layer: `mech_check.py --locale tr --aapt2` -> "tr: 213 keys checked, 0 errors, 1 warnings, aapt2 ok" (the warning: `voice_service_row_model` «Model» identical to English, correct Turkish); `l10n_diff.py --english-base` (l10n-sync) -> `values-tr missing=0 orphan=0 modified=7`, the seven changed keys, each now carrying the new English; README `readme_l10n_check.py tr` -> `[PASS] tr -> readme/README.tr.md` with the standing `warning 39 bold spans, English has 38` (**Özel URL**, settled 2026-10-06).
+
+
+Round-1 changes checked (each compared byte for byte with the round-1 `suggested` cell; the Disposition's first item, printed as «1 applied: `⚠️`», is `service_llm_badge`, which is in the file):
+- `service_llm_badge`: landed («AI»).
+- `settings_header_advanced_llm`: landed.
+- `settings_llm_context_subtitle`: landed.
+- `llm_prompt_row_system_subtitle`: landed.
+- `ask_no_llm_title`: landed.
+- `ask_no_llm_message`: landed (both occurrences).
+- `voice_service_connect_subtitle`: landed.
+- `ask_out_of_scope`: landed.
+- `anki_content_glossary_desc`: landed.
+- `anki_content_glossary_primary_desc`: landed.
+- `anki_content_notes_desc`: landed; its «eklediğiniz / eklemezseniz» now matches the box's hint `anki_notes_hint` «Bu karta bir not ekleyin».
+- `local_audio_loaded_digest`: landed; no other string quotes the old «android.db dosyası içe aktarıldı».
+- `icon_action_tap_to_lookup`: landed; the Hotkeys row and its record dialog read the same key (`HotkeysSettingsActivity.kt:119/121`), so they changed with it.
+- `pos_ichidan_verb`, `pos_ichidan_verb_special`: landed; «İchidan» now agrees with «İ-sıfatı».
+- `pos_prenominal`: landed; «İsim niteleyici» now shares «İsim» with `pos_noun` and `word_detail_group_declension`.
+
+AI term, whole file: «YZ» occurs nowhere. «AI» stands in exactly the seven keys that say "AI" in the English UI (the chip, the header, the two "AI translators" subtitles, the Ask alert's title and body, the voice-service subtitle), always before a Turkish head noun (modeli, modeline, hizmeti, çevirmenlerine, sesi, yapılandırması) and never with a suffix of its own. «LLM» survives only in `settings_debug_force_mmap_weights`, as the glossary requires, and in section banner comments. The eighth English "AI" is `hymt_legal_message` (outside the delta), which says «yapay zekâ modeli»: the license attestation spells terms out, it is not one of the surfaces the glossary's AI row lists, and it was reviewed as faithful; not raised.
+
+Placeholder suffixes, all 213 keys: a script listed every `<xliff:g>` span (53) with the text that follows it. No placeholder span is followed by a letter or an apostrophe suffix; each meets a space, a colon, a parenthesis, an ellipsis, a full stop or the end of the string. The only suffixed spans are fixed brand text with known harmony: «Anki\'ye» (i → ye), «Yomitan\'ın» (a → ın), «Lapis\'in» (i → in). No placeholder sits outside an `<xliff:g>`.
+
+#### Findings (round 2)
+
+No findings.
+
+Fresh read of the 213 keys by screen, against their on-screen neighbours in the file:
+
+- **Ask section, explain row and group, "needs an AI model" alert.** «Soru sor» is the header, and `cd_toggle_ask_visibility` uses it as the section's name. «Soruluyor: %1$s…» puts the name after a colon, and «%1$s tarafından yanıtlandı» is the frame of `translation_source_label`. In `ask_out_of_scope` the applied parenthesis sits between the object and «yanıtlar», and the three examples and "only" are intact. The alert reads as one unit: «Soru sormak için AI modeli gerekir»; a body whose «Çeviri hizmetleri bölümünde» and button byte-match `settings_cell_translation_services`; «cihaz üzerindeki» is the file's on-device phrase (`llm_prompt_advisory_too_long`). «Bu cümlede», «Bu cümledeki kullanımını açıkla» and «Bu sözcüğün nasıl kullanıldığını açıkla» agree with each other.
+- **Word list and definitions.** «Sözcükler · %1$d» = `section_words` plus the count. «Yerleşik» = the file's «yerleşik sözlük». Each of the 26 new POS labels sits beside the existing 22 without a separator character. «İsim niteleyici» now agrees with «İsim». The verb split (class names as modifiers, «Godan fiil»; verbs named by their ending as compounds, «Suru fiili») and the hyphenated adjective compounds follow round 1's reasoning. Root-locale uppercasing of these lines and the WebView titles is the known code issue.
+- **Anki.** The notes alert's title, body and «Yine de kaydet» (= `llm_prompt_save_anyway`) read as one unit, and «Notlar» byte-matches `anki_content_notes` / `anki_group_notes`. The new content-source rows sit apart from «Tanım» and follow the neighbours' «{Lapis}\'in “…” alanı için» frame. The applied «… kart türlerine yöneliktir» and «… sözlüklerden yalnızca sıralamanızda ilk gelen» are grammatical and leave one parse each. `anki_added_voice_fell_back` joins the «Anki\'ye eklendi (…)» family, and «cihazın sesi» is the device-voice phrase of both voice alerts.
+- **Capture overlay and icon actions.** «Tanımlar» / «Yok» join «Çeviri / Furigana / Pinyin» in the four-segment control. The pill descriptions use «Yer paylaşımları» and «Değiştirmek için dokunun». The applied «Dokunarak sözcük aramayı etkinleştir» is shorter than its sibling «Üzerine gelinen sözcüğün tanımını göster».
+- **PlayTranslate Cloud.** The four new error pills match the existing «%1$s: …» family's lowercase. Each state reads the same across pill, hub and page, and different states stay apart (round 1's table re-read on the final text). «Sunucu düzeyinde» in the headline is the file's existing "server-grade" (`settings_pt_cloud_summary_pitch`). «Ödemenin» in the two join hints is what the comment says reaches the account (a payment). «Yeni kod gönder» is picked up as «yeni kod gönderin» in three messages. `pt_cloud_agree_terms` with its link reads «Koşullar ve Gizlilik metnini kabul ediyorum». Width of the sign-in button: it is a full-width MaterialButton (no maxLines, 56 dp box) holding `pt_cloud_free_trial`. On a 360 dp phone the label has about 250 dp (360 − 28 − 2 − 32 − 48 M3 padding), and «PlayTranslate Cloud hizmetini ücretsiz deneyin» measures 314 dp at 15 sp medium, so it wraps to two lines (about 35 to 40 dp) inside the 44 dp content height. It does not clip, and the placeholder rule leaves no shorter form that keeps the name. Not raised.
+- **Voice service.** «Ses hizmeti» heads the group, and the row «Ses hizmeti bağla» uses it. «Hizmet ayarları» and «Model satırına» byte-match their rows. The failure lines are one family with «Hizmet» as subject. All eight brace tokens are verbatim. «API Anahtarı» is the file's field-label form (`llm_backend_api_key_label`, `deepl_api_key_field_label`). Remove («kaldır») and Delete («silinir») stay apart.
+- **Imported recordings.** The header, the row and the progress title share «içe aktar». No string names a language, the file's community name or a website. The remove confirmation reads as one unit. The sizes are placeholders after «/», «boyutu» and «olması gereken».
+- **The 7 MODIFIED keys.** Each carries the new English, and the analyzer's `loc` column shows nothing of the old wording (no «LLM», no «YZ», no screen-reading title). The two cloud toggle titles («Güçlü görüntü işleme», «Premium çeviriler») sit above subtitles that match them.
+- **Register and casing.** siz throughout. Bare imperatives appear only on buttons, rows and screen-reader labels, and the cloud page's CTAs and card titles («… deneyin», «… üyesi olun», «… ile devam edin») use siz together. Nothing is pre-uppercased. Every new group header goes through the locale-aware style («İÇE AKTARILAN KAYITLAR», «SES HİZMETİ», «GELİŞMİŞ AI YAPILANDIRMASI»).
+
+#### Verdict (round 2)
+
+**PASS**: 0 🛑 / 0 ❌ / 0 ⚠️ / 0 💬. All 16 round-1 changes are in the file byte-exact. «AI» is the one form on all seven AI surfaces. No placeholder carries a suffix in any of the 213 keys. The README bullet is right and the only change in its file.
+
+**Correction to the round-1 Disposition (2026-11-16):** its list names the first applied finding as "1 applied: `⚠️`", a slip of the coordinator's script; that finding is ⚠️ `service_llm_badge`, applied byte-exact like the others.

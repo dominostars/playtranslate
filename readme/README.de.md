@@ -182,7 +182,7 @@ Standardmäßig übersetzt die App mit [Lingva](https://github.com/thedaviddelta
 - **Groq**: [console.groq.com](https://console.groq.com/keys) – das Modell wählst du direkt in der App
 - **OpenRouter**: [openrouter.ai](https://openrouter.ai/keys) – das Modell wählst du direkt in der App
 - **Claude**: [platform.claude.com](https://platform.claude.com/settings/keys) – das Modell wählst du direkt in der App
-- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://index-translate.bilibili.com/) – kostenlos, ohne API-Schlüssel
+- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://github.com/bilibili/Index-Translate) – kostenlos, ohne API-Schlüssel. Eventuell nur vorübergehend verfügbar
 - **Benutzerdefiniert**: jeder andere OpenAI-kompatible Endpunkt – trage unter „Benutzerdefinierte URL“ einfach die URL deines Backends ein
 
 ## Anki-Karteikarten (optional)

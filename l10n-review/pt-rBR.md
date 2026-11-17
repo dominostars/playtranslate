@@ -1006,3 +1006,207 @@ Round-1 changes checked. Nothing moved beyond the Disposition: the file's hash e
 - **Widths, in Roboto.** Everything fits: hub summaries (158 dp at most, of 216), status values, the key hint (DroidSansMono, 226 of about 280 dp), the level segments, Load more, and the crop pill (up to 1.12× text size in the workspace).
 
 Left open: the optional 💬, and the code finding round 1 recorded (the cloud page's cooldown line takes an English description from `PtCloudErrors`), which no string can fix.
+
+## Delta review 2026-11-16 (Ask and word explain, voice service, imported recordings, PlayTranslate Cloud account, Anki notes, Japanese part-of-speech labels: 206 new keys and 7 changed)
+
+Mechanical layer: `mech_check.py --locale pt-rBR --aapt2` -> `pt-rBR: 213 keys checked, 0 errors, 0 warnings, aapt2 ok`; `l10n_diff.py --english-base <l10n-sync English>` -> `values-pt-rBR missing=0 orphan=0 modified=7` (the 7 expected MODIFIED keys, each already carrying the new English meaning, see below); `readme_l10n_check.py pt-rBR` -> `[PASS]`. **No 🛑 issues.**
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| anki_added_voice_fell_back | 💬 | Adicionado ao <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (serviço de voz indisponível, foi usada a voz do dispositivo) | Adicionado ao <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (serviço de voz indisponível, usada a voz do dispositivo) | A text toast (`Toast.makeText`, LENGTH_SHORT, from `shortfallRes()` at all eight call sites): at most 2 lines, 296 dp wide on a 360 dp phone, 14 sp. Current line 1 is «Adicionado ao Anki (serviço de voz», 217 dp, and line 2 is «indisponível, foi usada a voz do dispositivo)», 270 dp. It fits at 1.0×, but from 1.1× text size line 2 needs a third line, and «dispositivo)» is cut. English holds two lines through 1.3× (176 + 192 dp). The suggested line 2 is 250 dp, so it holds through 1.18× (Large, 1.15×, included). The reduced participle is normal in a pt-BR parenthesis. Optional, like the open pt-rBR toast 💬 of 2026-10-27. |
+| pt_cloud_free_trial | 💬 | Experimente o <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> grátis | Teste o <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> grátis | The sign-in card's main button (`btnCloudSendCode`): full-width MaterialButton, 56 dp tall, 15 sp bold, 24 dp side padding, no maxLines. On a 360 dp phone the text area is about 250 dp (360 − 2×14 page − 2×1 stroke − 2×16 row padding − 2×24). Current measures 277.5 dp in Roboto Medium, and more in bold, so it wraps to two lines on phones up to about 400 dp. It does not clip (two 20 sp lines fit in the 44 dp content height), but the English (217 dp) is one line. «Teste o … grátis» (231 dp) fits on one line, is the everyday pt-BR CTA («teste grátis»), and echoes «teste gratuito». Optional. |
+| pt_cloud_ocr_toggle_subtitle | 💬 | OCR mais potente em uma GPU de servidor, sem gastar a potência do seu dispositivo. | OCR mais potente em uma GPU de servidor, sem pesar no seu dispositivo. | Two problems in one line. It echoes «potente … potência», and «gastar a potência» is an odd collocation: one spends energy or battery, not «potência». «sem pesar no dispositivo» is the idiom the cloud's Translation services row already uses (`pt_cloud_ocr_row_subtitle`, settled 2026-10-27), and it keeps the English's "costs your device nothing". Optional. |
+| pt_cloud_code_invalid | 💬 | Esse código não funcionou. Ele pode ter sido digitado errado ou ter expirado. Confira o código ou envie um novo código. | Esse código não funcionou. Ele pode ter sido digitado errado ou ter expirado. Confira-o ou envie um novo código. | «código» appears three times in three sentences, twice in the last one. The pronoun fixes it, as `pt_cloud_signin_rate_limited` already does («digite-o abaixo»), and «envie um novo código» still echoes the «Enviar um novo código» button. Optional. |
+| voice_service_instructions_label | 💬 | Instruções de voz | Instruções para a voz | A bare label over a free-text field with no hint (`activity_online_tts_service.xml`). «instruções de voz» is the usual pt-BR phrase for spoken prompts, so the label can read as "voice prompts". The field holds how the voice should speak (accent, pace, tone), and «para a voz» says so at the same length. ru «Инструкции для голоса» and ja 「音声への指示」 made the same choice. Optional. |
+| voice_service_remove_confirm_message | 💬 | A chave de API dele é excluída, e todos os idiomas que usam uma das vozes dele voltam a usar a voz do dispositivo. | A chave de API do serviço é excluída, e todos os idiomas que usam uma das vozes dele voltam a usar a voz do dispositivo. | «dele» appears twice, and the first one's antecedent is only in the title («Remover o serviço de voz?»). Naming the service once reads naturally and leaves one «dele». Optional. |
+| local_audio_load_subtitle | 💬 | Se você tiver um arquivo android.db de gravações de voz, pode carregá-lo aqui. Você precisa obter esse arquivo por conta própria. Isso só funciona para palavras, e qualquer palavra sem uma entrada no arquivo android.db vai recorrer às suas outras configurações de conversão de texto em voz. | Se você tiver um arquivo android.db de gravações de voz, pode carregá-lo aqui. Você precisa obter esse arquivo por conta própria. Isso só funciona para palavras, e qualquer palavra sem uma entrada no arquivo android.db será falada com as suas outras configurações de conversão de texto em voz. | «recorrer a» (to resort to) wants an agent that decides, so with «palavra» as its subject it reads as a calque of "fall back to". «será falada com» says what happens to the word. The rest is unchanged, and it still names no language, website or community name. Optional. |
+| anki_content_glossary_primary_desc | 💬 | Somente as definições do primeiro dicionário da sua ordem que tem a palavra destacada, escritas do jeito que o <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g> as escreve. O dicionário integrado vem por último. Para o campo “MainDefinition” do <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>. | Somente as definições do primeiro dicionário na sua ordem que tenha a palavra destacada, escritas do jeito que o <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g> as escreve. O dicionário integrado vem por último. Para o campo “MainDefinition” do <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>. | «dicionário da sua ordem» calques "in your order", and «que tem» can attach to «ordem». «na sua ordem» is the pt-BR preposition, and the subjunctive «tenha» marks the choice among dictionaries, so the clause can only belong to the dictionary. Optional. |
+
+### Clean areas (checked, no findings)
+
+Widths are measured in Android's Roboto (`Measure.java`, 1×), each against the widget's own text size and paddings as the render code shows them.
+
+- **Ask section and the word page's group.**
+  - The header «Perguntas» is a noun, like its neighbours «Original», «Tradução» and «Palavras». In capitals at 11 sp with 0.12 em letter spacing it is about 75 dp, in a one-line ellipsized label that shares the row with the collapsed pills and the eye, so it never clips. The eye's «Mostrar/ocultar perguntas» follows `cd_toggle_words_visibility`.
+  - The hint «Faça sua própria pergunta…» is 197 dp at 16 sp, against about 270 dp beside the 36 dp send button.
+  - The chip «Análise gramatical» is 100 dp at 12 sp medium (English 113 dp).
+  - Status and answer lines read with "Gemini" and "PlayTranslate Cloud" filled in: «Perguntando ao Gemini…», «Respondido por Gemini» (the shape of «Traduzido por») and «O PlayTranslate Cloud só responde…». The file gives services the masculine article everywhere (`tr_service_remove_title_fmt`).
+  - «Esta resposta atingiu o limite de tamanho e foi cortada», the ⚠ spoiler line and «Não foi possível obter uma resposta» / «Tentar novamente» (= `update_error_retry`) read natively.
+  - The "Ask needs an AI model" alert reads as one: «Para perguntar, é preciso um modelo de IA» / «Sua pergunta sobre esta frase é enviada a um modelo de IA. Adicione um serviço de IA online, ou ative um modelo no dispositivo, em Serviços de tradução.» / [Serviços de tradução]. Both mentions byte-match `settings_cell_translation_services`.
+  - «Nesta frase» (title, in capitals), «Explicar como esta palavra é usada» (row) and «Explicar nesta frase» (screen reader) are one family.
+- **Word list and definitions.**
+  - «Palavras · 6» matches the existing `section_words_count` pattern.
+  - «Integrado» agrees with dicionário and reuses `settings_ocr_note_builtin`.
+  - «As definições exigem o Android System WebView»: Android shows the app under that name in pt-BR.
+  - The 26 `pos_*` labels match the file's existing ones: sentence case «Verbo godan / ichidan / suru…», «Adjetivo-i / -na / -no…», and «Transitivo» / «Intransitivo», masculine to agree with «verbo». «Cópula», «Sem classificação», «Pré-nominal» (hyphenated, correct after the stressed prefix) and «Advérbio-to» complete the set. None contains `·`, `・` or `/`; hyphens and parentheses are as in English.
+- **Anki.**
+  - The user's note is «anotação» / «Anotações» throughout, kept apart from «nota», which the file reserves for Anki's note object (`anki_first_field_unmapped`). That is the right split, since a field "Notes" and an Anki note would otherwise collide.
+  - The notes alert reads as one: «Nenhum campo para sua anotação» / «…nenhum campo definido como Anotações…Salvar o cartão sem ela?» / [Salvar mesmo assim]. «Anotações» byte-matches `anki_content_notes` and `anki_group_notes`, and «Salvar mesmo assim» = `llm_prompt_save_anyway`.
+  - The two Yomitan-format rows keep the «(formato Yomitan)» shape beside «Definições», and their descriptions keep the Lapis field names verbatim in curly quotes.
+  - The voice-fallback toast keeps the «Adicionado ao Anki (… indisponível)» frame of its siblings (width 💬 above).
+- **Capture overlay, icon actions and hotkeys.**
+  - «Definições» / «Nenhuma»: «Nenhuma» agrees with «sobreposição», which is the right noun. The options appear only where no masculine «modo» heads them: the capture pill, whose description reads «Sobreposições: Nenhuma. Toque para alterar.», the results page's capture-mode row and the dropdowns. The live settings toggle under «Modo de sobreposição» never offers None.
+  - On the four-segment pill (13 sp bold, 8 dp padding, 78 dp minimum), «Definições» is 62 dp in Roboto Medium, narrower than English «Translation» (66 dp), so the capsule is no wider than in English.
+  - «Ativar a consulta por toque» sits well beside «Alterar o idioma do jogo» and «Abrir o menu rápido», and as a Hotkeys row and dialog title. «consulta» is the file's lookup noun («consultas de palavras»).
+- **PlayTranslate Cloud, read as state families.**
+  - Trial: hub «Teste gratuito até 3 de nov.» / «até 15:42» (158 / 138 dp at 13 sp, in a single-line hub summary about 216 dp wide), and card «Teste gratuito até 3 de nov., 15:42».
+  - Trial ended: pill «teste gratuito encerrado», hub and card «Teste encerrado» / «Teste encerrado em 3 de nov.» (the English drops "Free" in the same places). Next to the trial digest and on the account card, «Teste» reads as the trial, not a check.
+  - Membership inactive: «assinatura inativa» / «Assinatura inativa» / «Assinatura inativa desde 3 de nov.» / «Nenhuma assinatura ativa».
+  - Terms not accepted: «termos não aceitos» / «Termos não aceitos» (pill, hub, notice) and «Recursos pausados até que os termos sejam aceitos.» The added subject gives «pausados» something to agree with.
+  - Closed: «serviço encerrado», status «Encerrado» (agrees with the row title «Serviço»), «O PlayTranslate Cloud foi encerrado», «O serviço não está mais disponível».
+  - Each state reads the same on every surface, and the two «encerrado» states stay apart by their nouns.
+  - Membership vocabulary is one set: assinatura / Assinante / Assinar / «Faça uma assinatura no Ko-fi» / «Já assinou?». Ko-fi memberships are recurring, and the English itself says "Subscribe with".
+  - Pill widths at 14 sp are 242 to 281 dp, all shorter than the existing «PlayTranslate Cloud: não foi possível conectar» (288 dp), in a pill of at most 2 lines.
+  - Sign-in uses Google's pt-BR wording: «fazer login», «Sair», «Conectado com uma chave», «Endereço de e-mail».
+  - The hint «voce@example.com» is 117 dp at 13 sp. The plural reads «Enviamos um código para you@example.com. Ele vale por 1 minuto / 10 minutos», and pt's `one` covers 0 and 1.
+  - Cross-references hold: «envie um novo código» twice echoes [Enviar um novo código]. «Concordo com os Termos e Privacidade» fills `pt_cloud_terms_link`, which equals `pt_cloud_terms_title`. «Aceitar» / «Aceite os termos para continuar» form one pair, and [Ver termos] is 70 dp in its small button.
+  - Toolbar titles «PlayTranslate Cloud (Alfa)» (236 dp at 20 sp) and «Termos e Privacidade» (195 dp) fit beside the back arrow. The headline «…com a potência de um servidor» is natural marketing copy in a 26 sp block that wraps.
+- **The 7 MODIFIED keys.** `git diff` shows the four AI keys changed «LLM» → «IA» and nothing else, keeping wording reviewed before. «IA» is the one word across the chip, «Configuração avançada de IA», both «tradutores de IA», «modelo de IA», «serviço de IA online» and «voz de IA online». The file's only «LLM» left is the debug row `settings_debug_force_mmap_weights`, as in English. The three feature-row keys carry the new meaning, «Processamento de imagens poderoso» and «Traduções premium» (masculine singular «poderoso» can only attach to «processamento»), with the old «Reconhecimento de texto» / «Tradução de texto» gone. The subtitle drops the old "goes to the game" sentence (wording 💬 above).
+- **Voice service.**
+  - Rows: «Conectar um serviço de voz» / «Use uma voz de IA online com sua própria chave de API», «Configurações do serviço» and «Nenhuma voz».
+  - «Sem mecanismo de conversão de texto em voz» uses the file's engine and TTS terms (`tts_no_engine_dialog_*`).
+  - Service page: «Serviço» with «Compatível com OpenAI / ElevenLabs», a 13 sp value that wraps. Then «URL da solicitação», «Chave de API», «Modelo» / «Escolher», «Avançado», «Solicitação», and the legend with all eight `{tokens}` byte-identical. «solicitação» is the file's request word (error pills).
+  - The failure lines read as one family, each a full sentence with «O serviço…», and «(HTTP 503)» and «(HTTP 400)» are kept.
+  - Cross-references byte-match: «outro modelo em Configurações do serviço» = `voice_service_settings_row`, and «Toque em Modelo» / «cancele e toque em Modelo» = `voice_service_row_model`.
+  - Alerts read as title + body + buttons: «Ainda não é possível salvar», «Não foi possível verificar a chave» (with Salvar mesmo assim / Cancelar), «O serviço não lista este modelo», and «Algumas vozes não funcionam com este modelo» with «O modelo tts-1 não pode usar as vozes abaixo». «Remover serviço» = `tr_service_delete_cd`, «excluída» keeps Remove and Delete apart, and «Cole-a» agrees with «chave».
+- **Imported recordings.**
+  - «Gravações importadas», «Arquivo android.db», «Carregar arquivo android.db», «Arquivo android.db carregado» and «Carregando arquivo android.db» keep the file name verbatim and lowercase.
+  - Progress reads «1,2 GB de 5,8 GB copiados», with «copiados» agreeing with gigabytes.
+  - Failures read naturally: «Este arquivo está incompleto: tem 2,1 GB de 5,8 GB. Obtenha o arquivo inteiro e carregue-o novamente.», «(no such table: android)» and «Falha ao ler este arquivo: …». The remove confirmation pairs «Remover» with «excluído».
+  - No string names a language, a website or the file's community name.
+  - On the main settings cell, the prefix «Arquivo android.db carregado» is 171 dp. The single-line summary then cuts the voice part, as the English one also does (256 dp, against about 216).
+
+### Brazilian Portuguese appendix
+
+- **BR vs EU audit over all 213 keys.**
+  - Brazilian forms only: tela, arquivo, excluir, salvar, app, Configurações (settings), registrar, «Toque em», «rodar» (to run a model), e-mail, online and offline (the file's spelling, never «on-line»).
+  - Gerunds where pt-PT writes «a» + infinitive: «Perguntando», «Carregando», «Verificando».
+  - None of ecrã, ficheiro, utilizador, aplicação, transferir, eliminar, registar or premir.
+  - «definições» means only "definitions" here, never pt-PT's "Settings".
+- **Agreement where the English drops the noun.**
+  - Masculine:
+    - «Encerrado» (serviço)
+    - «Integrado» (dicionário)
+    - «Transitivo» and «Intransitivo» (verbo)
+    - «Teste encerrado»
+    - «Arquivo … carregado»
+    - «copiados» (GB)
+    - «Termos não aceitos»
+    - «Recursos pausados»
+  - Feminine:
+    - «Nenhuma» (sobreposição)
+    - «Assinatura inativa»
+    - «Nenhuma voz»
+    - «Nenhuma chave de API foi inserida»
+    - «Cópula»
+  - «Assinante» is common gender. «Respondido por» and «Conectado» take the impersonal masculine, as «Traduzido por» does.
+- **Placeholders, read with real values.**
+  - Service-name spans take «o» / «ao» / «do» before "PlayTranslate Cloud" or "Gemini", and bare «PlayTranslate Cloud:» heads each pill.
+  - Dates come from the locale formatter («3 de nov.», «3 de nov., 15:42»), after «até», «em» and «desde».
+  - Sizes («1,2 GB») sit after «de» with nothing to inflect.
+  - «HTTP %1$d» sits in parentheses.
+  - The voice and model are introduced by a noun («a voz Coral», «o modelo tts-1»), so no article lands on a bare id.
+  - The email address sits after «para» / «com».
+  - `{text}`, `{voice}`, `{model}`, `{instructions}`, `{speed}`, `{language}`, `{language_name}` and `{key}` are untouched.
+- **Register.** você throughout, with você-form imperatives (Adicione, Leia, Confira, Escolha, Cole-a, Obtenha). There are no em dashes and no straight quotes, the Lapis field names are in curly quotes, and the ellipsis is the single character «…».
+
+### Source-side notes
+
+- `local_audio_load_subtitle` says "your other TTS settings", the delta's only user-facing "TTS" abbreviation, on a page titled "Text-to-speech". pt spells it out correctly («configurações de conversão de texto em voz»). The English might say "text-to-speech settings" too.
+
+### Verdict
+
+**PASS** (0 🛑, 0 ❌, 0 ⚠️, 8 💬). The translation reads as native Brazilian UI copy:
+- Every state family is consistent across pill, hub and page.
+- Every cross-reference byte-matches.
+- The AI term is one word everywhere.
+- No widget clips at 1.0×.
+
+The eight 💬 are optional polish: two width items (a toast at larger text sizes, a CTA that wraps where English does not) and six wording items.
+
+### Disposition (2026-11-16)
+
+All 8 findings in the table applied byte-exact (1 applied: `💬`; 7 💬: `pt_cloud_free_trial`, `pt_cloud_ocr_toggle_subtitle`, `pt_cloud_code_invalid`, `voice_service_instructions_label`, `voice_service_remove_confirm_message`, `local_audio_load_subtitle`, `anki_content_glossary_primary_desc`). After applying: `pt-rBR: 213 keys checked, 0 errors, 0 warnings, aapt2 ok`; only delta keys changed (scope check).
+
+### Round 2 (2026-11-16), final review after applying round 1
+
+Mechanical layer: `mech_check.py --locale pt-rBR --aapt2` -> `pt-rBR: 213 keys checked, 0 errors, 0 warnings, aapt2 ok`; `l10n_diff.py --english-base <git show l10n-sync English>` -> `values-pt-rBR missing=0 orphan=0 modified=7` (the 7 changed keys, each carrying the new English meaning); README `readme_l10n_check.py pt-rBR` -> `[PASS] pt-rBR -> readme/README.pt-BR.md`.
+
+Round-1 changes checked (each compared byte for byte with its `suggested` cell; all 8 hold it exactly):
+- `anki_added_voice_fell_back`: landed. Its siblings keep the same «Adicionado ao Anki (… indisponível…)» frame. Re-measured at 14 sp: 217 dp and 250 dp, two lines in the 296 dp toast.
+- `pt_cloud_free_trial`: landed. It measures 231 dp at 15 sp medium, against English's 217 dp, so it is one line in the about 250 dp text area. The button under it, «Iniciar teste gratuito», and the hub's «Teste gratuito até…» use «teste» as a noun after the verb here; that echo is the everyday «teste grátis» phrasing. No string quoted the old «Experimente».
+- `pt_cloud_ocr_toggle_subtitle`: landed. «sem pesar no seu dispositivo» is now the idiom of `pt_cloud_ocr_row_subtitle`. The «potente … potência» echo is gone; the headline keeps «potência», but that is a separate block.
+- `pt_cloud_code_invalid`: landed. «Confira-o» points back to «Ele» (the code), and «envie um novo código» still echoes [Enviar um novo código].
+- `voice_service_instructions_label`: landed. No other string quotes the label: «Instruções de voz» appears nowhere in the file now, and the request legend names only the `{instructions}` token.
+- `voice_service_remove_confirm_message`: landed. The one «dele» left now refers to «serviço» in the same sentence.
+- `local_audio_load_subtitle`: landed. It still names no language, website or community name, and no other string quoted it.
+- `anki_content_glossary_primary_desc`: landed. Its sibling `anki_content_glossary_desc` is untouched and still reads as a pair with it, and «“MainDefinition”» is still in curly quotes.
+- Record-keeping only: the Disposition line reads "1 applied: `💬`" where it means `anki_added_voice_fell_back` (the severity glyph took the key's place). The key itself landed, as shown above.
+
+Scope: `git diff` of `values-pt-rBR/strings.xml` adds or replaces exactly the 213 delta keys, and removes only the four keys English dropped (`lens_also_matches`, `pt_cloud_key_label`, `pt_cloud_key_hint`, `tts_voice_picker_title`). The 7 MODIFIED keys' old lines show only «LLM» → «IA» and the three new cloud feature rows. A lint pass over the 213 keys found:
+- the same `{token}` set as English in every key;
+- no em or en dashes, straight quotes, unescaped apostrophes or "...";
+- no pt-PT vocabulary.
+
+#### Findings (round 2)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| voice_service_failure_bad_list | 💬 | A resposta do serviço não era uma lista que o app consiga ler. | A resposta do serviço não era uma lista que o app conseguisse ler. | The past «era» followed by the present subjunctive «consiga» breaks the tense sequence a careful pt-BR writer keeps. After «era» the imperfect subjunctive is the normal form. The sibling `voice_service_failure_bad_response` («não respondeu com um áudio que o app consiga usar (MP3, WAV, Ogg ou M4A)») can stay: its clause lists the formats the app takes now, a standing fact. Optional. |
+
+Fresh read of all 213 keys, by screen, against the file's existing strings:
+- **Ask section and the word page's group.** «Perguntas» is a noun header like «Original / Tradução / Palavras», and «Mostrar/ocultar perguntas» = `cd_toggle_words_visibility`. With the service name filled in (`ask_status_asking`, `ask_out_of_scope`):
+  - «Perguntando ao Gemini…» and «Respondido por Gemini» take the shape of «Traduzido por».
+  - «O PlayTranslate Cloud só responde…».
+  - The no-model alert reads as one: the title «Para perguntar, é preciso um modelo de IA», a body ending «em Serviços de tradução.», and the button [Serviços de tradução]. Both mentions byte-match `settings_cell_translation_services`.
+  - «Nesta frase», «Explicar como esta palavra é usada» and «Explicar nesta frase» are one family.
+- **Word list and definitions.**
+  - «Palavras · 6».
+  - «Integrado» matches the file's «dicionário integrado».
+  - The 26 `pos_*` labels follow the existing «Verbo auxiliar» shape: «Verbo godan», «Adjetivo-na», «Transitivo» agreeing with verbo, and «Pré-nominal» hyphenated after the stressed prefix. None holds `·`, `・` or `/`.
+- **Anki.**
+  - «anotação / Anotações» stays apart from Anki's «nota».
+  - «definido como Anotações» = `anki_content_notes` = `anki_group_notes`, and [Salvar mesmo assim] = `llm_prompt_save_anyway`.
+  - The voice-fallback toast keeps the frame of its siblings.
+  - The Lapis field names stay verbatim in curly quotes.
+- **Overlay and icon actions.**
+  - «Definições / Nenhuma»: Nenhuma agrees with «Sobreposições:» in the pill's description, and the None option is offered only for captures (`OverlayMode.offered`), where no masculine «modo» heads it.
+  - «Ativar a consulta por toque» sits beside «Abrir o menu rápido» and «Alterar o idioma do jogo».
+- **PlayTranslate Cloud, as state families.**
+  - Trial: «Teste gratuito até …» on the hub and the card.
+  - Trial ended: pill «teste gratuito encerrado», hub and card «Teste encerrado (em 3 de nov.)».
+  - Membership inactive: «assinatura inativa» / «Assinatura inativa (desde …)» / «Nenhuma assinatura ativa».
+  - Terms not accepted: «termos não aceitos» and «Recursos pausados até que os termos sejam aceitos.»
+  - Closed: «serviço encerrado» / «Encerrado» / «O PlayTranslate Cloud foi encerrado».
+  - One state reads the same everywhere, and the two «encerrado» states stay apart by their nouns.
+  - The pills keep the lowercase-after-colon form of the existing `translation_error_*`.
+  - Membership words are one set: assinatura / Assinante / Assinar / Assine com.
+  - «Concordo com os Termos e Privacidade» fills `pt_cloud_terms_link` = `pt_cloud_terms_title`.
+  - `pt_cloud_code_sent_to` is right in both forms: «1 minuto» under `one`, which covers 0 and 1 in pt, and «10 minutos» under `other`.
+  - Sign-in uses Google's pt-BR words: «fazer login» and «Sair».
+- **Voice service.**
+  - «Toque em Modelo» / «cancele e toque em Modelo» = `voice_service_row_model`, and «em Configurações do serviço» = `voice_service_settings_row`.
+  - The failure lines are one family of full sentences, with «(HTTP 503)» and «(HTTP 400)» kept.
+  - Each alert reads as title + body + buttons, and the remove alert keeps «Remover» apart from «excluída».
+  - The request legend's eight tokens are byte-identical.
+  - «a URL» is feminine throughout.
+  - OverlayAlert stacks full-width buttons with no line limit (`OverlayAlert.kt`), so «Remover arquivo android.db» cannot clip.
+- **Imported recordings.**
+  - «Arquivo android.db» keeps the file name verbatim and lowercase.
+  - «1,2 GB de 5,8 GB copiados» agrees with gigabytes.
+  - «tem 2,1 GB de 5,8 GB», «(no such table: android)» and «Falha ao ler este arquivo: …» read naturally.
+  - No string names a language, a website or the file's community name.
+- **The 7 MODIFIED keys.** «IA» is the one word on the chip and the header and in «tradutores de IA» (×2), «modelo de IA» and «serviço de IA online». The only «LLM» left in the file is the debug row `settings_debug_force_mmap_weights`. «Processamento de imagens poderoso» and «Traduções premium» carry the new meaning, and the old row titles are gone.
+- **Register and vocabulary.** você throughout, with BR vocabulary only (tela, arquivo, excluir, salvar, app, Configurações, rodar, e-mail), and the ellipsis is the single character «…».
+
+#### Verdict (round 2)
+
+**PASS** (0 🛑, 0 ❌, 0 ⚠️, 1 💬). All 8 round-1 fixes are in the file byte for byte, and none broke a neighbour or a cross-reference. The one open 💬, a tense sequence in `voice_service_failure_bad_list`, is optional.
+
+**Correction to the round-1 Disposition (2026-11-16):** its list names the first applied finding as "1 applied: `💬`", a slip of the coordinator's script; that finding is 💬 `anki_added_voice_fell_back`, applied byte-exact like the others.
+
+#### Disposition (round 2, 2026-11-16)
+
+The optional 💬 applied byte-exact at the developer's request: `voice_service_failure_bad_list` («conseguisse»). After applying: mech_check 0 errors, aapt2 ok, only delta keys changed, `:app:processDebugResources` green.

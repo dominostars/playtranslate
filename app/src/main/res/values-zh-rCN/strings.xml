@@ -146,6 +146,8 @@
          ═══════════════════════════════════════════════════════════════ -->
 
     <string name="word_detail_no_definitions">未找到定义。</string>
+    <string name="definitions_need_webview">显示释义需要 Android System WebView。</string>
+    <string name="dictionary_title_builtin">内置词典</string>
 
     <string name="word_detail_more_examples">更多例句</string>
 
@@ -330,11 +332,31 @@
     <string name="section_translation">译文</string>
 
     <string name="section_words">单词</string>
+    <string name="section_words_count">单词 · <xliff:g id="count" example="6">%1$d</xliff:g></string>
+    <string name="section_ask">提问</string>
+    <string name="ask_question_hint">输入你自己的问题…</string>
+    <string name="cd_ask_send">发送问题</string>
+    <string name="cd_ask_close">关闭回答</string>
+    <string name="cd_toggle_ask_visibility">切换提问可见性</string>
+    <string name="ask_status_asking">正在询问 <xliff:g id="service_name" example="Gemini">%1$s</xliff:g>…</string>
+    <string name="ask_status_asking_unnamed">正在询问…</string>
+    <string name="ask_answered_by">由 <xliff:g id="service_name" example="Gemini">%1$s</xliff:g> 回答</string>
+    <string name="ask_answer_cut">此回答达到了长度上限，已被截断。</string>
+    <string name="ask_spoiler_warning">⚠ 回答可能会透露已隐藏的译文。</string>
+    <string name="ask_out_of_scope"><xliff:g id="service_name" example="PlayTranslate Cloud">%1$s</xliff:g> 只回答与这句话有关的问题，例如它的含义、语法或词汇。</string>
+    <string name="ask_failed">无法获取回答。</string>
+    <string name="ask_retry">重试</string>
+    <string name="ask_no_llm_title">提问功能需要 AI 模型</string>
+    <string name="ask_no_llm_message">提问功能会将你关于这句话的问题发送给 AI 模型。请在“翻译服务”中添加在线 AI 服务，或开启设备端模型。</string>
+    <string name="ask_no_llm_open_services">翻译服务</string>
+    <string name="ask_preset_grammar_breakdown">语法解析</string>
+    <string name="cd_word_explain">解释在本句中的用法</string>
+    <string name="word_explain_title">句中用法</string>
+    <string name="word_explain_ask">解释这个词在本句中的用法</string>
 
     <string name="words_loading">正在查询单词…</string>
 
     <string name="lens_loading">正在查询…</string>
-    <string name="lens_also_matches">其他匹配</string>
     <string name="load_more_count">加载更多（<xliff:g id="count" example="2">%1$d</xliff:g>）</string>
     <string name="section_other_matches">其他匹配</string>
 
@@ -428,6 +450,7 @@
     <string name="icon_action_swap_pinyin">在翻译和拼音之间切换</string>
 
     <string name="icon_action_change_game_language">更改游戏语言</string>
+    <string name="icon_action_tap_to_lookup">启用点按查词</string>
 
     <string name="icon_action_translating_from">正在从<xliff:g id="language" example="Japanese">%1$s</xliff:g>翻译</string>
 
@@ -500,6 +523,7 @@
     <string name="anki_no_deck_selected">在 <xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 中未找到牌组</string>
 
     <string name="anki_added_no_audio">已添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>（音频不可用）</string>
+    <string name="anki_added_voice_fell_back">已添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>（语音服务不可用，已使用设备语音）</string>
 
     <string name="anki_added_no_screenshot">已添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>（截图不可用）</string>
 
@@ -522,6 +546,9 @@
     <string name="anki_card_too_large_simplify">保存简化版</string>
 
     <string name="anki_card_too_large_failed">即使使用简化释义，这张卡片仍然过大，<xliff:g id="brand_ankidroid" example="AnkiDroid">AnkiDroid</xliff:g> 无法接受。请尝试删除部分单词或缩短句子。</string>
+    <string name="anki_notes_no_field_title">没有可存放备注的字段</string>
+    <string name="anki_notes_no_field_message">此卡片类型没有设为“备注”的字段，因此你的备注无法保存到卡片上。是否不带备注直接保存卡片？</string>
+    <string name="anki_notes_no_field_save_anyway">仍然保存</string>
 
     <string name="anki_added_simplified">已添加到 <xliff:g id="brand_anki" example="Anki">Anki</xliff:g>（释义已简化以适应大小）</string>
 
@@ -550,6 +577,9 @@
     <string name="anki_group_words_count">卡片内的单词 · <xliff:g id="words_count" example="3">%d</xliff:g></string>
 
     <string name="anki_group_definitions">释义</string>
+    <string name="anki_group_notes">备注</string>
+    <string name="anki_notes_hint">为这张卡片添加备注</string>
+    <string name="cd_anki_notes_clear">清除备注</string>
 
     <string name="anki_group_screenshot">截图</string>
 
@@ -692,6 +722,12 @@
 
     <string name="anki_content_frequency_harmonic">词频排序数值</string>
     <string name="anki_content_frequency_harmonic_desc">用于按词频排序卡片的单个数值，即该单词各词典词频的调和平均数（越小越常用）。用于 <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> 的“FreqSort”或 <xliff:g id="brand_jpmn" example="JPMN">JPMN</xliff:g> 的“FrequencySort”。</string>
+    <string name="anki_content_glossary">释义（<xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g> 格式）</string>
+    <string name="anki_content_glossary_desc">所有词典对高亮单词的释义，按 <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g> 自己的写法输出。适用于为 <xliff:g id="brand_yomitan2" example="Yomitan">Yomitan</xliff:g> 制作的卡片类型，例如 <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> 的“Glossary”。</string>
+    <string name="anki_content_glossary_primary">主词典（<xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g> 格式）</string>
+    <string name="anki_content_glossary_primary_desc">只取收录了高亮单词、且在你的词典排序中优先级最高的那部词典，按 <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g> 自己的写法输出。内置词典排在最后。用于 <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g> 的“MainDefinition”。</string>
+    <string name="anki_content_notes">备注</string>
+    <string name="anki_content_notes_desc">你在保存前为卡片输入的备注。未输入时为空。</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          CARD-TYPE STATE FLAGS
@@ -753,6 +789,7 @@
     <string name="deepl_settings_get_key_subtitle">免费方案每月包含 50 万个字符，但注册时需要信用卡</string>
 
     <string name="deepl_settings_about"><xliff:g id="brand_deepl" example="DeepL">DeepL</xliff:g> 是一项以高质量输出著称的翻译服务，尤其擅长欧洲语言。</string>
+    <string name="pt_cloud_display_name_alpha"><xliff:g id="service" example="PlayTranslate Cloud">PlayTranslate Cloud</xliff:g> Alpha 版</string>
 
     <string name="llm_backend_preset_custom">自定义</string>
 
@@ -800,19 +837,19 @@
     <string name="llm_backend_invalid_key_alert_button">好的</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
-         ADVANCED LLM CONFIGURATION — user-editable prompt templates.
+         ADVANCED AI CONFIGURATION — user-editable prompt templates.
          The {token} keywords are literal and stay in Latin.
          ═══════════════════════════════════════════════════════════════ -->
 
-    <string name="settings_header_advanced_llm">LLM 高级配置</string>
+    <string name="settings_header_advanced_llm">AI 高级配置</string>
 
     <string name="settings_llm_context_title">使用最近几行文本作为上下文</string>
 
-    <string name="settings_llm_context_subtitle">仅限在线。向在线 LLM 翻译器提供最近记录的几行文本，让代词和专有名词的翻译更加一致。</string>
+    <string name="settings_llm_context_subtitle">仅限在线。向在线 AI 翻译器提供最近记录的几行文本，让代词和专有名词的翻译更加一致。</string>
 
     <string name="llm_prompt_row_system_title">系统提示词</string>
 
-    <string name="llm_prompt_row_system_subtitle">发送给云端和设备端 LLM 翻译器的角色设定与指令。</string>
+    <string name="llm_prompt_row_system_subtitle">发送给云端和设备端 AI 翻译器的角色设定与指令。</string>
 
     <string name="llm_prompt_row_translation_title">翻译提示词</string>
 
@@ -880,7 +917,7 @@
 
     <string name="add_online_service_title">添加翻译服务</string>
 
-    <string name="service_llm_badge">LLM</string>
+    <string name="service_llm_badge">AI</string>
 
     <string name="service_account_required">需要账号</string>
 
@@ -1191,6 +1228,10 @@
     <string name="translation_error_unreachable"><xliff:g id="service" example="Lingva">%1$s</xliff:g>：无法连接</string>
 
     <string name="translation_error_not_running"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>：未运行</string>
+    <string name="translation_error_trial_ended"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>：免费试用已结束</string>
+    <string name="translation_error_membership_inactive"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>：无有效会员</string>
+    <string name="translation_error_terms_required"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>：未接受条款</string>
+    <string name="translation_error_closed"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>：服务已停止运营</string>
 
     <string name="translation_error_discard_card_title">放弃这张卡片？</string>
 
@@ -1325,6 +1366,10 @@
     <string name="overlay_mode_option_furigana">假名注音</string>
 
     <string name="overlay_mode_option_pinyin">拼音</string>
+    <string name="overlay_mode_option_definitions">释义</string>
+    <string name="overlay_mode_option_none">无</string>
+    <string name="capture_overlay_pill_collapsed_cd">叠加层：<xliff:g id="mode" example="Translation">%1$s</xliff:g>。点按以更改。</string>
+    <string name="capture_overlay_pill_collapse_cd">隐藏叠加层选项</string>
 
     <string name="settings_hide_overlays_during_auto_mode">在自动模式下隐藏叠加层</string>
 
@@ -1608,22 +1653,27 @@
     <string name="settings_pt_cloud_summary_translation_only">仅翻译</string>
 
     <string name="settings_pt_cloud_summary_ocr_only">仅服务器级 OCR</string>
+    <string name="settings_pt_cloud_summary_trial">免费试用至 <xliff:g id="end" example="Nov 3">%1$s</xliff:g></string>
+    <string name="settings_pt_cloud_summary_trial_ended">试用已结束</string>
+    <string name="settings_pt_cloud_summary_inactive">无有效会员</string>
+    <string name="settings_pt_cloud_summary_terms_required">未接受条款</string>
+    <string name="pt_cloud_headline">服务器级图像处理与翻译</string>
+    <string name="pt_cloud_intro">最精准的文字识别和翻译模型太过庞大，无法在移动设备上运行。<xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> 改为在服务器上运行它们，让你获得更好的结果，设备也无需承担任何处理工作。</string>
+    <string name="pt_cloud_features_title">功能</string>
 
-    <string name="pt_cloud_ocr_toggle_title">识别屏幕文字</string>
+    <string name="pt_cloud_ocr_toggle_title">强大的图像处理</string>
 
-    <string name="pt_cloud_ocr_toggle_subtitle">在服务器 GPU 上运行更强的 OCR，设备性能全部留给游戏。</string>
+    <string name="pt_cloud_ocr_toggle_subtitle">在服务器 GPU 上运行更强的 OCR，不消耗设备的性能。</string>
 
-    <string name="pt_cloud_translate_toggle_title">翻译文字</string>
+    <string name="pt_cloud_translate_toggle_title">优质翻译</string>
 
     <string name="pt_cloud_translate_toggle_subtitle">内置多款付费翻译模型，每次翻译自动选用最合适的一款。</string>
+    <string name="pt_cloud_privacy_features">截图和文字绝不会被存储或出售。</string>
+    <string name="pt_cloud_features_paused_terms">已暂停，接受条款后恢复。</string>
 
     <string name="pt_cloud_ocr_row_subtitle">服务器级 OCR，设备零负载</string>
 
     <string name="pt_cloud_translate_row_subtitle_no_key">内置顶尖付费翻译模型</string>
-
-    <string name="pt_cloud_key_label">客户端密钥</string>
-
-    <string name="pt_cloud_key_hint">粘贴你收到的密钥</string>
 
     <string name="pt_cloud_status_title">服务</string>
 
@@ -1634,12 +1684,71 @@
     <string name="pt_cloud_status_not_running">未运行</string>
 
     <string name="pt_cloud_status_unreachable">无法连接</string>
+    <string name="pt_cloud_status_offline">当前离线</string>
+    <string name="pt_cloud_status_closed">已停止运营</string>
 
     <string name="pt_cloud_status_other">响应异常（<xliff:g id="http_code" example="500">%1$s</xliff:g>）</string>
 
     <string name="pt_cloud_status_checking">检查中</string>
 
     <string name="pt_cloud_status_unchecked">未检查</string>
+    <string name="pt_cloud_account_title">账号</string>
+    <string name="pt_cloud_email_label">邮箱地址</string>
+    <string name="pt_cloud_email_hint">you@example.com</string>
+    <string name="pt_cloud_free_trial">免费试用 <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g></string>
+    <plurals name="pt_cloud_code_sent_to">
+        <item quantity="other">我们已向 <xliff:g id="email" example="you@example.com">%1$s</xliff:g> 发送验证码，<xliff:g id="minutes" example="10">%2$d</xliff:g> 分钟内有效。</item>
+    </plurals>
+    <string name="pt_cloud_code_label">验证码</string>
+    <string name="pt_cloud_start_free_trial">开始免费试用</string>
+    <string name="pt_cloud_send_new_code">发送新验证码</string>
+    <string name="pt_cloud_change_email">使用其他邮箱</string>
+    <string name="pt_cloud_signed_in_with_key">已通过密钥登录</string>
+    <string name="pt_cloud_trial_until">免费试用至 <xliff:g id="end" example="Nov 3, 3:42 PM">%1$s</xliff:g></string>
+    <string name="pt_cloud_member_until">会员有效期至 <xliff:g id="end" example="Dec 5, 3:42 PM">%1$s</xliff:g></string>
+    <string name="pt_cloud_member">会员</string>
+    <string name="pt_cloud_trial_ended_on">试用已于 <xliff:g id="date" example="Nov 3">%1$s</xliff:g>结束</string>
+    <string name="pt_cloud_trial_ended">试用已结束</string>
+    <string name="pt_cloud_inactive_since">会员已于 <xliff:g id="date" example="Nov 3">%1$s</xliff:g>到期</string>
+    <string name="pt_cloud_inactive">无有效会员</string>
+    <string name="pt_cloud_terms_required">未接受条款</string>
+    <string name="pt_cloud_check_again">重新检查</string>
+    <string name="pt_cloud_join_pending">已经开通了？处理可能需要几秒钟。</string>
+    <string name="pt_cloud_terms_pending">请阅读并接受条款，以继续使用 <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>。</string>
+    <string name="pt_cloud_show_terms">查看条款</string>
+    <string name="pt_cloud_join_title">开通 <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> 会员</string>
+    <string name="pt_cloud_after_trial_title">试用结束后</string>
+    <string name="pt_cloud_join_nudge_trial">开通 Ko-fi 会员，试用结束后即可继续使用 <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>。</string>
+    <string name="pt_cloud_join_title_lapsed">继续使用 <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g></string>
+    <string name="pt_cloud_join_nudge_lapsed">开通 Ko-fi 会员即可重新开启这些功能。</string>
+    <string name="pt_cloud_join_email_hint">订阅时请使用 <xliff:g id="email" example="you@example.com">%1$s</xliff:g>，以便自动关联到此账号。</string>
+    <string name="pt_cloud_join_email_hint_no_email">订阅时请使用你的密钥所属的邮箱地址，以便自动关联到此账号。</string>
+    <string name="pt_cloud_sign_out">退出登录</string>
+    <string name="pt_cloud_sign_out_title">要从 <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> 退出登录吗？</string>
+    <string name="pt_cloud_sign_out_message">此设备上的密钥将被清除。你的账号保持不变，之后可以用你的邮箱地址重新登录。</string>
+    <string name="pt_cloud_signin_bad_email">这似乎不是有效的邮箱地址。</string>
+    <string name="pt_cloud_signin_rate_limited">请求过多。如果已收到验证码，请在下方输入；否则请在一分钟后发送新验证码。</string>
+    <string name="pt_cloud_signin_too_many_codes">今天发送到此邮箱的验证码过多。请明天再试。</string>
+    <string name="pt_cloud_signin_offline_new"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> 当前离线，暂时无法创建新账号。请稍后重试。</string>
+    <string name="pt_cloud_signin_mail_failed">无法发送邮件。请在一分钟后重试。</string>
+    <string name="pt_cloud_signin_unavailable">暂时无法登录。请稍后重试。</string>
+    <string name="pt_cloud_signin_unreachable">无法连接 <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>。请确保你已联网，然后重试。</string>
+    <string name="pt_cloud_signin_disabled">此账号无法登录。如果你认为有误，请联系 PlayTranslate 支持团队。</string>
+    <string name="pt_cloud_code_invalid">验证码无效，可能是输错了或已过期。请检查验证码，或发送新验证码。</string>
+    <string name="pt_cloud_verify_offline"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> 当前离线。你的验证码仍然有效，请在一分钟后重试。</string>
+    <string name="pt_cloud_key_not_stored">无法在此设备上存储密钥。请发送新验证码。</string>
+    <string name="pt_cloud_account_unchecked">暂时无法检查账号状态。</string>
+    <string name="pt_cloud_key_no_longer_accepted">此设备的密钥已不再有效。请重新登录。</string>
+    <string name="pt_cloud_terms_unavailable">无法加载条款。请在一分钟后重试。</string>
+    <string name="pt_cloud_terms_not_recorded">未能记录你的同意。请重试。</string>
+    <string name="pt_cloud_closed_title"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g> 已停止运营</string>
+    <string name="pt_cloud_closed_default">该服务已不再提供。</string>
+    <string name="pt_cloud_privacy_signin">你的邮箱地址用于向你发送登录验证码。</string>
+    <string name="pt_cloud_terms_title">条款与隐私</string>
+    <string name="pt_cloud_terms_agree">同意</string>
+    <string name="pt_cloud_agree_terms">我同意<xliff:g id="terms" example="Terms and Privacy">%1$s</xliff:g></string>
+    <string name="pt_cloud_terms_link">《条款与隐私》</string>
+    <string name="pt_cloud_agree_required">请同意条款以继续。</string>
 
     <string name="floating_menu_pt_cloud_available"><xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>：可用</string>
 
@@ -1969,8 +2078,6 @@
 
     <string name="tts_no_engine_row_subtitle">没有可用的语音引擎。点按以添加一个。</string>
 
-    <string name="tts_voice_picker_title">语音</string>
-
     <string name="tts_voices_section_header"><xliff:g id="language" example="JAPANESE">%1$s</xliff:g>语音</string>
     <string name="tts_speed_title">速度</string>
 
@@ -2211,6 +2318,57 @@
     <string name="audio_source_tts_name">文字转语音</string>
 
     <string name="audio_source_commons_name">Wikimedia Commons</string>
+    <string name="audio_source_voice_service_name">语音服务</string>
+    <string name="audio_error_playing">无法播放此音频</string>
+    <string name="voice_service_connect_title">连接语音服务</string>
+    <string name="voice_service_connect_subtitle">通过你自己的 API 密钥使用在线 AI 语音</string>
+    <string name="voice_service_settings_row">服务设置</string>
+    <string name="voice_service_no_voices">没有语音</string>
+    <string name="tts_no_engine_row_title">无文字转语音引擎</string>
+    <string name="voice_service_failed_title">语音服务未响应</string>
+    <string name="voice_service_failure_auth">该服务拒绝了 API 密钥。</string>
+    <string name="voice_service_failure_rate_limited">已达到该服务的速率限制，或额度已用完。</string>
+    <string name="voice_service_failure_timeout">该服务未在规定时间内响应。</string>
+    <string name="voice_service_failure_unreachable">无法连接该服务。请检查 URL 和你的网络连接。</string>
+    <string name="voice_service_failure_server_error">该服务出错（HTTP <xliff:g id="status" example="503">%1$d</xliff:g>）。</string>
+    <string name="voice_service_failure_rejected">该服务拒绝了请求（HTTP <xliff:g id="status" example="400">%1$d</xliff:g>）。</string>
+    <string name="voice_service_failure_rejected_asked">该请求指定的语音是 <xliff:g id="voice" example="Coral">%1$s</xliff:g>，模型是 <xliff:g id="model" example="gpt-4o-mini-tts">%2$s</xliff:g>。如果该服务没有其中之一，请在此处选择其他语音，或在“服务设置”中选择其他模型。</string>
+    <string name="voice_service_failure_no_request">无法发出请求。请检查该服务的 URL。</string>
+    <string name="voice_service_failure_bad_response">该服务返回的不是应用可用的音频（MP3、WAV、Ogg 或 M4A）。</string>
+    <string name="voice_service_failure_bad_list">该服务返回的内容不是应用可读取的列表。</string>
+    <string name="voice_service_row_service">服务</string>
+    <string name="voice_service_preset_openai">兼容 <xliff:g id="brand_openai" example="OpenAI">OpenAI</xliff:g></string>
+    <string name="voice_service_preset_elevenlabs">兼容 <xliff:g id="brand_elevenlabs" example="ElevenLabs">ElevenLabs</xliff:g></string>
+    <string name="voice_service_url_label">请求 URL</string>
+    <string name="voice_service_api_key_label">API 密钥</string>
+    <string name="voice_service_row_model">模型</string>
+    <string name="voice_service_model_none">请选择</string>
+    <string name="voice_service_instructions_label">朗读指令</string>
+    <string name="voice_service_advanced_header">高级</string>
+    <string name="voice_service_request_label">请求</string>
+    <string name="voice_service_request_legend">先是请求头行，然后是 JSON 正文。应用会填入 {text}、{voice}、{model}、{instructions}、{speed}、{language}、{language_name} 和 {key}。</string>
+    <string name="voice_service_manual_voices_label">语音 ID，每行一个</string>
+    <string name="voice_service_manual_voices_hint">适用于无法列出自身语音的服务。这些 ID 会添加到应用已知的该服务语音中。</string>
+    <string name="voice_service_remove">移除服务</string>
+    <string name="voice_service_remove_confirm_title">移除语音服务？</string>
+    <string name="voice_service_remove_confirm_message">该服务的 API 密钥将被删除，所有使用其语音的语言都会改回使用设备语音。</string>
+    <string name="voice_service_cannot_save_title">暂时无法保存</string>
+    <string name="voice_service_issue_bad_url">请求 URL 必须是 https 地址，或你自己局域网内的 http 地址。</string>
+    <string name="voice_service_issue_no_text">请求必须在 URL 或正文中包含 {text}。</string>
+    <string name="voice_service_issue_text_in_header">{text} 和 {instructions} 不能放在请求头行中。</string>
+    <string name="voice_service_issue_header_not_ascii">API 密钥中含有无法发送的字符。请重新粘贴，不要带空格或换行。</string>
+    <string name="voice_service_issue_no_model">请选择模型。</string>
+    <string name="voice_service_no_model_list_type_model">该服务未返回模型列表。请点按“模型”并输入模型 ID。</string>
+    <string name="voice_service_unchecked_title">无法验证密钥</string>
+    <string name="voice_service_unchecked_message">该服务未返回模型列表，因此无法验证 URL 和 API 密钥。</string>
+    <string name="voice_service_no_key_entered">未输入 API 密钥。</string>
+    <string name="voice_service_model_not_listed_title">该服务未列出此模型</string>
+    <string name="voice_service_model_not_listed_message">该服务的模型列表中没有 <xliff:g id="model" example="tts-1-hd">%1$s</xliff:g>。如果保存，语音请求可能会被拒绝。要选择该服务列出的模型，请取消并点按“模型”。</string>
+    <string name="voice_service_voices_not_taken_title">部分语音无法用于此模型</string>
+    <string name="voice_service_voices_not_taken_message">模型 <xliff:g id="model" example="tts-1">%1$s</xliff:g> 无法使用下列语音。如果保存，这些语言都会改回使用设备语音。</string>
+    <string name="voice_service_key_not_stored">无法在此设备上安全存储 API 密钥，因此未保存任何内容。</string>
+    <string name="voice_service_model_other_label">其他模型 ID</string>
+    <string name="voice_service_model_use">使用</string>
 
     <string name="audio_no_results">无结果</string>
 
@@ -2219,6 +2377,23 @@
     <string name="audio_loading">正在加载…</string>
 
     <string name="audio_error_loading">无法加载</string>
+    <string name="audio_source_local_name">android.db 文件</string>
+    <string name="tts_recordings_section_header">导入的录音</string>
+    <string name="local_audio_load_title">加载 android.db 文件</string>
+    <string name="local_audio_load_subtitle">如果你有包含语音录音的 android.db 文件，可以在此加载。此文件需要你自行获取。此功能仅适用于单词，android.db 文件中没有条目的单词会改用你的其他 TTS 设置。</string>
+    <string name="local_audio_loaded_digest">已加载 android.db 文件</string>
+    <string name="local_audio_importing_title">正在加载 android.db 文件</string>
+    <string name="local_audio_copying_message">已复制 <xliff:g id="copied" example="1.2 GB">%1$s</xliff:g> / <xliff:g id="total" example="5.8 GB">%2$s</xliff:g></string>
+    <string name="local_audio_checking_message">正在检查文件…</string>
+    <string name="local_audio_read_problem">读取此文件失败：<xliff:g id="cause" example="database disk image is malformed">%1$s</xliff:g></string>
+    <string name="local_audio_remove">移除 android.db 文件</string>
+    <string name="local_audio_remove_confirm_title">移除 android.db 文件？</string>
+    <string name="local_audio_remove_confirm_message">该文件将从应用中删除，所有单词都会重新使用文字转语音朗读。</string>
+    <string name="local_audio_import_failed_title">无法加载该文件</string>
+    <string name="local_audio_error_not_database">这不是包含语音录音的 android.db 文件。</string>
+    <string name="local_audio_error_invalid_format">此数据库不是包含语音录音的 android.db 文件（<xliff:g id="reason" example="no such table: android">%1$s</xliff:g>）。</string>
+    <string name="local_audio_error_incomplete">此文件不完整：只有 <xliff:g id="have" example="2.1 GB">%1$s</xliff:g>，完整文件应为 <xliff:g id="expected" example="5.8 GB">%2$s</xliff:g>。请获取完整文件后重新加载。</string>
+    <string name="local_audio_error_copy">无法复制该文件。</string>
 
     <string name="process_text_translation_failed">无法翻译所选文字。请检查你的网络连接或语言设置。</string>
 
@@ -2245,6 +2420,32 @@
     <string name="pos_abbreviation">缩写</string>
     <string name="pos_contraction">缩略形</string>
     <string name="pos_auxiliary">助动词</string>
+    <string name="pos_transitive">他动词</string>
+    <string name="pos_intransitive">自动词</string>
+    <string name="pos_copula">系词</string>
+    <string name="pos_unclassified">未分类</string>
+    <string name="pos_suru_verb">サ变动词</string>
+    <string name="pos_su_verb">文语サ变动词</string>
+    <string name="pos_kuru_verb">カ变动词</string>
+    <string name="pos_zuru_verb">ずる动词</string>
+    <string name="pos_ichidan_verb">一段动词</string>
+    <string name="pos_ichidan_verb_special">一段动词（特殊）</string>
+    <string name="pos_godan_verb">五段动词</string>
+    <string name="pos_godan_verb_special">五段动词（特殊）</string>
+    <string name="pos_godan_verb_irregular">五段动词（不规则）</string>
+    <string name="pos_nidan_verb">二段动词</string>
+    <string name="pos_yodan_verb">四段动词</string>
+    <string name="pos_nu_verb">ナ变动词</string>
+    <string name="pos_ri_verb">ラ变动词</string>
+    <string name="pos_i_adjective">い形容词</string>
+    <string name="pos_na_adjective">な形容词</string>
+    <string name="pos_no_adjective">の形容词</string>
+    <string name="pos_taru_adjective">たる形容词</string>
+    <string name="pos_ku_adjective">ク活用形容词</string>
+    <string name="pos_shiku_adjective">シク活用形容词</string>
+    <string name="pos_nari_adjective">ナリ活用形容动词</string>
+    <string name="pos_prenominal">连体词</string>
+    <string name="pos_to_adverb">と副词</string>
 
     <!-- Misc register/usage tags (short chips); see values/strings.xml. -->
     <string name="misc_kana_only">仅用假名</string>

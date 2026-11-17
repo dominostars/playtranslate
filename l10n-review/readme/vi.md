@@ -126,3 +126,25 @@ Clean areas: The lead's verb thêm is the app's (`add_online_service_title` Thê
 ### Disposition (2026-10-14)
 
 No findings; nothing to apply.
+
+## Delta review 2026-11-16 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] vi -> readme/README.vi.md`, `warning 39 bold spans, English has 38`). This is the extra span the 2026-10-08 review explained (install step 3's **Cài đặt**); this delta adds no bold span. **No 🛑 issues.**
+
+No findings.
+
+Checked: `git diff readme/README.vi.md` touches only line 185, the Bilibili bullet. The link target is now `https://github.com/bilibili/Index-Translate`, byte-identical to the English, and the link text `index-translate.bilibili.com` is unchanged. The new clause «, có thể chỉ khả dụng tạm thời» says the English "May be temporary" in the sense the brief gives (the free service may not stay available): "may only be available for a while". It joins the bullet with a comma, as «miễn phí» and «không cần khóa API» already do, where English starts a new sentence after "needed.". That follows the file's own bullet pattern, which uses commas where English uses a dash (", chọn mô hình ngay trong ứng dụng" on the Groq, OpenRouter and Claude bullets). Lowercase after the comma, no final period, as English has none. Diacritics complete, NFC.
+
+### Disposition (2026-11-16)
+
+No findings; nothing to apply.
+
+### Round 2 (2026-11-16)
+
+Checker: `readme_l10n_check.py vi` -> `[PASS] vi -> readme/README.vi.md` (`warning 39 bold spans, English has 38`, the install-step **Cài đặt** span explained on 2026-10-08).
+
+No findings.
+
+`git diff readme/README.vi.md` changes one line, 185, the Bilibili bullet, and nothing else.
+- The link target is `https://github.com/bilibili/Index-Translate`, byte-identical to README.md line 185. The link text `index-translate.bilibili.com` is unchanged, as in English.
+- «, có thể chỉ khả dụng tạm thời» says "May be temporary". It joins with a comma after «không cần khóa API», as the file's other bullets do. It has no final period, matching English. Diacritics are complete.

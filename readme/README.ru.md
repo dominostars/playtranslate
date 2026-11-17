@@ -182,7 +182,7 @@ PlayTranslate переводит с **26 языков игры** (на них н
 - **Groq**: [console.groq.com](https://console.groq.com/keys) — модель выбирается прямо в приложении
 - **OpenRouter**: [openrouter.ai](https://openrouter.ai/keys) — модель выбирается прямо в приложении
 - **Claude**: [platform.claude.com](https://platform.claude.com/settings/keys) — модель выбирается прямо в приложении
-- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://index-translate.bilibili.com/) — бесплатно, без API-ключа
+- **Bilibili Index-Translate**: [index-translate.bilibili.com](https://github.com/bilibili/Index-Translate) — бесплатно, без API-ключа. Доступ может быть временным
 - **Свой**: любой другой сервис с API, совместимым с OpenAI, — укажите URL вашего сервера
 
 ## Дополнительно: карточки Anki

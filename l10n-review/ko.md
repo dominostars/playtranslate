@@ -1281,3 +1281,111 @@ Fresh read of all 39 by surface, against the file:
 #### Verdict (round 2)
 
 **PASS.** 0 ❌, 0 ⚠️, 0 💬. The one round-1 change landed byte-exact, matches the Disposition, and follows the file's parenthesis rule. Nothing is open in the ko translation. Outside it, the cooldown line's English description stays with the developer.
+
+## Delta review 2026-11-16 (Ask and word explain, voice service, imported recordings, PlayTranslate Cloud account, Anki notes, Japanese part-of-speech labels: 206 new keys and 7 changed)
+
+Mechanical layer: `mech_check.py --locale ko --aapt2` -> 213 keys checked, 0 errors, 1 warning (`pt_cloud_email_hint` identical to English: `name@example.com`, a sample address, correct to keep), aapt2 ok; `l10n_diff.py` against `l10n-sync` -> missing=0 orphan=0 modified=7 (the 7 MODIFIED of this delta, each already carrying the new English meaning). **No 🛑 issues.**
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| pt_cloud_join_nudge_trial | ⚠️ | 체험 기간이 끝난 후에도 <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>을(를) 계속 사용하려면 Ko-fi 멤버십을 추가하세요. | 체험 기간이 끝난 후에도 <xliff:g id="service" example="PlayTranslate Cloud">%1$s</xliff:g>을(를) 계속 사용하려면 Ko-fi 멤버십에 가입하세요. | "Add a membership" calqued: 멤버십을 추가하다 is not how Korean speaks of taking out a paid membership (it is 멤버십에 가입하다, as YouTube's channel memberships say), and in Korea "멤버십 추가" is the wallet action of adding a loyalty card. 가입 also lines the card up with its own button 「… 가입하기」 and 「이미 가입하셨나요?」. |
+| pt_cloud_join_nudge_lapsed | ⚠️ | 이 기능들을 다시 켜려면 Ko-fi 멤버십을 추가하세요. | 이 기능들을 다시 켜려면 Ko-fi 멤버십에 가입하세요. | The same calque on the lapsed card, above the same Join button; same fix so both cards say one thing. |
+| ask_no_llm_message | 💬 | 질문하면 이 문장에 관한 질문이 AI 모델에 전송됩니다. 번역 서비스에서 온라인 AI 서비스를 추가하거나 온디바이스 모델을 사용 설정하세요. | 질문 기능은 이 문장에 관한 질문을 AI 모델에 보냅니다. 번역 서비스에서 온라인 AI 서비스를 추가하거나 온디바이스 모델을 사용 설정하세요. | 질문하면 … 질문이 says 질문 twice in one clause. English names the section ("Ask sends…"), and 질문 기능 does that with the header's own word 질문; the second sentence and the 번역 서비스 cross-reference stay as they are. |
+| pt_cloud_code_invalid | 💬 | 코드가 작동하지 않았습니다. 잘못 입력했거나 만료되었을 수 있습니다. 코드를 확인하거나 새 코드를 보내세요. | 유효하지 않은 코드입니다. 잘못 입력했거나 만료되었을 수 있습니다. 코드를 확인하거나 새 코드를 보내세요. | 코드가 작동하지 않았습니다 is a word-for-word "didn't work". Korean sign-in screens say a code is 유효하지 않다, which is also the word `pt_cloud_code_sent_to` (유효합니다) and `pt_cloud_verify_offline` (아직 유효하니) use for the same code. |
+| voice_service_issue_header_not_ascii | 💬 | API 키에 보낼 수 없는 문자가 있습니다. 공백이나 줄바꿈 없이 다시 붙여 넣으세요. | API 키에 보낼 수 없는 문자가 있습니다. 공백이나 줄바꿈 없이 다시 붙여넣으세요. | The file writes "paste" as one word: `hint_deepl_key` 붙여넣으세요 and `image_import_paste_image` 붙여넣기, which is also Android's own Korean menu word. Both spellings are correct; this one is the file's. |
+| pos_zuru_verb | 💬 | ずる 동사 | ずる동사 | Consistency on the POS line: every class named by a kana ending is attached (い형용사, な형용사, の형용사, たる형용사, と부사), and ずる is the only one spaced. The spaced ones are those named by a class word (5단 동사, サ변 동사, ク활용 형용사), so either keep that split or leave it; the attached form follows the kana-ending pattern. |
+
+### Clean areas (checked, no findings)
+
+**Ask section and the word page's "In this sentence" group.** The header 질문 sits with the other section names 원문 / 번역 / 단어 as a bare noun, and `cd_toggle_ask_visibility` 질문 표시 전환 follows 번역 표시 전환 / 단어 표시 전환 exactly. `ask_question_hint` 질문을 직접 입력하세요… measures 170.4 dp at 16 sp (Noto Sans CJK, against 172.1 dp for the English); the field gets the card width less 16 + 4 dp padding and the 36 dp send button, so it fits whole at 360 dp. The status family reads as one: 질문하는 중… / Gemini에 질문하는 중… (에 is invariant, and right for an inanimate service), `ask_answered_by` 「%1$s 답변」 built like `translation_source_label` 「%1$s 번역」, `ask_answer_cut` 이 답변은 길이 제한에 도달하여 중간에 잘렸습니다, `ask_out_of_scope` with 은(는), `ask_failed` 답변을 받지 못했습니다 followed by the pill's reason line, `ask_retry` 다시 시도 = `update_error_retry`. The spoiler line keeps ⚠ and says the hidden translation may show (숨겨 둔 번역 내용이 드러날 수 있습니다). The preset chip 문법 분석 is 46.8 dp at 12 sp medium in a one-line chip (the English is 112.9 dp). `cd_word_explain` 이 문장에서의 쓰임 설명, `word_explain_title` 이 문장에서의 쓰임 (row title and group header) and the row `word_explain_ask` 이 단어의 쓰임 설명하기 use one noun, 쓰임; `cd_ask_close` 답변 닫기 also works for the X on a word row's answer and on the group. The alert as a set: the title 질문하려면 AI 모델이 필요합니다 (the file also has sentence titles, e.g. `accessibility_dialog_title`), the body (one 💬 above) and the buttons 번역 서비스 + 취소; 번역 서비스 in the body and on the button byte-match `settings_cell_translation_services`.
+
+**Word list, definitions, POS labels.** `section_words_count` 단어 · 6 and `dictionary_title_builtin` 내장 사전 (the term `yomitan_single_dict_subtitle` already uses for the built-in dictionary) are short, and in the WebView title neither needs the capitals the comment mentions. `definitions_need_webview` keeps the name Android System WebView with 가 (read as 웹뷰, vowel-final); I could not check here whether a Korean device labels the app "Android 시스템 WebView", so this is not raised. POS: no label holds ·, ・ or /; 타동사 / 자동사, 1단 / 5단 / 2단 / 4단 동사, サ변 / カ변 / ナ변 / ラ변 동사 (サ행·カ행 변격, as Korean grammars of Japanese shorten them), 문어 サ변 동사 for the classical す verbs, い / な / の / たる형용사, ク활용 / シク활용 형용사 and ナリ활용 형용동사 (the classical-grammar names: ナリ活用 belongs to the 형용동사, so 형용동사 is right there even beside な형용사), 연체사 (連体詞), と부사, 계사 (繫辭, the copula), 미분류. The (특수) / (불규칙) suffixes attach to the word before them, as the file's parentheses do. These are the terms Korean grammars of Japanese use. Where none is settled (ずる), the kana stays, as the comment allows. Read as a line: 명사 · サ변 동사 · 타동사.
+
+**Anki.** User's own note = 메모, kept apart from Anki's note object 노트 (`anki_first_field_unmapped`). The header `anki_group_notes`, the picker option `anki_content_notes` and the alert body's “메모” are one word, as the comments require. The alert as a set: 메모를 넣을 필드가 없음 / … 메모 없이 카드를 저장하시겠습니까? / 그래도 저장 (= `llm_prompt_save_anyway`) + 취소. The Yomitan rows follow the existing desc style (Lapis의 “PitchPosition”… 에 사용합니다): 정의(Yomitan 형식), 주 사전(Yomitan 형식), Yomitan이 (fixed brand, ㄴ-final), Lapis의, 내 사전 순서 (the file's 내 convention). Field names Glossary / MainDefinition are quoted as written. `anki_added_voice_fell_back` matches the sibling toasts' 「Anki에 추가됨(…)」 shape, and its 음성 서비스 is `audio_source_voice_service_name`.
+
+**Capture overlay and icon actions.** 정의 and 없음 fit the four-segment chooser beside 번역 / 후리가나 / 병음. `capture_overlay_pill_collapsed_cd` 오버레이: %1$s. 탭하여 변경하세요. reads correctly with each mode name dropped in, including 오버레이: 없음. `icon_action_tap_to_lookup` 탭하여 단어 검색 켜기 sits with the other action titles (빠른 메뉴 열기, 화면 캡처, 자동 번역 시작/중지), takes 단어 검색 from `onboarding_a11y_row_lookup_title`, and works as the Hotkeys row and dialog title.
+
+**PlayTranslate Cloud.** Read as state families across the pill, the hub digest and the page:
+- trial: 「%s까지 무료 체험」 on the hub and the card.
+- trial ended: 무료 체험 종료 on the pill; 체험 기간 종료 on the hub and the card, and 「11월 3일에 체험 기간 종료」. The English differs the same way ("Free trial ended" / "Trial ended").
+- inactive: 멤버십 비활성 on the pill and the hub, 「11월 3일부터 멤버십 비활성」 and 활성 멤버십 없음 on the card.
+- terms: 약관 미동의 on the pill, the hub and the notice card.
+- closed: 서비스 종료 on the pill, 종료됨 as the status, and 「… 서비스가 종료되었습니다」.
+
+Each state reads as one state, and the states stay apart: 체험 기간 종료 and 서비스 종료 have different nouns, and 중지됨 (not running) is distinct from 일시 중지됩니다 (paused for terms). The pills are noun-final like the existing ones (크레딧 소진, 일일 한도 도달). With "PlayTranslate Cloud: " they measure 199 to 215 dp at 14 sp, against 256 to 262 dp for the English, so no pill is longer than its English. The toolbar titles at Material 3 TitleLarge (22 sp, contentInsetStartWithNavigation 0): 이용약관 및 개인정보처리방침 is 273.0 dp and PlayTranslate Cloud(알파) is 251.5 dp. The English alpha title is 272.8 dp, so the terms title is as wide as an English title that already ships, and both fit after the 56 dp navigation button at 360 dp. `pt_cloud_agree_terms` filled in reads 이용약관 및 개인정보처리방침에 동의합니다, the link byte-matching `pt_cloud_terms_title`, in a row that wraps (no maxLines). The other page strings read naturally in 합니다체: sign-in, code, the eleven notices, sign-out (title, message, 로그아웃), join pending (이미 가입하셨나요? 반영되기까지 몇 초 걸릴 수 있습니다), the terms notices, the privacy notes, and the closed card. The Try for Free button 「PlayTranslate Cloud 무료 체험하기」 is 193.7 dp at 13 sp, shorter than the English, on a full-width button. The 7 MODIFIED keys: the old meanings are gone (화면 텍스트 인식 / 텍스트 번역 / 기기 성능은 모두 게임에 쓰입니다), and the new title, subtitle and 프리미엄 번역 match the page's 서버급 / 이미지 처리 vocabulary. "AI" is one Latin word on the chip, in 고급 AI 설정, in the two AI 번역기 subtitles, and in AI 모델 / AI 서비스. Only the debug row keeps LLM.
+
+**Voice service.** Text-to-speech page rows: 음성 서비스 연결 with 내 API 키로 온라인 AI 음성 사용, 서비스 설정, 음성 없음, and 텍스트 음성 변환 엔진 없음 (the engine term of `tts_no_engine_dialog_message`). The group name 음성 서비스 does not collide with the device voices' 온라인 / 오프라인. Service page: 서비스 / OpenAI 호환 / ElevenLabs 호환, 요청 URL, API 키 (= `llm_backend_api_key_label`), 모델 with the value 선택, 음성 지시문 (지시문 as in the system-prompt subtitle), 고급, 요청. The legend keeps all eight tokens byte-exact ({text} {voice} {model} {instructions} {speed} {language} {language_name} {key}), with no particle on {key}. Alerts as sets: the remove title, message and 서비스 제거 button; Can't save yet with the five issue lines; the unchecked, model-not-listed and voices-not-taken alerts, each with 그래도 저장 + 취소; the key-not-stored message. Cross-references byte-match: “모델” (`voice_service_row_model`) in two alerts, 서비스 설정 (`voice_service_settings_row`), 취소 (`btn_cancel`). The failure lines read as one family of past-tense statements about 서비스 (거부했습니다, 응답하지 않았습니다, 연결할 수 없습니다, 오류가 발생했습니다(HTTP 503)), and `_rejected_asked` reads correctly under the HTTP line with Coral and gpt-4o-mini-tts dropped in.
+
+**Imported recordings.** No string names a language, the file's community name or a website. 「이 파일은 직접 구해야 합니다」 carries "source it yourself". Load is 불러오다 (row, progress title, digest, failure title), kept apart from the group header's 가져온 녹음, as English keeps Load apart from Imported. Progress: 「5.8 GB 중 1.2 GB 복사됨」, mapped correctly (%2$s total first, as `install_downloading_definitions_with_bytes` does), then 파일 확인 중…. Remove is 제거 for the button, title and cd, and the file is 삭제 in the message, as English separates remove and delete. Failure lines: not-a-database, invalid format with the English reason in parentheses, 「전체 5.8 GB 중 2.1 GB뿐입니다」 (have and expected mapped correctly), the copy failure, and 「이 파일을 읽지 못했습니다: …」 with the system's English after the colon.
+
+### Source-side notes
+
+- `voice_service_failed_title` "The voice service did not answer" titles every voice-service failure (`showVoiceServiceFailure`, `VoiceServiceUi.kt`), and most of the bodies under it say the service did answer: refused the API key, rate limit used up, a server error with an HTTP status, refused the request, answered with no usable audio. `voice_service_failure_no_request` says no request was even sent. Every locale carries this contradiction faithfully. A neutral title ("The voice service failed" / "Couldn't use the voice service") would fit every body.
+
+### Korean appendix
+
+- **After variable placeholders**, the combined forms are used everywhere a particle depends on the final sound: 은(는) ×2 (`ask_out_of_scope`, `pt_cloud_intro`), 을(를) ×2 (`pt_cloud_terms_pending`, `pt_cloud_join_nudge_trial`), 이(가) ×3 (`pt_cloud_signin_offline_new`, `pt_cloud_verify_offline`, `voice_service_model_not_listed_message`), (으)로 ×2 (`pt_cloud_code_sent_to`, `pt_cloud_join_email_hint`). The other contact points take invariant particles: 에 (`ask_status_asking`, `pt_cloud_signin_unreachable`, `pt_cloud_agree_terms`, `pt_cloud_trial_ended_on`), 에서 (`pt_cloud_sign_out_title`), 까지 ×3, 부터, 뿐입니다 (`local_audio_error_incomplete`), and 입니다 after the model id (copula, either final). Five strings avoid a particle by adding a head noun: 「%1$s 모델은」, 「%1$s 서비스가」, 「%1$s 무료 체험하기」, 「%1$s 가입하기」, 「%1$s 계속 사용하기」.
+- **After fixed names**, direct particles: Yomitan이 (ㄴ-final) and Yomitan용으로, Lapis의, Anki에, WebView가 (웹뷰, vowel-final), and PlayTranslate 지원팀에.
+- **After literal tokens** (not runtime variables, so fixed particles are right): {text}가 and {text}와 (read 텍스트, vowel-final), {instructions}는 (read 인스트럭션스, vowel-final). {key} takes no particle.
+- **Dates and times** dropped in as Korean formats them: 「11월 3일 오후 3:42까지 무료 체험」, 「오후 3:42까지 무료 체험」 (hub, same day), 「2025년 11월 3일에 체험 기간 종료」, 「12월 5일 오후 3:42까지 멤버십 이용」. All read naturally.
+- **Plural**: `pt_cloud_code_sent_to` has `other` only, the Korean CLDR set; 「10분 동안 유효합니다」 has no counter problem at 1.
+- **Register**: 합니다체 in bodies; -시- appears only in questions to the user (가입하셨나요?, 저장하시겠습니까?, 제거하시겠습니까?, 로그아웃하시겠습니까?), as in the file's existing confirmations. Titles and toasts that are noun-final (~음 / ~됨 / ~없음) follow the file's own split.
+- **띄어쓰기**: 질문하는 중, 불러오는 중, 확인 중, 이용 중 (dependent noun spaced); 1분 후에; 한 줄에 하나씩; 서버급 attached. Opening parentheses attach to the word before them (Cloud(알파), 음성 ID(한 줄에 하나씩), 발생했습니다(HTTP 503)), per the file's rule. Two 💬 above cover the only exceptions found: 붙여 넣으세요 and ずる 동사.
+- **Correction to this section's mechanical line:** the value of `pt_cloud_email_hint` is `you@example.com` (identical in English and Korean), not `name@example.com` as written above; the warning's judgment stands.
+
+### Disposition (2026-11-16)
+
+All 6 findings applied byte-exact from the table (2 ⚠️: `pt_cloud_join_nudge_trial`, `pt_cloud_join_nudge_lapsed`; 4 💬: `ask_no_llm_message`, `pt_cloud_code_invalid`, `voice_service_issue_header_not_ascii`, `pos_zuru_verb`). After applying: mech_check 213 keys, 0 errors (the email hint warning stands), aapt2 ok; only delta keys changed. The source-side note on `voice_service_failed_title` is reported to the developer, not fixed here.
+
+### Round 2 (2026-11-16), final review after applying round 1
+
+Mechanical layer: `mech_check.py --locale ko --aapt2` -> `ko: 213 keys checked, 0 errors, 1 warnings, aapt2 ok` (the warning is `pt_cloud_email_hint` identical to English, `you@example.com`, correct to keep); `l10n_diff.py` against `git show l10n-sync:…/values/strings.xml` -> `values-ko   missing=0  orphan=0  modified=7` (the 7 changed keys, each already carrying the new English meaning); README `readme_l10n_check.py ko` -> `[PASS] ko -> readme/README.ko.md`.
+
+Round-1 changes checked (each value compared byte for byte with the round-1 table's `suggested` cell by script; all six match, and no old value survives in the file):
+- `pt_cloud_join_nudge_trial`: landed. Neighbours agree: the Join button 「%1$s 가입하기」 and `pt_cloud_join_pending` 이미 가입하셨나요? now say the same verb; `pt_cloud_join_email_hint` keeps 구독 for "Subscribe", as English keeps the two words apart.
+- `pt_cloud_join_nudge_lapsed`: landed; both nudge cards now say 「Ko-fi 멤버십에 가입하세요」.
+- `ask_no_llm_message`: landed; 질문 기능 uses the header's word, 번역 서비스 still byte-matches `settings_cell_translation_services` and the button `ask_no_llm_open_services`. No other string quoted the old body.
+- `pt_cloud_code_invalid`: landed; 유효하지 않은 matches 유효합니다 (`pt_cloud_code_sent_to`) and 유효하니 (`pt_cloud_verify_offline`), and 새 코드를 보내세요 still names the 새 코드 보내기 button as prose.
+- `voice_service_issue_header_not_ascii`: landed; the file now has one spelling, 붙여넣- (`hint_deepl_key`, `image_import_paste_image`), and no 붙여 넣 remains anywhere.
+- `pos_zuru_verb`: landed; ずる동사 now attaches like the other kana-named classes (い형용사, な형용사, の형용사, たる형용사, と부사), while the class-word names (5단 동사, サ변 동사, ク활용 형용사) stay spaced.
+
+#### Findings (round 2)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| icon_action_tap_to_lookup | ⚠️ | 탭하여 단어 검색 켜기 | 탭으로 단어 검색 켜기 | Wrong on screen, though fine on its own. `HoldAction.TAP_TO_LOOKUP` is offered on every language (`IconGestureBindings.kt` :103/:117), and `IconGesturesSettingsActivity.renderSection` draws it as a choice row under the 길게 누르기 header. In this file 탭하여 always means "tap to …" for the gesture being made: all 9 other uses are instructions (`notif_text`, `capture_overlay_pill_collapsed_cd`, `tts_no_engine_row_subtitle`, …), and two are the Hotkeys page's own row titles 탭하여 화면 캡처 / 탭하여 자동 번역 시작/중지 ("Tap to capture screen"). So under Hold the row reads "Tap to turn on word lookup", and none of the other Hold options names a gesture. 탭으로 단어 검색 makes "tap" the means of the mode ("look up words by tapping", as in 음성으로 검색), which is how English uses it in the mode name "tap-to-lookup". It still reads correctly as the Hotkeys row and dialog title, and 단어 검색 (`onboarding_a11y_row_lookup_title`) is kept. Both measure 143.2 dp at 16 sp; the choice row's title has no maxLines. Round 1 cleared this key against the Hotkeys page only. |
+
+Fresh read of all 213 keys by screen, against the strings already on each screen:
+
+**Ask section and the "In this sentence" group.** 질문 sits as a bare noun with 원문 / 번역 / 단어, and its eye toggle follows the sibling toggles. The status family (질문하는 중…, Gemini에 질문하는 중…, 「Gemini 답변」 built like 「%1$s 번역」), the cut-off line, the spoiler line with ⚠, the out-of-scope line with 은(는), 답변을 받지 못했습니다 and 다시 시도 (= `update_error_retry`) all read naturally. I read the alert as one unit: its sentence title, the body as applied, and the buttons 번역 서비스 + 취소. 쓰임 is the one noun across `cd_word_explain`, `word_explain_title` and `word_explain_ask`.
+
+**Word list, definitions, POS.** 단어 · 6 and 내장 사전 fit. I read the POS line with real tags dropped in (명사 · サ변 동사 · 타동사, 5단 동사(특수) · 자동사). No label holds a separator. The labels use the Korean grammar terms for Japanese classes (1단/5단/2단/4단, サ변/カ변/ナ변/ラ변, ク활용/シク활용, ナリ활용 형용동사, 연체사, 계사, 미분류), in the register of the existing `pos_*` labels (명사, 조동사, 분류사).
+
+**Anki.** 메모 (the user's note) stays apart from 노트 (Anki's note object). The header, the picker option and the alert's “메모” are one word. The alert reads as one unit with 그래도 저장 (= `llm_prompt_save_anyway`). The Yomitan option descriptions use the existing desc style with fixed particles after the brands (Yomitan이, Lapis의, Yomitan용으로). `anki_added_voice_fell_back` has the 「Anki에 추가됨(…)」 shape of its five sibling toasts.
+
+**Capture overlay, icon actions, hotkeys.** 정의 / 없음 fit the four-segment chooser with 번역 / 후리가나 / 병음. 「오버레이: 없음. 탭하여 변경하세요.」 reads correctly with each mode name dropped in. The one finding is above.
+
+**PlayTranslate Cloud.** I read each state family as a set across the pill, the hub digest and the card:
+- trial: 「11월 3일까지 무료 체험」 / 「11월 3일 오후 3:42까지 무료 체험」;
+- trial ended: 무료 체험 종료 / 체험 기간 종료 / 「11월 3일에 체험 기간 종료」;
+- inactive: 멤버십 비활성 / 「11월 3일부터 멤버십 비활성」 / 활성 멤버십 없음;
+- terms: 약관 미동의 everywhere;
+- closed: 서비스 종료 / 종료됨 / 「… 서비스가 종료되었습니다」.
+
+Different states keep different nouns. Particles after the service name and the email are combined forms (은(는), 을(를), 이(가), (으)로). `pt_cloud_agree_terms` with `pt_cloud_terms_link` filled in reads 이용약관 및 개인정보처리방침에 동의합니다, which byte-matches the page title. `pt_cloud_code_sent_to` has `other` only, the Korean CLDR set. The sign-in notices, sign-out confirmation, terms notices and privacy notes are consistent 합니다체, with -시- only in the questions. The 7 MODIFIED keys carry the new meanings. AI is one Latin word on the chip, the header, both AI 번역기 subtitles and the Ask alert, and LLM survives only in the debug row (`settings_debug_force_mmap_weights`) and in section-banner comments.
+
+**Voice service.** The Text-to-speech page rows, the service page fields and 고급 / 요청 read naturally. The legend keeps all eight tokens byte-exact, with no particle on {key}. Fixed particles after literal tokens are correct ({text}가, {text}와, {instructions}는). I read each alert as title + body + buttons. The failure lines read as one family of past-tense statements. Cross-references byte-match: “모델” = `voice_service_row_model`, 서비스 설정 = `voice_service_settings_row`. 「요청에 지정된 음성은 Coral, 모델은 gpt-4o-mini-tts입니다」 reads correctly with real values dropped in. The title/body contradiction on `voice_service_failed_title` is round 1's source-side note, still with the developer.
+
+**Imported recordings.** No string names a language, the file's community name or a website. The terms stay apart: 불러오다 (Load) vs 가져온 (Imported), and 제거 (Remove) vs 삭제 (deleted, in the message). I read the progress and failure lines with sizes dropped in: 「5.8 GB 중 1.2 GB 복사됨」 and 「전체 5.8 GB 중 2.1 GB뿐입니다」, with %1$s and %2$s mapped correctly in both. The cause and reason spans keep the system's English after the colon or inside the parentheses.
+
+**README.** The diff of `readme/README.ko.md` is the one Bilibili Index-Translate line. Its link target is `https://github.com/bilibili/Index-Translate`, byte-identical to `README.md` line 185. The link text is unchanged, and "May be temporary" is carried as 한시적으로만 제공될 수 있음 inside the bullet's existing parenthesis.
+
+#### Verdict (round 2)
+
+**FAIL**: 🛑 0 / ❌ 0 / ⚠️ 1 / 💬 0. The one open ⚠️ is `icon_action_tap_to_lookup`: under the floating icon's Hold header it reads as "Tap to …". The suggested 탭으로 단어 검색 켜기 is a paste-in fix and changes no width. With it applied, the locale passes.
+
+#### Disposition (round 2, 2026-11-16)
+
+The open ⚠️ applied byte-exact at the developer's request: `icon_action_tap_to_lookup` 「탭으로 단어 검색 켜기」. With it no ⚠️ is open, so the locale passes. After applying: mech_check 0 errors, aapt2 ok, only delta keys changed, `:app:processDebugResources` green.

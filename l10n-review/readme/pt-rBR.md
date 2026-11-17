@@ -119,3 +119,29 @@ Clean areas: The intro took the English change from "A real-time…" to "Real-ti
 ### Disposition (2026-10-14)
 
 No findings; nothing to apply.
+
+## Delta review 2026-11-16 (Bilibili Index-Translate bullet)
+
+Mechanical layer: `readme_l10n_check.py` -> PASS (`[PASS] pt-rBR -> readme/README.pt-BR.md`). **No 🛑 issues.**
+
+No findings. I checked the following:
+- `git diff readme/README.pt-BR.md` touches only line 185, the Bilibili bullet.
+- The URL is now `https://github.com/bilibili/Index-Translate`, byte-identical to English, and the link text `index-translate.bilibili.com` is unchanged.
+- The new clause «pode ser temporário» joins the existing parenthesis with a semicolon: «(gratuito, sem chave de API; pode ser temporário)». That keeps the bullet in the parenthesis form of its siblings («(você escolhe o modelo no app)») where English uses a dash and a second sentence.
+- «temporário» agrees with the service (masculine, «o serviço»).
+- The phrasing is the plain pt-BR for "May be temporary", with no final period, as in English.
+
+### Disposition (2026-11-16)
+
+No findings; nothing to apply.
+
+### Round 2 (2026-11-16)
+
+Mechanical layer: `readme_l10n_check.py pt-rBR` -> `[PASS] pt-rBR -> readme/README.pt-BR.md`.
+
+No findings. I checked the following:
+- `git diff readme/README.pt-BR.md` changes one line, 185, the Bilibili bullet.
+- The URL is `https://github.com/bilibili/Index-Translate`, byte-identical to English line 185, and the link text `index-translate.bilibili.com` is unchanged.
+- "May be temporary" is the clause «pode ser temporário», joined into the existing parenthesis with a semicolon: «(gratuito, sem chave de API; pode ser temporário)». That keeps the parenthesis form of the sibling bullets.
+- «temporário» agrees with the masculine service.
+- There is no final period, as in English.
