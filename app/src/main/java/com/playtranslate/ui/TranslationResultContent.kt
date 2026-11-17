@@ -260,9 +260,6 @@ class TranslationResultContent(
             ttsAlertTarget = host.ttsAlertTarget,
             binder = binder,
             screenSize = { host.screenSize() },
-            // The review looks a word up again by itself, so every row
-            // offers it, entry or not.
-            offersAnki = { true },
             opensWithoutEntry = host.opensWithoutEntry,
             deckBadges = true,
             onAskNeedsLlm = { host.onAskNeedsLlm() },

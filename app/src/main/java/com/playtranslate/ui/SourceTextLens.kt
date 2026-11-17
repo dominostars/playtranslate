@@ -53,10 +53,6 @@ class SourceTextLens(
     private val binder: TranslationSectionBinder,
     /** The display's size in px, read at tap time (rotation-safe). */
     private val screenSize: () -> Point,
-    /** Whether a unit's row offers Add to Anki. Asked of every section, so
-     *  a surface may key it on the unit's resolved entry (false leaves the
-     *  row display + speak only). */
-    private val offersAnki: (unit: SourceWordLookup.Resolved) -> Boolean,
     /** Whether the tapped unit opens even without a dictionary entry: the
      *  over-game surfaces open the sentence/word view for any unit; the
      *  in-app page only opens into a matched entry (no entry, nothing to
@@ -203,9 +199,10 @@ class SourceTextLens(
         // unit's own word, reading and the form it was found as.
         val sentence = presentedText?.let { askSentence(it, Prefs(ctx).langContext()) }
         // Every section, the tapped unit's and a related one's, is built
-        // here and nowhere else.
+        // here and nowhere else. Every one offers Anki, a unit with no entry
+        // too: its card goes with no definition.
         fun section(unit: SourceWordLookup.Resolved, opens: Boolean) = LensSection(
-            unit.data, unit.label, opens = opens, anki = offersAnki(unit),
+            unit.data, unit.label, opens = opens, anki = true,
             explain = sentence?.let { WordInSentence(it, unit.word, unit.reading, listOfNotNull(unit.surface)) },
         )
         val primary = section(resolved, opens = canOpen)

@@ -352,6 +352,9 @@ class SourceLensActions(
         /** The text the editor's Notes boxes start with
          *  ([LensActionContext.explanation]'s); "" with none. */
         val notes: String,
+        /** The row's [lensRowCardTarget]: the word as an unlisted target for
+         *  a row with no entry, null for one with an entry. */
+        val target: CardTarget?,
     )
 
     private fun openSentenceInApp(cur: LensActionContext) =
@@ -359,14 +362,13 @@ class SourceLensActions(
 
     private fun openAnkiReviewForLens(cur: LensActionContext) {
         val word = cur.word ?: return
-        val entry = cur.entry ?: return
         val ankiManager = AnkiManager(context)
         if (!ankiManager.isAnkiDroidInstalled()) {
             showAnkiNotInstalled?.invoke()
                 ?: showAnkiNotInstalledDialog(lens.rawCtx, overlayHost, lens.wm, displayId)
             return
         }
-        val snap = snapshotLensFieldsForAnki(word, entry, cur)
+        val snap = snapshotLensFieldsForAnki(word, cur.entry, cur)
         CaptureBackendResolver.activeOverlayUi?.cancelLivePauseObligation()
         lens.dismiss()
         if (openAnkiEditorWorkspace(snap)) return
@@ -393,6 +395,7 @@ class SourceLensActions(
                         sentenceWordResults = snap.sentenceWordResults,
                         sourceLangId = Prefs(context).sourceLangId,
                         audioAnchorMs = snap.audioAnchorMs,
+                        target = snap.target,
                         notes = snap.notes,
                     ),
                 )
@@ -407,7 +410,6 @@ class SourceLensActions(
 
     private fun oneTapFromLens(cur: LensActionContext) {
         val word = cur.word ?: return
-        val entry = cur.entry ?: return
         val ankiManager = AnkiManager(context)
         if (!ankiManager.isAnkiDroidInstalled() || !ankiManager.hasPermission()) {
             openAnkiReviewForLens(cur)
@@ -418,7 +420,7 @@ class SourceLensActions(
             openAnkiReviewForLens(cur)
             return
         }
-        val snap = snapshotLensFieldsForAnki(word, entry, cur)
+        val snap = snapshotLensFieldsForAnki(word, cur.entry, cur)
         val sourceLangId = prefs.sourceLangId
         CaptureBackendResolver.activeOverlayUi?.cancelLivePauseObligation()
         lens.dismiss()
@@ -439,7 +441,7 @@ class SourceLensActions(
                     word = snap.word,
                     reading = snap.reading,
                     pos = snap.pos,
-                    entry = entry,
+                    entry = cur.entry,
                     entries = cur.entries,
                     fallbackDefinition = snap.definition,
                     freqScore = snap.freqScore,
@@ -450,6 +452,7 @@ class SourceLensActions(
                     wordsPayload = null,
                     screenshotPath = snap.screenshotPath,
                     sourceLangId = sourceLangId,
+                    target = snap.target,
                 )
             } catch (e: CancellationException) {
                 throw e
@@ -469,20 +472,30 @@ class SourceLensActions(
         }
     }
 
+    /** The card's fields from the row's [entry]. A row with none, a word no
+     *  dictionary lists, gives the reading the lens showed and nothing else
+     *  (no part of speech, definition, frequency or pitch), and names the
+     *  word as an [CardTarget.unlisted] target for its sentence card. */
     private fun snapshotLensFieldsForAnki(
-        word: String, entry: DictionaryEntry, cur: LensActionContext,
+        word: String, entry: DictionaryEntry?, cur: LensActionContext,
     ): LensAnkiSnapshot {
         // Card reading + pitch/freq follow the occurrence reading the lens showed
         // (明日 → あす), falling back to the primary headword when there was none.
-        val occHeadword = entry.selectHeadword(word, word, cur.reading)
+        val occHeadword = entry?.selectHeadword(word, word, cur.reading)
         // Take the reading from the SELECTED headword, not raw cur.reading, so the
         // card's reading stays consistent with its pitch/freq (same occHeadword)
         // and can't persist a reading the entry doesn't list if the occurrence
-        // reading ever arrives unvalidated.
-        val reading = occHeadword?.reading?.takeIf { it != occHeadword.written } ?: ""
-        val pos = context.firstSensePosLabel(entry)
-        val definition = flatCardDefinition(entry)
-        val headword = entry.headwordDisplay(occHeadword, word)
+        // reading ever arrives unvalidated. With no entry the lens's reading is
+        // all there is.
+        val reading = if (entry == null) {
+            cur.reading?.takeIf { it != word }.orEmpty()
+        } else {
+            occHeadword?.reading?.takeIf { it != occHeadword.written } ?: ""
+        }
+        val pos = entry?.let { context.firstSensePosLabel(it) }.orEmpty()
+        val definition = entry?.let { flatCardDefinition(it) }.orEmpty()
+        val headword = entry?.headwordDisplay(occHeadword, word)
+        val target = lensRowCardTarget(entry, cur.surface, cur.lookupForm ?: word, cur.lookupReading)
         val sentence = cur.sentence
         val sentenceTranslation = LastSentenceCache
             .takeIf { it.original == sentence }?.translation
@@ -499,9 +512,9 @@ class SourceLensActions(
             reading = reading,
             pos = pos,
             definition = definition,
-            freqScore = entry.freqScore,
-            pitch = headword.pitch,
-            frequencies = headword.frequencies,
+            freqScore = entry?.freqScore ?: 0,
+            pitch = headword?.pitch.orEmpty(),
+            frequencies = headword?.frequencies.orEmpty(),
             screenshotPath = cur.screenshotPath,
             sentence = sentence,
             sentenceTranslation = sentenceTranslation,
@@ -509,6 +522,7 @@ class SourceLensActions(
             sourceLangCode = Prefs(context).sourceLangId.code,
             audioAnchorMs = cur.audioAnchorMs,
             notes = cur.explanation?.text.orEmpty(),
+            target = target,
         )
     }
 
@@ -536,7 +550,12 @@ class SourceLensActions(
                 putExtra(WordAnkiReviewActivity.EXTRA_AUDIO_ANCHOR_MS, it)
             }
             // AnkiPermissionActivity forwards every extra.
-            putExtras(android.os.Bundle().apply { putAnkiNotes(snap.notes) })
+            putExtras(
+                android.os.Bundle().apply {
+                    putAnkiNotes(snap.notes)
+                    snap.target?.let { putCardTarget(it) }
+                },
+            )
         }
         val targetDisplay = PlayTranslateApplication.foregroundDisplayId() ?: displayId
         val opts = android.app.ActivityOptions.makeBasic()

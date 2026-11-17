@@ -53,8 +53,10 @@ object SourceWordLookup {
         val lookupReading: String?,
         val label: String?,
         val data: WordDefinitionData,
-        /** The dictionary entry, when matched — drives the in-app Anki/open path.
-         *  Null for a no-match (the lens shows the shared empty-state). */
+        /** The dictionary entry, when matched — drives the in-app open path
+         *  and the Anki card's fields. Null for a no-match: the lens shows
+         *  the shared empty-state, and its card names the word unlisted
+         *  ([lensRowCardTarget]). */
         val entry: DictionaryEntry?,
         /** Every entry the lookup returned ([entry] first). [data]'s sense
          *  rows flatten across them (POS-split packs), so an Anki card built

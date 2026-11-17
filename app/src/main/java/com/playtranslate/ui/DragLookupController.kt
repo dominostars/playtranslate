@@ -1813,8 +1813,10 @@ class DragLookupController(
         // settings', read as [resolveToken] reads them), and each unit's own
         // word, reading and the form it was found as.
         val sentence = currentSentence?.let { askSentence(it, Prefs(context).langContext()) }
+        // Every row offers Anki, the word with no entry too: its card goes
+        // with no definition ([SourceLensActions]).
         fun section(p: PopupData) = LensSection(
-            p.toLensData(), p.machineTranslatedLabel(), opens = true, anki = p.entry != null,
+            p.toLensData(), p.machineTranslatedLabel(), opens = true, anki = true,
             explain = sentence?.let { WordInSentence(it, p.word, p.reading, listOfNotNull(p.surface)) },
         )
         val secondaries = res.secondaries()

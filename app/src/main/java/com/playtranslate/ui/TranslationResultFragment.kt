@@ -497,12 +497,19 @@ class TranslationResultFragment : Fragment() {
         definition: String,
         freqScore: Int,
         notes: String,
+        /** The card's word as its row names it ([lensRowCardTarget]). */
+        target: CardTarget?,
     ) {
         val ready = currentReady()
         val intent = Intent(activity, AnkiPermissionActivity::class.java).apply {
-            // The note the card starts with; AnkiPermissionActivity
-            // forwards every extra.
-            putExtras(Bundle().apply { putAnkiNotes(notes) })
+            // The note the card starts with, and the word a row with no
+            // entry names; AnkiPermissionActivity forwards every extra.
+            putExtras(
+                Bundle().apply {
+                    putAnkiNotes(notes)
+                    target?.let { putCardTarget(it) }
+                },
+            )
             putExtra(WordAnkiReviewActivity.EXTRA_WORD, word)
             putExtra(WordAnkiReviewActivity.EXTRA_READING, reading)
             putExtra(WordAnkiReviewActivity.EXTRA_POS, pos)
@@ -529,13 +536,15 @@ class TranslationResultFragment : Fragment() {
      *  VM result so the card carries the source sentence + translation +
      *  screenshot. [notes] is the answer that stood in the row at the tap
      *  ([MagnifierLens.explanationOf]), which the card's note starts with;
-     *  "" with none. */
+     *  "" with none. A row with no [entry] gives an empty part of speech and
+     *  definition, and its [target] marks the word on the sentence card. */
     private fun launchWordAnki(
         activity: Activity,
         word: String,
         reading: String?,
         entry: com.playtranslate.model.DictionaryEntry?,
         notes: String,
+        target: CardTarget?,
     ) {
         val ankiManager = AnkiManager(activity)
         if (!ankiManager.isAnkiDroidInstalled()) {
@@ -549,6 +558,7 @@ class TranslationResultFragment : Fragment() {
             reading = reading?.takeIf { it != word } ?: "",
             pos = pos, definition = definition, freqScore = entry?.freqScore ?: 0,
             notes = notes,
+            target = target,
         )
     }
 
@@ -656,7 +666,9 @@ class TranslationResultFragment : Fragment() {
      * word popup. Same data extraction (POS, joined definition) and
      * the same fallback to the existing Activity flow on gate failure.
      * Result Toast lands on the result screen so the user has feedback
-     * without the popup needing to stay open during the send.
+     * without the popup needing to stay open during the send. A row with
+     * no [entry] sends at once too, with an empty definition, its [target]
+     * marking the word on a sentence card.
      */
     private fun oneTapWordFromPopup(
         activity: Activity,
@@ -667,23 +679,19 @@ class TranslationResultFragment : Fragment() {
         /** For the review this falls back to ([launchWordAnki]); the
          *  headless send itself carries no note. */
         notes: String,
+        /** The card's word as its row names it ([lensRowCardTarget]). */
+        target: CardTarget?,
     ) {
         val ankiManager = AnkiManager(activity)
         if (!ankiManager.isAnkiDroidInstalled() || !ankiManager.hasPermission()) {
-            launchWordAnki(activity, word, reading, entry, notes)
+            launchWordAnki(activity, word, reading, entry, notes, target)
             return
         }
         if (prefs.ankiDeckId < 0L) {
-            launchWordAnki(activity, word, reading, entry, notes)
+            launchWordAnki(activity, word, reading, entry, notes, target)
             return
         }
-        if (entry == null) {
-            // No resolved entry — fall back so the user sees the error
-            // path from inside the sheet rather than silently failing.
-            launchWordAnki(activity, word, reading, entry, notes)
-            return
-        }
-        val (pos, definition) = entry.ankiPosAndDefinition(activity)
+        val (pos, definition) = entry?.ankiPosAndDefinition(activity) ?: ("" to "")
         val ready = currentReady()
         val screenshotPath = ready?.screenshotPath
         val readingClean = reading?.takeIf { it != word } ?: ""
@@ -712,7 +720,7 @@ class TranslationResultFragment : Fragment() {
         launchOneTapSend(
             appCtx = appCtx,
             send = {
-                val hw = entry.headwordDisplay(entry.selectHeadword(word, word, readingClean), word)
+                val hw = entry?.headwordDisplay(entry.selectHeadword(word, word, readingClean), word)
                 // Shared word-vs-sentence routing (single-word-sentence rule
                 // included) lives in oneTapSend; the popup ignores the returned mode.
                 appCtx.oneTapSend(
@@ -722,9 +730,9 @@ class TranslationResultFragment : Fragment() {
                     entry = entry,
                     entries = entries,
                     fallbackDefinition = definition,
-                    freqScore = entry.freqScore,
-                    pitch = hw.pitch,
-                    frequencies = hw.frequencies,
+                    freqScore = entry?.freqScore ?: 0,
+                    pitch = hw?.pitch.orEmpty(),
+                    frequencies = hw?.frequencies.orEmpty(),
                     sentenceOriginal = ready_sentence,
                     sentenceTranslation = ready_translation,
                     wordsPayload = wordsPayload,
@@ -733,6 +741,7 @@ class TranslationResultFragment : Fragment() {
                     // Same result as ready_sentence — a deferred pending
                     // rides so the sentence branch completes, not bypasses.
                     pendingTranslation = ready?.pendingTranslation,
+                    target = target,
                 )
             },
             resultOf = { it.first },
@@ -757,7 +766,7 @@ class TranslationResultFragment : Fragment() {
                         // Re-launch the Activity so the user can configure
                         // the mapping inside the sheet (dialog needs
                         // Fragment infrastructure).
-                        launchWordAnki(activity, word, reading, entry, notes)
+                        launchWordAnki(activity, word, reading, entry, notes, target)
                     }
                     // Unreachable: one-tap passes no oversizePrompt.
                     is AnkiSendResult.Declined -> Unit
@@ -876,12 +885,17 @@ class TranslationResultFragment : Fragment() {
                 secondaries.getOrNull(i)?.let { sec -> openDetail(sec, lens.explanationOf(i)) }
             }
         }
+        /** The word a unit's card names: the unlisted word for a unit
+         *  with no entry ([lensRowCardTarget]). */
+        fun targetOf(unit: SourceWordLookup.Resolved): CardTarget? =
+            lensRowCardTarget(unit.entry, unit.surface, unit.lookupForm, unit.lookupReading)
         lens.onAnkiTap = { secondary ->
             unitOf(secondary)?.let { unit ->
                 host?.onInteraction()
                 launchWordAnki(
                     activity, unit.word, unit.reading, unit.entry,
                     notes = lens.explanationOf(secondary)?.text.orEmpty(),
+                    target = targetOf(unit),
                 )
             }
         }
@@ -891,6 +905,7 @@ class TranslationResultFragment : Fragment() {
                 oneTapWordFromPopup(
                     activity, unit.word, unit.reading, unit.entry, unit.entries,
                     notes = lens.explanationOf(secondary)?.text.orEmpty(),
+                    target = targetOf(unit),
                 )
             }
         }

@@ -613,8 +613,8 @@ class CaptureResultOverlay(
     private var autoMaxPx = Int.MAX_VALUE
 
     // Tap-a-word → definition lens (the shared presenter): display + speak +
-    // (when a dict entry matches) the open-detail tap and the Anki button, shared
-    // with the drag flow via SourceLensActions. Built with the binder in show().
+    // the open-detail tap and the Anki button, entry or not, shared with the
+    // drag flow via SourceLensActions. Built with the binder in show().
     private var sourceLens: SourceTextLens? = null
 
     // In-place edit (the panel window goes focusable so the IME shows over the game).
@@ -995,7 +995,6 @@ class CaptureResultOverlay(
             ttsAlertTarget = alertTarget,
             binder = b,
             screenSize = { Point(screenW, screenH) },
-            offersAnki = { it.entry != null },
             // The open works entry-or-not — it opens the sentence view — so
             // every section opens.
             opensWithoutEntry = true,

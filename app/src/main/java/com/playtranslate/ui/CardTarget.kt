@@ -8,6 +8,7 @@ import com.playtranslate.language.ReadingOverride
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.TokenSpan
+import com.playtranslate.model.DictionaryEntry
 import kotlinx.coroutines.CancellationException
 
 private const val TAG = "CardTarget"
@@ -19,11 +20,18 @@ private const val TAG = "CardTarget"
  * page names one for its own word and for every cell of its Words and Other
  * matches sections, so a sentence card made from any of them is for that word
  * even where the sentence's analysis chose another there ([withCardTarget]).
+ * A lens row with no dictionary entry names one too, [unlisted].
  */
 data class CardTarget(
     val surface: String,
     val lookupForm: String,
     val lookupReading: String?,
+    /** No dictionary lists the word: its opener, a lens row that showed no
+     *  definitions, found no entry for [lookupForm]. The sentence's own rows
+     *  never hold such a word, so where the lookup finds no row a card for
+     *  it still names it, as a row with no definition ([resolveCardTarget]);
+     *  a listed word that finds no row names nothing. */
+    val unlisted: Boolean = false,
 )
 
 /**
@@ -36,6 +44,24 @@ data class CardTarget(
  */
 fun pageCardTarget(surface: String?, lookupForm: String, lookupReading: String?): CardTarget =
     CardTarget(surface ?: lookupForm, lookupForm, lookupReading)
+
+/**
+ * The [CardTarget] a magnifying-lens row hands the card made from it. Null
+ * for a row with a dictionary [entry]: its sentence card finds the word
+ * among the sentence's own rows. A row with none is a word no dictionary
+ * lists, which those rows never hold, so it names the word as an
+ * [CardTarget.unlisted] target, found as [surface], else as its key
+ * [lookupForm]. The one rule for every lens: the over-game ones
+ * ([SourceLensActions]) and the in-app page's.
+ */
+fun lensRowCardTarget(
+    entry: DictionaryEntry?,
+    surface: String?,
+    lookupForm: String,
+    lookupReading: String?,
+): CardTarget? =
+    if (entry != null) null
+    else CardTarget(surface ?: lookupForm, lookupForm, lookupReading, unlisted = true)
 
 /**
  * A [CardTarget] resolved for one card: its words-table [row], shaped as the
@@ -100,9 +126,10 @@ fun withCardTarget(
  * reads exactly as the words panel and the Anki words tables show the word,
  * keyed by [word] and found as the target's surface. Its override is the
  * engine's reading of that surface as this word
- * ([com.playtranslate.language.SourceLanguageEngine.occurrenceReading]). Null
- * when the key resolves to no row of its own (a miss splits into member rows,
- * none of them the word) or the lookup fails.
+ * ([com.playtranslate.language.SourceLanguageEngine.occurrenceReading]). When
+ * the key resolves to no row of its own (a miss splits into member rows, none
+ * of them the word) or the lookup fails: an [CardTarget.unlisted] target is
+ * the word with no definition ([unlistedRow]), and any other is null.
  */
 suspend fun resolveCardTarget(
     ctx: Context,
@@ -129,17 +156,38 @@ suspend fun resolveCardTarget(
             lemmaReading = found.reading.ifEmpty { found.displayWord },
         )
         ResolvedCardTarget(row, reading?.let { ReadingOverride(target.surface, word, it) })
-    }
+    } ?: unlistedRow(word, target)
 } catch (e: CancellationException) {
     throw e
 } catch (e: Exception) {
     Log.w(TAG, "card target lookup failed: ${e.message}")
-    null
+    unlistedRow(word, target)
 }
+
+/**
+ * An [CardTarget.unlisted] [target] as a row of its own: keyed by [word],
+ * found as the target's surface, with the reading it was looked up with
+ * (none when that is the word itself, as a kana row shows none) and no
+ * definition, so a card for it marks the word and leaves its definition
+ * empty. No reading override: no entry gives the engine a lemma to read the
+ * surface by. Null for a listed target.
+ */
+private fun unlistedRow(word: String, target: CardTarget): ResolvedCardTarget? =
+    if (!target.unlisted) null
+    else ResolvedCardTarget(
+        SentenceAnkiHtmlBuilder.WordEntry(
+            word = word,
+            reading = target.lookupReading?.takeIf { it != word }.orEmpty(),
+            meaning = "",
+            surfaceForm = target.surface,
+        ),
+        readingOverride = null,
+    )
 
 private const val KEY_TARGET_SURFACE = "card_target_surface"
 private const val KEY_TARGET_LOOKUP_FORM = "card_target_lookup_form"
 private const val KEY_TARGET_LOOKUP_READING = "card_target_lookup_reading"
+private const val KEY_TARGET_UNLISTED = "card_target_unlisted"
 
 /** Writes [target] under this bundle's card-target keys: the word editor's
  *  launch args, and the Activity trampoline's extras that rebuild them. */
@@ -147,13 +195,17 @@ fun Bundle.putCardTarget(target: CardTarget) {
     putString(KEY_TARGET_SURFACE, target.surface)
     putString(KEY_TARGET_LOOKUP_FORM, target.lookupForm)
     putString(KEY_TARGET_LOOKUP_READING, target.lookupReading)
+    putBoolean(KEY_TARGET_UNLISTED, target.unlisted)
 }
 
 /** The [CardTarget] [putCardTarget] wrote; null when the bundle names none. */
 fun Bundle.getCardTarget(): CardTarget? {
     val surface = getString(KEY_TARGET_SURFACE) ?: return null
     val lookupForm = getString(KEY_TARGET_LOOKUP_FORM) ?: return null
-    return CardTarget(surface, lookupForm, getString(KEY_TARGET_LOOKUP_READING))
+    return CardTarget(
+        surface, lookupForm, getString(KEY_TARGET_LOOKUP_READING),
+        unlisted = getBoolean(KEY_TARGET_UNLISTED, false),
+    )
 }
 
 private const val KEY_OVERRIDE_SURFACE = "reading_override_surface"

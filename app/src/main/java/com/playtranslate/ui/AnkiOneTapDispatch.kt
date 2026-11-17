@@ -328,8 +328,10 @@ suspend fun Context.oneTapSendSentence(
 }
 
 /**
- * Word one-tap. No preloading (the caller already has the resolved
- * [entry] — that's the precondition for the Anki button being tappable).
+ * Word one-tap. No preloading: the caller already has the resolved
+ * [entry], or null for a word no dictionary lists (a lens row that showed
+ * no definitions still offers Anki), whose card goes with the Definition
+ * [fallbackDefinition] gives it, empty from the lens.
  * The Definition field is the same one the review sheet would send for an
  * unedited entry: [WordCardDefinition] rendered by the pipeline, imported
  * groups styled through their structured glossaries when the dictionary
@@ -344,7 +346,7 @@ suspend fun Context.oneTapSendWord(
     word: String,
     reading: String,
     pos: String,
-    entry: DictionaryEntry,
+    entry: DictionaryEntry?,
     entries: List<DictionaryEntry>,
     defResult: DefinitionResult?,
     fallbackDefinition: String,
@@ -398,13 +400,15 @@ suspend fun Context.oneTapSendWord(
  * surface mode-specific recovery (the review-sheet NeedsMapping dialog)
  * and the mode-named success toast from it. [target] is [word] as the
  * opener found it in the sentence ([oneTapSendSentence]'s); a word card
- * has no use for it.
+ * has no use for it. A null [entry] is a word no dictionary lists: its
+ * word card has the Definition [fallbackDefinition] gives it, and its
+ * sentence card marks it through an [CardTarget.unlisted] [target].
  */
 suspend fun Context.oneTapSend(
     word: String,
     reading: String,
     pos: String,
-    entry: DictionaryEntry,
+    entry: DictionaryEntry?,
     entries: List<DictionaryEntry>,
     fallbackDefinition: String,
     freqScore: Int,

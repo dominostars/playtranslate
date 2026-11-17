@@ -1242,6 +1242,55 @@ class CaptureSheetAskWordsTest {
         )
     }
 
+    // Mutations: the sheet's lens offers Anki only on a row with an entry
+    // (its old gate); the button's tap does nothing for a row with none; the
+    // review's extras leave the word's target out.
+    @Test fun `a word in the sheet's lens with no definition offers Anki, and its review names the word for its sentence card`() {
+        shadowOf(ctx.packageManager).installPackage(
+            android.content.pm.PackageInfo().apply { packageName = "com.ichi2.anki" },
+        )
+        val o = open(screen, result(text(2), text(2)), askHidden = true, wordsHidden = false)
+        val the = com.playtranslate.language.TokenSpan("The", "the")
+        val quick = com.playtranslate.language.TokenSpan("quick", "quick")
+        o.lookupsRenderer.render(
+            WordLookupsState.Analyzed(
+                tokenSpans = listOf(the, quick),
+                annotation = com.playtranslate.language.SentenceAnnotation(
+                    text(2), com.playtranslate.language.SourceLangId.EN, 0,
+                    listOf(
+                        com.playtranslate.language.AnnotatedSpan(0, 3, "The", lookupForm = "the", lookupHint = ""),
+                        com.playtranslate.language.AnnotatedSpan(4, 9, "quick", lookupForm = "quick", lookupHint = ""),
+                    ),
+                ),
+                phrases = emptyList(),
+            ),
+        )
+        settle()
+        val sourceLens: SourceTextLens = o.field("sourceLens")
+        sourceLens.onTapAtOffset(5)
+        val deadline = System.currentTimeMillis() + 3000
+        while (!sourceLens.isShowing && System.currentTimeMillis() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(5)
+        }
+        assertTrue("precondition: the lens came up over the word", sourceLens.isShowing)
+        val lens: MagnifierLens = sourceLens.field("lens")
+        val row = lens.shownRowsForTest().filterIsInstance<DefRow.Word>().first()
+        assertEquals("precondition: no dictionary here, so the word has no definition", emptyList<SenseDisplay>(), row.data.senses)
+        assertEquals("the row offers Anki", DefRow.Trailing.ANKI, row.trailing)
+
+        lens.tapRowForTest(row.id, DefAction.TRAILING)
+        settle()
+
+        // The AnkiDroid permission is not held here, so the review goes
+        // through the trampoline.
+        val review = shadowOf(ctx as Application).nextStartedActivity
+        assertEquals(AnkiPermissionActivity::class.java.name, review?.component?.className)
+        assertEquals("quick", review?.getStringExtra(WordAnkiReviewActivity.EXTRA_WORD))
+        assertEquals("", review?.getStringExtra(WordAnkiReviewActivity.EXTRA_DEFINITION))
+        assertEquals(CardTarget("quick", "quick", null, unlisted = true), review!!.extras!!.getCardTarget())
+    }
+
     @Test fun `the sheet caches its sentence's translation whether Words is shown or hidden, and a blank translation caches nothing`() {
         for (wordsHidden in listOf(false, true)) {
             LastSentenceCache.clear()

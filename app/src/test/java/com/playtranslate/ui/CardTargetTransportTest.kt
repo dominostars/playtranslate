@@ -35,6 +35,18 @@ class CardTargetTransportTest {
         assertNull(WordAnkiReviewBinder.buildArgs("弾く", "ひく", "", "to play", null).getCardTarget())
     }
 
+    // Mutations: the flag left out of the bundle; read back as listed.
+    @Test
+    fun `a word no dictionary lists stays unlisted across the editor's args and the trampoline's extras`() {
+        val unlisted = CardTarget("ググった", "ググる", "ぐぐる", unlisted = true)
+        val args = WordAnkiReviewBinder.buildArgs("ググる", "ぐぐる", "", "", null, target = unlisted)
+        assertEquals(unlisted, args.getCardTarget())
+        val intent = Intent().putExtras(Bundle().apply { putCardTarget(unlisted) })
+        assertEquals(unlisted, intent.extras?.getCardTarget())
+        // And a listed word stays listed.
+        assertEquals(false, Bundle().apply { putCardTarget(target) }.getCardTarget()?.unlisted)
+    }
+
     @Test
     fun `a target keyed without a reading keeps its null`() {
         val keyless = CardTarget("あずかった", "与る", null)

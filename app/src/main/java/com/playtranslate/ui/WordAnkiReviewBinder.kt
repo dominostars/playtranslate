@@ -217,6 +217,11 @@ class WordAnkiReviewBinder(
      *  (the lookup is running, or it found no definition). */
     private var definitionsPlaceholder: View? = null
 
+    /** The in-sheet lookup finished and found no entry (a word no
+     *  dictionary lists): the placeholder then says so in place of the
+     *  running lookup's line ([placeholderText]). */
+    private var lookupMissed = false
+
     /** Sense ords the user has removed via the row × — they're skipped
      *  in both the rendered Definitions card and the Anki HTML payload. */
     private val removedSenses = mutableSetOf<Int>()
@@ -698,7 +703,7 @@ class WordAnkiReviewBinder(
     private fun buildLoadingDefinitionsRow(fallback: String): View {
         val density = ctx.resources.displayMetrics.density
         return TextView(ctx).apply {
-            text = fallback.ifBlank { ctx.getString(R.string.words_loading) }
+            text = placeholderText(fallback)
             textSize = 14f
             setTextColor(ctx.themeColor(R.attr.ptTextMuted))
             setLineSpacing(0f, 1.4f)
@@ -709,6 +714,13 @@ class WordAnkiReviewBinder(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             )
         }
+    }
+
+    /** The placeholder's line: [fallback] when the opener handed one in,
+     *  else that the lookup is running, or once it found no entry
+     *  ([lookupMissed]) that there are no definitions. */
+    private fun placeholderText(fallback: String): String = fallback.ifBlank {
+        ctx.getString(if (lookupMissed) R.string.word_detail_no_definitions else R.string.words_loading)
     }
 
     // ── Dictionary lookup + per-sense rendering ─────────────────────────
@@ -743,14 +755,20 @@ class WordAnkiReviewBinder(
         val entries = response?.entries.orEmpty()
         val entry = entries.firstOrNull()
         if (!host.isAlive || entry == null) {
-            // Field-trace: this silent return leaves the loading
-            // placeholder standing forever — the exact symptom must name
-            // its cause in the log.
+            // Field-trace: the exact outcome must name its cause in the log.
             android.util.Log.i(
                 LOOKUP_TAG,
                 "lookup DEAD-END: '$word' isAlive=${host.isAlive} entries=${entries.size} " +
                     "result=${defResult?.javaClass?.simpleName}",
             )
+            // No entry for the word (one no dictionary lists, whose card
+            // goes with no definition): the placeholder stops saying the
+            // lookup is running, and so does one built after this.
+            if (host.isAlive) {
+                lookupMissed = true
+                (definitionsPlaceholder as? TextView)?.text =
+                    placeholderText(args.getString(ARG_DEFINITION).orEmpty())
+            }
             return
         }
         resolvedEntry = entry
