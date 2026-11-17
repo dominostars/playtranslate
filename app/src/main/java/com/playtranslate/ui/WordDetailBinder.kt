@@ -27,6 +27,7 @@ import androidx.core.widget.NestedScrollView
 import com.playtranslate.AnkiManager
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.ask.AskSentence
 import com.playtranslate.ask.AskSession
 import com.playtranslate.ask.AskState
 import com.playtranslate.ask.Explanation
@@ -1305,31 +1306,38 @@ class WordDetailBinder(
      * sentence (its [pageSentence]'s text now), and nothing at all when it
      * has none: the page's group header over a card the group fills
      * ([WordExplainGroup]). Its question is about that sentence under the
-     * pair the page reads in, naming [word] as the header shows it, its
-     * [reading], and the form the opener found it as ([Args.surface]). The
-     * answer the page was opened with about its own word, as a card would
-     * read it, is taken up as if asked here. The found page places the
-     * group under the definitions ([buildContent]), the not-found page
-     * under its notice.
+     * pair the page reads in, read again at each press that asks, since
+     * the host's sentence can change under a built page (the results
+     * screen's edit, for its Word tab); it names [word] as the header shows
+     * it, its [reading], and the form the opener found it as
+     * ([Args.surface]). The answer the page was opened with about its own
+     * word, as a card would read it, is taken up as if asked here. The
+     * found page places the group under the definitions ([buildContent]),
+     * the not-found page under its notice.
      */
     private fun addExplainGroup(content: LinearLayout, word: String, reading: String?) {
         val launch = args ?: return
         val sentence = pageSentence(ui.sentenceContext(), launch)
-        val text = sentence.original?.takeIf { it.isNotBlank() } ?: return
+        val about = explainSentence(sentence) ?: return
         addGroupHeader(content, ctx.getString(R.string.word_explain_title))
         explain = WordExplainGroup(
             ctx, addGroupCard(content), scope,
-            WordInSentence(
-                askSentence(text, Prefs(ctx.applicationContext).langContext()),
-                word, reading, listOfNotNull(launch.surface),
-            ),
+            WordInSentence(about, word, reading, listOfNotNull(launch.surface)),
             carried = sentence.explanations[launch.target],
             host = object : WordExplainGroup.Host {
+                override fun sentence() = explainSentence(pageSentence(ui.sentenceContext(), launch))
                 override fun onAskNeedsLlm() = ui.onAskNeedsLlm()
                 override fun onControlGone(next: View) = ui.onControlGone(next)
             },
         )
     }
+
+    /** What the "In this sentence" group asks about on [sentence], the
+     *  page's sentence as [pageSentence] gives it: its text under the pair
+     *  the page reads in; null with no text. */
+    private fun explainSentence(sentence: SentenceContext): AskSentence? =
+        sentence.original?.takeIf { it.isNotBlank() }
+            ?.let { askSentence(it, Prefs(ctx.applicationContext).langContext()) }
 
     /** Appends to [content] and returns the host the Words and Other
      *  matches sections load into ([loadSecondarySections]). Their rows

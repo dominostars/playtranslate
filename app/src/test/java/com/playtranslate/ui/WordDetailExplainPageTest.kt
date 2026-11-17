@@ -80,7 +80,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * every page here has); with no sentence nothing of it is on the page; the
  * not-found page puts it under its notice. The question names the word as
  * the header shows it, the reading the page gives it and the form it was
- * found as, about the page's sentence under the page's pair. An answer the
+ * found as, about the page's sentence under the page's pair; once the host
+ * has edited that sentence under the page, the answer about the old text
+ * stays until the X and is no note, and the row then asks about the edited
+ * one, its answer the note. An answer the
  * page was opened with, through its launch arguments or its host's
  * context, is shown at once, whole, and nothing is asked for it; one about
  * another sentence is not. With no model the tap is the host's alert. And
@@ -189,6 +192,9 @@ class WordDetailExplainPageTest {
 
     private val sentence = "The window had leaded glass."
     private val otherSentence = "The pipes were made of lead."
+
+    /** [sentence] as the user corrected it on the results screen. */
+    private val editedSentence = "The windows had leaded glass."
 
     /** The page as a Words row of [sentence] opens it: "lead" read lɛd,
      *  found as "leaded". */
@@ -382,6 +388,37 @@ class WordDetailExplainPageTest {
 
         answer("Here it means made with lead.")
         assertEquals(listOf("Here it means made with lead.", footerOf("Test LLM")), shownTexts())
+    }
+
+    // Mutations: the host gives the group the sentence the page was built
+    // on, or the launch arguments' over its own.
+    @Test fun `after the host's sentence is edited under the page, the X and the row ask about the edited one, and its answer is the note`() {
+        giveLlm()
+        val embedded = launch.copy(sentenceOriginal = null, sentenceTranslation = null, embedded = true)
+        open(embedded, SentenceContext(sentence, null, null))
+        tap(row())
+        answer("Here it means made with lead.")
+
+        // The results screen's edit, which its Word tab reads.
+        ui.hostContext = SentenceContext(editedSentence, null, null)
+
+        assertEquals(
+            "the answer about the old text stays until the X",
+            listOf("Here it means made with lead.", footerOf("Test LLM")), shownTexts(),
+        )
+        assertEquals("and is no note beside the edited text", "" to "", ownNotes())
+
+        tap(close())
+        tap(row())
+
+        awaitUntil("the model was asked again") { llm.completeCalls.get() == 2 }
+        val expected = AskPrompts.build(
+            AskQuestion.Word("lead", "lɛd", listOf("leaded"), explainTitle),
+            AskSentence(editedSentence, "en", "en"),
+        )
+        assertEquals(expected.system to expected.user, llm.lastPrompt)
+        answer("Here it means fitted with lead.")
+        assertEquals("Here it means fitted with lead." to "Here it means fitted with lead.", ownNotes())
     }
 
     // ── Try again ────────────────────────────────────────────────────────

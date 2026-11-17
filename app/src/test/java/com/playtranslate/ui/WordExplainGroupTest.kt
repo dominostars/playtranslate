@@ -59,8 +59,11 @@ import org.robolectric.android.controller.ActivityController
  * cancels, and a late answer writes nothing; on an answer it brings the row
  * back. With no model the tap is the host's alert and nothing is asked,
  * read at each tap. A carried answer is drawn at once, whole, with no
- * request. Release cancels a question in flight and nothing is written
- * afterwards. Every control is a tap target of at least 48dp that overlaps
+ * request. Once the page's sentence has changed under the group, the
+ * answer about the old one stays until the X, the row then asks about the
+ * new one, and Try again puts the failure away and asks nothing. Release
+ * cancels a question in flight and nothing is written afterwards. Every
+ * control is a tap target of at least 48dp that overlaps
  * no other; a pressed control that leaves the screen hands Android's focus
  * and the host's cursor to the one standing in its place. Colours are the
  * page's theme attributes.
@@ -75,10 +78,14 @@ class WordExplainGroupTest {
         }
     }
 
-    /** Everything the group told its host. */
+    /** Everything the group told its host, and the page's sentence as the
+     *  host gives it ([pageSentence], the subject's until a test changes
+     *  it). */
     private class RecordingHost : WordExplainGroup.Host {
         var alerts = 0
         val gone = mutableListOf<View>()
+        var pageSentence: AskSentence? = null
+        override fun sentence(): AskSentence? = pageSentence
         override fun onAskNeedsLlm() { alerts++ }
         override fun onControlGone(next: View) { gone += next }
     }
@@ -152,6 +159,7 @@ class WordExplainGroupTest {
         card = PtGroupCard(activity)
         root.addView(card)
         activity.setContentView(root)
+        host.pageSentence = sentence
         group = WordExplainGroup(
             activity, card, scope, subject, carried, host,
             hasLlm = { llmAsks++; llm },
@@ -405,6 +413,52 @@ class WordExplainGroupTest {
         tap(close)
 
         assertEquals(listOf(activity.getString(R.string.word_explain_ask)), shownTexts())
+    }
+
+    // ── The page's sentence, changed under the built page ───────────────
+
+    /** The page's sentence after its host changed it, as the results
+     *  screen's edit does. */
+    private val edited = AskSentence("They ran out of the leaden room.", "en", "fr")
+
+    // Mutation: the row asks about the sentence the group was built on.
+    @Test fun `once the page's sentence has changed, the answer about the old one stays until the X, and the row then asks about the new one`() {
+        start()
+        tap(row)
+        answer("Here it means to flee.")
+
+        host.pageSentence = edited
+        settle()
+
+        assertEquals(listOf("Here it means to flee.", footerOf("Gemini")), shownTexts())
+
+        tap(close)
+        tap(row)
+
+        assertEquals(2, calls.size)
+        assertEquals(AskPrompts.build(question, edited), calls.last().asked)
+        assertEquals(edited, group.session.sentence)
+    }
+
+    // Mutation: Try again asks about the sentence its failure was about.
+    @Test fun `Try again once the page's sentence has changed puts the failure away and asks nothing, and the row then asks about the new one`() {
+        start()
+        tap(row)
+        calls.last().reply.completeExceptionally(java.io.IOException("no route"))
+        settle()
+        host.pageSentence = edited
+
+        tap(retry)
+
+        assertEquals("nothing asked", 1, calls.size)
+        assertEquals(AskState.Idle, group.session.state.value)
+        assertEquals(listOf(activity.getString(R.string.word_explain_ask)), shownTexts())
+        assertSame("the row takes Try again's place", row, host.gone.last())
+
+        tap(row)
+
+        assertEquals(AskPrompts.build(question, edited), calls.last().asked)
+        assertEquals("a new question's pass, not a retry's", listOf(false, false), calls.map { it.pastCooldowns })
     }
 
     // ── Release ──────────────────────────────────────────────────────────

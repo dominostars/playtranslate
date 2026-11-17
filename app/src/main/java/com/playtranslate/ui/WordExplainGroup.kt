@@ -16,6 +16,7 @@ import androidx.core.view.isVisible
 import com.playtranslate.R
 import com.playtranslate.ask.AskPass
 import com.playtranslate.ask.AskQuestion
+import com.playtranslate.ask.AskSentence
 import com.playtranslate.ask.AskSession
 import com.playtranslate.ask.AskState
 import com.playtranslate.ask.Explanation
@@ -50,11 +51,20 @@ import kotlinx.coroutines.launch
  * session takes it up as if it had been asked here ([AskSession.restore]),
  * so it is drawn at once, with the same X, and nothing is asked for it.
  *
+ * The sentence is [subject]'s when the group is built, and after that the
+ * page's at each press that asks ([Host.sentence]): the row and Try again
+ * bind the session to it first ([AskSession.bind]). A host can change the
+ * sentence under a built page (the results screen's edit, for its Word
+ * tab); the answer about the old one then stays on the card until the X
+ * (the page's card takes no note from it meanwhile,
+ * [WordDetailBinder.pageSentence]), the row asks about the new one, and
+ * Try again puts the old one's failure away and brings the row back.
+ *
  * Every control is a tap target of at least 48dp. One that a press takes
  * off the screen (the row gives way to the X, the X to the row, Try again
- * to the X) hands on to the one standing in its place: Android's focus,
- * where it had it, and the host's own controller cursor
- * ([Host.onControlGone]).
+ * to the X, or to the row once the page's sentence has changed) hands on
+ * to the one standing in its place: Android's focus, where it had it, and
+ * the host's own controller cursor ([Host.onControlGone]).
  *
  * The question runs on [scope], the page's main-thread immediate one
  * (both hosts' are), so the state a press sets is drawn before the press
@@ -76,6 +86,11 @@ internal class WordExplainGroup(
     complete: AskPass = AskSession.registryPass,
 ) {
     interface Host {
+        /** The page's sentence now, as its Anki actions read it, under the
+         *  pair the page reads in; null with none. Read at each press that
+         *  asks. */
+        fun sentence(): AskSentence?
+
         /** The row was tapped with nothing that could answer: show the
          *  "needs an AI model" alert ([askNeedsLlm]) on the page's surface. */
         fun onAskNeedsLlm()
@@ -194,10 +209,18 @@ internal class WordExplainGroup(
                 host.onAskNeedsLlm()
                 return@setOnClickListener
             }
-            press(askRow) { session.ask(question) }
+            press(askRow) {
+                session.bind(host.sentence())
+                session.ask(question)
+            }
         }
         closeButton.setOnClickListener { press(closeButton) { session.close() } }
-        retryButton.setOnClickListener { press(retryButton) { session.retry() } }
+        retryButton.setOnClickListener {
+            press(retryButton) {
+                session.bind(host.sentence())
+                session.retry()
+            }
+        }
         if (carried != null) {
             session.restore(subject.sentence, carried.answering(question))
         } else {
@@ -230,8 +253,9 @@ internal class WordExplainGroup(
 
     /** [action], a press of [control]. Its state is drawn by the time it
      *  returns (the class doc's scope), and every press here takes its
-     *  control off the screen: the row and Try again give way to a question
-     *  being asked, the X to the row. The control standing in its place
+     *  control off the screen: the row gives way to a question being asked,
+     *  Try again to one as well, or to the row once the page's sentence has
+     *  changed, and the X to the row. The control standing in its place
      *  (the row with nothing asked, else the X) takes Android's focus if
      *  [control] had it, and the host hears of it for a cursor of its own. */
     private fun press(control: View, action: () -> Unit) {
