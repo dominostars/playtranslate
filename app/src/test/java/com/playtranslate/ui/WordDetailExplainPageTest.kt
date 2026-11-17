@@ -37,7 +37,12 @@ import com.playtranslate.model.Headword
 import com.playtranslate.model.Sense
 import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
+import com.playtranslate.translation.BackendFailure
+import com.playtranslate.translation.BackendFailureKind
+import com.playtranslate.translation.CooldownCause
+import com.playtranslate.translation.CooldownLadder
 import com.playtranslate.translation.FakeCompleterBackend
+import com.playtranslate.translation.StructuralFailureException
 import com.playtranslate.translation.TranslationBackendRegistry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -48,6 +53,8 @@ import kotlinx.coroutines.cancel
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -375,6 +382,31 @@ class WordDetailExplainPageTest {
 
         answer("Here it means made with lead.")
         assertEquals(listOf("Here it means made with lead.", footerOf("Test LLM")), shownTexts())
+    }
+
+    // ── Try again ────────────────────────────────────────────────────────
+
+    // Mutation: hand the group a pass that keeps the cooldowns on a retry.
+    @Test fun `Try again after a failure that put the model in a cooldown asks it again`() {
+        giveLlm()
+        open(launch)
+        tap(row())
+        awaitUntil("the model was asked") { llm.completeCalls.get() == 1 }
+        // The model fails as Gemini does on a 503: its cooldown recorded,
+        // then the throw.
+        llm.cooldownState.recordLadderFailure(CooldownLadder.RateLimit, "Server error", CooldownCause.SERVER_ERROR)
+        val r = reply
+        reply = CompletableDeferred()
+        r.completeExceptionally(StructuralFailureException("error 503", BackendFailure(BackendFailureKind.SERVER_ERROR, 503)))
+        val tryAgain = activity.getString(R.string.ask_retry)
+        awaitUntil("the failure is drawn with Try again") { shownTexts().contains(tryAgain) }
+        assertNotNull("precondition: the model is in a cooldown", llm.unavailableUntil())
+
+        tap(all(group()).filterIsInstance<TextView>().single { it.text == tryAgain })
+
+        awaitUntil("the model was asked again") { llm.completeCalls.get() == 2 }
+        answer("Here it means made with lead.")
+        assertNull("the answer ended the cooldown", llm.unavailableUntil())
     }
 
     // ── A carried answer ─────────────────────────────────────────────────

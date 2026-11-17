@@ -3,12 +3,16 @@ package com.playtranslate.ask
 import com.playtranslate.translation.BackendFailure
 import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.translation.CompletionFailedException
+import com.playtranslate.translation.CooldownCause
+import com.playtranslate.translation.CooldownLadder
+import com.playtranslate.translation.CooldownState
 import com.playtranslate.translation.FakeCompleterBackend
 import com.playtranslate.translation.OpenAiRateLimitException
 import com.playtranslate.translation.SentenceAnswer
 import com.playtranslate.translation.SentenceQuestion
 import com.playtranslate.translation.StructuralFailureException
 import com.playtranslate.translation.TranslationBackend
+import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.translation.TranslationBackendRegistry.Completion
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -22,6 +26,7 @@ import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -40,7 +45,9 @@ import org.junit.Test
  *    (the promise is the session's own, whatever its completer does);
  *  - binding: the same sentence changes nothing, another one (or none) ends
  *    the question;
- *  - [AskSession.retry] only from Failed, and [AskSession.restore].
+ *  - [AskSession.retry] only from Failed, its pass alone asking past the
+ *    cooldowns (a new question keeps them), through the registry's own
+ *    pass too; and [AskSession.restore].
  *
  * The LLM is a fake whose every call parks on a gate the test opens. The
  * session's scope runs on [Dispatchers.Unconfined], so launching, resuming
@@ -53,9 +60,10 @@ class AskSessionTest {
     /** A pass's result whose answer is [text]. */
     private fun Completion(text: String, backend: TranslationBackend) = Completion(SentenceAnswer.Text(text), backend)
 
-    /** One question the session put to its LLM, and the gate the test
-     *  answers it through. */
-    private class Call(val asked: SentenceQuestion) {
+    /** One question the session put to its LLM, whether the pass was to
+     *  ask past the cooldowns (a retry's), and the gate the test answers it
+     *  through. */
+    private class Call(val asked: SentenceQuestion, val pastCooldowns: Boolean) {
         val system: String get() = asked.system
         val user: String get() = asked.user
         val reply = CompletableDeferred<Completion>()
@@ -81,8 +89,8 @@ class AskSessionTest {
         val calls = mutableListOf<Call>()
         var ignoreCancellation = false
 
-        val complete: suspend (SentenceQuestion, (TranslationBackend) -> Unit) -> Completion = { asked, _ ->
-            val call = Call(asked).also { calls += it }
+        val complete: AskPass = { asked, pastCooldowns, _ ->
+            val call = Call(asked, pastCooldowns).also { calls += it }
             if (ignoreCancellation) {
                 val answer = withContext(NonCancellable) { call.reply.await() }
                 call.activeWhenReturning = currentCoroutineContext().isActive
@@ -103,6 +111,7 @@ class AskSessionTest {
 
     @After fun tearDown() {
         scopeJob.cancel()
+        TranslationBackendRegistry.close()
     }
 
     private val llm = FakeLlm()
@@ -216,7 +225,7 @@ class AskSessionTest {
         val reply = CompletableDeferred<Completion>()
         // As the registry's pass does: the first pick is named before the
         // pass first waits, the next one when the first has failed.
-        val session = AskSession(scope) { _, onAttempt ->
+        val session = AskSession(scope) { _, _, onAttempt ->
             onAttempt(online)
             fellThrough.await()
             onAttempt(onDevice)
@@ -240,7 +249,7 @@ class AskSessionTest {
         // through and would name, then ask, the next one.
         val gates = mutableListOf<CompletableDeferred<Unit>>()
         var askedAfterFallingThrough = 0
-        val session = AskSession(scope) { _, onAttempt ->
+        val session = AskSession(scope) { _, _, onAttempt ->
             onAttempt(online)
             val gate = CompletableDeferred<Unit>().also { gates += it }
             withContext(NonCancellable) { gate.await() }
@@ -534,6 +543,24 @@ class AskSessionTest {
         assertEquals(AskState.Answered(custom, "Because.", "OpenAI"), session.state.value)
     }
 
+    @Test fun `a retry's pass alone asks past the cooldowns, and the next question keeps them again`() {
+        val session = newSession()
+        session.bind(sentence)
+
+        session.ask(custom)
+        llm.calls[0].reply.completeExceptionally(IllegalStateException("engine"))
+        session.retry()
+        llm.calls[1].reply.completeExceptionally(IllegalStateException("engine"))
+        session.retry()
+        session.ask(grammar)
+
+        assertEquals(
+            "asked, retried, retried again, then a new question",
+            listOf(false, true, true, false),
+            llm.calls.map { it.pastCooldowns },
+        )
+    }
+
     @Test fun `retry from any other state does nothing`() {
         val session = newSession()
         session.retry()
@@ -555,6 +582,50 @@ class AskSessionTest {
         session.retry()
         assertEquals("answered", AskState.Answered(grammar, "An answer.", "OpenAI"), session.state.value)
         assertEquals(1, llm.calls.size)
+    }
+
+    /**
+     * The report (2026-11-16): a service whose failure starts a cooldown (a
+     * 429, a 5xx) is passed by on the next pass, so Try again asked nobody
+     * and failed at once. Through the registry's own pass, as production's
+     * sessions ask: the model fails as Gemini does on a 503 (its cooldown
+     * recorded, then the throw) and answers the next time it is asked.
+     */
+    @Test fun `Try again asks a service its own failure put in a cooldown, and its answer ends the cooldown, while a new question still passes it by`() {
+        val cooldown = CooldownState(context = null, backendId = "gemini")
+        var asked = 0
+        val gemini = FakeCompleterBackend(
+            id = "gemini", priority = 10, displayName = "Gemini", cooldownState = cooldown,
+            answer = { _, _ ->
+                asked++
+                if (asked == 1) {
+                    cooldown.recordLadderFailure(CooldownLadder.RateLimit, "Server error", CooldownCause.SERVER_ERROR)
+                    throw StructuralFailureException("Gemini error 503", BackendFailure(BackendFailureKind.SERVER_ERROR, 503))
+                }
+                "Because."
+            },
+        )
+        TranslationBackendRegistry.init(listOf(gemini))
+        val session = AskSession(scope)
+        session.bind(sentence)
+
+        session.ask(custom)
+        assertEquals(
+            AskState.Failed(custom, "Gemini", BackendFailure(BackendFailureKind.SERVER_ERROR, 503)),
+            session.state.value,
+        )
+        assertNotNull("precondition: the failure started a cooldown", gemini.unavailableUntil())
+
+        // A new question passes the cooling service by, as it did.
+        session.ask(grammar)
+        assertEquals(AskState.Failed(grammar), session.state.value)
+        assertEquals("nobody was asked", 1, asked)
+
+        session.retry()
+
+        assertEquals("asked again", 2, asked)
+        assertEquals(AskState.Answered(grammar, "Because.", "Gemini"), session.state.value)
+        assertNull("the answer ended the cooldown", gemini.unavailableUntil())
     }
 
     // ── restore ──────────────────────────────────────────────────────────

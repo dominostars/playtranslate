@@ -1,8 +1,5 @@
 package com.playtranslate.ask
 
-import com.playtranslate.translation.SentenceQuestion
-import com.playtranslate.translation.TranslationBackend
-import com.playtranslate.translation.TranslationBackendRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -53,11 +50,7 @@ class WordExplanations(
     /** Puts a question to the user's services ([AskSession]'s seam, handed
      *  to every word's session). The registry's pass in production; a test
      *  substitutes it. */
-    private val complete: suspend (
-        question: SentenceQuestion,
-        onAttempt: (TranslationBackend) -> Unit,
-    ) -> TranslationBackendRegistry.Completion =
-        { question, onAttempt -> TranslationBackendRegistry.complete(question, onAttempt) },
+    private val complete: AskPass = AskSession.registryPass,
 ) {
     private class Asked(val subject: WordInSentence, val session: AskSession) {
         /** Collects [session]'s state for [onChange]; stopped when the

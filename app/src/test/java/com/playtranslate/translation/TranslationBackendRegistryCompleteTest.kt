@@ -20,7 +20,9 @@ import java.util.concurrent.atomic.AtomicLong
  *  - which backends the pass tries (prompt completers that can complete and
  *    answerers that can answer, not in a cooldown, and for an answerer not
  *    in a pause of its answers alone) and in what order (the registry's,
- *    setOrder included);
+ *    setOrder included); a pass past the cooldowns (a retry's) lifts those
+ *    two skips and nothing else, its answer clears the cooldown and its
+ *    failure leaves a running one as it was;
  *  - what each is put: a completer the question's two messages, an answerer
  *    the question whole, with its parts;
  *  - who it names as it goes (each one as it starts asking it, never
@@ -59,8 +61,10 @@ class TranslationBackendRegistryCompleteTest {
     )
 
     /** Runs the pass and returns what it threw, failing if it answered. */
-    private fun completeFailure(): Throwable {
-        val outcome = runCatching { runBlocking { TranslationBackendRegistry.complete(question("system", "user")) } }
+    private fun completeFailure(pastCooldowns: Boolean = false): Throwable {
+        val outcome = runCatching {
+            runBlocking { TranslationBackendRegistry.complete(question("system", "user"), pastCooldowns) }
+        }
         return outcome.exceptionOrNull()
             ?: throw AssertionError("expected the pass to throw, ${outcome.getOrNull()?.backend?.id} answered")
     }
@@ -161,6 +165,68 @@ class TranslationBackendRegistryCompleteTest {
 
         assertSame(expired, TranslationBackendRegistry.complete(question()).backend)
         assertEquals(0, next.completeCalls.get())
+    }
+
+    // ── a pass past the cooldowns (a retry's) ───────────────────────────
+
+    @Test fun `a pass past the cooldowns asks a completer in one and names it, and lifts no other skip`() = runBlocking<Unit> {
+        val named = mutableListOf<String>()
+        val translationOnly = FakeOnlineBackend(id = "deepl", priority = 5)
+        val cannot = FakeCompleterBackend(id = "cannot", priority = 10, canComplete = false)
+        val cooled = cooledDown("cooled", 20)
+        val next = FakeCompleterBackend(id = "next", priority = 30)
+        TranslationBackendRegistry.init(listOf(translationOnly, cannot, cooled, next))
+        // The contrast: a question that is no retry passes it by.
+        assertSame(next, TranslationBackendRegistry.complete(question()).backend)
+        assertEquals(0, cooled.completeCalls.get())
+
+        val result = TranslationBackendRegistry.complete(question(), pastCooldowns = true) { named += it.id }
+
+        assertSame(cooled, result.backend)
+        assertEquals(SentenceAnswer.Text("answer-from-cooled"), result.answer)
+        assertEquals("named as it is asked, and nobody after it", listOf("cooled"), named)
+        assertEquals("what cannot answer is still not asked", 0, cannot.completeCalls.get())
+        assertEquals(0, translationOnly.translateCalls.get())
+        assertNull("its answer cleared the cooldown, as any answer does", cooled.unavailableUntil())
+    }
+
+    @Test fun `a pass past the cooldowns asks an answerer while its answers are paused and while its cooldown runs`() = runBlocking<Unit> {
+        val answerer = FakeAnswererBackend(id = "cloud", priority = 10)
+        val next = FakeCompleterBackend(id = "gemini", priority = 20)
+        TranslationBackendRegistry.init(listOf(answerer, next))
+
+        answerer.pausedUntil = System.currentTimeMillis() + 60_000
+        assertSame("paused", answerer, TranslationBackendRegistry.complete(question(), pastCooldowns = true).backend)
+
+        answerer.cooldownState.recordParsedFailure(System.currentTimeMillis() + 60_000, "Rate limited")
+        assertSame("paused and cooling", answerer, TranslationBackendRegistry.complete(question(), pastCooldowns = true).backend)
+
+        assertEquals(2, answerer.answerCalls.get())
+        assertEquals(0, next.completeCalls.get())
+    }
+
+    @Test fun `a failure on a pass past the cooldowns names the service it asked and leaves its cooldown as it was`() {
+        val state = CooldownState(context = null, backendId = "cooled")
+        state.recordLadderFailure(CooldownLadder.RateLimit, "Server error", CooldownCause.SERVER_ERROR)
+        val until = state.unavailableUntil()!!
+        val cause = StructuralFailureException("error 503", BackendFailure(BackendFailureKind.SERVER_ERROR, 503))
+        // Fails as Gemini does on a 5xx: the failure recorded, then the throw.
+        val cooled = FakeCompleterBackend(
+            id = "cooled", priority = 10, cooldownState = state,
+            answer = { _, _ ->
+                state.recordLadderFailure(CooldownLadder.RateLimit, "Server error", CooldownCause.SERVER_ERROR)
+                throw cause
+            },
+        )
+        TranslationBackendRegistry.init(listOf(cooled))
+
+        val thrown = completeFailure(pastCooldowns = true)
+
+        assertTrue("$thrown", thrown is CompletionFailedException)
+        assertSame("the service it asked", cooled, (thrown as CompletionFailedException).backend)
+        assertSame(cause, thrown.cause)
+        assertEquals(1, cooled.completeCalls.get())
+        assertEquals("the cooldown neither ended nor grew", until, state.unavailableUntil())
     }
 
     // ── answerers ────────────────────────────────────────────────────────

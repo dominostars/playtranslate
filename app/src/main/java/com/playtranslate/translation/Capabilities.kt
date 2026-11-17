@@ -300,7 +300,8 @@ interface SentenceAnswerer {
      *  reason that is its answers' alone (a cap on how many it gives), or
      *  null when there is none. Apart from [Cooldownable.unavailableUntil],
      *  which says when the service as a whole is down, its translations
-     *  included: this one keeps a question from being put and nothing else. */
+     *  included: this one keeps a question from being put, a retry's apart
+     *  ([TranslationBackendRegistry.complete]), and nothing else. */
     fun answersUnavailableUntil(): Long?
 
     /** The service's answer to [question]. Throws as a translation call

@@ -93,9 +93,10 @@ class WordExplainGroupTest {
         override suspend fun translate(text: String, source: String, target: String): String = text
     }
 
-    /** One question put to the fake model, and the gate the test answers it
-     *  through; [cancelled] once its request saw its cancellation. */
-    private class Call(val asked: SentenceQuestion) {
+    /** One question put to the fake model, whether its pass was to ask past
+     *  the cooldowns (a retry's), and the gate the test answers it through;
+     *  [cancelled] once its request saw its cancellation. */
+    private class Call(val asked: SentenceQuestion, val pastCooldowns: Boolean) {
         val reply = CompletableDeferred<TranslationBackendRegistry.Completion>()
         var cancelled = false
     }
@@ -154,8 +155,8 @@ class WordExplainGroupTest {
         group = WordExplainGroup(
             activity, card, scope, subject, carried, host,
             hasLlm = { llmAsks++; llm },
-            complete = { asked, onAttempt ->
-                val call = Call(asked)
+            complete = { asked, pastCooldowns, onAttempt ->
+                val call = Call(asked, pastCooldowns)
                 calls += call
                 onAttempt(gemini)
                 if (ignoreCancellation) {
@@ -320,6 +321,7 @@ class WordExplainGroupTest {
 
         assertEquals("asked again", 2, calls.size)
         assertEquals(calls[0].asked, calls[1].asked)
+        assertEquals("the retry's pass alone asks past the cooldowns", listOf(false, true), calls.map { it.pastCooldowns })
         assertEquals(AskState.Asking(question, "Gemini"), group.session.state.value)
         assertEquals(listOf(activity.getString(R.string.ask_status_asking, "Gemini")), shownTexts())
     }

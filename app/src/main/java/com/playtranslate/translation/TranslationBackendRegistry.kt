@@ -306,7 +306,16 @@ object TranslationBackendRegistry {
      *
      * A service is skipped while the cooldown its translations share is
      * active ([Cooldownable.unavailableUntil]) and while a pause of its
-     * answers alone is ([SentenceAnswerer.answersUnavailableUntil]).
+     * answers alone is ([SentenceAnswerer.answersUnavailableUntil]), except
+     * on a pass [pastCooldowns], the user asking again after a question
+     * failed (the Ask session's retry): the service in a cooldown may be
+     * the very one whose failure the user is looking at (a 429 or a 5xx to
+     * a question can start one), and a retry that skipped it would ask
+     * nobody and fail at once. Only the skip is lifted: an answer clears
+     * the cooldown as any answer does, and a failure is recorded by the
+     * backend as on any question, where a [CooldownState] leaves a cooldown
+     * that is still running as it is, so asking past one does not lengthen
+     * it.
      *
      * [onAttempt] hears of each service as the pass starts asking it, so a
      * caller can say who is being asked: the first pick before the pass
@@ -326,6 +335,7 @@ object TranslationBackendRegistry {
      */
     suspend fun complete(
         question: SentenceQuestion,
+        pastCooldowns: Boolean = false,
         onAttempt: (TranslationBackend) -> Unit = {},
     ): Completion {
         var firstTried: TranslationBackend? = null
@@ -338,8 +348,11 @@ object TranslationBackendRegistry {
                 (backend as? SentenceAnswerer)?.answersUnavailableUntil(),
             ).maxOrNull()
             if (coolDown != null && coolDown > now) {
-                Log.d(TAG, "Completer ${backend.id} skipped (cooldown ${coolDown - now}ms remaining)")
-                continue
+                if (!pastCooldowns) {
+                    Log.d(TAG, "Completer ${backend.id} skipped (cooldown ${coolDown - now}ms remaining)")
+                    continue
+                }
+                Log.d(TAG, "Completer ${backend.id} asked past its cooldown (${coolDown - now}ms remaining)")
             }
             onAttempt(backend)
             val attemptStartedAt = System.currentTimeMillis()

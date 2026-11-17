@@ -4,7 +4,6 @@ import com.playtranslate.translation.CompletionFailedException
 import com.playtranslate.translation.FakeCompleterBackend
 import com.playtranslate.translation.SentenceAnswer
 import com.playtranslate.translation.SentenceQuestion
-import com.playtranslate.translation.TranslationBackend
 import com.playtranslate.translation.TranslationBackendRegistry.Completion
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -38,15 +37,16 @@ import org.junit.Test
  */
 class WordExplanationsTest {
 
-    /** One call to the LLM, parked until the test answers it. */
-    private class Call(val asked: SentenceQuestion) {
+    /** One call to the LLM, parked until the test answers it; whether its
+     *  pass was to ask past the cooldowns (a retry's). */
+    private class Call(val asked: SentenceQuestion, val pastCooldowns: Boolean) {
         val reply = CompletableDeferred<Completion>()
         val sawCancellation = CompletableDeferred<Unit>()
     }
 
     private val calls = mutableListOf<Call>()
-    private val complete: suspend (SentenceQuestion, (TranslationBackend) -> Unit) -> Completion = { asked, onAttempt ->
-        val call = Call(asked).also { calls += it }
+    private val complete: AskPass = { asked, pastCooldowns, onAttempt ->
+        val call = Call(asked, pastCooldowns).also { calls += it }
         onAttempt(online)
         try {
             call.reply.await()
@@ -152,6 +152,7 @@ class WordExplanationsTest {
         explanations.retry("cat")
 
         assertEquals(2, calls.size)
+        assertEquals("the retry's pass alone asks past the cooldowns", listOf(false, true), calls.map { it.pastCooldowns })
         assertEquals(AskState.Asking(question(cat), "OpenAI"), explanations.state("cat"))
         assertTrue("the owner hears the question go out again", changes > heard)
 

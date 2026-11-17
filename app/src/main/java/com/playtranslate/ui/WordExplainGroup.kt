@@ -14,6 +14,7 @@ import android.widget.TextView
 import androidx.annotation.AttrRes
 import androidx.core.view.isVisible
 import com.playtranslate.R
+import com.playtranslate.ask.AskPass
 import com.playtranslate.ask.AskQuestion
 import com.playtranslate.ask.AskSession
 import com.playtranslate.ask.AskState
@@ -21,8 +22,6 @@ import com.playtranslate.ask.Explanation
 import com.playtranslate.ask.WordInSentence
 import com.playtranslate.ask.answering
 import com.playtranslate.themeColor
-import com.playtranslate.translation.SentenceQuestion
-import com.playtranslate.translation.TranslationBackend
 import com.playtranslate.translation.TranslationBackendRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -74,11 +73,7 @@ internal class WordExplainGroup(
     private val hasLlm: () -> Boolean = { TranslationBackendRegistry.hasCompleter() },
     /** Puts the question to the user's services ([AskSession]'s seam). The
      *  registry's pass in production; a test substitutes it. */
-    complete: suspend (
-        question: SentenceQuestion,
-        onAttempt: (TranslationBackend) -> Unit,
-    ) -> TranslationBackendRegistry.Completion =
-        { question, onAttempt -> TranslationBackendRegistry.complete(question, onAttempt) },
+    complete: AskPass = AskSession.registryPass,
 ) {
     interface Host {
         /** The row was tapped with nothing that could answer: show the

@@ -57,6 +57,20 @@ sealed class AskState {
 }
 
 /**
+ * One pass putting a question to the user's services: [question], whether a
+ * service is asked even while its cooldown or a pause of its answers runs
+ * ([pastCooldowns], which only a retry asks for,
+ * [TranslationBackendRegistry.complete]), and [onAttempt], told of each
+ * service as the pass starts asking it. Production's is
+ * [AskSession.registryPass]; a test substitutes its own.
+ */
+typealias AskPass = suspend (
+    question: SentenceQuestion,
+    pastCooldowns: Boolean,
+    onAttempt: (TranslationBackend) -> Unit,
+) -> TranslationBackendRegistry.Completion
+
+/**
  * One results surface's Ask conversation: the question being asked about the
  * sentence on show, and its answer. The surface's view renders [state];
  * nothing else holds any of it.
@@ -72,14 +86,9 @@ sealed class AskState {
  */
 class AskSession(
     private val scope: CoroutineScope,
-    /** Puts a question to the user's services, naming each one to
-     *  [onAttempt] as it starts asking it. The registry's pass in
-     *  production; a test substitutes it. */
-    private val complete: suspend (
-        question: SentenceQuestion,
-        onAttempt: (TranslationBackend) -> Unit,
-    ) -> TranslationBackendRegistry.Completion =
-        { question, onAttempt -> TranslationBackendRegistry.complete(question, onAttempt) },
+    /** Puts a question to the user's services ([AskPass]). The registry's
+     *  pass in production; a test substitutes it. */
+    private val complete: AskPass = registryPass,
 ) {
     private val _state = MutableStateFlow<AskState>(AskState.Idle)
     val state: StateFlow<AskState> = _state.asStateFlow()
@@ -102,12 +111,27 @@ class AskSession(
     /** Ask [question] about the bound sentence, in place of whatever was
      *  being asked. A no-op with no sentence bound. */
     fun ask(question: AskQuestion) {
+        send(question, pastCooldowns = false)
+    }
+
+    /** Ask the failed question again, a service in a cooldown or with its
+     *  answers paused included ([AskPass]'s pastCooldowns): the user asks
+     *  to hear from their services now, and the service whose failure is
+     *  on screen may be in a cooldown that very failure started, which
+     *  would leave nobody to ask. A no-op in any other state. */
+    fun retry() {
+        (_state.value as? AskState.Failed)?.let { send(it.question, pastCooldowns = true) }
+    }
+
+    /** Puts [question] for [ask] and [retry]; [pastCooldowns] is the
+     *  retry's alone. */
+    private fun send(question: AskQuestion, pastCooldowns: Boolean) {
         val about = sentence ?: return
         job?.cancel()
         _state.value = AskState.Asking(question)
         job = scope.launch {
             val next = try {
-                val completion = complete(AskPrompts.build(question, about)) { backend ->
+                val completion = complete(AskPrompts.build(question, about), pastCooldowns) { backend ->
                     // Named only while this request is the live one, by the
                     // same promise as the write below: a pass that goes on
                     // after its cancel (a completer that returned or failed
@@ -143,11 +167,6 @@ class AskSession(
         }
     }
 
-    /** Ask the failed question again. A no-op in any other state. */
-    fun retry() {
-        (_state.value as? AskState.Failed)?.let { ask(it.question) }
-    }
-
     /** Put the question away: the request in flight is cancelled and the
      *  answer is gone. The sentence stays bound. */
     fun close() {
@@ -164,5 +183,16 @@ class AskSession(
         this.sentence = sentence
         close()
         _state.value = answer
+    }
+
+    companion object {
+        /** The registry's pass ([TranslationBackendRegistry.complete]): the
+         *  [AskPass] of every session production makes, the word questions'
+         *  and the word page's included, which hand it to the sessions they
+         *  make. One value, so a retry's pastCooldowns reaches the registry
+         *  by the same line from every surface. */
+        val registryPass: AskPass = { question, pastCooldowns, onAttempt ->
+            TranslationBackendRegistry.complete(question, pastCooldowns, onAttempt)
+        }
     }
 }

@@ -158,9 +158,14 @@ class AskSectionBinderTest {
 
     /** One question put to the fake LLM: the prompt it got, the session's
      *  naming of who is asked (through which a test has the pass fall
-     *  through to another service), and the gate the test answers or fails
-     *  it through. It stays in flight until then. */
-    private class Call(val user: String, val attempt: (TranslationBackend) -> Unit) {
+     *  through to another service), whether its pass was to ask past the
+     *  cooldowns (a retry's), and the gate the test answers or fails it
+     *  through. It stays in flight until then. */
+    private class Call(
+        val user: String,
+        val attempt: (TranslationBackend) -> Unit,
+        val pastCooldowns: Boolean,
+    ) {
         val reply = CompletableDeferred<TranslationBackendRegistry.Completion>()
     }
 
@@ -206,8 +211,8 @@ class AskSectionBinderTest {
         activity.setContentView(root)
         // As the registry's pass does, the fake names its first pick
         // (Gemini) before it first waits.
-        session = AskSession(scope) { asked, onAttempt ->
-            val call = Call(asked.user, onAttempt)
+        session = AskSession(scope) { asked, pastCooldowns, onAttempt ->
+            val call = Call(asked.user, onAttempt, pastCooldowns)
             calls += call
             onAttempt(gemini)
             call.reply.await()
@@ -977,6 +982,7 @@ class AskSectionBinderTest {
         assertEquals(AskState.Asking(asked, "Gemini"), session.state.value)
         assertEquals(2, calls.size)
         assertEquals("the same question, asked again", calls[0].user, calls[1].user)
+        assertEquals("the retry's pass alone asks past the cooldowns", listOf(false, true), calls.map { it.pastCooldowns })
         assertFalse(shown(retry))
         assertEquals(activity.getString(R.string.ask_status_asking, "Gemini"), body.text.toString())
     }

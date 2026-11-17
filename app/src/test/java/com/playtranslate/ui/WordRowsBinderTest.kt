@@ -22,7 +22,12 @@ import com.playtranslate.language.SourceLangId
 import com.playtranslate.model.ImportedSense
 import com.playtranslate.model.ImportedSenseGroup
 import com.playtranslate.themeColor
+import com.playtranslate.translation.BackendFailure
+import com.playtranslate.translation.BackendFailureKind
+import com.playtranslate.translation.CooldownCause
+import com.playtranslate.translation.CooldownLadder
 import com.playtranslate.translation.FakeCompleterBackend
+import com.playtranslate.translation.StructuralFailureException
 import com.playtranslate.translation.TranslationBackendRegistry
 import com.playtranslate.vocab.HiddenWordsStore
 import kotlinx.coroutines.CompletableDeferred
@@ -882,6 +887,30 @@ class WordRowsBinderTest {
         assertEquals("the failure folds away while it asks", DefRow.Explain(busy = true), explainOf("猫"))
         answer("this time")
         assertEquals(answered("this time"), explainOf("猫"))
+    }
+
+    /** A row's Try again over the registry's own pass, as the list asks in
+     *  production: the model fails as Gemini does on a 503 (its cooldown
+     *  recorded, then the throw), and Try again still reaches it. */
+    @Test
+    fun `Try again after a failure that put the model in a cooldown asks it again`() {
+        giveLlm()
+        binder.render(settledIn(sentence))
+        tapOn("猫", DefAction.EXPLAIN)
+        llm.cooldownState.recordLadderFailure(CooldownLadder.RateLimit, "Server error", CooldownCause.SERVER_ERROR)
+        val r = reply
+        reply = CompletableDeferred()
+        r.completeExceptionally(StructuralFailureException("error 503", BackendFailure(BackendFailureKind.SERVER_ERROR, 503)))
+        idle()
+        assertTrue("precondition: failed, with Try again", explainOf("猫")!!.answer!!.retry)
+        assertNotNull("precondition: the model is in a cooldown", llm.unavailableUntil())
+
+        tapOn("猫", DefAction.EXPLAIN_RETRY)
+
+        assertEquals("asked again", DefRow.Explain(busy = true), explainOf("猫"))
+        answer("this time")
+        assertEquals(answered("this time"), explainOf("猫"))
+        assertNull("the answer ended the cooldown", llm.unavailableUntil())
     }
 
     @Test

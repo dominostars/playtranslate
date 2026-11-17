@@ -94,6 +94,9 @@ import java.util.concurrent.atomic.AtomicLong
  *    the next service, the paused cloud is skipped with no request while a
  *    translation still goes to it, `out_of_scope` ends the pass, and one
  *    question end to end from the Ask session to the wire;
+ *  - Try again end to end: it asks the cloud through the shared cooldown,
+ *    whose end its answer is, and through the pause, whose refusal names
+ *    the cloud again;
  *  - logs and messages free of content.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -705,7 +708,7 @@ class PtCloudAskTest {
         assertNoCooldown()
     }
 
-    @Test fun `with only the cloud, ask_limit names it with its reason, and the paused retry names nothing`() {
+    @Test fun `with only the cloud, ask_limit names it with its reason, and the next question while paused names nothing`() {
         TranslationBackendRegistry.init(listOf(backend(answering(429, askLimit("3600")))))
 
         val first = thrownBy { TranslationBackendRegistry.complete(question()) } as CompletionFailedException
@@ -806,6 +809,51 @@ class PtCloudAskTest {
 
         assertEquals(AskState.OutOfScope(typed, "PlayTranslate Cloud"), state)
         assertEquals("What is the capital of {target}?", json(seen.single())["question"]!!.jsonPrimitive.content)
+    }
+
+    /** Try again, from the Ask session to the wire: a question the shared
+     *  cooldown kept off the cloud is put to it when the user asks again,
+     *  and its answer ends the cooldown. */
+    @Test fun `end to end, Try again asks the cloud through the shared cooldown, and its answer ends the cooldown`() {
+        TranslationBackendRegistry.init(listOf(backend(answering(200, ok(ANSWER)))))
+        cooldown.recordParsedFailure(System.currentTimeMillis() + 60_000, "Rate limited", CooldownCause.RATE_LIMITED)
+        val session = AskSession(sessionScope)
+        val typed = AskQuestion.Custom(WORDING)
+        session.bind(AskSentence(SENTENCE, sourceLang = "ja", targetLang = "en"))
+
+        session.ask(typed)
+        assertEquals("passed by, so nobody is named", AskState.Failed(typed), session.state.value)
+        assertTrue("and nothing was sent", seen.isEmpty())
+
+        session.retry()
+        val state = runBlocking { withTimeout(5_000) { session.state.first { it !is AskState.Asking } } }
+
+        assertEquals(AskState.Answered(typed, ANSWER, "PlayTranslate Cloud"), state)
+        assertEquals(1, asks().size)
+        assertNoCooldown()
+    }
+
+    /** Try again through the pause of the cloud's answers: the question
+     *  goes to the server, which refuses it again, and the failure names
+     *  the cloud and its reason, where a skipped pass would name nobody. */
+    @Test fun `end to end, Try again asks the cloud through its paused answers, and its refusal is named again`() {
+        TranslationBackendRegistry.init(listOf(backend(answering(429, askLimit("3600")))))
+        val session = AskSession(sessionScope)
+        val typed = AskQuestion.Custom(WORDING)
+        session.bind(AskSentence(SENTENCE, sourceLang = "ja", targetLang = "en"))
+        val refused = AskState.Failed(typed, "PlayTranslate Cloud", BackendFailure(BackendFailureKind.DAILY_QUOTA, 429))
+
+        session.ask(typed)
+        assertEquals(refused, runBlocking { withTimeout(5_000) { session.state.first { it !is AskState.Asking } } })
+        assertNotNull("precondition: the answers are paused", PtCloudService.askLimitedUntil())
+
+        session.retry()
+        val state = runBlocking { withTimeout(5_000) { session.state.first { it !is AskState.Asking } } }
+
+        assertEquals(refused, state)
+        assertEquals("the retry went to the server", 2, asks().size)
+        assertNotNull("paused again by the server's answer", PtCloudService.askLimitedUntil())
+        assertNoCooldown()
     }
 
     // ── Who is asked, and when the pause ends ──────────────────────────

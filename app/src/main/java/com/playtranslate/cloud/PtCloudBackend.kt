@@ -281,7 +281,9 @@ class PtCloudBackend(
 
     /** The account's answers for the day are used up until then
      *  ([PtCloudService.askLimitedUntil]): the route's own `429 ask_limit`,
-     *  which pauses questions and nothing else. */
+     *  which pauses questions, a retry's apart
+     *  ([com.playtranslate.translation.TranslationBackendRegistry.complete]),
+     *  and nothing else. */
     override fun answersUnavailableUntil(): Long? = PtCloudService.askLimitedUntil()
 
     /**

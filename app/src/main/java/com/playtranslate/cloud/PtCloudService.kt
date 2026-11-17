@@ -252,7 +252,10 @@ object PtCloudService {
      * translation or OCR, so no capture and no translation is kept off the
      * cloud by it. The registry's pass over the services that answer
      * questions skips the cloud while it runs
-     * ([PtCloudBackend.answersUnavailableUntil]).
+     * ([PtCloudBackend.answersUnavailableUntil]), but for a retry's, which
+     * asks it anyway ([TranslationBackendRegistry.complete]): while the
+     * count stands the server answers `ask_limit` again, and the pause is
+     * set again from that answer ([onAskLimit]).
      *
      * In memory only, on purpose: the server's count is in its memory too
      * and starts again when it restarts, so a pause that outlived this
@@ -265,8 +268,8 @@ object PtCloudService {
      * An Ask that carried [sentKey] was answered `429 ask_limit` with
      * [retryAfterS], the seconds until the account's count of answers
      * starts again (the time to 00:00 UTC): no question goes to the cloud
-     * until then ([askLimitedUntil]). Nothing else changes: not the
-     * cooldown, not a switch, not the pill.
+     * until then but a retry's ([askLimitedUntil]). Nothing else changes:
+     * not the cooldown, not a switch, not the pill.
      *
      * Acts only while [sentKey] is a usable key and still the stored one,
      * [onAccountWithheld]'s guard: the cap is the account's, and a key
