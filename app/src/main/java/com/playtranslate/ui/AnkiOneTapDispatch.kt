@@ -309,7 +309,9 @@ suspend fun Context.oneTapSendSentence(
         words = wordEntries,
         selectedWords = selectedWordsSet,
         sourceLangId = sourceLangId,
-        screenshot = screenshotPath?.let { ScreenshotAttachment(it) },
+        // No editor decides a one-tap card's crop: the send cuts the frame to
+        // the game picture it finds in it, the whole frame where it finds none.
+        screenshot = screenshotPath?.let { ScreenshotAttachment(it, findGamePicture = true) },
         includeSentenceAudio = prefs.ankiSentenceAudioEnabled,
         // One-tap has no sheet, so there is no note to type.
         notes = "",
@@ -362,7 +364,9 @@ suspend fun Context.oneTapSendWord(
         pitch = pitch,
         frequencies = frequencies,
         sourceLangId = sourceLangId,
-        screenshot = screenshotPath?.let { ScreenshotAttachment(it) },
+        // No editor decides a one-tap card's crop: the send cuts the frame to
+        // the game picture it finds in it, the whole frame where it finds none.
+        screenshot = screenshotPath?.let { ScreenshotAttachment(it, findGamePicture = true) },
         includeWordAudio = prefs.ankiWordAudioEnabled,
         // One-tap has no sheet, so there is no note to type.
         notes = "",

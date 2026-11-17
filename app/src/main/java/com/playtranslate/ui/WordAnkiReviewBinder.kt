@@ -1361,6 +1361,10 @@ class WordAnkiReviewBinder(
         word: String, reading: String, pos: String, fallbackDefinition: String,
         freqScore: Int, deckId: Long, sourceLangId: SourceLangId,
     ) {
+        // The screenshot's starting crop first: a Save tapped before the
+        // screenshot has shown comes while the frame's search still runs,
+        // and the attachment is read below at click time.
+        screenshot?.awaitStartingCrop()
         // The Definition field is described as data and rendered by the
         // pipeline (WordCardDefinition) — the same builder one-tap uses,
         // fed here with the editor's curation. The default PlayTranslate
@@ -1497,6 +1501,9 @@ class WordAnkiReviewBinder(
         // A card saved mid-fill would ship without its words table, or
         // without its own word placed.
         wordsFillJob?.join()
+        // Nor without its starting crop: a Save tapped before the screenshot
+        // has shown comes while the frame's search still runs.
+        screenshot?.awaitStartingCrop()
         val input = content.getCardData().toSendInput(
             includeSentenceAudio = content.sentenceAudioEnabled,
             // The word editor's sentence tab carries Tatoeba "more examples"

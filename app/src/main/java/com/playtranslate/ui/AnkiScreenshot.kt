@@ -4,6 +4,15 @@ import android.content.Context
 import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Bundle
+import android.util.Log
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -54,14 +63,43 @@ data class ScreenshotCrop private constructor(
 
         fun of(rect: RectF): ScreenshotCrop? = of(rect.left, rect.top, rect.right, rect.bottom)
 
+        /** The crop that is exactly [rect] of a [width] x [height] image back
+         *  through [toPixelRect]: each fraction stands a quarter of a pixel
+         *  inside its edge, since one on the edge itself can land a pixel off
+         *  in single precision (63/1920 floors to 62, 241/1920 ceils to 242),
+         *  and half a pixel would fold a one-pixel rect to nothing. Null for
+         *  an empty rect and for the whole image, which is no crop. */
+        fun ofPixels(rect: Rect, width: Int, height: Int): ScreenshotCrop? {
+            if (rect.isEmpty) return null
+            if (rect.left <= 0 && rect.top <= 0 && rect.right >= width && rect.bottom >= height) return null
+            return of(
+                (rect.left + 0.25f) / width,
+                (rect.top + 0.25f) / height,
+                (rect.right - 0.25f) / width,
+                (rect.bottom - 0.25f) / height,
+            )
+        }
+
         /** The inverse of [toFloatArray]; anything else is no crop. */
         fun fromFloatArray(a: FloatArray?): ScreenshotCrop? =
             a?.takeIf { it.size == 4 }?.let { of(it[0], it[1], it[2], it[3]) }
     }
 }
 
-/** What a send attaches: the screenshot file and the crop to apply to it. */
-data class ScreenshotAttachment(val path: String, val crop: ScreenshotCrop? = null)
+/**
+ * What a send attaches: the screenshot file and the crop to apply to it.
+ * With no [crop], [findGamePicture] has the send cut the frame to the game
+ * picture it finds in it ([GamePicture]), and send the whole frame where it
+ * finds none: the one-tap card, for which no editor decided a crop. The
+ * editor decides its starting crop when it opens ([AnkiScreenshotState]),
+ * so its attachments never set this, and a crop the user cleared there is
+ * the whole frame.
+ */
+data class ScreenshotAttachment(
+    val path: String,
+    val crop: ScreenshotCrop? = null,
+    val findGamePicture: Boolean = false,
+)
 
 /**
  * The card editor's screenshot: the pinned file plus the user's edits (a
@@ -73,6 +111,18 @@ data class ScreenshotAttachment(val path: String, val crop: ScreenshotCrop? = nu
  * recreation: [open] on the restored bundle adopts the pin and the crop,
  * or finds the removal. A workspace page's bundle is never saved, and the
  * write-back is inert there.
+ *
+ * The starting crop: a fresh editor's crop begins on the game picture in
+ * the frame, the frame less its black bars ([GamePicture]), found by a
+ * search of the pinned file that [open] starts off the main thread and
+ * that sets the crop when it lands. The cells show the frame once that is
+ * decided ([awaitStartingCrop]), so the picture and its box appear
+ * together and no edit can come before it, and every Save path awaits it
+ * before reading [attachment], so a Save tapped before the frame has shown
+ * still sends the crop. The decision is made once per
+ * editor, found or not, and recorded in [args] beside the crop, so a
+ * recreation never searches again and a crop the user cleared stays
+ * cleared; a crop or a removal already in the args is a decision made.
  *
  * The pin itself is owned from [open] to a final [release], through a
  * removal and across recreations: a send already past Save holds the path
@@ -96,6 +146,10 @@ class AnkiScreenshotState private constructor(
 
     private val listeners = mutableListOf<(AnkiScreenshotState) -> Unit>()
 
+    /** The starting crop's search; cancelled at [release]. */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val startingCrop = CompletableDeferred<Unit>()
+
     fun addListener(listener: (AnkiScreenshotState) -> Unit) {
         listeners += listener
     }
@@ -106,6 +160,35 @@ class AnkiScreenshotState private constructor(
 
     private fun notifyChanged() {
         listeners.toList().forEach { it(this) }
+    }
+
+    /** Suspends until the starting crop is decided: the game picture found
+     *  in the frame and set as the crop, or nothing found. At once when the
+     *  decision was made before this open (a restored editor), when the args
+     *  held a crop or the removal, and once [release] has run. */
+    suspend fun awaitStartingCrop() = startingCrop.await()
+
+    /** True once [awaitStartingCrop] returns at once. */
+    val startingCropDecided: Boolean get() = startingCrop.isCompleted
+
+    /** Start the search: [find] runs on IO; what it finds becomes the crop
+     *  unless a removal came first ([setCrop] is a no-op once removed; no
+     *  edit can, since the cells show the frame after the decision), and
+     *  the decision is recorded either way. A search that fails decides
+     *  nothing found. */
+    private fun seedStartingCrop(find: () -> ScreenshotCrop?) {
+        scope.launch {
+            val found = try {
+                withContext(Dispatchers.IO) { find() }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "the starting crop's search failed; none", e)
+                null
+            }
+            args.putBoolean(ARG_SCREENSHOT_CROP_SEEDED, true)
+            if (found != null) setCrop(found)
+        }.invokeOnCompletion { startingCrop.complete(Unit) }
     }
 
     /** Set or clear the crop. A no-op once removed, or for the crop that
@@ -133,18 +216,26 @@ class AnkiScreenshotState private constructor(
     /** Host-view teardown. [final] is the host's finality verdict (its
      *  isFinalMediaTeardown clause): a saved-state destroy keeps the pin
      *  for the restored instance, a final teardown releases it, removed or
-     *  not. */
+     *  not. A search still running is cancelled, anyone awaiting it is let
+     *  go, and its decision is not recorded, so a restored editor searches
+     *  again. */
     fun release(ctx: Context, final: Boolean) {
+        scope.cancel()
+        startingCrop.complete(Unit)
         listeners.clear()
         if (final) AnkiScreenshotPin.release(ctx, pinnedPath)
     }
 
     companion object {
+        private const val TAG = "AnkiScreenshotState"
+
         /** The launch-args key every editor entry writes the screenshot's
          *  path to. */
         const val ARG_SCREENSHOT_PATH = "screenshot_path"
         private const val ARG_SCREENSHOT_CROP = "screenshot_crop"
         private const val ARG_SCREENSHOT_REMOVED = "screenshot_removed"
+        /** The starting crop was decided (found or not): never search again. */
+        private const val ARG_SCREENSHOT_CROP_SEEDED = "screenshot_crop_seeded"
 
         /**
          * The editor's screenshot from its [args]. A live capture path is
@@ -154,15 +245,24 @@ class AnkiScreenshotState private constructor(
          * (the state then holds no attachment and still owns the pin, so
          * the final teardown deletes it). Null with no path, or when the
          * file is gone, in which case the keys are cleared so the send has
-         * nothing to attach.
+         * nothing to attach. With an attachment and no decision yet, the
+         * starting crop's search begins (see the class doc), with
+         * [findPicture] reading the pinned file against the floating icons
+         * as they stand now ([GamePicture.floatingIcons], read here on the
+         * main thread). Production passes nothing for it.
          */
-        fun open(ctx: Context, args: Bundle): AnkiScreenshotState? {
+        fun open(
+            ctx: Context,
+            args: Bundle,
+            findPicture: (File, List<IconDiscFootprint>) -> ScreenshotCrop? = GamePicture::cropOf,
+        ): AnkiScreenshotState? {
             val path = args.getString(ARG_SCREENSHOT_PATH) ?: return null
             val pinned = if (AnkiScreenshotPin.isPin(ctx, path)) path else AnkiScreenshotPin.pin(ctx, path)
             if (pinned == null || !File(pinned).isFile) {
                 args.remove(ARG_SCREENSHOT_PATH)
                 args.remove(ARG_SCREENSHOT_CROP)
                 args.remove(ARG_SCREENSHOT_REMOVED)
+                args.remove(ARG_SCREENSHOT_CROP_SEEDED)
                 return null
             }
             args.putString(ARG_SCREENSHOT_PATH, pinned)
@@ -171,7 +271,17 @@ class AnkiScreenshotState private constructor(
             } else {
                 ScreenshotAttachment(pinned, ScreenshotCrop.fromFloatArray(args.getFloatArray(ARG_SCREENSHOT_CROP)))
             }
-            return AnkiScreenshotState(args, pinned, attachment)
+            val state = AnkiScreenshotState(args, pinned, attachment)
+            val undecided = attachment != null && attachment.crop == null &&
+                !args.getBoolean(ARG_SCREENSHOT_CROP_SEEDED, false)
+            if (undecided) {
+                val icons = GamePicture.floatingIcons()
+                val file = File(pinned)
+                state.seedStartingCrop { findPicture(file, icons) }
+            } else {
+                state.startingCrop.complete(Unit)
+            }
+            return state
         }
     }
 }

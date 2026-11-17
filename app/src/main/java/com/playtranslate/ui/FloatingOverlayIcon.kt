@@ -12,6 +12,7 @@ import android.view.VelocityTracker
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
+import com.playtranslate.displaySizePx
 import com.playtranslate.overlay.OverlayEnvironment
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlay.OverlayPlacement
@@ -286,6 +287,33 @@ class FloatingOverlayIcon(context: Context) : View(context) {
      *  the display waits for its end, which settles. */
     private val atRest: Boolean
         get() = !hasActiveGesture && !inDragMode && snapAnimator?.isRunning != true
+
+    /** The disc as [onDraw] paints it on its display while the icon rests
+     *  on its dock ([IconDiscFootprint]), or null while a gesture, a glide
+     *  or the drag lens owns the window (a glide carries the whole disc, the
+     *  lens draws a ring) and before the window has a place. The geometry
+     *  is onDraw's: the centre half a radius past the view's centre on the
+     *  off-screen side, cut at the dock line through the view's centre,
+     *  under the orbit's largest step either way. */
+    fun paintedDisc(): IconDiscFootprint? {
+        val p = params ?: return null
+        if (!atRest) return null
+        val center = viewSizePx / 2f
+        val r = circleSizePx / 2f
+        val cx = if (currentEdge == Edge.LEFT) center - r * 0.5f else center + r * 0.5f
+        val size = context.displaySizePx()
+        return IconDiscFootprint(
+            cx = p.x + cx,
+            cy = p.y + center,
+            radius = r,
+            strokePx = borderPaint.strokeWidth,
+            dockX = p.x + center,
+            screenIsLeftOfDock = currentEdge == Edge.RIGHT,
+            driftPx = ORBIT_WAVE.max(),
+            displayWidth = size.x,
+            displayHeight = size.y,
+        )
+    }
 
     /** The window origin for [slot] in [env] ([IconDock]). The dock lines
      *  are the display's edges moved inboard by what covers this window
@@ -921,6 +949,27 @@ class FloatingOverlayIcon(context: Context) : View(context) {
         // Intentionally empty.
     }
 }
+
+/**
+ * The floating icon's disc as it stands painted on its display, in screen
+ * pixels ([FloatingOverlayIcon.paintedDisc]), for a frame of that display to
+ * be read against ([GamePicture]): a disc of [radius] about ([cx], [cy])
+ * with its rim [strokePx] wide, cut at the dock line [dockX] so that only
+ * the side toward the screen shows ([screenIsLeftOfDock] for an icon docked
+ * on the right), riding a vertical orbit of up to [driftPx] either way, on a
+ * display of [displayWidth] x [displayHeight].
+ */
+data class IconDiscFootprint(
+    val cx: Float,
+    val cy: Float,
+    val radius: Float,
+    val strokePx: Float,
+    val dockX: Float,
+    val screenIsLeftOfDock: Boolean,
+    val driftPx: Int,
+    val displayWidth: Int,
+    val displayHeight: Int,
+)
 
 /**
  * The floating icon's disc as it rests on its dock: its size and colours,

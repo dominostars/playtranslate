@@ -154,12 +154,17 @@ internal fun addAnkiScreenshotGroup(
     // Decoded off the main thread: a bind runs synchronously inside the
     // workspace push, and a full-screen decode there stalls the window's
     // enter animation. Display-only; the card gets the file itself
-    // (addMediaFromFile), never this bitmap.
+    // (addMediaFromFile), never this bitmap. Shown once the starting crop
+    // is decided ([AnkiScreenshotState.awaitStartingCrop], a search of the
+    // same file that runs meanwhile), so the frame and its box appear
+    // together and the crop button, which edits the crop that stands,
+    // never offers a box the search is about to replace.
     scope.launch {
         val path = state.attachment?.path ?: return@launch
         val bmp = withContext(Dispatchers.IO) {
             decodeScreenshotForDisplay(File(path), ctx.resources.displayMetrics.widthPixels)
         }
+        state.awaitStartingCrop()
         if (bmp == null || state.attachment == null) return@launch
         img.setImageBitmap(bmp)
         cropButton.visibility = View.VISIBLE

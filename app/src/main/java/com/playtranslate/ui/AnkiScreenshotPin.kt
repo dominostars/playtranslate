@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Rect
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -100,25 +101,50 @@ object AnkiScreenshotPin {
      * gone, a decode or encode failure) yields NULL, so the card ships
      * without its screenshot and says so (the pipeline's media-miss fold),
      * never with the frame the user cut down.
+     *
+     * With no crop and [ScreenshotAttachment.findGamePicture] (a one-tap
+     * card), the frozen copy is decoded the same way and cut to the game
+     * picture found in it ([GamePicture], against the floating icons as
+     * they stand, read on the main thread after the freeze); where none is
+     * found, or the cut cannot be written, the frozen whole frame is the
+     * screenshot, as it was before: the user decided nothing here, so
+     * nothing of theirs is lost.
      */
     suspend fun pinForSend(ctx: Context, shot: ScreenshotAttachment?): String? {
         shot ?: return null
         val frozen = pin(ctx, shot.path) ?: return null
-        val crop = shot.crop ?: return frozen
+        val crop = shot.crop
+        if (crop == null && !shot.findGamePicture) return frozen
         // Nested on purpose: the IO result is delivered back into the outer
         // NonCancellable context, whose job is always active, so a cancelled
         // caller still receives the path (a plain IO + NonCancellable context
         // would run the block but discard its result on the dispatch back).
         return withContext(NonCancellable) {
-            withContext(Dispatchers.IO) {
-                val cropped = writeCropped(ctx, frozen, crop)
-                release(ctx, frozen)
-                cropped
+            if (crop != null) {
+                withContext(Dispatchers.IO) {
+                    val cropped = writeCropped(ctx, frozen) { crop.toPixelRect(it.width, it.height) }
+                    release(ctx, frozen)
+                    cropped
+                }
+            } else {
+                val icons = withContext(Dispatchers.Main.immediate) { GamePicture.floatingIcons() }
+                withContext(Dispatchers.IO) {
+                    val cut = writeCropped(ctx, frozen) { GamePicture.find(it, icons) }
+                    if (cut == null) {
+                        frozen
+                    } else {
+                        release(ctx, frozen)
+                        cut
+                    }
+                }
             }
         }
     }
 
-    private fun writeCropped(ctx: Context, path: String, crop: ScreenshotCrop): String? {
+    /** [path] decoded, cut to the rect [rectOf] gives for its bitmap and
+     *  written as a new pin; null, with nothing left on disk, when [rectOf]
+     *  gives none or anything fails. */
+    private fun writeCropped(ctx: Context, path: String, rectOf: (Bitmap) -> Rect?): String? {
         var dst: File? = null
         try {
             val src = File(path)
@@ -127,7 +153,7 @@ object AnkiScreenshotPin {
             sweepStale(d)
             val full = BitmapFactory.decodeFile(src.absolutePath) ?: return null
             try {
-                val r = crop.toPixelRect(full.width, full.height)
+                val r = rectOf(full) ?: return null
                 // A cut that is the whole frame comes back as the source
                 // itself, not a copy: recycle only what createBitmap made.
                 val cut = Bitmap.createBitmap(full, r.left, r.top, r.width(), r.height())
@@ -150,9 +176,9 @@ object AnkiScreenshotPin {
                 full.recycle()
             }
         } catch (e: Exception) {
-            Log.w(TAG, "crop failed; sending without the screenshot", e)
+            Log.w(TAG, "crop failed", e)
         } catch (e: OutOfMemoryError) {
-            Log.w(TAG, "crop failed, out of memory; sending without the screenshot")
+            Log.w(TAG, "crop failed, out of memory")
         }
         dst?.delete()
         return null

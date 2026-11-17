@@ -25,7 +25,9 @@ import java.io.File
  * cut is written as a new pin at the capture's quality and the source is
  * untouched; without a crop the pin is today's byte copy; a crop that
  * cannot be written is NO screenshot (the pipeline reports the drop),
- * never the whole frame. NATIVE graphics so BitmapFactory and compress
+ * never the whole frame. A one-tap send's attachment asks for the game
+ * picture instead: the frozen frame cut to the picture found in it, the
+ * whole frame where there is none or the cut fails. NATIVE graphics so BitmapFactory and compress
  * really run on the JVM; Bitmap and Canvas only (no View, no Path: see the
  * sandbox-order note).
  */
@@ -49,6 +51,19 @@ class AnkiScreenshotPinCropTest {
     }
 
     private fun pins(): List<File> = File(ctx.cacheDir, "anki-pins").listFiles()?.toList().orEmpty()
+
+    /** A 400 x 200 JPEG: a picture between 30 px black bars top and bottom. */
+    private fun letterboxed(): File {
+        val bmp = Bitmap.createBitmap(400, 200, Bitmap.Config.ARGB_8888)
+        Canvas(bmp).apply {
+            drawColor(Color.BLACK)
+            drawRect(0f, 30f, 400f, 170f, Paint().apply { color = 0xFF4080C0.toInt() })
+        }
+        val f = File(ctx.cacheDir, "screenshots/capture-d0.jpg")
+        f.parentFile!!.mkdirs()
+        f.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+        return f
+    }
 
     @Test fun `a crop writes the cut as a new pin and leaves the source alone`() = runBlocking {
         val src = halves()
@@ -120,5 +135,48 @@ class AnkiScreenshotPinCropTest {
         assertNull(AnkiScreenshotPin.pinForSend(ctx, ScreenshotAttachment(missing, ScreenshotCrop.of(0.5f, 0f, 1f, 1f))))
         assertEquals(missing, AnkiScreenshotPin.pinForSend(ctx, ScreenshotAttachment(missing)))
         assertNull(AnkiScreenshotPin.pinForSend(ctx, null))
+    }
+
+    // ── The one-tap cut ──────────────────────────────────────────────────
+
+    @Test fun `a one-tap send cuts the frozen frame to the game picture it finds`() = runBlocking {
+        val src = letterboxed()
+        val before = src.readBytes()
+        val out = AnkiScreenshotPin.pinForSend(ctx, ScreenshotAttachment(src.absolutePath, findGamePicture = true))!!
+        assertTrue(AnkiScreenshotPin.isPin(ctx, out))
+        val cut = BitmapFactory.decodeFile(out)!!
+        assertEquals(400, cut.width)
+        assertTrue("the picture's 140 rows, within a pixel of the JPEG's edges: ${cut.height}", cut.height in 138..142)
+        assertArrayEquals(before, src.readBytes())
+        assertEquals("the uncropped copy is released", 1, pins().size)
+    }
+
+    @Test fun `with no picture to cut to, the one-tap send is the whole frame`() = runBlocking {
+        val src = halves()
+        val out = AnkiScreenshotPin.pinForSend(ctx, ScreenshotAttachment(src.absolutePath, findGamePicture = true))!!
+        assertTrue(AnkiScreenshotPin.isPin(ctx, out))
+        assertArrayEquals(src.readBytes(), File(out).readBytes())
+        assertEquals(1, pins().size)
+    }
+
+    @Test fun `a crop beside the one-tap flag is the crop`() = runBlocking {
+        val src = letterboxed()
+        val out = AnkiScreenshotPin.pinForSend(
+            ctx, ScreenshotAttachment(src.absolutePath, ScreenshotCrop.of(0.5f, 0f, 1f, 1f), findGamePicture = true),
+        )!!
+        val cut = BitmapFactory.decodeFile(out)!!
+        assertEquals(200, cut.width)
+        assertEquals(200, cut.height)
+    }
+
+    @Test fun `a one-tap frame that cannot be decoded is sent whole`() = runBlocking {
+        val garbage = File(ctx.cacheDir, "screenshots/capture-d0.jpg").apply {
+            parentFile!!.mkdirs()
+            writeBytes(ByteArray(64) { 7 })
+        }
+        val out = AnkiScreenshotPin.pinForSend(ctx, ScreenshotAttachment(garbage.absolutePath, findGamePicture = true))!!
+        assertTrue(AnkiScreenshotPin.isPin(ctx, out))
+        assertArrayEquals(garbage.readBytes(), File(out).readBytes())
+        assertEquals(1, pins().size)
     }
 }

@@ -38,6 +38,7 @@ import com.playtranslate.ui.CaptureOverlayWindow
 import com.playtranslate.ui.DimController
 import com.playtranslate.ui.DragLookupController
 import com.playtranslate.ui.FloatingIconMenu
+import com.playtranslate.ui.IconDiscFootprint
 import com.playtranslate.ui.GrowthLimits
 import com.playtranslate.ui.LanguageSetupActivity
 import com.playtranslate.ui.OcrPicker
@@ -820,6 +821,13 @@ class OverlayUiController(
     fun ownChromeRects(displayId: Int): List<Rect> =
         listOfNotNull(getFloatingIconRect(displayId), noTextPillRect(displayId)) +
             errorPills.screenRects(displayId)
+
+    /** Every display's floating icon as it stands painted right now
+     *  ([FloatingOverlayIcon.paintedDisc]), for a card's frame to be read
+     *  against ([com.playtranslate.ui.GamePicture]); an icon a gesture or a
+     *  glide owns is left out. Main thread. */
+    fun floatingIconDiscs(): List<IconDiscFootprint> =
+        iconHandles.values.mapNotNull { it.icon.paintedDisc() }
 
     /** The transient pill's rect on [displayId] while it is up there and laid
      *  out. "Translating from …" goes up as the restarted session takes its

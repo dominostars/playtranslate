@@ -336,6 +336,9 @@ class AnkiReviewBottomSheet : DialogFragment() {
         }
         // A card saved mid-fill used to ship without its words table.
         wordsFillJob?.join()
+        // Nor without its starting crop: a Save tapped before the screenshot
+        // has shown comes while the frame's search still runs.
+        screenshot?.awaitStartingCrop()
         val input = content.getCardData().toSendInput(content.sentenceAudioEnabled)
         // Fragment receiver so NeedsMapping opens the mapping dialog
         // (Context.sendSentenceCard would skip it).

@@ -19,6 +19,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -26,6 +27,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import java.awt.image.BufferedImage
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
 
 /**
@@ -51,12 +54,14 @@ class AnkiScreenshotCellTest {
 
     @After fun tearDown() = scope.cancel()
 
-    private fun state(): AnkiScreenshotState {
+    private fun state(
+        findPicture: (File, List<IconDiscFootprint>) -> ScreenshotCrop? = GamePicture::cropOf,
+    ): AnkiScreenshotState {
         val f = File(ctx.cacheDir, "screenshots/capture-d0.png")
         f.parentFile!!.mkdirs()
         ImageIO.write(BufferedImage(200, 100, BufferedImage.TYPE_INT_RGB), "png", f)
         val args = Bundle().apply { putString(AnkiScreenshotState.ARG_SCREENSHOT_PATH, f.absolutePath) }
-        return AnkiScreenshotState.open(ctx, args)!!
+        return AnkiScreenshotState.open(ctx, args, findPicture)!!
     }
 
     /** One tab's container with its group: the frame's children are the
@@ -145,5 +150,29 @@ class AnkiScreenshotCellTest {
         val container = LinearLayout(activity)
         assertNull(addAnkiScreenshotGroup(container, activity, scope, state) {})
         assertEquals(0, container.childCount)
+    }
+
+    @Test fun `the frame shows once the starting crop is decided, with its box`() {
+        val activity = Robolectric.buildActivity(Host::class.java).setup().get()
+        val gate = CountDownLatch(1)
+        val crop = ScreenshotCrop.of(0.1f, 0.2f, 0.9f, 0.8f)!!
+        val state = state { _, _ ->
+            gate.await(5, TimeUnit.SECONDS)
+            crop
+        }
+        val word = tab(activity, state)
+        // The decode lands meanwhile; the frame waits for the decision.
+        repeat(20) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(10)
+        }
+        assertNull(word.image.drawable)
+        assertEquals(View.GONE, word.cropButton.visibility)
+        gate.countDown()
+        awaitFrame(word)
+        assertTrue(state.startingCropDecided)
+        assertEquals(crop, state.attachment!!.crop)
+        assertEquals(View.VISIBLE, word.overlay.visibility)
+        assertEquals(View.VISIBLE, word.cropButton.visibility)
     }
 }
