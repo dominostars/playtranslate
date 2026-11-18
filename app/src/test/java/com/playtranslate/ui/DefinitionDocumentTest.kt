@@ -103,7 +103,7 @@ class DefinitionDocumentTest {
     private fun idle() = shadowOf(Looper.getMainLooper()).idle()
 
     private val view: DefinitionDocumentView get() = slot.getChildAt(0) as DefinitionDocumentView
-    private val web: WebView get() = view.getChildAt(0) as WebView
+    private val web: WebView get() = view.pageView as WebView
 
     /** The shell's page finished loading: what was queued for it runs. */
     private fun pageReady() {
@@ -125,11 +125,14 @@ class DefinitionDocumentTest {
         }
     }
 
-    /** The page reports a layout of row set [gen]. */
-    private fun layout(gen: Int, heightCssPx: Int, targets: String = "[]") {
+    /** The page reports a layout of row set [gen], with the word heads that
+     *  pin [heads] (rowId, top, height for each, as the page sends them) and
+     *  the rows it replaced since its last report [redrawn]. */
+    private fun layout(gen: Int, heightCssPx: Int, targets: String = "[]", heads: String = "[]", redrawn: String = "[]") {
         val bridge = shadowOf(web).getJavascriptInterface("PTBridge")
-        bridge.javaClass.getMethod("onLayout", Int::class.java, Int::class.java, String::class.java)
-            .invoke(bridge, gen, heightCssPx, targets)
+        val s = String::class.java
+        bridge.javaClass.getMethod("onLayout", Int::class.java, Int::class.java, s, s, s)
+            .invoke(bridge, gen, heightCssPx, targets, heads, redrawn)
         idle()
     }
 
@@ -228,6 +231,15 @@ class DefinitionDocumentTest {
         assertEquals(listOf("w1" to DefAction.SPEAK), actions)
         tap("k99", DefAction.OPEN)
         assertEquals("a row the document does not hold is no tap", 1, actions.size)
+    }
+
+    @Test fun `the heads a report names are kept by their rows' own ids, and a new row set starts with none`() {
+        doc.setRows(rows(2), "ja")
+        pageReady()
+        layout(1, 200, """["k0","open",0,0,300,100,"k1","open",0,100,300,100]""", """["k0",10,40,"k1",110,44,"k9",0,40]""")
+        assertEquals(mapOf("w0" to DocHead("w0", 10, 40), "w1" to DocHead("w1", 110, 44)), doc.heads)
+        doc.setRows(listOf(row("other")), "ja")
+        assertEquals(emptyMap<String, DocHead>(), doc.heads)
     }
 
     @Test fun `a cursor on an answer's X moves to the row's explain button when the X goes, and the page is told`() {

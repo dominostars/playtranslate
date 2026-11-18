@@ -40,6 +40,13 @@ fun NavAction.activate() {
 interface NavTarget {
     /** The target's live rect on screen; false when it is not showing. */
     fun rectOnScreen(out: Rect): Boolean
+
+    /** What of the screen a cursor moving onto this target needs to see,
+     *  for the scroll that brings it into view: its rect, the default, or
+     *  more where something can draw over it (a definitions document's
+     *  pinned word head, over the targets below it). */
+    fun revealRectOnScreen(out: Rect): Boolean = rectOnScreen(out)
+
     fun activate()
 
     /** The target of the same view that takes this one's place when a
@@ -350,9 +357,18 @@ class CaptureSheetControllerNav(
         // short host caps the card and makes it scroll).
         when {
             item is Item.Button && item.floating -> item.view.revealInScrollingAncestor()
-            item != Item.Handle -> host.ensureVisible(rectOnScreen)
+            item != Item.Handle -> host.ensureVisible(revealRect(item, rectOnScreen))
         }
         syncRing()
+    }
+
+    /** What of the screen [item], at [rectOnScreen], needs to be seen: its
+     *  target's reveal rect when it has one ([NavTarget.revealRectOnScreen]),
+     *  else its rect. */
+    private fun revealRect(item: Item, rectOnScreen: Rect): Rect {
+        val target = (item as? Item.Button)?.target ?: return rectOnScreen
+        val r = Rect()
+        return if (target.revealRectOnScreen(r)) r else rectOnScreen
     }
 
     private fun selectFirst() {

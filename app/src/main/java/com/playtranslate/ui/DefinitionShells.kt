@@ -38,9 +38,10 @@ internal class DefinitionShell private constructor(
     val webView: WebView,
 ) {
     interface Listener {
-        /** The page laid out row set [gen]: its height in CSS px and its
-         *  targets (see [DefinitionsDocument.documentShellHtml]). */
-        fun onLayout(gen: Int, heightCssPx: Int, targetsJson: String)
+        /** The page laid out row set [gen]: its height in CSS px, its
+         *  targets, the word heads that pin and the rows it replaced since
+         *  its last report (see [DefinitionsDocument.documentShellHtml]). */
+        fun onLayout(gen: Int, heightCssPx: Int, targetsJson: String, headsJson: String, redrawnJson: String)
 
         /** A tap on [act] in the row whose DOM id is [domId]. */
         fun onAction(domId: String, act: String)
@@ -88,8 +89,8 @@ internal class DefinitionShell private constructor(
 
     private inner class Bridge {
         @JavascriptInterface
-        fun onLayout(gen: Int, heightCssPx: Int, targetsJson: String) {
-            MAIN.post { listener?.onLayout(gen, heightCssPx, targetsJson) }
+        fun onLayout(gen: Int, heightCssPx: Int, targetsJson: String, headsJson: String, redrawnJson: String) {
+            MAIN.post { listener?.onLayout(gen, heightCssPx, targetsJson, headsJson, redrawnJson) }
         }
 
         @JavascriptInterface

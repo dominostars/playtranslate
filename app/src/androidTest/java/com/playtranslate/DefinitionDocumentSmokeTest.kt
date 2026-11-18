@@ -222,7 +222,7 @@ class DefinitionDocumentSmokeTest {
 
             // A tap in the page: the speak button of the first row, then the row itself.
             var web: WebView? = null
-            onMain { web = (slot!!.getChildAt(0) as DefinitionDocumentView).getChildAt(0) as WebView }
+            onMain { web = (slot!!.getChildAt(0) as DefinitionDocumentView).pageView as WebView }
             onMain { web!!.evaluateJavascript("document.querySelector('[data-row] [data-act=\"speak\"]').click()", null) }
             await("the speak tap") { actions.isNotEmpty() }
             assertEquals(listOf("row0" to DefAction.SPEAK), actions.toList())
@@ -546,7 +546,7 @@ class DefinitionDocumentSmokeTest {
             // head's. One line of a headword is 1.636 x 16.5 x 1.4 = 38px.
             var measured: String? = null
             onMain {
-                val web = (d.hostView as DefinitionDocumentView).getChildAt(0) as WebView
+                val web = (d.hostView as DefinitionDocumentView).pageView as WebView
                 web.evaluateJavascript(
                     """(function(){var out=[];var rows=document.querySelectorAll('[data-row]');
                     for(var i=0;i<rows.length;i++){var h=rows[i].querySelector('.head'),w=h.querySelector('.w');
@@ -1041,7 +1041,7 @@ class DefinitionDocumentSmokeTest {
             // Read on the main thread: inside an await, or through onMain.
             fun laidOut(n: Int): Boolean = !d.showsNotice && d.targets.map { it.rowId }.distinct().size == n
             // The page the document shows now. Main thread.
-            fun page(): WebView? = (d.hostView as? DefinitionDocumentView)?.getChildAt(0) as? WebView
+            fun page(): WebView? = (d.hostView as? DefinitionDocumentView)?.pageView as? WebView
 
             /** Ends the render process and returns the page that died. */
             fun killRenderer(): WebView {

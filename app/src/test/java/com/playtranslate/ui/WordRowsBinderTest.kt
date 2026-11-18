@@ -1028,7 +1028,7 @@ class WordRowsBinderTest {
 
     /** The render process of the card's page dies, as the platform tells it. */
     private fun killRenderer() {
-        val web = (binder.container.getChildAt(0) as ViewGroup).getChildAt(0) as WebView
+        val web = (binder.container.getChildAt(0) as DefinitionDocumentView).pageView as WebView
         shadowOf(web).webViewClient.onRenderProcessGone(web, null)
         idle()
     }
@@ -1348,7 +1348,7 @@ class WordRowsBinderTest {
      *  theme, the one script queued then: the rows are built off the main
      *  thread and sent only once the main looper runs again. */
     private fun firstScriptRunIn(slot: ViewGroup): String {
-        val web = (slot.getChildAt(0) as DefinitionDocumentView).getChildAt(0) as WebView
+        val web = (slot.getChildAt(0) as DefinitionDocumentView).pageView as WebView
         shadowOf(web).webViewClient.onPageFinished(web, "")
         return shadowOf(web).lastEvaluatedJavascript.orEmpty()
     }
@@ -1382,6 +1382,34 @@ class WordRowsBinderTest {
         assertTrue(otherTheme, otherTheme.contains("cols:false"))
         // Nor does a card's theme, by default.
         assertFalse(cardDocTheme(activity, WordRowList.GLOSS_SP).twoColumnsWhenWide)
+    }
+
+    @Test
+    fun `the card's page sits on the theme's card colour, or on the colour its host says the card is seen as`() {
+        binder.render(settled())
+        val card = DefinitionsDocument.cssHex(activity.themeColor(R.attr.ptCard))
+        val theme = firstScriptRunIn(binder.container)
+        assertTrue("precondition: the theme is what ran: ${theme.take(40)}", theme.startsWith("ptTheme("))
+        assertTrue(theme, theme.contains("\"--pt-panel\":\"$card\""))
+
+        val seen = 0xFF345678.toInt()
+        val other = LayoutInflater.from(activity).inflate(R.layout.fragment_translation_result, null)
+        val onCard = WordRowsBinder(
+            other, activity, Prefs(activity),
+            object : WordRowsBinder.Host {
+                override val isAlive: Boolean get() = true
+                override val scope: CoroutineScope get() = this@WordRowsBinderTest.scope
+                override val ttsAlertTarget: TtsAlertTarget get() = TtsAlertTarget.InActivity(activity)
+                override fun onWordTapped(row: RowState, explanation: Explanation?) {}
+                override fun onAskNeedsLlm() {}
+            },
+            cardColor = seen,
+        )
+        onCard.render(settled())
+        val seenTheme = firstScriptRunIn(onCard.container)
+        assertTrue(seenTheme, seenTheme.contains("\"--pt-panel\":\"#345678\""))
+        // The row chrome's band behind a pinned head is that colour.
+        assertTrue(DefinitionsDocument.documentShellHtml().contains("background: var(--pt-panel);"))
     }
 
     private fun clearPrefs() {

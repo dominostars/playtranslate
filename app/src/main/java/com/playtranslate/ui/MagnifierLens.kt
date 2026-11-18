@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Outline
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
@@ -32,6 +33,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -529,6 +531,27 @@ class MagnifierLens(
 
     @VisibleForTesting
     internal fun scrollYForTest(): Int = lensView?.definitionsScroll?.scrollY ?: 0
+
+    /** The definitions' scroller, for a test of what clips it. */
+    @VisibleForTesting
+    internal fun definitionsScrollForTest(): View? = lensView?.definitionsScroll
+
+    /** The card's grow, a step at a time, as its animation drives it
+     *  ([animateCardGrowInside]), for a test of what follows each frame. */
+    @VisibleForTesting
+    internal fun beginGrowForTest(finalHeightPx: Int, finalTopPx: Int) {
+        lensView?.beginCardGrow(finalHeightPx, finalTopPx)
+    }
+
+    @VisibleForTesting
+    internal fun growFrameForTest(heightPx: Int, topPx: Int) {
+        lensView?.setGrowFrame(heightPx, topPx)
+    }
+
+    @VisibleForTesting
+    internal fun endGrowForTest() {
+        lensView?.endCardGrow()
+    }
 
     @VisibleForTesting
     internal fun scrollToForTest(y: Int) {
@@ -1637,6 +1660,20 @@ class MagnifierLens(
             setPadding(0, bodyPillSidePadPx, 0, bodyOuterSidePadPx)
             addView(bodyContainer)
             visibility = GONE
+            // The rows keep to the card's rounded corners, which the card
+            // draws itself ([onDraw]) and nothing clipped to: a pinned word
+            // head's band, as wide as its row, squared them off. Inset by
+            // the edge buffer like the scroll itself, and as tall as the
+            // grow's clip while it runs ([setGrowFrame]).
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) {
+                    val bottom = view.clipBounds?.bottom ?: view.height
+                    outline.setRoundRect(
+                        0, 0, view.width, bottom, (cardCornerR - bodyEdgeBufferPx).coerceAtLeast(0f),
+                    )
+                }
+            }
+            clipToOutline = true
         }
 
         // ── The definitions document ──────────────────────────────────
@@ -1893,6 +1930,7 @@ class MagnifierLens(
                 0, 0, definitionsScroll.width,
                 (heightPx - 2 * bodyEdgeBufferPx).coerceAtLeast(0),
             )
+            definitionsScroll.invalidateOutline()
             // The pill is anchored to the card edge opposite the arrow — top
             // when not flipped (rides with the content), bottom when flipped
             // (rides the growing bottom edge).
@@ -1917,6 +1955,7 @@ class MagnifierLens(
             growLayoutTarget = null
             definitionsScroll.translationY = 0f
             definitionsScroll.clipBounds = null
+            definitionsScroll.invalidateOutline()
             pillView.translationY = 0f
         }
 

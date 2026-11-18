@@ -45,11 +45,33 @@ class WorkspaceControllerNavPopoverTest {
         override fun headerNavActions(): List<NavAction> = if (isPopoverOpen) emptyList() else header
         override fun scrollViewportOnScreen(out: Rect) = false
         override fun scrollBy(dy: Int) = Unit
-        override fun ensureVisible(itemOnScreen: Rect) = Unit
-        override fun viewInScrollViewport(v: View) = false
+        /** What the nav last asked to bring into view in the page. */
+        var ensured: Rect? = null
+        override fun ensureVisible(itemOnScreen: Rect) {
+            ensured = Rect(itemOnScreen)
+        }
+        /** Which views are page content, in the scroll viewport. */
+        var inViewport: (View) -> Boolean = { false }
+        override fun viewInScrollViewport(v: View) = inViewport(v)
         override fun setRing(itemOnScreen: Rect?, clipOnScreen: Rect?) {
             ring = itemOnScreen?.let(::Rect)
         }
+    }
+
+    /** A target drawn inside a view that needs more of the screen than
+     *  itself to be seen, as a document's target under a pinned word head. */
+    private data class CoveredTarget(val rect: Rect, val reveal: Rect) : NavTarget {
+        override fun rectOnScreen(out: Rect): Boolean {
+            out.set(rect)
+            return true
+        }
+
+        override fun revealRectOnScreen(out: Rect): Boolean {
+            out.set(reveal)
+            return true
+        }
+
+        override fun activate() = Unit
     }
 
     private lateinit var host: FakeHost
@@ -108,6 +130,17 @@ class WorkspaceControllerNavPopoverTest {
     private fun closeMenu() {
         host.isPopoverOpen = false
         host.page = listOf(NavAction(label), NavAction(more))
+    }
+
+    @Test
+    fun `moving onto a target in the page brings what it needs into view, ringed at itself`() {
+        host.inViewport = { it === row1 }
+        val drawn = rectOf(row1)
+        val reveal = Rect(drawn).apply { top -= 40 }
+        host.page = listOf(NavAction(row1, target = CoveredTarget(drawn, reveal)))
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertEquals(reveal, host.ensured)
+        assertEquals(drawn, host.ring)
     }
 
     @Test

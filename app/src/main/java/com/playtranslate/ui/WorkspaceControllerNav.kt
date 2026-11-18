@@ -204,9 +204,18 @@ class WorkspaceControllerNav(
         // Page content scrolls through the page's viewport; anything else
         // (fixed chrome, a popover's rows) at most within its own scrolling
         // parent — a ⋯ menu the host capped scrolls its rows.
-        if (host.viewInScrollViewport(action.view)) host.ensureVisible(rectOnScreen)
+        if (host.viewInScrollViewport(action.view)) host.ensureVisible(revealRect(action, rectOnScreen))
         else action.view.revealInScrollingAncestor()
         syncRing()
+    }
+
+    /** What of the screen [action], at [rectOnScreen], needs to be seen: its
+     *  target's reveal rect when it has one ([NavTarget.revealRectOnScreen]),
+     *  else its rect. */
+    private fun revealRect(action: NavAction, rectOnScreen: Rect): Rect {
+        val target = action.target ?: return rectOnScreen
+        val r = Rect()
+        return if (target.revealRectOnScreen(r)) r else rectOnScreen
     }
 
     private fun selectFirst() {

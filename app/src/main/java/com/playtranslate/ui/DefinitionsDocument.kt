@@ -41,9 +41,12 @@ internal object DefinitionsDocument {
 
     /** Theme palette for the shell, resolved by the host surface from its
      *  own themed context ([com.playtranslate.themeColor] + [cssHex]).
-     *  [panel] must be the surface's real panel color (not transparent):
+     *  [panel] must be the surface's real panel color, opaque, as it is seen:
      *  it backs `--background-color`, which dictionary dark-mode CSS
-     *  composites against (Jitendex mixes it into its info boxes). */
+     *  composites against (Jitendex mixes it into its info boxes), and it is
+     *  the band a pinned word head stands on, which hides what scrolls under
+     *  it. A surface whose card lets something show through gives the card
+     *  as seen over it (the capture sheet's Words card). */
     class Tokens(
         val text: Int,
         val textMuted: Int,
@@ -412,12 +415,24 @@ ruby > rt { font-size: .5em; }
      * To the page: `ptTheme`, `ptApplyDictCss`, `ptSet(html, gen)` (all the
      * rows), `ptAppend(html, gen)` (more rows at the end), `ptReplace(id,
      * html, gen)` (one element), `ptCursor(rowId, act)` (the controller's
-     * highlight). From the page: `PTBridge.onLayout(gen, height, targets)`
-     * after every change, and when the rows' height changes with none (a
-     * late image, an opened `<details>`), `targets` a flat JSON array of
-     * rowId, act, left, top, width, height (CSS px from the root's corner)
-     * for every row and every tappable element; and
-     * `PTBridge.onAction(rowId, act)` for a tap.
+     * highlight). From the page: `PTBridge.onLayout(gen, height, targets,
+     * heads)` after every change, and when the rows' height changes with
+     * none (a late image, an opened `<details>`), `targets` a flat JSON
+     * array of rowId, act, left, top, width, height (CSS px from the root's
+     * corner) for every row and every tappable element, and `heads` one of
+     * rowId, top, height for every word head that pins, all measured with
+     * every head in its place in its row, and `redrawn` the rows replaced
+     * since the last report; and `PTBridge.onAction(rowId, act)` for a tap.
+     *
+     * The page scrolls in step with the host's scroll
+     * ([DefinitionDocumentView]): its top edge is the top of what is visible
+     * of it, which is where a word's head pins while its row's definitions
+     * scroll under it. It has room below its rows for that scroll, outside
+     * the root, and nothing but the host moves it: no touch pans it
+     * vertically (a dictionary's own sideways scroller keeps its pan), and
+     * no change of content anchors it. A resize reports only when the width
+     * changed: the host sizes the page's height to its own viewport, which
+     * changes no row.
      *
      * The page is the authority on what a tap hit, as in the first shell: a
      * link navigates (the client hands it to the browser) unless its row is
@@ -435,6 +450,16 @@ ruby > rt { font-size: .5em; }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: transparent; }
 #root { display: flow-root; }
+/* The page scrolls in step with the host's scroll (DefinitionDocumentView).
+   It has room below the rows for that scroll, outside the root so the
+   reported height is unchanged, plus two pixels because the host's height
+   for the page is the page's own rounded up. Only the host moves it: no
+   vertical touch pan (pan-x on every element, so a dictionary's own sideways
+   scroller keeps its pan while a vertical drag stays the host's) and no
+   scroll anchoring when content changes. */
+html, body { overflow-anchor: none; }
+* { touch-action: pan-x; }
+body::after { content: ''; display: block; height: calc(100vh + 2px); }
 body {
   color: var(--pt-fg);
   font-family: sans-serif;
@@ -471,16 +496,20 @@ $DOCUMENT_JS
   background: var(--pt-divider);
 }
 [dir=rtl] .row + .row::before { left: 0; right: 16px; }
-/* 10px over the head, 4 under the 14 below the definitions: the head is a
-   40px line (its buttons' height) around the headword, which already stands
-   the word off the row's top edge. */
-.cell { padding: 10px 4px 14px 16px; }
-[dir=rtl] .cell { padding: 10px 16px 14px 4px; }
+/* 6px over the head and 14 below the definitions: the head is a 40px line
+   (its buttons' height) around the headword, which already stands the word
+   off the row's top edge. The 14 is a block of its own at the row's end
+   (::after), not padding: a pinned head stays inside its row's content box,
+   and padding there would push it off before the next row reaches it. */
+.cell { padding: 6px 4px 0 16px; }
+[dir=rtl] .cell { padding: 6px 16px 0 4px; }
+.cell::after { content: ''; display: block; height: 14px; }
 /* Pressed only when the press is the row's own (the page marks the others
    np): an element is :active while anything inside it is, so the row would
    light up behind its own button. */
 .cell[data-act]:active:not(.np), .row.cur { background: var(--pt-press); }
-.cell.stub { padding-top: 8px; padding-bottom: 8px; background: var(--pt-band); }
+.cell.stub { padding-top: 4px; background: var(--pt-band); }
+.cell.stub::after { height: 4px; }
 /* The head: the title (the headword and a lone reading), the row's buttons
    as one group, and the chevron of a row that opens.
 
@@ -501,6 +530,27 @@ $DOCUMENT_JS
    (op), so it stays on the headword's line when the buttons leave it. The
    buttons stand at the top of their line, level with it. */
 .head { display: flex; flex-wrap: wrap; align-items: center; position: relative; }
+/* A word's head pins at the top of what is visible while its row's
+   definitions scroll under it, until the next row's top pushes it off (the
+   page's top edge is the visible top: see the shell's comment). It stands on
+   a band as wide as the row, so what passes under it is hidden: the panel
+   (the surface's card as seen), with the row's press or cursor tint over it
+   as on the row. A hidden word's stub has nothing under its head: it neither
+   pins nor has a band. The definitions are a stacking context of their own,
+   so nothing positioned in a dictionary's content paints over a pinned head.
+   Under ptm, set while the page measures (report), every head sits in its
+   place in its row. */
+.cell:not(.stub) > .head { position: sticky; top: 0; z-index: 2; }
+.ptm .cell:not(.stub) > .head { position: relative; }
+.cell:not(.stub) > .head::before {
+  content: ''; position: absolute; z-index: -1; top: 0; bottom: 0; left: -16px; right: -4px;
+  background: var(--pt-panel);
+}
+[dir=rtl] .cell:not(.stub) > .head::before { left: -4px; right: -16px; }
+.cell[data-act]:active:not(.np) > .head::before, .row.cur > .head::before {
+  background: linear-gradient(var(--pt-press), var(--pt-press)), var(--pt-panel);
+}
+.cell > .body { position: relative; z-index: 0; }
 .head.op { padding-right: 24px; }
 [dir=rtl] .head.op { padding-right: 0; padding-left: 24px; }
 .title {
@@ -761,6 +811,9 @@ button.act:active, .act.cur { background: var(--pt-press); }
   var cursor = null;
   // The height the last report gave (see the observer at the end).
   var sent = 0;
+  // The rows replaced since the last report, by their element ids: what the
+  // next report's layout redraws.
+  var redrawn = [];
 
   function rootEl() { return document.getElementById('root'); }
 
@@ -770,7 +823,12 @@ button.act:active, .act.cur { background: var(--pt-press); }
     // Not laid out yet (zero-width viewport): content would wrap at every
     // character and report an enormous bogus height. The resize listener
     // reports the moment the real width arrives.
-    if (document.documentElement.clientWidth < 1) return;
+    var de = document.documentElement;
+    if (de.clientWidth < 1) return;
+    // Measured with every head in its place in its row (ptm), never where
+    // it is pinned: a target is where it is in the document, and the host
+    // shifts a pinned head's own by the scroll. Nothing draws in between.
+    de.classList.add('ptm');
     // The root's own rect, never the document's scroll height: that is
     // max(content, viewport), and would echo an oversized view back forever.
     var base = r.getBoundingClientRect();
@@ -786,9 +844,20 @@ button.act:active, .act.cur { background: var(--pt-press); }
         Math.round(b.left - base.left), Math.round(b.top - base.top),
         Math.round(b.width), Math.round(b.height));
     }
+    // Every head that pins: its row, its top and its height.
+    var heads = [];
+    var hs = r.querySelectorAll('.cell:not(.stub) > .head');
+    for (var j = 0; j < hs.length; j++) {
+      var hb = hs[j].getBoundingClientRect();
+      if (hb.height <= 0) continue;
+      heads.push(hs[j].parentNode.id, Math.round(hb.top - base.top), Math.round(hb.height));
+    }
+    de.classList.remove('ptm');
     sent = Math.ceil(base.height);
+    var rows = redrawn;
+    redrawn = [];
     if (window.PTBridge && window.PTBridge.onLayout) {
-      window.PTBridge.onLayout(gen, sent, JSON.stringify(out));
+      window.PTBridge.onLayout(gen, sent, JSON.stringify(out), JSON.stringify(heads), JSON.stringify(rows));
     }
   }
 
@@ -824,6 +893,7 @@ button.act:active, .act.cur { background: var(--pt-press); }
 
   window.ptSet = function (html, g) {
     gen = g;
+    redrawn = [];
     rootEl().innerHTML = html;
     applyCursor();
     settle();
@@ -840,6 +910,7 @@ button.act:active, .act.cur { background: var(--pt-press); }
     var el = document.getElementById(id);
     if (!el) return;
     el.outerHTML = html;
+    redrawn.push(id);
     applyCursor();
     settle();
   };
@@ -920,8 +991,17 @@ button.act:active, .act.cur { background: var(--pt-press); }
   });
 
   // Direct, not via a frame: this is what fires when a hidden view first
-  // gets its real width.
-  window.addEventListener('resize', report);
+  // gets its real width. Only a new width reports: the host sizes the
+  // page's height to its own viewport, on every frame a sheet animates, and
+  // a height alone moves no row (a row that does depend on it changes the
+  // root's height, which the observer below reports).
+  var width = -1;
+  window.addEventListener('resize', function () {
+    var w = document.documentElement.clientWidth;
+    if (w === width) return;
+    width = w;
+    report();
+  });
 
   // The rows can grow with no row set behind it: an image that declared no
   // size takes its own when it loads, a <details> is opened. The host gave

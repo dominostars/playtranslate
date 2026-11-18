@@ -113,7 +113,11 @@ class CaptureSheetControllerNavTest {
             return true
         }
         override fun scrollBy(dy: Int) = Unit
-        override fun ensureVisible(itemOnScreen: Rect) = Unit
+        /** What the nav last asked to bring into view. */
+        var ensured: Rect? = null
+        override fun ensureVisible(itemOnScreen: Rect) {
+            ensured = Rect(itemOnScreen)
+        }
         override fun setRing(itemOnScreen: Rect?, clipOnScreen: Rect?) {
             ring = itemOnScreen?.let(::Rect)
             ringClip = clipOnScreen?.let(::Rect)
@@ -286,6 +290,25 @@ class CaptureSheetControllerNavTest {
         }
     }
 
+    /** A target that needs more of the screen than itself to be seen
+     *  ([NavTarget.revealRectOnScreen]): [reveal], as a document's target
+     *  under a pinned word head needs the head's room above it. */
+    private data class CoveredTarget(val spot: Spot, val reveal: Rect) : NavTarget {
+        override fun rectOnScreen(out: Rect): Boolean {
+            out.set(spot.rect)
+            return true
+        }
+
+        override fun revealRectOnScreen(out: Rect): Boolean {
+            out.set(reveal)
+            return true
+        }
+
+        override fun activate() {
+            spot.activations++
+        }
+    }
+
     /** A target that names what takes its place when a press of it removes
      *  it ([NavTarget.successor]): [next]'s target, as a document's ✕ of an
      *  explain answer names the row's explain button. */
@@ -370,6 +393,18 @@ class CaptureSheetControllerNavTest {
         assertEquals("DOWN reaches the second target, in the same view", b.second.rect, b.host.ring)
         assertNotEquals("never the view's own rect", rectOf(b.doc), b.host.ring)
         assertEquals("ringed within the scroll viewport", Rect(0, 0, 1000, 1000), b.host.ringClip)
+    }
+
+    @Test
+    fun `moving onto a target brings what it needs into view, and the ring is on the target itself`() {
+        val b = Board()
+        val reveal = Rect(b.second.rect).apply { top -= 40 }
+        b.host.actions = { listOf(b.inDoc(b.first), NavAction(b.doc, target = CoveredTarget(b.second, reveal))) }
+        press(b.nav, KeyEvent.KEYCODE_DPAD_DOWN)
+        assertEquals("an ordinary target needs only itself", b.first.rect, b.host.ensured)
+        press(b.nav, KeyEvent.KEYCODE_DPAD_DOWN)
+        assertEquals("the room the target needs", reveal, b.host.ensured)
+        assertEquals("ringed at its own rect", b.second.rect, b.host.ring)
     }
 
     @Test

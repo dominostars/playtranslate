@@ -42,6 +42,17 @@ internal data class DocTarget(
     val height: Int,
 )
 
+/**
+ * A word row's head that pins at the top of what is visible while the row's
+ * definitions scroll under it, as the page last reported it: where it is in
+ * its row, in CSS px from the document's top.
+ */
+internal data class DocHead(
+    val rowId: String,
+    val top: Int,
+    val height: Int,
+)
+
 /** One tappable document target as a controller action ([NavAction.target]). */
 internal data class DocNavTarget(
     val document: DefinitionDocument,
@@ -49,6 +60,7 @@ internal data class DocNavTarget(
     val act: String,
 ) : NavTarget {
     override fun rectOnScreen(out: Rect): Boolean = document.rectOnScreen(rowId, act, out)
+    override fun revealRectOnScreen(out: Rect): Boolean = document.revealRectOnScreen(rowId, act, out)
     override fun activate() = document.activate(rowId, act)
     override fun successor(): NavTarget? = DefAction.fallback(act)?.let { copy(act = it) }
 }
@@ -66,10 +78,18 @@ internal data class DocNavTarget(
  *  - **Rows are fed, not dumped.** The first [CHUNK] rows go at once; more
  *    follow while the document's end is within two screens of what is
  *    visible ([endIsNear]), checked after every layout and on every scroll.
- *    The page cannot tell what is on screen (its viewport is the whole
- *    document under a host scroll), so the host side decides. Each chunk's
- *    structured content is fetched and its markup built off the main
- *    thread, under the language the rows were looked up in.
+ *    The host side decides: it holds the scroll, which the page only
+ *    follows ([DefinitionDocumentView]). Each chunk's structured content is
+ *    fetched and its markup built off the main thread, under the language
+ *    the rows were looked up in.
+ *  - **A word's head pins** at the top of what is visible while its row's
+ *    definitions scroll under it (the page's CSS, lined up by the view).
+ *    The page reports every place unpinned ([targets], [heads]); where a
+ *    controller needs a head's buttons, this side shifts them to where the
+ *    head is pinned ([rectOnScreen]), reveals a target under a pinned head
+ *    below it ([revealRectOnScreen]), and a tap that changes a row whose
+ *    head is pinned brings the row's top to the top of what is visible once
+ *    the page has redrawn the row with that change ([PendingAnchor]).
  *  - **A rebind with the same rows patches.** [setRows] with the same ids
  *    in the same order replaces only the rows whose value changed (a deck
  *    badge, a hide, a spinner): no new row set, no jump. The exception is
@@ -151,6 +171,27 @@ internal class DefinitionDocument(
     var targets: List<DocTarget> = emptyList()
         private set
 
+    /** Every word head of the last layout that pins, by row id. */
+    var heads: Map<String, DocHead> = emptyMap()
+        private set
+
+    /**
+     * A tap of [action] on row [rowId] whose head was pinned, the top of
+     * what was visible then being [visibleTop] px down the document: with
+     * the head pinned, the row's top is above the visible part, and so is
+     * where its answer opens, so the row comes to the top once the page has
+     * redrawn it with the change the tap asked for. [armed] once that change
+     * reaches the row ([setRows]): a tap that changed nothing (no model to
+     * ask, a hide that failed to save) never moves the list, nor does a
+     * later redraw of the row for anything else. Gone when it brings the
+     * row up, when the user scrolls, taps again, or the rows are set anew.
+     */
+    private class PendingAnchor(val rowId: String, val action: String, val visibleTop: Int) {
+        var armed = false
+    }
+
+    private var anchor: PendingAnchor? = null
+
     private var cursor: DocTarget? = null
 
     @get:VisibleForTesting
@@ -199,6 +240,10 @@ internal class DefinitionDocument(
         if (patch) {
             val old = rows
             rows = newRows
+            anchor?.let { a ->
+                val i = newRows.indexOfFirst { it.id == a.rowId }
+                if (i >= 0 && changedBy(a.action, old[i], newRows[i])) a.armed = true
+            }
             syncFocusable()
             // A row not yet sent needs nothing: it is built from the list
             // when its chunk goes, and a chunk in flight checks on landing.
@@ -265,6 +310,8 @@ internal class DefinitionDocument(
         fed = 0
         buildFailed = false
         targets = emptyList()
+        heads = emptyMap()
+        anchor = null
         cursor = null
         shell?.destroy()
         shell = null
@@ -295,6 +342,8 @@ internal class DefinitionDocument(
         patchSeq.clear()
         structured = emptyMap()
         targets = emptyList()
+        heads = emptyMap()
+        anchor = null
         if (!ensureShell()) return
         syncFocusable()
         if (rows.isEmpty()) {
@@ -461,10 +510,10 @@ internal class DefinitionDocument(
     }
 
     private val listener = object : DefinitionShell.Listener {
-        override fun onLayout(gen: Int, heightCssPx: Int, targetsJson: String) {
+        override fun onLayout(gen: Int, heightCssPx: Int, targetsJson: String, headsJson: String, redrawnJson: String) {
             if (gen != this@DefinitionDocument.gen) return
             applyHeight((heightCssPx * density).roundToInt())
-            laidOut(parseTargets(targetsJson))
+            laidOut(parseTargets(targetsJson), parseHeads(headsJson), parseRedrawn(redrawnJson))
             this@DefinitionDocument.onLayout()
             feedIfNear()
         }
@@ -472,7 +521,7 @@ internal class DefinitionDocument(
         override fun onAction(domId: String, act: String) {
             val rowId = rowIds[domId] ?: return
             val row = rows.firstOrNull { it.id == rowId } ?: return
-            this@DefinitionDocument.onAction(row, act)
+            perform(row, act)
         }
 
         override fun onRendererGone() {
@@ -506,6 +555,28 @@ internal class DefinitionDocument(
         emptyList()
     }
 
+    private fun parseHeads(json: String): Map<String, DocHead> = try {
+        val a = JSONArray(json)
+        val out = HashMap<String, DocHead>(a.length() / 3)
+        var i = 0
+        while (i + 2 < a.length()) {
+            rowIds[a.getString(i)]?.let { rowId -> out[rowId] = DocHead(rowId, a.getInt(i + 1), a.getInt(i + 2)) }
+            i += 3
+        }
+        out
+    } catch (e: Exception) {
+        Log.w(TAG, "heads unreadable: ${e.javaClass.simpleName}")
+        emptyMap()
+    }
+
+    private fun parseRedrawn(json: String): Set<String> = try {
+        val a = JSONArray(json)
+        (0 until a.length()).mapNotNullTo(HashSet()) { rowIds[a.getString(it)] }
+    } catch (e: Exception) {
+        Log.w(TAG, "redrawn rows unreadable: ${e.javaClass.simpleName}")
+        emptySet()
+    }
+
     // ── Feeding on scroll ────────────────────────────────────────────────
 
     private val onScroll = ViewTreeObserver.OnScrollChangedListener { feedIfNear() }
@@ -525,7 +596,9 @@ internal class DefinitionDocument(
     }
 
     /** Whether what the page holds ends within two screens of the visible
-     *  part of the view (a view not on screen at all counts from its top). */
+     *  part of the view (a view not on screen at all counts from its top).
+     *  The view's own coordinates are the document's: the scroll that lines
+     *  the page up is inside it ([DefinitionDocumentView]). */
     private fun endIsNear(): Boolean {
         val v = view ?: return false
         val visible = Rect()
@@ -571,17 +644,29 @@ internal class DefinitionDocument(
      *  the new shell has drawn them. */
     val heightPx: Int get() = height
 
-    internal fun rectOnScreen(rowId: String, act: String, out: Rect): Boolean {
+    /** Where the target [act] of row [rowId] is drawn on screen now
+     *  ([drawnRect]); false when the page does not hold it or the view is
+     *  not shown. */
+    internal fun rectOnScreen(rowId: String, act: String, out: Rect): Boolean =
+        onScreen(rowId, act, out, ::drawnRect)
+
+    /** What of the screen a cursor moving onto the target [act] of row
+     *  [rowId] needs to see ([revealRect]). */
+    internal fun revealRectOnScreen(rowId: String, act: String, out: Rect): Boolean =
+        onScreen(rowId, act, out, ::revealRect)
+
+    private inline fun onScreen(rowId: String, act: String, out: Rect, rect: (DocTarget, Rect) -> Unit): Boolean {
         val v = view ?: return false
         val t = targets.firstOrNull { it.rowId == rowId && it.act == act } ?: return false
         if (!v.isShown) return false
         val loc = IntArray(2)
         v.getLocationOnScreen(loc)
-        localRect(t, out)
+        rect(t, out)
         out.offset(loc[0], loc[1])
         return true
     }
 
+    /** [t] where the page reported it, in the view's px. */
     private fun localRect(t: DocTarget, out: Rect) {
         out.set(
             (t.left * density).roundToInt(),
@@ -591,9 +676,115 @@ internal class DefinitionDocument(
         )
     }
 
+    /** [t] where the page draws it now, in the view's px: its reported place
+     *  ([localRect]), moved down with its head when [t] is one of a pinned
+     *  head's buttons ([pinShiftPx]). */
+    private fun drawnRect(t: DocTarget, out: Rect) {
+        localRect(t, out)
+        out.offset(0, pinShiftPx(t))
+    }
+
+    /** What a cursor on [t] needs of the screen: where it is drawn
+     *  ([drawnRect]), reaching up by its row's head when [t] is below the
+     *  head, which pins over whatever is under it. A row's own target and a
+     *  head's buttons need only themselves. */
+    private fun revealRect(t: DocTarget, out: Rect) {
+        drawnRect(t, out)
+        val head = heads[t.rowId] ?: return
+        if (t.top >= head.top + head.height) out.top -= (head.height * density).roundToInt()
+    }
+
+    /**
+     * How far below its reported place the page draws [t], in px: as far as
+     * its head is pinned when [t] is inside the head (one of its buttons),
+     * else 0. The page's rule, CSS sticky in the row: the head sits at the
+     * top of what is visible, never above its own place, and never past the
+     * row's end. What is visible is read off the view as it is now, as the
+     * line-up reads it ([DefinitionDocumentView]), so a ring drawn from this
+     * ahead of the draw follows a scroll the line-up is about to take.
+     */
+    private fun pinShiftPx(t: DocTarget): Int {
+        val head = heads[t.rowId] ?: return 0
+        if (t.top < head.top || t.top + t.height > head.top + head.height) return 0
+        val visibleTop = visibleTopCss() ?: return 0
+        val row = targets.firstOrNull { it.rowId == t.rowId } ?: return 0
+        val furthest = (row.top + row.height - head.height - head.top).coerceAtLeast(0).toFloat()
+        return ((visibleTop - head.top).coerceIn(0f, furthest) * density).roundToInt()
+    }
+
+    /** The top of what is visible of the view, in its px from the
+     *  document's top; null when none of it is. */
+    private fun visibleTopPx(): Int? {
+        val v = view ?: return null
+        val visible = Rect()
+        return if (v.isShown && v.getLocalVisibleRect(visible)) visible.top else null
+    }
+
+    /** [visibleTopPx] in CSS px. */
+    private fun visibleTopCss(): Float? = visibleTopPx()?.let { it / density }
+
     internal fun activate(rowId: String, act: String) {
         val row = rows.firstOrNull { it.id == rowId } ?: return
-        onAction(row, act)
+        perform(row, act)
+    }
+
+    /** A tap or a controller's press of [action] on [row], for the host. A
+     *  press that changes the row while its head is pinned leaves it to be
+     *  brought into view once the page has redrawn it ([PendingAnchor]);
+     *  any press ends the one before. */
+    private fun perform(row: DefRow, action: String) {
+        val top = visibleTopPx()
+        anchor = if (top != null && changesRow(row, action) && headPinned(row.id)) {
+            PendingAnchor(row.id, action, top)
+        } else {
+            null
+        }
+        onAction(row, action)
+    }
+
+    /** Whether [new], the row a patch puts in place of [old], carries the
+     *  change a press of [action] asks for ([changesRow]): another explain
+     *  state, or another trailing (a word hidden or shown). */
+    private fun changedBy(action: String, old: DefRow, new: DefRow): Boolean {
+        val o = old as? DefRow.Word ?: return false
+        val n = new as? DefRow.Word ?: return false
+        return if (action == DefAction.TRAILING) o.trailing != n.trailing else o.explain != n.explain
+    }
+
+    /** Whether [action] on [row] changes what the row draws above its
+     *  definitions: an explain question, its answer's X and Try again, a
+     *  word hidden or shown. Not speak, not Anki, not opening the word. */
+    private fun changesRow(row: DefRow, action: String): Boolean = when (action) {
+        DefAction.EXPLAIN, DefAction.EXPLAIN_CLOSE, DefAction.EXPLAIN_RETRY -> true
+        DefAction.TRAILING -> (row as? DefRow.Word)?.trailing.let {
+            it == DefRow.Trailing.HIDE || it == DefRow.Trailing.SHOW
+        }
+        else -> false
+    }
+
+    /** Whether row [rowId]'s head is pinned now: what is visible begins
+     *  below the head's own place. */
+    private fun headPinned(rowId: String): Boolean {
+        val head = heads[rowId] ?: return false
+        val visibleTop = visibleTopCss() ?: return false
+        return visibleTop > head.top
+    }
+
+    /** Brings row [rowId] to the top of what is visible, at once: its head
+     *  where it was pinned, now in its own place, and what the row has
+     *  under it after it. A row with no head that pins (a stub) by its
+     *  top. */
+    private fun bringToTop(rowId: String) {
+        val v = view ?: return
+        val r = Rect()
+        val head = heads[rowId]
+        if (head != null) {
+            r.set(0, (head.top * density).roundToInt(), v.width, ((head.top + head.height) * density).roundToInt())
+        } else {
+            val row = targets.firstOrNull { it.rowId == rowId } ?: return
+            localRect(row, r)
+        }
+        v.requestRectangleOnScreen(r, true)
     }
 
     /**
@@ -602,11 +793,15 @@ internal class DefinitionDocument(
      * [rowHeightCssPx] tall, stacked from the top, a tap target for its own
      * action when it has one, a word row's buttons after it as the page
      * reports them. Goes through what a real report does: the height, the
-     * targets, the host's callback, the next chunk.
+     * targets and the heads that pin (each word row's, unless a stub, at its
+     * top and as tall as its buttons), the rows the page redrew since its
+     * last report ([redrawn], by row id), the host's callback, the next
+     * chunk.
      */
     @VisibleForTesting
-    fun layoutForTest(rowHeightCssPx: Int) {
+    fun layoutForTest(rowHeightCssPx: Int, redrawn: Set<String> = emptySet()) {
         val out = ArrayList<DocTarget>()
+        val heads = HashMap<String, DocHead>()
         var top = 0
         for (row in rows) {
             if (row.id !in domIds) break
@@ -619,6 +814,8 @@ internal class DefinitionDocument(
             out += DocTarget(row.id, act, 0, top, 300, rowHeightCssPx)
             if (row is DefRow.Word) {
                 val stub = row.trailing == DefRow.Trailing.SHOW
+                // A head that pins, as tall as its buttons, at the row's top.
+                if (!stub) heads[row.id] = DocHead(row.id, top, min(40, rowHeightCssPx))
                 // In page order: the head's buttons (explain first), then
                 // what an explain answer adds under the head.
                 if (row.explain != null && !stub) out += DocTarget(row.id, DefAction.EXPLAIN, 128, top, 36, 40)
@@ -632,21 +829,37 @@ internal class DefinitionDocument(
             top += rowHeightCssPx
         }
         applyHeight((top * density).roundToInt())
-        laidOut(out)
+        laidOut(out, heads, redrawn)
         onLayout()
         feedIfNear()
     }
 
-    /** The page laid its rows out as [laid]: they are the targets now, and
-     *  the cursor stands on its own target among them or on what took its
-     *  place ([DocNav.settle]). A move is told to the page, which draws the
-     *  highlight from its own copy of the cursor; a cursor that merely
-     *  lost its target is dropped here, as it always was. */
-    private fun laidOut(laid: List<DocTarget>) {
+    /** The page laid its rows out as [laid], with the heads that pin
+     *  [laidHeads], having redrawn the rows [redrawn] since its last report:
+     *  they are the targets now, and the cursor stands on its own target
+     *  among them or on what took its place ([DocNav.settle]). A move is
+     *  told to the page, which draws the highlight from its own copy of the
+     *  cursor; a cursor that merely lost its target is dropped here, as it
+     *  always was. The view lines the page up again (the page's room to
+     *  scroll may have changed). A row a tap changed while its head was
+     *  pinned comes to the top once this is its redraw with that change, or
+     *  stays where it is if the user has scrolled since ([PendingAnchor]). */
+    private fun laidOut(laid: List<DocTarget>, laidHeads: Map<String, DocHead>, redrawn: Set<String>) {
         targets = laid
+        heads = laidHeads
         val was = cursor
         val now = was?.let { DocNav.settle(laid, it.rowId, it.act) }
         if (was != null && now != null && now.act != was.act) setCursor(now) else cursor = now
+        view?.pageLaidOut()
+        anchor?.let { a ->
+            when {
+                visibleTopPx() != a.visibleTop -> anchor = null
+                a.armed && a.rowId in redrawn -> {
+                    anchor = null
+                    bringToTop(a.rowId)
+                }
+            }
+        }
     }
 
     /** Draws the controller's highlight on a target, or clears it (null). */
@@ -699,7 +912,7 @@ internal class DefinitionDocument(
 
         override fun cursorRect(out: Rect): Boolean {
             val c = cursor ?: return false
-            localRect(c, out)
+            drawnRect(c, out)
             return true
         }
 
@@ -710,7 +923,7 @@ internal class DefinitionDocument(
         setCursor(target)
         val v = view ?: return
         val r = Rect()
-        localRect(target, r)
+        revealRect(target, r)
         v.requestRectangleOnScreen(r, false)
     }
 
@@ -818,18 +1031,21 @@ internal object DocNav {
 
 /** The theme of a document that sits in one of the app's cards, its text
  *  sized from [baseFontSizePx], its rows in two columns on a wide page when
- *  [twoColumnsWhenWide] (the results' Words card only). */
+ *  [twoColumnsWhenWide] (the results' Words card only), on a card of
+ *  [panel]: the theme's card colour, or the card as seen where it lets
+ *  something show through ([DefinitionsDocument.Tokens.panel]). */
 internal fun cardDocTheme(
     ctx: Context,
     baseFontSizePx: Float,
     twoColumnsWhenWide: Boolean = false,
+    panel: Int = ctx.themeColor(R.attr.ptCard),
 ) = DefinitionsDocument.DocTheme(
     DefinitionsDocument.Tokens(
         text = ctx.themeColor(R.attr.ptText),
         textMuted = ctx.themeColor(R.attr.ptTextMuted),
         textHint = ctx.themeColor(R.attr.ptTextHint),
         accent = ctx.themeColor(R.attr.ptAccent),
-        panel = ctx.themeColor(R.attr.ptCard),
+        panel = panel,
         baseFontSizePx = baseFontSizePx,
     ),
     divider = ctx.themeColor(R.attr.ptDivider),

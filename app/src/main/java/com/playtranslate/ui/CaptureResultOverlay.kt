@@ -47,6 +47,7 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.isVisible
 import androidx.core.widget.NestedScrollView
 import com.google.android.material.card.MaterialCardView
@@ -474,10 +475,6 @@ class CaptureResultOverlay(
             edgeIndicator.working = value != null
         }
 
-    /** The panel height when the sliver collapse started, so a tap-expand can
-     *  return to it (the sliver itself parks the height at [sliverHeightPx]). */
-    private var preSliverHeightPx = 0
-
     /** Set once the USER has stated a posture for this sheet — a tap-expand, a
      *  drag out of the park, a stick resize. It stands down the automatic
      *  re-park at [CaptureState.Translating], which otherwise re-reads the
@@ -499,13 +496,9 @@ class CaptureResultOverlay(
      *  afterwards (drag, resize, re-park) clears it and records normally. */
     private var loadingPeekExpand = false
 
-    /** End target of the height animation currently in [heightAnimator];
-     *  meaningful only while it runs, stamped by the two starters
-     *  ([animateSliverHeight] / [animatePanelHeight]). Lets [applyStatusFloor]
-     *  decide whether an in-flight animation already lands at/above a status's
-     *  floor or must be retargeted — the ANIMATOR owns the height per-frame,
-     *  so a plain floor write during flight is overwritten and useless. */
-    private var heightAnimatorTargetPx = 0
+    /** Where the slide in [heightAnimator] ends; meaningful only while it
+     *  runs. [settle] lets a slide already on its way there run on. */
+    private var settleTargetPx = 0
 
     /** The panel height a park (the animated slide down to the sliver) set
      *  out from, while that slide runs; null otherwise. The Anki pill fades
@@ -613,16 +606,62 @@ class CaptureResultOverlay(
     // LIVE each fit (the headers, each card's inset and in-card overhead,
     // which includes the target's note row, and the texts at max size) and
     // summed; the laid-out content's own height is never read, because the
-    // fill ([applyCardFill]) stretches the cards to the panel. Plus the
-    // load-time grow-to-fit animator.
+    // fill ([applyCardFill]) stretches the cards to the panel. Plus the one
+    // slide that moves the height ([settle]).
     private var heightAnimator: ValueAnimator? = null
-    // Height that shows all content at max text size — the drag-resize ceiling, so
-    // the user can't grow the panel into empty space beyond what the content needs.
+    // Height that shows all content at max text size: the drag-resize ceiling
+    // ([dragCeilingPx]), so the user can't grow the panel into empty space
+    // beyond what the content needs.
     private var maxNeededHeightPx = Int.MAX_VALUE
     // The auto-size ceiling: 50% of the screen by default, but the user's dragged
     // height once they resize — so a re-fit (furigana, translation arriving) keeps
     // their chosen height instead of snapping back down to 50%.
     private var autoMaxPx = Int.MAX_VALUE
+
+    // ── Where the sheet rests, and what moves it ─────────────────────────
+    // Where the sheet rests is a function of its state ([restingHeightPx]):
+    // parked, the sliver; open, its reading height ([readingHeightPx]: the
+    // content's fit, or the height the user let it go at), raised to what a
+    // status on show measures. Anything may change that state at any time:
+    // the capture parks the sheet or brings it up, a result or a status
+    // lands, the content's need changes, the user lets go of it. One mover
+    // takes the height there ([settle]), and it moves nothing while the user
+    // holds the sheet ([heightHeld]): a slide under way stops under the
+    // finger, and when they let go the sheet settles once, from the state of
+    // that moment, which their own release has written last. A gesture
+    // keeps the rules it began under ([CaptureResultRoot]), so a park
+    // written under a drag does not end the drag. A fit or a park that moved
+    // the height under a drag is what sprang a collapsing sheet back up.
+
+    /** The open sheet's resting height, a status's floor aside: the
+     *  content's fit ([autoSizeAndFit]), the height the user let the sheet
+     *  go at ([commitHeight]), just enough for a status coming out of the
+     *  park ([expandFromSliverForStatus]), or the loading floor it opens
+     *  at. A park leaves it as it is, so the sheet comes back to it, and
+     *  the fit keeps it current while parked. */
+    private var readingHeightPx = 0
+
+    /** A finger is on the sheet's window: from a gesture's DOWN to its UP or
+     *  CANCEL, as the root sees them ([CaptureResultRoot]), which it does
+     *  for every gesture, those the sliver's rules swallow included. */
+    private var touchHeld = false
+
+    /** The user holds the sheet's height: a finger on its window, or the
+     *  stick resizing it ([stickResizing]). */
+    private val heightHeld: Boolean get() = touchHeld || stickResizing
+
+    /** The sheet has somewhere to settle once the user lets go: what it
+     *  rests by changed while they held it, or a slide was under way when
+     *  they took hold. */
+    private var settleOwed = false
+
+    /** How tall a drag may pull the sheet: what its content needs, and
+     *  never lower than where the sheet is, so content that needs less
+     *  than the finger holds stops the drag instead of pulling the sheet
+     *  out from under it (the release's fit brings it down,
+     *  [commitHeight]). Nothing is kept from before the drag: the need may
+     *  not have been measured yet when it began. */
+    private val dragCeilingPx: Int get() = maxOf(maxNeededHeightPx, panelHeightPx)
 
     // Tap-a-word → definition lens (the shared presenter): display + speak +
     // the open-detail tap and the Anki button, entry or not, shared with the
@@ -903,6 +942,7 @@ class CaptureResultOverlay(
         // (see effectiveStartPosture). setPanelHeight's crossfade sets the
         // parked visuals (content transparent, hint up) from frame one.
         panelHeightPx = CaptureResultGeometry.minPanelHeight(screenH)
+        readingHeightPx = panelHeightPx
         (panel.layoutParams as FrameLayout.LayoutParams).height = panelHeightPx
         if (CaptureResultGeometry.isCollapsedPosture(startPosture)) {
             sliverMode = true
@@ -1024,6 +1064,11 @@ class CaptureResultOverlay(
                 override fun onWordTapped(row: RowState, explanation: Explanation?) = openWordRow(row, explanation)
                 override fun onAskNeedsLlm() = showAskNeedsLlm()
             },
+            // The card as it is seen: its translucent fill over the sheet's
+            // own colour, which stands in for the frosted game behind it (a
+            // few percent of what shows through). A pinned word head's band
+            // is drawn in it.
+            cardColor = ColorUtils.compositeColors(sectionCardFill(ctx, cardAlpha), ctx.themeColor(R.attr.ptBg)),
         )
         // The card asks for its rows whenever it is shown and may need them;
         // the pipeline no-ops unless an analysis is waiting for its rows.
@@ -1078,13 +1123,19 @@ class CaptureResultOverlay(
             if (navInset != bottomInsetPx || sideLeft != body.paddingLeft || sideRight != body.paddingRight) {
                 bottomInsetPx = navInset
                 body.setPadding(sideLeft, body.paddingTop, sideRight, navInset)
-                // The buffer participates in every height formula — re-park
-                // the sliver / re-fit the content to the new inner height.
-                if (sliverMode) {
-                    setPanelHeight(sliverHeightPx())
-                    placeSliverHint()   // the strip's band moved with the buffer
-                } else if (lastResult != null) {
-                    autoSizeAndFit()
+                // The buffer is part of every height the sheet rests at: the
+                // sliver follows it at once, a status's floor is taken again,
+                // and the content's fit is, parked too, once the new paddings
+                // have laid out (a side bar re-wraps the text): a parked sheet
+                // comes back to that reading height.
+                when {
+                    sliverMode -> {
+                        settle(snap = true)
+                        placeSliverHint()   // the strip's band moved with the buffer
+                        refitWhenLaidOut()
+                    }
+                    resultOnShow -> refitWhenLaidOut()
+                    else -> settle(snap = true)
                 }
             }
             val panelLp = panel.layoutParams as FrameLayout.LayoutParams
@@ -1171,19 +1222,19 @@ class CaptureResultOverlay(
             .start()
     }
 
-    /** A section's card was shown, hidden or resized: grow/shrink the panel
-     *  to the new content once that has laid out. Two frames: the sections'
-     *  layout re-arranges itself from the cards' visibility (a hidden
-     *  section keeps its header; in a pair the other card takes the full
-     *  width, and its text re-wraps there), and that must lay out before we
-     *  measure, else we'd size to the stale layout. Same settle window
-     *  before the controller cursor re-targets: what was under it may have
-     *  gone. */
+    /** A section's card was shown, hidden or resized, or the insets moved
+     *  the content's edges: grow/shrink the panel to the new content once
+     *  that has laid out. Two frames: the sections' layout re-arranges
+     *  itself from the cards' visibility (a hidden section keeps its header;
+     *  in a pair the other card takes the full width, and its text re-wraps
+     *  there), and that must lay out before we measure, else we'd size to
+     *  the stale layout. Same settle window before the controller cursor
+     *  re-targets: what was under it may have gone. */
     private fun refitWhenLaidOut() {
         sections.post {
             sections.post {
                 if (dismissed) return@post
-                if (lastResult != null) autoSizeAndFit()
+                autoSizeAndFit()
                 nav?.revalidateCursor()
             }
         }
@@ -1230,9 +1281,9 @@ class CaptureResultOverlay(
                         )
                         // Boxes are their own axis: they go up the moment OCR
                         // lands, whatever the panel is doing (a re-run with boxes
-                        // already showing swaps them in place). (Fits while
-                        // slivered run measure-only — they set the drag ceiling +
-                        // card chrome but never animate the height.)
+                        // already showing swaps them in place). (A fit while
+                        // parked moves nothing: it keeps the drag ceiling and
+                        // the reading height current.)
                         state.overlayData?.let { paintBoxes(it) }
                         // Collapsed-start may park the panel (or keep show()'s
                         // park) only while the sliver has something to stand on:
@@ -1249,6 +1300,10 @@ class CaptureResultOverlay(
                         // during the loading arc would be undone by the very
                         // work it was made to watch: OCR lands, and the sheet
                         // the user just opened slams shut in the same frame.
+                        //
+                        // Under a finger this moves nothing: the gesture keeps
+                        // the rules it began under, and its release, written
+                        // last, decides where the sheet rests ([settle]).
                         val startsCollapsed = CaptureResultGeometry
                             .isCollapsedPosture(effectiveStartPosture())
                         if (startsCollapsed && sliverJustified() && !userStatedPosture) {
@@ -1406,7 +1461,7 @@ class CaptureResultOverlay(
      *  visible. The boxes toggle is NOT recorded here — it persists itself the
      *  moment it's tapped. */
     private fun recordPosture() {
-        if (lastResult == null || scroll.visibility != View.VISIBLE) return
+        if (!resultOnShow) return
         // The override's park is not the user's posture ([postureFromOverride]).
         if (postureFromOverride) return
         presentationPrefs.startPosture = CaptureResultGeometry.postureFor(
@@ -1648,10 +1703,13 @@ class CaptureResultOverlay(
         updateModeControl()
     }
 
-    /** The one exit from the park: a deferred translation the park was
-     *  waiting on runs now ([maybeCompleteDeferred] reads [sliverMode]). */
+    /** The one exit from the park: every exit drops the sliver cursor, and
+     *  a deferred translation the park was waiting on runs now
+     *  ([maybeCompleteDeferred] reads [sliverMode]). Nothing outside it. */
     private fun leaveSliver() {
+        if (!sliverMode) return
         sliverMode = false
+        nav?.clearCursor()
         maybeCompleteDeferred()
     }
 
@@ -1661,91 +1719,81 @@ class CaptureResultOverlay(
             ev.x >= modePill.left && ev.x < modePill.right &&
             ev.y >= modePill.top && ev.y < modePill.bottom
 
-    /** Collapse the sheet to its bottom-edge sliver. Height-based (the sheet's
-     *  bottom edge retracts, like the grow-to-fit in reverse) so the sliver
-     *  drag below is the plain resize gesture with a lower floor; the
-     *  content↔hint crossfade rides the height itself (see
-     *  [applyCollapseCrossfade]). Purely the panel: the on-frame boxes are the
-     *  toggle's independent axis. The user comes back via a tap (auto-expand)
-     *  or a drag on the sliver zone. */
+    /** Collapse the sheet to its bottom-edge sliver: the capture's own park,
+     *  and A on the grabber. Height-based (the sheet's bottom edge retracts,
+     *  like the grow-to-fit in reverse) so the sliver drag below is the plain
+     *  resize gesture with a lower floor; the content↔hint crossfade rides
+     *  the height itself (see [applyCollapseCrossfade]). Purely the panel:
+     *  the on-frame boxes are the toggle's independent axis. The user comes
+     *  back via a tap (auto-expand) or a drag on the sliver zone. */
     private fun collapseToSliver() {
         if (dismissed || animatingOut || sliverMode) return
         if (typingIn != TypingIn.NOTHING) return
-        sliverMode = true
-        // Parking hands the wheel back to the pref: whatever the user stated
-        // before, they are stating the sliver now. (No-op on the automatic
-        // park — that one only runs while nothing was stated.)
-        userStatedPosture = false
-        loadingPeekExpand = false
-        dismissWordLens()
-        // The sections they act on are about to fade out under the collapse.
-        popovers.dismiss()
-        nav?.clearCursor()   // the cursor's targets are fading out
-        preSliverHeightPx = panelHeightPx
-        animateSliverHeight(sliverHeightPx())
+        park()
     }
 
-    /** A tap on the sliver: grow the sheet back to its pre-collapse height;
-     *  the crossfade brings the sections back as the height climbs. */
+    /** The sheet rests in its sliver from now: [collapseToSliver], or a drag
+     *  or the stick let go in the collapse band or back into the sliver it
+     *  came from. Parking hands the wheel back to the pref: whatever the user
+     *  stated before, the sliver is what they state now (the capture's own
+     *  park runs only while nothing was stated, where this changes nothing).
+     *  The reading height stays as it is, for the sheet to come back to. */
+    private fun park() {
+        if (!sliverMode) {
+            sliverMode = true
+            dismissWordLens()
+            // The sections they act on are about to fade out under the collapse.
+            popovers.dismiss()
+            nav?.clearCursor()   // the cursor's targets are fading out
+        }
+        userStatedPosture = false
+        loadingPeekExpand = false
+        settle()
+    }
+
+    /** Out of the park, back to the reading height, which the content's fit
+     *  kept current while parked; the crossfade brings the sections back as
+     *  the height climbs, the text already at the size it lands at. A tap on
+     *  the sliver, and the sheet's own rescue when its park has nothing to
+     *  stand on. */
     private fun expandFromSliver() {
         if (dismissed || animatingOut || !sliverMode) return
         leaveSliver()
-        nav?.clearCursor()   // every exit from the park drops the sliver cursor
-        val target = preSliverHeightPx.coerceAtLeast(CaptureResultGeometry.minPanelHeight(screenH))
-        animateSliverHeight(target) {
-            updateModeControl()
-            // Re-run the fit the sliver suppressed (a collapsed-start lands
-            // before the Done grow-to-fit ever ran, so the height may still be
-            // the loading floor). Skipped when a status replaced the content
-            // (the Failed-while-slivered recovery) — there's no text to fit.
-            if (lastResult != null && scroll.visibility == View.VISIBLE) autoSizeAndFit()
-        }
+        settle()
     }
 
-    /** Expansion for a STATUS phase — a loading re-run (collapsed page flip,
-     *  settings refresh) or a Failed/NoText landing while parked. The sheet
-     *  comes up just enough to read a status: NOT the [preSliverHeightPx]
-     *  reading height [expandFromSliver] restores — that's the PREVIOUS
-     *  scene's fitted result (up to the drag ceiling), which drew as a
-     *  mostly-empty sheet ballooning open over a one-line "Recognizing text…"
-     *  on every collapsed page flip.
-     *
-     *  Targets the loading floor without knowing the status (on the loading
-     *  path the message hasn't arrived yet). That's safe because the floor
-     *  invariant doesn't live here: every [setStatus] RETARGETS an in-flight
-     *  animation that would land below its measured need (see
-     *  [applyStatusFloor]) — whichever status lands, first or a fast
-     *  successor, the animation ends at/above it. */
+    /** Out of the park for a STATUS phase — a loading re-run (collapsed page
+     *  flip, settings refresh) or a Failed/NoText landing while parked. The
+     *  sheet comes up just enough to read a status: its reading height drops
+     *  to the loading floor, NOT the previous scene's fit (up to the drag
+     *  ceiling) [expandFromSliver] goes back to, which drew as a mostly-empty
+     *  sheet ballooning open over a one-line "Recognizing text…" on every
+     *  collapsed page flip. The status's own floor is part of where the sheet
+     *  rests ([restingHeightPx]), whichever status lands and in either order:
+     *  landscape's 20% floor is shorter than the status block. */
     private fun expandFromSliverForStatus() {
         if (dismissed || animatingOut || !sliverMode) return
         leaveSliver()
-        nav?.clearCursor()   // every exit from the park drops the sliver cursor
-        animateSliverHeight(CaptureResultGeometry.minPanelHeight(screenH)) {
-            updateModeControl()
-        }
-        // Apply the floor to the animation we just started. The KDoc's "every
-        // setStatus retargets" covers the paths that expand BEFORE their status
-        // arrives (Failed/NoText); a tap-expand has the opposite order — the
-        // loading status landed long ago and no further setStatus is coming —
-        // so nothing would rescue a landscape sheet whose 20% floor is shorter
-        // than the status block. Grow-only and no-op when it already fits.
-        applyStatusFloor()
+        readingHeightPx = CaptureResultGeometry.minPanelHeight(screenH)
+        settle()
     }
 
     /** The USER pulling the sheet out of its park: the sliver tap and the
      *  controller's mirror of it. Distinct from [expandFromSliver], which is
      *  ALSO the sheet's automatic rescue when boxes were expected but refused
      *  — that is the sheet saving itself, not the user choosing anything, and
-     *  only a real gesture may stand down the re-park at Translating.
+     *  only a real gesture may stand down the re-park at Translating. It
+     *  states the posture even when the capture brought the sheet up during
+     *  the tap.
      *
      *  A tap during a LOADING phase expands to status height rather than the
-     *  remembered reading height: on a re-run while parked (the camera's
-     *  region change drives its loading status straight through the sliver)
-     *  [preSliverHeightPx] holds the PREVIOUS scene's fitted height, and
-     *  restoring it balloons a mostly-empty sheet open over a one-line
-     *  "Recognizing text…" — the fault [expandFromSliverForStatus] exists for. */
+     *  reading height: on a re-run while parked (the camera's region change
+     *  drives its loading status straight through the sliver) that is the
+     *  PREVIOUS scene's fit, and restoring it balloons a mostly-empty sheet
+     *  open over a one-line "Recognizing text…" — the fault
+     *  [expandFromSliverForStatus] exists for. */
     private fun userExpandFromSliver() {
-        if (dismissed || animatingOut || !sliverMode) return
+        if (dismissed || animatingOut) return
         userStatedPosture = true
         // Two different questions, deliberately keyed to two different facts.
         // HEIGHT: any status at all takes the status-sized expansion — the
@@ -1761,12 +1809,11 @@ class CaptureResultOverlay(
         }
     }
 
-    /** The sliver drag has passed touch slop: the user is pulling the sheet edge
-     *  to a height of their choosing, so the drag owns the height from here
-     *  (cancel any in-flight park/expand animation; the crossfade follows the
-     *  dragged height). */
+    /** The sliver drag has passed touch slop: the user is pulling the sheet
+     *  edge to a height of their choosing, so the drag owns the height from
+     *  here (the touch's hold stopped any slide at its DOWN; the crossfade
+     *  follows the dragged height). */
     private fun beginSliverDrag() {
-        heightAnimator?.cancel()
         nav?.clearCursor()   // a pull out of the park drops the sliver cursor
     }
 
@@ -1778,7 +1825,7 @@ class CaptureResultOverlay(
         val h = CaptureResultGeometry.clampPanelHeight(
             sliverHeightPx() + dy.toInt(), screenH, minFraction = 0f,
         )
-            .coerceAtMost(maxNeededHeightPx)
+            .coerceAtMost(dragCeilingPx)
             .coerceAtLeast(sliverHeightPx())
         setPanelHeight(h)
         if (h >= CaptureResultGeometry.minPanelHeight(screenH)) reFitText()
@@ -1786,26 +1833,12 @@ class CaptureResultOverlay(
 
     /** Release of a sliver drag. Past the threshold (the normal resize floor)
      *  the panel is committed exactly where the drag left it; under it, the
-     *  sheet settles back into the sliver. */
+     *  sheet settles back into the sliver: pulled and let fall back, the user
+     *  kept it parked, so the pref takes the wheel again. Either way the
+     *  user's word, whatever the capture wrote during the drag. */
     private fun endSliverDrag() {
         if (dismissed) return
-        if (panelHeightPx >= CaptureResultGeometry.minPanelHeight(screenH)) {
-            leaveSliver()
-            // A dragged-to height IS a posture: it stands down the auto-park,
-            // and it supersedes any loading peek that opened the sheet first.
-            userStatedPosture = true
-            loadingPeekExpand = false
-            // Adopt the dragged height like endResize does, so re-fits keep it.
-            autoMaxPx = committedCeiling()
-            reFitText()
-            updateModeControl()
-        } else {
-            // Pulled and let fall back: the user kept it parked, so the pref
-            // takes the wheel again.
-            userStatedPosture = false
-            loadingPeekExpand = false
-            animateSliverHeight(sliverHeightPx())
-        }
+        if (panelHeightPx >= CaptureResultGeometry.minPanelHeight(screenH)) commitHeight() else park()
     }
 
     /** Dismiss everything from the sliver: the boxes start fading immediately
@@ -1814,49 +1847,6 @@ class CaptureResultOverlay(
     private fun dismissFromSliver() {
         hideChips()
         animateOutAndDismiss()
-    }
-
-    /** Plain height slide for the sliver transitions. Unlike [animatePanelHeight]
-     *  it leaves the text sizes alone: the sections are faded (or fading) for
-     *  every frame where an intermediate fit would matter, fitting to sliver
-     *  heights computes degenerate sizes, and the expand path re-runs the real
-     *  fit when it lands. */
-    private fun animateSliverHeight(target: Int, onEnd: (() -> Unit)? = null) {
-        heightAnimator?.cancel()
-        heightAnimatorTargetPx = target
-        // A park records where it set out from, for the Anki pill's fade. Set
-        // after the cancel above, whose end listener clears the last slide's.
-        parkFromPx = panelHeightPx.takeIf { target == sliverHeightPx() && it > target }
-        heightAnimator = ValueAnimator.ofInt(panelHeightPx, target).apply {
-            duration = SLIVER_DURATION_MS
-            interpolator = AccelerateDecelerateInterpolator()
-            addUpdateListener { anim ->
-                if (dismissed) {
-                    anim.cancel()
-                    return@addUpdateListener
-                }
-                setPanelHeight(anim.animatedValue as Int)
-            }
-            // The slide is over, run out or cancelled: the pill follows the
-            // sections again.
-            addListener(object : android.animation.AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: android.animation.Animator) {
-                    parkFromPx = null
-                }
-            })
-            if (onEnd != null) {
-                addListener(object : android.animation.AnimatorListenerAdapter() {
-                    private var cancelled = false
-                    override fun onAnimationCancel(animation: android.animation.Animator) {
-                        cancelled = true
-                    }
-                    override fun onAnimationEnd(animation: android.animation.Animator) {
-                        if (!cancelled && !dismissed) onEnd()
-                    }
-                })
-            }
-            start()
-        }
     }
 
     /** Visible height of the collapsed sheet: the grabber strip + a strip of the
@@ -1869,7 +1859,7 @@ class CaptureResultOverlay(
      *  [sliverHeightPx, minPanelHeight): the sections (or status) fade out as
      *  the sheet approaches the sliver while the "drag up" hint fades in.
      *  Driven from [setPanelHeight] — the single point every height path flows
-     *  through (drags, the park/expand animators, the collapsed start, inset
+     *  through (drags, the settle's slide, the collapsed start, inset
      *  re-parks) — so every path lands on identical visuals with no per-path
      *  fade wiring. Above the band it restores full content and retires the
      *  hint, making it a no-op for all normal resizing. */
@@ -2101,12 +2091,12 @@ class CaptureResultOverlay(
         updateModeControl()
         // The proportional loading floor (20% of screen height) is SHORTER than
         // the status block itself on a landscape screen — "Recognizing text"
-        // rendered clipped to invisibility in horizontal mode. Floor the panel
-        // at what the status actually measures; bindResult's own fit takes over
-        // from there. NOT while slivered: a camera region re-run drives the
-        // loading status through a parked sliver (boxes stay the presentation),
-        // and growing the sheet here would yank it half-open.
-        applyStatusFloor()
+        // rendered clipped to invisibility in horizontal mode. What the status
+        // measures is part of where the open sheet rests ([restingHeightPx]),
+        // taken at once at rest; bindResult's own fit takes over from there.
+        // Never a parked sheet's: a camera region re-run drives the loading
+        // status through a parked sliver (boxes stay the presentation).
+        settle(snap = true)
     }
 
     /** The panel height the CURRENT status text needs to render unclipped. */
@@ -2116,32 +2106,6 @@ class CaptureResultOverlay(
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
         )
         return statusText.measuredHeight + dp(HANDLE_HEIGHT_DP) + topInsetPx + bottomInsetPx
-    }
-
-    /** Enforce the floor invariant for the visible status: the panel must not
-     *  END UP below what the status measures. Grow-only, and never while
-     *  parked in the sliver (the region-re-run status deliberately rides it).
-     *
-     *  A height animation in flight owns panelHeightPx per-frame, so a plain
-     *  write here would be overwritten — instead, an animation whose END
-     *  target is below the need is RETARGETED from the current frame (the
-     *  status expansion picked its target before this status existed — the
-     *  fast InProgress→NoText succession). An animation already landing
-     *  at/above the need keeps the height: it may be the user's tap-expand to
-     *  a taller reading height, which must not be hijacked downward. Only the
-     *  status expansion (or a status-visible user expand) can be running
-     *  here: content-fit animations imply bindResult hid the status, and the
-     *  sliver park/settle animations are excluded by the sliverMode guard. */
-    private fun applyStatusFloor() {
-        if (statusText.visibility != View.VISIBLE || sliverMode) return
-        val needed = statusFloorPx()
-        if (heightAnimator?.isRunning == true) {
-            if (heightAnimatorTargetPx < needed) {
-                animateSliverHeight(needed) { updateModeControl() }
-            }
-        } else if (panelHeightPx < needed) {
-            setPanelHeight(needed)
-        }
     }
 
     private fun bindResult(result: TranslationResult) {
@@ -2293,25 +2257,187 @@ class CaptureResultOverlay(
         result.originalText, result.translatedText, result.backendDisplayName,
     )
 
-    /** On the first layout of a fresh result: measure the natural content height
-     *  at max text size (the same StaticLayout basis as the fit, so they agree)
-     *  and animate the panel to fit it (capped at 50% of screen, floored at min),
-     *  smoothly scaling the text alongside. */
+    /** A result is on show, not a status: [lastResult] survives a status,
+     *  which hides the scroll. What the fit sizes the sheet to. */
+    private val resultOnShow: Boolean
+        get() = lastResult != null && scroll.visibility == View.VISIBLE
+
+    /** The content's rule for the reading height: measure what the result on
+     *  show needs at max text size (the same StaticLayout basis as the fit,
+     *  so they agree) and rest the open sheet at it, floored at the minimum
+     *  and capped at [autoMaxPx] (50% of the screen, or the height the user
+     *  chose), the text scaling with the slide. Nothing while a status is on
+     *  show: there is no text to fit, and the result it replaced must not
+     *  size the sheet. Parked it moves nothing ([settle]) and still measures:
+     *  the sliver drag's ceiling is the need, and the sheet comes out of the
+     *  park to the reading height this keeps. */
     private fun autoSizeAndFit() {
         val b = binder ?: return
+        if (!resultOnShow) return
         if (body.height <= 0 || sections.width <= 0) return
         val neededHeight = neededPanelHeight(b)
         maxNeededHeightPx = neededHeight.coerceAtLeast(CaptureResultGeometry.minPanelHeight(screenH))
-        // Slivered: measure-only — the height is parked and the sections are
-        // faded, so growing the panel here would fight the collapse; the
-        // expand paths re-run this. The measurement above must NOT wait for
-        // that: in the overlays-first flow the panel binds and collapses
-        // without ever fitting expanded, and the sliver DRAG consumes
-        // maxNeededHeightPx directly as its ceiling (MAX_VALUE until measured
-        // = a panel draggable into empty space).
-        if (sliverMode) return
-        val target = CaptureResultGeometry.autoPanelHeight(neededHeight, screenH, autoMaxPx)
-        animatePanelHeight(target)
+        readingHeightPx = CaptureResultGeometry.autoPanelHeight(neededHeight, screenH, autoMaxPx)
+        settle(textChanged = true)
+    }
+
+    /** Where the sheet rests: parked, the sliver; open, its reading height,
+     *  raised to what a status on show measures. The floor only ever raises
+     *  it, so a status in an open sheet keeps its height, and one landing as
+     *  the sheet comes up (a tap's expand to a taller reading height) does
+     *  not pull it down; and it is never a parked sheet's. */
+    private fun restingHeightPx(): Int = when {
+        sliverMode -> sliverHeightPx()
+        statusText.visibility == View.VISIBLE -> maxOf(readingHeightPx, statusFloorPx())
+        else -> readingHeightPx
+    }
+
+    /** The one mover of the sheet's height: to where it rests, from where it
+     *  is. While the user holds the height it moves nothing (a change of the
+     *  text still fits it to the height the sheet has, which a result
+     *  landing mid-drag needs at once) and runs once they let go
+     *  ([endHold]). [snap] lands a sheet at rest at once rather than sliding
+     *  it there (a status that would draw clipped meanwhile, the sliver
+     *  following the system bar); a slide under way is retargeted either
+     *  way. [textChanged]: the content changed, so a slide that carries the
+     *  text starts again with its new sizes; any other slide already on its
+     *  way to where the sheet rests runs on. */
+    private fun settle(snap: Boolean = false, textChanged: Boolean = false) {
+        if (dismissed || animatingOut) return
+        if (heightHeld) {
+            settleOwed = true
+            if (textChanged) fitTextToHeight()
+            return
+        }
+        val target = restingHeightPx()
+        val running = heightAnimator?.isRunning == true
+        if (running && target == settleTargetPx && !(textChanged && textRidesTo(target))) return
+        heightAnimator?.cancel()
+        if (target == panelHeightPx || (snap && !running)) {
+            if (target != panelHeightPx) setPanelHeight(target)
+            fitTextToHeight()
+            return
+        }
+        slideTo(target)
+    }
+
+    /** A slide to [target] carries the result's text: a result on show, laid
+     *  out, landing at a reading height. */
+    private fun textRidesTo(target: Int): Boolean =
+        binder != null && resultOnShow && sections.width > 0 &&
+            target >= CaptureResultGeometry.minPanelHeight(screenH)
+
+    /** Slide the height from where it is to [target]. Between reading heights
+     *  the text scales with it, interpolated (as a float, so it scales
+     *  smoothly instead of stepping) between its fitted sizes at both ends;
+     *  out of the park it takes the size it lands at before it shows; into
+     *  the park, or under a status, it stays as it is: the sections are
+     *  faded for every frame where a size would matter, and fitting to
+     *  sliver heights computes degenerate sizes. */
+    private fun slideTo(target: Int) {
+        val b = binder
+        val start = panelHeightPx
+        val withText = b != null && textRidesTo(target)
+        val scales = withText && start >= CaptureResultGeometry.minPanelHeight(screenH)
+        var sizeAt: ((Float) -> Unit)? = null
+        if (b != null && withText) {
+            val (srcEnd, tgtEnd) = fitSizes(b, contentHeight(target))
+            if (scales) {
+                val (srcStart, tgtStart) = fitSizes(b, contentHeight(start))
+                applyCardFill(b, contentHeight(start))
+                b.setSizes(srcStart, tgtStart)
+                sizeAt = { f ->
+                    applyCardFill(b, contentHeight(panelHeightPx))
+                    b.setSizes(srcStart + (srcEnd - srcStart) * f, tgtStart + (tgtEnd - tgtStart) * f)
+                }
+            } else {
+                applyCardFill(b, contentHeight(target))
+                b.setSizes(srcEnd, tgtEnd)
+            }
+        }
+        settleTargetPx = target
+        // A park records where it set out from, for the Anki pill's fade. Set
+        // after the cancel in [settle], whose end listener clears the last
+        // slide's.
+        parkFromPx = start.takeIf { target == sliverHeightPx() && it > target }
+        heightAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = if (scales) HEIGHT_DURATION_MS else SLIVER_DURATION_MS
+            interpolator = if (scales) DecelerateInterpolator() else AccelerateDecelerateInterpolator()
+            addUpdateListener { anim ->
+                if (dismissed) {
+                    anim.cancel()
+                    return@addUpdateListener
+                }
+                val f = anim.animatedValue as Float
+                setPanelHeight((start + (target - start) * f).toInt())
+                sizeAt?.invoke(f)
+            }
+            addListener(object : AnimatorListenerAdapter() {
+                private var cancelled = false
+                override fun onAnimationCancel(animation: Animator) {
+                    cancelled = true
+                }
+                override fun onAnimationEnd(animation: Animator) {
+                    // The slide is over, run out or cancelled: the pill
+                    // follows the sections again.
+                    parkFromPx = null
+                    if (!cancelled && !dismissed) updateModeControl()
+                }
+            })
+            start()
+        }
+    }
+
+    /** Fit the result's text to the height the sheet has, a reading height
+     *  (inside the collapse band the sections are faded and a fit there
+     *  degenerate). */
+    private fun fitTextToHeight() {
+        if (resultOnShow && panelHeightPx >= CaptureResultGeometry.minPanelHeight(screenH)) reFitText()
+    }
+
+    /** [heightHeld] may have changed from [wasHeld]: a touch began or ended,
+     *  or the stick began or committed a resize. */
+    private fun holdChanged(wasHeld: Boolean) {
+        val held = heightHeld
+        if (held == wasHeld) return
+        if (held) beginHold() else endHold()
+    }
+
+    /** The user takes hold of the height: a slide under way stops under
+     *  them, to settle again when they let go. */
+    private fun beginHold() {
+        val running = heightAnimator?.takeIf { it.isRunning } ?: return
+        running.cancel()
+        settleOwed = true
+    }
+
+    /** The user let go of the height (a finger's UP or CANCEL, after the
+     *  gesture's own end has written where they left the sheet; a stick
+     *  resize's commit, likewise): the sheet settles once, from the state of
+     *  this moment, if anything it rests by changed meanwhile or a slide was
+     *  stopped. */
+    private fun endHold() {
+        if (!settleOwed) return
+        settleOwed = false
+        settle()
+    }
+
+    /** The user let the sheet go at a height of their choosing (a drag or the
+     *  stick, from the sliver or not): it lives there now, out of the park if
+     *  the capture parked it meanwhile. It stands down the capture's re-park
+     *  and supersedes a loading peek; the height becomes the auto-size
+     *  ceiling ([committedCeiling]) and the reading height, and the content's
+     *  fit then applies, which leaves the sheet where it is unless the
+     *  content needs less (or a status more) than that. */
+    private fun commitHeight() {
+        leaveSliver()
+        userStatedPosture = true
+        loadingPeekExpand = false
+        autoMaxPx = committedCeiling()
+        readingHeightPx = panelHeightPx
+        autoSizeAndFit()
+        settle()
+        updateModeControl()
     }
 
     /** Panel height that shows all content at max text size. Caller must have
@@ -2469,37 +2595,6 @@ class CaptureResultOverlay(
         applyCardFill(b, bodyH)
         val (src, tgt) = fitSizes(b, bodyH)
         b.setSizes(src, tgt)
-    }
-
-    /** Grow/shrink the panel to [target], interpolating BOTH the height and the
-     *  text size (as a float, between the fitted start/end sizes) so the text
-     *  scales smoothly instead of stepping. */
-    private fun animatePanelHeight(target: Int) {
-        heightAnimator?.cancel()
-        heightAnimatorTargetPx = target
-        val b = binder ?: return
-        val startH = panelHeightPx
-        val (srcStart, tgtStart) = fitSizes(b, contentHeight(startH))
-        val (srcEnd, tgtEnd) = fitSizes(b, contentHeight(target))
-        applyCardFill(b, contentHeight(startH))
-        b.setSizes(srcStart, tgtStart)
-        if (startH == target) return
-        heightAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = HEIGHT_DURATION_MS
-            interpolator = DecelerateInterpolator()
-            addUpdateListener { anim ->
-                if (dismissed) {
-                    anim.cancel()
-                    return@addUpdateListener
-                }
-                val f = anim.animatedValue as Float
-                val h = (startH + (target - startH) * f).toInt()
-                setPanelHeight(h)
-                applyCardFill(b, contentHeight(h))
-                b.setSizes(srcStart + (srcEnd - srcStart) * f, tgtStart + (tgtEnd - tgtStart) * f)
-            }
-            start()
-        }
     }
 
     /** Resolve the tapped word and show a display+speak lens over the game,
@@ -3280,7 +3375,6 @@ class CaptureResultOverlay(
     private var resizeStartHeight = 0
 
     private fun beginResize(rawY: Float) {
-        heightAnimator?.cancel() // the user takes over from the auto-grow
         resizing = true
         resizeStartRawY = rawY
         resizeStartHeight = panelHeightPx
@@ -3305,7 +3399,7 @@ class CaptureResultOverlay(
             CaptureResultGeometry.clampPanelHeight(
                 resizeStartHeight + dy, screenH, minFraction = 0f,
             )
-                .coerceAtMost(maxNeededHeightPx)
+                .coerceAtMost(dragCeilingPx)
                 .coerceAtLeast(floor),
         )
         // No re-fit inside the collapse band — fitting to sliver heights
@@ -3320,26 +3414,17 @@ class CaptureResultOverlay(
      *  outside, or the deliberate long swipe on the body. */
     private fun endResize() {
         resizing = false
-        if (panelHeightPx < CaptureResultGeometry.minPanelHeight(screenH)) {
+        when {
             // Released inside the collapse band: the classic floor is the
             // commit threshold (same as the sliver drag's), so the sheet
-            // parks in the sliver; a later tap-expand returns to the
-            // pre-drag height.
-            sliverMode = true
-            userStatedPosture = false   // parking hands the wheel to the pref
-            loadingPeekExpand = false
-            dismissWordLens()
-            nav?.clearCursor()   // every sliver entry drops the cursor
-            preSliverHeightPx = resizeStartHeight
-            animateSliverHeight(sliverHeightPx())
-        } else if (panelHeightPx != resizeStartHeight) {
+            // parks in the sliver; a later tap-expand returns to the reading
+            // height.
+            panelHeightPx < CaptureResultGeometry.minPanelHeight(screenH) -> park()
             // Only a drag that MOVED the sheet states a posture. A grab that
             // went nowhere — a tap on the grabber, or a pull against a sheet
             // already at its content ceiling — leaves the remembered one alone
             // instead of quietly overwriting it with wherever this result sat.
-            userStatedPosture = true
-            loadingPeekExpand = false
-            autoMaxPx = committedCeiling()
+            panelHeightPx != resizeStartHeight -> commitHeight()
         }
     }
 
@@ -3356,8 +3441,9 @@ class CaptureResultOverlay(
     private fun stickResizeBy(dyPx: Int) {
         if (dismissed || animatingOut) return
         if (!stickResizing) {
-            heightAnimator?.cancel() // the user takes over from the auto-grow
+            val was = heightHeld
             stickResizing = true
+            holdChanged(was)
             stickResizeFromSliver = sliverMode
             stickResizeStartHeight = panelHeightPx
         }
@@ -3378,7 +3464,7 @@ class CaptureResultOverlay(
             CaptureResultGeometry.clampPanelHeight(
                 panelHeightPx + dyPx, screenH, minFraction = 0f,
             )
-                .coerceAtMost(maxNeededHeightPx)
+                .coerceAtMost(dragCeilingPx)
                 .coerceAtLeast(floor),
         )
         if (panelHeightPx >= CaptureResultGeometry.minPanelHeight(screenH)) reFitText()
@@ -3386,43 +3472,26 @@ class CaptureResultOverlay(
 
     private fun commitStickResize() {
         if (!stickResizing) return
-        stickResizing = false
-        if (dismissed || animatingOut) return
-        val min = CaptureResultGeometry.minPanelHeight(screenH)
-        if (stickResizeFromSliver) {
-            // Mirror endSliverDrag: past the classic floor the drag pulled the
-            // sheet out of its park; under it, settle back into the sliver.
-            if (panelHeightPx >= min) {
-                leaveSliver()
-                userStatedPosture = true
-                loadingPeekExpand = false
-                autoMaxPx = committedCeiling()
-                reFitText()
-                updateModeControl()
-            } else {
-                userStatedPosture = false
-                loadingPeekExpand = false
-                animateSliverHeight(sliverHeightPx())
+        if (!dismissed && !animatingOut) {
+            val min = CaptureResultGeometry.minPanelHeight(screenH)
+            when {
+                // Mirror endSliverDrag: past the classic floor the stick
+                // pulled the sheet out of its park; under it, it settles back
+                // into the sliver.
+                stickResizeFromSliver -> if (panelHeightPx >= min) commitHeight() else park()
+                // Mirror endResize's park (never while editing — the IME
+                // would strand over a sliver, the same guard the touch floor
+                // encodes). Unlike the touch path, this commit can fire with
+                // the popover up (the frame loop's modal suspend lands here);
+                // the park closes it rather than leave it floating over the
+                // sliver.
+                panelHeightPx < min && typingIn == TypingIn.NOTHING -> park()
+                panelHeightPx != stickResizeStartHeight -> commitHeight()
             }
-        } else if (panelHeightPx < min && typingIn == TypingIn.NOTHING) {
-            // Mirror endResize's park (never while editing — the IME would
-            // strand over a sliver, the same guard the touch floor encodes).
-            // Unlike the touch path, this commit can fire with the popover up
-            // (the frame loop's modal suspend lands here) — close it like
-            // collapseToSliver does rather than leave it floating over a park.
-            sliverMode = true
-            userStatedPosture = false   // parking hands the wheel to the pref
-            loadingPeekExpand = false
-            dismissWordLens()
-            popovers.dismiss()
-            nav?.clearCursor()   // every sliver entry drops the cursor
-            preSliverHeightPx = stickResizeStartHeight
-            animateSliverHeight(sliverHeightPx())
-        } else if (panelHeightPx != stickResizeStartHeight) {
-            userStatedPosture = true
-            loadingPeekExpand = false
-            autoMaxPx = committedCeiling()
         }
+        // The hold ends after the posture is written.
+        stickResizing = false
+        holdChanged(wasHeld = true)
     }
 
     // ── Swipe-away (the body drag that slides the sheet off) ─────────────
@@ -3557,7 +3626,7 @@ class CaptureResultOverlay(
      *  dismisses. (Rotation dismisses too, via the controller's display listener.) */
     private inner class CaptureResultRoot(c: Context) : FrameLayout(c) {
         // Sliver gesture state: a DOWN on the sliver zone becomes either a tap
-        // (auto-expand to the pre-collapse height) or a drag (the user pulls the
+        // (auto-expand to the reading height) or a drag (the user pulls the
         // sheet edge themselves; see endSliverDrag for the commit threshold).
         private var sliverTouch = false
         private var sliverDragging = false
@@ -3566,6 +3635,25 @@ class CaptureResultOverlay(
         /** True while an outside gesture is being streamed to
          *  [outsideLookupRouter] (claimed at its DOWN). */
         private var routingOutside = false
+
+        /** The rules this gesture runs under, the parked sheet's or the open
+         *  one's, fixed at its DOWN: a park or an expand the capture writes
+         *  meanwhile changes where the sheet rests, not what the gesture
+         *  under the finger is, so a drag still ends where its release says. */
+        private var sliverGesture = false
+
+        /** This gesture's DOWN went to the open sheet's own views (its texts
+         *  and sections, a popover on it), not to its grab band or past its
+         *  edge: the user using it ([dispatchTouchEvent]). */
+        private var contentGesture = false
+
+        /** Hand [ev] to the views under it; a DOWN they take makes this a
+         *  [contentGesture]. */
+        private fun toContent(ev: MotionEvent): Boolean {
+            val taken = super.dispatchTouchEvent(ev)
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) contentGesture = taken
+            return taken
+        }
 
         /** Offer an outside-zone DOWN to the router. True = claimed; the
          *  rest of the gesture streams to it via [routeOutsideFollowUp]. */
@@ -3671,6 +3759,39 @@ class CaptureResultOverlay(
             nav?.handleGenericMotion(ev) == true || super.onGenericMotionEvent(ev)
 
         override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+            val action = ev.actionMasked
+            val handled = routeTouch(ev)
+            // A gesture this root takes holds the sheet's height from its
+            // DOWN to its UP or CANCEL ([heightHeld]). One nothing here took
+            // is no hold: a host that adds the root as a child view
+            // ([ActivitySheetHost]) sends the rest of it elsewhere, and its
+            // end would never come.
+            if (action == MotionEvent.ACTION_DOWN && handled) {
+                val was = heightHeld
+                touchHeld = true
+                holdChanged(was)
+            }
+            // The user was using the open sheet (a tap, a scroll, a field),
+            // so it stays open: a park the capture wrote meanwhile does not
+            // land under what they just did. A gesture the system cancels
+            // states nothing.
+            if (action == MotionEvent.ACTION_UP && contentGesture) leaveSliver()
+            // The hold ends after the gesture is handled, so the gesture's
+            // own end has written where the user left the sheet before the
+            // sheet settles.
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                val was = heightHeld
+                touchHeld = false
+                holdChanged(was)
+            }
+            return handled
+        }
+
+        private fun routeTouch(ev: MotionEvent): Boolean {
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+                sliverGesture = sliverMode
+                contentGesture = false
+            }
             // A popover (the text-size picker, a ⋯ menu) is a child of this
             // root, and it can sit ABOVE the sheet's top edge — right where the
             // rules below claim every DOWN for the resize grab or an
@@ -3678,7 +3799,7 @@ class CaptureResultOverlay(
             // let normal child dispatch run: the popover's own scrim (drawn
             // over everything but its card) handles outside taps by
             // dismissing it.
-            if (popovers.isShowing) return super.dispatchTouchEvent(ev)
+            if (popovers.isShowing) return toContent(ev)
             // A sequence that began on the mode pill is the pill's, whatever
             // the rules below would claim: it is a child above everything.
             if (ev.actionMasked == MotionEvent.ACTION_DOWN) pillTouch = hitsModePill(ev)
@@ -3701,7 +3822,10 @@ class CaptureResultOverlay(
             ) {
                 return true
             }
-            if (sliverMode) {
+            // An outside touch is a gesture of its own, under the posture of
+            // its moment.
+            val sliverRules = if (ev.actionMasked == MotionEvent.ACTION_OUTSIDE) sliverMode else sliverGesture
+            if (sliverRules) {
                 when (ev.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         val panelTop = panel.top + panel.translationY
@@ -3776,7 +3900,7 @@ class CaptureResultOverlay(
                     return true
                 }
             }
-            return super.dispatchTouchEvent(ev)
+            return toContent(ev)
         }
     }
 

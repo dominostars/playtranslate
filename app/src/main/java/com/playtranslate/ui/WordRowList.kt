@@ -599,11 +599,17 @@ internal fun wordRowList(
      *  ([DefinitionsDocument.DocTheme.twoColumnsWhenWide]): the results'
      *  Words card only. */
     twoColumnsWhenWide: Boolean = false,
+    /** The card's colour as seen ([cardDocTheme]'s panel); null for the
+     *  theme's card colour. */
+    cardColor: Int? = null,
     /** The page laid the rows out ([WordRowList]'s own `onLayout`). */
     onLayout: () -> Unit = {},
 ) = WordRowList(
     ctx, slot, scope, host,
     describe = RowState::toWordEntry,
-    theme = { cardDocTheme(ctx, WordRowList.GLOSS_SP * scale, twoColumnsWhenWide) },
+    theme = {
+        if (cardColor == null) cardDocTheme(ctx, WordRowList.GLOSS_SP * scale, twoColumnsWhenWide)
+        else cardDocTheme(ctx, WordRowList.GLOSS_SP * scale, twoColumnsWhenWide, cardColor)
+    },
     onLayout = onLayout,
 )

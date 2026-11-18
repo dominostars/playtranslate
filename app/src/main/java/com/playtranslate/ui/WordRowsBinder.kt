@@ -101,6 +101,11 @@ class WordRowsBinder(
     private val ctx: Context,
     private val prefs: Prefs,
     private val host: Host,
+    /** The Words card's colour as it is seen, where the card lets what is
+     *  behind it show through (the capture sheet's), for the band a pinned
+     *  word head stands on ([cardDocTheme]); null for an opaque card of the
+     *  theme's card colour. */
+    cardColor: Int? = null,
 ) {
     interface Host {
         /** The host view tree is still live — guards every async re-entry. */
@@ -188,6 +193,7 @@ class WordRowsBinder(
         },
         WordRowList.COMPACT_SCALE,
         twoColumnsWhenWide = true,
+        cardColor = cardColor,
         onLayout = {
             syncWaiting()
             onHeightChanged?.invoke()
