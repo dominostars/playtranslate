@@ -392,6 +392,14 @@ class TranslationResultFragment : Fragment() {
         content.requestDeferredCompletion()
     }
 
+    /** A capture the host follows has brought its original [text]
+     *  ([captureOriginalToRead]): the page reads it aloud when the user
+     *  asked for that ([TranslationResultContent.autoPlayOriginal]). */
+    fun autoPlayOriginal(text: String) {
+        if (view == null) return
+        content.autoPlayOriginal(text)
+    }
+
     /** The host's live-mode start/stop edge: the Words card auto-hides for
      *  the session and drops the auto-hide on stop
      *  ([WordRowsBinder.setLiveMode], which ignores a repeat of the current

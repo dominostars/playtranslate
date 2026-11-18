@@ -1599,6 +1599,11 @@ class MainActivity :
                     // without anything outliving the session.
                     _currentCaptureSession.flatMapLatest { it?.stateWithPrevious ?: emptyFlow() }
                         .collect { (previous, state) ->
+                            // The capture's original, read aloud when the
+                            // user asked for that. Auto-translate's results
+                            // come by the other collector and are not read.
+                            com.playtranslate.ui.captureOriginalToRead(previous, state, oneShotModeOverride)
+                                ?.let { resultFragment?.autoPlayOriginal(it) }
                             when (state) {
                                 is CaptureState.InProgress ->
                                     resultVm.showStatus(state.message)

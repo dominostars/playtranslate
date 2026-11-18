@@ -15,6 +15,8 @@ import com.playtranslate.OverlayMode
 import com.playtranslate.OverlaySurface
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.audio.FakeSpeech
+import com.playtranslate.audio.AudioRequest
 import com.playtranslate.ask.Explanation
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.model.PendingTranslation
@@ -402,5 +404,19 @@ class ResultsPageShowOnScreenTest {
         assertEquals(1, host.hides)
         assertFalse(offered())
         assertTrue("the setting is the next capture's", prefs.dualScreenShowOnScreen)
+    }
+
+    @Test fun `a capture's original handed to the page is read aloud once the user has asked for that`() {
+        val speech = FakeSpeech().also { it.install() }
+        try {
+            host.page.autoPlayOriginal("猫が鳴く")
+            assertTrue("off until the user turns it on", speech.played.isEmpty())
+
+            prefs.autoPlayOriginal = true
+            host.page.autoPlayOriginal("猫が鳴く")
+            assertEquals(listOf(AudioRequest.sentence("猫が鳴く", prefs.sourceLangId)), speech.played)
+        } finally {
+            FakeSpeech.uninstall()
+        }
     }
 }

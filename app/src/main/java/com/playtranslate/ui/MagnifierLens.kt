@@ -353,6 +353,11 @@ class MagnifierLens(
      *  spinner meanwhile): null for the tapped unit's row, else the
      *  secondary's index. */
     var onSpeak: (suspend (secondary: Int?) -> Unit)? = null
+    /** Fires when the lens has turned sticky ([makeInteractive] succeeded):
+     *  once for each word it shows, with that word's rows bound, since both
+     *  of its owners bind and then promote. A dwell preview during a drag
+     *  and a "Load more" bind without it. */
+    var onInteractive: (() -> Unit)? = null
     /** A row's explain button was tapped with no AI model to put the
      *  question to: the owner raises the "needs an AI model" alert
      *  ([askNeedsLlm]) on its surface. The lens has dismissed itself by the
@@ -622,7 +627,16 @@ class MagnifierLens(
         // Release commit: grow the card to fit the dictionary, animated inside
         // the fixed window (definitions were bound just above).
         fitHeightToContent()
+        onInteractive?.invoke()
         return true
+    }
+
+    /** Speaks the looked-up word's own row (not a related unit's) as a tap
+     *  on its Speak button does, the row's spinner included, played by
+     *  [play] in place of [onSpeak]. Nothing while the lens shows no
+     *  rows. */
+    fun speakPrimary(play: suspend () -> Unit) {
+        lensView?.speakPrimary(play)
     }
 
     /** A sticky-mode DOWN off the card at ([rawX], [rawY]): the owner's
@@ -1618,6 +1632,14 @@ class MagnifierLens(
         /** [MagnifierLens.explanationOf]. */
         fun explanationOf(secondary: Int?): Explanation? =
             list.wordRows.firstOrNull { it.secondary == secondary }?.let(list::explanationOf)
+
+        /** [MagnifierLens.speakPrimary]. The looked-up word's row is the one
+         *  with no secondary index, wherever the bind placed it (under its
+         *  phrase on Latin scripts). */
+        fun speakPrimary(play: suspend () -> Unit) {
+            val id = list.idAt(list.wordRows.indexOfFirst { it.secondary == null }) ?: return
+            list.speak(id) { play() }
+        }
 
         /** What the list shows: the last bind's sections, kept so the
          *  "Load more" footer can be redrawn ([setLoadMoreLoading]). */

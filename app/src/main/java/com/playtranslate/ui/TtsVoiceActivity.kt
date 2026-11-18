@@ -15,9 +15,11 @@ import androidx.annotation.VisibleForTesting
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.applyEdgeToEdge
@@ -54,9 +56,11 @@ import kotlinx.coroutines.launch
  * there, often for a browser and an API key, which is when a backgrounded
  * app is killed.
  *
- * The speed section at the top is the one thing that persists without Save:
- * the global speech rate has no per-page variant, so releasing the slider
- * stores it (see [TtsSpeedSection]).
+ * The speed section at the top persists without Save: the global speech rate
+ * has no per-page variant, so releasing the slider stores it (see
+ * [TtsSpeedSection]). So do the two "Play automatically" switches under it
+ * ([Prefs.autoPlayWords], [Prefs.autoPlayOriginal]): each is one setting for
+ * every game language, saved when it is flipped.
  *
  * Under both lists is the Imported recordings group
  * ([ImportedRecordingsSection]): an `android.db` file of human recordings
@@ -159,12 +163,49 @@ class TtsVoiceActivity : AppCompatActivity() {
         // transient selection, not the stored one).
         TtsSpeedSection.bind(findViewById(R.id.speedSection), prefs) { sample(selected) }
 
+        findViewById<View>(R.id.headerAutoPlay)
+            .findViewById<TextView>(R.id.tvGroupTitle).text =
+            getString(R.string.tts_auto_play_header)
+        bindAutoPlayRow(
+            R.id.rowAutoPlayWords,
+            R.string.tts_auto_play_words_title, R.string.tts_auto_play_words_subtitle,
+            prefs.autoPlayWords,
+        ) { prefs.autoPlayWords = it }
+        bindAutoPlayRow(
+            R.id.rowAutoPlayOriginal,
+            R.string.tts_auto_play_original_title, R.string.tts_auto_play_original_subtitle,
+            prefs.autoPlayOriginal,
+        ) { prefs.autoPlayOriginal = it }
+
         recordings = ImportedRecordingsSection(this, findViewById(R.id.recordingRows)) {
             pickRecordings.launch(arrayOf("*/*"))
         }
 
         loadDeviceVoices()
         loadService()
+    }
+
+    /** One "Play automatically" row: a switch saved the moment it changes.
+     *  Seeded before the listener is attached, so showing the saved state
+     *  writes nothing; the row's tap only toggles, so the checked-change
+     *  listener is the one write. */
+    private fun bindAutoPlayRow(
+        rowId: Int,
+        title: Int,
+        subtitle: Int,
+        on: Boolean,
+        save: (Boolean) -> Unit,
+    ) {
+        val row = findViewById<View>(rowId)
+        row.findViewById<TextView>(R.id.tvRowTitle).setText(title)
+        row.findViewById<TextView>(R.id.tvRowSubtitle).apply {
+            setText(subtitle)
+            isVisible = true
+        }
+        val toggle = row.findViewById<MaterialSwitch>(R.id.switchRowToggle)
+        toggle.isChecked = on
+        toggle.setOnCheckedChangeListener { _, checked -> save(checked) }
+        row.setOnClickListener { toggle.toggle() }
     }
 
     override fun onResume() {

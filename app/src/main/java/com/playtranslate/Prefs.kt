@@ -464,6 +464,24 @@ class Prefs internal constructor(
         sp.edit { putFloat("tts_speech_rate", rate) }
     }
 
+    /** The Text-to-speech page's "Play automatically" for words: a word a
+     *  lens looks up is spoken by itself, as its row's Speak button speaks
+     *  it ([com.playtranslate.ui.LensSpeech]). One setting for every game
+     *  language, off until the user turns it on. */
+    var autoPlayWords: Boolean
+        get() = sp.getBoolean(KEY_AUTO_PLAY_WORDS, false)
+        set(v) = sp.edit { putBoolean(KEY_AUTO_PLAY_WORDS, v) }
+
+    /** The Text-to-speech page's "Play automatically" for the original
+     *  text: a new capture's original is read aloud by itself, as the
+     *  Original header's Read aloud reads it
+     *  ([com.playtranslate.ui.captureOriginalToRead] says which captures).
+     *  One setting for every game language, off until the user turns it
+     *  on. */
+    var autoPlayOriginal: Boolean
+        get() = sp.getBoolean(KEY_AUTO_PLAY_ORIGINAL, false)
+        set(v) = sp.edit { putBoolean(KEY_AUTO_PLAY_ORIGINAL, v) }
+
     /**
      * Set of displays the user has selected to translate. Insertion order
      * is preserved (LinkedHashSet) so "primary" disambiguators (hotkey
@@ -2335,6 +2353,8 @@ class Prefs internal constructor(
         private const val KEY_CAPTURE_OVERLAY_PILL_COLLAPSED = "capture_overlay_pill_collapsed"
         /** Public so the results page can observe its Show on screen. */
         const val KEY_DUAL_SCREEN_SHOW_ON_SCREEN         = "dual_screen_show_on_screen"
+        private const val KEY_AUTO_PLAY_WORDS            = "auto_play_words"
+        private const val KEY_AUTO_PLAY_ORIGINAL         = "auto_play_original"
         /** The capture's boxes switch before it became a value of [KEY_CAPTURE_OVERLAY_MODE]. */
         private const val LEGACY_CAPTURE_BOXES_KEY        = "capture_boxes_enabled"
         private const val KEY_SETTINGS_SCROLL_Y        = "settings_scroll_y"

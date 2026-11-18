@@ -1,5 +1,7 @@
 package com.playtranslate.ui
 
+import android.content.Context
+import com.playtranslate.Prefs
 import com.playtranslate.audio.AudioRequest
 import com.playtranslate.audio.PlayOutcome
 import com.playtranslate.audio.PronunciationPlayer
@@ -27,6 +29,13 @@ data class SpeakRequest(val word: String, val lang: SourceLangId, val reading: S
  * [request] supplies the word of a row (null for the tapped unit, else the
  * secondary's index, as the lens's callbacks count them) and its language,
  * evaluated at tap time, or null when there is nothing to speak.
+ *
+ * It also speaks the looked-up word by itself when the lens settles on it
+ * ([MagnifierLens.onInteractive]) while the user has asked for that
+ * ([Prefs.autoPlayWords]): the same row, spinner and player as a tap on its
+ * Speak button, without the alerts. A voice that cannot speak stays silent
+ * there, since an alert on every lookup would make the lens unusable (the
+ * no-engine one closes it); the tap on the button still says why.
  */
 class LensSpeech(
     lens: MagnifierLens,
@@ -37,6 +46,11 @@ class LensSpeech(
         lens.onSpeak = { secondary ->
             request(secondary)?.let { speakWord(alertTarget, it) { lens.dismiss() } }
         }
+        lens.onInteractive = {
+            if (Prefs(alertTarget.context).autoPlayWords) {
+                lens.speakPrimary { request(null)?.let { playWord(alertTarget.context, it) } }
+            }
+        }
     }
 
     /** Stop playback. Call when the lens is gone (its list cancels the
@@ -45,6 +59,11 @@ class LensSpeech(
         PronunciationPlayer.stop()
     }
 }
+
+/** Plays [request]'s word through the one player and says how it went,
+ *  raising nothing: [speakWord] is this with the alerts a tap shows. */
+suspend fun playWord(ctx: Context, request: SpeakRequest): PlayOutcome =
+    PronunciationPlayer.play(ctx, AudioRequest.word(request.word, request.reading, request.lang))
 
 /**
  * Speak a single dictionary word and surface the standard TTS alerts on
@@ -60,10 +79,7 @@ suspend fun speakWord(
     request: SpeakRequest,
     onNoEngine: () -> Unit = {},
 ) {
-    val outcome = PronunciationPlayer.play(
-        target.context,
-        AudioRequest.word(request.word, request.reading, request.lang),
-    )
+    val outcome = playWord(target.context, request)
     withContext(Dispatchers.Main) {
         when (outcome) {
             PlayOutcome.TtsNoEngine -> showTtsNoEngineDialog(target, onNoEngine)

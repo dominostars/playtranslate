@@ -1,6 +1,7 @@
 package com.playtranslate.audio
 
 import android.content.Context
+import androidx.annotation.VisibleForTesting
 import com.playtranslate.audio.sources.LocalAudioSource
 import com.playtranslate.audio.sources.OnlineTtsAudioSource
 import com.playtranslate.audio.sources.RecordingAudioSource
@@ -40,8 +41,17 @@ object AudioSourceRegistry {
     /** Sources that expose an on/off switch in settings. */
     fun toggleable(): List<AudioSource> = sources.filter { it.toggleable }
 
+    /** The sources default playback resolves from, given by a JVM test in
+     *  place of the real ones: a surface under test then plays through a
+     *  fake, and the test sees which request it played. Null in the app;
+     *  a test that sets it resets it. */
+    @Volatile
+    @VisibleForTesting
+    internal var enabledForTest: List<AudioSource>? = null
+
     /** Enabled sources in priority order (for the default-playback resolver). */
-    fun enabledInOrder(ctx: Context): List<AudioSource> = sources.filter { it.isEnabled(ctx) }
+    fun enabledInOrder(ctx: Context): List<AudioSource> =
+        enabledForTest ?: sources.filter { it.isEnabled(ctx) }
 
     /** The source with [id], falling back to the TTS floor if unknown (e.g. a
      *  persisted selection whose source was removed). */

@@ -377,6 +377,16 @@ class TranslationResultContent(
 
     fun dismissLens() = sourceLens.dismiss()
 
+    /** A new capture's original [text] has arrived, ahead of the state
+     *  that renders it ([TranslationSectionBinder.autoPlayOriginal]). A
+     *  word lens still open goes first: the new result's render closes it
+     *  a moment later ([WordLookupsRenderer]), and a lens closing stops
+     *  whatever is playing, which would cut off the read just started. */
+    fun autoPlayOriginal(text: String) {
+        sourceLens.dismiss()
+        binder.autoPlayOriginal(text)
+    }
+
     fun setLiveHintText(text: CharSequence) {
         liveHint.text = text
     }

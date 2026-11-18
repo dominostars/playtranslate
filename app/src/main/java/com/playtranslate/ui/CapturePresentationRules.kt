@@ -1,6 +1,8 @@
 package com.playtranslate.ui
 
+import com.playtranslate.CaptureState
 import com.playtranslate.OverlayMode
+import com.playtranslate.fillsBoxesOf
 
 /** What the results page does on the game display as it renders a state
  *  ([onScreenStep]). */
@@ -104,3 +106,38 @@ internal fun isSameCapture(previous: OnScreenBoxes?, next: OnScreenBoxes): Boole
  */
 internal fun offersShowOnScreen(showsOnScreen: Boolean, boxes: OnScreenBoxes?, liveRunning: Boolean): Boolean =
     showsOnScreen && boxes != null && !liveRunning
+
+/**
+ * The original text to read aloud by itself ([com.playtranslate.Prefs.autoPlayOriginal])
+ * as a surface that follows a capture session handles [state] after
+ * [previous] (the pair [com.playtranslate.CaptureSession.stateWithPrevious]
+ * gives), or null when this state brings nothing to read: each session's
+ * text once, when the listener first sees it.
+ *
+ * That is the first Translating, where the page shows the original while
+ * the translation runs; a later one that only fills boxes
+ * ([fillsBoxesOf]) is the same text. It is Done only when no Translating
+ * came before it in this collection: a session's state keeps its latest
+ * value alone, so a listener can miss the Translating altogether (the
+ * select-to-translate session finished before it is observed, a revisited
+ * imported page, an import whose translation needs no wait).
+ *
+ * A capture that asked for a mode of its own ([modeOverride], tap-to-lookup's
+ * Definitions) is up to look words up, and reads nothing.
+ *
+ * Auto-translate's results, history, edits and a sheet coming back from a
+ * page reach their surfaces by other paths than a session's states, so
+ * they never come here.
+ */
+internal fun captureOriginalToRead(
+    previous: CaptureState?,
+    state: CaptureState,
+    modeOverride: OverlayMode?,
+): String? {
+    if (modeOverride != null) return null
+    return when (state) {
+        is CaptureState.Translating -> state.originalText.takeUnless { state.fillsBoxesOf(previous) }
+        is CaptureState.Done -> state.result.originalText.takeUnless { previous is CaptureState.Translating }
+        else -> null
+    }
+}

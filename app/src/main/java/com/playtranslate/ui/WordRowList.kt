@@ -13,6 +13,7 @@ import com.playtranslate.ask.WordInSentence
 import com.playtranslate.ask.explanation
 import com.playtranslate.translation.TranslationBackendRegistry
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -394,15 +395,28 @@ internal class WordRowList<T>(
         publish()
     }
 
+    /** Speaks the word of row [rowId] as a tap on its Speak button does
+     *  (the row's spinner, one speak per row at a time), played by [play]
+     *  in place of [Host.speak]: for an owner that speaks a row by itself,
+     *  with its own rule for a failure (the lens's auto-play, which raises
+     *  no alert). Nothing for an id this list does not hold. */
+    fun speak(rowId: String, play: suspend (T) -> Unit) {
+        val row = rows.getOrNull(ids.indexOf(rowId)) ?: return
+        speak(rowId, row, play)
+    }
+
     /** Each row has its own job, so taps on different rows don't clobber
      *  one another and a second tap on a speaking row does nothing. */
-    private fun speak(id: String, row: T) {
+    private fun speak(id: String, row: T, play: suspend (T) -> Unit = { host.speak(it) }) {
         if (speakJobs[id]?.isActive == true) return
-        speakJobs[id] = scope.launch {
+        // Stored before it runs: a scope that runs a launch at once (the
+        // lens's) would otherwise finish a [play] that never suspends before
+        // the job is stored, and the row's spinner would stay up.
+        val job = scope.launch(start = CoroutineStart.LAZY) {
             speaking += id
             publish()
             try {
-                host.speak(row)
+                play(row)
             } finally {
                 // Only while this is still the row's job: a new list cancels
                 // the old jobs and starts with nothing speaking.
@@ -413,6 +427,8 @@ internal class WordRowList<T>(
                 }
             }
         }
+        speakJobs[id] = job
+        job.start()
     }
 
     // ── Anki deck badges ─────────────────────────────────────────────────

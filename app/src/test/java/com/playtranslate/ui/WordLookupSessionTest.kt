@@ -16,8 +16,11 @@ import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.MainActivity
 import com.playtranslate.OcrManager
 import com.playtranslate.Prefs
+import com.playtranslate.audio.FakeSpeech
+import com.playtranslate.audio.AudioRequest
 import com.playtranslate.R
 import com.playtranslate.displaySizePx
+import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.TokenSpan
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlay.OwnWindows
@@ -106,6 +109,8 @@ class WordLookupSessionTest {
         scope.cancel()
         host.removeAll()
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(5))
+        FakeSpeech.uninstall()
+        Prefs(ctx).autoPlayWords = false
     }
 
     // ── harness ──────────────────────────────────────────────────────────
@@ -318,6 +323,26 @@ class WordLookupSessionTest {
     // section behind it: it says what a row's question is about (the
     // sentence its lookup cut out of the line's group) and raises the
     // "needs an AI model" alert itself.
+
+    @Test fun `with the Words setting on, a word's card speaks the word as it comes up, and with it off says nothing`() {
+        val speech = FakeSpeech().also { it.install() }
+        cardOnHello()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue("off until the user turns it on", speech.played.isEmpty())
+
+        // The card closed, the setting on, and the same word tapped again.
+        session.onTapAt(150f, 315f)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse("precondition: a tap on the card's own word closed it", lens().isInteractive)
+        Prefs(ctx).autoPlayWords = true
+        cardOnHello()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(
+            "the lookup's release path, which the drag lens shares",
+            listOf(Triple("hello", AudioRequest.Kind.WORD, SourceLangId.EN)),
+            speech.played.map { Triple(it.surface, it.kind, it.lang) },
+        )
+    }
 
     /** The card up on "hello" by the real lookup, its row laid out. */
     private fun cardOnHello(): DefRow.Word {

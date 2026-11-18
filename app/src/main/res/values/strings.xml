@@ -4449,6 +4449,38 @@
          Anki audio picker. -->
     <string name="tts_speed_title">Speed</string>
 
+    <!-- Group header on the Text-to-speech settings page, above two on/off
+         rows that choose what the app speaks by itself, without a tap on a
+         speaker button: looked-up words, and the original text of a new
+         capture. -->
+    <string name="tts_auto_play_header">Play automatically</string>
+
+    <!-- Title of the first on/off row under "Play automatically" on the
+         Text-to-speech settings page. On: when the user looks up one word
+         (taps a word in the text, or releases the magnifying lens on one),
+         the word is spoken aloud by itself. A noun, the thing played. -->
+    <string name="tts_auto_play_words_title">Words</string>
+
+    <!-- Subtitle under the "Words" row of "Play automatically": says when
+         a word is spoken by itself. Small grey text, may wrap. -->
+    <string name="tts_auto_play_words_subtitle">When you look up a word</string>
+
+    <!-- Title of the second on/off row under "Play automatically" on the
+         Text-to-speech settings page. On: when the user captures the screen,
+         the text read from the game (the text in the game's own language,
+         shown in the results under the header "Original") is read aloud by
+         itself. A noun phrase, the thing played; it is not the
+         translation. -->
+    <string name="tts_auto_play_original_title">Original text</string>
+
+    <!-- Subtitle under the "Original text" row of "Play automatically":
+         says when the original text is read aloud by itself. "A capture" is
+         one screen capture the user asked for; "auto-translate" is the
+         app's mode that keeps translating the screen as it changes, named
+         as in settings_header_auto_translate, during which nothing is read
+         aloud. Small grey text, may wrap. -->
+    <string name="tts_auto_play_original_subtitle">After a capture. Not during auto-translate.</string>
+
     <!-- Scale labels under the speed slider: multiplier notation for the
          slow edge (2x slower) and fast edge (2x faster), plus the dot mark
          repeated under each snap detent (1.5x slower, 1x, 1.5x faster).

@@ -7,6 +7,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.audio.RecordingPlayer
@@ -680,5 +681,46 @@ class TtsVoiceActivityTest {
         val english = open(SourceLangId.EN)
         assertEquals(View.VISIBLE, english.findViewById<View>(R.id.cardRecordings).visibility)
         assertEquals(listOf("android.db file"), recordings(english).map { it.title })
+    }
+
+    // ── Play automatically ───────────────────────────────────────────────
+
+    private fun TtsVoiceActivity.autoPlayRow(id: Int): View = findViewById(id)
+
+    private fun TtsVoiceActivity.autoPlayOn(id: Int): Boolean =
+        autoPlayRow(id).findViewById<MaterialSwitch>(R.id.switchRowToggle).isChecked
+
+    @Test fun `the two Play automatically switches are off until flipped, and each is saved by its own tap with no Save`() {
+        val page = open()
+        assertEquals(
+            ctx.getString(R.string.tts_auto_play_words_title),
+            page.autoPlayRow(R.id.rowAutoPlayWords).findViewById<TextView>(R.id.tvRowTitle).text.toString(),
+        )
+        assertEquals(
+            ctx.getString(R.string.tts_auto_play_original_title),
+            page.autoPlayRow(R.id.rowAutoPlayOriginal).findViewById<TextView>(R.id.tvRowTitle).text.toString(),
+        )
+        assertFalse("words: off on a new install", page.autoPlayOn(R.id.rowAutoPlayWords))
+        assertFalse("original text: off on a new install", page.autoPlayOn(R.id.rowAutoPlayOriginal))
+        assertFalse(prefs.autoPlayWords)
+        assertFalse(prefs.autoPlayOriginal)
+
+        page.autoPlayRow(R.id.rowAutoPlayWords).performClick()
+        assertTrue("saved by the tap, not by Save", prefs.autoPlayWords)
+        assertFalse("each row is its own setting", prefs.autoPlayOriginal)
+
+        page.autoPlayRow(R.id.rowAutoPlayOriginal).performClick()
+        assertTrue(prefs.autoPlayOriginal)
+        assertTrue(prefs.autoPlayWords)
+
+        // Left without Save, the page shows what was saved when it is opened again.
+        page.finish()
+        val again = open()
+        assertTrue(again.autoPlayOn(R.id.rowAutoPlayWords))
+        assertTrue(again.autoPlayOn(R.id.rowAutoPlayOriginal))
+
+        again.autoPlayRow(R.id.rowAutoPlayWords).performClick()
+        assertFalse("off is saved the same way", prefs.autoPlayWords)
+        assertTrue(prefs.autoPlayOriginal)
     }
 }

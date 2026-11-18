@@ -1,8 +1,15 @@
 package com.playtranslate.ui
 
+import com.playtranslate.CaptureState
 import com.playtranslate.OneShotOverlayData
 import com.playtranslate.OverlayMode
+import com.playtranslate.language.ChineseScriptVariant
+import com.playtranslate.language.SourceLangId
+import com.playtranslate.model.TextSegment
+import com.playtranslate.model.TranslationLangContext
+import com.playtranslate.model.TranslationResult
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
@@ -20,6 +27,10 @@ import org.junit.Test
  * auto-translate's. When the page offers Show on screen for a capture
  * ([offersShowOnScreen]): only with a capture's result on it, on two
  * screens, and not while auto-translate runs.
+ * The original text a surface following a capture reads aloud by itself
+ * ([captureOriginalToRead]): each session's text once, at the first state
+ * its listener sees it in, and never for a capture that asked for a mode of
+ * its own. Every cell.
  */
 class CapturePresentationRulesTest {
 
@@ -161,6 +172,62 @@ class CapturePresentationRulesTest {
                 shows && boxes != null && !live,
                 offersShowOnScreen(showsOnScreen = shows, boxes = boxes, liveRunning = live),
             )
+        }
+    }
+
+    // ── captureOriginalToRead ────────────────────────────────────────────
+
+    private fun translating(text: String, boxes: OneShotOverlayData? = null) =
+        CaptureState.Translating(text, listOf(TextSegment(text)), overlayData = boxes)
+
+    private fun done(text: String) = CaptureState.Done(
+        TranslationResult(
+            originalText = text, segments = listOf(TextSegment(text)),
+            translatedText = "translated", timestamp = "",
+            langContext = TranslationLangContext(SourceLangId.JA, "en", ChineseScriptVariant.SIMPLIFIED),
+        ),
+    )
+
+    private val reading = CaptureState.InProgress("Reading")
+
+    @Test fun `a capture's original is read at the first state that shows it`() {
+        assertEquals("the session's first state", "猫が鳴く", captureOriginalToRead(null, translating("猫が鳴く"), null))
+        assertEquals("after its status", "猫が鳴く", captureOriginalToRead(reading, translating("猫が鳴く"), null))
+    }
+
+    @Test fun `more of the same capture's boxes is the same text and reads nothing`() {
+        val first = translating("猫が鳴く")
+        assertNull(captureOriginalToRead(first, translating("猫が鳴く", boxes = data), null))
+        assertNull("boxes that follow boxes", captureOriginalToRead(translating("猫が鳴く", boxes = data), first, null))
+    }
+
+    @Test fun `another text in the same session is read`() {
+        assertEquals("犬が走る", captureOriginalToRead(translating("猫が鳴く"), translating("犬が走る"), null))
+    }
+
+    @Test fun `the result that follows its text reads nothing more`() {
+        assertNull(captureOriginalToRead(translating("猫が鳴く"), done("猫が鳴く"), null))
+    }
+
+    @Test fun `a result whose text the listener never saw is read`() {
+        assertEquals("a session already finished when it is observed", "猫が鳴く", captureOriginalToRead(null, done("猫が鳴く"), null))
+        assertEquals("a result straight after the status", "猫が鳴く", captureOriginalToRead(reading, done("猫が鳴く"), null))
+    }
+
+    @Test fun `a state with no text reads nothing`() {
+        val text = translating("猫が鳴く")
+        for (previous in listOf(null, reading, text)) {
+            assertNull(captureOriginalToRead(previous, reading, null))
+            assertNull(captureOriginalToRead(previous, CaptureState.NoText("No text"), null))
+            assertNull(captureOriginalToRead(previous, CaptureState.Failed("Failed"), null))
+            assertNull(captureOriginalToRead(previous, CaptureState.Cancelled, null))
+        }
+    }
+
+    @Test fun `a capture that asked for a mode of its own reads nothing`() {
+        for (mode in OverlayMode.entries) {
+            assertNull("$mode", captureOriginalToRead(null, translating("猫が鳴く"), mode))
+            assertNull("$mode", captureOriginalToRead(reading, done("猫が鳴く"), mode))
         }
     }
 }

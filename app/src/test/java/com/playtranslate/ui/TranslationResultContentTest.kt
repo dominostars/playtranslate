@@ -15,6 +15,8 @@ import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
 import com.playtranslate.R
+import com.playtranslate.audio.AudioRequest
+import com.playtranslate.audio.FakeSpeech
 import com.playtranslate.ask.AskQuestion
 import com.playtranslate.ask.AskState
 import com.playtranslate.ask.Explanation
@@ -161,9 +163,13 @@ class TranslationResultContentTest {
     /** Whether the keyboard is up over the page, as the content reads it. */
     private var keyboard = false
 
+    /** The voice: what the page spoke ([FakeSpeech]). */
+    private val speech = FakeSpeech()
+
     @Before
     fun setUp() {
         clearPrefs()
+        speech.install()
         Prefs(app).hideTranslationSection = false
         // A new install starts with the Words card collapsed; these tests are about a shown card.
         Prefs(app).hideWordsSection = false
@@ -182,6 +188,7 @@ class TranslationResultContentTest {
         scope.cancel()
         controller.pause().stop().destroy()
         idle()
+        FakeSpeech.uninstall()
         clearPrefs()
     }
 
@@ -912,6 +919,92 @@ class TranslationResultContentTest {
         idle()
         assertEquals("still the pinned page", 500, viewportHeight)
         assertEquals("no re-fit for a height change", beforeKeyboard, sizes())
+    }
+
+    // ── Play automatically ───────────────────────────────────────────────
+
+    /** "hello world" on show with its two tap spans, in English: a
+     *  tokenizer and a lookup that need no pack. */
+    private fun showHelloWorld() {
+        Prefs(app).sourceLang = "en"
+        val text = "hello world"
+        content.render(ResultState.Ready(result(text, "bonjour le monde")))
+        content.renderWordLookups(
+            WordLookupsState.Analyzed(
+                tokenSpans = listOf(TokenSpan("hello", "hello"), TokenSpan("world", "world")),
+                annotation = SentenceAnnotation(
+                    text, SourceLangId.EN, 0,
+                    listOf(
+                        AnnotatedSpan(0, 5, "hello", lookupForm = "hello", lookupHint = ""),
+                        AnnotatedSpan(6, 11, "world", lookupForm = "world", lookupHint = ""),
+                    ),
+                ),
+                phrases = emptyList(),
+            ),
+        )
+        idle()
+        assertEquals("precondition: the source text has its tap spans", 2, content.sourceLens.wordSpans.size)
+    }
+
+    /** A tap on the source text at [offset], and the lens it brings up. */
+    private fun openLensAt(offset: Int) {
+        content.sourceLens.onTapAtOffset(offset)
+        val deadline = System.currentTimeMillis() + 3000
+        while (!content.sourceLens.isShowing && System.currentTimeMillis() < deadline) {
+            idle()
+            Thread.sleep(5)
+        }
+        assertTrue("precondition: the lens came up over the word", content.sourceLens.isShowing)
+        idle()
+    }
+
+    @Test
+    fun `a new capture's original is read aloud only with the setting on, the Original on show and a text to read`() {
+        content.autoPlayOriginal("猫が食べる。")
+        assertTrue("off until the user turns it on", speech.played.isEmpty())
+
+        Prefs(app).autoPlayOriginal = true
+        content.autoPlayOriginal("猫が食べる。")
+        assertEquals(
+            "the text it was given, in the language Read aloud speaks",
+            listOf(AudioRequest.sentence("猫が食べる。", Prefs(app).sourceLangId)), speech.played,
+        )
+
+        content.autoPlayOriginal("  ")
+        assertEquals("nothing to read", 1, speech.played.size)
+
+        Prefs(app).hideOriginalSection = true
+        content.autoPlayOriginal("犬が走る。")
+        assertEquals("a hidden Original has no Read aloud to show the read or stop it", 1, speech.played.size)
+    }
+
+    @Test
+    fun `a word lens open on the page is closed before a new capture's read starts`() {
+        Prefs(app).autoPlayOriginal = true
+        showHelloWorld()
+        openLensAt(1)
+        var lensUpAsTheReadStarted: Boolean? = null
+        speech.onPlay = { lensUpAsTheReadStarted = content.sourceLens.isShowing }
+
+        content.autoPlayOriginal("a new line")
+
+        assertEquals("a lens closing stops what is playing, so it closes first", false, lensUpAsTheReadStarted)
+        assertEquals("a new line", speech.played.last().surface)
+    }
+
+    @Test
+    fun `with the Words setting on, the lens over a word of the source text speaks that word, and with it off says nothing`() {
+        showHelloWorld()
+        openLensAt(1)
+        assertTrue("off until the user turns it on", speech.played.isEmpty())
+        content.dismissLens()
+
+        Prefs(app).autoPlayWords = true
+        openLensAt(7)
+        assertEquals(
+            listOf(Triple("world", AudioRequest.Kind.WORD, SourceLangId.EN)),
+            speech.played.map { Triple(it.surface, it.kind, it.lang) },
+        )
     }
 
     private fun clearPrefs() {

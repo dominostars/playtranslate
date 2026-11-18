@@ -39,6 +39,39 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp" />
 
+            <!-- What is spoken by itself: a looked-up word, a new capture's
+                 original text. With the speed, above the voices: like it,
+                 each is one setting for every game language and is saved
+                 when flipped, not by Save. -->
+            <include layout="@layout/settings_group_header"
+                android:id="@+id/headerAutoPlay" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="?attr/ptCard"
+                app:cardCornerRadius="@dimen/pt_radius"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/ptDivider"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <include layout="@layout/settings_row_switch"
+                        android:id="@+id/rowAutoPlayWords" />
+
+                    <include layout="@layout/settings_row_divider" />
+
+                    <include layout="@layout/settings_row_switch"
+                        android:id="@+id/rowAutoPlayOriginal" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- The connected voice service's voices, or the row that
                  connects one. Above the device's voices: a service can list
                  many, and it is what a user who connected one came for. -->

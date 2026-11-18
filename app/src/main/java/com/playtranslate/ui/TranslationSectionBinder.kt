@@ -608,6 +608,18 @@ class TranslationSectionBinder(
         speak.onClick = { s.toggle() }
     }
 
+    /** A new capture's original [text] has arrived ([captureOriginalToRead]):
+     *  reads it aloud by itself when the user asked for that
+     *  ([Prefs.autoPlayOriginal]) and the section's Read aloud is on offer.
+     *  A hidden Original offers none ([applyOriginalVisibility]), so nothing
+     *  would show the read or stop it. The text is given, not read from the
+     *  view: the in-app page binds a result after the state that carries
+     *  it. Spoken in the language the Read aloud action speaks. */
+    fun autoPlayOriginal(text: String) {
+        if (!prefs.autoPlayOriginal || prefs.hideOriginalSection || text.isBlank()) return
+        speaker?.play(OriginalSpeaker.Request(text, prefs.sourceLangId))
+    }
+
     /** Side-by-side / results-page: fit each text to its own target height with a
      *  CONTINUOUS size (so the load animation + resize scale smoothly instead of
      *  in 1sp steps). */

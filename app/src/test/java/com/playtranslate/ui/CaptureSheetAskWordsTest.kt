@@ -23,7 +23,10 @@ import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.CaptureSession
 import com.playtranslate.CaptureState
 import com.playtranslate.Prefs
+import com.playtranslate.OverlayMode
 import com.playtranslate.R
+import com.playtranslate.audio.FakeSpeech
+import com.playtranslate.audio.AudioRequest
 import com.playtranslate.ask.AskQuestion
 import com.playtranslate.ask.AskSession
 import com.playtranslate.ask.AskSentence
@@ -126,8 +129,12 @@ class CaptureSheetAskWordsTest {
 
     private fun sp() = ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE)
 
+    /** The voice: what the sheet spoke ([FakeSpeech]). */
+    private val speech = FakeSpeech()
+
     @Before fun setUp() {
         sp().edit().clear().commit()
+        speech.install()
         runBlocking { HiddenWordsStore.resetForTest(ctx) }
         LastSentenceCache.clear()
         // A tokenizer with no pack: the lookup runs here (class doc).
@@ -139,6 +146,7 @@ class CaptureSheetAskWordsTest {
         sheet?.dismiss()
         host.removeAll()
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(5))
+        FakeSpeech.uninstall()
         TranslationBackendRegistry.removeOnlineBackend(llm.id)
         SourceLanguageEngines.release(SourceLangId.EN)
         runBlocking { HiddenWordsStore.resetForTest(ctx) }
@@ -1587,5 +1595,61 @@ class CaptureSheetAskWordsTest {
     private companion object {
         /** A Words row's height in the page's stand-in layout, in CSS px. */
         const val ROW_CSS_PX = 60
+    }
+
+    // ── Play automatically: the original text ────────────────────────────
+
+    /** A capture the sheet follows, at [first]; the test moves it on by
+     *  writing the flow and letting the sheet handle each state. */
+    private fun follow(o: CaptureResultOverlay, first: CaptureState): MutableStateFlow<CaptureState> {
+        val states = MutableStateFlow(first)
+        o.observe(CaptureSession(states, Job()))
+        settle()
+        return states
+    }
+
+    private fun translating(text: String) = CaptureState.Translating(text, listOf(TextSegment(text)))
+
+    private fun sentence(text: String) = AudioRequest.sentence(text, SourceLangId.EN)
+
+    @Test fun `a capture's original is read aloud once as its text arrives, and its result adds nothing`() {
+        prefs.autoPlayOriginal = true
+        val o = open(screen, text(1), text(1))
+        assertTrue("a sheet shown with a result it was handed reads nothing", speech.played.isEmpty())
+
+        val states = follow(o, CaptureState.InProgress("Reading"))
+        assertTrue("nothing to read yet", speech.played.isEmpty())
+        states.value = translating("The cat sleeps in the sun.")
+        settle()
+        assertEquals("read as it arrives, before the translation", listOf(sentence("The cat sleeps in the sun.")), speech.played)
+
+        states.value = CaptureState.Done(result("The cat sleeps in the sun.", "Le chat dort au soleil."))
+        settle()
+        assertEquals("the result that follows its text is not read again", 1, speech.played.size)
+    }
+
+    @Test fun `a capture the sheet sees only the result of is read from that result`() {
+        prefs.autoPlayOriginal = true
+        val o = open(screen, text(1), text(1))
+        follow(o, CaptureState.Done(result("The cat sleeps in the sun.", "Le chat dort au soleil.")))
+        assertEquals(listOf(sentence("The cat sleeps in the sun.")), speech.played)
+    }
+
+    @Test fun `a sheet in tap-to-lookup's mode reads nothing, and reads again once it has left that mode`() {
+        prefs.autoPlayOriginal = true
+        val o = open(screen, text(1), text(1))
+        o.overlayModeOverride = OverlayMode.DEFINITIONS
+        follow(o, translating("The cat sleeps in the sun."))
+        assertTrue("up to look words up: ${speech.played}", speech.played.isEmpty())
+
+        o.overlayModeOverride = null
+        follow(o, translating("The dog runs in the rain."))
+        assertEquals(listOf(sentence("The dog runs in the rain.")), speech.played)
+    }
+
+    @Test fun `with the setting off a capture's original is not read`() {
+        val o = open(screen, text(1), text(1))
+        follow(o, translating("The cat sleeps in the sun."))
+        assertTrue(speech.played.isEmpty())
     }
 }

@@ -1239,6 +1239,17 @@ class CaptureResultOverlay(
         }
     }
 
+    /** Reads the capture's original aloud when [state] is the one that
+     *  brings it ([captureOriginalToRead]) and the user asked for that
+     *  ([TranslationSectionBinder.autoPlayOriginal]). A sheet in
+     *  tap-to-lookup's mode ([overlayModeOverride]) reads nothing. Called
+     *  last in a state's handling: the bind before it closes a word lens
+     *  on another text, and taking boxes down ends a word lookup, and each
+     *  of those stops whatever is playing. */
+    private fun autoPlayOriginal(previous: CaptureState?, state: CaptureState) {
+        captureOriginalToRead(previous, state, overlayModeOverride)?.let { binder?.autoPlayOriginal(it) }
+    }
+
     /** Collect the one-shot capture session and drive the panel. The collector is
      *  cancelled on dismiss (no Activity lifecycle to auto-cancel it). */
     fun observe(session: CaptureSession) {
@@ -1314,6 +1325,7 @@ class CaptureResultOverlay(
                         // attempt above — re-render now that boxesShown has
                         // settled (same main-thread dispatch, so no flash).
                         updateModeControl()
+                        autoPlayOriginal(previous, state)
                     }
                     is CaptureState.Done -> {
                         overlayData = state.overlayData
@@ -1341,6 +1353,7 @@ class CaptureResultOverlay(
                         // The frame's path and time reach a Definitions card's
                         // pages from here.
                         layer.setFrame(state.result.screenshotPath, state.result.createdAtMs)
+                        autoPlayOriginal(previous, state)
                     }
                     is CaptureState.NoText -> {
                         // A re-run (OCR gear, camera region change) can land

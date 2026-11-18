@@ -5,6 +5,7 @@ import com.playtranslate.audio.PlayOutcome
 import com.playtranslate.audio.PronunciationPlayer
 import com.playtranslate.language.SourceLangId
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -15,7 +16,8 @@ import kotlinx.coroutines.withContext
  * a block of text: [toggle] while idle reads it aloud through
  * [PronunciationPlayer]; [toggle] while speaking cancels playback. If no
  * engine is available, or it has no voice for the language, the standard
- * TTS alert is shown on [alertTarget].
+ * TTS alert is shown on [alertTarget]. [play] is the same read started by
+ * the app, for a text it is given, with no alert.
  *
  * View-agnostic: the section header shows the action inline or in its ⋯
  * menu ([HeaderAction]), so the speaking state leaves through
@@ -47,7 +49,24 @@ class OriginalSpeaker(
             return
         }
         val req = request() ?: return
-        job = scope.launch {
+        start(req, alerts = true)
+    }
+
+    /**
+     * Reads [req] aloud now, by itself: no tap asked for it (a new
+     * capture's original, [TranslationSectionBinder.autoPlayOriginal]).
+     * Whatever this speaker was reading is replaced, the header lights as
+     * for a tap, and [toggle] stops it. A voice that cannot speak raises no
+     * alert here: the tap on the header's action still says why.
+     */
+    fun play(req: Request) = start(req, alerts = false)
+
+    private fun start(req: Request, alerts: Boolean) {
+        job?.cancel()
+        // Stored before it runs, and its end clears the accent only while
+        // it is still this speaker's job: a read that replaced it has lit
+        // the header for itself by the time this one's finally runs.
+        val next = scope.launch(start = CoroutineStart.LAZY) {
             onSpeakingChanged(true)
             try {
                 // Default playback through the single owner: Commons has no
@@ -61,7 +80,7 @@ class OriginalSpeaker(
                     AudioRequest.sentence(req.text, req.lang),
                     awaitCompletion = true,
                 )
-                withContext(Dispatchers.Main) {
+                if (alerts) withContext(Dispatchers.Main) {
                     when (outcome) {
                         PlayOutcome.TtsNoEngine ->
                             showTtsNoEngineDialog(alertTarget) {}
@@ -74,10 +93,12 @@ class OriginalSpeaker(
                 }
             } finally {
                 // Reached on natural completion, an error result, or
-                // cancellation — every path clears the accent.
-                onSpeakingChanged(false)
+                // cancellation.
+                if (job === coroutineContext[Job]) onSpeakingChanged(false)
             }
         }
+        job = next
+        next.start()
     }
 
     /** Cancel any in-progress speak and stop playback. Call when the host
