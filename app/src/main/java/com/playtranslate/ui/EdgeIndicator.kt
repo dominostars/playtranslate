@@ -22,6 +22,7 @@ import androidx.annotation.RequiresApi
 import androidx.annotation.VisibleForTesting
 import androidx.core.view.isVisible
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
+import com.playtranslate.RegionEntry
 import kotlin.math.roundToInt
 
 /**
@@ -94,9 +95,20 @@ class EdgeIndicator(
         rail.translationY = yPx - rail.edgeOffsetPx
     }
 
-    /** Outline a capture region instead of the display edges: [rect] in the
-     *  sheet root's coordinates, or null for the whole display. */
-    fun setRegion(rect: RectF?) = ring.setRegion(rect)
+    /** Mark what the capture read, on a [widthPx] x [heightPx] root that
+     *  covers the display: a custom [region] (fractions of the display, the
+     *  capture crop's) is outlined from outside it; a full-screen region is
+     *  the display, marked by the glow alone, with no stroke; null (the
+     *  camera and image-import sheets, which read no screen region) keeps
+     *  the display's stroke and glow. */
+    fun setCaptureRegion(region: RegionEntry?, widthPx: Int, heightPx: Int) {
+        ring.setRegion(
+            region?.takeUnless { it.isFullScreen }?.let {
+                RectF(it.left * widthPx, it.top * heightPx, it.right * widthPx, it.bottom * heightPx)
+            },
+        )
+        ring.displayStroke = region == null
+    }
 
     private fun View.fadeTo(alpha: Float, durationMs: Long, from: Float? = null) {
         animate().cancel()
@@ -132,6 +144,10 @@ class EdgeIndicator(
  * screen, so the region reads as the lit thing and the surroundings as what
  * the capture left out. Region corners are square; the display's corner
  * radii apply only to the display frame.
+ *
+ * With [displayStroke] off the display's scrim and frame are not drawn and
+ * the bloom and burst alone mark the display (a full-screen capture). A
+ * region's outline is drawn either way.
  *
  * Shape: the scrim and frame follow the display's real rounded corners when
  * the platform reports them ([WindowInsets.getRoundedCorner], API 31+,
@@ -217,6 +233,16 @@ class EdgeRingView(
         invalidate()
     }
 
+    /** Whether the display edges get their stroke (the scrim and the accent
+     *  frame); off leaves them marked by the bloom and burst alone. Ignored
+     *  while a region is outlined. */
+    var displayStroke: Boolean = true
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
+
     init {
         setWillNotDraw(false)
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
@@ -280,6 +306,7 @@ class EdgeRingView(
             canvas.drawDoubleRoundRect(rings.frameOuter, ZERO_RADII, rings.frameInner, ZERO_RADII, framePaint)
             return
         }
+        if (!displayStroke) return
         // Outermost pixels: the black scrim, then the solid accent frame
         // just inside it.
         fillRing(canvas, 0f, scrimPx, scrimPaint)

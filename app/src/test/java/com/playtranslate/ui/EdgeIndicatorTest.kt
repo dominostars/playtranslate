@@ -2,11 +2,14 @@ package com.playtranslate.ui
 
 import android.animation.ValueAnimator
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.RectF
 import android.view.RoundedCorner
 import android.view.View
 import android.view.WindowInsets
+import com.playtranslate.RegionEntry
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -25,8 +28,10 @@ import org.robolectric.util.ReflectionHelpers.ClassParameter
  * ring's bloom breathes when shown and holds still with animations off; a
  * pulse plays when shown, waits for the next show otherwise, and is dropped
  * with animations off; the holder fans [EdgeIndicator.working] and
- * [EdgeIndicator.isVisible] out to the right views; and the ring's corner
- * radii come from the window's own insets, per corner, in ring order.
+ * [EdgeIndicator.isVisible] out to the right views; the ring's corner
+ * radii come from the window's own insets, per corner, in ring order; and a
+ * capture's region decides the stroke (a custom region's own, none for a
+ * full-screen one, the display's with no region) while the glow stays.
  *
  * "Shown" is driven through [View.onVisibilityAggregated], the platform's
  * own hook for exactly this (attach, detach, visibility and window-visibility
@@ -194,6 +199,68 @@ class EdgeIndicatorTest {
         assertEquals(r, ring.regionForTest())
         ring.setRegion(null)
         assertEquals(null, ring.regionForTest())
+    }
+
+    /** Counts the ring's two primitives: [drawDoubleRoundRect] is a stroke
+     *  ring (scrim or frame), [drawRect] a glow band. Nothing rasterizes. */
+    private class CountingCanvas : Canvas() {
+        var rings = 0
+        var bands = 0
+        override fun drawDoubleRoundRect(
+            outer: RectF, outerRadii: FloatArray, inner: RectF, innerRadii: FloatArray, paint: Paint,
+        ) { rings++ }
+        override fun drawRect(rect: RectF, paint: Paint) { bands++ }
+    }
+
+    /** The ring's own draw (the stroke) and its bloom child's (the glow),
+     *  each called directly so no child or offscreen path is involved. */
+    private fun drawn(ring: EdgeRingView): CountingCanvas {
+        val canvas = CountingCanvas()
+        val onDraw = ClassParameter.from(Canvas::class.java, canvas)
+        ReflectionHelpers.callInstanceMethod<Unit>(ring, "onDraw", onDraw)
+        ReflectionHelpers.callInstanceMethod<Unit>(ring.getChildAt(0), "onDraw", onDraw)
+        return canvas
+    }
+
+    @Test
+    fun `a full-screen capture keeps the glow and drops the stroke`() {
+        val ind = indicator()
+        val ring = ind.ring
+        ring.measure(
+            View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(200, View.MeasureSpec.EXACTLY),
+        )
+        ring.layout(0, 0, 300, 200)
+
+        // No region (the camera and image-import sheets): the display's
+        // scrim and frame, and its four inward bands.
+        ind.setCaptureRegion(null, 300, 200)
+        assertEquals(null, ring.regionForTest())
+        drawn(ring).let {
+            assertEquals(2, it.rings)
+            assertEquals(4, it.bands)
+        }
+
+        // A full-screen capture: the same four bands, no stroke.
+        ind.setCaptureRegion(RegionEntry("", top = 0f, bottom = 1f), 300, 200)
+        assertEquals(null, ring.regionForTest())
+        drawn(ring).let {
+            assertEquals(0, it.rings)
+            assertEquals(4, it.bands)
+        }
+
+        // A custom region: its own outline (scrim and frame) in display
+        // pixels, glowing outward from it.
+        ind.setCaptureRegion(RegionEntry("", top = 0.25f, bottom = 0.75f, left = 0.1f, right = 0.9f), 300, 200)
+        assertEquals(RectF(30f, 50f, 270f, 150f), ring.regionForTest())
+        drawn(ring).let {
+            assertEquals(2, it.rings)
+            assertEquals(8, it.bands)
+        }
+
+        // Back to no region: the stroke returns.
+        ind.setCaptureRegion(null, 300, 200)
+        assertEquals(2, drawn(ring).rings)
     }
 
     @Test
