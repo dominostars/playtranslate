@@ -664,8 +664,9 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
 
     /**
      * True when the user has some visible indication the app is listening:
-     * either the floating icon is on screen or MainActivity is foregrounded.
-     * Used to gate hotkey activation so a user who has hidden the icon and
+     * either the floating controls are on screen (the icon, or the detached
+     * window) or MainActivity is foregrounded.
+     * Used to gate hotkey activation so a user who has hidden the controls and
      * backgrounded the app doesn't get "ghost" hotkey triggers with no
      * feedback. Differs from the foreground-notification rule
      * ([CaptureService.updateForegroundState]) which intentionally omits
@@ -673,7 +674,7 @@ class PlayTranslateAccessibilityService : AccessibilityService() {
      * screen, but hotkeys obviously must still work then.
      */
     fun isUserReachable(): Boolean =
-        overlayUiController.hasAnyFloatingIcon || MainActivity.isInForeground
+        overlayUiController.hasControlsOnScreen || MainActivity.isInForeground
 
     // ── Hotkey combo detection ──────────────────────────────────────────
 

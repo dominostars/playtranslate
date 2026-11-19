@@ -57,4 +57,19 @@
     <!-- An ActionOverflowMenu row's parts. -->
     <item name="overflowRowIcon" type="id" />
     <item name="overflowRowLabel" type="id" />
+    <!-- A quick settings row's tag: the QuickSetting.Id it shows. -->
+    <item name="quickSettingRow" type="id" />
+    <!-- The detached window's bar: one id per action's inline view, and its
+         more button, as the section headers' actions have. -->
+    <item name="detachedBarCapture" type="id" />
+    <item name="detachedBarAuto" type="id" />
+    <item name="detachedBarRegion" type="id" />
+    <item name="detachedBarSettings" type="id" />
+    <item name="detachedBarMinimize" type="id" />
+    <item name="detachedBarExit" type="id" />
+    <item name="detachedBarMore" type="id" />
+    <!-- The detached window's card, its page slot and its capture button. -->
+    <item name="detachedCard" type="id" />
+    <item name="detachedPageSlot" type="id" />
+    <item name="detachedCaptureButton" type="id" />
 </resources>

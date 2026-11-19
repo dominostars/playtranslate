@@ -213,6 +213,30 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
         _result.value = ResultState.Error(message)
     }
 
+    /** Put back [state], one this model showed before a capture that never
+     *  finished wrote over it (a cancelled capture on a page that stays up,
+     *  [CapturePageDriver]). A result comes back with its word lookup, which
+     *  the capture's own status reset; [displayResult] cannot do this, since
+     *  it takes the instance it showed last for a replay and returns. */
+    fun restore(state: ResultState, appCtx: Context) {
+        when (state) {
+            is ResultState.Ready -> {
+                lastSeenResult = state.result
+                _result.value = state
+                startWordLookups(state.result.originalText, appCtx)
+                writeLastSentenceCache()
+            }
+            is ResultState.Translating -> {
+                _result.value = state
+                startWordLookups(state.originalText, appCtx)
+            }
+            is ResultState.Status, is ResultState.Error, ResultState.Idle -> {
+                resetWordLookups()
+                _result.value = state
+            }
+        }
+    }
+
     /** Leaving the results: both tiers' jobs cancelled, nothing on record
      *  (so the next result for any text runs its own lookup), state Idle. */
     private fun resetWordLookups() = lookups.reset()

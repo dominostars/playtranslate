@@ -153,32 +153,46 @@ class WindowSheetHost(
         // HARDWARE_ACCELERATED is only read at addView (OverlayHost stamps
         // it there); kept in the base set so this wholesale rewrite doesn't
         // leave params lying about the window's actual pipeline.
-        var flags = WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+        val flags = WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
             WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
-        if (!focusable) {
-            flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-        } else if (!wantsIme) {
-            // Key focus without the IME: controller navigation holds the
-            // window's input focus for keys + stick motion, but the window
-            // must never become the IME target — else any later focus churn
-            // could raise a keyboard over the game.
-            flags = flags or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
-        }
         lp.flags = flags
-        lp.softInputMode = if (wantsIme) {
-            // ALWAYS_VISIBLE, not STATE_VISIBLE: the window only becomes focusable
-            // asynchronously via updateViewLayout, and ALWAYS_VISIBLE makes
-            // the system raise the IME the instant the window actually gains focus.
-            // STATE_VISIBLE wasn't reliably re-evaluated on that focus transition, so
-            // the keyboard only appeared once the user tapped into the field.
-            WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or
-                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-        } else {
-            WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
-        }
+        lp.applyOverlayFocus(focusable, wantsIme)
+    }
+}
+
+/**
+ * The focus half of an overlay window's flags and its soft-input mode, set
+ * on params whose other flags stay as they are: [focusable] = the window
+ * takes key and motion input at all, [wantsIme] = that focus is for text
+ * entry, so the keyboard should come up. One rule for every overlay window
+ * that can take keys: the full-screen sheets ([WindowSheetHost]) and the
+ * detached window, which is sized and placed by its own params.
+ */
+internal fun WindowManager.LayoutParams.applyOverlayFocus(focusable: Boolean, wantsIme: Boolean) {
+    flags = flags and
+        (WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM).inv()
+    if (!focusable) {
+        flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+    } else if (!wantsIme) {
+        // Key focus without the IME: controller navigation holds the
+        // window's input focus for keys + stick motion, but the window
+        // must never become the IME target — else any later focus churn
+        // could raise a keyboard over the game.
+        flags = flags or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
+    }
+    softInputMode = if (wantsIme) {
+        // ALWAYS_VISIBLE, not STATE_VISIBLE: the window only becomes focusable
+        // asynchronously via updateViewLayout, and ALWAYS_VISIBLE makes
+        // the system raise the IME the instant the window actually gains focus.
+        // STATE_VISIBLE wasn't reliably re-evaluated on that focus transition, so
+        // the keyboard only appeared once the user tapped into the field.
+        WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+    } else {
+        WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
     }
 }
 

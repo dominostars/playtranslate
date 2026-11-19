@@ -68,6 +68,19 @@ class ResultSectionsLayout @JvmOverloads constructor(
     var arrangement: Arrangement = Arrangement.STACKED
         private set
 
+    /** Whether the top row's header starts at this layout's top edge, its
+     *  own top padding given up: for a host that puts the sections straight
+     *  under a bar of its own (the detached window), where that padding is a
+     *  gap under the bar. The pair's two headers share the top row and both
+     *  give theirs up. The headers further down keep their padding, which
+     *  is their distance from the card above. */
+    var flushTop: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            requestLayout()
+        }
+
     private val density = resources.displayMetrics.density
     private val dividerPx = max(1, (ResultSectionsGeometry.DIVIDER_DP * density).toInt())
     private val dividerMarginPx = (ResultSectionsGeometry.DIVIDER_MARGIN_DP * density).toInt()
@@ -127,9 +140,31 @@ class ResultSectionsLayout @JvmOverloads constructor(
                 }
         }
 
+        val askHeader = shownChild(R.id.askHeaderRow)
+        val askCard = shownChild(R.id.cardAsk)
+        val wordsHeader = shownChild(R.id.wordsHeaderRow)
+        val wordsCard = shownChild(R.id.cardWords)
+        val paired = arrangement == Arrangement.PAIRED && sourceHeader != null && targetHeader != null
+
+        // The top row begins above the top edge by its header's own top
+        // padding when the host asked for a flush top ([flushTop]): the
+        // padding is empty, so nothing drawn is cut.
         var y = paddingTop
-        if (arrangement == Arrangement.PAIRED && sourceHeader != null && targetHeader != null) {
-            y = measurePair(inner, y, sourceHeader, sourceCard, targetHeader, targetCard)
+        if (flushTop) {
+            y -= if (paired) {
+                minOf(sourceHeader!!.paddingTop, targetHeader!!.paddingTop)
+            } else {
+                // Stacked, the first child placed: a header. (A card that
+                // came first has no padding to give: the cards are
+                // CardViews, which hold none of their own.)
+                listOfNotNull(
+                    targetHeader, targetCard, sourceHeader, sourceCard,
+                    askHeader, askCard, wordsHeader, wordsCard,
+                ).firstOrNull()?.paddingTop ?: 0
+            }
+        }
+        if (paired) {
+            y = measurePair(inner, y, sourceHeader!!, sourceCard, targetHeader!!, targetCard)
         } else {
             // Translation above Original: the stacked reading order.
             y = stack(targetHeader, inner, y)
@@ -137,10 +172,10 @@ class ResultSectionsLayout @JvmOverloads constructor(
             y = stack(sourceHeader, inner, y)
             y = stack(sourceCard, inner, y)
         }
-        y = stack(shownChild(R.id.askHeaderRow), inner, y)
-        y = stack(shownChild(R.id.cardAsk), inner, y)
-        y = stack(shownChild(R.id.wordsHeaderRow), inner, y)
-        y = stack(shownChild(R.id.cardWords), inner, y)
+        y = stack(askHeader, inner, y)
+        y = stack(askCard, inner, y)
+        y = stack(wordsHeader, inner, y)
+        y = stack(wordsCard, inner, y)
         for (i in 0 until childCount) {
             val child = getChildAt(i)
             if (child.id !in SECTION_IDS) y = stack(child.takeIf { it.visibility != GONE }, inner, y)

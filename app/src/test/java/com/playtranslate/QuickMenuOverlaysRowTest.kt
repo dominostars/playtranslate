@@ -9,6 +9,7 @@ import com.playtranslate.CaptureService.HoldBehavior
 import com.playtranslate.capture.CaptureLifecycle
 import com.playtranslate.ui.FloatingIconMenu
 import com.playtranslate.ui.FloatingOverlayIcon
+import com.playtranslate.ui.QuickSetting
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -138,7 +139,7 @@ class QuickMenuOverlaysRowTest {
 
     @Test fun `the row switches the running session while the menu is up, and the swap then flips it`() {
         val menu = openQuickMenu()
-        menu.onCycleOverlayMode!!.invoke()
+        menu.panelSetting(QuickSetting.Id.OVERLAYS)!!.click()
         assertEquals(OverlayMode.FURIGANA, prefs.overlayMode)
         assertEquals(HoldBehavior.SHOW_TRANSLATIONS_OVER_FURIGANA, svc.holdBehavior)
         assertTrue("still paused behind the menu", svc.holdActive)
@@ -157,7 +158,7 @@ class QuickMenuOverlaysRowTest {
 
     @Test fun `closing the menu after the row rebuilds nothing more`() {
         val menu = openQuickMenu()
-        menu.onCycleOverlayMode!!.invoke()
+        menu.panelSetting(QuickSetting.Id.OVERLAYS)!!.click()
         val switched = runningMode()
 
         menu.onDismiss!!.invoke()
@@ -168,7 +169,7 @@ class QuickMenuOverlaysRowTest {
     // as the menu closed, flashing the region as auto-translate stopped.
     @Test fun `the row then Pause stops the session with no region flash`() {
         val menu = openQuickMenu()
-        menu.onCycleOverlayMode!!.invoke()
+        menu.panelSetting(QuickSetting.Id.OVERLAYS)!!.click()
         menu.onToggleLive!!.invoke()
 
         assertFalse(svc.isLive)
@@ -185,7 +186,7 @@ class QuickMenuOverlaysRowTest {
     @Test fun `with auto-translate off the row only saves the mode`() {
         svc.stopLive()
         val menu = openQuickMenu()
-        menu.onCycleOverlayMode!!.invoke()
+        menu.panelSetting(QuickSetting.Id.OVERLAYS)!!.click()
         assertEquals(OverlayMode.FURIGANA, prefs.overlayMode)
         assertFalse(svc.isLive)
     }
@@ -199,7 +200,7 @@ class QuickMenuOverlaysRowTest {
         assertEquals(HoldBehavior.HIDE_TRANSLATIONS, svc.holdBehavior)
         menu.cloudAvailable = true
 
-        menu.onCycleOverlayMode!!.invoke()
+        menu.panelSetting(QuickSetting.Id.OVERLAYS)!!.click()
 
         assertEquals("the session switched to furigana", HoldBehavior.SHOW_TRANSLATIONS_OVER_FURIGANA, svc.holdBehavior)
         assertTrue("not drawn again", menu.cloudAvailable)

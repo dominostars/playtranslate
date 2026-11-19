@@ -127,7 +127,8 @@ object SessionMarker {
         }
     }
 
-    /** An icon is on screen as of this process: stamp the record. */
+    /** The floating controls (the icon, or the detached window) are on
+     *  screen as of this process: stamp the record. */
     fun markOn(ctx: Context) {
         val prefs = Prefs(ctx)
         prefs.sessionOnBoot = bootCount(ctx)
@@ -135,7 +136,7 @@ object SessionMarker {
         prefs.sessionOnPid = Process.myPid()
     }
 
-    /** No icon is on screen: clear the record so the next process reads
+    /** No floating controls are on screen: clear the record so the next process reads
      *  nothing into it. */
     fun markOff(ctx: Context) {
         val prefs = Prefs(ctx)

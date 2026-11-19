@@ -97,6 +97,20 @@ internal enum class CaptureTakeover(
         debt = CaptureDebt.NO_RESTART, phases = CapturePhases.ALL, definitionsOnly = false, endsWindow = false,
     ),
 
+    /** A capture into the detached window starts
+     *  ([OverlayUiController.captureIntoWindow]): the window's page shows
+     *  it, so a sheet from an earlier capture (one taken from the window's
+     *  capture-button state, or by tap-to-lookup) goes, as it goes for the
+     *  app's capture with the app in front, and an earlier capture into a
+     *  window still on its way is replaced. The sheet's record settles
+     *  without a restart: auto-translate and the window never share the
+     *  screen, so there is no session to give back. A two-screen window
+     *  left up goes too, since this capture never replaces it as the app's
+     *  would. */
+    WINDOW_CAPTURE(
+        debt = CaptureDebt.NO_RESTART, phases = CapturePhases.ALL, definitionsOnly = false, endsWindow = true,
+    ),
+
     /** The sheet's display turned or changed size: its boxes are the old
      *  layout's, and the user did nothing, so the game screen goes back to
      *  what the capture stopped. A sheet on its way checks its own geometry

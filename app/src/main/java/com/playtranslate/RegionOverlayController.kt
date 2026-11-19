@@ -35,6 +35,8 @@ class RegionOverlayController(
     private val hideTranslationOverlay: () -> Unit,
     private val onRegionSelected: (displayId: Int, region: RegionEntry) -> Unit,
     private val onRegionCleared: (displayId: Int) -> Unit,
+    /** The over-game region editor opened or closed ([regionEditorDisplayId]). */
+    private val onRegionEditorChanged: () -> Unit = {},
 ) {
 
     private var dragView: RegionDragView? = null
@@ -44,6 +46,16 @@ class RegionOverlayController(
 
     private var regionEditorBar: View? = null
     private var regionEditorLabel: View? = null
+
+    /** The display whose over-game region editor ([showRegionEditor]) is
+     *  open, or null. A real state with one writer each way, since
+     *  [showRegionEditor] begins by closing whatever editor was up. */
+    var regionEditorDisplayId: Int? = null
+        private set(value) {
+            if (field == value) return
+            field = value
+            onRegionEditorChanged()
+        }
 
     private var regionIndicatorView: View? = null
     private var regionIndicatorPersistent = false
@@ -448,6 +460,9 @@ class RegionOverlayController(
         regionEditorBar = bar
         overlayHost.addOverlayWindow(label, wm, labelParams, display.displayId, labelPlacement)
         regionEditorLabel = label
+        // The editor is up on this display from here: its chrome is what
+        // closes it, so the state is set only once the chrome exists.
+        regionEditorDisplayId = display.displayId
 
         dragView?.let { drag ->
             drag.onDragEnd = {
@@ -466,6 +481,7 @@ class RegionOverlayController(
         regionEditorLabel?.let { overlayHost.removeOverlayWindow(it) }
         regionEditorLabel = null
         CaptureService.instance?.holdActive = false
+        regionEditorDisplayId = null
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────────

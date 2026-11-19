@@ -614,6 +614,84 @@ class Prefs internal constructor(
     }
 
     /**
+     * The saved controls of [displayId] ([DetachedState]): the form the user
+     * left them in, and where the detached window rested in each
+     * orientation. A display with no entry has the icon.
+     */
+    fun detachedStateForDisplay(displayId: Int): DetachedState =
+        readDetachedStateMap()[displayId] ?: DetachedState()
+
+    /** The one write of a display's controls form. */
+    fun setControlsForm(displayId: Int, form: ControlsForm) {
+        val map = readDetachedStateMap().toMutableMap()
+        map[displayId] = (map[displayId] ?: DetachedState()).copy(form = form)
+        writeDetachedStateMap(map)
+    }
+
+    /** Where the detached window rests on [displayId] in one orientation. */
+    fun setWindowBounds(displayId: Int, landscape: Boolean, bounds: WindowBounds) {
+        val map = readDetachedStateMap().toMutableMap()
+        map[displayId] = (map[displayId] ?: DetachedState()).withBounds(landscape, bounds)
+        writeDetachedStateMap(map)
+    }
+
+    /** The displays whose saved form is the window. */
+    fun displaysWithWindowForm(): Set<Int> =
+        readDetachedStateMap().filterValues { it.form == ControlsForm.WINDOW }.keys
+
+    private fun readDetachedStateMap(): Map<Int, DetachedState> {
+        val json = sp.getString(KEY_CONTROLS_BY_DISPLAY, null) ?: return emptyMap()
+        return try {
+            val obj = JSONObject(json)
+            buildMap {
+                obj.keys().forEach { key ->
+                    val id = key.toIntOrNull() ?: return@forEach
+                    val entry = obj.getJSONObject(key)
+                    put(
+                        id, DetachedState(
+                            // An unknown name (a form a later version saved) reads as the icon.
+                            form = ControlsForm.entries.firstOrNull { it.name == entry.optString("form") }
+                                ?: ControlsForm.ICON,
+                            landscape = entry.optJSONObject("land")?.let(::readWindowBounds),
+                            portrait = entry.optJSONObject("port")?.let(::readWindowBounds),
+                        )
+                    )
+                }
+            }
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    private fun readWindowBounds(obj: JSONObject) = WindowBounds(
+        xFraction = obj.getDouble("x").toFloat(),
+        yFraction = obj.getDouble("y").toFloat(),
+        widthDp = obj.getDouble("w").toFloat(),
+        heightDp = obj.getDouble("h").toFloat(),
+    )
+
+    private fun writeDetachedStateMap(map: Map<Int, DetachedState>) {
+        fun bounds(b: WindowBounds) = JSONObject().apply {
+            put("x", b.xFraction.toDouble())
+            put("y", b.yFraction.toDouble())
+            put("w", b.widthDp.toDouble())
+            put("h", b.heightDp.toDouble())
+        }
+        val obj = JSONObject()
+        for ((id, state) in map) {
+            obj.put(
+                id.toString(),
+                JSONObject().apply {
+                    put("form", state.form.name)
+                    state.landscape?.let { put("land", bounds(it)) }
+                    state.portrait?.let { put("port", bounds(it)) }
+                },
+            )
+        }
+        sp.edit { putString(KEY_CONTROLS_BY_DISPLAY, obj.toString()) }
+    }
+
+    /**
      * Persistent counterpart to [CaptureService.activeRegion]: the region
      * selected for [primaryDisplayId] from the per-display selection map,
      * falling back to the first list entry (full screen). Use as the in-app
@@ -2214,6 +2292,7 @@ class Prefs internal constructor(
         private const val KEY_SELECTED_REGION_ID = "selected_region_id"
         private const val KEY_SELECTED_REGION_BY_DISPLAY = "selected_region_by_display"
         private const val KEY_ICON_POSITION_BY_DISPLAY   = "icon_position_by_display"
+        private const val KEY_CONTROLS_BY_DISPLAY        = "controls_by_display"
         private const val KEY_ANKI_DECK_ID         = "anki_deck_id"
         const val KEY_ANKI_DECK_NAME       = "anki_deck_name"
         const val KEY_ANKI_MODEL_ID        = "anki_model_id"

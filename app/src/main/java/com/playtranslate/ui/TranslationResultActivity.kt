@@ -26,18 +26,12 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.playtranslate.CaptureService
 import com.playtranslate.applyEdgeToEdge
-import com.playtranslate.CaptureSession
-import com.playtranslate.CaptureState
-import com.playtranslate.fillsBoxesOf
 import com.playtranslate.ask.Explanation
 import com.playtranslate.capture.CaptureBackendResolver
 import com.playtranslate.Prefs
 import com.playtranslate.RegionEntry
 import com.playtranslate.R
-import com.playtranslate.model.OcrProvenance
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * Standalone activity that hosts [TranslationResultFragment] for showing
@@ -78,16 +72,29 @@ class TranslationResultActivity :
      *  cancel it — this is a one-shot screen. */
     private var editTranslationJob: kotlinx.coroutines.Job? = null
 
-    /** The active one-shot capture session + its state collector. Held so an edit
-     *  can supersede a still-running capture (it's translating the pre-edit
-     *  source): cancelling the collector stops a late Done from overwriting the
-     *  edit and its Cancelled from finish()-ing us. */
-    private var captureSession: CaptureSession? = null
-    private var sessionCollectJob: kotlinx.coroutines.Job? = null
-
-    /** In-flight OCR-tool switch (re-OCR of the cached screenshot). Cancelled
-     *  before launching a fresh one so a double-tap can't race two re-scans. */
-    private var reOcrJob: kotlinx.coroutines.Job? = null
+    /** This page's capture: its session followed into [vm], the deferred
+     *  translation and the OCR-tool switch ([CapturePageDriver]). The
+     *  collector repeats over STARTED, so the session outlives STOP→START and
+     *  the observer reattaches to whatever terminal state has been reached
+     *  (no replay of any other capture's output). An edit abandons a
+     *  still-running capture (it's translating the pre-edit source), so a
+     *  late Done can't overwrite the edit and its Cancelled can't finish()
+     *  us. A capture cancelled from outside (the user started live mode,
+     *  replaced the capture, or the service is tearing down) leaves no
+     *  useful terminal UI, so the page closes rather than staying stuck on
+     *  "Translating…". */
+    private val captureDriver by lazy {
+        CapturePageDriver(
+            vm, applicationContext, lifecycleScope,
+            service = { captureService },
+            collectWhileShown = { collect ->
+                lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { collect() } }
+            },
+            pinnedScreenshotPath = { intent.getStringExtra(EXTRA_SCREENSHOT_PATH) },
+            onSentencePending = { sentenceFlow.completeDeferred() },
+            onCancelled = { finish() },
+        )
+    }
 
     /** Tracks keyboard visibility so dismissing the IME commits the edit,
      *  matching MainActivity's commit-on-keyboard-hide behavior. */
@@ -179,57 +186,10 @@ class TranslationResultActivity :
 
     override fun getCaptureService(): CaptureService? = captureService
 
-    /** In-flight completion state: [deferredCompletionPending] is the pending
-     *  the running job was launched for. A repeat trigger for the SAME
-     *  pending is dropped (one backend batch per pending); a trigger for a
-     *  DIFFERENT pending means a newer deferred result superseded the one in
-     *  flight — the stale job is cancelled and the new one launches, so the
-     *  new result's completion is never silently dropped. */
-    private var deferredCompletionJob: kotlinx.coroutines.Job? = null
-    private var deferredCompletionPending: com.playtranslate.model.PendingTranslation? = null
-
-    override fun completeDeferredTranslation() {
-        // Pre-bind window (this activity fully recreates on rotation): no
-        // service yet — keep the pending; the Ready re-render after
-        // onServiceReady retries.
-        val svc = captureService ?: return
-        val ready = vm.result.value as? ResultState.Ready ?: return
-        val pending = ready.result.pendingTranslation ?: return
-        // Deliberate sentence shape: single text + the exact-row History rules
-        // (EXTRA_HISTORY_ENTRY_ID), owned by the shared flow with its own
-        // in-flight dedup. Only the one-shot capture shape stays here: its
-        // batch translate + session-scoped History attach are the service's.
-        if (!pending.isCapture) {
-            sentenceFlow.completeDeferred()
-            return
-        }
-        if (deferredCompletionJob?.isActive == true) {
-            if (deferredCompletionPending == pending) return
-            deferredCompletionJob?.cancel()
-        }
-        deferredCompletionPending = pending
-        deferredCompletionJob = lifecycleScope.launch {
-            try {
-                val perGroup = svc.completeDeferredTranslation(pending)
-                val joined = perGroup.joinToString("\n\n") { it.text }
-                vm.applyDeferredTranslation(
-                    pending,
-                    if (joined.isBlank()) "—" else joined,
-                    perGroup.mapNotNull { it.note }.firstOrNull(),
-                    perGroup.mapNotNull { it.backendDisplayName }.firstOrNull(),
-                )
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                // Superseded (or the activity is going away) — the newer job
-                // owns the state now; never land "—" for a cancelled run.
-                throw e
-            } catch (_: Exception) {
-                // Ran and failed: land terminal — a visible blank + pending
-                // renders a stuck "Translating…". Mirror of the edit path's
-                // "—". Identity-guarded, so this can't damage a newer result.
-                vm.applyDeferredTranslation(pending, "—", null, null)
-            }
-        }
-    }
+    /** Pre-bind window (this activity fully recreates on rotation): with no
+     *  service yet the pending is kept, and the Ready re-render after
+     *  onServiceReady retries. */
+    override fun completeDeferredTranslation() = captureDriver.completeDeferred()
 
     override fun onWordTapped(
         word: String,
@@ -267,29 +227,10 @@ class TranslationResultActivity :
         showEditOverlay()
     }
 
-    override fun onReOcrRequested(deviceOnly: Boolean) {
-        val svc = captureService ?: return
-        val (prov, path) = reOcrTarget() ?: return
-        reOcrJob?.cancel()
-        reOcrJob = lifecycleScope.launch {
-            val bmp = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(path) } ?: return@launch
-            // Re-run the capture pipeline on the pinned screenshot so the screen walks
-            // the normal loading stages; observeSession supersedes the prior session
-            // (its terminal state can't reappear on a rotation re-collect).
-            observeSession(svc.processScreenshot(
-                com.playtranslate.capture.CapturedFrame(
-                    bmp, includesSystemUi = prov.frameIncludesSystemUi ?: true,
-                    includesOwnOverlays = prov.frameIncludesOwnOverlays ?: false,
-                    geometry = prov.frameGeometry,
-                ),
-                prov.displayId, prov.region, prov.sourceLangId,
-                deviceOnly = deviceOnly,
-            ))
-        }
-    }
+    override fun onReOcrRequested(deviceOnly: Boolean) = captureDriver.reOcr(deviceOnly)
 
     /** No live mode here — the pinned frame is the only thing a switch can act on. */
-    override fun canReOcr(): Boolean = reOcrTarget() != null
+    override fun canReOcr(): Boolean = captureDriver.reOcrTarget() != null
 
     override fun onChangeLanguageRequested(isSource: Boolean) {
         // Changing a language ends this standalone result (we deliberately don't re-run
@@ -303,23 +244,6 @@ class TranslationResultActivity :
         )
         finish()
     }
-
-    /** Re-OCR target = engine/region/screenshot of whatever's on screen — a Ready
-     *  result or a "no text detected" status. Both prefer the stable pre-capture
-     *  screenshot this screen was launched with over the overwriteable per-display
-     *  cache file. Null when neither offers re-OCR, or its frame can't be re-read
-     *  ([OcrProvenance.canReRead]: one that carries our own overlays, so the gear
-     *  isn't offered for it). */
-    private fun reOcrTarget(): Pair<OcrProvenance, String>? =
-        when (val s = vm.result.value) {
-            is ResultState.Ready ->
-                (s.result.ocrProvenance?.takeIf { it.canReRead } ?: return null) to
-                    (intent.getStringExtra(EXTRA_SCREENSHOT_PATH) ?: s.result.screenshotPath ?: return null)
-            is ResultState.Status ->
-                (s.ocrProvenance?.takeIf { it.canReRead } ?: return null) to
-                    (intent.getStringExtra(EXTRA_SCREENSHOT_PATH) ?: s.screenshotPath ?: return null)
-            else -> null
-        }
 
     override fun onUserScrolled() {
         // No-op — no live mode in this activity.
@@ -614,47 +538,7 @@ class TranslationResultActivity :
             svc.captureOnce(targetDisplayId, allowDeferTranslation = true)
         }
 
-        observeSession(session)
-    }
-
-    /** Drive the VM from a [CaptureSession]'s state flow on lifecycleScope.
-     *  The session outlives STOP→START so the observer reattaches to
-     *  whatever terminal state has been reached (no replay of any other
-     *  capture's output). */
-    private fun observeSession(session: CaptureSession) {
-        sessionCollectJob?.cancel()
-        captureSession = session
-        sessionCollectJob = lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                session.stateWithPrevious.collect { (previous, state) ->
-                    when (state) {
-                        is CaptureState.InProgress -> vm.showStatus(state.message)
-                        // OCR done: reveal the source + "Translating…" placeholder;
-                        // Done replaces it with the finished translation. A box
-                        // fill changes nothing this page shows (it paints no
-                        // boxes), and re-showing the placeholder would restart
-                        // the word lookups.
-                        is CaptureState.Translating -> if (!state.fillsBoxesOf(previous)) {
-                            vm.showTranslatingPlaceholder(state.originalText, state.segments, applicationContext, state.ocrProvenance)
-                        }
-                        is CaptureState.Done -> vm.displayResult(state.result, applicationContext)
-                        is CaptureState.NoText -> vm.showStatus(
-                            state.message,
-                            ocrProvenance = state.ocrProvenance,
-                            screenshotPath = state.screenshotPath,
-                        )
-                        is CaptureState.Failed -> vm.showError(state.message)
-                        // External cancellation supersedes this view —
-                        // the user started live mode, replaced the
-                        // capture, or the service is tearing down. There
-                        // is no useful terminal UI to show, so close
-                        // rather than leaving the panel stuck on
-                        // "Translating…" indefinitely.
-                        CaptureState.Cancelled -> finish()
-                    }
-                }
-            }
-        }
+        captureDriver.follow(session)
     }
 
     private fun handleSentenceMode(sentenceText: String) {
@@ -707,9 +591,7 @@ class TranslationResultActivity :
         // The edit supersedes the in-flight capture (it's translating the OLD
         // source) — stop collecting + cancel it so a late Done can't overwrite the
         // edit and its Cancelled doesn't finish() us.
-        sessionCollectJob?.cancel()
-        captureSession?.cancel()
-        captureSession = null
+        captureDriver.abandon()
 
         editTranslationJob?.cancel()
         editTranslationJob = lifecycleScope.launch {

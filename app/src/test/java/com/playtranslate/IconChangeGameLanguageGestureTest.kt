@@ -22,6 +22,7 @@ import com.playtranslate.ui.OverlayWorkspace
 import com.playtranslate.ui.SourceListPage
 import com.playtranslate.ui.WorkspaceHost
 import com.playtranslate.ui.WorkspacePage
+import com.playtranslate.ui.QuickSetting
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -321,7 +322,7 @@ class IconChangeGameLanguageGestureTest {
         val menu = field<FloatingIconMenu?>("floatingMenu")
         assertNotNull(menu)
 
-        menu!!.onSelectLanguage!!.invoke()
+        menu!!.panelSetting(QuickSetting.Id.LANGUAGE)!!.click()
         settle()
 
         assertNull("the menu closed", field<FloatingIconMenu?>("floatingMenu"))

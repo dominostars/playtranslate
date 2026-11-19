@@ -40,18 +40,7 @@ import kotlin.math.ceil
 class SectionHeaderRow @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
-) : LinearLayout(context, attrs) {
-
-    /** What an open overflow menu follows. */
-    interface Listener {
-        /** The folded set may have changed. Posted from the measure pass
-         *  that changed it, so a listener never mutates views mid-measure;
-         *  compare [foldedActions] against what you showed. */
-        fun onFoldChanged(row: SectionHeaderRow) {}
-
-        /** An action's look changed (icon, accent, name). Synchronous. */
-        fun onActionChanged(action: HeaderAction) {}
-    }
+) : LinearLayout(context, attrs), FoldingActionRow {
 
     private lateinit var label: TextView
 
@@ -59,6 +48,8 @@ class SectionHeaderRow @JvmOverloads constructor(
      *  the menu and for any popover a menu action opens. */
     lateinit var moreButton: ImageButton
         private set
+
+    override val moreAnchor: View get() = moreButton
 
     /** Tapped ⋯ (the binder opens or closes the menu). */
     var onMoreClick: ((SectionHeaderRow) -> Unit)? = null
@@ -87,7 +78,7 @@ class SectionHeaderRow @JvmOverloads constructor(
     private val viewOf = HashMap<HeaderAction, View>()
     private val renderedIcon = HashMap<HeaderAction, Int>()
     private var folded: List<HeaderAction> = emptyList()
-    private val listeners = ArrayList<Listener>()
+    private val listeners = ArrayList<FoldingActionRow.Listener>()
 
     private val gapPx = (GAP_DP * resources.displayMetrics.density).toInt()
 
@@ -121,7 +112,7 @@ class SectionHeaderRow @JvmOverloads constructor(
     }
 
     /** The available actions the last fit folded behind ⋯, in order. */
-    fun foldedActions(): List<HeaderAction> = folded.filter { it.available }
+    override fun foldedActions(): List<HeaderAction> = folded.filter { it.available }
 
     /** What a controller cursor can reach here, in visual order: the inline
      *  actions, ⋯, then the eye. */
@@ -133,11 +124,11 @@ class SectionHeaderRow @JvmOverloads constructor(
         }
     }
 
-    fun addListener(listener: Listener) {
+    override fun addListener(listener: FoldingActionRow.Listener) {
         listeners += listener
     }
 
-    fun removeListener(listener: Listener) {
+    override fun removeListener(listener: FoldingActionRow.Listener) {
         listeners -= listener
     }
 

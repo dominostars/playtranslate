@@ -3062,6 +3062,25 @@
          the full app. %1$s is the app name. -->
     <string name="floating_menu_panel_open_app">Open <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
 
+    <!-- Row of the floating-icon menu's expanded settings panel (the gear):
+         turns the floating icon into a floating window over the game that
+         holds the menu's actions in a top bar and shows translation results. -->
+    <string name="floating_menu_panel_detach">Detach</string>
+
+    <!-- Short label of the Capture button in the detached window's top bar:
+         captures the game screen (or the capture region) and translates it.
+         Keep it to one short word; the bar is narrow. -->
+    <string name="detached_bar_capture">Capture</string>
+
+    <!-- Accessibility label, and name in the bar's overflow menu, of the
+         detached window's Minimize button: closes the window and brings the
+         floating icon back. -->
+    <string name="detached_bar_minimize">Minimize</string>
+
+    <!-- Shown in the detached window before anything has been captured.
+         "Capture" is the window's own Capture button (detached_bar_capture). -->
+    <string name="detached_status_idle">Tap Capture to translate the game screen</string>
+
     <!-- Instruction pill shown at the bottom of the floating-icon menu
          while no custom region is active, prompting the user to
          drag-select an area on screen. -->

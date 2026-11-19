@@ -251,11 +251,12 @@ object CaptureLifecycle {
         setFloatingIconSuppressed(ctx, false)
         val ui = CaptureBackendResolver.activeOverlayUi
         ui?.reconcileFloatingIcons(freshAppearance = false)
-        // The install stamps the record; a reconcile that placed nothing
+        // The install stamps the record (the icon's, or the detached
+        // window's where that form was saved); a reconcile that placed nothing
         // (the icon preference off, every display unreachable) leaves a
         // dead process's record behind, which must not read as a session
         // cut short again.
-        if (ui?.hasAnyFloatingIcon != true) SessionMarker.markOff(ctx)
+        if (ui?.hasControlsOnScreen != true) SessionMarker.markOff(ctx)
         startCaptureServicePlain(ctx, "restore")
     }
 
@@ -310,7 +311,7 @@ object CaptureLifecycle {
         ui?.reconcileFloatingIcons(freshAppearance = false)
         // As in restoreAccessibilitySession: a reconcile that placed nothing
         // clears the dead process's record.
-        if (ui?.hasAnyFloatingIcon != true) SessionMarker.markOff(svc)
+        if (ui?.hasControlsOnScreen != true) SessionMarker.markOff(svc)
         PlayTranslateTileService.TileSync.refresh(svc.applicationContext)
     }
 }

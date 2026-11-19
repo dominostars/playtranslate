@@ -615,4 +615,51 @@ class ResultSectionsLayoutTest {
         layOut(dp(800))
         assertEquals(wordsHeader.bottom + pad, sections.measuredHeight)
     }
+
+    // ── A flush top ──────────────────────────────────────────────────────
+
+    @Test
+    fun `flush, the stacked top header starts at the top edge and the rest keep their own padding`() {
+        layOut(500)
+        assertEquals(Arrangement.STACKED, sections.arrangement)
+        val gap = targetHeader.paddingTop
+        assertTrue("the header has a top padding to give up", gap > 0)
+        assertEquals("by default it is kept", 0, targetHeader.top)
+        val height = sections.measuredHeight
+        val sourceTop = sourceHeader.top
+
+        sections.flushTop = true
+        layOut(500)
+
+        assertEquals("the header's content starts at the top edge", -gap, targetHeader.top)
+        assertEquals("everything beneath moves up with it", sourceTop - gap, sourceHeader.top)
+        assertEquals("the next header still follows the card above it", targetCard.bottom, sourceHeader.top)
+        assertEquals(height - gap, sections.measuredHeight)
+
+        sections.flushTop = false
+        layOut(500)
+        assertEquals(0, targetHeader.top)
+        assertEquals(height, sections.measuredHeight)
+    }
+
+    @Test
+    fun `flush, with the Translation header gone the next header placed is the one at the top edge`() {
+        targetHeader.visibility = View.GONE
+        targetCard.visibility = View.GONE
+        sections.flushTop = true
+        layOut(500)
+
+        assertEquals(-sourceHeader.paddingTop, sourceHeader.top)
+    }
+
+    @Test
+    fun `flush, the pair's two headers both start at the top edge`() {
+        sections.flushTop = true
+        layOut(700)
+        assertEquals(Arrangement.PAIRED, sections.arrangement)
+
+        assertEquals(-targetHeader.paddingTop, targetHeader.top)
+        assertEquals(-sourceHeader.paddingTop, sourceHeader.top)
+        assertEquals("the cards follow the header row", targetHeader.bottom, targetCard.top)
+    }
 }

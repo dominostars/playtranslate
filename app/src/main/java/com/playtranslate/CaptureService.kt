@@ -798,6 +798,7 @@ class CaptureService : Service() {
         val ui = CaptureBackendResolver.activeOverlayUi
         ui?.hideRegionIndicator()
         for (id in changedDisplayIds) ui?.hideTranslationOverlayForDisplay(id)
+        for (id in changedDisplayIds) ui?.onCaptureRegionChanged(id)
         oneShotCaptureJob?.cancel()
         oneShotManager.cancel()
         if (isLive) {
@@ -925,7 +926,7 @@ class CaptureService : Service() {
      *  resets overrides to the persisted selection, right for a fresh
      *  configure from Settings, wrong here, where the hold would OCR the
      *  saved region instead of the one just chosen (Codex review). */
-    private fun configureSavedIfNeeded(primaryDisplayId: Int? = null) {
+    internal fun configureSavedIfNeeded(primaryDisplayId: Int? = null) {
         if (isConfigured) return
         val pending = overrideRegions.toMap()
         if (primaryDisplayId != null) configureSaved(primaryDisplayId)
@@ -1483,6 +1484,10 @@ class CaptureService : Service() {
         // The session starting now is the restart the sheet's capture would
         // have owed, so its record settles without one.
         CaptureBackendResolver.activeOverlayUi?.endCaptures(CaptureTakeover.LIVE_START)
+        // Auto-translate and the detached window never share the screen:
+        // controls left as the window go back to the icon first, whoever
+        // starts the session (the window's own Auto, a hotkey, the app).
+        CaptureBackendResolver.activeOverlayUi?.dockWindowsForLiveStart()
 
         // One feedback session per start — engine warm-up, startup chip,
         // first-cycle gate, busy tracking ([LiveSessionFeedback]). The
@@ -4002,11 +4007,13 @@ class CaptureService : Service() {
      *
      * Triggered automatically by:
      *  - [setLiveDisplays] when the empty↔non-empty boolean transitions
-     *  - PlayTranslateAccessibilityService.installFloatingIconForDisplay /
-     *    hideFloatingIconForDisplay (every per-display add/remove)
+     *  - OverlayUiController's installs and removals of a display's
+     *    floating controls, the icon or the detached window (every
+     *    per-display add/remove; a change of form puts the new one up
+     *    before the old one goes, so it is never seen as none)
      */
     fun updateForegroundState() {
-        val iconShowing = CaptureBackendResolver.activeOverlayUi?.hasAnyFloatingIcon == true
+        val controlsShowing = CaptureBackendResolver.activeOverlayUi?.hasControlsOnScreen == true
 
         // Stop live mode if the user can no longer see or manage it.
         if (isLive) {
@@ -4015,9 +4022,9 @@ class CaptureService : Service() {
                 !MainActivity.isInForeground
             } else {
                 // Overlay modes: stop if no control surface at all (no icon, no app)
-                !iconShowing && !MainActivity.isInForeground
+                !controlsShowing && !MainActivity.isInForeground
             }
-            Log.v(TAG, "updateForegroundState: isLive=true iconShowing=$iconShowing isInForeground=${MainActivity.isInForeground} isInAppOnly=$isInAppOnly shouldStop=$shouldStop")
+            Log.v(TAG, "updateForegroundState: isLive=true controlsShowing=$controlsShowing isInForeground=${MainActivity.isInForeground} isInAppOnly=$isInAppOnly shouldStop=$shouldStop")
             if (shouldStop) {
                 Log.w(TAG, "updateForegroundState: stopping live (no visible surface)")
                 stopLive()
@@ -4033,7 +4040,7 @@ class CaptureService : Service() {
         // foreground service (Android 14+). A one-shot capture
         // (MediaProjectionCaptureSource.requestClean) can acquire consent and
         // leave the projection warm with neither live mode nor a floating icon
-        // up — iconShowing || isLive alone would then stopForeground() out
+        // up — controlsShowing || isLive alone would then stopForeground() out
         // from under an active projection and the system would tear it down.
         //
         // mediaProjectionActivated: foreground status follows the SESSION, not
@@ -4050,7 +4057,7 @@ class CaptureService : Service() {
         // ([CaptureBackendResolver.reresolve]) both clear the flag BEFORE
         // their hide cascades, so the genuine end-of-session demote still
         // reaches stopForeground.
-        if (iconShowing || isLive || mediaProjectionController.hasConsent ||
+        if (controlsShowing || isLive || mediaProjectionController.hasConsent ||
             mediaProjectionActivated
         ) {
             promoteOrDefer()

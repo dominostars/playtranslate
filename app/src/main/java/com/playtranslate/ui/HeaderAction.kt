@@ -85,3 +85,31 @@ class HeaderAction(
         observer?.invoke(this, affectsWidth)
     }
 }
+
+/**
+ * A row of [HeaderAction]s that folds the ones that do not fit behind a ⋯
+ * button: what an [ActionOverflowMenu] lists and follows. A results section's
+ * header ([SectionHeaderRow]) and the detached window's bar are the two.
+ */
+interface FoldingActionRow {
+    /** The available actions the last fit folded behind ⋯, in order. */
+    fun foldedActions(): List<HeaderAction>
+
+    /** The ⋯ button: the anchor for the menu and for any popover a menu
+     *  action opens. */
+    val moreAnchor: View
+
+    fun addListener(listener: Listener)
+    fun removeListener(listener: Listener)
+
+    /** What an open overflow menu follows. */
+    interface Listener {
+        /** The folded set may have changed. Posted from the measure pass
+         *  that changed it, so a listener never mutates views mid-measure;
+         *  compare [foldedActions] against what you showed. */
+        fun onFoldChanged(row: FoldingActionRow) {}
+
+        /** An action's look changed (icon, accent, name). Synchronous. */
+        fun onActionChanged(action: HeaderAction) {}
+    }
+}

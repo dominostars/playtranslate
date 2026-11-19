@@ -229,8 +229,8 @@ class SectionHeaderRowTest {
     @Test
     fun `fold changes reach listeners posted, once per change`() {
         var folds = 0
-        row.addListener(object : SectionHeaderRow.Listener {
-            override fun onFoldChanged(row: SectionHeaderRow) { folds++ }
+        row.addListener(object : FoldingActionRow.Listener {
+            override fun onFoldChanged(row: FoldingActionRow) { folds++ }
         })
         layoutAt(allInline - 1)
         assertEquals("never from inside the measure pass", 0, folds)

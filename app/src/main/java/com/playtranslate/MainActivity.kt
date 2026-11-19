@@ -2346,13 +2346,14 @@ class MainActivity :
     private fun maybeShowKillNotice() {
         val kind = com.playtranslate.diagnostics.KillNotice.pending(this) ?: return
         com.playtranslate.diagnostics.KillNotice.markShown()
-        // Only an icon actually on screen earns the sentence. The summon
+        // Only controls actually on screen (the icon, or the detached
+        // window) earn the sentence. The summon
         // flag behind isActive lifts in onResume before the accessibility
         // service has re-bound (no icon yet), and the MediaProjection
         // restore rides this activity's service start, which lands after
         // this runs; both would claim "back on" over an empty screen, so
         // the sentence is simply omitted then (Codex, 2026-10-06).
-        val restored = CaptureBackendResolver.activeOverlayUi?.hasAnyFloatingIcon == true
+        val restored = CaptureBackendResolver.activeOverlayUi?.hasControlsOnScreen == true
         val body = buildString {
             append(getString(
                 when (kind) {

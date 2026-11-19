@@ -16,7 +16,8 @@ import com.playtranslate.R
 import com.playtranslate.themeColor
 
 /**
- * The table behind a section header's ⋯ ([SectionHeaderRow.moreButton]): one
+ * The table behind a row's ⋯ ([FoldingActionRow.moreAnchor]; a section header's
+ * [SectionHeaderRow], the detached window's bar): one
  * row per action the header folded, in the header's order, each with the
  * action's icon at the start and its short name. A row runs exactly what
  * the inline button runs, from the same [HeaderAction]: a tap closes the
@@ -33,7 +34,7 @@ import com.playtranslate.themeColor
  * Built in code (the over-game panel's plain inflater drops `app:`
  * attributes). A new instance per open.
  */
-class ActionOverflowMenu(private val row: SectionHeaderRow) : PopoverContent, SectionHeaderRow.Listener {
+class ActionOverflowMenu(private val row: FoldingActionRow) : PopoverContent, FoldingActionRow.Listener {
 
     private var host: PopoverHost? = null
     private var items: List<HeaderAction> = emptyList()
@@ -75,7 +76,7 @@ class ActionOverflowMenu(private val row: SectionHeaderRow) : PopoverContent, Se
         host = null
     }
 
-    override fun onFoldChanged(row: SectionHeaderRow) {
+    override fun onFoldChanged(row: FoldingActionRow) {
         if (row.foldedActions() != items) host?.takeIf { it.content === this }?.dismiss()
     }
 
@@ -118,7 +119,7 @@ class ActionOverflowMenu(private val row: SectionHeaderRow) : PopoverContent, Se
             val h = host ?: return@setOnClickListener
             if (!isCurrent) return@setOnClickListener
             h.dismiss()
-            a.onClick?.invoke(row.moreButton)
+            a.onClick?.invoke(row.moreAnchor)
         }
         bind(v, a)
         return v

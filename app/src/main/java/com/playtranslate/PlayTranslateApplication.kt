@@ -306,6 +306,15 @@ class PlayTranslateApplication : Application() {
         // FLAG_SECURE replacement) — tracks started opaque activities so the
         // capture sources can mask them at serve time.
         com.playtranslate.capture.OwnWindowMask.install(this)
+        // Which displays one of our own screens is on, for the floating
+        // controls: the icon stands in for a detached window there. The
+        // hook only swaps the form of controls already up (overlay windows
+        // added and removed); it brings no controls up and starts no
+        // service and no activity.
+        com.playtranslate.overlay.OwnActivities.install(this)
+        com.playtranslate.overlay.OwnActivities.onChanged = {
+            CaptureBackendResolver.activeOverlayUi?.applyControlsForms()
+        }
         // Timestamp every window event of ours (activity transitions here;
         // overlay adds, removes and blanks at their funnels) so the
         // MediaProjection session creates its VirtualDisplay only in a

@@ -32,12 +32,18 @@ import com.playtranslate.ocr.registry.ocrLabel
 import com.playtranslate.ocr.registry.selectionToken
 import com.playtranslate.overlay.OverlayEnvironment
 import com.playtranslate.overlay.OverlayHost
+import com.playtranslate.overlay.OwnActivities
 import com.playtranslate.overlay.OverlayPlacement
 import com.playtranslate.ui.CaptureOverlaySettingsActivity
 import com.playtranslate.ui.CaptureOverlayWindow
 import com.playtranslate.ui.DimController
+import com.playtranslate.ui.DetachedPage
+import com.playtranslate.ui.DetachedWindow
+import com.playtranslate.ui.DetachedWindowGeometry
 import com.playtranslate.ui.DragLookupController
+import com.playtranslate.ui.IconDock
 import com.playtranslate.ui.FloatingIconMenu
+import com.playtranslate.ui.QuickSetting
 import com.playtranslate.ui.IconDiscFootprint
 import com.playtranslate.ui.GrowthLimits
 import com.playtranslate.ui.LanguageSetupActivity
@@ -183,6 +189,15 @@ class OverlayUiController(
     /** Whether two screens' capture [id] is still on its way to the game display. */
     internal fun appCaptureOnItsWayForTest(id: Long): Boolean = appCapture?.id == id
 
+    /** [displayId]'s detached window, if it is up. */
+    internal fun detachedWindowForTest(displayId: Int): DetachedWindow? = windowHandles[displayId]
+
+    /** [displayId]'s detached page, if it has one (the window up or not). */
+    internal fun detachedPageForTest(displayId: Int): DetachedPage? = detachedPages[displayId]
+
+    /** The display of a capture into a detached window still on its way, or -1. */
+    internal val windowCaptureDisplayIdForTest: Int get() = windowCapture?.displayId ?: -1
+
     /** A capture result stashed when the overlay's word lens opened the in-app
      *  detail screen, so a user-initiated back from that screen re-shows the panel.
      *  Discarded by ANY teardown (new capture, menu, hideAll, destroy) and after
@@ -275,6 +290,10 @@ class OverlayUiController(
             // editor's chrome, the pills) against the display as it is now.
             // Not gated: it touches only the windows this host holds, and a
             // host with none does nothing.
+            // A move or resize of the detached window ends first: its frame
+            // belongs to the old geometry, and a window a gesture owns is
+            // not laid out.
+            windowHandles[displayId]?.endGesture()
             overlayHost.onDisplayChanged(displayId)
             if (isActiveController) {
                 // A drag session ends: its lens window, screenshot and finger
@@ -310,6 +329,9 @@ class OverlayUiController(
         hideTranslationOverlay = { hideTranslationOverlay() },
         onRegionSelected = { id, region -> handleRegionSelection(id, region) },
         onRegionCleared = { id -> clearRegionForDisplay(id) },
+        // The region editor needs the whole game in view: the icon stands
+        // in for a detached window while it is open ([shownFormOn]).
+        onRegionEditorChanged = { applyControlsForms() },
     )
 
     // ── Floating icon registry ───────────────────────────────────────────
@@ -341,7 +363,30 @@ class OverlayUiController(
 
     private val iconHandles: MutableMap<Int, FloatingIconHandle> = mutableMapOf()
 
-    /** The displays that hold a floating icon now, as a snapshot: what the
+    /** Per-display detached windows: the controls' other form
+     *  ([ControlsForm.WINDOW]). Once a reconcile has settled a display holds
+     *  an icon or a window, never both ([reconcileFloatingIcons]). */
+    private val windowHandles: MutableMap<Int, DetachedWindow> = mutableMapOf()
+
+    /** Per-display results page of the detached window. It outlives the
+     *  window's view: the icon standing in for the window takes the window
+     *  down and leaves the page, with its result, for the window that comes
+     *  back. A page belongs to a display whose controls are saved as the
+     *  window and are allowed on screen; anything else drops it
+     *  ([dropDetachedPage]). */
+    private val detachedPages: MutableMap<Int, DetachedPage> = mutableMapOf()
+
+    /** A capture into a detached window on its way: its clean frame is not
+     *  in yet, so its page has not changed. One at a time, as the service
+     *  holds one capture job. */
+    private class WindowCapture(val displayId: Int) {
+        var setup: Job? = null
+    }
+
+    private var windowCapture: WindowCapture? = null
+
+    /** The displays that hold the floating controls now, as the icon or as
+     *  the detached window, as a snapshot: what the
      *  log export prints beside the resolved capture targets
      *  ([com.playtranslate.diagnostics.DisplayDiag]), since the two differ
      *  whenever [reconcileFloatingIcons] returns before installing (the
@@ -349,7 +394,7 @@ class OverlayUiController(
      *  not turned on). [iconHandles] is main-thread confined and the export
      *  reads off it; a read that races a mutation fails, which the export
      *  tolerates by leaving the block out (Codex review, 2026-10-14). */
-    val floatingIconDisplayIds: Set<Int> get() = iconHandles.keys.toSet()
+    val floatingIconDisplayIds: Set<Int> get() = (iconHandles.keys + windowHandles.keys).toSet()
 
     // ── Sonar-ping intro ─────────────────────────────────────────────────
     //
@@ -367,8 +412,13 @@ class OverlayUiController(
 
     private val activeSonarIntros: MutableMap<Int, SonarPingIntroView> = mutableMapOf()
 
-    /** True iff at least one floating icon is currently registered. */
-    val hasAnyFloatingIcon: Boolean get() = iconHandles.isNotEmpty()
+    /** True iff the floating controls are on screen on some display, as the
+     *  icon or as the detached window. This is what "PlayTranslate can be
+     *  reached over the game" reads everywhere it is asked: the hotkeys'
+     *  gate, the service's foreground state, the session restores and the
+     *  kill notice. None of them may ask for the icon alone, or they would
+     *  all read "off" with a window up. */
+    val hasControlsOnScreen: Boolean get() = iconHandles.isNotEmpty() || windowHandles.isNotEmpty()
 
     fun setIconsLoading(loading: Boolean) {
         iconHandles.values.forEach { it.icon.showLoading = loading }
@@ -1449,27 +1499,33 @@ class OverlayUiController(
         // Snapshot before mutating — tear down icons on displays not wanted
         // (deselected, disconnected, or the fallback once a selected display
         // is connected).
-        val staleIds = iconHandles.keys.filter { it !in wanted }
-        for (id in staleIds) hideFloatingIconForDisplay(id, "reconcile_remove", endsCapture = false)
+        val staleIds = (iconHandles.keys + windowHandles.keys).filter { it !in wanted }
+        for (id in staleIds) hideControlsForDisplay(id, "reconcile_remove", endsCapture = false)
 
+        // Each wanted display shows its form ([showFormOn]).
         var installedAny = false
         for (id in wanted) {
-            if (id in iconHandles) continue
             val display = dm.getDisplay(id) ?: continue
-            if (connected.isEmpty()) {
+            if (connected.isEmpty() && id !in iconHandles && id !in windowHandles) {
                 Log.i(
                     TAG,
                     "reconcile: selection ${prefs.captureDisplayIds} names no connected display; " +
-                        "icon on fallback display $id",
+                        "controls on fallback display $id",
                 )
             }
-            if (installFloatingIconForDisplay(display, prefs, freshAppearance)) installedAny = true
+            if (showFormOn(display, prefs, freshAppearance)) installedAny = true
         }
+        // A page stays only for a display whose controls are still saved as
+        // the window (the icon may be standing in for it): docked, or no
+        // longer a capture display, its page goes.
+        detachedPages.keys
+            .filter { it !in wanted || prefs.detachedStateForDisplay(it).form != ControlsForm.WINDOW }
+            .forEach { dropDetachedPage(it) }
         // The translation-error pills live on a captured display: one that
         // left the capture set (deselected, or gone) takes them with it, and
         // each shows again at its next failure where capture is.
         errorPills.displayId?.let { id ->
-            if ((id !in target && id !in iconHandles) || dm.getDisplay(id) == null) {
+            if ((id !in target && id !in iconHandles && id !in windowHandles) || dm.getDisplay(id) == null) {
                 errorPills.withdrawFrom(id)
             }
         }
@@ -2037,16 +2093,318 @@ class OverlayUiController(
         if (endsCapture) handle.dragPause.drop() else handle.dragPause.settle(resumeLive = true)
         handle.icon.destroy()
         overlayHost.removeOverlayWindow(handle.icon)
-        // A parked placement prompt belongs to the appearance that armed it.
-        if (iconHandles.isEmpty()) placementPromptPending = false
-        // No icon on screen: whatever removed the last one (Turn Off, Hide
-        // for Now, a Recents swipe, a backend swap, a graceful service end)
-        // ends what the persisted session record stands for. A kill never
-        // reaches here, which is exactly how the record outlives one.
-        if (iconHandles.isEmpty()) com.playtranslate.capture.SessionMarker.markOff(context)
+        onControlsRemoved()
+    }
 
+    /** One display's controls went, icon or window. With none left on any
+     *  display, whatever removed the last (Turn Off, Hide for Now, a Recents
+     *  swipe, a backend swap, a graceful service end) ends what the persisted
+     *  session record stands for; a kill never reaches here, which is exactly
+     *  how the record outlives one. A swap of forms never passes through
+     *  here with none left: the new form is up before the old one goes
+     *  ([reconcileFloatingIcons]). */
+    private fun onControlsRemoved() {
+        if (!hasControlsOnScreen) {
+            // A parked placement prompt belongs to the appearance that armed it.
+            placementPromptPending = false
+            com.playtranslate.capture.SessionMarker.markOff(context)
+        }
         CaptureService.instance?.updateForegroundState()
         CaptureService.instance?.syncIconState()
+    }
+
+    // ── The detached window ──────────────────────────────────────────────
+
+    /**
+     * The form [displayId]'s controls show now ([shownControlsForm]): the
+     * saved form, with the icon standing in for the window wherever the
+     * window cannot be. [showFormOn] makes it so: for every capture display
+     * from [reconcileFloatingIcons], and for the displays with controls up
+     * whenever one of the inputs changes ([applyControlsForms]): the saved
+     * form ([detachControls], [dockControls], [dockWindowsForLiveStart]),
+     * one of our own screens coming or going ([OwnActivities]; MainActivity's
+     * resume also reconciles) and the region editor opening or closing
+     * ([regionController]).
+     */
+    private fun shownFormOn(displayId: Int, prefs: Prefs): ControlsForm = shownControlsForm(
+        saved = prefs.detachedStateForDisplay(displayId).form,
+        effectivelyOneScreen = effectivelySingleScreen(),
+        ownActivityInFront = OwnActivities.anyOn(displayId),
+        regionEditorOpen = regionController.regionEditorDisplayId == displayId,
+    )
+
+    /**
+     * Make [display] show its form ([shownFormOn]). A display already
+     * showing it is left alone, so a pass that changes nothing never
+     * rebuilds a window or lifts it over a sheet or a page opened from it. A
+     * change of form puts the new one up before the old one goes, so the
+     * display is never without controls in between: the session record and
+     * the service's foreground state read [hasControlsOnScreen] and would
+     * otherwise see "off" halfway through a swap. Returns true when an icon
+     * went up where no controls were (what [reconcileFloatingIcons] counts
+     * as a fresh placement); an icon that takes a window's place is not one,
+     * and gets no intro.
+     */
+    private fun showFormOn(display: Display, prefs: Prefs, freshAppearance: Boolean): Boolean {
+        val id = display.displayId
+        when (shownFormOn(id, prefs)) {
+            ControlsForm.WINDOW -> {
+                if (id in windowHandles) return false
+                if (!installDetachedWindowForDisplay(display, prefs)) return false
+                // The icon goes with whatever its lens paused forgotten
+                // (endsCapture drops the record): auto-translate and the
+                // window never share the screen, so nothing may restart it
+                // from here.
+                hideFloatingIconForDisplay(id, "swap_to_window", endsCapture = true)
+                return false
+            }
+            ControlsForm.ICON -> {
+                if (id in iconHandles) return false
+                val replacesWindow = id in windowHandles
+                if (!installFloatingIconForDisplay(display, prefs, freshAppearance && !replacesWindow)) return false
+                if (replacesWindow) removeDetachedWindowForDisplay(id, "swap_to_icon")
+                return !replacesWindow
+            }
+        }
+    }
+
+    /**
+     * One of the form's inputs changed (the saved form, one of our own
+     * screens coming or going, the region editor): every display with
+     * controls up shows its form now. It only swaps what is up. Whether a
+     * display has controls at all, and their first appearance with its
+     * intro, stay [reconcileFloatingIcons]'s alone, so this never brings an
+     * icon up ahead of the reconcile that would have introduced it.
+     */
+    fun applyControlsForms() {
+        val prefs = Prefs(context)
+        val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        for (id in (iconHandles.keys + windowHandles.keys).toList()) {
+            val display = dm.getDisplay(id) ?: continue
+            showFormOn(display, prefs, freshAppearance = false)
+        }
+        detachedPages.keys
+            .filter { prefs.detachedStateForDisplay(it).form != ControlsForm.WINDOW }
+            .forEach { dropDetachedPage(it) }
+    }
+
+    /** [displayId]'s capture region changed, whoever changed it
+     *  ([CaptureService]'s region funnel): the window's Capture names the
+     *  screen or the region, on its bar and on its capture button. */
+    fun onCaptureRegionChanged(displayId: Int) {
+        windowHandles[displayId]?.refreshActions()
+    }
+
+    /** Put [display]'s detached window up. Returns whether it was added. */
+    private fun installDetachedWindowForDisplay(display: Display, prefs: Prefs): Boolean {
+        val displayId = display.displayId
+        val displayCtx = context.createDisplayContext(display)
+        val wm = OwnWindows.manager(displayCtx) ?: return false
+        val window = DetachedWindow(displayCtx, wm, displayId, overlayHost, prefs, windowHost)
+        if (!window.show()) return false
+        windowHandles[displayId] = window
+        // The display's page: the one a window before this left, or a new
+        // one at its idle prompt.
+        val page = detachedPages.getOrPut(displayId) { DetachedPage(displayCtx, wm, displayId, overlayHost) }
+        window.setPage(page.view)
+        Log.i(TAG, "showDetachedWindow[$displayId]")
+        // Controls are on screen: the persisted session record says so, as
+        // an icon's install does.
+        com.playtranslate.capture.SessionMarker.markOn(context)
+        // The error pills keep priority over the controls.
+        errorPills.raise(displayId)
+        CaptureService.instance?.updateForegroundState()
+        CaptureService.instance?.syncIconState()
+        return true
+    }
+
+    private fun removeDetachedWindowForDisplay(displayId: Int, reason: String) {
+        val window = windowHandles.remove(displayId) ?: return
+        Log.i(TAG, "hideDetachedWindow[$displayId]: $reason")
+        window.remove()
+        onControlsRemoved()
+    }
+
+    /** Tear down one display's controls, whichever form is up. */
+    private fun hideControlsForDisplay(displayId: Int, reason: String, endsCapture: Boolean) {
+        hideFloatingIconForDisplay(displayId, reason, endsCapture)
+        removeDetachedWindowForDisplay(displayId, reason)
+        dropDetachedPage(displayId)
+    }
+
+    /** [displayId]'s page is done: a capture into it still on its way never
+     *  lands, and its view-model, lens and Words page are released. */
+    private fun dropDetachedPage(displayId: Int) {
+        if (windowCapture?.displayId == displayId) cancelWindowCapture()
+        detachedPages.remove(displayId)?.release()
+    }
+
+    private fun cancelWindowCapture() {
+        windowCapture?.setup?.cancel()
+        windowCapture = null
+    }
+
+    /**
+     * A capture of [displayId] for its detached window's page. The sheet's
+     * sequence ([showCaptureResultOverlay]) with the page in the sheet's
+     * place: it takes the game screen, takes the clean frame, checks that it
+     * is still the capture and that the display is as it was, configures the
+     * service if it never was (a service the tile or a restore started has
+     * no configuration, and a capture on one fails), applies the region, and
+     * only then hands the session to the page. Until the frame is in the page
+     * does not change: a repaint of ours just before a capture can be served
+     * as its clean frame on whole-screen MediaProjection. The window itself
+     * is taken out of the frame by the host's blanking, like the icon.
+     *
+     * With no service the press is lost and the next one finds it, as for
+     * the icon's gestures ([windowHost] started it).
+     */
+    private fun captureIntoWindow(displayId: Int, region: RegionEntry, page: DetachedPage) {
+        endCaptures(CaptureTakeover.WINDOW_CAPTURE)
+        iconHandles.values.forEach { it.dragPause.settle(resumeLive = false) }
+        dismissAllDragLookupPopups()
+        val svc = CaptureService.instance ?: return
+        val launchGeometry = context.displayGeometryOf(displayId) ?: return
+        val capture = WindowCapture(displayId)
+        windowCapture = capture
+        capture.setup = scope.launch {
+            FrameReaders.warm(Prefs(context).sourceLangId, deviceOnly = false)
+            val frame = CaptureBackendResolver.active().captureSource?.requestClean(displayId)
+            val current = windowCapture === capture && detachedPages[displayId] === page
+            if (!current || context.displayGeometryOf(displayId) != launchGeometry) {
+                frame?.bitmap?.recycle()
+                if (windowCapture === capture) windowCapture = null
+                return@launch
+            }
+            windowCapture = null
+            // Not configureSaved: it resets region overrides to the saved
+            // selection and tells every results page to go idle, on every
+            // capture.
+            svc.configureSavedIfNeeded(displayId)
+            if (svc.activeRegionForDisplay(displayId) != region) svc.configureOverride(displayId, region)
+            // The page paints no boxes, so a hidden translation section can
+            // put the backend call off (TranslationResultActivity's rule).
+            // The service consumes and recycles the frame.
+            page.follow(
+                if (frame != null) svc.processScreenshot(frame, displayId, allowDeferTranslation = true)
+                else svc.captureOnce(displayId, allowDeferTranslation = true),
+            )
+        }
+    }
+
+    /**
+     * The icon on [displayId] becomes the window, from the quick settings'
+     * Detach row. Auto-translate and the window never share the screen in
+     * this build ([dockWindowsForLiveStart] is the other half), so a session
+     * running or starting stops first, and nothing a lens paused restarts it.
+     */
+    private fun detachControls(displayId: Int) {
+        cancelLensResumes()
+        val svc = CaptureService.instance
+        if (svc != null && (svc.isLive || svc.isLiveStartPending)) stopLiveRouted()
+        Prefs(context).setControlsForm(displayId, ControlsForm.WINDOW)
+        applyControlsForms()
+    }
+
+    /**
+     * The window on [displayId] becomes the icon again: the bar's Minimize
+     * ([slot] null, the icon returns to its saved slot) or the dock gesture,
+     * which names the slot the finger was at.
+     */
+    private fun dockControls(displayId: Int, slot: IconPosition?) {
+        val prefs = Prefs(context)
+        slot?.let { prefs.setIconPositionForDisplay(displayId, it) }
+        prefs.setControlsForm(displayId, ControlsForm.ICON)
+        applyControlsForms()
+    }
+
+    /**
+     * Auto-translate is starting ([CaptureService.startLive], the one
+     * function every start passes): every display whose controls were left
+     * as the window goes back to the icon, whether the window is up or the
+     * icon is standing in for it, and stays there. Auto-translate then runs
+     * as it does from the icon; nothing brings the window back by itself. A
+     * start that fails afterwards (consent refused) leaves the icon too.
+     */
+    fun dockWindowsForLiveStart() {
+        val prefs = Prefs(context)
+        val ids = prefs.displaysWithWindowForm()
+        if (ids.isEmpty()) return
+        for (id in ids) prefs.setControlsForm(id, ControlsForm.ICON)
+        applyControlsForms()
+    }
+
+    /** Whether [displayId]'s icon offers Detach: the window could show
+     *  there now. That alone covers an icon standing in for the window: it
+     *  stands in exactly where the window cannot show. */
+    private fun offersDetach(displayId: Int): Boolean =
+        shownControlsForm(
+            ControlsForm.WINDOW,
+            effectivelyOneScreen = effectivelySingleScreen(),
+            ownActivityInFront = OwnActivities.anyOn(displayId),
+            regionEditorOpen = regionController.regionEditorDisplayId == displayId,
+        ) == ControlsForm.WINDOW
+
+    /** What the detached window's controls do: the icon menu's actions. */
+    private val windowHost = object : DetachedWindow.Host {
+        private fun display(displayId: Int): Display? =
+            (context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager).getDisplay(displayId)
+
+        /** The icon's gestures' own start of a service that is not up: the
+         *  start is asynchronous, so this press is lost and the next one
+         *  finds the service (see the icon's ensureService). */
+        private fun ensureService() {
+            if (CaptureService.instance == null) {
+                CaptureLifecycle.startCaptureServicePlain(context, "window control")
+            }
+        }
+
+        override fun onCapture(displayId: Int) {
+            ensureService()
+            captureCurrentRegionForDisplay(displayId)
+        }
+
+        override fun onToggleAuto(displayId: Int) {
+            ensureService()
+            toggleLiveFromOverlay()
+        }
+
+        override fun onEditRegion(displayId: Int) {
+            display(displayId)?.let { regionController.showRegionEditor(it) }
+        }
+
+        override fun onMinimize(displayId: Int) = dockControls(displayId, slot = null)
+
+        override fun onExit(displayId: Int) {
+            display(displayId)?.let { showHideConfirmAlert(it) }
+        }
+
+        override fun onDocked(displayId: Int, side: DetachedWindowGeometry.Side, fingerY: Int) {
+            val env = overlayHost.environment(displayId)
+            val edge =
+                if (side == DetachedWindowGeometry.Side.LEFT) FloatingOverlayIcon.Edge.LEFT
+                else FloatingOverlayIcon.Edge.RIGHT
+            // The icon's own slot arithmetic, so it lands where its drag
+            // would have put it for a release at this height.
+            val fraction = if (env == null) IconPosition.DEFAULT.fraction else IconDock.fraction(
+                fingerY, env.geometry.height, env.covered,
+                (IconDock.GESTURE_INSET_DP * context.resources.displayMetrics.density).toInt(),
+            )
+            dockControls(displayId, IconPosition(edge.ordinal, fraction))
+        }
+
+        override fun onTouched(displayId: Int) {
+            CaptureService.instance?.lastInteractedDisplayId = displayId
+            DimController.notifyInteraction()
+        }
+
+        override fun quickSettings(displayId: Int, leave: () -> Unit): List<QuickSetting> =
+            display(displayId)?.let { quickSettingsFor(it, leave) } ?: emptyList()
+
+        override fun regionIsFullScreen(displayId: Int): Boolean =
+            CaptureService.instance?.activeRegionForDisplay(displayId)?.isFullScreen ?: true
+
+        override fun exitTurnsOff(): Boolean = CaptureLifecycle.hasActivateControl(context)
     }
 
     /** Tear down every floating icon. [endsCapture] says whether capture
@@ -2068,10 +2426,10 @@ class OverlayUiController(
             // (updateForegroundState), after a possible consent prompt.
             sheetCapture?.pause?.cancelResume()
         }
-        if (iconHandles.isEmpty()) return
+        if (!hasControlsOnScreen) return
         Log.i(TAG, "hideFloatingIcon (all): $reason")
-        val ids = iconHandles.keys.toList()
-        for (id in ids) hideFloatingIconForDisplay(id, reason, endsCapture)
+        val ids = (iconHandles.keys + windowHandles.keys).toList()
+        for (id in ids) hideControlsForDisplay(id, reason, endsCapture)
     }
 
     /** "Hide for Now": tear the icons down AND suppress them for the rest of
@@ -2150,68 +2508,18 @@ class OverlayUiController(
         menu.isLiveMode = CaptureService.instance?.isLive == true
         menu.captureHighlighted = captureIsPreferredPrimary
 
-        // Expanded settings-panel table: data + row actions.
-        val languageName = prefs.sourceLangId.displayName()
-        // The reader captures go to: PlayTranslate Cloud while its OCR switch
-        // is on (the selection; the strip above says whether the next capture
-        // would reach it), else the selected device engine.
-        val ocrName =
-            if (PtCloudService.config.ocrEnabled) PtCloudService.DISPLAY_NAME
-            else OcrModelManager.selectedBackend(context, prefs.sourceLangId)?.ocrLabel(context) ?: "ML Kit"
-        val overlayValue = if (hintKind != HintTextKind.NONE)
-            overlayModeLabel(prefs.overlayMode, hintKind) else null
-        menu.onSelectLanguage = {
-            dismissFloatingMenu()
-            openGameLanguagePicker(display.displayId)
-        }
-        menu.onSelectOcr = {
-            // Show the picker over the still-open menu so its holdActive keeps
-            // live capture paused. The menu dismisses only if a different engine
-            // is chosen (see showOcrPicker); Cancel/same-engine returns here.
-            showOcrPicker(display, prefs.sourceLangId)
-        }
-        // MangaOCR quick toggle: only when the pack is installed and the source
-        // language can use it (JA + MNN abi) — mirrors the settings cell's gates.
-        // Flips the pref in place via the one write path (no dialog, pack kept).
-        val mangaOcrStateLabel = { on: Boolean ->
-            context.getString(
-                if (on) R.string.capture_lifecycle_state_on else R.string.capture_lifecycle_state_off
+        // Expanded settings-panel table: the quick settings' rows.
+        menu.setPanelRows(
+            quickSettingsFor(
+                display,
+                leave = { dismissFloatingMenu() },
+                // Keep the auto-translate button's hint label in sync (Auto
+                // Furigana / Auto Pinyin / Auto Translate); it's hidden while
+                // the panel is open and shows the new label on collapse.
+                onOverlayModeChanged = { next -> menu.hintModeLabel = hintModeLabelFor(next, hintKind) },
+                offersDetach = offersDetach(display.displayId),
             )
-        }
-        val mangaOcrValue = if (
-            prefs.sourceLangId == SourceLangId.JA &&
-            OcrModelManager.isMnnAvailable() &&
-            MangaOcrProvisioning.helper().isInstalled(context)
-        ) mangaOcrStateLabel(prefs.useMangaOcr) else null
-        menu.onToggleMangaOcr = {
-            val on = !Prefs(context).useMangaOcr
-            MangaOcrProvisioning.setEnabled(context, on, scope)
-            menu.setMangaOcrValue(mangaOcrStateLabel(on))
-        }
-        menu.onCycleOverlayMode = {
-            val next = nextOverlayMode(prefs)
-            // A running session switches with the row, as it does for the
-            // icon's swap and the tap hotkeys, so the saved mode is always the
-            // one on screen: those decide from it. The rebuild happens while
-            // the menu keeps live mode paused, so nothing captures until the
-            // menu closes, whichever way it closes.
-            val svc = CaptureService.instance
-            if (svc?.isLive == true) {
-                switchLiveOverlayMode(svc, next, "menu_overlays_row")
-            } else {
-                prefs.overlayMode = next
-            }
-            menu.setOverlayModeValue(overlayModeLabel(next, hintKind))
-            // Keep the auto-translate button's hint label in sync (Auto Furigana
-            // / Auto Pinyin / Auto Translate); it's hidden while the panel is
-            // open and shows the new label on collapse.
-            menu.hintModeLabel = hintModeLabelFor(next, hintKind)
-        }
-        menu.onOpenApp = {
-            dismissFloatingMenu()
-            sendMainActivityIntent(MainActivity.ACTION_OPEN_SETTINGS)
-        }
-        menu.setPanelData(languageName, ocrName, overlayValue, mangaOcrValue)
+        )
         menu.setDegradedWarning(
             CaptureService.instance?.degradationState?.value
                 ?: com.playtranslate.ui.DegradedWarningKind.None,
@@ -2378,9 +2686,119 @@ class OverlayUiController(
             when (hintKind) { HintTextKind.PINYIN -> "Pinyin"; else -> "Furigana" }
         } else null
 
+    /**
+     * The quick settings' rows for [display]: the panel behind the quick
+     * menu's gear and the detached window's Settings popover list the same
+     * rows with the same actions, built here once. [leave] closes the host's
+     * own panel where a row hands over to another surface (a picker page, a
+     * download page, the app); [onOverlayModeChanged] is the host's own
+     * follow-up to the Overlays row.
+     */
+    private fun quickSettingsFor(
+        display: Display,
+        leave: () -> Unit,
+        onOverlayModeChanged: (OverlayMode) -> Unit = {},
+        offersDetach: Boolean = false,
+    ): List<QuickSetting> {
+        val prefs = Prefs(context)
+        val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
+        val rows = mutableListOf<QuickSetting>()
+        rows += QuickSetting(
+            QuickSetting.Id.LANGUAGE,
+            context.getString(R.string.floating_menu_panel_language),
+            prefs.sourceLangId.displayName(),
+        ) {
+            leave()
+            openGameLanguagePicker(display.displayId)
+        }
+        // The reader captures go to: PlayTranslate Cloud while its OCR switch
+        // is on (the selection; the menu's strip says whether the next capture
+        // would reach it), else the selected device engine.
+        val ocrName =
+            if (PtCloudService.config.ocrEnabled) PtCloudService.DISPLAY_NAME
+            else OcrModelManager.selectedBackend(context, prefs.sourceLangId)?.ocrLabel(context) ?: "ML Kit"
+        rows += QuickSetting(
+            QuickSetting.Id.OCR, context.getString(R.string.floating_menu_panel_ocr), ocrName,
+        ) {
+            // Show the picker over the still-open panel (the menu's holdActive
+            // keeps live capture paused). The host leaves only if a different
+            // engine is chosen (see showOcrPicker); Cancel/same-engine returns
+            // to it.
+            showOcrPicker(display, prefs.sourceLangId, leave)
+        }
+        // MangaOCR quick toggle: only when the pack is installed and the source
+        // language can use it (JA + MNN abi) — mirrors the settings cell's gates.
+        // Flips the pref in place via the one write path (no dialog, pack kept).
+        val mangaOcrStateLabel = { on: Boolean ->
+            context.getString(
+                if (on) R.string.capture_lifecycle_state_on else R.string.capture_lifecycle_state_off
+            )
+        }
+        if (
+            prefs.sourceLangId == SourceLangId.JA &&
+            OcrModelManager.isMnnAvailable() &&
+            MangaOcrProvisioning.helper().isInstalled(context)
+        ) {
+            rows += QuickSetting(
+                QuickSetting.Id.MANGA_OCR,
+                context.getString(R.string.settings_ocr_use_manga_title),
+                mangaOcrStateLabel(prefs.useMangaOcr),
+            ) { row ->
+                val on = !Prefs(context).useMangaOcr
+                MangaOcrProvisioning.setEnabled(context, on, scope)
+                row.value = mangaOcrStateLabel(on)
+            }
+        }
+        // Overlays row: the current overlay mode as the value; tapping cycles
+        // the available modes. Shown only when the language offers more than one.
+        if (hintKind != HintTextKind.NONE) {
+            rows += QuickSetting(
+                QuickSetting.Id.OVERLAYS,
+                context.getString(R.string.floating_menu_panel_overlays),
+                overlayModeLabel(prefs.overlayMode, hintKind),
+            ) { row ->
+                val next = nextOverlayMode(prefs)
+                // A running session switches with the row, as it does for the
+                // icon's swap and the tap hotkeys, so the saved mode is always the
+                // one on screen: those decide from it. The rebuild happens while
+                // the menu keeps live mode paused, so nothing captures until the
+                // menu closes, whichever way it closes.
+                val svc = CaptureService.instance
+                if (svc?.isLive == true) {
+                    switchLiveOverlayMode(svc, next, "menu_overlays_row")
+                } else {
+                    prefs.overlayMode = next
+                }
+                row.value = overlayModeLabel(next, hintKind)
+                onOverlayModeChanged(next)
+            }
+        }
+        rows += QuickSetting(
+            QuickSetting.Id.OPEN_APP,
+            context.getString(R.string.floating_menu_panel_open_app, context.getString(R.string.app_name)),
+            icon = R.drawable.ic_open_in_new,
+        ) {
+            leave()
+            sendMainActivityIntent(MainActivity.ACTION_OPEN_SETTINGS)
+        }
+        // The icon's way into its other form ([detachControls]).
+        if (offersDetach) {
+            rows += QuickSetting(
+                QuickSetting.Id.DETACH,
+                context.getString(R.string.floating_menu_panel_detach),
+                icon = R.drawable.ic_float_landscape_2,
+            ) {
+                leave()
+                detachControls(display.displayId)
+            }
+        }
+        return rows
+    }
+
     /** Open the "Choose OCR tool" OverlayAlert for [id] on [display], stacked
-     *  over the still-open floating menu so its holdActive keeps live capture
-     *  paused. There's no live result to re-OCR here, so a different pick
+     *  over the still-open quick settings (the floating menu's holdActive keeps
+     *  live capture paused; [leave] closes that host). There's no live result
+     *  to re-OCR here, so a different pick
      *  dismisses the menu (clearing holdActive) and refreshes live mode, as a
      *  tap outside the menu does: the pick is persisted by OcrPicker (an
      *  engine's token, or PlayTranslate Cloud's OCR switch, whose own gesture
@@ -2391,7 +2809,7 @@ class OverlayUiController(
      *  cloud while its OCR switch is on (whether the next capture would reach
      *  it is the strip's question), else the selected engine. Cancel or
      *  re-picking the highlighted entry leaves the menu open underneath. */
-    private fun showOcrPicker(display: Display, id: SourceLangId) {
+    private fun showOcrPicker(display: Display, id: SourceLangId, leave: () -> Unit) {
         val displayCtx = context.createDisplayContext(display)
         val wm = OwnWindows.manager(displayCtx) ?: return
         val themed = overlayThemedContext(displayCtx)
@@ -2399,7 +2817,7 @@ class OverlayUiController(
             if (PtCloudService.config.ocrEnabled) PtCloudService.ID
             else OcrModelManager.selectedBackend(context, id)?.selectionToken ?: ""
         val reread: () -> Unit = {
-            dismissFloatingMenu()
+            leave()
             CaptureService.instance?.refreshLiveOverlay()
         }
         OcrPicker.populate(
@@ -2409,7 +2827,7 @@ class OverlayUiController(
             applied,
             onReOcr = reread,
             onDownload = { backend ->
-                dismissFloatingMenu()
+                leave()
                 launchOnOverlayDisplay(
                     CaptureOverlaySettingsActivity.downloadIntent(
                         context.applicationContext, id, backend.selectionToken
@@ -2420,7 +2838,7 @@ class OverlayUiController(
             cloud = OcrPicker.CloudChoice(
                 onReOcr = reread,
                 onOpenPage = {
-                    dismissFloatingMenu()
+                    leave()
                     launchOnOverlayDisplay(
                         Intent(context.applicationContext, PtCloudSettingsActivity::class.java),
                         display.displayId,
@@ -3017,6 +3435,20 @@ class OverlayUiController(
         // Left up, the menu would sit over the capture, still holding live
         // capture paused.
         dismissFloatingMenu()
+        // A display whose controls are the detached window showing its page
+        // reads the capture there. Not a capture that asked for a mode of
+        // its own (tap-to-lookup's Definitions): the window draws nothing
+        // over the game, so that one keeps the sheet. Narrowed to its
+        // capture button the window is a capture button like the icon's,
+        // and its captures take the sheet too. Auto-translate never runs
+        // with a window up, so there is nothing to stop first.
+        if (modeOverride == null) {
+            val page = detachedPages[displayId]
+            if (page != null && windowHandles[displayId]?.showsPage == true) {
+                captureIntoWindow(displayId, region, page)
+                return false
+            }
+        }
         if (effectivelySingleScreen()) {
             // The capture takes over what the surfaces it replaces paused
             // (the capture before it, the icons' drag lenses), so nothing
@@ -3089,8 +3521,10 @@ class OverlayUiController(
     ) {
         endSheetCapture(sheetCapture)
         // As it replaces any capture before it: one the app was reading
-        // (the app went behind since) never comes up over this one.
+        // (the app went behind since) never comes up over this one, and one
+        // on its way into a detached window never lands.
         appCapture = null
+        cancelWindowCapture()
         val capture = SheetCapture(displayId, modeOverride, pause)
         sheetCapture = capture
         val svc = CaptureService.instance ?: run {
@@ -3281,6 +3715,13 @@ class OverlayUiController(
         val window = captureWindow
         if (window != null && takeover.endsWindow && ends(shown = true, captureWindowDisplayId, window.mode)) {
             dismissCapturePresentation()
+        }
+        // A capture into a detached window ends only while on its way: once
+        // its frame is in it is the page's result, and nothing here ends a
+        // page (its own rules do: a change of language, the controls going).
+        // It is never in Definitions.
+        windowCapture?.let { capture ->
+            if (ends(shown = false, capture.displayId, OverlayMode.TRANSLATION)) cancelWindowCapture()
         }
     }
 
