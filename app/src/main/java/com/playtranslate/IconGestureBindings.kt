@@ -53,19 +53,27 @@ private object SwapOverlayMode {
         else R.string.icon_action_swap_furigana
 }
 
-/** Drag the icon across the game screen. The move, end and cancel legs of
- *  the gesture route to the lookup lens unconditionally while this is the
- *  only candidate; the start leg's `when` is the compile-time reminder. */
+/** Drag the icon across the game screen. A drag's action is latched at its
+ *  start (the start leg's `when` is the compile-time reminder), and its
+ *  move, end and cancel legs go to whichever began. */
 enum class DragAction : IconAction {
     /** The magnifier lens: hover over a word for its definition. */
-    LOOKUP_WORDS;
+    LOOKUP_WORDS,
+
+    /** The icon's other form: dragged away from its side the icon becomes
+     *  the detached window under the finger, and dragged back it is the icon
+     *  again; the release keeps whichever it then is. Where the window
+     *  cannot show (the icon is standing in for it, or the app is in front
+     *  on a second screen) the drag is the lens. */
+    PULL_OUT_WINDOW;
 
     override fun titleRes(hint: HintTextKind): Int = when (this) {
         LOOKUP_WORDS -> R.string.icon_action_lookup_words
+        PULL_OUT_WINDOW -> R.string.icon_action_pull_out_window
     }
 
     override fun isOfferedOn(hint: HintTextKind): Boolean = when (this) {
-        LOOKUP_WORDS -> true
+        LOOKUP_WORDS, PULL_OUT_WINDOW -> true
     }
 
     companion object {

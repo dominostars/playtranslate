@@ -1231,6 +1231,11 @@
          row and the cell's third column, e.g. "Hold  Open the quick menu". -->
     <!-- Drag: the magnifier lens over game text. -->
     <string name="icon_action_lookup_words">Hover over a word for its definition</string>
+    <!-- Drag: pulling the floating icon away from the screen's edge turns it
+         into the results window (a floating window over the game that shows
+         each capture's translation); dragging it back to the edge turns it
+         into the icon again. "Pull out" as of a drawer. -->
+    <string name="icon_action_pull_out_window">Pull out the results window</string>
     <!-- Hold: the hold-to-preview one-shot on the game screen. -->
     <string name="icon_action_show_translations">Show translations on screen</string>
     <!-- Hold or Tap: open the floating icon's menu. "Quick menu" is the

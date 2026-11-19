@@ -11,8 +11,6 @@ import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
@@ -45,6 +43,7 @@ import com.playtranslate.ui.DetachedWindowGeometry.Corner
 import com.playtranslate.ui.DetachedWindowGeometry.Frame
 import com.playtranslate.ui.DetachedWindowGeometry.Room
 import com.playtranslate.ui.DetachedWindowGeometry.Side
+import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
@@ -77,11 +76,18 @@ import kotlin.math.sqrt
  * where it left it. The window's own alpha is never written here: that value
  * belongs to capture blanking and the churn gate.
  *
- * Where the user turns the icon into the window or the window back into
- * the icon, the window flies: out of the icon's place as it comes up
- * ([show]) and into it as it goes ([remove]), the card growing or shrinking
- * and fading on the way ([fly]). It is this window that moves, as the icon's
- * own snap moves the icon's; no window is added for it.
+ * The window and the icon are two forms of one thing, and where the user
+ * turns one into the other the window shows it: it is somewhere between
+ * itself on its frame and the icon in the icon's place ([away]), the card
+ * shrinking and fading as a picture of the icon comes up in its middle
+ * ([render]). It flies out of the icon's place as Detach brings it up
+ * ([show]) and into it as Minimize takes it down ([remove]); and under a
+ * finger it goes back and forth for as long as the finger stays down, the
+ * release settling whichever it then is: a move carried on past a side of
+ * the screen docks the window there ([DetachedWindowGeometry.dockedSide]),
+ * and an icon's drag can pull the window out of it ([showPulled]). It is
+ * this window that moves, as the icon's own snap moves the icon's; no
+ * window is added for it.
  *
  * Gestures, one arbiter ([Root]), and the corners' own touch pads:
  *  - a bottom corner resizes ([DetachedWindowGeometry.resized]), from a
@@ -98,9 +104,10 @@ import kotlin.math.sqrt
  *    list's page is found here. All of the Words list is left alone, not
  *    only its wide tables: a dictionary's own style sheet can make any box
  *    scroll sideways, and the page cannot list those;
- *  - during a move, a finger kept at a side of the room for [DOCK_HOLD_MS]
- *    arms the dock: the card dims, and the release hands the side to the host
- *    ([Host.onDocked]). Leaving the side disarms it.
+ *  - a move carried on past a side, where the card stops, docks the window
+ *    there: it turns into the icon, at the finger's height, and back into
+ *    the window if the finger comes back out; a release while docked hands
+ *    the side to the host ([Host.onDocked]).
  */
 internal class DetachedWindow(
     displayCtx: Context,
@@ -120,7 +127,7 @@ internal class DetachedWindow(
         fun onMinimize(displayId: Int)
         fun onExit(displayId: Int)
 
-        /** The dock gesture ended armed at [side], the finger at [fingerY]. */
+        /** A move was let go docked at [side], the finger at [fingerY]. */
         fun onDocked(displayId: Int, side: Side, fingerY: Int)
 
         /** Any touch went down on the window. */
@@ -402,6 +409,19 @@ internal class DetachedWindow(
      *  of [from] (the icon it takes the place of, in display pixels). False
      *  when the add failed. */
     fun show(from: Rect? = null): Boolean {
+        if (!addToDisplay()) return false
+        if (from != null) {
+            // In the same turn as the add, so the first frame drawn is
+            // already the flight's first.
+            morphIcon = from
+            away = 1f
+            render()
+            morphTo(0f)
+        }
+        return true
+    }
+
+    private fun addToDisplay(): Boolean {
         added = overlayHost.addOverlayWindow(
             root, wm, params, displayId, OverlayPlacement.Placed(::layoutAtRest),
         )
@@ -410,9 +430,6 @@ internal class DetachedWindow(
             // After the window, so above it: a pad's inner part lies over
             // the card's corner.
             for (pad in pads) pad.show()
-            // In the same turn as the add, so the first frame drawn is
-            // already the flight's first.
-            if (from != null) fly(from, arriving = true) { overlayHost.invalidateLayout(displayId) }
         }
         return added
     }
@@ -423,17 +440,19 @@ internal class DetachedWindow(
      * window is, and everything it holds of the page, ends now all the same,
      * and only a picture of the card stays up for the flight into the icon:
      * the page is its owner's to release the moment the window is done with
-     * it, so nothing of it may be drawn after this returns.
+     * it, so nothing of it may be drawn after this returns. A window that
+     * already shows as the icon (a dock let go) has no flight left to make.
      */
     fun remove(to: Rect? = null) {
         if (leaving) return
-        cancelFlight()
-        endGesture()
+        val atIcon = away == 1f && flight == null
+        clearGesture()
         imeWatcher.detach()
-        val picture = if (to != null && added) pictureOfCard() else null
+        val picture = if (to != null && added && !atIcon) pictureOfCard() else null
         attachPage(null)
         for (pad in pads) pad.remove()
-        if (picture == null || to == null) {
+        if (to == null || picture == null) {
+            stopFlight()
             takeDown()
             return
         }
@@ -446,7 +465,8 @@ internal class DetachedWindow(
             },
             FrameLayout.LayoutParams(MATCH, MATCH),
         )
-        fly(to, arriving = false, ::takeDown)
+        morphIcon = to
+        morphTo(1f)
     }
 
     private fun takeDown() {
@@ -454,94 +474,148 @@ internal class DetachedWindow(
         added = false
     }
 
-    // ── The flight to and from the icon ───────────────────────────────────
+    // ── Between the window and the icon ───────────────────────────────────
 
-    /** The flight under way, or null. While one is, the window is the
-     *  flight's to place: the host's layout pass and every touch wait. */
+    /** How far the window is from being itself: 0 the window on its
+     *  [frame], 1 the icon in [morphIcon]'s place. Anything but 0 and the
+     *  window is [render]'s to place: the host's layout pass waits. */
+    private var away = 0f
+
+    /** The icon's place, in display pixels: where the window flies out of
+     *  or into, or where a docked move's finger has the icon now. */
+    private var morphIcon: Rect? = null
+
+    /** The run of [away] under way, towards [morphTarget], or null. */
     private var flight: ValueAnimator? = null
+    private var morphTarget = 0f
 
     /** The window is on its way out ([remove] with a flight): it takes no
      *  touch, and it is not taken down twice. */
     private var leaving = false
 
-    /** The card's alpha as a flight out begins: dimmed where the dock
-     *  gesture had dimmed it, so its release does not flash it back. */
-    private var leavingAlpha = 1f
+    /** The icon as the window shows it while it is, or is turning into,
+     *  the icon: the icon's own view, drawing what the icon draws at its
+     *  dock, as the Settings preview uses it. In the tree only while it
+     *  shows, so its idle timers never run under a window at rest. */
+    private val ghost = FloatingOverlayIcon(ctx)
+    private val ghostHolder = object : FrameLayout(ctx) {
+        // A picture: the gesture is the window's own.
+        override fun dispatchTouchEvent(ev: MotionEvent): Boolean = false
+    }.apply { addView(ghost, FrameLayout.LayoutParams(ghost.viewSizePx, ghost.viewSizePx)) }
+
+    /** Where the icon rests at [side] for a finger at height [fingerY]: the
+     *  icon's own dock arithmetic ([IconDock]), so the picture of it stands
+     *  exactly where the icon will. Null with no display to place it on. */
+    private fun iconPlaceAt(side: Side, fingerY: Int): Rect? {
+        val env = overlayHost.environment(displayId) ?: return null
+        val inset = (IconDock.GESTURE_INSET_DP * density).toInt()
+        val fraction = IconDock.fraction(fingerY, env.geometry.height, env.covered, inset)
+        val place = IconDock.place(
+            env.geometry.width, env.geometry.height, env.covered,
+            side == Side.LEFT, fraction, ghost.viewSizePx, inset,
+        )
+        return Rect(place.x, place.y, place.x + ghost.viewSizePx, place.y + ghost.viewSizePx)
+    }
 
     /**
-     * Fly between the card's place and [icon]: the window moves so that the
-     * card's centre runs between the two centres, and the card scales
-     * between its own size and the icon's and fades, in as it arrives and
-     * out as it leaves. The window keeps its size throughout (nothing inside
-     * is laid out again for a frame of this); only its place is written, as
-     * a drag writes it. [then] runs once the flight is over, also where it
-     * never ran (animations turned off end at once).
+     * Show the window as far [away] from itself as it is: the window is
+     * placed so that the card's centre lies between its own and the
+     * icon's, and the card is scaled between its own size and the icon's.
+     * The card is solid for the first half of the way and gone at the
+     * icon; the picture of the icon comes up over the second half. The
+     * window keeps its size throughout (nothing inside is laid out again
+     * for a frame of this); only its place is written, as a drag writes it.
      */
-    private fun fly(icon: Rect, arriving: Boolean, then: () -> Unit) {
-        val at = frame
-        if (at == null || !added) {
-            then()
-            return
-        }
-        val homeX = at.x + at.w / 2f
-        val homeY = at.y + at.h / 2f
-        val smallX = (icon.width().toFloat() / at.w).coerceAtMost(1f)
-        val smallY = (icon.height().toFloat() / at.h).coerceAtMost(1f)
-        val startAlpha = if (arriving) 0f else leavingAlpha
-        // How far the card is from the icon: 1 at the icon, 0 at home.
-        fun apply(away: Float) {
+    private fun render() {
+        val at = frame ?: return
+        val icon = morphIcon?.takeIf { away != 0f }
+        if (icon == null) {
+            params.x = at.x - marginPx
+            params.y = at.y - marginPx
+            card.scaleX = 1f
+            card.scaleY = 1f
+            card.alpha = 1f
+            if (ghostHolder.parent != null) root.removeView(ghostHolder)
+        } else {
+            val homeX = at.x + at.w / 2f
+            val homeY = at.y + at.h / 2f
             val cx = homeX + (icon.exactCenterX() - homeX) * away
             val cy = homeY + (icon.exactCenterY() - homeY) * away
             params.x = (cx - at.w / 2f).roundToInt() - marginPx
             params.y = (cy - at.h / 2f).roundToInt() - marginPx
             card.pivotX = at.w / 2f
             card.pivotY = at.h / 2f
-            card.scaleX = 1f + (smallX - 1f) * away
-            card.scaleY = 1f + (smallY - 1f) * away
-            // Arriving, the card is solid by half way; leaving, it fades
-            // over the whole flight from where it stood.
-            card.alpha = if (arriving) ((1f - away) * 2f).coerceAtMost(1f) else startAlpha * (1f - away)
-            if (!added) return
-            try {
-                wm.updateViewLayout(root, params)
-            } catch (e: Exception) {
-                Log.w(TAG, "window[$displayId]: flight update failed: ${e.message}")
+            card.scaleX = 1f + ((icon.width().toFloat() / at.w).coerceAtMost(1f) - 1f) * away
+            card.scaleY = 1f + ((icon.height().toFloat() / at.h).coerceAtMost(1f) - 1f) * away
+            card.alpha = ((1f - away) * 2f).coerceIn(0f, 1f)
+            if (ghostHolder.parent == null) {
+                root.addView(
+                    ghostHolder,
+                    FrameLayout.LayoutParams(ghost.viewSizePx, ghost.viewSizePx, Gravity.CENTER),
+                )
             }
+            // The half disc the icon shows faces the screen from its side.
+            val edge = if (icon.exactCenterX() < homeX) FloatingOverlayIcon.Edge.LEFT else FloatingOverlayIcon.Edge.RIGHT
+            if (ghost.currentEdge != edge) ghost.setSlot(edge.ordinal, 0.5f)
+            ghostHolder.alpha = ((away - 0.5f) * 2f).coerceIn(0f, 1f)
         }
-        val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = FLIGHT_MS
+        if (!added) return
+        try {
+            wm.updateViewLayout(root, params)
+        } catch (e: Exception) {
+            Log.w(TAG, "window[$displayId]: place update failed: ${e.message}")
+        }
+    }
+
+    /** Run [away] to [target] from where it is, in the part of [FLIGHT_MS]
+     *  that is left of the way. Asked again for where it is already going,
+     *  it goes on; with animations turned off it is there at once. */
+    private fun morphTo(target: Float) {
+        if (flight != null && morphTarget == target) return
+        stopFlight()
+        morphTarget = target
+        if (away == target) {
+            landed()
+            return
+        }
+        val animator = ValueAnimator.ofFloat(away, target).apply {
+            duration = (FLIGHT_MS * abs(target - away)).toLong().coerceAtLeast(1L)
             interpolator = PathInterpolator(0.4f, 0f, 0.2f, 1f)
-            addUpdateListener { apply(if (arriving) 1f - it.animatedFraction else it.animatedFraction) }
+            addUpdateListener {
+                away = it.animatedValue as Float
+                render()
+            }
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
                     if (flight !== animation) return
                     flight = null
-                    if (arriving) settle()
-                    root.invalidate()
-                    then()
+                    away = target
+                    render()
+                    landed()
                 }
             })
         }
         flight = animator
         root.invalidate()
-        apply(if (arriving) 1f else 0f)
         animator.start()
     }
 
-    /** The card as it stands at rest: full size, solid, in its own place
-     *  (the host's next layout pass writes the window's). */
-    private fun settle() {
-        card.scaleX = 1f
-        card.scaleY = 1f
-        card.alpha = 1f
+    /** A run of [away] ended where it was going: a window on its way out
+     *  is taken down, and one back on its frame with no finger on it is at
+     *  rest, the host's to lay out again (its corner targets with it). */
+    private fun landed() {
+        root.invalidate()
+        when {
+            leaving -> takeDown()
+            away == 0f && gesture == null -> overlayHost.invalidateLayout(displayId)
+        }
     }
 
-    /** Stop a flight in where it is: the window is at rest from here. */
-    private fun cancelFlight() {
+    /** Stop a run of [away] where it is, landing nowhere. */
+    private fun stopFlight() {
         val running = flight ?: return
         flight = null
         running.cancel()
-        settle()
     }
 
     /**
@@ -645,7 +719,7 @@ internal class DetachedWindow(
      * it; the gesture's end saves that place, and the next pass reads it.
      */
     fun layoutAtRest(env: OverlayEnvironment, p: WindowManager.LayoutParams) {
-        if (gesture != null || flight != null || leaving) return
+        if (gesture != null || away != 0f || leaving) return
         val room = g.room(env.geometry.width, env.geometry.height, env.barRoom)
         val landscape = env.geometry.width >= env.geometry.height
         val saved = prefs.detachedStateForDisplay(displayId).bounds(landscape)
@@ -717,8 +791,12 @@ internal class DetachedWindow(
 
     private sealed class Gesture(val start: Frame) {
         class Move(start: Frame) : Gesture(start) {
-            var side: Side? = null
-            var armed = false
+            /** The side the move has docked the window on, or null while
+             *  it is the window ([DetachedWindowGeometry.dockedSide]). */
+            var docked: Side? = null
+
+            /** The finger's height at the last step. */
+            var fingerY = 0
         }
 
         class Resize(start: Frame, val corner: Corner) : Gesture(start)
@@ -731,26 +809,13 @@ internal class DetachedWindow(
     private var downX = 0f
     private var downY = 0f
 
-    /** The dock's one-second hold. A human-gesture timer, on its own handler
-     *  so it does not wait on the view's attach state. */
-    private val dockTimer = Handler(Looper.getMainLooper())
-
-    private val armDock = Runnable {
-        val move = gesture as? Gesture.Move ?: return@Runnable
-        if (move.side == null) return@Runnable
-        move.armed = true
-        card.alpha = DOCK_ARMED_ALPHA
-        root.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-    }
-
-    /** The system took the touch away: the gesture ends where it stands. */
+    /** The system took the touch away: the gesture ends where it stands,
+     *  and a window it had docked is the window again. */
     private fun cancelGesture() {
-        val ended = gesture != null
-        endGesture()
-        if (ended) {
-            saveBounds()
-            overlayHost.invalidateLayout(displayId)
-        }
+        if (gesture == null) return
+        clearGesture()
+        saveBounds()
+        if (away != 0f) morphTo(0f) else overlayHost.invalidateLayout(displayId)
     }
 
     // ── The corner handles' touch pads ────────────────────────────────────
@@ -783,7 +848,7 @@ internal class DetachedWindow(
                         val start = frame
                         // One gesture at a time: a second finger is not
                         // one, and a window in flight takes none.
-                        active = gesture == null && flight == null && start != null
+                        active = gesture == null && away == 0f && start != null
                         if (active) {
                             downX = ev.rawX
                             downY = ev.rawY
@@ -791,10 +856,10 @@ internal class DetachedWindow(
                             begin(Gesture.Resize(start!!, corner))
                         }
                     }
-                    MotionEvent.ACTION_MOVE -> if (active) drag(ev)
+                    MotionEvent.ACTION_MOVE -> if (active) dragTo(ev.rawX, ev.rawY)
                     MotionEvent.ACTION_UP -> if (active) {
                         active = false
-                        release(ev)
+                        release()
                     }
                     MotionEvent.ACTION_CANCEL -> if (active) {
                         active = false
@@ -881,20 +946,33 @@ internal class DetachedWindow(
         gesture = next
     }
 
-    private fun drag(ev: MotionEvent) {
+    private fun dragTo(rawX: Float, rawY: Float) {
         val gesture = gesture ?: return
         val room = room ?: return
-        val dx = (ev.rawX - downX).roundToInt()
-        val dy = (ev.rawY - downY).roundToInt()
+        val dx = (rawX - downX).roundToInt()
+        val dy = (rawY - downY).roundToInt()
         when (gesture) {
             is Gesture.Move -> {
-                commit(g.moved(gesture.start, dx, dy, room, density))
-                val side = g.dockSide(ev.rawX, room, density)
-                if (side != gesture.side) {
-                    disarm(gesture)
-                    gesture.side = side
-                    if (side != null) dockTimer.postDelayed(armDock, DOCK_HOLD_MS)
+                val home = g.moved(gesture.start, dx, dy, room, density)
+                gesture.fingerY = rawY.roundToInt()
+                // Docked only where there is a place to show the icon.
+                val place = g.dockedSide(gesture.docked, gesture.start, dx, rawX, room, density)
+                    ?.let { side -> iconPlaceAt(side, gesture.fingerY)?.let { side to it } }
+                if (place?.first != gesture.docked) {
+                    gesture.docked = place?.first
+                    root.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                 }
+                if (place == null && away == 0f) {
+                    commit(home)
+                    return
+                }
+                // Between the two: the window's frame is where it would
+                // stand, the icon's place follows the finger's height, and
+                // the run between them goes on from wherever it is.
+                frame = home
+                if (place != null) morphIcon = place.second
+                morphTo(if (place != null) 1f else 0f)
+                render()
             }
             is Gesture.Resize -> {
                 val next = g.resized(gesture.start, gesture.corner, dx, dy, room, density)
@@ -904,40 +982,100 @@ internal class DetachedWindow(
         }
     }
 
-    private fun disarm(move: Gesture.Move) {
-        dockTimer.removeCallbacks(armDock)
-        move.armed = false
-        move.side = null
-        card.alpha = 1f
-    }
-
-    /** The finger lifted: a move armed at a side docks; anything else rests
-     *  where it is, and that place is saved. */
-    private fun release(ev: MotionEvent) {
+    /** The finger lifted: a move let go docked hands its side to the host,
+     *  which puts the icon there; anything else rests where it is, and that
+     *  place is saved. */
+    private fun release() {
         val ended = gesture ?: return
-        val docked = (ended as? Gesture.Move)?.takeIf { it.armed }?.side
-        endGesture()
+        val move = ended as? Gesture.Move
+        val docked = move?.docked
+        clearGesture()
         if (docked != null) {
-            // The card was dimmed as the dock armed: a flight to the icon
-            // goes on from there.
-            leavingAlpha = DOCK_ARMED_ALPHA
-            host.onDocked(displayId, docked, ev.rawY.roundToInt())
-            leavingAlpha = 1f
+            host.onDocked(displayId, docked, move.fingerY)
+            // No icon came of it: the window is the window after all, at
+            // the side it was let go at.
+            if (added && !leaving) {
+                saveBounds()
+                morphTo(0f)
+            }
             return
         }
         saveBounds()
-        overlayHost.invalidateLayout(displayId)
+        // A window still on its way back lays the display out as it lands.
+        if (away == 0f) overlayHost.invalidateLayout(displayId)
     }
 
-    /** End a gesture where it stands, saving nothing: the finger lifted
-     *  ([release] saves), or the display changed under it and the window
-     *  goes back to its rest place. */
+    /** End a gesture where it stands, saving nothing: the display changed
+     *  under it and the window goes back to its rest place, as the window. */
     fun endGesture() {
-        gesture ?: return
+        if (gesture == null) return
+        clearGesture()
+        if (away != 0f && !leaving) morphTo(0f)
+    }
+
+    private fun clearGesture() {
         gesture = null
         claim = Claim.NONE
-        dockTimer.removeCallbacks(armDock)
-        card.alpha = 1f
+    }
+
+    // ── Pulled out of the icon ────────────────────────────────────────────
+
+    /**
+     * Put the window up as the icon at [icon], [side]'s, for a finger that
+     * is on the icon's own window and has begun to drag it: the same move
+     * a finger on the bar makes, begun docked. The finger holds the bar by
+     * its end at the icon's side, so the window comes out from under it as
+     * it leaves the side and goes back in as it returns. The gesture is
+     * the icon's: its steps come through [pullTo], its end through
+     * [pullEnd], and a system cancel is a [remove]. False when the add
+     * failed.
+     */
+    fun showPulled(icon: Rect, side: Side, rawX: Float, rawY: Float): Boolean {
+        if (!addToDisplay()) return false
+        val rest = frame
+        val room = room
+        if (rest == null || room == null) {
+            // No display to lay it out on: nothing to pull.
+            remove()
+            return false
+        }
+        val grab = (PULL_GRAB_DP * density).roundToInt()
+        val start = Frame(
+            x = rawX.roundToInt() - if (side == Side.RIGHT) rest.w - grab else grab,
+            y = rawY.roundToInt() - barPx / 2,
+            w = rest.w,
+            h = rest.h,
+        )
+        downX = rawX
+        downY = rawY
+        gesture = Gesture.Move(start).apply {
+            docked = side
+            fingerY = rawY.roundToInt()
+        }
+        frame = g.moved(start, 0, 0, room, density)
+        morphIcon = icon
+        away = 1f
+        render()
+        return true
+    }
+
+    /** The pulling finger moved. */
+    fun pullTo(rawX: Float, rawY: Float) = dragTo(rawX, rawY)
+
+    /**
+     * The pulling finger lifted. Null when the window was out: it rests
+     * where it is and that place is saved, the window from here on. Else
+     * the side and the height the icon was left at; the window, showing as
+     * that icon, is the caller's to [remove].
+     */
+    fun pullEnd(): Pair<Side, Int>? {
+        val move = gesture as? Gesture.Move
+        val docked = move?.docked
+        clearGesture()
+        if (move != null && docked != null) return docked to move.fingerY
+        saveBounds()
+        if (away == 0f) overlayHost.invalidateLayout(displayId)
+        return null
     }
 
     // ── The bar's popovers ────────────────────────────────────────────────
@@ -1028,7 +1166,10 @@ internal class DetachedWindow(
         override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
             if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
                 if (!leaving) host.onTouched(displayId)
-                ignoring = gesture is Gesture.Resize || flight != null || leaving
+                // A touch that goes down on a window with a gesture under way
+                // is a second one; one on a window between its two forms has
+                // nothing to take hold of.
+                ignoring = gesture != null || away != 0f || leaving
             }
             if (ignoring) return true
             return super.dispatchTouchEvent(ev)
@@ -1058,9 +1199,9 @@ internal class DetachedWindow(
                 MotionEvent.ACTION_MOVE -> {
                     // No child took the touch, so nothing asked to intercept.
                     if (gesture == null && movesNow(ev)) frame?.let { begin(Gesture.Move(it)) }
-                    drag(ev)
+                    dragTo(ev.rawX, ev.rawY)
                 }
-                MotionEvent.ACTION_UP -> release(ev)
+                MotionEvent.ACTION_UP -> release()
                 MotionEvent.ACTION_CANCEL -> cancelGesture()
             }
             return true
@@ -1089,7 +1230,7 @@ internal class DetachedWindow(
             super.dispatchDraw(canvas)
             // In flight the card is scaled inside the window: the handles
             // wait for it to land.
-            if (flight != null || leaving) return
+            if (away != 0f || leaving) return
             val m = marginPx.toFloat()
             val right = width - m
             val bottom = height - m
@@ -1137,14 +1278,14 @@ internal class DetachedWindow(
         const val HANDLE_HIT_INSIDE_DP = 34f
         const val HANDLE_HIT_OUTSIDE_DP = 24f
 
-        /** How long the flight to or from the icon takes. */
+        /** How long the whole way between the window and the icon takes. */
         const val FLIGHT_MS = 220L
 
         /** The most pixels the flight out's picture of the card holds. */
         private const val MAX_PICTURE_PX = 1_500_000f
 
-        /** How long the finger stays at a side before the dock arms. */
-        const val DOCK_HOLD_MS = 1000L
-        private const val DOCK_ARMED_ALPHA = 0.4f
+        /** Where along its bar a window pulled out of the icon is held: this
+         *  far in from the bar's end at the icon's side ([showPulled]). */
+        private const val PULL_GRAB_DP = 28f
     }
 }

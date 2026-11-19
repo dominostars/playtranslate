@@ -37,6 +37,14 @@ internal object DetachedWindowGeometry {
     /** How near a side of the room the finger must be for the dock gesture. */
     const val DOCK_ZONE_DP = 16f
 
+    /** How far past where the card stopped at a side the finger goes on
+     *  before the window docks there, how little of that is left when a
+     *  docked window comes back, and how far from the side the finger is
+     *  by then ([dockedSide]). */
+    const val DOCK_PULL_DP = 48f
+    const val DOCK_RELEASE_DP = 24f
+    const val DOCK_ZONE_OUT_DP = 28f
+
     /** A drag inside the page moves the window only when its sideways travel
      *  is at least this many times its vertical travel. */
     const val SIDEWAYS_RATIO = 2.5f
@@ -153,6 +161,48 @@ internal object DetachedWindowGeometry {
         return when {
             fingerX <= room.left + zone -> Side.LEFT
             fingerX >= room.right - zone -> Side.RIGHT
+            else -> null
+        }
+    }
+
+    /** How far a move of [start] by [dx] would carry the card past [room]'s
+     *  sides, where the card itself stops: positive past the right side,
+     *  negative past the left, 0 while it fits. */
+    fun overdrag(start: Frame, dx: Int, room: Room): Int {
+        val x = start.x + dx
+        return when {
+            x < room.left -> x - room.left
+            x + start.w > room.right -> x + start.w - room.right
+            else -> 0
+        }
+    }
+
+    /**
+     * Which side a move has docked the window on (it shows as the icon
+     * there while the finger is still down), or null while it is the
+     * window. [docked] is what the move was a moment ago.
+     *
+     * A window docks when the finger has kept going [DOCK_PULL_DP] past
+     * where the card stopped at a side, or has reached that side's dock
+     * zone ([dockSide]: a card held near its own edge stops with the
+     * finger already almost there). Once docked it stays docked until the
+     * finger is clearly on its way back: less than [DOCK_RELEASE_DP] past
+     * the stop and more than [DOCK_ZONE_OUT_DP] from the side. The gap
+     * between the two is what keeps a finger resting at the line from
+     * flipping the window in and out.
+     */
+    fun dockedSide(docked: Side?, start: Frame, dx: Int, fingerX: Float, room: Room, density: Float): Side? {
+        val over = overdrag(start, dx, room)
+        if (docked != null) {
+            val past = if (docked == Side.RIGHT) over else -over
+            val fromSide = if (docked == Side.RIGHT) room.right - fingerX else fingerX - room.left
+            if (past >= px(DOCK_RELEASE_DP, density) || fromSide <= px(DOCK_ZONE_OUT_DP, density)) return docked
+        }
+        dockSide(fingerX, room, density)?.let { return it }
+        val pull = px(DOCK_PULL_DP, density)
+        return when {
+            over >= pull -> Side.RIGHT
+            over <= -pull -> Side.LEFT
             else -> null
         }
     }

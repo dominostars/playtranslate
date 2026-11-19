@@ -445,10 +445,6 @@ class DetachedWindowGestureTest {
         up(1095f, 595f)
     }
 
-    @Test fun `the dock's hold is one second`() {
-        assertEquals(1000L, DetachedWindow.DOCK_HOLD_MS)
-    }
-
     @Test fun `crossing the page width switches to the button at once, and back`() {
         show()
         assertTrue(window.showsPage)
@@ -499,115 +495,205 @@ class DetachedWindowGestureTest {
         up(615f, 595f)
     }
 
-    // ── The dock ─────────────────────────────────────────────────────────
+    // ── The dock: a move carried on past a side ──────────────────────────
+    //
+    // The bar is held 160 px from the card's left edge, so a drag to the
+    // left stops the card with the finger at x = 160; the window docks 48
+    // px further on, at x = 112, and comes back with the finger past x =
+    // 136 (less than 24 px past the stop).
 
-    @Test fun `a finger kept at a side for a second arms the dock, and the release docks there`() {
+    /** The picture of the icon the window shows while it is the icon. */
+    private fun ghost(): View? {
+        val root = window.root
+        for (i in 0 until root.childCount) {
+            val holder = root.getChildAt(i) as? FrameLayout ?: continue
+            if (holder.childCount == 1 && holder.getChildAt(0) is FloatingOverlayIcon) return holder
+        }
+        return null
+    }
+
+    private fun assertIsTheWindow(at: Frame) {
+        assertEquals(at, frame())
+        assertEquals("solid", 1f, card.alpha, 0f)
+        assertEquals("at its own size", 1f, card.scaleX, 0f)
+        assertNull("no picture of the icon", ghost())
+    }
+
+    /** The window shows as the icon whose window is centred on ([x], [y]). */
+    private fun assertIsTheIcon(x: Int, y: Int) {
+        assertEquals("centred on the icon's place", x to y, centre())
+        assertEquals("the card is gone", 0f, card.alpha, 0f)
+        assertEquals("the picture of the icon is whole", 1f, ghost()!!.alpha, 0f)
+        assertEquals("the window keeps its size", 420, frame().w)
+    }
+
+    @Test fun `a move carried on past a side docks the window there, as the icon at the finger's height`() {
+        paceFrames()
         show()
 
         down(barX, barY)
         move(300f, barY)
-        move(10f, 300f)
-        idle(DetachedWindow.DOCK_HOLD_MS)
-        up(10f, 300f)
+        move(150f, 300f)
+        assertIsTheWindow(Frame(0, 280, 420, 400))
 
-        assertEquals(listOf(Side.LEFT to 300), host.docked)
+        move(100f, 300f)
+        land()
+        assertIsTheIcon(0, 300)
+
+        // Along the side it is the icon under the finger.
+        move(100f, 500f)
+        assertIsTheIcon(0, 500)
+        assertTrue("nothing is docked before the finger lifts", host.docked.isEmpty())
+
+        up(100f, 500f)
+        assertEquals(listOf(Side.LEFT to 500), host.docked)
+    }
+
+    @Test fun `dragged back out before letting go the window is the window again, and the release leaves it there`() {
+        paceFrames()
+        show()
+        down(barX, barY)
+        move(300f, barY)
+        move(100f, 300f)
+        land()
+        assertIsTheIcon(0, 300)
+
+        move(140f, 320f)
+        land()
+        assertIsTheWindow(Frame(0, 300, 420, 400))
+
+        // And it moves as it did.
+        move(260f, 320f)
+        assertIsTheWindow(Frame(100, 300, 420, 400))
+        up(260f, 320f)
+        assertTrue(host.docked.isEmpty())
+        assertEquals(Frame(100, 300, 420, 400), savedFrame())
+    }
+
+    @Test fun `between the two lines the window stays what it was`() {
+        paceFrames()
+        show()
+        down(barX, barY)
+        move(300f, barY)
+
+        move(113f, 300f)
+        land()
+        assertIsTheWindow(Frame(0, 280, 420, 400))
+        move(112f, 300f)
+        land()
+        assertIsTheIcon(0, 300)
+
+        // Back by less than it takes to come out.
+        move(136f, 300f)
+        land()
+        assertIsTheIcon(0, 300)
+        move(137f, 300f)
+        land()
+        assertIsTheWindow(Frame(0, 280, 420, 400))
+
+        // And in again by less than it takes to dock.
+        move(120f, 300f)
+        land()
+        assertIsTheWindow(Frame(0, 280, 420, 400))
+        up(120f, 300f)
+        assertTrue(host.docked.isEmpty())
+    }
+
+    @Test fun `a card held near its own edge docks when the finger reaches the side`() {
+        paceFrames()
+        show()
+        // By Minimize, 20 px from the card's left edge: the card never gets
+        // 48 px past its stop before the finger is at the side.
+        down(420f, barY)
+        move(200f, barY)
+        move(30f, 300f)
+        assertIsTheWindow(Frame(10, 280, 420, 400))
+
+        move(16f, 300f)
+        land()
+        assertIsTheIcon(0, 300)
+
+        // Out again once it is clearly off the side.
+        move(28f, 300f)
+        land()
+        assertIsTheIcon(0, 300)
+        move(29f, 300f)
+        land()
+        assertIsTheWindow(Frame(9, 280, 420, 400))
+        up(29f, 300f)
     }
 
     @Test fun `the right side docks to the right`() {
+        paceFrames()
         show()
 
         down(barX, barY)
         move(900f, barY)
         move(1275f, 500f)
-        idle(DetachedWindow.DOCK_HOLD_MS)
+        land()
+        assertIsTheIcon(1280, 500)
         up(1275f, 500f)
 
         assertEquals(listOf(Side.RIGHT to 500), host.docked)
     }
 
-    @Test fun `a release before the second has passed only moves the window`() {
+    @Test fun `let go while still on its way to the icon, it docks all the same`() {
+        paceFrames()
         show()
 
         down(barX, barY)
         move(300f, barY)
-        move(10f, 300f)
-        idle(DetachedWindow.DOCK_HOLD_MS - 1)
-        up(10f, 300f)
+        move(100f, 300f)
+        up(100f, 300f)
 
-        assertTrue(host.docked.isEmpty())
-        assertEquals("it rests at the side", 0, frame().x)
+        assertEquals(listOf(Side.LEFT to 300), host.docked)
     }
 
-    @Test fun `leaving the side disarms the dock`() {
+    @Test fun `a dock the host makes no icon of comes back as the window`() {
+        paceFrames()
         show()
-
-        down(barX, barY)
-        move(10f, 300f)
-        idle(DetachedWindow.DOCK_HOLD_MS)
-        move(200f, 300f)
-        up(200f, 300f)
-
-        assertTrue(host.docked.isEmpty())
-        assertEquals(frame(), savedFrame())
-    }
-
-    @Test fun `the armed dock dims the card, and leaving the side restores it`() {
-        show()
-        val card = window.root.findViewById<View>(R.id.detachedCard)
-
         down(barX, barY)
         move(300f, barY)
-        move(10f, 300f)
-        idle(DetachedWindow.DOCK_HOLD_MS)
-        assertTrue("armed: dimmed", card.alpha < 1f)
+        move(100f, 300f)
+        land()
 
-        move(200f, 300f)
-        assertEquals("off the side: back", 1f, card.alpha, 0f)
-        up(200f, 300f)
+        up(100f, 300f)
+        land()
+        layOut()
+
+        assertEquals(1, host.docked.size)
+        assertIsTheWindow(Frame(0, 280, 420, 400))
     }
 
-    @Test fun `armed at one side, a release at the other before its own second does not dock`() {
+    @Test fun `let go docked and taken down for the icon, the window goes at once, with no flight left to make`() {
+        paceFrames()
         show()
-
+        host.onDockedDo = { window.remove(Rect(-40, 260, 40, 340)) }
         down(barX, barY)
         move(300f, barY)
-        move(10f, 300f)
-        idle(DetachedWindow.DOCK_HOLD_MS)
-        move(640f, 300f)
-        move(1275f, 300f)
-        idle(DetachedWindow.DOCK_HOLD_MS - 1)
-        up(1275f, 300f)
+        move(100f, 300f)
+        land()
 
-        assertTrue(host.docked.isEmpty())
+        up(100f, 300f)
+
+        assertTrue(takenDown())
     }
 
-    @Test fun `the second starts over each time the finger comes back to the side`() {
+    @Test fun `a move the system takes away while docked is the window again`() {
+        paceFrames()
         show()
-
         down(barX, barY)
         move(300f, barY)
-        move(10f, 300f)
-        idle(600)
-        move(200f, 300f)
-        idle(100)
-        move(10f, 300f)
-        // 1.2 s since it first reached the side, half a second since it came back.
-        idle(500)
-        up(10f, 300f)
+        move(100f, 300f)
+        land()
+        assertIsTheIcon(0, 300)
+
+        touch(MotionEvent.ACTION_CANCEL, 100f, 300f)
+        land()
+        layOut()
 
         assertTrue(host.docked.isEmpty())
-    }
-
-    @Test fun `the second counts from reaching the side, not from the start of the drag`() {
-        show()
-
-        down(barX, barY)
-        move(300f, barY)
-        idle(DetachedWindow.DOCK_HOLD_MS)
-        move(10f, 300f)
-        up(10f, 300f)
-
-        assertTrue(host.docked.isEmpty())
+        assertIsTheWindow(Frame(0, 280, 420, 400))
     }
 
     @Test fun `a resize at a side never docks`() {
@@ -615,7 +701,6 @@ class DetachedWindowGestureTest {
 
         down(5f, 595f)
         move(8f, 600f)
-        idle(DetachedWindow.DOCK_HOLD_MS)
         up(8f, 600f)
 
         assertTrue(host.docked.isEmpty())
@@ -778,7 +863,7 @@ class DetachedWindowGestureTest {
 
         flyToTheMiddle()
         assertOnItsWay()
-        assertTrue("fading", card.alpha < 1f && card.alpha > 0f)
+        assertTrue("shrinking", card.scaleX < 1f)
         // It takes no touch on the way.
         val touches = host.touches
         down(centre().first.toFloat(), centre().second.toFloat())
@@ -808,44 +893,102 @@ class DetachedWindowGestureTest {
         assertNull(page.parent)
     }
 
-    @Test fun `removed while still flying in, the window flies out from its frame`() {
+    @Test fun `removed while still flying in, the window turns round where it is`() {
         paceFrames()
         show(from = icon)
         flyToTheMiddle()
+        val midway = card.scaleX
 
         window.remove(icon)
 
-        assertEquals("the flight in ended where it was going", home, frame())
-        assertEquals(1f, card.alpha, 0f)
+        assertEquals("no jump to its frame first", midway, card.scaleX, 0.001f)
         assertFalse(takenDown())
         land()
         assertTrue(takenDown())
+        assertEquals(30 to 330, centre())
     }
 
-    @Test fun `a dock's flight goes on from the card as the armed dock dimmed it`() {
+    // ── Pulled out of the icon ───────────────────────────────────────────
+    //
+    // The icon's window is 80 px square, centred on the right side at the
+    // finger's height. The finger holds the bar 28 px in from its right end
+    // and 26 px down, so with the finger at (x, y) the window's frame is
+    // (x - 392, y - 26), where it fits.
+
+    /** The window up as the icon it is pulled out of, the finger at
+     *  ([x], [y]) on the icon. */
+    private fun showPulled(x: Float, y: Float) {
+        prefs.setWindowBounds(d0, landscape = true, bounds = g.toBounds(home, room, 1f))
+        val display = (ctx.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager).getDisplay(d0)
+        val displayCtx = ctx.createDisplayContext(display)
+        wm = RecordingWindowManager(OwnWindows.manager(displayCtx)!!)
+        overlayHost = OverlayHost(ctx, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+        overlayHost.environmentReader = { testEnvironment(1280, 800) }
+        window = DetachedWindow(displayCtx, wm, d0, overlayHost, prefs, host)
+        assertTrue(window.showPulled(Rect(1240, 360, 1320, 440), Side.RIGHT, x, y))
+        page = View(ctx)
+        window.setPage(page)
+        layOut()
+    }
+
+    private fun pullTo(x: Float, y: Float) {
+        window.pullTo(x, y)
+        layOut()
+    }
+
+    @Test fun `pulled out of the icon the window starts as the icon, comes out as the finger leaves the side and goes back in as it returns`() {
         paceFrames()
-        show()
-        var alphaAtRemove = -1f
-        host.onDockedDo = {
-            window.remove(icon)
-            alphaAtRemove = card.alpha
-        }
+        showPulled(1262f, 400f)
+        assertIsTheIcon(1280, 400)
 
-        down(barX, barY)
-        move(300f, barY)
-        move(10f, 300f)
-        idle(DetachedWindow.DOCK_HOLD_MS)
-        val dimmed = card.alpha
-        assertTrue(dimmed < 1f)
-        target!!.first.let { root ->
-            // The release, without the helper's layout pass after it.
-            val ev = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, 10f, 300f, 0)
-            root.dispatchTouchEvent(ev)
-            ev.recycle()
-        }
+        // Still by the side: the icon, at the finger's height.
+        pullTo(1253f, 410f)
+        assertIsTheIcon(1280, 410)
 
-        assertEquals("no flash back to solid at the release", dimmed, alphaAtRemove, 0.001f)
+        pullTo(1200f, 420f)
         land()
-        assertTrue(takenDown())
+        layOut()
+        assertIsTheWindow(Frame(808, 394, 420, 400))
+        pullTo(1000f, 300f)
+        assertIsTheWindow(Frame(608, 274, 420, 400))
+
+        pullTo(1270f, 400f)
+        land()
+        assertIsTheIcon(1280, 400)
+
+        assertEquals("let go as the icon: its side and the finger's height", Side.RIGHT to 400, window.pullEnd())
+        assertTrue("the window's own dock is not asked", host.docked.isEmpty())
+    }
+
+    @Test fun `let go out, a pulled window rests where it is, its place saved, and is a window like any other`() {
+        paceFrames()
+        showPulled(1262f, 400f)
+        pullTo(1200f, 420f)
+        pullTo(1000f, 300f)
+
+        assertNull("the window", window.pullEnd())
+        land()
+        layOut()
+
+        assertIsTheWindow(Frame(608, 274, 420, 400))
+        assertEquals(Frame(608, 274, 420, 400), savedFrame())
+        // Its bar is 168 px in from its left edge at this point.
+        drag(776f, 294f, 876f, 354f)
+        assertEquals(Frame(708, 334, 420, 400), frame())
+    }
+
+    @Test fun `while it is being pulled a touch on the window itself does nothing`() {
+        paceFrames()
+        showPulled(1262f, 400f)
+        pullTo(1000f, 300f)
+        land()
+        layOut()
+
+        down(776f, 294f)
+        move(600f, 294f)
+        up(600f, 294f)
+
+        assertIsTheWindow(Frame(608, 274, 420, 400))
+        assertNull(window.pullEnd())
     }
 }

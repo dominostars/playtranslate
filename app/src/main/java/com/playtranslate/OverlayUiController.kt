@@ -1720,30 +1720,55 @@ class OverlayUiController(
             // the session running; pausing it would resume it when the lens
             // closes, undoing the stop.
             var holdStoppedLive = false
+            // A drag's action is latched at its start, as a hold's is, so
+            // its other legs go to the action that began. Pulling the
+            // window out needs somewhere the window can show: where it
+            // cannot, the drag is the lens.
+            var draggedAction = DragAction.DEFAULT
             icon.onDragStart = {
                 ensureService()
-                when (prefs.iconDragAction) {
-                    DragAction.LOOKUP_WORDS -> {
-                        // Hide the region preview so the user can see game
-                        // text while dragging, and pause live mode while
-                        // dragging for definitions, unless this drag's hold
-                        // just stopped it.
-                        val stoppedByHold = holdStoppedLive
-                        holdStoppedLive = false
-                        // A capture still on its way here would come up over
-                        // the lens: it never does, and the lens takes over
-                        // what it paused.
-                        endCaptures(CaptureTakeover.LENS_START, setOf(displayId), heir = dragPause)
-                        dragPause.begin(pauseLive = !stoppedByHold)
-                        controller.onDragStart()
+                draggedAction = prefs.iconDragAction.takeUnless {
+                    it == DragAction.PULL_OUT_WINDOW && !offersDetach(displayId)
+                } ?: DragAction.DEFAULT
+                // Either drag hides the region preview and pauses live mode
+                // while it lasts (the lens to show game text, the window
+                // because auto-translate would read it), unless this drag's
+                // hold just stopped it. A capture still on its way here
+                // would come up over what the drag shows: it never does,
+                // and the drag takes over what it paused.
+                val stoppedByHold = holdStoppedLive
+                holdStoppedLive = false
+                endCaptures(CaptureTakeover.LENS_START, setOf(displayId), heir = dragPause)
+                dragPause.begin(pauseLive = !stoppedByHold)
+                when (draggedAction) {
+                    DragAction.LOOKUP_WORDS -> controller.onDragStart()
+                    // The window comes up with the first step, which says
+                    // where the finger is ([pullTo]).
+                    DragAction.PULL_OUT_WINDOW -> Unit
+                }
+            }
+            icon.onDragMove = { rawX, rawY ->
+                when (draggedAction) {
+                    DragAction.LOOKUP_WORDS -> controller.onDragMove(rawX, rawY)
+                    DragAction.PULL_OUT_WINDOW -> pullTo(display, rawX, rawY)
+                }
+            }
+            icon.onDragEnd = {
+                when (draggedAction) {
+                    DragAction.LOOKUP_WORDS -> controller.onDragEnd()
+                    DragAction.PULL_OUT_WINDOW -> {
+                        endPull(displayId)
+                        // Straight to its slot: the icon never left it.
+                        true
                     }
                 }
             }
-            // The move / end / cancel legs route to the lens unconditionally:
-            // it is the only drag candidate (see DragAction).
-            icon.onDragMove = { rawX, rawY -> controller.onDragMove(rawX, rawY) }
-            icon.onDragEnd = { controller.onDragEnd() }
-            icon.onDragCancel = { controller.cancelDrag() }
+            icon.onDragCancel = {
+                when (draggedAction) {
+                    DragAction.LOOKUP_WORDS -> controller.cancelDrag()
+                    DragAction.PULL_OUT_WINDOW -> cancelPull(displayId)
+                }
+            }
             // The icon's drag visuals (window at the finger, ring) come up in
             // the same step as the lens, never before the drag's clean
             // capture is in hand: see FloatingOverlayIcon.dragVisualsRevealed.
@@ -2089,6 +2114,9 @@ class OverlayUiController(
         tearDownSonarIntroForDisplay(displayId)
         val handle = iconHandles.remove(displayId) ?: return
         Log.i(TAG, "hideFloatingIcon[$displayId]: $reason")
+        // A window its drag was pulling out goes with it: a window taken
+        // down mid-gesture never hears the finger lift.
+        dropPull(displayId)
         handle.dragController.destroy()
         if (endsCapture) handle.dragPause.drop() else handle.dragPause.settle(resumeLive = true)
         handle.icon.destroy()
@@ -2222,11 +2250,17 @@ class OverlayUiController(
         val wm = OwnWindows.manager(displayCtx) ?: return false
         val window = DetachedWindow(displayCtx, wm, displayId, overlayHost, prefs, windowHost)
         if (!window.show(from)) return false
-        windowHandles[displayId] = window
         // The display's page: the one a window before this left, or a new
         // one at its idle prompt.
         val page = detachedPages.getOrPut(displayId) { DetachedPage(displayCtx, wm, displayId, overlayHost) }
         window.attachPage(page)
+        adoptDetachedWindow(displayId, window)
+        return true
+    }
+
+    /** [window] is [displayId]'s controls from here. */
+    private fun adoptDetachedWindow(displayId: Int, window: DetachedWindow) {
+        windowHandles[displayId] = window
         Log.i(TAG, "showDetachedWindow[$displayId]")
         // Controls are on screen: the persisted session record says so, as
         // an icon's install does.
@@ -2235,7 +2269,113 @@ class OverlayUiController(
         errorPills.raise(displayId)
         CaptureService.instance?.updateForegroundState()
         CaptureService.instance?.syncIconState()
-        return true
+    }
+
+    // ── The window pulled out of the icon ────────────────────────────────
+
+    /** A drag of [displayId]'s icon that is pulling the window out of it
+     *  ([DragAction.PULL_OUT_WINDOW]): the window, which shows as the icon
+     *  or as itself as the finger goes, and its page. Neither is the
+     *  display's until the finger lifts with the window out ([endPull]):
+     *  until then the saved form is the icon and the icon is the controls. */
+    private class Pull(val displayId: Int, val window: DetachedWindow, val page: DetachedPage)
+
+    private var pull: Pull? = null
+
+    /** A step of a pulling drag: the first puts the window up, as the icon
+     *  it comes out of; the rest move it. */
+    private fun pullTo(display: Display, rawX: Float, rawY: Float) {
+        val current = pull
+        if (current?.displayId == display.displayId) {
+            current.window.pullTo(rawX, rawY)
+            return
+        }
+        // One pull at a time: one left behind on another display goes.
+        current?.let { dropPull(it.displayId) }
+        beginPull(display, rawX, rawY)
+    }
+
+    private fun beginPull(display: Display, rawX: Float, rawY: Float) {
+        val id = display.displayId
+        val icon = iconHandles[id]?.icon ?: return
+        val iconAt = getFloatingIconRect(id) ?: return
+        val displayCtx = context.createDisplayContext(display)
+        val wm = OwnWindows.manager(displayCtx) ?: return
+        val window = DetachedWindow(displayCtx, wm, id, overlayHost, Prefs(context), windowHost)
+        val side =
+            if (icon.currentEdge == FloatingOverlayIcon.Edge.LEFT) DetachedWindowGeometry.Side.LEFT
+            else DetachedWindowGeometry.Side.RIGHT
+        if (!window.showPulled(iconAt, side, rawX, rawY)) return
+        val page = DetachedPage(displayCtx, wm, id, overlayHost)
+        window.attachPage(page)
+        pull = Pull(id, window, page)
+    }
+
+    /**
+     * The pulling finger lifted. With the window out, this is Detach
+     * ([detachControls]) by another road: the window and its page become
+     * the display's, the saved form is the window, a running auto-translate
+     * stops for good and the icon goes. Back in the icon, the window goes
+     * and the icon takes the slot the finger left it at, with what the drag
+     * paused resumed.
+     */
+    private fun endPull(displayId: Int) {
+        val p = pull?.takeIf { it.displayId == displayId }
+        val handle = iconHandles[displayId]
+        if (p == null || handle == null) {
+            dropPull(displayId)
+            handle?.dragPause?.settle(resumeLive = true)
+            return
+        }
+        pull = null
+        val docked = p.window.pullEnd()
+        if (docked != null) {
+            p.window.remove()
+            p.page.release()
+            val slot = iconSlotAt(displayId, docked.first, docked.second)
+            Prefs(context).setIconPositionForDisplay(displayId, slot)
+            handle.icon.setSlot(slot.edge, slot.fraction)
+            handle.dragPause.settle(resumeLive = true)
+            return
+        }
+        cancelLensResumes()
+        val svc = CaptureService.instance
+        if (svc != null && (svc.isLive || svc.isLiveStartPending)) stopLiveRouted()
+        Prefs(context).setControlsForm(displayId, ControlsForm.WINDOW)
+        detachedPages.put(displayId, p.page)?.release()
+        adoptDetachedWindow(displayId, p.window)
+        hideFloatingIconForDisplay(displayId, "swap_to_window", endsCapture = true)
+    }
+
+    /** The system took the pulling drag away: the window goes, the icon
+     *  stays where it was. */
+    private fun cancelPull(displayId: Int) {
+        dropPull(displayId)
+        iconHandles[displayId]?.dragPause?.settle(resumeLive = true)
+    }
+
+    /** Take down a window still being pulled out on [displayId], and its
+     *  page with it. */
+    private fun dropPull(displayId: Int) {
+        val p = pull?.takeIf { it.displayId == displayId } ?: return
+        pull = null
+        p.window.remove()
+        p.page.release()
+    }
+
+    /** The icon's slot at [side] for a finger at height [fingerY]: the
+     *  icon's own slot arithmetic, so it lands where its own drag would
+     *  have put it for a release at that height. */
+    private fun iconSlotAt(displayId: Int, side: DetachedWindowGeometry.Side, fingerY: Int): IconPosition {
+        val env = overlayHost.environment(displayId)
+        val edge =
+            if (side == DetachedWindowGeometry.Side.LEFT) FloatingOverlayIcon.Edge.LEFT
+            else FloatingOverlayIcon.Edge.RIGHT
+        val fraction = if (env == null) IconPosition.DEFAULT.fraction else IconDock.fraction(
+            fingerY, env.geometry.height, env.covered,
+            (IconDock.GESTURE_INSET_DP * context.resources.displayMetrics.density).toInt(),
+        )
+        return IconPosition(edge.ordinal, fraction)
     }
 
     /** Take [displayId]'s window down, flying into [to] when it is given.
@@ -2406,19 +2546,8 @@ class OverlayUiController(
             display(displayId)?.let { showHideConfirmAlert(it) }
         }
 
-        override fun onDocked(displayId: Int, side: DetachedWindowGeometry.Side, fingerY: Int) {
-            val env = overlayHost.environment(displayId)
-            val edge =
-                if (side == DetachedWindowGeometry.Side.LEFT) FloatingOverlayIcon.Edge.LEFT
-                else FloatingOverlayIcon.Edge.RIGHT
-            // The icon's own slot arithmetic, so it lands where its drag
-            // would have put it for a release at this height.
-            val fraction = if (env == null) IconPosition.DEFAULT.fraction else IconDock.fraction(
-                fingerY, env.geometry.height, env.covered,
-                (IconDock.GESTURE_INSET_DP * context.resources.displayMetrics.density).toInt(),
-            )
-            dockControls(displayId, IconPosition(edge.ordinal, fraction))
-        }
+        override fun onDocked(displayId: Int, side: DetachedWindowGeometry.Side, fingerY: Int) =
+            dockControls(displayId, iconSlotAt(displayId, side, fingerY))
 
         override fun onTouched(displayId: Int) {
             CaptureService.instance?.lastInteractedDisplayId = displayId

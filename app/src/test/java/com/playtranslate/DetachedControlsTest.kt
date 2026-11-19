@@ -553,15 +553,14 @@ class DetachedControlsTest {
     /** A point on the window's bar, on the display. */
     private fun barPoint(): Pair<Float, Float> = windowParams().let { (it.x + it.width / 2f) to (it.y + 28f) }
 
-    /** Drag the window by its bar to the display's [left] or right side at
-     *  height [y], keep the finger there for the dock's hold, and let go. */
+    /** Drag the window by its bar on to the display's [left] or right side
+     *  at height [y], where it docks, and let go. */
     private fun dockAt(left: Boolean, y: Float) {
         val (bx, by) = barPoint()
         val sideX = if (left) 3f else 1277f
         touch(MotionEvent.ACTION_DOWN, bx, by)
         touch(MotionEvent.ACTION_MOVE, (bx + sideX) / 2, (by + y) / 2)
         touch(MotionEvent.ACTION_MOVE, sideX, y)
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(DetachedWindow.DOCK_HOLD_MS))
         touch(MotionEvent.ACTION_UP, sideX, y)
         settle()
     }
@@ -592,6 +591,139 @@ class DetachedControlsTest {
         assertEquals(FloatingOverlayIcon.Edge.RIGHT.ordinal, right.edge)
         assertEquals(slotFraction(600), right.fraction, 0.001f)
         assertTrue("lower on the screen than the first", right.fraction > left.fraction)
+    }
+
+    // ── The window pulled out of the icon ────────────────────────────────
+
+    /** A touch on the icon at display point ([rawX], [rawY]). */
+    private fun iconTouch(action: Int, rawX: Float, rawY: Float) {
+        val icon = icon() ?: return
+        val p = icon.params!!
+        if (action == MotionEvent.ACTION_DOWN) downTime = SystemClock.uptimeMillis()
+        val ev = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, rawX, rawY, 0)
+        ev.setLocation(rawX - p.x, rawY - p.y)
+        icon.dispatchTouchEvent(ev)
+        ev.recycle()
+    }
+
+    /** The icon's centre on the display, and which way is in from its side. */
+    private fun iconGrip(): Triple<Float, Float, Int> {
+        val icon = icon()!!
+        val p = icon.params!!
+        val inward = if (icon.currentEdge == FloatingOverlayIcon.Edge.LEFT) 1 else -1
+        return Triple(p.x + icon.viewSizePx / 2f, p.y + icon.viewSizePx / 2f, inward)
+    }
+
+    /** The window a drag of the icon is pulling out, if one is. */
+    private fun pulled(): Any? = field("pull").get(controller)
+
+    /** Press the icon and drag far enough for the drag to begin, the
+     *  finger still by the side. */
+    private fun beginIconDrag(): Triple<Float, Float, Int> {
+        val grip = iconGrip()
+        val (cx, cy, inward) = grip
+        iconTouch(MotionEvent.ACTION_DOWN, cx + inward * 6, cy)
+        iconTouch(MotionEvent.ACTION_MOVE, cx + inward * 26, cy)
+        return grip
+    }
+
+    @Test fun `bound to pull the window out, a drag of the icon away from its side and a release leave the window, as Detach does`() {
+        prefs.iconDragAction = DragAction.PULL_OUT_WINDOW
+        val svc = captureService()
+        val mode = running(svc)
+
+        val (cx, cy, inward) = beginIconDrag()
+        assertNotNull("a window is being pulled out", pulled())
+        assertIconOnly()
+        assertEquals("nothing is saved while the finger is down", ControlsForm.ICON, prefs.detachedStateForDisplay(d0).form)
+
+        iconTouch(MotionEvent.ACTION_MOVE, cx + inward * 400, cy + 40)
+        assertIconOnly()
+        iconTouch(MotionEvent.ACTION_UP, cx + inward * 400, cy + 40)
+        settle()
+
+        assertWindowOnly()
+        assertNull(pulled())
+        assertEquals(ControlsForm.WINDOW, prefs.detachedStateForDisplay(d0).form)
+        assertNotNull("with the page it was pulled out with", controller.detachedPageForTest(d0))
+        assertNotNull("resting where it was let go", prefs.detachedStateForDisplay(d0).bounds(landscape = true))
+        assertTrue("auto-translate stopped for good, as Detach stops it", mode.stops > 0)
+        // And it is the display's window: Minimize takes it back to the icon.
+        tap(R.id.detachedBarMinimize)
+        assertIconOnly()
+    }
+
+    @Test fun `dragged back to its side and let go it is still the icon, at the height the finger left it`() {
+        prefs.iconDragAction = DragAction.PULL_OUT_WINDOW
+        val before = prefs.iconPositionForDisplay(d0)
+
+        val (cx, cy, inward) = beginIconDrag()
+        iconTouch(MotionEvent.ACTION_MOVE, cx + inward * 400, cy + 40)
+        iconTouch(MotionEvent.ACTION_MOVE, cx + inward * 4, 600f)
+        iconTouch(MotionEvent.ACTION_UP, cx + inward * 4, 600f)
+        settle()
+
+        assertIconOnly()
+        assertNull(pulled())
+        assertEquals(ControlsForm.ICON, prefs.detachedStateForDisplay(d0).form)
+        assertNull("its page went with it", controller.detachedPageForTest(d0))
+        val after = prefs.iconPositionForDisplay(d0)
+        assertEquals("the same side", before.edge, after.edge)
+        assertEquals(slotFraction(600), after.fraction, 0.001f)
+        assertEquals("and the icon stands there", centreOf(icon()!!).second, 600)
+    }
+
+    @Test fun `a pulling drag the system takes away leaves the icon where it was`() {
+        prefs.iconDragAction = DragAction.PULL_OUT_WINDOW
+        val before = prefs.iconPositionForDisplay(d0)
+
+        val (cx, cy, inward) = beginIconDrag()
+        iconTouch(MotionEvent.ACTION_MOVE, cx + inward * 400, cy + 40)
+        iconTouch(MotionEvent.ACTION_CANCEL, cx + inward * 400, cy + 40)
+        settle()
+
+        assertIconOnly()
+        assertNull(pulled())
+        assertEquals(ControlsForm.ICON, prefs.detachedStateForDisplay(d0).form)
+        assertEquals(before, prefs.iconPositionForDisplay(d0))
+    }
+
+    @Test fun `the icon taken down while its window is being pulled out takes that window with it`() {
+        prefs.iconDragAction = DragAction.PULL_OUT_WINDOW
+        beginIconDrag()
+        assertNotNull(pulled())
+
+        controller.hideAll()
+        settle()
+
+        assertNull(pulled())
+        assertNull(window())
+        assertNull(icon())
+    }
+
+    @Test fun `where the window cannot show, the drag bound to pull it out is the lens`() {
+        prefs.iconDragAction = DragAction.PULL_OUT_WINDOW
+        ShadowDisplayManager.addDisplay("w640dp-h480dp")
+        MainActivity.isInForeground = true
+
+        val (cx, cy, inward) = beginIconDrag()
+        iconTouch(MotionEvent.ACTION_MOVE, cx + inward * 400, cy + 40)
+        assertNull("no window is pulled out", pulled())
+        iconTouch(MotionEvent.ACTION_UP, cx + inward * 400, cy + 40)
+        settle()
+
+        assertIconOnly()
+        assertEquals(ControlsForm.ICON, prefs.detachedStateForDisplay(d0).form)
+    }
+
+    @Test fun `bound to the lens, a drag of the icon pulls no window out`() {
+        val (cx, cy, inward) = beginIconDrag()
+        iconTouch(MotionEvent.ACTION_MOVE, cx + inward * 400, cy + 40)
+
+        assertNull(pulled())
+        iconTouch(MotionEvent.ACTION_UP, cx + inward * 400, cy + 40)
+        settle()
+        assertIconOnly()
     }
 
     @Test fun `a touch on the window makes its display the one the hotkeys act on`() {

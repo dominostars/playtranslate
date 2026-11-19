@@ -206,4 +206,53 @@ class DetachedWindowGeometryTest {
         assertFalse("a vertical drag", g.isClearSideways(0f, 200f, slop))
         assertFalse("a diagonal drag", g.isClearSideways(100f, 100f, slop))
     }
+
+    // ── Docked by a move carried on past a side ──────────────────────────
+
+    private val wide = DetachedWindowGeometry.Room(0, 0, 1280, 800)
+    private val card = DetachedWindowGeometry.Frame(400, 200, 420, 400)
+
+    @Test fun `overdrag is how far past a side the card would be, signed by the side`() {
+        assertEquals(0, DetachedWindowGeometry.overdrag(card, 0, wide))
+        assertEquals("flush with the left side", 0, DetachedWindowGeometry.overdrag(card, -400, wide))
+        assertEquals(-1, DetachedWindowGeometry.overdrag(card, -401, wide))
+        assertEquals(-60, DetachedWindowGeometry.overdrag(card, -460, wide))
+        assertEquals("flush with the right side", 0, DetachedWindowGeometry.overdrag(card, 460, wide))
+        assertEquals(1, DetachedWindowGeometry.overdrag(card, 461, wide))
+        assertEquals(60, DetachedWindowGeometry.overdrag(card, 520, wide))
+    }
+
+    /** The side a move by [dx] is docked on, the finger at [fingerX]. */
+    private fun docked(was: DetachedWindowGeometry.Side?, dx: Int, fingerX: Float) =
+        DetachedWindowGeometry.dockedSide(was, card, dx, fingerX, wide, 1f)
+
+    @Test fun `a window docks 48 dp past its stop or with the finger in the side's zone, and not before`() {
+        val left = DetachedWindowGeometry.Side.LEFT
+        val right = DetachedWindowGeometry.Side.RIGHT
+        // The finger mid-screen: only the overdrag counts.
+        assertEquals(null, docked(null, -447, 300f))
+        assertEquals(left, docked(null, -448, 300f))
+        assertEquals(null, docked(null, 507, 900f))
+        assertEquals(right, docked(null, 508, 900f))
+        // No overdrag: only the finger's place counts.
+        assertEquals(null, docked(null, -100, 17f))
+        assertEquals(left, docked(null, -100, 16f))
+        assertEquals(null, docked(null, 100, 1263f))
+        assertEquals(right, docked(null, 100, 1264f))
+    }
+
+    @Test fun `a docked window stays docked until less than 24 dp past its stop and more than 28 dp from the side`() {
+        val left = DetachedWindowGeometry.Side.LEFT
+        val right = DetachedWindowGeometry.Side.RIGHT
+        assertEquals("still 24 past", left, docked(left, -424, 300f))
+        assertEquals(null, docked(left, -423, 300f))
+        assertEquals("not past at all, but still by the side", left, docked(left, -100, 28f))
+        assertEquals(null, docked(left, -100, 29f))
+        assertEquals(right, docked(right, 484, 900f))
+        assertEquals(null, docked(right, 483, 900f))
+        assertEquals(right, docked(right, 100, 1252f))
+        assertEquals(null, docked(right, 100, 1251f))
+        // Let go of one side, a move can dock on the other in the same step.
+        assertEquals(right, docked(left, 508, 900f))
+    }
 }
