@@ -1,6 +1,7 @@
 package com.playtranslate.ui
 
 import android.content.Context
+import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.os.Looper
 import android.os.SystemClock
@@ -31,6 +32,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowChoreographer
 import java.time.Duration
 
 /**
@@ -71,7 +73,12 @@ class DetachedWindowGestureTest {
         override fun onEditRegion(displayId: Int) {}
         override fun onMinimize(displayId: Int) { minimizes++ }
         override fun onExit(displayId: Int) { exits++ }
-        override fun onDocked(displayId: Int, side: Side, fingerY: Int) { docked += side to fingerY }
+        /** What the controller does with a dock, for a test that needs it. */
+        var onDockedDo: (() -> Unit)? = null
+        override fun onDocked(displayId: Int, side: Side, fingerY: Int) {
+            docked += side to fingerY
+            onDockedDo?.invoke()
+        }
         override fun onTouched(displayId: Int) { touches++ }
         override fun quickSettings(displayId: Int, leave: () -> Unit): List<QuickSetting> = emptyList()
         override fun regionIsFullScreen(displayId: Int) = true
@@ -89,14 +96,18 @@ class DetachedWindowGestureTest {
     }
 
     @After fun tearDown() {
+        // A test that paced its frames ([paceFrames]) hands the runtime's
+        // own pacing back before what is left of its windows is drained.
+        ShadowChoreographer.setPaused(false)
         if (::window.isInitialized) window.remove()
         // Let the churn gate finish the removal inside this test.
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(5))
         clearPrefs()
     }
 
-    /** The window up, resting on [frame]. */
-    private fun show(frame: Frame = Frame(400, 200, 420, 400)) {
+    /** The window up, resting on [frame]; with [from], flying there out of
+     *  that rect. */
+    private fun show(frame: Frame = Frame(400, 200, 420, 400), from: Rect? = null) {
         prefs.setWindowBounds(d0, landscape = true, bounds = g.toBounds(frame, room, 1f))
         val display = (ctx.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager).getDisplay(d0)
         val displayCtx = ctx.createDisplayContext(display)
@@ -104,11 +115,11 @@ class DetachedWindowGestureTest {
         overlayHost = OverlayHost(ctx, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
         overlayHost.environmentReader = { testEnvironment(1280, 800) }
         window = DetachedWindow(displayCtx, wm, d0, overlayHost, prefs, host)
-        assertTrue(window.show())
+        assertTrue(window.show(from))
         page = View(ctx)
         window.setPage(page)
         layOut()
-        assertEquals("the window starts on its saved frame", frame, frame())
+        if (from == null) assertEquals("the window starts on its saved frame", frame, frame())
     }
 
     /** The view standing in for the results page, under the bar. */
@@ -653,5 +664,188 @@ class DetachedWindowGestureTest {
 
         assertEquals(Frame(0, 0, 320, 300), frame())
         assertNull("nothing was docked", host.docked.firstOrNull())
+    }
+
+    // ── The flight to and from the icon ──────────────────────────────────
+
+    private val card get() = window.root.findViewById<View>(R.id.detachedCard)
+
+    /** The icon's window, at the left side. */
+    private val icon = Rect(0, 300, 60, 360)
+    private val home = Frame(400, 200, 420, 400)
+
+    /** The card's centre on the display, from the window's params. */
+    private fun centre(): Pair<Int, Int> = frame().let { (it.x + it.w / 2) to (it.y + it.h / 2) }
+
+    /** Whether a window has been taken down: the churn gate hides a
+     *  removed window and stops its touches at once, and destroys it in a
+     *  quiet moment later (its params are then as they were). */
+    private fun takenDown(view: View = window.root, p: WindowManager.LayoutParams = params()) =
+        p.alpha == 0f || view in wm.removed
+
+    /** Frames come as the clock is moved, one every 16 ms, where the test
+     *  runtime would otherwise run a whole animation in one turn of the
+     *  looper. Before the window is shown; [tearDown] hands it back. */
+    private fun paceFrames() {
+        ShadowChoreographer.setPaused(true)
+        ShadowChoreographer.setFrameDelay(Duration.ofMillis(16))
+    }
+
+    /** Let the flight run out: its length several times over, a frame at
+     *  a time (a paced animation takes its start from the first frame it
+     *  sees, so one long turn of the looper shows it only that one). */
+    private fun land() = repeat((DetachedWindow.FLIGHT_MS * 4 / 16).toInt()) { idle(16) }
+
+    /** Let the flight run to somewhere in its middle. */
+    private fun flyToTheMiddle() {
+        val small = 60 / 420f
+        repeat(40) {
+            if (card.scaleX > small + 0.2f && card.scaleX < 0.8f) return
+            idle(8)
+        }
+        error("the flight never showed a frame in its middle (scale ${card.scaleX})")
+    }
+
+    private fun assertOnItsWay() {
+        val (x, y) = centre()
+        assertTrue("between the icon and home: $x, $y", x in 31..609 && y in 331..399)
+        assertEquals("at the window's own size: nothing is laid out again in flight", 420, frame().w)
+        // The host's layout pass leaves a window in flight to its flight.
+        overlayHost.invalidateLayout(d0)
+        assertEquals(x to y, centre())
+    }
+
+    @Test fun `shown out of the icon's place the window starts on it, small and unseen, and lands on its frame`() {
+        paceFrames()
+        show(from = icon)
+
+        assertEquals("the card's centre on the icon's", 30 to 330, centre())
+        assertEquals("scaled to the icon's size", 60 / 420f, card.scaleX, 0.001f)
+        assertEquals(60 / 400f, card.scaleY, 0.001f)
+        assertEquals(0f, card.alpha, 0.001f)
+
+        flyToTheMiddle()
+        assertOnItsWay()
+        assertTrue("coming into sight", card.alpha > 0f)
+
+        land()
+        layOut()
+        assertEquals(home, frame())
+        assertEquals(1f, card.scaleX, 0f)
+        assertEquals(1f, card.scaleY, 0f)
+        assertEquals(1f, card.alpha, 0f)
+        // And from there it is the window it always was.
+        drag(barX, barY, barX + 100, barY + 60)
+        assertEquals(Frame(500, 260, 420, 400), frame())
+    }
+
+    @Test fun `a window in flight takes no gesture, on its bar or at a corner`() {
+        paceFrames()
+        show(from = icon)
+        flyToTheMiddle()
+
+        // Where its bar and its bottom right corner will be.
+        down(barX, barY)
+        move(barX + 100, barY + 60)
+        assertOnItsWay()
+        up(barX + 100, barY + 60)
+        down(815f, 595f)
+        move(700f, 500f)
+        up(700f, 500f)
+
+        land()
+        layOut()
+        assertEquals("it lands where it was going", home, frame())
+        assertNull("and nothing was saved for it", prefs.detachedStateForDisplay(d0).bounds(landscape = true)?.takeIf {
+            g.fromBounds(it, room, 1f) != home
+        })
+    }
+
+    @Test fun `removed into the icon's place the window is done with its page at once, and is taken down when it gets there`() {
+        paceFrames()
+        show()
+
+        window.remove(icon)
+
+        assertNull("the page is its owner's again", page.parent)
+        assertTrue("the corners' touch targets are gone", window.handlePadsForTest().all { takenDown(it.first, it.second) })
+        assertFalse("the window is still up, for the flight", takenDown())
+        assertEquals("it starts where it stood", home, frame())
+        assertEquals(1f, card.alpha, 0f)
+        val inCard = card as FrameLayout
+        assertEquals("only a picture of the card flies", 1, inCard.childCount)
+        assertTrue(inCard.getChildAt(0) is android.widget.ImageView)
+
+        flyToTheMiddle()
+        assertOnItsWay()
+        assertTrue("fading", card.alpha < 1f && card.alpha > 0f)
+        // It takes no touch on the way.
+        val touches = host.touches
+        down(centre().first.toFloat(), centre().second.toFloat())
+        up(centre().first.toFloat(), centre().second.toFloat())
+        assertEquals(touches, host.touches)
+        assertFalse(takenDown())
+
+        land()
+        assertTrue("taken down at the icon", takenDown())
+        assertEquals(30 to 330, centre())
+        assertEquals(60 / 420f, card.scaleX, 0.001f)
+        assertEquals(0f, card.alpha, 0.001f)
+
+        // Once only, whoever asks again.
+        window.remove(icon)
+        window.remove()
+        idle(5000)
+        assertEquals(1, wm.removed.count { it === window.root })
+    }
+
+    @Test fun `removed with nowhere to fly the window goes at once`() {
+        show()
+
+        window.remove()
+
+        assertTrue(takenDown())
+        assertNull(page.parent)
+    }
+
+    @Test fun `removed while still flying in, the window flies out from its frame`() {
+        paceFrames()
+        show(from = icon)
+        flyToTheMiddle()
+
+        window.remove(icon)
+
+        assertEquals("the flight in ended where it was going", home, frame())
+        assertEquals(1f, card.alpha, 0f)
+        assertFalse(takenDown())
+        land()
+        assertTrue(takenDown())
+    }
+
+    @Test fun `a dock's flight goes on from the card as the armed dock dimmed it`() {
+        paceFrames()
+        show()
+        var alphaAtRemove = -1f
+        host.onDockedDo = {
+            window.remove(icon)
+            alphaAtRemove = card.alpha
+        }
+
+        down(barX, barY)
+        move(300f, barY)
+        move(10f, 300f)
+        idle(DetachedWindow.DOCK_HOLD_MS)
+        val dimmed = card.alpha
+        assertTrue(dimmed < 1f)
+        target!!.first.let { root ->
+            // The release, without the helper's layout pass after it.
+            val ev = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, 10f, 300f, 0)
+            root.dispatchTouchEvent(ev)
+            ev.recycle()
+        }
+
+        assertEquals("no flash back to solid at the release", dimmed, alphaAtRemove, 0.001f)
+        land()
+        assertTrue(takenDown())
     }
 }

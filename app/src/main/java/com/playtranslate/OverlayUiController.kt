@@ -2144,13 +2144,27 @@ class OverlayUiController(
      * went up where no controls were (what [reconcileFloatingIcons] counts
      * as a fresh placement); an icon that takes a window's place is not one,
      * and gets no intro.
+     *
+     * With [animate] a change of form is shown as one thing becoming the
+     * other: the window flies out of the icon's place, or into it
+     * ([DetachedWindow.show], [DetachedWindow.remove]). Only where the user
+     * asked for the change by name (Detach, Minimize, the dock gesture):
+     * the icon standing in for the window, and a window docked because
+     * auto-translate is starting, change at once.
      */
-    private fun showFormOn(display: Display, prefs: Prefs, freshAppearance: Boolean): Boolean {
+    private fun showFormOn(
+        display: Display,
+        prefs: Prefs,
+        freshAppearance: Boolean,
+        animate: Boolean = false,
+    ): Boolean {
         val id = display.displayId
         when (shownFormOn(id, prefs)) {
             ControlsForm.WINDOW -> {
                 if (id in windowHandles) return false
-                if (!installDetachedWindowForDisplay(display, prefs)) return false
+                // Where the icon is now, before it goes.
+                val from = if (animate) getFloatingIconRect(id) else null
+                if (!installDetachedWindowForDisplay(display, prefs, from)) return false
                 // The icon goes with whatever its lens paused forgotten
                 // (endsCapture drops the record): auto-translate and the
                 // window never share the screen, so nothing may restart it
@@ -2162,7 +2176,11 @@ class OverlayUiController(
                 if (id in iconHandles) return false
                 val replacesWindow = id in windowHandles
                 if (!installFloatingIconForDisplay(display, prefs, freshAppearance && !replacesWindow)) return false
-                if (replacesWindow) removeDetachedWindowForDisplay(id, "swap_to_icon")
+                if (replacesWindow) {
+                    // Where the icon that just went up is.
+                    val to = if (animate) getFloatingIconRect(id) else null
+                    removeDetachedWindowForDisplay(id, "swap_to_icon", to)
+                }
                 return !replacesWindow
             }
         }
@@ -2175,13 +2193,14 @@ class OverlayUiController(
      * display has controls at all, and their first appearance with its
      * intro, stay [reconcileFloatingIcons]'s alone, so this never brings an
      * icon up ahead of the reconcile that would have introduced it.
+     * [animate]: see [showFormOn].
      */
-    fun applyControlsForms() {
+    fun applyControlsForms(animate: Boolean = false) {
         val prefs = Prefs(context)
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         for (id in (iconHandles.keys + windowHandles.keys).toList()) {
             val display = dm.getDisplay(id) ?: continue
-            showFormOn(display, prefs, freshAppearance = false)
+            showFormOn(display, prefs, freshAppearance = false, animate = animate)
         }
         detachedPages.keys
             .filter { prefs.detachedStateForDisplay(it).form != ControlsForm.WINDOW }
@@ -2195,13 +2214,14 @@ class OverlayUiController(
         windowHandles[displayId]?.refreshActions()
     }
 
-    /** Put [display]'s detached window up. Returns whether it was added. */
-    private fun installDetachedWindowForDisplay(display: Display, prefs: Prefs): Boolean {
+    /** Put [display]'s detached window up, flying out of [from] when it is
+     *  given. Returns whether it was added. */
+    private fun installDetachedWindowForDisplay(display: Display, prefs: Prefs, from: Rect? = null): Boolean {
         val displayId = display.displayId
         val displayCtx = context.createDisplayContext(display)
         val wm = OwnWindows.manager(displayCtx) ?: return false
         val window = DetachedWindow(displayCtx, wm, displayId, overlayHost, prefs, windowHost)
-        if (!window.show()) return false
+        if (!window.show(from)) return false
         windowHandles[displayId] = window
         // The display's page: the one a window before this left, or a new
         // one at its idle prompt.
@@ -2218,10 +2238,12 @@ class OverlayUiController(
         return true
     }
 
-    private fun removeDetachedWindowForDisplay(displayId: Int, reason: String) {
+    /** Take [displayId]'s window down, flying into [to] when it is given.
+     *  Either way the window is no longer this display's from here. */
+    private fun removeDetachedWindowForDisplay(displayId: Int, reason: String, to: Rect? = null) {
         val window = windowHandles.remove(displayId) ?: return
         Log.i(TAG, "hideDetachedWindow[$displayId]: $reason")
-        window.remove()
+        window.remove(to)
         onControlsRemoved()
     }
 
@@ -2308,7 +2330,7 @@ class OverlayUiController(
         val svc = CaptureService.instance
         if (svc != null && (svc.isLive || svc.isLiveStartPending)) stopLiveRouted()
         Prefs(context).setControlsForm(displayId, ControlsForm.WINDOW)
-        applyControlsForms()
+        applyControlsForms(animate = true)
     }
 
     /**
@@ -2320,7 +2342,7 @@ class OverlayUiController(
         val prefs = Prefs(context)
         slot?.let { prefs.setIconPositionForDisplay(displayId, it) }
         prefs.setControlsForm(displayId, ControlsForm.ICON)
-        applyControlsForms()
+        applyControlsForms(animate = true)
     }
 
     /**

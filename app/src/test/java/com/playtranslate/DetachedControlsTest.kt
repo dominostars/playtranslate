@@ -22,6 +22,7 @@ import com.playtranslate.ui.QuickSetting
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -34,6 +35,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.android.controller.ServiceController
+import org.robolectric.shadows.ShadowChoreographer
 import org.robolectric.shadows.ShadowDisplayManager
 import java.time.Duration
 
@@ -86,6 +88,8 @@ class DetachedControlsTest {
     }
 
     @After fun tearDown() {
+        // A test that paced its frames hands the runtime's own pacing back.
+        ShadowChoreographer.setPaused(false)
         activities.forEach { runCatching { it.pause().stop().destroy() } }
         MainActivity.isInForeground = false
         service?.destroy()
@@ -189,6 +193,89 @@ class DetachedControlsTest {
         assertIconOnly()
         assertEquals(ControlsForm.ICON, prefs.detachedStateForDisplay(d0).form)
         assertEquals(IconPosition(edge = 0, fraction = 0.25f), prefs.iconPositionForDisplay(d0))
+    }
+
+    // ── The flight between the two forms ─────────────────────────────────
+
+    /** Frames come as the clock is moved, so a flight can be seen under
+     *  way; the runtime would otherwise run it out in one turn. */
+    private fun paceFrames() {
+        ShadowChoreographer.setPaused(true)
+        ShadowChoreographer.setFrameDelay(Duration.ofMillis(16))
+    }
+
+    /** Let a flight run out, a frame at a time. */
+    private fun land() = repeat(60) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16)) }
+
+    private fun paramsOf(view: View) = view.layoutParams as WindowManager.LayoutParams
+
+    /** The centre of a window on the display. */
+    private fun centreOf(view: View): Pair<Int, Int> =
+        paramsOf(view).let { (it.x + it.width / 2) to (it.y + it.height / 2) }
+
+    private fun cardOf(window: DetachedWindow): View = window.root.findViewById(R.id.detachedCard)
+
+    /** Whether [window] has been taken down: hidden and deaf at once (the
+     *  churn gate's), destroyed a quiet moment later. */
+    private fun takenDown(window: DetachedWindow) =
+        paramsOf(window.root).alpha == 0f || !window.root.isAttachedToWindow
+
+    @Test fun `Detach flies the window out of the icon's place, and Minimize flies it back into the icon's`() {
+        paceFrames()
+        val iconAt = centreOf(icon()!!)
+
+        detach()
+        val window = window()!!
+        assertWindowOnly()
+        assertEquals("it starts on the icon", iconAt, centreOf(window.root))
+        assertEquals("unseen", 0f, cardOf(window).alpha, 0.001f)
+        assertTrue("and small", cardOf(window).scaleX < 0.5f)
+
+        land()
+        assertNotEquals("it has left the icon's place", iconAt, centreOf(window.root))
+        assertEquals("at rest, whole and solid", 1f, cardOf(window).scaleX, 0f)
+        assertEquals(1f, cardOf(window).alpha, 0f)
+        val rest = centreOf(window.root)
+
+        tap(R.id.detachedBarMinimize)
+        assertIconOnly()
+        assertFalse("the window it was is still up, on its way", takenDown(window))
+        assertEquals("from where it stood", rest, centreOf(window.root))
+
+        land()
+        assertTrue("and gone once it is there", takenDown(window))
+        assertEquals("into the icon that took its place", centreOf(icon()!!), centreOf(window.root))
+    }
+
+    @Test fun `a window docked because auto-translate starts goes at once`() {
+        paceFrames()
+        val svc = captureService()
+        detach()
+        land()
+        val docked = window()!!
+
+        svc.startLive()
+
+        assertIconOnly()
+        assertTrue("no flight ahead of the first capture", takenDown(docked))
+    }
+
+    @Test fun `the icon standing in for the window, and the window coming back, change at once`() {
+        paceFrames()
+        detach()
+        land()
+        val covered = window()!!
+
+        val screen = ownActivity().create().start()
+        settle()
+        assertIconOnly()
+        assertTrue("no flight over a screen of ours", takenDown(covered))
+
+        screen.stop()
+        settle()
+        val back = window()!!
+        assertEquals("the window that comes back is in place at once", 1f, cardOf(back).alpha, 0f)
+        assertEquals(1f, cardOf(back).scaleX, 0f)
     }
 
     @Test fun `the saved form is what comes up again`() {

@@ -1,10 +1,15 @@
 package com.playtranslate.ui
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
@@ -18,10 +23,12 @@ import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowManager
+import android.view.animation.PathInterpolator
 import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageView
 import androidx.annotation.DrawableRes
 import androidx.annotation.VisibleForTesting
 import android.widget.LinearLayout
@@ -40,6 +47,7 @@ import com.playtranslate.ui.DetachedWindowGeometry.Room
 import com.playtranslate.ui.DetachedWindowGeometry.Side
 import kotlin.math.hypot
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 /**
  * The floating controls' second form ([com.playtranslate.ControlsForm.WINDOW]):
@@ -68,6 +76,12 @@ import kotlin.math.roundToInt
  * lays the display out; a gesture owns the window until it ends, then saves
  * where it left it. The window's own alpha is never written here: that value
  * belongs to capture blanking and the churn gate.
+ *
+ * Where the user turns the icon into the window or the window back into
+ * the icon, the window flies: out of the icon's place as it comes up
+ * ([show]) and into it as it goes ([remove]), the card growing or shrinking
+ * and fading on the way ([fly]). It is this window that moves, as the icon's
+ * own snap moves the icon's; no window is added for it.
  *
  * Gestures, one arbiter ([Root]), and the corners' own touch pads:
  *  - a bottom corner resizes ([DetachedWindowGeometry.resized]), from a
@@ -384,8 +398,10 @@ internal class DetachedWindow(
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
 
-    /** Put the window up at its rest place. False when the add failed. */
-    fun show(): Boolean {
+    /** Put the window up at its rest place: at once, or flying there out
+     *  of [from] (the icon it takes the place of, in display pixels). False
+     *  when the add failed. */
+    fun show(from: Rect? = null): Boolean {
         added = overlayHost.addOverlayWindow(
             root, wm, params, displayId, OverlayPlacement.Placed(::layoutAtRest),
         )
@@ -394,18 +410,170 @@ internal class DetachedWindow(
             // After the window, so above it: a pad's inner part lies over
             // the card's corner.
             for (pad in pads) pad.show()
+            // In the same turn as the add, so the first frame drawn is
+            // already the flight's first.
+            if (from != null) fly(from, arriving = true) { overlayHost.invalidateLayout(displayId) }
         }
         return added
     }
 
-    /** Take the window down for good; the page's view is handed back. */
-    fun remove() {
+    /**
+     * Take the window down for good; the page's view is handed back. With
+     * [to] (the icon that takes its place, in display pixels) what the
+     * window is, and everything it holds of the page, ends now all the same,
+     * and only a picture of the card stays up for the flight into the icon:
+     * the page is its owner's to release the moment the window is done with
+     * it, so nothing of it may be drawn after this returns.
+     */
+    fun remove(to: Rect? = null) {
+        if (leaving) return
+        cancelFlight()
         endGesture()
         imeWatcher.detach()
+        val picture = if (to != null && added) pictureOfCard() else null
         attachPage(null)
         for (pad in pads) pad.remove()
+        if (picture == null || to == null) {
+            takeDown()
+            return
+        }
+        leaving = true
+        card.removeAllViews()
+        card.addView(
+            ImageView(ctx).apply {
+                setImageBitmap(picture)
+                scaleType = ImageView.ScaleType.FIT_XY
+            },
+            FrameLayout.LayoutParams(MATCH, MATCH),
+        )
+        fly(to, arriving = false, ::takeDown)
+    }
+
+    private fun takeDown() {
         if (added) overlayHost.removeOverlayWindow(root)
         added = false
+    }
+
+    // ── The flight to and from the icon ───────────────────────────────────
+
+    /** The flight under way, or null. While one is, the window is the
+     *  flight's to place: the host's layout pass and every touch wait. */
+    private var flight: ValueAnimator? = null
+
+    /** The window is on its way out ([remove] with a flight): it takes no
+     *  touch, and it is not taken down twice. */
+    private var leaving = false
+
+    /** The card's alpha as a flight out begins: dimmed where the dock
+     *  gesture had dimmed it, so its release does not flash it back. */
+    private var leavingAlpha = 1f
+
+    /**
+     * Fly between the card's place and [icon]: the window moves so that the
+     * card's centre runs between the two centres, and the card scales
+     * between its own size and the icon's and fades, in as it arrives and
+     * out as it leaves. The window keeps its size throughout (nothing inside
+     * is laid out again for a frame of this); only its place is written, as
+     * a drag writes it. [then] runs once the flight is over, also where it
+     * never ran (animations turned off end at once).
+     */
+    private fun fly(icon: Rect, arriving: Boolean, then: () -> Unit) {
+        val at = frame
+        if (at == null || !added) {
+            then()
+            return
+        }
+        val homeX = at.x + at.w / 2f
+        val homeY = at.y + at.h / 2f
+        val smallX = (icon.width().toFloat() / at.w).coerceAtMost(1f)
+        val smallY = (icon.height().toFloat() / at.h).coerceAtMost(1f)
+        val startAlpha = if (arriving) 0f else leavingAlpha
+        // How far the card is from the icon: 1 at the icon, 0 at home.
+        fun apply(away: Float) {
+            val cx = homeX + (icon.exactCenterX() - homeX) * away
+            val cy = homeY + (icon.exactCenterY() - homeY) * away
+            params.x = (cx - at.w / 2f).roundToInt() - marginPx
+            params.y = (cy - at.h / 2f).roundToInt() - marginPx
+            card.pivotX = at.w / 2f
+            card.pivotY = at.h / 2f
+            card.scaleX = 1f + (smallX - 1f) * away
+            card.scaleY = 1f + (smallY - 1f) * away
+            // Arriving, the card is solid by half way; leaving, it fades
+            // over the whole flight from where it stood.
+            card.alpha = if (arriving) ((1f - away) * 2f).coerceAtMost(1f) else startAlpha * (1f - away)
+            if (!added) return
+            try {
+                wm.updateViewLayout(root, params)
+            } catch (e: Exception) {
+                Log.w(TAG, "window[$displayId]: flight update failed: ${e.message}")
+            }
+        }
+        val animator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = FLIGHT_MS
+            interpolator = PathInterpolator(0.4f, 0f, 0.2f, 1f)
+            addUpdateListener { apply(if (arriving) 1f - it.animatedFraction else it.animatedFraction) }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    if (flight !== animation) return
+                    flight = null
+                    if (arriving) settle()
+                    root.invalidate()
+                    then()
+                }
+            })
+        }
+        flight = animator
+        root.invalidate()
+        apply(if (arriving) 1f else 0f)
+        animator.start()
+    }
+
+    /** The card as it stands at rest: full size, solid, in its own place
+     *  (the host's next layout pass writes the window's). */
+    private fun settle() {
+        card.scaleX = 1f
+        card.scaleY = 1f
+        card.alpha = 1f
+    }
+
+    /** Stop a flight in where it is: the window is at rest from here. */
+    private fun cancelFlight() {
+        val running = flight ?: return
+        flight = null
+        running.cancel()
+        settle()
+    }
+
+    /**
+     * The card as a picture, for the flight out: what it shows now, drawn
+     * once. Capped in pixels, since it is scaled down and faded from its
+     * first frame and a large window's card at full size is several
+     * megabytes on a device that is running a game. Null where there is no
+     * memory for it, nothing to draw, or something in the card that will
+     * not draw off screen; the window then goes at once. The flight is an
+     * ornament: it never stands between the user and Minimize.
+     */
+    private fun pictureOfCard(): Bitmap? {
+        val w = card.width
+        val h = card.height
+        if (w <= 0 || h <= 0) return null
+        val scale = sqrt(MAX_PICTURE_PX / (w.toFloat() * h)).coerceAtMost(1f)
+        return try {
+            Bitmap.createBitmap(
+                (w * scale).roundToInt().coerceAtLeast(1), (h * scale).roundToInt().coerceAtLeast(1),
+                Bitmap.Config.ARGB_8888,
+            ).also {
+                val canvas = Canvas(it)
+                canvas.scale(scale, scale)
+                card.draw(canvas)
+            }
+        } catch (e: OutOfMemoryError) {
+            Log.w(TAG, "window[$displayId]: no memory for the flight's picture")
+            null
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "window[$displayId]: the card would not draw for the flight: ${e.message}")
+            null
+        }
     }
 
     /**
@@ -477,7 +645,7 @@ internal class DetachedWindow(
      * it; the gesture's end saves that place, and the next pass reads it.
      */
     fun layoutAtRest(env: OverlayEnvironment, p: WindowManager.LayoutParams) {
-        if (gesture != null) return
+        if (gesture != null || flight != null || leaving) return
         val room = g.room(env.geometry.width, env.geometry.height, env.barRoom)
         val landscape = env.geometry.width >= env.geometry.height
         val saved = prefs.detachedStateForDisplay(displayId).bounds(landscape)
@@ -613,8 +781,9 @@ internal class DetachedWindow(
                     MotionEvent.ACTION_DOWN -> {
                         host.onTouched(displayId)
                         val start = frame
-                        // One gesture at a time: a second finger is not one.
-                        active = gesture == null && start != null
+                        // One gesture at a time: a second finger is not
+                        // one, and a window in flight takes none.
+                        active = gesture == null && flight == null && start != null
                         if (active) {
                             downX = ev.rawX
                             downY = ev.rawY
@@ -749,7 +918,11 @@ internal class DetachedWindow(
         val docked = (ended as? Gesture.Move)?.takeIf { it.armed }?.side
         endGesture()
         if (docked != null) {
+            // The card was dimmed as the dock armed: a flight to the icon
+            // goes on from there.
+            leavingAlpha = DOCK_ARMED_ALPHA
             host.onDocked(displayId, docked, ev.rawY.roundToInt())
+            leavingAlpha = 1f
             return
         }
         saveBounds()
@@ -848,14 +1021,14 @@ internal class DetachedWindow(
             defaultFocusHighlightEnabled = false
         }
 
-        /** A touch that went down while a corner's pad held a resize: the
-         *  window takes none of it. */
+        /** A touch that went down while a corner's pad held a resize, or
+         *  while the window was in flight: the window takes none of it. */
         private var ignoring = false
 
         override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
             if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
-                host.onTouched(displayId)
-                ignoring = gesture is Gesture.Resize
+                if (!leaving) host.onTouched(displayId)
+                ignoring = gesture is Gesture.Resize || flight != null || leaving
             }
             if (ignoring) return true
             return super.dispatchTouchEvent(ev)
@@ -914,6 +1087,9 @@ internal class DetachedWindow(
          *  since accent on accent cannot be seen. */
         override fun dispatchDraw(canvas: Canvas) {
             super.dispatchDraw(canvas)
+            // In flight the card is scaled inside the window: the handles
+            // wait for it to land.
+            if (flight != null || leaving) return
             val m = marginPx.toFloat()
             val right = width - m
             val bottom = height - m
@@ -960,6 +1136,12 @@ internal class DetachedWindow(
          *  how far past its corner. */
         const val HANDLE_HIT_INSIDE_DP = 34f
         const val HANDLE_HIT_OUTSIDE_DP = 24f
+
+        /** How long the flight to or from the icon takes. */
+        const val FLIGHT_MS = 220L
+
+        /** The most pixels the flight out's picture of the card holds. */
+        private const val MAX_PICTURE_PX = 1_500_000f
 
         /** How long the finger stays at a side before the dock arms. */
         const val DOCK_HOLD_MS = 1000L
