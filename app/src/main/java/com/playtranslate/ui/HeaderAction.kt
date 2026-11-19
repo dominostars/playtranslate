@@ -50,6 +50,8 @@ class HeaderAction(
             notifyChanged(affectsWidth = false)
         }
 
+    /** 0 for none: a menu row then keeps the icon's place empty, so its
+     *  name lines up with its neighbours' (never for an inline button). */
     @DrawableRes
     var icon: Int = icon
         set(value) {
@@ -95,6 +97,9 @@ class HeaderAction(
     }
 }
 
+/** One group of a ⋯ menu: its rows, under [title] when it has one. */
+class MenuGroup(val title: CharSequence?, val actions: List<HeaderAction>)
+
 /**
  * A row of [HeaderAction]s that folds the ones that do not fit behind a ⋯
  * button: what an [ActionOverflowMenu] lists and follows. A results section's
@@ -105,9 +110,19 @@ interface FoldingActionRow {
     fun foldedActions(): List<HeaderAction>
 
     /** What the ⋯ menu lists, in groups it rules off from one another: the
-     *  folded actions as one group, unless the row has more to offer there
-     *  (the detached window's bar adds its page's actions). */
-    fun menuGroups(): List<List<HeaderAction>> = listOf(foldedActions())
+     *  folded actions as one group with no heading, unless the row has more
+     *  to offer there (the detached window's menu is its whole list of
+     *  actions, under headings). */
+    fun menuGroups(): List<MenuGroup> = listOf(MenuGroup(null, foldedActions()))
+
+    /** Whether [action]'s menu row can be tapped now. One that cannot is
+     *  shown dimmed and keeps its place, so the rows under it never move. */
+    fun menuEnabled(action: HeaderAction): Boolean = true
+
+    /** Whether the menu stays up after [action] ran from it: a switch,
+     *  which the user may want to flip back or see flip. Every other row
+     *  closes the menu first. */
+    fun menuStaysOpen(action: HeaderAction): Boolean = false
 
     /** The ⋯ button: the anchor for the menu and for any popover a menu
      *  action opens. */
@@ -118,9 +133,10 @@ interface FoldingActionRow {
 
     /** What an open overflow menu follows. */
     interface Listener {
-        /** The folded set may have changed. Posted from the measure pass
-         *  that changed it, so a listener never mutates views mid-measure;
-         *  compare [foldedActions] against what you showed. */
+        /** The folded set may have changed, or which rows can be tapped
+         *  ([menuEnabled]). Posted from the measure pass that changed it, so
+         *  a listener never mutates views mid-measure; compare [menuGroups]
+         *  against what you showed. */
         fun onFoldChanged(row: FoldingActionRow) {}
 
         /** An action's look changed (icon, accent, name). Synchronous. */

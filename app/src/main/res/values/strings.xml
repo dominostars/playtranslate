@@ -3081,6 +3081,35 @@
          "Capture" is the window's own Capture button (detached_bar_capture). -->
     <string name="detached_status_idle">Tap Capture to translate the game screen</string>
 
+    <!-- A smaller second line under detached_status_idle, for someone who
+         sees the detached window for the first time: how the window itself
+         is moved and resized, and where its other actions are. "The top
+         bar" is the row of buttons along the window's top; the "⋯" is the
+         three-dots button on that bar, which opens the window's menu, so
+         keep the character as it is. Three short sentences. -->
+    <string name="detached_status_idle_hint">Drag the top bar to move this window. Drag a bottom corner to resize it. Everything else is in the ⋯ menu.</string>
+
+    <!-- Short label of a shortcut button in the detached window's top bar
+         that adds the result on show to Anki as a card. The brand name
+         alone; the bar is narrow. -->
+    <string name="detached_bar_anki" translatable="false">Anki</string>
+
+    <!-- Heading of the first group of rows in the detached window's menu
+         (the three-dots button on its bar): the actions on the capture
+         result the window shows now (add it to Anki, read it aloud). A
+         short heading, not a sentence. -->
+    <string name="detached_menu_group_result">This result</string>
+
+    <!-- Heading of the second group in the same menu: how the result's
+         text is shown (reading hints on or off, hide or show the original
+         and the translation, text size). One word if possible. -->
+    <string name="detached_menu_group_text">Text</string>
+
+    <!-- Heading of the third group in the same menu: what a capture of the
+         game screen reads and how (the region, the two languages, the text
+         recognition tool). A noun here, "the capture", not a command. -->
+    <string name="detached_menu_group_capture">Capture</string>
+
     <!-- Instruction pill shown at the bottom of the floating-icon menu
          while no custom region is active, prompting the user to
          drag-select an area on screen. -->

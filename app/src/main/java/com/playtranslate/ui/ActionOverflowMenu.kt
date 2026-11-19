@@ -21,18 +21,22 @@ import com.playtranslate.themeColor
  * row per action the header folded, in the header's order, each with the
  * action's icon at the start and its short name, and its value at the end
  * when it has one ([HeaderAction.detail]). A row that offers more than its
- * folded actions lists them in groups, a hairline between
- * ([FoldingActionRow.menuGroups]). A row runs exactly what
- * the inline button runs, from the same [HeaderAction]: a tap closes the
- * menu and then runs [HeaderAction.onClick], with ⋯ as the action's anchor,
- * so a popover it opens (the text-size picker) points there.
+ * folded actions lists them in groups, a hairline between and a heading
+ * over each that has one ([FoldingActionRow.menuGroups]). A row runs exactly
+ * what the inline button runs, from the same [HeaderAction]: a tap closes
+ * the menu and then runs [HeaderAction.onClick], with ⋯ as the action's
+ * anchor, so a popover it opens (the text-size picker) points there. Two
+ * things are the row's to say of each action: one that cannot run now is
+ * dimmed in its place and takes no tap ([FoldingActionRow.menuEnabled]), and
+ * a switch leaves the menu up ([FoldingActionRow.menuStaysOpen]).
  *
  * Shown by the surface's [PopoverHost], so it inherits the in-window,
  * modal, one-at-a-time rules. While open it follows its row: a row
  * re-paints when its action's look changes (a speak that ends drops its
- * accent), and the menu closes when the header's folded set changes under
- * it. A row does nothing unless its menu is still the one showing, so a
- * click that lands after dismissal can't run an action twice.
+ * accent, a result that arrives undims its rows), and the menu closes when
+ * the list itself changes under it (the header's folded set). A row does
+ * nothing unless its menu is still the one showing, so a click that lands
+ * after dismissal can't run an action twice.
  *
  * Built in code (the over-game panel's plain inflater drops `app:`
  * attributes). A new instance per open.
@@ -45,8 +49,8 @@ class ActionOverflowMenu(private val row: FoldingActionRow) : PopoverContent, Fo
 
     override fun createView(ctx: Context, host: PopoverHost): View {
         this.host = host
-        val groups = row.menuGroups().filter { it.isNotEmpty() }
-        items = groups.flatten()
+        val groups = row.menuGroups().filter { it.actions.isNotEmpty() }
+        items = listed(groups)
         row.addListener(this)
         val density = ctx.resources.displayMetrics.density
         val padV = (LIST_V_PAD_DP * density).toInt()
@@ -64,7 +68,8 @@ class ActionOverflowMenu(private val row: FoldingActionRow) : PopoverContent, Fo
                         },
                     )
                 }
-                for (a in group) {
+                group.title?.let { addView(buildHeading(ctx, it), LinearLayout.LayoutParams(MATCH, WRAP)) }
+                for (a in group.actions) {
                     val v = buildRow(ctx, a)
                     rowViews[a] = v
                     addView(v, LinearLayout.LayoutParams(MATCH, WRAP))
@@ -92,8 +97,18 @@ class ActionOverflowMenu(private val row: FoldingActionRow) : PopoverContent, Fo
         host = null
     }
 
+    /** The rows a menu of [groups] lists, in order. */
+    private fun listed(groups: List<MenuGroup>): List<HeaderAction> = groups.flatMap { it.actions }
+
     override fun onFoldChanged(row: FoldingActionRow) {
-        if (row.menuGroups().flatten() != items) host?.takeIf { it.content === this }?.dismiss()
+        // This menu's own row, whichever row told of the change: the
+        // detached window's menu lists more than its bar folded.
+        if (listed(this.row.menuGroups()) != items) {
+            host?.takeIf { it.content === this }?.dismiss()
+            return
+        }
+        // The same rows: which of them can be tapped may be what changed.
+        for ((a, v) in rowViews) bind(v, a)
     }
 
     override fun onActionChanged(action: HeaderAction) {
@@ -102,6 +117,23 @@ class ActionOverflowMenu(private val row: FoldingActionRow) : PopoverContent, Fo
 
     /** This menu is the popover showing right now. */
     private val isCurrent: Boolean get() = host?.content === this
+
+    /** A group's heading: small and muted, starting where the rows' icons
+     *  start. */
+    private fun buildHeading(ctx: Context, title: CharSequence): View {
+        val density = ctx.resources.displayMetrics.density
+        fun dp(v: Float) = (v * density).toInt()
+        return TextView(ctx).apply {
+            text = title
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, HEADING_SP)
+            setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            isAccessibilityHeading = true
+            setPaddingRelative(dp(ROW_H_PAD_DP), dp(HEADING_TOP_PAD_DP), dp(ROW_H_PAD_DP), dp(HEADING_BOTTOM_PAD_DP))
+        }
+    }
 
     private fun buildRow(ctx: Context, a: HeaderAction): View {
         val density = ctx.resources.displayMetrics.density
@@ -145,8 +177,8 @@ class ActionOverflowMenu(private val row: FoldingActionRow) : PopoverContent, Fo
         }
         v.setOnClickListener {
             val h = host ?: return@setOnClickListener
-            if (!isCurrent) return@setOnClickListener
-            h.dismiss()
+            if (!isCurrent || !row.menuEnabled(a)) return@setOnClickListener
+            if (!row.menuStaysOpen(a)) h.dismiss()
             a.onClick?.invoke(row.moreAnchor)
         }
         bind(v, a)
@@ -155,8 +187,12 @@ class ActionOverflowMenu(private val row: FoldingActionRow) : PopoverContent, Fo
 
     private fun bind(v: View, a: HeaderAction) {
         val ctx = v.context
+        val enabled = row.menuEnabled(a)
+        v.isEnabled = enabled
+        v.alpha = if (enabled) 1f else DISABLED_ALPHA
         v.findViewById<ImageView>(R.id.overflowRowIcon).apply {
-            setImageResource(a.icon)
+            // No icon: its place stays, so the name lines up with the rest.
+            if (a.icon != 0) setImageResource(a.icon) else setImageDrawable(null)
             imageTintList = ColorStateList.valueOf(
                 ctx.themeColor(if (a.active) R.attr.ptAccent else R.attr.ptTextMuted),
             )
@@ -179,6 +215,10 @@ class ActionOverflowMenu(private val row: FoldingActionRow) : PopoverContent, Fo
         const val LABEL_SP = 15f
         const val DETAIL_SP = 13f
         const val RULE_V_MARGIN_DP = 4f
+        const val HEADING_SP = 12f
+        const val HEADING_TOP_PAD_DP = 8f
+        const val HEADING_BOTTOM_PAD_DP = 4f
+        const val DISABLED_ALPHA = 0.38f
         const val LIST_V_PAD_DP = 8f
         const val MIN_W_DP = 160f
         const val MAX_W_DP = 280f

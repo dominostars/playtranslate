@@ -195,15 +195,17 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
     /** Show a status message. Cancels any in-flight lookup. A non-null
      *  [ocrProvenance] (+ [screenshotPath]) marks the "no text detected" status so
      *  the surface shows a tappable OCR-switch gear inline that can re-OCR that exact
-     *  capture; both null for every other status. */
+     *  capture; both null for every other status. [hint] is a line of the
+     *  surface's own under the message ([ResultState.Status.hint]). */
     fun showStatus(
         message: String,
         showHint: Boolean = false,
         ocrProvenance: OcrProvenance? = null,
         screenshotPath: String? = null,
+        hint: String? = null,
     ) {
         resetWordLookups()
-        _result.value = ResultState.Status(message, showHint, ocrProvenance, screenshotPath)
+        _result.value = ResultState.Status(message, showHint, ocrProvenance, screenshotPath, hint)
     }
 
     /** Show an error. Fragment formats with the status_error string
@@ -496,6 +498,10 @@ sealed class ResultState {
          *  idle/error/searching/etc. (no gear). */
         val ocrProvenance: OcrProvenance? = null,
         val screenshotPath: String? = null,
+        /** A line of the surface's own under the message, in place of the
+         *  [showHint] one (the detached window's idle page says how the
+         *  window is moved and where its actions are); null for none. */
+        val hint: String? = null,
     ) : ResultState()
     /** Drag-sentence placeholder: original text is set, translation
      *  is in flight ("Translating..." in the UI). */

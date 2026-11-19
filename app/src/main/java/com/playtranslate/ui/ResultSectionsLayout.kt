@@ -32,7 +32,9 @@ import kotlin.math.max
  * pair, a hidden section's header shrinks to a fixed cell and the other
  * card takes the full width under both headers; with both hidden the two
  * headers share the row and there is no card row
- * ([ResultSectionsGeometry.pairedRow]).
+ * ([ResultSectionsGeometry.pairedRow]). A page that shows the pair with no
+ * headers at all (the compact page) pairs the two cards alone while both
+ * are shown, and stacks whichever is left when one is hidden.
  *
  * This layout is the ONE owner of which arrangement applies. A page leaves
  * [fixedArrangement] null and the arrangement follows the width on every
@@ -144,8 +146,13 @@ class ResultSectionsLayout @JvmOverloads constructor(
         val targetCard = shownChild(R.id.cardTranslation)
 
         // Only a pair can be paired: a host that gave one of the two
-        // sections gets it stacked whatever the width.
-        val canPair = sourceHeader != null && targetHeader != null
+        // sections gets it stacked whatever the width. A page that shows the
+        // two without their headers (the compact page) pairs their cards,
+        // while both are shown: with no header cell to stand for a hidden
+        // one, the other simply takes the row.
+        val headless = sourceHeader == null && targetHeader == null
+        val canPair = (sourceHeader != null && targetHeader != null) ||
+            (headless && sourceCard != null && targetCard != null)
         arrangement = when {
             !canPair -> Arrangement.STACKED
             else -> fixedArrangement
@@ -161,6 +168,7 @@ class ResultSectionsLayout @JvmOverloads constructor(
         val wordsHeader = shownChild(R.id.wordsHeaderRow)
         val wordsCard = shownChild(R.id.cardWords)
         val paired = arrangement == Arrangement.PAIRED && sourceHeader != null && targetHeader != null
+        val pairedCards = arrangement == Arrangement.PAIRED && headless
 
         // The top row begins above the top edge by its header's own top
         // padding when the host asked for a flush top ([flushTop]): the
@@ -169,6 +177,8 @@ class ResultSectionsLayout @JvmOverloads constructor(
         if (flushTop) {
             y -= if (paired) {
                 minOf(sourceHeader!!.paddingTop, targetHeader!!.paddingTop)
+            } else if (pairedCards) {
+                0
             } else {
                 // Stacked, the first child placed: a header. (A card that
                 // came first has no padding to give: the cards are
@@ -186,6 +196,8 @@ class ResultSectionsLayout @JvmOverloads constructor(
         }
         if (paired) {
             y = measurePair(inner, y, sourceHeader!!, sourceCard, targetHeader!!, targetCard)
+        } else if (pairedCards) {
+            y = measureCardPair(inner, y, sourceCard!!, targetCard!!)
         } else {
             // Translation above Original: the stacked reading order.
             y = stack(targetHeader, inner, y)
@@ -306,6 +318,28 @@ class ResultSectionsLayout @JvmOverloads constructor(
             )
         }
         return cardTop + cardHeight
+    }
+
+    /** The pair without headers, from [top]: the two cards side by side in
+     *  the pair's own cells, one height, the hairline between them. Returns
+     *  the y beneath. */
+    private fun measureCardPair(inner: Int, top: Int, sourceCard: View, targetCard: View): Int {
+        val row = ResultSectionsGeometry.pairedRow(
+            inner, dividerPx, dividerMarginPx, hiddenCellPx, sourceHidden = false, targetHidden = false,
+        )
+        val sourceSpan = row.sourceCard ?: return top
+        val targetSpan = row.targetCard ?: return top
+        measureAt(sourceCard, sourceSpan.width)
+        measureAt(targetCard, targetSpan.width)
+        val cardHeight = max(outerHeight(sourceCard), outerHeight(targetCard))
+        if (outerHeight(sourceCard) < cardHeight) measureAt(sourceCard, sourceSpan.width, cardHeight)
+        if (outerHeight(targetCard) < cardHeight) measureAt(targetCard, targetSpan.width, cardHeight)
+        place(sourceCard, sourceSpan, top)
+        place(targetCard, targetSpan, top)
+        row.cardDividerStart?.let {
+            dividers += Divider(it, top + dividerMarginPx, top + cardHeight - dividerMarginPx)
+        }
+        return top + cardHeight
     }
 
     private fun place(child: View, span: ResultSectionsGeometry.Span, top: Int) {

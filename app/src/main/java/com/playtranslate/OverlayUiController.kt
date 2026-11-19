@@ -2282,6 +2282,11 @@ class OverlayUiController(
             // capture.
             svc.configureSavedIfNeeded(displayId)
             if (svc.activeRegionForDisplay(displayId) != region) svc.configureOverride(displayId, region)
+            // The frame is in: mark the region that was captured, as a
+            // capture from the app's page does on two screens (captureOnce
+            // flashes its own; a whole-screen region has no mark). After the
+            // frame, so the mark is never in it.
+            if (frame != null) svc.flashRegionIndicator(displayId)
             // The page paints no boxes, so a hidden translation section can
             // put the backend call off (TranslationResultActivity's rule).
             // The service consumes and recycles the frame.

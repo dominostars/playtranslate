@@ -74,7 +74,10 @@ class DetachedPageTest {
         clearPrefs()
     }
 
-    private val idle get() = ResultState.Status(ctx.getString(R.string.detached_status_idle))
+    private val idle get() = ResultState.Status(
+        ctx.getString(R.string.detached_status_idle),
+        hint = ctx.getString(R.string.detached_status_idle_hint),
+    )
 
     private fun result(original: String = "こんにちは") = TranslationResult(
         originalText = original,
@@ -92,9 +95,72 @@ class DetachedPageTest {
 
     private fun view(id: Int): View? = page.view.findViewById(id)
 
-    @Test fun `the page starts at its own idle prompt, with no start hint`() {
+    @Test fun `the page starts at its own idle prompt, with how the window is worked under it`() {
         assertEquals(idle, page.vm.result.value)
         assertEquals(ctx.getString(R.string.detached_status_idle), (view(R.id.tvStatus) as TextView).text.toString())
+        val hint = view(R.id.tvStatusHint) as TextView
+        assertEquals(View.VISIBLE, hint.visibility)
+        assertEquals(ctx.getString(R.string.detached_status_idle_hint), hint.text.toString())
+        assertTrue("a second line, smaller than the prompt", hint.textSize < (view(R.id.tvStatus) as TextView).textSize)
+    }
+
+    /** The page's view in a window, as the detached window holds it: a
+     *  view's own posts run only there. */
+    private val holder by lazy {
+        android.widget.FrameLayout(ctx).also {
+            it.addView(page.view)
+            wm.addView(
+                it,
+                WindowManager.LayoutParams(
+                    420, 600, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, android.graphics.PixelFormat.TRANSLUCENT,
+                ),
+            )
+        }
+    }
+
+    private fun layOut(width: Int, height: Int) {
+        // The window's own size first: its layout pass runs with the looper
+        // and would put a size set only by hand back.
+        val p = holder.layoutParams as WindowManager.LayoutParams
+        p.width = width
+        p.height = height
+        wm.updateViewLayout(holder, p)
+        // Twice: the hint's coming or going is a layout of its own.
+        repeat(2) {
+            holder.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY),
+            )
+            holder.layout(0, 0, width, height)
+            settle()
+        }
+    }
+
+    @Test fun `the hint gives way where the window is too small for the prompt and it, and comes back with the room`() {
+        val status = view(R.id.tvStatus)!!
+        val hint = view(R.id.tvStatusHint)!!
+        layOut(420, 600)
+        assertEquals(View.VISIBLE, hint.visibility)
+        assertTrue("both in view", status.top >= 0 && hint.bottom <= 600)
+
+        // Room for the prompt alone.
+        val small = status.height + hint.height / 2
+        layOut(420, small)
+        assertEquals(View.GONE, hint.visibility)
+        assertEquals(View.VISIBLE, status.visibility)
+        assertTrue("the prompt is in view whole", status.top >= 0 && status.bottom <= small)
+
+        layOut(420, 600)
+        assertEquals(View.VISIBLE, hint.visibility)
+    }
+
+    @Test fun `a status with no hint of its own shows none`() {
+        layOut(420, 600)
+
+        page.vm.showStatus("Capturing…")
+        settle()
+
         assertNotEquals(View.VISIBLE, view(R.id.tvStatusHint)!!.visibility)
     }
 
@@ -197,54 +263,103 @@ class DetachedPageTest {
         assertEquals(0, view(R.id.askHeaderRow)!!.paddingTop)
     }
 
-    @Test fun `the headers' actions are the more menu's while a result is on show, the languages always`() {
-        val idleGroups = page.menuGroups()
-        assertTrue("a status has no text to act on", idleGroups[0].isEmpty())
+    @Test fun `the headers' actions are handed to the window as Read aloud, the rows about the text and the two languages`() {
         assertEquals(
             listOf(ctx.getString(R.string.lang_translate_from), ctx.getString(R.string.lang_translate_to)),
-            idleGroups[1].map { it.label.toString() },
+            page.languageRows().map { it.label.toString() },
         )
-        assertTrue("each language row carries its language", idleGroups[1].all { !it.detail.isNullOrEmpty() })
+        assertTrue("each language row carries its language", page.languageRows().all { !it.detail.isNullOrEmpty() })
 
         page.vm.displayResult(result(), ctx)
         settle()
-        val labels = page.menuGroups()[0].map { it.label.toString() }
 
-        assertTrue(ctx.getString(R.string.header_action_read_aloud) in labels)
-        assertTrue(ctx.getString(R.string.header_action_furigana) in labels)
-        assertTrue(ctx.getString(R.string.cd_text_size) in labels)
-        assertTrue(ctx.getString(R.string.header_action_hide_original) in labels)
-        assertTrue(ctx.getString(R.string.header_action_hide_translation) in labels)
-        assertFalse("no source edit here", ctx.getString(R.string.header_action_edit) in labels)
+        assertEquals(ctx.getString(R.string.header_action_read_aloud), page.readAloud.label.toString())
+        assertTrue(page.readAloud.available)
+        assertEquals(
+            listOf(
+                ctx.getString(R.string.header_action_furigana),
+                ctx.getString(R.string.header_action_hide_original),
+                ctx.getString(R.string.header_action_hide_translation),
+                ctx.getString(R.string.cd_text_size),
+            ),
+            page.textActions().map { it.label.toString() },
+        )
+        assertTrue("every one of them can run", page.textActions().all { it.available })
     }
+
+    @Test fun `a game language with no reading hints lists no switch for them`() {
+        prefs.sourceLang = "es"
+        settle()
+
+        assertEquals(
+            listOf(
+                ctx.getString(R.string.header_action_hide_original),
+                ctx.getString(R.string.header_action_hide_translation),
+                ctx.getString(R.string.cd_text_size),
+            ),
+            page.textActions().map { it.label.toString() },
+        )
+    }
+
+    private fun textAction(label: Int): HeaderAction =
+        page.textActions().first { it.label.toString() == ctx.getString(label) }
 
     @Test fun `hiding the original from the menu hides its text, and the row then offers to show it`() {
         page.vm.displayResult(result(), ctx)
         settle()
-        val hide = page.menuGroups()[0].first { it.label.toString() == ctx.getString(R.string.header_action_hide_original) }
+        val rows = page.textActions()
+        val eye = textAction(R.string.header_action_hide_original)
+        val changed = mutableListOf<HeaderAction>()
+        val listener = object : FoldingActionRow.Listener {
+            override fun onActionChanged(action: HeaderAction) { changed += action }
+        }
+        page.addActionListener(listener)
 
-        hide.onClick!!.invoke(page.view)
+        eye.onClick!!.invoke(page.view)
         settle()
 
         assertEquals(View.GONE, view(R.id.cardOriginal)!!.visibility)
-        val labels = page.menuGroups()[0].map { it.label.toString() }
-        assertTrue(ctx.getString(R.string.header_action_show_original) in labels)
-        assertFalse("what acts on the hidden text goes with it", ctx.getString(R.string.header_action_read_aloud) in labels)
+        assertEquals(ctx.getString(R.string.header_action_show_original), eye.label.toString())
+        assertFalse("what acts on the hidden text has nothing to act on", page.readAloud.available)
+        assertFalse(rows.first { it.label.toString() == ctx.getString(R.string.header_action_furigana) }.available)
+        assertEquals("the same rows in the same places: an open menu keeps its list", rows, page.textActions())
+        assertTrue("and whoever follows the actions hears of it", page.readAloud in changed)
+        page.removeActionListener(listener)
     }
 
-    @Test fun `Anki is offered while a result is on show, and not on a status`() {
+    @Test fun `Text size is one row whichever text is on show, and has nothing to size with both hidden`() {
+        page.vm.displayResult(result(), ctx)
+        settle()
+        val textSize = textAction(R.string.cd_text_size)
+        assertTrue(textSize.available)
+
+        textAction(R.string.header_action_hide_translation).onClick!!.invoke(page.view)
+        settle()
+        assertTrue("the Original is still there to size", textSize.available)
+        assertEquals("the same model", textSize, textAction(R.string.cd_text_size))
+
+        textAction(R.string.header_action_hide_original).onClick!!.invoke(page.view)
+        settle()
+        assertFalse(textSize.available)
+
+        textAction(R.string.header_action_show_translation).onClick!!.invoke(page.view)
+        settle()
+        assertTrue(textSize.available)
+    }
+
+    @Test fun `a result on show is what offers the page's actions and Anki, and a status takes them back`() {
         var changes = 0
-        page.onAnkiAvailableChanged = { changes++ }
-        assertFalse(page.ankiAvailable)
+        page.onResultOnShowChanged = { changes++ }
+        assertFalse(page.resultOnShow)
 
         page.vm.displayResult(result(), ctx)
         settle()
-        assertTrue(page.ankiAvailable)
+        assertTrue(page.resultOnShow)
         assertEquals(1, changes)
 
         page.vm.showStatus("Capturing…")
         settle()
-        assertFalse(page.ankiAvailable)
+        assertFalse(page.resultOnShow)
         assertEquals(2, changes)
     }
 
@@ -253,7 +368,7 @@ class DetachedPageTest {
         settle()
         val shown = mutableListOf<Pair<PopoverContent, View>>()
         page.popoverPresenter = { content, anchor -> shown += content to anchor }
-        val textSize = page.menuGroups()[0].first { it.label.toString() == ctx.getString(R.string.cd_text_size) }
+        val textSize = textAction(R.string.cd_text_size)
         val anchor = View(ctx)
 
         textSize.onClick!!.invoke(anchor)

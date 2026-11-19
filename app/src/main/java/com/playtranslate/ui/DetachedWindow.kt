@@ -22,8 +22,9 @@ import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
 import android.widget.EditText
 import android.widget.FrameLayout
+import androidx.annotation.DrawableRes
+import androidx.annotation.VisibleForTesting
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.WindowInsetsCompat
 import com.playtranslate.Prefs
@@ -42,11 +43,18 @@ import kotlin.math.roundToInt
 
 /**
  * The floating controls' second form ([com.playtranslate.ControlsForm.WINDOW]):
- * a card over the game that the user moves and resizes, with the icon
- * menu's actions in a top bar ([DetachedWindowBar]) over a slot for the
- * results page ([setPage]). Narrower than the page can be
- * ([DetachedWindowGeometry.isPage]) the whole card is one Capture button,
- * the icon menu's ([PrimaryActionButton]).
+ * a card over the game that the user moves and resizes, with a top bar
+ * ([DetachedWindowBar]) over a slot for the results page ([setPage]).
+ * Narrower than the page can be ([DetachedWindowGeometry.isPage]) the whole
+ * card is one Capture button, the icon menu's ([PrimaryActionButton]).
+ *
+ * The bar holds what a capture needs and nothing a user has to decode:
+ * Minimize, the menu button, Auto and Capture by name. Everything else is
+ * in the one menu ([Menu]), by name, under four headings that say what each
+ * row acts on: the result on show, how its text shows, the capture, and
+ * PlayTranslate itself. The rows keep their places from one open to the
+ * next; one with nothing to act on is dimmed. Turn Off is a row there and
+ * not a button of the bar, where an X would read as closing the window.
  *
  * One window per display, owned by [com.playtranslate.OverlayUiController],
  * which decides when it is up; everything a tap means is the [Host]'s. The
@@ -61,11 +69,12 @@ import kotlin.math.roundToInt
  * where it left it. The window's own alpha is never written here: that value
  * belongs to capture blanking and the churn gate.
  *
- * Gestures, one arbiter ([Root]):
- *  - a bottom corner resizes ([DetachedWindowGeometry.resized]); the bar
- *    and the page follow the window's size as it goes, the bar folding and
- *    unfolding its actions and the page fitting its text again; crossing
- *    the page width shows at once;
+ * Gestures, one arbiter ([Root]), and the corners' own touch pads:
+ *  - a bottom corner resizes ([DetachedWindowGeometry.resized]), from a
+ *    touch pad that reaches past the card's corner ([HandlePad]); the bar
+ *    and the page follow the window's size as it goes, the bar fitting its
+ *    buttons and the page its text again; crossing the page width shows at
+ *    once;
  *  - the bar, and the capture button, move the window on any drag;
  *  - inside the page only a very clear sideways drag moves it
  *    ([DetachedWindowGeometry.isClearSideways]); everything else is the
@@ -103,38 +112,54 @@ internal class DetachedWindow(
         /** Any touch went down on the window. */
         fun onTouched(displayId: Int)
 
-        /** The quick settings' rows; [leave] closes the window's popover. */
+        /** The quick settings' rows, which the window lists in its menu;
+         *  [leave] closes the menu. */
         fun quickSettings(displayId: Int, leave: () -> Unit): List<QuickSetting>
 
         /** Whether the capture region is the whole screen. */
         fun regionIsFullScreen(displayId: Int): Boolean
 
-        /** Whether Exit turns PlayTranslate off, or only hides the controls
+        /** Whether [onExit] turns PlayTranslate off, or only hides the
+         *  controls
          *  ([com.playtranslate.capture.CaptureLifecycle.hasActivateControl]). */
         fun exitTurnsOff(): Boolean
     }
 
     /**
      * What the window needs of the page it shows ([attachPage]): its view,
-     * and the parts of the page that live in the window's bar because the
-     * compact page has no headers and no floating pill of its own.
+     * and the parts of the page that live in the window's menu and bar
+     * because the compact page has no headers and no floating pill of its
+     * own. The actions are models the page keeps (their look, whether each
+     * is available): the window lists them and runs them, no more.
      */
     interface Page {
         val view: View
 
-        /** The page's actions for the more menu, in groups: what its
-         *  headers held, then its languages. */
-        fun menuGroups(): List<List<HeaderAction>>
-        fun addMenuListener(listener: FoldingActionRow.Listener)
-        fun removeMenuListener(listener: FoldingActionRow.Listener)
+        /** Read aloud: a menu row, and a shortcut on a wide bar. */
+        val readAloud: HeaderAction
 
-        /** Whether there is a result on show to make a card of. */
-        val ankiAvailable: Boolean
+        /** The rows about how the texts show (the ruby switch where the
+         *  game language has one, the two eyes, Text size), read at each
+         *  open of the menu. */
+        fun textActions(): List<HeaderAction>
 
-        /** [ankiAvailable] changed. */
-        var onAnkiAvailableChanged: (() -> Unit)?
+        /** The two languages' rows, each with its language as its value,
+         *  read at each open of the menu. */
+        fun languageRows(): List<HeaderAction>
 
-        /** Add to Anki: the tap opens the review, the hold sends the card. */
+        /** Follows every one of those actions' changes. */
+        fun addActionListener(listener: FoldingActionRow.Listener)
+        fun removeActionListener(listener: FoldingActionRow.Listener)
+
+        /** Whether a result is on show: something for the page's actions
+         *  to act on, and to make a card of. */
+        val resultOnShow: Boolean
+
+        /** [resultOnShow] changed. */
+        var onResultOnShowChanged: (() -> Unit)?
+
+        /** Add to Anki: the tap opens the review, the hold (the bar's
+         *  shortcut only) sends the card. */
         fun addToAnki()
         fun ankiOneTap()
 
@@ -151,7 +176,8 @@ internal class DetachedWindow(
     /** The transparent rim around the card: room for the outer half of the
      *  handles' stroke, which is centred on the card's edge. */
     private val marginPx = (HANDLE_STROKE_DP / 2 * density).roundToInt()
-    private val handleHitPx = (HANDLE_HIT_DP * density).roundToInt()
+    private val handleInsidePx = (HANDLE_HIT_INSIDE_DP * density).roundToInt()
+    private val handleOutsidePx = (HANDLE_HIT_OUTSIDE_DP * density).roundToInt()
     private val barPx = (DetachedWindowBar.HEIGHT_DP * density).roundToInt()
     private val dividerPx = (1 * density).roundToInt()
 
@@ -177,28 +203,17 @@ internal class DetachedWindow(
 
     private var page: Page? = null
 
-    /** The window's popovers (the more menu, the quick settings, the page's
-     *  text-size picker), in an overlay window of their own: the window can
-     *  be smaller than any of them. */
+    /** The window's popovers (the menu, the page's text-size picker), in an
+     *  overlay window of their own: the window can be smaller than either. */
     val popovers = FloatingPopover(ctx, wm, displayId, overlayHost)
 
-    /** What the more button's menu lists: the bar's folded actions, then the
-     *  page's groups; it follows both for changes. */
-    private val menuRow = object : FoldingActionRow {
-        override fun foldedActions(): List<HeaderAction> = bar.foldedActions()
-        override fun menuGroups(): List<List<HeaderAction>> =
-            listOf(bar.foldedActions()) + (page?.menuGroups() ?: emptyList())
-        override val moreAnchor: View get() = bar.moreButton
-        override fun addListener(listener: FoldingActionRow.Listener) {
-            bar.addListener(listener)
-            page?.addMenuListener(listener)
-        }
-        override fun removeListener(listener: FoldingActionRow.Listener) {
-            bar.removeListener(listener)
-            page?.removeMenuListener(listener)
-        }
+    /** The page's actions are its header rows' to observe; the bar, and an
+     *  open menu through it, hear of their changes through here. */
+    private val pageActionListener = object : FoldingActionRow.Listener {
+        override fun onActionChanged(action: HeaderAction) = bar.actionChanged(action)
     }
 
+    // On the bar.
     private val captureAction = HeaderAction(
         R.id.detachedBarCapture, R.drawable.ic_capture, ctx.getString(R.string.detached_bar_capture),
     ).apply { onClick = { host.onCapture(displayId) } }
@@ -206,24 +221,110 @@ internal class DetachedWindow(
         R.id.detachedBarAuto, R.drawable.ic_play, ctx.getString(R.string.live_mode_auto_label),
         contentDescription = ctx.getString(R.string.live_mode_auto_translate_label),
     ).apply { onClick = { host.onToggleAuto(displayId) } }
-    private val ankiAction = HeaderAction(
-        R.id.detachedBarAnki, R.drawable.ic_card_stack_add, ctx.getString(R.string.cd_add_to_anki),
-    ).apply {
-        available = false
-        onClick = { page?.addToAnki() }
-    }
-    private val regionAction = HeaderAction(
-        R.id.detachedBarRegion, R.drawable.ic_crop, ctx.getString(R.string.floating_menu_edit_region),
-    ).apply { onClick = { host.onEditRegion(displayId) } }
-    private val settingsAction = HeaderAction(
-        R.id.detachedBarSettings, R.drawable.ic_settings, ctx.getString(R.string.nav_settings),
-    ).apply { onClick = { anchor -> toggle(anchor) { QuickSettingsPopover() } } }
     private val minimizeAction = HeaderAction(
         R.id.detachedBarMinimize, R.drawable.ic_collapse_content, ctx.getString(R.string.detached_bar_minimize),
     ).apply { onClick = { host.onMinimize(displayId) } }
-    private val exitAction = HeaderAction(
-        R.id.detachedBarExit, R.drawable.ic_exit_to_app, "", pinned = true,
-    ).apply { onClick = { host.onExit(displayId) } }
+
+    /** Add to Anki twice over: the bar's shortcut under its short name
+     *  (a hold sends the card), and the menu's row under its full one. */
+    private val ankiShortcut = HeaderAction(
+        R.id.detachedBarAnki, R.drawable.ic_card_stack_add, ctx.getString(R.string.detached_bar_anki),
+        contentDescription = ctx.getString(R.string.cd_add_to_anki),
+    ).apply { onClick = { page?.addToAnki() } }
+    private val ankiRow = menuOnly(R.drawable.ic_card_stack_add, ctx.getString(R.string.cd_add_to_anki)) {
+        page?.addToAnki()
+    }
+
+    // In the menu only.
+    private val regionRow = menuOnly(R.drawable.ic_crop, ctx.getString(R.string.floating_menu_edit_region)) {
+        host.onEditRegion(displayId)
+    }
+    private val turnOffRow = menuOnly(R.drawable.ic_mode_off_on, "") { host.onExit(displayId) }
+
+    /** An action that is only ever a row of the menu. No row of a section
+     *  header owns it, so an open menu hears of its changes through the bar. */
+    private fun menuOnly(@DrawableRes icon: Int, label: CharSequence, run: () -> Unit): HeaderAction =
+        HeaderAction(R.id.detachedMenuRow, icon, label).apply {
+            onClick = { run() }
+            observer = { action, _ -> bar.actionChanged(action) }
+        }
+
+    /**
+     * The menu, as one open of it lists it: everything the window can do
+     * that the bar does not hold, in four groups under headings.
+     *
+     *  - the result on show: Add to Anki, Read aloud;
+     *  - its text: the ruby switch, the two eyes, Text size;
+     *  - the capture: Auto and Capture where a very narrow bar folded them,
+     *    Edit region, the two languages, then the quick settings' own rows
+     *    about a capture (the OCR tool, MangaOCR, Overlays);
+     *  - PlayTranslate: open the app, turn it off.
+     *
+     * The first two groups act on a result: with none on show their rows
+     * are dimmed, in their places. A switch leaves the menu up; so does a
+     * quick setting, which closes it itself where it hands over to another
+     * surface. The quick settings' Language row is left out: the page's
+     * Game Language row is the same picker.
+     *
+     * A fresh one per open: the rows are read then (the page's, the quick
+     * settings' values) and stay those while the menu is up, which is what
+     * lets it tell a list that changed from one that did not.
+     */
+    private inner class Menu : FoldingActionRow {
+        private val page = this@DetachedWindow.page
+        private val onResult: List<HeaderAction> = if (page == null) emptyList() else listOf(ankiRow, page.readAloud)
+        private val text: List<HeaderAction> = page?.textActions() ?: emptyList()
+        private val languages: List<HeaderAction> = page?.languageRows() ?: emptyList()
+        private val settings: Map<QuickSetting.Id, HeaderAction> =
+            host.quickSettings(displayId) { popovers.dismiss() }.associate { it.id to settingRow(it) }
+
+        private val needResult = (onResult + text).toSet()
+        private val staysOpen = (text + settings.values).toSet()
+
+        private fun settingRows(vararg ids: QuickSetting.Id): List<HeaderAction> = ids.mapNotNull { settings[it] }
+
+        override fun foldedActions(): List<HeaderAction> = bar.foldedActions()
+
+        override fun menuGroups(): List<MenuGroup> = listOf(
+            MenuGroup(ctx.getString(R.string.detached_menu_group_result), onResult),
+            MenuGroup(ctx.getString(R.string.detached_menu_group_text), text),
+            MenuGroup(
+                ctx.getString(R.string.detached_menu_group_capture),
+                bar.foldedActions() + regionRow + languages +
+                    settingRows(QuickSetting.Id.OCR, QuickSetting.Id.MANGA_OCR, QuickSetting.Id.OVERLAYS),
+            ),
+            MenuGroup(ctx.getString(R.string.app_name), settingRows(QuickSetting.Id.OPEN_APP) + turnOffRow),
+        )
+
+        override fun menuEnabled(action: HeaderAction): Boolean =
+            action !in needResult || (page?.resultOnShow == true && action.available)
+
+        override fun menuStaysOpen(action: HeaderAction): Boolean = action in staysOpen
+
+        override val moreAnchor: View get() = bar.moreButton
+        override fun addListener(listener: FoldingActionRow.Listener) = bar.addListener(listener)
+        override fun removeListener(listener: FoldingActionRow.Listener) = bar.removeListener(listener)
+    }
+
+    /** One of the quick settings as a row of the menu: its title, its value
+     *  at the row's end, and the value read again after each tap (the rows
+     *  that flip in place set it as they run). */
+    private fun settingRow(setting: QuickSetting): HeaderAction {
+        val icon = when (setting.id) {
+            QuickSetting.Id.OCR -> R.drawable.ic_settings
+            QuickSetting.Id.OVERLAYS -> R.drawable.ic_subtitles
+            // Under the OCR row and about it: no icon of its own.
+            QuickSetting.Id.MANGA_OCR -> 0
+            else -> setting.icon ?: 0
+        }
+        lateinit var row: HeaderAction
+        row = menuOnly(icon, setting.title) {
+            setting.click()
+            row.detail = setting.value
+        }
+        row.detail = setting.value
+        return row
+    }
 
     private val params = WindowManager.LayoutParams(
         1, 1,
@@ -260,12 +361,11 @@ internal class DetachedWindow(
     init {
         bar.setActions(
             DetachedWindowBar.Actions(
-                capture = captureAction, auto = autoAction, anki = ankiAction, editRegion = regionAction,
-                settings = settingsAction, minimize = minimizeAction, exit = exitAction,
+                capture = captureAction, auto = autoAction, anki = ankiShortcut, minimize = minimizeAction,
             ),
         )
-        bar.setOnHold(ankiAction) { page?.ankiOneTap() }
-        bar.onMoreClick = { toggle(it.moreButton) { ActionOverflowMenu(menuRow) } }
+        bar.setOnHold(ankiShortcut) { page?.ankiOneTap() }
+        bar.onMoreClick = { toggle(it.moreButton) { ActionOverflowMenu(Menu()) } }
         column.addView(bar, LinearLayout.LayoutParams(MATCH, barPx))
         column.addView(
             View(ctx).apply { setBackgroundColor(ctx.themeColor(R.attr.ptDivider)) },
@@ -289,7 +389,12 @@ internal class DetachedWindow(
         added = overlayHost.addOverlayWindow(
             root, wm, params, displayId, OverlayPlacement.Placed(::layoutAtRest),
         )
-        if (added) imeWatcher.attach()
+        if (added) {
+            imeWatcher.attach()
+            // After the window, so above it: a pad's inner part lies over
+            // the card's corner.
+            for (pad in pads) pad.show()
+        }
         return added
     }
 
@@ -298,27 +403,40 @@ internal class DetachedWindow(
         endGesture()
         imeWatcher.detach()
         attachPage(null)
+        for (pad in pads) pad.remove()
         if (added) overlayHost.removeOverlayWindow(root)
         added = false
     }
 
     /**
      * [page] is the window's page from here: its view under the bar, its
-     * actions in the more menu, its Add to Anki on the bar, and its popovers
-     * in the window's. Null takes the page out and unhooks it.
+     * actions in the menu, its Read aloud and Add to Anki as the bar's
+     * shortcuts too, and its popovers in the window's. Null takes the page
+     * out and unhooks it.
      */
     fun attachPage(page: Page?) {
         popovers.dismiss()
         this.page?.let {
-            it.onAnkiAvailableChanged = null
+            it.onResultOnShowChanged = null
             it.popoverPresenter = null
+            it.removeActionListener(pageActionListener)
         }
         this.page = page
         setPage(page?.view)
-        ankiAction.available = page?.ankiAvailable ?: false
+        bar.setReadAloud(page?.readAloud)
+        syncResultOnShow()
         page ?: return
-        page.onAnkiAvailableChanged = { ankiAction.available = page.ankiAvailable }
+        page.addActionListener(pageActionListener)
+        page.onResultOnShowChanged = ::syncResultOnShow
         page.popoverPresenter = { content, anchor -> popovers.show(content, anchor) }
+    }
+
+    /** With a result on show the bar offers its shortcuts and the menu's
+     *  rows about a result can be tapped; with a status up there is nothing
+     *  for them to act on. */
+    private fun syncResultOnShow() {
+        bar.shortcutsOffered = page?.resultOnShow ?: false
+        bar.menuChanged()
     }
 
     /** The view shown under the bar; null takes it out. */
@@ -329,8 +447,8 @@ internal class DetachedWindow(
         pageSlot.addView(view, FrameLayout.LayoutParams(MATCH, MATCH))
     }
 
-    /** What the bar's Capture and Exit say follows the capture region and
-     *  what Exit would do; read again here. */
+    /** What Capture says follows the capture region, and the menu's last
+     *  row what it would do; read again here. */
     fun refreshActions() {
         val fullScreen = host.regionIsFullScreen(displayId)
         val captureIcon = if (fullScreen) R.drawable.ic_capture else R.drawable.ic_picture_in_picture_alt
@@ -343,11 +461,10 @@ internal class DetachedWindow(
         captureAction.contentDescription = captureName.replace('\n', ' ')
         captureButton.show(captureIcon, captureName, fillColor = accent, contentColor = onAccent)
         val turnsOff = host.exitTurnsOff()
-        exitAction.icon = if (turnsOff) R.drawable.ic_mode_off_on else R.drawable.ic_exit_to_app
-        exitAction.label = ctx.getString(
+        turnOffRow.icon = if (turnsOff) R.drawable.ic_mode_off_on else R.drawable.ic_exit_to_app
+        turnOffRow.label = ctx.getString(
             if (turnsOff) R.string.floating_icon_close_label_turn_off else R.string.floating_icon_close_label_hide,
         )
-        exitAction.contentDescription = exitAction.label
     }
 
     // ── Placement ─────────────────────────────────────────────────────────
@@ -440,7 +557,7 @@ internal class DetachedWindow(
     }
 
     /** What a touch that went down can still become. */
-    private enum class Claim { NONE, BOTTOM_LEFT, BOTTOM_RIGHT, ANY_DRAG, SIDEWAYS_ONLY }
+    private enum class Claim { NONE, ANY_DRAG, SIDEWAYS_ONLY }
 
     private var claim = Claim.NONE
     private var downX = 0f
@@ -458,10 +575,107 @@ internal class DetachedWindow(
         root.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
     }
 
+    /** The system took the touch away: the gesture ends where it stands. */
+    private fun cancelGesture() {
+        val ended = gesture != null
+        endGesture()
+        if (ended) {
+            saveBounds()
+            overlayHost.invalidateLayout(displayId)
+        }
+    }
+
+    // ── The corner handles' touch pads ────────────────────────────────────
+
+    /**
+     * One bottom corner's touch target: an unseen window of its own, a
+     * square that reaches [HANDLE_HIT_OUTSIDE_DP] past the card's corner
+     * and [HANDLE_HIT_INSIDE_DP] into it. A window's extent is its touch
+     * region, so the reach past the card has to be a window; making the main
+     * window larger instead would take every touch in a band around the
+     * whole card from the game. The stroke the user sees is still the main
+     * window's ([Root.dispatchDraw]).
+     *
+     * Placed from the card's frame at rest ([place], run by the overlay
+     * host with the window's own layout). While a gesture moves the window
+     * the pads stay where they were: the finger already owns its gesture
+     * and nothing shows of them; the gesture's end lays them out again.
+     */
+    private inner class HandlePad(val corner: Corner) {
+        private var up = false
+
+        /** This pad began the resize under way. */
+        private var active = false
+
+        val view: View = object : View(ctx) {
+            override fun onTouchEvent(ev: MotionEvent): Boolean {
+                when (ev.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        host.onTouched(displayId)
+                        val start = frame
+                        // One gesture at a time: a second finger is not one.
+                        active = gesture == null && start != null
+                        if (active) {
+                            downX = ev.rawX
+                            downY = ev.rawY
+                            claim = Claim.NONE
+                            begin(Gesture.Resize(start!!, corner))
+                        }
+                    }
+                    MotionEvent.ACTION_MOVE -> if (active) drag(ev)
+                    MotionEvent.ACTION_UP -> if (active) {
+                        active = false
+                        release(ev)
+                    }
+                    MotionEvent.ACTION_CANCEL -> if (active) {
+                        active = false
+                        cancelGesture()
+                    }
+                }
+                return true
+            }
+        }
+
+        val params = WindowManager.LayoutParams(
+            1, 1,
+            overlayHost.windowType,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT,
+        ).apply { gravity = Gravity.TOP or Gravity.START }
+
+        fun show() {
+            up = overlayHost.addOverlayWindow(
+                view, wm, params, displayId, OverlayPlacement.Placed { _, p -> place(p) },
+            )
+        }
+
+        fun remove() {
+            if (up) overlayHost.removeOverlayWindow(view)
+            up = false
+        }
+
+        private fun place(p: WindowManager.LayoutParams) {
+            val f = frame ?: return
+            val side = handleInsidePx + handleOutsidePx
+            p.width = side
+            p.height = side
+            p.x = if (corner == Corner.BOTTOM_LEFT) f.x - handleOutsidePx else f.right - handleInsidePx
+            p.y = f.bottom - handleInsidePx
+        }
+    }
+
+    private val pads = listOf(HandlePad(Corner.BOTTOM_LEFT), HandlePad(Corner.BOTTOM_RIGHT))
+
+    /** The corners' touch pads, bottom left then bottom right, each with its
+     *  window's params: for a test to find and touch. */
+    @VisibleForTesting
+    internal fun handlePadsForTest(): List<Pair<View, WindowManager.LayoutParams>> =
+        pads.map { it.view to it.params }
+
     private fun claimAt(x: Float, y: Float): Claim {
-        val inHandleBand = y >= root.height - handleHitPx
-        if (inHandleBand && x < handleHitPx) return Claim.BOTTOM_LEFT
-        if (inHandleBand && x >= root.width - handleHitPx) return Claim.BOTTOM_RIGHT
         // An open popover is modal: its scrim takes the touch.
         if (popovers.isShowing) return Claim.NONE
         if (!showsPage) return Claim.ANY_DRAG
@@ -561,23 +775,6 @@ internal class DetachedWindow(
         if (!wasOpen) popovers.show(content(), anchor)
     }
 
-    /** The quick settings: the rows the icon menu's gear panel lists. */
-    private inner class QuickSettingsPopover : PopoverContent {
-        override fun createView(ctx: Context, host: PopoverHost): View {
-            val rows = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-            QuickSettingsRows.populate(
-                rows,
-                this@DetachedWindow.host.quickSettings(displayId) { host.dismiss() },
-                iconTint = ctx.themeColor(R.attr.ptTextMuted),
-            )
-            // A short window caps the card; the rows scroll.
-            return ScrollView(ctx).apply { addView(rows, FrameLayout.LayoutParams(MATCH, WRAP)) }
-        }
-
-        override fun cardWidth(ctx: Context, natural: Int): Int =
-            (QUICK_SETTINGS_WIDTH_DP * density).roundToInt()
-    }
-
     // ── Typing ────────────────────────────────────────────────────────────
 
     /** A text field of the page took or lost focus ([ImeFocusWatcher]): the
@@ -651,8 +848,16 @@ internal class DetachedWindow(
             defaultFocusHighlightEnabled = false
         }
 
+        /** A touch that went down while a corner's pad held a resize: the
+         *  window takes none of it. */
+        private var ignoring = false
+
         override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-            if (ev.actionMasked == MotionEvent.ACTION_DOWN) host.onTouched(displayId)
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+                host.onTouched(displayId)
+                ignoring = gesture is Gesture.Resize
+            }
+            if (ignoring) return true
             return super.dispatchTouchEvent(ev)
         }
 
@@ -662,14 +867,7 @@ internal class DetachedWindow(
                     downX = ev.rawX
                     downY = ev.rawY
                     claim = claimAt(ev.x, ev.y)
-                    val corner = when (claim) {
-                        Claim.BOTTOM_LEFT -> Corner.BOTTOM_LEFT
-                        Claim.BOTTOM_RIGHT -> Corner.BOTTOM_RIGHT
-                        else -> return false
-                    }
-                    val start = frame ?: return false
-                    begin(Gesture.Resize(start, corner))
-                    return true
+                    return false
                 }
                 MotionEvent.ACTION_MOVE -> {
                     if (gesture != null) return true
@@ -690,14 +888,7 @@ internal class DetachedWindow(
                     drag(ev)
                 }
                 MotionEvent.ACTION_UP -> release(ev)
-                MotionEvent.ACTION_CANCEL -> {
-                    val ended = gesture != null
-                    endGesture()
-                    if (ended) {
-                        saveBounds()
-                        overlayHost.invalidateLayout(displayId)
-                    }
-                }
+                MotionEvent.ACTION_CANCEL -> cancelGesture()
             }
             return true
         }
@@ -755,7 +946,6 @@ internal class DetachedWindow(
          *  sheet can make any box scroll sideways. */
         internal fun keepsSidewaysDrags(view: View): Boolean = view is EditText || view is WebView
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
-        private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
 
         /** The page card's corner radius. */
         const val PAGE_CORNER_DP = 16f
@@ -766,13 +956,13 @@ internal class DetachedWindow(
         private const val HANDLE_ARM_DP = 16f
         private const val HANDLE_ALPHA = 0x80
 
-        /** A handle's touch square at each bottom corner. */
-        const val HANDLE_HIT_DP = 44f
+        /** How far a corner handle's touch target reaches into the card, and
+         *  how far past its corner. */
+        const val HANDLE_HIT_INSIDE_DP = 34f
+        const val HANDLE_HIT_OUTSIDE_DP = 24f
 
         /** How long the finger stays at a side before the dock arms. */
         const val DOCK_HOLD_MS = 1000L
         private const val DOCK_ARMED_ALPHA = 0.4f
-
-        private const val QUICK_SETTINGS_WIDTH_DP = 280f
     }
 }

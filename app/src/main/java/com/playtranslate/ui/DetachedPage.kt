@@ -58,8 +58,8 @@ import kotlinx.coroutines.launch
  * window is small and has a bar, so the page shows no language headers and
  * no floating Anki pill, and hands the window what they held
  * ([DetachedWindow.Page]): the headers' actions and the two languages for
- * the more menu, Add to Anki for the bar, and its text-size picker to open
- * in the window's popover.
+ * the window's menu, Read aloud and Add to Anki for the bar's shortcuts
+ * too, and its text-size picker to open in the window's popover.
  *
  * The page goes back to the idle prompt, dropping a capture on its way,
  * when either language setting changes: a result belongs to the languages
@@ -87,7 +87,7 @@ internal class DetachedPage(
     private val pageHost = PageHost()
     private val content = TranslationResultContent(view, ctx, prefs, vm, pageHost)
 
-    // ── What lives in the window's bar ([DetachedWindow.Page]) ────────────
+    // ── What lives in the window's menu and bar ([DetachedWindow.Page]) ───
 
     /** The two languages, which the headers this page does not show named
      *  and opened: one menu row each, the language as its value. */
@@ -98,32 +98,33 @@ internal class DetachedPage(
         R.id.detachedMenuYourLanguage, R.drawable.ic_translate, ctx.getString(R.string.lang_translate_to),
     ).apply { onClick = { pageHost.onChangeLanguage(false) } }
 
-    /** The headers' actions while a result is on show (with a status up
-     *  there is no text for them to act on), then the languages. */
-    override fun menuGroups(): List<List<HeaderAction>> {
+    override val readAloud: HeaderAction get() = content.binder.speakAction
+    override fun textActions(): List<HeaderAction> = content.binder.textActions()
+
+    override fun languageRows(): List<HeaderAction> {
         gameLanguage.detail = content.binder.sourceLanguageName
         yourLanguage.detail = content.binder.targetLanguageName
-        val forResult = if (resultOnShow(vm.result.value)) content.binder.menuActions() else emptyList()
-        return listOf(forResult, listOf(gameLanguage, yourLanguage))
+        return listOf(gameLanguage, yourLanguage)
     }
 
-    override fun addMenuListener(listener: FoldingActionRow.Listener) {
+    override fun addActionListener(listener: FoldingActionRow.Listener) {
         for (row in content.binder.actionRows()) row.addListener(listener)
     }
 
-    override fun removeMenuListener(listener: FoldingActionRow.Listener) {
+    override fun removeActionListener(listener: FoldingActionRow.Listener) {
         for (row in content.binder.actionRows()) row.removeListener(listener)
     }
 
-    /** A result to make a card of is on show: the reach the page's floating
-     *  pill has on the other surfaces. */
-    override var ankiAvailable: Boolean = false
+    /** A result is on show: text for the actions to act on, and to make a
+     *  card of (the reach the page's floating pill has on the other
+     *  surfaces). */
+    override var resultOnShow: Boolean = false
         private set(value) {
             if (field == value) return
             field = value
-            onAnkiAvailableChanged?.invoke()
+            onResultOnShowChanged?.invoke()
         }
-    override var onAnkiAvailableChanged: (() -> Unit)? = null
+    override var onResultOnShowChanged: (() -> Unit)? = null
     override var popoverPresenter: ((PopoverContent, View) -> Unit)? = null
 
     override fun addToAnki() = pageHost.onAddToAnki()
@@ -144,7 +145,7 @@ internal class DetachedPage(
         scope.launch {
             vm.result.collect {
                 content.render(it)
-                ankiAvailable = resultOnShow(it)
+                resultOnShow = resultOnShow(it)
             }
         }
         scope.launch { vm.wordLookups.collect { content.renderWordLookups(it) } }
@@ -162,8 +163,12 @@ internal class DetachedPage(
         }
     }
 
-    /** The prompt before anything is captured. */
-    private fun showIdle() = vm.showStatus(ctx.getString(R.string.detached_status_idle))
+    /** The prompt before anything is captured, and under it how the window
+     *  itself is worked: this is where a new user first looks. */
+    private fun showIdle() = vm.showStatus(
+        ctx.getString(R.string.detached_status_idle),
+        hint = ctx.getString(R.string.detached_status_idle_hint),
+    )
 
     /** A capture of this page's display: its states are the page's from here. */
     fun follow(session: CaptureSession) = driver.follow(session)

@@ -998,6 +998,22 @@ class TranslationResultContentTest {
         )
     }
 
+    @Test
+    @Config(qualifiers = "w800dp-h360dp-mdpi")
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `compact and wide, the two texts sit side by side and each is fitted to the whole viewport less its own chrome`() {
+        rebuildCompact()
+        renderLongResult()
+        pinPage(800, 360)
+        assertEquals(ResultSectionsLayout.Arrangement.PAIRED, arrangement)
+        assertEquals("side by side", view(R.id.cardOriginal).top, view(R.id.cardTranslation).top)
+        content.fitTextSizes()
+
+        val sideBySide = fittedTo(viewportHeight - sourceChrome, viewportHeight - translationChrome)
+        assertApart("the stacked share would size them otherwise", sideBySide, compactRule())
+        assertSizes("compact, paired", sideBySide, sizes())
+    }
+
     // ── Play automatically ───────────────────────────────────────────────
 
     /** "hello world" on show with its two tap spans, in English: a

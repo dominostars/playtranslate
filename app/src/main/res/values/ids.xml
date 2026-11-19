@@ -64,12 +64,12 @@
          more button, as the section headers' actions have. -->
     <item name="detachedBarCapture" type="id" />
     <item name="detachedBarAuto" type="id" />
-    <item name="detachedBarRegion" type="id" />
-    <item name="detachedBarSettings" type="id" />
     <item name="detachedBarMinimize" type="id" />
-    <item name="detachedBarExit" type="id" />
     <item name="detachedBarMore" type="id" />
     <item name="detachedBarAnki" type="id" />
+    <!-- An action that is only ever a row of the detached window's menu:
+         never inline, so one id serves them all. -->
+    <item name="detachedMenuRow" type="id" />
     <item name="detachedMenuGameLanguage" type="id" />
     <item name="detachedMenuYourLanguage" type="id" />
     <!-- The detached window's card, its page slot and its capture button. -->

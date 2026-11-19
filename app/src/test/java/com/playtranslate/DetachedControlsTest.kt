@@ -129,6 +129,34 @@ class DetachedControlsTest {
         settle()
     }
 
+    /** Open the window's menu from its bar and tap the row named [label]. */
+    private fun tapMenuRow(label: String) {
+        val window = window()!!
+        window.bar.moreButton.performClick()
+        settle()
+        // The menu's own window, laid out as the window manager would, and
+        // a turn of the looper for its card to come up.
+        val root = window.popovers.rootForTest as android.view.ViewGroup
+        val p = root.layoutParams
+        repeat(2) {
+            root.measure(
+                View.MeasureSpec.makeMeasureSpec(p.width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(p.height, View.MeasureSpec.EXACTLY),
+            )
+            root.layout(0, 0, p.width, p.height)
+            settle()
+        }
+        fun find(v: View): View? {
+            if (v is android.widget.TextView && v.text.toString() == label) return v
+            if (v is android.view.ViewGroup) for (i in 0 until v.childCount) find(v.getChildAt(i))?.let { return it }
+            return null
+        }
+        var row = find(root) ?: error("no menu row \"$label\"")
+        while (!row.hasOnClickListeners()) row = row.parent as View
+        row.performClick()
+        settle()
+    }
+
     private fun assertWindowOnly() {
         assertNotNull("the window is up", window())
         assertNull("no icon beside it", icon())
@@ -329,7 +357,7 @@ class DetachedControlsTest {
     @Test fun `the region editor takes the window down for the icon, and its close brings the window back`() {
         detach()
 
-        tap(R.id.detachedBarRegion)
+        tapMenuRow(ctx.getString(R.string.floating_menu_edit_region))
         assertIconOnly()
 
         val region = field("regionController").get(controller) as RegionOverlayController

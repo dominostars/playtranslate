@@ -107,7 +107,10 @@ class DetachedCaptureRoutingTest {
 
     private fun page(): DetachedPage = controller.detachedPageForTest(d0)!!
 
-    private val idle get() = ResultState.Status(ctx.getString(R.string.detached_status_idle))
+    private val idle get() = ResultState.Status(
+        ctx.getString(R.string.detached_status_idle),
+        hint = ctx.getString(R.string.detached_status_idle_hint),
+    )
 
     private fun tap(id: Int) {
         controller.detachedWindowForTest(d0)!!.root.findViewById<View>(id).performClick()

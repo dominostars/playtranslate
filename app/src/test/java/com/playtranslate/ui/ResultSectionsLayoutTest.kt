@@ -689,4 +689,34 @@ class ResultSectionsLayoutTest {
         layOut(500)
         assertEquals(listOf(askHeader.top, wordsHeader.top), sections.rulesForTest())
     }
+
+    // ── The pair without headers ─────────────────────────────────────────
+
+    @Test
+    fun `without headers the two cards pair when wide, one height, a hairline between, and stack when narrow or one is hidden`() {
+        targetHeader.visibility = View.GONE
+        sourceHeader.visibility = View.GONE
+        sections.sectionRules = true
+
+        layOut(500)
+        assertEquals(Arrangement.STACKED, sections.arrangement)
+        assertEquals(targetCard.bottom, sourceCard.top)
+
+        layOut(700)
+        assertEquals(Arrangement.PAIRED, sections.arrangement)
+        val row = expectedRow(700, originalHidden = false, translationHidden = false)
+        assertSpan("the Original's card", row.sourceCard!!, sourceCard, 700)
+        assertSpan("the Translation's card", row.targetCard!!, targetCard, 700)
+        assertEquals("side by side from the top", 0, sourceCard.top)
+        assertEquals(0, targetCard.top)
+        assertEquals("one height", sourceCard.height, targetCard.height)
+        assertEquals("Ask follows beneath the pair", sourceCard.bottom, askHeader.top)
+        assertEquals("no rule between the two, only above what follows", listOf(askHeader.top, wordsHeader.top), sections.rulesForTest())
+
+        // One hidden: no header cell stands for it, so the other takes the row.
+        sourceCard.visibility = View.GONE
+        layOut(700)
+        assertEquals(Arrangement.STACKED, sections.arrangement)
+        assertEquals(inner(700), targetCard.width)
+    }
 }

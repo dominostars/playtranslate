@@ -244,8 +244,10 @@ class TranslationSectionBinder(
         val inTarget = !prefs.hideTranslationSection
         val inSource = !inTarget && !prefs.hideOriginalSection
         val sizeOffered = onChooseFontSize != null
-        textSize.available = sizeOffered && inTarget
-        textSizeInSource.available = sizeOffered && inSource
+        // The compact page has no headers to choose between: its one Text
+        // size stands for both, so whoever lists it holds one model.
+        textSize.available = sizeOffered && (inTarget || (compact && inSource))
+        textSizeInSource.available = sizeOffered && inSource && !compact
         showOnScreen.available = showOnScreenOffered && inTarget
         showOnScreenInSource.available = showOnScreenOffered && inSource
     }
@@ -591,6 +593,12 @@ class TranslationSectionBinder(
      * once, when the page is built.
      */
     fun applyCompactLook() {
+        compact = true
+        // The host lists the eyes by name before there is any result, so
+        // their names and where Text size lives are read now, as the first
+        // result would read them.
+        applyOriginalVisibility()
+        applyTranslationVisibility()
         sourceRow.visibility = View.GONE
         targetRow.visibility = View.GONE
         val v = (COMPACT_TEXT_V_PAD_DP * ctx.resources.displayMetrics.density).toInt()
@@ -602,18 +610,28 @@ class TranslationSectionBinder(
         }
     }
 
-    /**
-     * The headers' actions for a menu, where the compact page lists them
-     * with its headers gone ([applyCompactLook]): the Original's (read
-     * aloud, furigana, edit), Text size wherever it is offered, then the two
-     * eyes. The same models the headers hold, so each runs and reads exactly
-     * as its button would; only the available ones.
-     */
-    fun menuActions(): List<HeaderAction> =
-        listOf(speak, furigana, edit, textSize, textSizeInSource, sourceEye, targetEye).filter { it.available }
+    /** Whether [applyCompactLook] was applied. */
+    private var compact = false
 
-    /** The two header rows, for a menu that lists [menuActions] to follow
-     *  their changes. */
+    /**
+     * The headers' actions for a host that lists them itself, the compact
+     * page's with its headers gone ([applyCompactLook]): the same models the
+     * headers hold, so each runs, reads and comes and goes exactly as its
+     * button would. [speakAction] is Read aloud; [textActions] are the ones
+     * about how the texts show, in the order a list gives them: the ruby
+     * switch where the game language has one (read now), the two eyes, Text
+     * size. An action that is not [HeaderAction.available] there has nothing
+     * to act on for now (the Original hidden, both texts hidden); the host
+     * says so in its own way.
+     */
+    val speakAction: HeaderAction get() = speak
+    fun textActions(): List<HeaderAction> {
+        val hasRuby = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind != HintTextKind.NONE
+        return listOfNotNull(furigana.takeIf { hasRuby }, sourceEye, targetEye, textSize)
+    }
+
+    /** The two header rows, which own those models: what follows the
+     *  actions' changes listens here. */
     fun actionRows(): List<FoldingActionRow> = listOf(sourceRow, targetRow)
 
     /** The language names the two headers show, read now. */
@@ -622,17 +640,25 @@ class TranslationSectionBinder(
 
     /**
      * The compact page's fit to its scroll viewport, [viewportHeightPx]
-     * tall: the texts on show share it, an equal part each of what their own
-     * chrome (padding, the "Translated by" and "Scanned by" rows) leaves, so
-     * the two fit in view together down to the smallest text size. The
-     * source is measured with its ruby, as the capture sheet does: here the
-     * point is that it fits.
+     * tall: stacked, the texts on show share it, an equal part each of what
+     * their own chrome (padding, the "Translated by" and "Scanned by" rows)
+     * leaves; [paired], side by side, each has the viewport's height less
+     * its own chrome to itself. Either way the two fit in view together down
+     * to the smallest text size. The source is measured with its ruby, as
+     * the capture sheet does: here the point is that it fits.
      */
-    fun fitToRoom(viewportHeightPx: Int) {
+    fun fitToRoom(viewportHeightPx: Int, paired: Boolean) {
         val showTarget = !prefs.hideTranslationSection
         val showSource = !prefs.hideOriginalSection
         val shown = (if (showTarget) 1 else 0) + (if (showSource) 1 else 0)
         if (shown == 0) return
+        if (paired) {
+            fitText(
+                translationTargetPx = (viewportHeightPx - targetContentOverhead()).coerceAtLeast(1),
+                sourceTargetPx = (viewportHeightPx - sourceContentOverhead()).coerceAtLeast(1),
+            )
+            return
+        }
         val chrome = (if (showTarget) targetContentOverhead() else 0) +
             (if (showSource) sourceContentOverhead() else 0)
         val each = ((viewportHeightPx - chrome) / shown).coerceAtLeast(1)

@@ -29,11 +29,11 @@ import org.robolectric.Shadows.shadowOf
 import java.time.Duration
 
 /**
- * The detached window's two bar menus: the quick settings behind its
- * Settings button (the rows its host builds, the icon menu's own) and the
- * more menu that lists the actions a narrow bar folded, each row running
- * what the inline button runs. And what the bar and the capture button say
- * for the capture region and for what Exit would do.
+ * The detached window's one menu: everything the window can do that its bar
+ * does not hold, by name, in four groups under headings; which rows are
+ * dimmed with nothing to act on, which leave the menu up, and what each
+ * runs. And the bar's two shortcuts to rows of it, and what Capture and the
+ * menu's last row say.
  */
 @RunWith(RobolectricTestRunner::class)
 class DetachedWindowMenusTest {
@@ -49,31 +49,30 @@ class DetachedWindowMenusTest {
     private class FakeHost : DetachedWindow.Host {
         var minimizes = 0
         var regions = 0
+        var autos = 0
+        var exits = 0
         var fullScreen = true
         var turnsOff = true
         val ran = mutableListOf<String>()
-        var leave: (() -> Unit)? = null
         override fun onCapture(displayId: Int) {}
-        override fun onToggleAuto(displayId: Int) {}
+        override fun onToggleAuto(displayId: Int) { autos++ }
         override fun onEditRegion(displayId: Int) { regions++ }
         override fun onMinimize(displayId: Int) { minimizes++ }
-        override fun onExit(displayId: Int) {}
+        override fun onExit(displayId: Int) { exits++ }
         override fun onDocked(displayId: Int, side: DetachedWindowGeometry.Side, fingerY: Int) {}
         override fun onTouched(displayId: Int) {}
-        override fun quickSettings(displayId: Int, leave: () -> Unit): List<QuickSetting> {
-            this.leave = leave
-            return listOf(
-                QuickSetting(QuickSetting.Id.LANGUAGE, "Language", "Japanese") { ran += "language"; leave() },
-                QuickSetting(QuickSetting.Id.OVERLAYS, "Overlays", "Translation") { row ->
-                    ran += "overlays"
-                    row.value = "Furigana"
-                },
-                QuickSetting(QuickSetting.Id.OPEN_APP, "Open PlayTranslate", icon = R.drawable.ic_open_in_new) {
-                    ran += "open"
-                    leave()
-                },
-            )
-        }
+        override fun quickSettings(displayId: Int, leave: () -> Unit): List<QuickSetting> = listOf(
+            QuickSetting(QuickSetting.Id.LANGUAGE, "Language", "Japanese") { ran += "language"; leave() },
+            QuickSetting(QuickSetting.Id.OCR, "OCR", "ML Kit") { ran += "ocr" },
+            QuickSetting(QuickSetting.Id.OVERLAYS, "Overlays", "Translation") { row ->
+                ran += "overlays"
+                row.value = "Reading hints"
+            },
+            QuickSetting(QuickSetting.Id.OPEN_APP, "Open PlayTranslate", icon = R.drawable.ic_open_in_new) {
+                ran += "open"
+                leave()
+            },
+        )
         override fun regionIsFullScreen(displayId: Int) = fullScreen
         override fun exitTurnsOff() = turnsOff
     }
@@ -157,44 +156,94 @@ class DetachedWindowMenusTest {
         idle()
     }
 
+    /** Every text of the open popover, top to bottom. */
+    private fun texts(): List<String> {
+        val out = mutableListOf<String>()
+        fun walk(v: View) {
+            if (v is TextView && v.visibility == View.VISIBLE && v.text.isNotEmpty()) out += v.text.toString()
+            if (v is ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i))
+        }
+        walk(popoverRoot())
+        return out
+    }
+
     /** What stands in for the results page. */
     private class FakePage(ctx: Context) : DetachedWindow.Page {
         override val view: View = View(ctx)
         val speak = HeaderAction(R.id.btnSpeakOriginal, R.drawable.ic_lens_speak, "Read aloud")
+        val furigana = HeaderAction(R.id.btnToggleFurigana, R.drawable.ic_furigana, "Furigana")
+        val eye = HeaderAction(R.id.btnToggleOriginal, R.drawable.ic_visibility, "Hide original")
+        val textSize = HeaderAction(R.id.btnFontSize, R.drawable.ic_format_size, "Text size")
         val language = HeaderAction(R.id.detachedMenuGameLanguage, R.drawable.ic_translate, "Game Language")
             .apply { detail = "Japanese" }
-        var groups: List<List<HeaderAction>> = listOf(listOf(speak), listOf(language))
+        override val readAloud get() = speak
+        private val text = listOf(furigana, eye, textSize)
+        override fun textActions() = text
+        override fun languageRows() = listOf(language)
         val listeners = mutableListOf<FoldingActionRow.Listener>()
         var adds = 0
         var oneTaps = 0
 
-        override fun menuGroups() = groups
-        override fun addMenuListener(listener: FoldingActionRow.Listener) { listeners += listener }
-        override fun removeMenuListener(listener: FoldingActionRow.Listener) { listeners -= listener }
-        override var ankiAvailable = false
+        init {
+            // The eye as the page's own: it flips, and its row then offers
+            // the way back.
+            eye.onClick = {
+                eye.label = if (eye.label.toString() == "Hide original") "Show original" else "Hide original"
+                changed(eye)
+            }
+        }
+
+        override fun addActionListener(listener: FoldingActionRow.Listener) { listeners += listener }
+        override fun removeActionListener(listener: FoldingActionRow.Listener) { listeners -= listener }
+
+        /** A change of one of the actions, told as its header row tells it. */
+        fun changed(a: HeaderAction) = listeners.toList().forEach { it.onActionChanged(a) }
+
+        override var resultOnShow = false
             set(value) {
                 field = value
-                onAnkiAvailableChanged?.invoke()
+                onResultOnShowChanged?.invoke()
             }
-        override var onAnkiAvailableChanged: (() -> Unit)? = null
+        override var onResultOnShowChanged: (() -> Unit)? = null
         override fun addToAnki() { adds++ }
         override fun ankiOneTap() { oneTaps++ }
         override var popoverPresenter: ((PopoverContent, View) -> Unit)? = null
     }
 
-    // ── Quick settings ───────────────────────────────────────────────────
+    private fun attach(result: Boolean): FakePage {
+        val page = FakePage(ctx)
+        window.attachPage(page)
+        page.resultOnShow = result
+        layOut()
+        return page
+    }
 
-    @Test fun `Settings opens the quick settings' rows, and a tap off them closes them`() {
+    private val addToAnki get() = ctx.getString(R.string.cd_add_to_anki)
+    private val editRegion get() = ctx.getString(R.string.floating_menu_edit_region)
+    private val turnOff get() = ctx.getString(R.string.floating_icon_close_label_turn_off)
+
+    // ── The menu ─────────────────────────────────────────────────────────
+
+    @Test fun `the menu lists everything by name in four headed groups, in a fixed order`() {
         show()
+        attach(result = true)
 
-        tap(bar(R.id.detachedBarSettings))
-        assertTrue(window.popovers.isShowing)
-        rowWith("Language")
-        rowWith("Overlays")
-        rowWith("Open PlayTranslate")
+        tap(window.bar.moreButton)
 
-        tapOutside()
-        assertFalse(window.popovers.isShowing)
+        assertEquals(
+            listOf(
+                ctx.getString(R.string.detached_menu_group_result),
+                addToAnki, "Read aloud",
+                ctx.getString(R.string.detached_menu_group_text),
+                "Furigana", "Hide original", "Text size",
+                ctx.getString(R.string.detached_menu_group_capture),
+                editRegion, "Game Language", "Japanese", "OCR", "ML Kit", "Overlays", "Translation",
+                ctx.getString(R.string.app_name),
+                "Open PlayTranslate", turnOff,
+            ),
+            texts(),
+        )
+        assertFalse("the quick settings' own Language row is the page's Game Language", hasRow("Language"))
     }
 
     @Test fun `a popover is a window of its own, as large as the display, and goes with its card`() {
@@ -214,101 +263,218 @@ class DetachedWindowMenusTest {
         assertTrue("the window went with the card", window.popovers.rootForTest == null)
     }
 
-    @Test fun `a row runs its action, and one that leaves closes the popover`() {
+    @Test fun `with no result on show the result's rows are dimmed in their places and take no tap, and a result undims them`() {
         show()
-        tap(bar(R.id.detachedBarSettings))
-
-        tap(rowWith("Overlays"))
-        assertEquals(listOf("overlays"), host.ran)
-        assertTrue("a row that changes a value stays open", window.popovers.isShowing)
-        rowWith("Furigana")
-
-        tap(rowWith("Open PlayTranslate"))
-        assertEquals(listOf("overlays", "open"), host.ran)
-        assertFalse(window.popovers.isShowing)
-    }
-
-    // ── The more menu ────────────────────────────────────────────────────
-
-    @Test fun `a narrow bar folds its lesser actions into the more menu, where they still run`() {
-        // Narrow enough that Minimize and Settings fold (the bar's own fold
-        // table is DetachedWindowBarTest).
-        show(Frame(400, 200, 300, 400))
-        val folded = window.bar.foldedActions().map { it.label.toString() }
-        assertTrue("Minimize folds first", ctx.getString(R.string.detached_bar_minimize) in folded)
-
+        val page = attach(result = false)
         tap(window.bar.moreButton)
-        assertTrue(window.popovers.isShowing)
-        tap(rowWith(ctx.getString(R.string.detached_bar_minimize)))
+        val listed = texts()
 
-        assertEquals(1, host.minimizes)
-        assertFalse(window.popovers.isShowing)
+        for (name in listOf(addToAnki, "Read aloud", "Furigana", "Hide original", "Text size")) {
+            assertFalse("$name has nothing to act on", rowWith(name).isEnabled)
+            assertTrue("$name is dimmed", rowWith(name).alpha < 1f)
+        }
+        for (name in listOf(editRegion, "Game Language", "OCR", "Open PlayTranslate", turnOff)) {
+            assertTrue("$name needs no result", rowWith(name).isEnabled)
+            assertEquals(1f, rowWith(name).alpha)
+        }
+
+        tap(rowWith(addToAnki))
+        assertEquals("a dimmed row runs nothing", 0, page.adds)
+        assertTrue("and the menu stays", window.popovers.isShowing)
+
+        page.resultOnShow = true
+        layOut()
+        assertTrue("the menu is still the one that was open", window.popovers.isShowing)
+        assertEquals("the same rows in the same places", listed, texts())
+        assertTrue(rowWith(addToAnki).isEnabled)
+        assertEquals(1f, rowWith("Read aloud").alpha)
     }
 
-    @Test fun `the more menu lists the bar's folded actions, then the page's own, each group ruled off`() {
-        show(Frame(400, 200, 300, 400))
-        val page = FakePage(ctx)
-        window.attachPage(page)
-        layOut()
+    @Test fun `an action's row closes the menu and runs it, with the menu button as its anchor`() {
+        show()
+        val page = attach(result = true)
         var spoke: View? = null
         page.speak.onClick = { spoke = it }
 
         tap(window.bar.moreButton)
-
-        assertTrue(hasRow(ctx.getString(R.string.detached_bar_minimize)))
-        assertTrue(hasRow("Read aloud"))
-        assertTrue(hasRow("Game Language"))
-        assertTrue("a row's value at its end", hasRow("Japanese"))
-        assertEquals("the menu follows the page's actions", 1, page.listeners.size)
-
         tap(rowWith("Read aloud"))
-        assertEquals("run with the more button as its anchor", window.bar.moreButton, spoke)
+        assertEquals(window.bar.moreButton, spoke)
         assertFalse(window.popovers.isShowing)
-        assertTrue("and no longer followed", page.listeners.isEmpty())
+
+        tap(window.bar.moreButton)
+        tap(rowWith(addToAnki))
+        assertEquals(1, page.adds)
+        assertEquals("the row is a tap only: no card sent", 0, page.oneTaps)
+        assertFalse(window.popovers.isShowing)
+
+        tap(window.bar.moreButton)
+        tap(rowWith(editRegion))
+        assertEquals(1, host.regions)
+        assertFalse(window.popovers.isShowing)
+
+        tap(window.bar.moreButton)
+        tap(rowWith(turnOff))
+        assertEquals(1, host.exits)
+        assertFalse(window.popovers.isShowing)
     }
 
-    @Test fun `with every bar action in view the more button still opens the page's actions`() {
-        show(Frame(100, 200, 1000, 400))
-        window.attachPage(FakePage(ctx))
+    @Test fun `a switch leaves the menu up, and its row and the rows it touches follow it`() {
+        show()
+        val page = attach(result = true)
+        tap(window.bar.moreButton)
+
+        tap(rowWith("Hide original"))
+        assertTrue("still up, to flip back or to watch", window.popovers.isShowing)
+        assertTrue("the row now offers the way back", hasRow("Show original"))
+
+        // What hiding the Original does to the actions on it.
+        page.furigana.available = false
+        page.changed(page.furigana)
         layOut()
-        assertTrue(window.bar.foldedActions().isEmpty())
-        assertEquals(View.VISIBLE, window.bar.moreButton.visibility)
+        assertTrue(window.popovers.isShowing)
+        assertFalse("dimmed in its place, not taken out", rowWith("Furigana").isEnabled)
+
+        tap(rowWith("Show original"))
+        page.furigana.available = true
+        page.changed(page.furigana)
+        layOut()
+        assertTrue(rowWith("Furigana").isEnabled)
+        assertTrue(window.popovers.isShowing)
+    }
+
+    @Test fun `a quick setting runs in place with its value read again, and one that hands over closes the menu`() {
+        show()
+        attach(result = true)
+        tap(window.bar.moreButton)
+
+        tap(rowWith("Overlays"))
+        assertEquals(listOf("overlays"), host.ran)
+        assertTrue("a row that changes a value stays open", window.popovers.isShowing)
+        assertTrue(hasRow("Reading hints"))
+        assertFalse(hasRow("Translation"))
+
+        tap(rowWith("OCR"))
+        assertEquals("its picker opens over the menu, which waits", listOf("overlays", "ocr"), host.ran)
+        assertTrue(window.popovers.isShowing)
+
+        tap(rowWith("Open PlayTranslate"))
+        assertEquals(listOf("overlays", "ocr", "open"), host.ran)
+        assertFalse(window.popovers.isShowing)
+    }
+
+    @Test fun `Text size opens the page's picker in the menu's place`() {
+        show()
+        val page = attach(result = true)
+        val picker = object : PopoverContent {
+            override fun createView(ctx: Context, host: PopoverHost): View = TextView(ctx).apply { text = "the picker" }
+            override fun cardWidth(ctx: Context, natural: Int): Int = 200
+        }
+        page.textSize.onClick = { anchor -> page.popoverPresenter!!.invoke(picker, anchor) }
+        tap(window.bar.moreButton)
+
+        tap(rowWith("Text size"))
+
+        assertTrue(window.popovers.isShowing)
+        assertTrue(window.popovers.content === picker)
+        assertEquals("pointing at the menu button", window.bar.moreButton, window.popovers.anchor)
+        assertTrue(hasRow("the picker"))
+    }
+
+    @Test fun `a bar too narrow for Auto lists it in the menu's Capture group, where it still runs`() {
+        show(Frame(400, 200, 150, 400))
+        attach(result = true)
+        val auto = ctx.getString(R.string.live_mode_auto_label)
+        assertEquals(listOf(auto), window.bar.foldedActions().map { it.label.toString() })
+
+        tap(window.bar.moreButton)
+        val listed = texts()
+        assertEquals(
+            "first under Capture",
+            listed.indexOf(ctx.getString(R.string.detached_menu_group_capture)) + 1,
+            listed.indexOf(auto),
+        )
+
+        tap(rowWith(auto))
+        assertEquals(1, host.autos)
+        assertFalse(window.popovers.isShowing)
+    }
+
+    @Test fun `with no page the menu is the capture's rows and the app's, with no empty heading`() {
+        show()
 
         tap(window.bar.moreButton)
 
-        assertTrue(hasRow("Read aloud"))
-        assertFalse(hasRow(ctx.getString(R.string.detached_bar_minimize)))
+        assertEquals(
+            listOf(
+                ctx.getString(R.string.detached_menu_group_capture),
+                editRegion, "OCR", "ML Kit", "Overlays", "Translation",
+                ctx.getString(R.string.app_name),
+                "Open PlayTranslate", turnOff,
+            ),
+            texts(),
+        )
     }
 
-    // ── The page's parts on the bar ──────────────────────────────────────
+    @Test fun `the menu button closes the menu it opened`() {
+        show()
+        tap(window.bar.moreButton)
+        assertTrue(window.popovers.isShowing)
 
-    @Test fun `Anki stands on the bar while the page has a result, a tap opening the review and a hold sending the card`() {
+        tap(window.bar.moreButton)
+
+        assertFalse(window.popovers.isShowing)
+    }
+
+    // ── The bar's shortcuts ──────────────────────────────────────────────
+
+    @Test fun `wide and with a result, Anki and Read aloud stand on the bar by name, a tap running each and a hold sending the card`() {
         show(Frame(100, 200, 1000, 400))
-        val page = FakePage(ctx)
-        window.attachPage(page)
-        layOut()
+        val page = attach(result = false)
+        var spoke: View? = null
+        page.speak.onClick = { spoke = it }
         assertEquals("nothing to make a card of", View.GONE, bar(R.id.detachedBarAnki).visibility)
+        assertEquals(View.GONE, bar(R.id.btnSpeakOriginal).visibility)
 
-        page.ankiAvailable = true
+        page.resultOnShow = true
         layOut()
         assertEquals(View.VISIBLE, bar(R.id.detachedBarAnki).visibility)
+        assertEquals(View.VISIBLE, bar(R.id.btnSpeakOriginal).visibility)
+        assertTrue(find(bar(R.id.detachedBarAnki), ctx.getString(R.string.detached_bar_anki)) != null)
+        assertTrue(find(bar(R.id.btnSpeakOriginal), "Read aloud") != null)
 
         bar(R.id.detachedBarAnki).performClick()
         assertEquals(1, page.adds)
         bar(R.id.detachedBarAnki).performLongClick()
         assertEquals(1, page.oneTaps)
         assertEquals("the hold is not a tap", 1, page.adds)
+        bar(R.id.btnSpeakOriginal).performClick()
+        assertEquals("run with its own button as the anchor", bar(R.id.btnSpeakOriginal), spoke)
 
-        page.ankiAvailable = false
+        tap(window.bar.moreButton)
+        assertTrue("a shortcut is a second way: the menu lists both all the same", hasRow(addToAnki) && hasRow("Read aloud"))
+        tapOutside()
+
+        page.resultOnShow = false
         layOut()
         assertEquals(View.GONE, bar(R.id.detachedBarAnki).visibility)
+        assertEquals(View.GONE, bar(R.id.btnSpeakOriginal).visibility)
+    }
+
+    @Test fun `at the default width there is no room for both shortcuts, and the menu still has them`() {
+        show(Frame(400, 200, 300, 400))
+        attach(result = true)
+
+        assertEquals(View.GONE, bar(R.id.btnSpeakOriginal).visibility)
+        assertEquals(View.VISIBLE, bar(R.id.detachedBarCapture).visibility)
+        assertEquals(View.VISIBLE, bar(R.id.detachedBarAuto).visibility)
+
+        tap(window.bar.moreButton)
+        assertTrue(rowWith("Read aloud").isEnabled)
     }
 
     @Test fun `the page's own popovers open in the window's, and a page taken out is unhooked`() {
         show()
-        val page = FakePage(ctx)
-        window.attachPage(page)
-        layOut()
+        val page = attach(result = false)
         val content = object : PopoverContent {
             override fun createView(ctx: Context, host: PopoverHost): View = TextView(ctx).apply { text = "Text size" }
             override fun cardWidth(ctx: Context, natural: Int): Int = 200
@@ -321,8 +487,10 @@ class DetachedWindowMenusTest {
         window.attachPage(null)
         assertFalse("its popover goes with it", window.popovers.isShowing)
         assertTrue(page.popoverPresenter == null)
-        assertTrue(page.onAnkiAvailableChanged == null)
-        page.ankiAvailable = true
+        assertTrue(page.onResultOnShowChanged == null)
+        assertTrue("no longer followed", page.listeners.isEmpty())
+        assertTrue("its Read aloud leaves the bar", window.root.findViewById<View>(R.id.btnSpeakOriginal) == null)
+        page.resultOnShow = true
         layOut()
         assertEquals(View.GONE, bar(R.id.detachedBarAnki).visibility)
     }
@@ -342,13 +510,21 @@ class DetachedWindowMenusTest {
         assertEquals("Capture\nRegion", button.contentDescription.toString())
     }
 
-    @Test fun `Exit says what it would do`() {
+    @Test fun `the menu's last row says what it would do, and the bar's one window control is Minimize`() {
         show()
-        assertEquals(ctx.getString(R.string.floating_icon_close_label_turn_off), bar(R.id.detachedBarExit).contentDescription.toString())
+        tap(window.bar.moreButton)
+        assertEquals(turnOff, texts().last())
+        tapOutside()
 
         host.turnsOff = false
         window.refreshActions()
+        tap(window.bar.moreButton)
+        assertEquals(ctx.getString(R.string.floating_icon_close_label_hide), texts().last())
+        tapOutside()
 
-        assertEquals(ctx.getString(R.string.floating_icon_close_label_hide), bar(R.id.detachedBarExit).contentDescription.toString())
+        assertEquals("the first thing on the bar", 0, window.bar.indexOfChild(bar(R.id.detachedBarMinimize)))
+        tap(bar(R.id.detachedBarMinimize))
+        assertEquals(1, host.minimizes)
+        assertEquals("and it asks to turn nothing off", 0, host.exits)
     }
 }

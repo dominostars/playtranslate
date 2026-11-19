@@ -18,6 +18,7 @@ import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlay.OwnWindows
 import com.playtranslate.testutil.RecordingWindowManager
 import com.playtranslate.testutil.testEnvironment
+import com.playtranslate.ui.DetachedWindowGeometry.Corner
 import com.playtranslate.ui.DetachedWindowGeometry.Frame
 import com.playtranslate.ui.DetachedWindowGeometry.Side
 import org.junit.After
@@ -136,16 +137,30 @@ class DetachedWindowGestureTest {
 
     private var downTime = 0L
 
-    /** A touch at display point ([rawX], [rawY]), in the window's own
-     *  coordinates as it stood when the gesture went down (the platform
-     *  offsets by the window's origin at dispatch; [origin] stands in). */
+    /** Where the gesture under way went down: the window's root, or the
+     *  corner pad above it that the point fell in, with that window's
+     *  params. A gesture stays with the window it went down on. */
+    private var target: Pair<View, WindowManager.LayoutParams>? = null
+
+    private fun windowAt(rawX: Float, rawY: Float): Pair<View, WindowManager.LayoutParams> =
+        window.handlePadsForTest().firstOrNull { (_, p) ->
+            rawX >= p.x && rawX < p.x + p.width && rawY >= p.y && rawY < p.y + p.height
+        } ?: (window.root to params())
+
+    /** A touch at display point ([rawX], [rawY]), in the coordinates of the
+     *  window it went down on (the platform offsets by that window's origin
+     *  at dispatch): a corner's touch pad lies above the window, so a point
+     *  in one goes to it. */
     private fun touch(action: Int, rawX: Float, rawY: Float) {
-        if (action == MotionEvent.ACTION_DOWN) downTime = SystemClock.uptimeMillis()
-        val p = params()
+        if (action == MotionEvent.ACTION_DOWN) {
+            downTime = SystemClock.uptimeMillis()
+            target = windowAt(rawX, rawY)
+        }
+        val (view, p) = target!!
         val ev = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, rawX, rawY, 0)
         ev.setLocation(rawX - p.x, rawY - p.y)
         assertEquals("the touch keeps its display coordinates", rawX, ev.rawX, 0.01f)
-        window.root.dispatchTouchEvent(ev)
+        view.dispatchTouchEvent(ev)
         ev.recycle()
         // A view posts its click from the release.
         if (action == MotionEvent.ACTION_UP) idle()
@@ -188,22 +203,22 @@ class DetachedWindowGestureTest {
 
     @Test fun `a press on a bar button that becomes a drag moves the window and presses nothing`() {
         show()
-        // Exit never folds, so it is on the bar at any width.
-        val exit = window.root.findViewById<View>(R.id.detachedBarExit)
-        assertEquals(View.VISIBLE, exit.visibility)
-        val at = IntArray(2).also { exit.getLocationInWindow(it) }
-        val x = params().x + at[0] + exit.width / 2f
-        val y = params().y + at[1] + exit.height / 2f
+        // Minimize always stands, so it is on the bar at any width.
+        val button = window.root.findViewById<View>(R.id.detachedBarMinimize)
+        assertEquals(View.VISIBLE, button.visibility)
+        val at = IntArray(2).also { button.getLocationInWindow(it) }
+        val x = params().x + at[0] + button.width / 2f
+        val y = params().y + at[1] + button.height / 2f
 
         drag(x, y, x + 80, y + 40)
-        assertEquals(0, host.exits)
+        assertEquals(0, host.minimizes)
         assertEquals(Frame(480, 240, 420, 400), frame())
 
         // A plain tap on it still presses.
         val p = params()
-        down(p.x + at[0] + exit.width / 2f, p.y + at[1] + exit.height / 2f)
-        up(p.x + at[0] + exit.width / 2f, p.y + at[1] + exit.height / 2f)
-        assertEquals(1, host.exits)
+        down(p.x + at[0] + button.width / 2f, p.y + at[1] + button.height / 2f)
+        up(p.x + at[0] + button.width / 2f, p.y + at[1] + button.height / 2f)
+        assertEquals(1, host.minimizes)
     }
 
     @Test fun `a very clear sideways drag in the page moves the window`() {
@@ -292,6 +307,68 @@ class DetachedWindowGestureTest {
         assertEquals(Frame(400, 200, 480, 450), savedFrame())
     }
 
+    /** A corner pad's rect on the display. */
+    private fun padRect(corner: Corner): android.graphics.Rect {
+        val (_, p) = window.handlePadsForTest()[if (corner == Corner.BOTTOM_LEFT) 0 else 1]
+        return android.graphics.Rect(p.x, p.y, p.x + p.width, p.y + p.height)
+    }
+
+    @Test fun `each corner's touch target reaches 24 dp past the card and 34 dp into it`() {
+        show()
+        // The card: 400..820 across, 200..600 down.
+        assertEquals(android.graphics.Rect(376, 566, 434, 624), padRect(Corner.BOTTOM_LEFT))
+        assertEquals(android.graphics.Rect(786, 566, 844, 624), padRect(Corner.BOTTOM_RIGHT))
+    }
+
+    @Test fun `a touch past the card's corner resizes, and one further inside than the target does not`() {
+        show()
+
+        // 20 px outside the bottom right corner, on the game.
+        drag(840f, 620f, 900f, 670f)
+        assertEquals(Frame(400, 200, 480, 450), frame())
+
+        // 40 px inside the new corner: the page's, not the handle's.
+        drag(840f, 610f, 840f, 560f)
+        assertEquals("a vertical drag in the page moves and sizes nothing", Frame(400, 200, 480, 450), frame())
+    }
+
+    @Test fun `the touch targets follow the window when a move or a resize ends`() {
+        show()
+
+        drag(barX, barY, barX + 100, barY + 50)
+        assertEquals(Frame(500, 250, 420, 400), frame())
+        assertEquals(android.graphics.Rect(886, 616, 944, 674), padRect(Corner.BOTTOM_RIGHT))
+        assertEquals(android.graphics.Rect(476, 616, 534, 674), padRect(Corner.BOTTOM_LEFT))
+
+        drag(915f, 645f, 975f, 695f)
+        assertEquals(Frame(500, 250, 480, 450), frame())
+        assertEquals(android.graphics.Rect(946, 666, 1004, 724), padRect(Corner.BOTTOM_RIGHT))
+    }
+
+    @Test fun `while a corner is being dragged a second finger on the window does nothing`() {
+        show()
+
+        down(815f, 595f)
+        move(875f, 645f)
+        val resized = frame()
+        // A second touch goes down on the bar and drags.
+        val ev = { action: Int, x: Float, y: Float ->
+            val p = params()
+            val e = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, x, y, 0)
+            e.setLocation(x - p.x, y - p.y)
+            window.root.dispatchTouchEvent(e)
+            e.recycle()
+        }
+        ev(MotionEvent.ACTION_DOWN, barX, barY)
+        ev(MotionEvent.ACTION_MOVE, barX + 200, barY + 100)
+        ev(MotionEvent.ACTION_UP, barX + 200, barY + 100)
+        idle()
+        assertEquals(resized, frame())
+
+        up(875f, 645f)
+        assertEquals(Frame(400, 200, 480, 450), frame())
+    }
+
     @Test fun `the bottom left corner sizes it from its left and bottom edges`() {
         show()
 
@@ -336,18 +413,24 @@ class DetachedWindowGestureTest {
         up(345f, 645f)
     }
 
-    @Test fun `the bar folds and unfolds its actions as a corner is dragged, before the finger lifts`() {
+    @Test fun `the bar fits itself again as a corner is dragged, before the finger lifts`() {
         show(Frame(100, 200, 1000, 400))
-        assertTrue("room for every action", window.bar.foldedActions().isEmpty())
+        assertFalse("room for Capture and Auto by name", window.bar.pillsIconOnly)
 
         down(1095f, 595f)
         move(295f, 595f)
         assertEquals(Frame(100, 200, 200, 400), frame())
-        assertTrue("narrow: folded while the finger is down", window.bar.foldedActions().isNotEmpty())
+        assertTrue("narrow: icons while the finger is down", window.bar.pillsIconOnly)
+        assertTrue("both still on the bar", window.bar.foldedActions().isEmpty())
         assertEquals(View.VISIBLE, window.bar.moreButton.visibility)
 
+        move(245f, 595f)
+        assertEquals(Frame(100, 200, 150, 400), frame())
+        assertEquals("narrowest: Auto folds into the menu", 1, window.bar.foldedActions().size)
+
         move(1095f, 595f)
-        assertTrue("wide again: unfolded", window.bar.foldedActions().isEmpty())
+        assertFalse("wide again: the names are back", window.bar.pillsIconOnly)
+        assertTrue(window.bar.foldedActions().isEmpty())
         up(1095f, 595f)
     }
 

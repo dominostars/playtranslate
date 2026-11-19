@@ -18,23 +18,29 @@ import com.playtranslate.R
 import com.playtranslate.themeColor
 
 /**
- * The detached window's top bar: the icon menu's actions, and the page's
- * Add to Anki, as one row. From the start: Exit, the more button, then
- * Minimize; a gap; then Settings, Edit region, Anki, Auto and Capture at the
- * end. Capture and Auto are icon-and-label pills, the rest icons.
+ * The detached window's top bar. From the start: Minimize, the menu button;
+ * a gap; then, at the end, Auto and Capture, each with its name on it. Those
+ * four are all a new user has to read. Everything else the window can do is
+ * in the menu, by name and under headings ([DetachedWindow]'s menu).
  *
- * The actions are [HeaderAction] models, the same ones a section header's
- * row is built from, and what does not fit folds behind the more button by
- * the same pure rule ([HeaderFit]), in [Actions.foldOrder]: Minimize gives
- * way first and Capture last; Exit never folds. The more button is always
- * there: its menu also holds what the page's headers held, which the window
- * adds to the folded actions. It is the section headers'
- * [ActionOverflowMenu], through [FoldingActionRow].
+ * Where the window is wide, up to two shortcuts stand before Auto, each also
+ * with its name: Add to Anki, then (further from the end, the first to go)
+ * the page's Read aloud ([setReadAloud]). A shortcut is a second way to a
+ * menu row, never the only way: it shows only while there is a result for it
+ * to act on ([shortcutsOffered]) and only where Capture and Auto keep their
+ * names, and one that does not fit is simply not shown.
  *
- * Capture and Auto never fold while they can stay as icons: where a pill
- * with its label would fold, both drop their labels and stand as round icon
- * buttons, so the window's one essential action stays on the bar down to
- * the narrowest page.
+ * Capture and Auto never give way to a shortcut, and they stay on the bar as
+ * the window narrows: where a pill with its name would not fit, both drop
+ * their names and stand as round icon buttons. Narrower than that Auto, and
+ * last Capture, fold; the window's menu lists what folded
+ * ([foldedActions]), through [FoldingActionRow]. Minimize and the menu
+ * button always stand.
+ *
+ * The actions are [HeaderAction] models and the fit is the section headers'
+ * pure rule ([HeaderFit]). The bar does not own Read aloud (its header row
+ * on the page does), so it is told of that model's changes
+ * ([actionChanged]) rather than observing it.
  *
  * Neither pill draws a press effect. A repaint of ours just before a
  * capture can be served as the capture's clean frame on whole-screen
@@ -42,37 +48,78 @@ import com.playtranslate.themeColor
  * is exactly that moment.
  *
  * Like the section header, the row is the only writer of its action views'
- * visibility, and the fold runs in [onMeasure] with change-only writes.
+ * visibility, and the fit runs in [onMeasure] with change-only writes.
  */
 internal class DetachedWindowBar(context: Context) : LinearLayout(context), FoldingActionRow {
 
-    /** The bar's seven actions. */
+    /** The bar's own actions. */
     class Actions(
         val capture: HeaderAction,
         val auto: HeaderAction,
+        /** The Add to Anki shortcut. */
         val anki: HeaderAction,
-        val editRegion: HeaderAction,
-        val settings: HeaderAction,
         val minimize: HeaderAction,
-        val exit: HeaderAction,
     ) {
-        /** The foldable actions, the one that stays inline longest first. */
-        val foldOrder: List<HeaderAction> get() = listOf(capture, auto, anki, editRegion, settings, minimize)
-        val all: List<HeaderAction> get() = foldOrder + exit
+        /** The two that carry the window: named pills, icons where narrow. */
+        val pills: List<HeaderAction> get() = listOf(capture, auto)
+        val all: List<HeaderAction> get() = listOf(capture, auto, anki, minimize)
     }
 
-    /** Whether Capture and Auto stand without their labels (class doc). */
+    /** Whether Capture and Auto stand without their names (class doc). */
     var pillsIconOnly = false
         private set
+
+    /** The page's Read aloud, the second shortcut; null with no page. */
+    private var readAloud: HeaderAction? = null
+
+    /** Whether the shortcuts are offered at all: a result is on show for
+     *  them to act on. */
+    var shortcutsOffered = false
+        set(value) {
+            if (field == value) return
+            field = value
+            requestLayout()
+        }
+
+    /** [action] is the page's Read aloud from here (null takes it off). */
+    fun setReadAloud(action: HeaderAction?) {
+        val own = checkNotNull(actions) { "the bar's own actions come first" }
+        readAloud?.let { viewOf.remove(it)?.let(::removeView) }
+        readAloud = action
+        if (action != null) {
+            // Before Anki: the first shortcut to go is the one furthest
+            // from the end, so nothing that stays moves.
+            addItem(action, shortcut(), indexOfChild(viewOf.getValue(own.anki)))
+            render(action)
+        }
+        requestLayout()
+    }
+
+    /** An action the bar does not own changed its look or whether it is
+     *  available: Read aloud, or a row that is only the menu's. An open
+     *  menu follows the bar for all of them. */
+    fun actionChanged(a: HeaderAction) {
+        if (a === readAloud) {
+            render(a)
+            requestLayout()
+        }
+        for (l in listeners.toList()) l.onActionChanged(a)
+    }
+
+    /** Which of the menu's rows can be tapped changed (a result came or
+     *  went): an open menu reads its rows again. */
+    fun menuChanged() {
+        for (l in listeners.toList()) l.onFoldChanged(this)
+    }
 
     private val dp = resources.displayMetrics.density
     private val itemPx = (ITEM_DP * dp).toInt()
     private val gapPx = (GAP_DP * dp).toInt()
 
-    /** Tapped the more button (the window opens or closes the menu). */
+    /** Tapped the menu button (the window opens or closes the menu). */
     var onMoreClick: ((DetachedWindowBar) -> Unit)? = null
 
-    /** The more button: always shown. */
+    /** The menu button: always shown. */
     lateinit var moreButton: ImageButton
         private set
 
@@ -94,8 +141,8 @@ internal class DetachedWindowBar(context: Context) : LinearLayout(context), Fold
     fun setActions(actions: Actions) {
         check(this.actions == null) { "the bar's actions are set once" }
         this.actions = actions
-        addItem(actions.exit, iconButton(actions.exit))
-        moreButton = iconButton(null).apply {
+        addItem(actions.minimize, iconButton())
+        moreButton = iconButton().apply {
             id = R.id.detachedBarMore
             setImageResource(R.drawable.ic_more_horiz)
             imageTintList = ColorStateList.valueOf(context.themeColor(R.attr.ptTextMuted))
@@ -103,19 +150,17 @@ internal class DetachedWindowBar(context: Context) : LinearLayout(context), Fold
             setOnClickListener { onMoreClick?.invoke(this@DetachedWindowBar) }
         }
         addView(moreButton, itemParams(itemPx))
-        addItem(actions.minimize, iconButton(actions.minimize))
         addView(Space(context), LayoutParams(0, 0, 1f))
-        addItem(actions.settings, iconButton(actions.settings))
-        addItem(actions.editRegion, iconButton(actions.editRegion))
-        addItem(actions.anki, iconButton(actions.anki))
-        addItem(actions.auto, pill(actions.auto, filled = false))
-        addItem(actions.capture, pill(actions.capture, filled = true))
+        addItem(actions.anki, shortcut())
+        addItem(actions.auto, pill(filled = false))
+        addItem(actions.capture, pill(filled = true))
         for (a in actions.all) {
             a.observer = ::onActionChanged
             render(a)
         }
     }
 
+    /** Capture and Auto where the bar is too narrow even for their icons. */
     override fun foldedActions(): List<HeaderAction> = folded.filter { it.available }
 
     override fun addListener(listener: FoldingActionRow.Listener) {
@@ -134,25 +179,30 @@ internal class DetachedWindowBar(context: Context) : LinearLayout(context), Fold
     private fun applyFit(actions: Actions, widthSpec: Int) {
         val content = if (MeasureSpec.getMode(widthSpec) == MeasureSpec.UNSPECIFIED) null
         else MeasureSpec.getSize(widthSpec) - paddingLeft - paddingRight
-        val foldable = actions.foldOrder.filter { it.available }
-        // Exit and the more button always stand: what folds gives the more
-        // button nothing up, since it is there already.
-        val pinned = listOf(itemPx) + listOf(actions.exit).filter { it.available }.map(::widthOf)
-        fun planWith(iconOnly: Boolean): HeaderFit.Plan {
+        val pills = actions.pills.filter { it.available }
+        val shortcuts = listOfNotNull(actions.anki, readAloud).filter { shortcutsOffered && it.available }
+        // Minimize and the menu button always stand.
+        val pinned = listOf(actions.minimize).filter { it.available }.map(::widthOf) + itemPx
+        fun planOf(candidates: List<HeaderAction>, iconOnly: Boolean): HeaderFit.Plan {
             setPillsIconOnly(iconOnly)
             return HeaderFit.plan(
                 content, labelNatural = 0, gap = gapPx,
-                foldable = foldable.map(::widthOf), pinned = pinned, moreWidth = 0, overflow = false,
+                foldable = candidates.map(::widthOf), pinned = pinned, moreWidth = 0, overflow = false,
             )
         }
-        // The pills lead the fold order, so fewer inline than there are
-        // pills means one of them would fold with its label on.
-        val pills = foldable.count { viewOf.getValue(it) !is ImageButton }
-        var plan = planWith(iconOnly = false)
-        if (plan.inlineCount < pills) plan = planWith(iconOnly = true)
-        val inline = foldable.subList(0, plan.inlineCount)
-        for (a in actions.all) setShown(viewOf.getValue(a), a.available && (a === actions.exit || a in inline))
-        val nowFolded = foldable.subList(plan.inlineCount, foldable.size).toList()
+        // The pills lead, so fewer inline than there are pills means one of
+        // them would go with its name on: both stand as icons instead, and
+        // a bar that narrow has no shortcuts.
+        var candidates = pills + shortcuts
+        var plan = planOf(candidates, iconOnly = false)
+        if (plan.inlineCount < pills.size) {
+            candidates = pills
+            plan = planOf(candidates, iconOnly = true)
+        }
+        val inline = candidates.subList(0, plan.inlineCount)
+        setShown(viewOf.getValue(actions.minimize), actions.minimize.available)
+        for (a in actions.pills + listOfNotNull(actions.anki, readAloud)) setShown(viewOf.getValue(a), a in inline)
+        val nowFolded = pills.filter { it !in inline }
         if (nowFolded != folded) {
             folded = nowFolded
             post { for (l in listeners.toList()) l.onFoldChanged(this) }
@@ -174,22 +224,23 @@ internal class DetachedWindowBar(context: Context) : LinearLayout(context), Fold
         if (v.visibility != want) v.visibility = want
     }
 
-    /** Capture and Auto with their labels, or as round icon buttons the
-     *  size of the others. Change-only, like every write of the fit. */
+    /** Capture and Auto with their names, or as round icon buttons the
+     *  size of the others. Change-only, like every write of the fit. A
+     *  shortcut always keeps its name. */
     private fun setPillsIconOnly(iconOnly: Boolean) {
         if (pillsIconOnly == iconOnly) return
         pillsIconOnly = iconOnly
         val start = (PILL_START_PAD_DP * dp).toInt()
         val end = if (iconOnly) start else (PILL_END_PAD_DP * dp).toInt()
-        for (v in viewOf.values) {
-            if (v !is LinearLayout) continue
+        for (a in actions?.pills ?: return) {
+            val v = viewOf.getValue(a) as LinearLayout
             v.getChildAt(1).visibility = if (iconOnly) View.GONE else View.VISIBLE
             v.setPaddingRelative(start, 0, end, 0)
         }
     }
 
     /** [onHold] runs on a long press of [a]'s button (Anki's send at once).
-     *  A folded action has no hold: its menu row is a tap. */
+     *  The menu's row for the same thing is a tap only. */
     fun setOnHold(a: HeaderAction, onHold: () -> Unit) {
         viewOf.getValue(a).setOnLongClickListener {
             onHold()
@@ -199,30 +250,38 @@ internal class DetachedWindowBar(context: Context) : LinearLayout(context), Fold
 
     private fun itemParams(width: Int) = LayoutParams(width, itemPx).apply { marginStart = gapPx }
 
-    private fun addItem(a: HeaderAction, v: View) {
+    private fun addItem(a: HeaderAction, v: View, index: Int = -1) {
         v.id = a.viewId
         v.setOnClickListener { a.onClick?.invoke(it) }
-        addView(v, itemParams(if (v is ImageButton) itemPx else LayoutParams.WRAP_CONTENT))
+        addView(v, index, itemParams(if (v is ImageButton) itemPx else LayoutParams.WRAP_CONTENT))
         viewOf[a] = v
     }
 
-    /** An icon-only action (or, with no action, the more button). */
-    private fun iconButton(a: HeaderAction?): ImageButton = ImageButton(context).apply {
-        val pad = (ICON_PAD_DP * dp).toInt()
-        setPadding(pad, pad, pad, pad)
-        scaleType = ImageView.ScaleType.FIT_CENTER
-        // The press ripple of every other icon button over the game; Capture
-        // and Auto are pills with none (class doc).
+    /** The press ripple of every button over the game but Capture and Auto,
+     *  which are pills with none (class doc). */
+    private fun View.setRipple() {
         val tv = TypedValue()
         context.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, tv, true)
         setBackgroundResource(tv.resourceId)
     }
 
-    /** An icon-and-label action: [filled] on the accent (Capture), else an
-     *  outline (Auto). */
-    private fun pill(a: HeaderAction, filled: Boolean): LinearLayout = LinearLayout(context).apply {
-        orientation = HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
+    /** An icon-only button: Minimize, the menu button. */
+    private fun iconButton(): ImageButton = ImageButton(context).apply {
+        val pad = (ICON_PAD_DP * dp).toInt()
+        setPadding(pad, pad, pad, pad)
+        scaleType = ImageView.ScaleType.FIT_CENTER
+        setRipple()
+    }
+
+    /** A shortcut: an icon and its name with no outline, so it reads as
+     *  lesser than Auto's outline and Capture's fill beside it. */
+    private fun shortcut(): LinearLayout = iconAndLabel().apply {
+        setPaddingRelative((SHORTCUT_H_PAD_DP * dp).toInt(), 0, (SHORTCUT_H_PAD_DP * dp).toInt(), 0)
+        setRipple()
+    }
+
+    /** A pill: [filled] on the accent (Capture), else an outline (Auto). */
+    private fun pill(filled: Boolean): LinearLayout = iconAndLabel().apply {
         setPaddingRelative((PILL_START_PAD_DP * dp).toInt(), 0, (PILL_END_PAD_DP * dp).toInt(), 0)
         background = GradientDrawable().apply {
             cornerRadius = itemPx / 2f
@@ -233,18 +292,20 @@ internal class DetachedWindowBar(context: Context) : LinearLayout(context), Fold
                 setStroke((1 * dp).toInt(), context.themeColor(R.attr.ptOutline))
             }
         }
-        val content = context.themeColor(if (filled) R.attr.ptAccentOn else R.attr.ptText)
+        setContentColor(this, context.themeColor(if (filled) R.attr.ptAccentOn else R.attr.ptText))
+    }
+
+    /** An icon, then its name ([render] fills and colours both). */
+    private fun iconAndLabel(): LinearLayout = LinearLayout(context).apply {
+        orientation = HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
         addView(
-            ImageView(context).apply {
-                scaleType = ImageView.ScaleType.FIT_CENTER
-                imageTintList = ColorStateList.valueOf(content)
-            },
+            ImageView(context).apply { scaleType = ImageView.ScaleType.FIT_CENTER },
             LayoutParams((PILL_ICON_DP * dp).toInt(), (PILL_ICON_DP * dp).toInt()),
         )
         addView(
             TextView(context).apply {
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, PILL_LABEL_SP)
-                setTextColor(content)
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
@@ -255,6 +316,11 @@ internal class DetachedWindowBar(context: Context) : LinearLayout(context), Fold
         )
         isClickable = true
         isFocusable = true
+    }
+
+    private fun setContentColor(v: LinearLayout, color: Int) {
+        (v.getChildAt(0) as ImageView).imageTintList = ColorStateList.valueOf(color)
+        (v.getChildAt(1) as TextView).setTextColor(color)
     }
 
     private fun onActionChanged(a: HeaderAction, affectsWidth: Boolean) {
@@ -278,6 +344,11 @@ internal class DetachedWindowBar(context: Context) : LinearLayout(context), Fold
             is LinearLayout -> {
                 (v.getChildAt(0) as ImageView).setImageResource(a.icon)
                 (v.getChildAt(1) as TextView).text = a.label
+                // A pill keeps the colour it was built with; a shortcut
+                // shows its action's state (Read aloud while it reads).
+                if (actions?.pills?.contains(a) != true) {
+                    setContentColor(v, context.themeColor(if (a.active) R.attr.ptAccent else R.attr.ptText))
+                }
             }
         }
         viewOf.getValue(a).contentDescription = a.contentDescription
@@ -298,5 +369,6 @@ internal class DetachedWindowBar(context: Context) : LinearLayout(context), Fold
         private const val PILL_START_PAD_DP = 11f
         private const val PILL_END_PAD_DP = 14f
         private const val PILL_LABEL_SP = 14f
+        private const val SHORTCUT_H_PAD_DP = 8f
     }
 }

@@ -3,7 +3,9 @@ package com.playtranslate.ui
 import android.content.Context
 import android.graphics.Point
 import android.graphics.Rect
+import android.util.TypedValue
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -181,7 +183,7 @@ class TranslationResultContent(
          * The compact page, for a host that is a small window with a bar of
          * its own (the detached window). The same page and the same code,
          * arranged to spend less: no language headers (their actions are
-         * the host's to list, [TranslationSectionBinder.menuActions]), the
+         * the host's to list, [TranslationSectionBinder.textActions]), the
          * Original and the Translation as plain text with a hairline
          * between, no floating Anki pill (the host offers [onAddToAnki] and
          * [onAnkiOneTap] itself), slim Ask and Words headers, and the texts
@@ -399,6 +401,16 @@ class TranslationResultContent(
             sections.paddingLeft, sections.paddingTop, sections.paddingRight,
             (COMPACT_END_PAD_DP * density).toInt(),
         )
+        // The hint under a status is a second line here, smaller and closer
+        // than the full page's, and gives way where the window is too small
+        // for it ([fitStatusHint]).
+        statusHint.setTextSize(TypedValue.COMPLEX_UNIT_SP, COMPACT_HINT_SP)
+        (statusHint.layoutParams as ViewGroup.MarginLayoutParams).topMargin = (COMPACT_HINT_GAP_DP * density).toInt()
+        statusContainer.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+            if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
+                statusContainer.post { if (host.isAlive && statusContainer.isVisible) fitStatusHint() }
+            }
+        }
         // The headers that stay (Ask, Words) lose the room a card above them
         // needed.
         for (id in intArrayOf(R.id.askHeaderRow, R.id.wordsHeaderRow)) {
@@ -472,7 +484,7 @@ class TranslationResultContent(
             is ResultState.Idle ->
                 showStatus(ctx.getString(R.string.status_idle), showHint = host.showsStartHint)
             is ResultState.Status ->
-                showStatus(state.message, state.showHint, state.ocrProvenance)
+                showStatus(state.message, state.showHint, state.ocrProvenance, state.hint)
             is ResultState.Error ->
                 showStatus(ctx.getString(R.string.status_error, state.message), showHint = false)
             is ResultState.Translating -> {
@@ -563,8 +575,13 @@ class TranslationResultContent(
 
     /** Shared status / error / idle layout — single status container,
      *  results hidden. [showHint] gates the "press X to start" hint line
-     *  under the message. */
-    private fun showStatus(message: String, showHint: Boolean, ocrProvenance: OcrProvenance? = null) {
+     *  under the message; [hint] is the state's own line in its place. */
+    private fun showStatus(
+        message: String,
+        showHint: Boolean,
+        ocrProvenance: OcrProvenance? = null,
+        hint: String? = null,
+    ) {
         // Leaving the results view drops the scroll anchor: the next
         // translation is unrelated content and should land at the top.
         lastRenderedSourceText = null
@@ -582,10 +599,41 @@ class TranslationResultContent(
             onLanguageTap = { host.onChangeLanguage(true) },
             onGearTap = { ocrProvenance?.let { host.onChooseOcr(it) } },
         )
-        statusHint.visibility = if (showHint) View.VISIBLE else View.GONE
+        statusHint.text = hint ?: ctx.getString(R.string.status_hold_hint)
+        hintWanted = showHint || hint != null
+        statusHint.visibility = if (hintWanted) View.VISIBLE else View.GONE
         liveHint.isGone = true
         statusContainer.isVisible = true
         scrollView.isGone = true
+        if (host.compact) fitStatusHint()
+    }
+
+    /** Whether the status on show has a hint line under it. */
+    private var hintWanted = false
+
+    /**
+     * The compact page's hint line shows only where the message and it both
+     * fit: its window can be made a few lines tall, and the container
+     * centres what it holds, so a hint that did not fit would push the top
+     * of the message itself out of view. Run when a status is shown and on
+     * every change of the container's size; before the first layout there
+     * is no size to fit against and the hint stays as it is.
+     */
+    private fun fitStatusHint() {
+        if (!hintWanted || statusContainer.width == 0) return
+        val width = statusContainer.width - statusContainer.paddingLeft - statusContainer.paddingRight
+        val room = statusContainer.height - statusContainer.paddingTop - statusContainer.paddingBottom
+        fun heightOf(v: TextView): Int {
+            v.measure(
+                View.MeasureSpec.makeMeasureSpec(width.coerceAtLeast(0), View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            )
+            return v.measuredHeight
+        }
+        val margin = (statusHint.layoutParams as ViewGroup.MarginLayoutParams).topMargin
+        val fits = heightOf(statusText) + margin + heightOf(statusHint) <= room
+        val want = if (fits) View.VISIBLE else View.GONE
+        if (statusHint.visibility != want) statusHint.visibility = want
     }
 
     // ── Fit + reveal + scroll ────────────────────────────────────────────
@@ -597,13 +645,8 @@ class TranslationResultContent(
      *  ([TranslationSectionBinder.fitToRoom]). */
     fun fitTextSizes() {
         val height = scrollView.height.takeIf { it > 0 } ?: return
-        if (host.compact) {
-            binder.fitToRoom(height)
-            return
-        }
-        binder.fitToViewport(
-            height, paired = sections.arrangement == ResultSectionsLayout.Arrangement.PAIRED,
-        )
+        val paired = sections.arrangement == ResultSectionsLayout.Arrangement.PAIRED
+        if (host.compact) binder.fitToRoom(height, paired) else binder.fitToViewport(height, paired)
     }
 
     /**
@@ -738,6 +781,8 @@ private fun ScrollView.restoreScrollSilently(y: Int, listener: View.OnScrollChan
 /** The room at the end of the compact page's scroll, where the full page
  *  leaves the Anki pill's clearance. */
 private const val COMPACT_END_PAD_DP = 8f
+private const val COMPACT_HINT_SP = 14f
+private const val COMPACT_HINT_GAP_DP = 12f
 
 /** Top of [descendant] in this ScrollView's content coordinate space —
  *  independent of the current scroll offset (offsetDescendantRectToMyCoords
