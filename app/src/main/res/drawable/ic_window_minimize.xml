@@ -1,0 +1,15 @@
+<!-- The detached window's Minimize: two arrows along one diagonal, pointing
+     in at each other. ic_window_detach is the same pair pointing out. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/ptText">
+    <path
+        android:strokeColor="#FF000000"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M4,14h6v6M20,10h-6V4M14,10l7,-7M3,21l7,-7" />
+</vector>

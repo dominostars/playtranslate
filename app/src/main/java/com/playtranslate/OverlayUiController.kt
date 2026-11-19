@@ -2791,7 +2791,7 @@ class OverlayUiController(
             rows += QuickSetting(
                 QuickSetting.Id.DETACH,
                 context.getString(R.string.floating_menu_panel_detach),
-                icon = R.drawable.ic_float_landscape_2,
+                icon = R.drawable.ic_window_detach,
             ) {
                 leave()
                 detachControls(display.displayId)

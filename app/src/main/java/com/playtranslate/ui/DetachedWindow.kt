@@ -222,7 +222,7 @@ internal class DetachedWindow(
         contentDescription = ctx.getString(R.string.live_mode_auto_translate_label),
     ).apply { onClick = { host.onToggleAuto(displayId) } }
     private val minimizeAction = HeaderAction(
-        R.id.detachedBarMinimize, R.drawable.ic_collapse_content, ctx.getString(R.string.detached_bar_minimize),
+        R.id.detachedBarMinimize, R.drawable.ic_window_minimize, ctx.getString(R.string.detached_bar_minimize),
     ).apply { onClick = { host.onMinimize(displayId) } }
 
     /** Add to Anki twice over: the bar's shortcut under its short name
