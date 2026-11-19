@@ -2266,8 +2266,14 @@ class OverlayUiController(
 
     /** [displayId]'s capture region changed, whoever changed it
      *  ([CaptureService]'s region funnel): the window's Capture names the
-     *  screen or the region, on its bar and on its capture button. */
+     *  screen or the region, on its bar and on its capture button. A
+     *  capture still on its way into the window is dropped, as the funnel
+     *  drops one the service already has: it was asked for with the region
+     *  as it stood, and landing afterwards it would put that region back
+     *  over the one just set ([captureIntoWindow], which has let go of the
+     *  capture before it applies a region itself). */
     fun onCaptureRegionChanged(displayId: Int) {
+        if (windowCapture?.displayId == displayId) cancelWindowCapture()
         windowHandles[displayId]?.refreshActions()
     }
 

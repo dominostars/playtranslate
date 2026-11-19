@@ -253,6 +253,28 @@ class DetachedCaptureRoutingTest {
         assertEquals("it never lands in the page", idle, page().vm.result.value)
     }
 
+    @Test fun `a change of the region drops a capture on its way into the window, and its region is not put back`() {
+        val svc = captureService()
+        windowUp()
+        // A first capture, so the service is configured and the second
+        // finds nothing to set up.
+        tap(R.id.detachedBarCapture)
+        settle()
+        tap(R.id.detachedBarCapture)
+        assertEquals(d0, controller.windowCaptureDisplayIdForTest)
+
+        // Another display's region is not this capture's.
+        controller.onCaptureRegionChanged(d0 + 1)
+        assertEquals("still on its way", d0, controller.windowCaptureDisplayIdForTest)
+
+        val other = RegionEntry("", top = 0f, bottom = 0.4f, left = 0.1f, right = 0.9f)
+        svc.configureOverride(d0, other)
+
+        assertEquals("dropped with the region it was asked for", -1, controller.windowCaptureDisplayIdForTest)
+        settle()
+        assertEquals("the region set while it waited stands", other, svc.activeRegionForDisplay(d0))
+    }
+
     @Test fun `a second capture into the window replaces the first on its way`() {
         captureService()
         windowUp()
