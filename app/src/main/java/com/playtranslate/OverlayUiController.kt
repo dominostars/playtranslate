@@ -430,8 +430,34 @@ class OverlayUiController(
         iconHandles.values.forEach { it.icon.degraded = degraded }
     }
 
+    /** Auto-translate is running or not: every control says so, the icon by
+     *  its colour and the detached window by its Auto button, and each
+     *  window's page follows the session that is its own ([syncLivePages]).
+     *  The service calls it at every start and stop, whenever controls go
+     *  up or come down, and after a running session changed where it shows
+     *  ([CaptureService.syncIconState]). */
     fun setIconsLiveMode(liveMode: Boolean) {
         iconHandles.values.forEach { it.icon.liveMode = liveMode }
+        windowHandles.values.forEach { it.autoRunning = liveMode }
+        syncLivePages()
+    }
+
+    /**
+     * Each detached page follows the running session whose results are its
+     * window's ([LiveSurface.WINDOW_PAGE], and the session captures that
+     * page's display), and follows none otherwise
+     * ([DetachedPage.followLive], which does nothing when told what it
+     * already does). Run wherever the answer can change: a session starting
+     * or stopping, controls going up or down and a session's surface
+     * swapped ([setIconsLiveMode]), and the controls' own pass
+     * ([applyControlsForms]). A page goes
+     * on following while the icon stands in for its window: the session is
+     * still the window's, waiting for it.
+     */
+    private fun syncLivePages() {
+        val svc = CaptureService.instance
+            ?.takeIf { it.isLive && it.liveSurface() == LiveSurface.WINDOW_PAGE }
+        for ((id, page) in detachedPages) page.followLive(svc?.takeIf { it.isLiveOn(id) })
     }
 
     fun setIconsGlyph(glyph: FloatingOverlayIcon.Glyph) {
@@ -865,15 +891,56 @@ class OverlayUiController(
 
     /**
      * Screen rects of this app's own chrome on [displayId] that a raw frame
-     * of that display can contain: the floating icon, the transient pill
+     * of that display can contain: the floating icon, or the detached
+     * window that is the controls' other form, the transient pill
      * ([showNoTextPill]: no text, a failure, "Translating from …") and the
      * translation-error pills. The OCR sites black these out of frames
      * stamped `includesOwnOverlays`, and the pinhole mode leaves them out of
      * its change gate and its pinhole sampling. Read live, main thread.
+     *
+     * The window's rect is what lets an auto-translate whose results show
+     * in its page read raw frames of the whole screen, with the window
+     * never blanked for a read ([LiveSurface.WINDOW_PAGE]): the page's own
+     * text, the last result among it, is not read back as the game's. The
+     * rect is where the window stands when the OCR starts, a moment after
+     * the frame was taken, so that loop takes no frame while the window is
+     * moving ([windowBusy]). What the window opens over the game (a menu,
+     * the lens, a page, an alert) has no rect here: the loop waits while
+     * one is up.
      */
     fun ownChromeRects(displayId: Int): List<Rect> =
-        listOfNotNull(getFloatingIconRect(displayId), noTextPillRect(displayId)) +
-            errorPills.screenRects(displayId)
+        listOfNotNull(
+            getFloatingIconRect(displayId),
+            windowHandles[displayId]?.screenRect(),
+            noTextPillRect(displayId),
+        ) + errorPills.screenRects(displayId)
+
+    /**
+     * An auto-translate whose results show in [displayId]'s detached
+     * window ([LiveSurface.WINDOW_PAGE]) waits: something other than the
+     * game and the window standing still is on that display, or the window
+     * is not there.
+     *  - The icon is standing in for the window (one of our own screens in
+     *    front, the region editor): the session is still the window's and
+     *    goes on when it is back. Reading meanwhile would read our own
+     *    screen, blacked out of the frame, as a screen with nothing on it;
+     *    a blackout that lasts is reported as an app that blocks capture.
+     *  - The user is working in something opened over the game
+     *    ([OverlayHost.hasContentWindowOn]: the window's menu or text-size
+     *    picker, the word lens, a word's page, an Anki editor, a language
+     *    picker, an alert). Its text is not the game's, and the result it
+     *    is about must not be replaced under it.
+     *  - The window is moving or being typed in ([DetachedWindow.busy]).
+     *
+     * On single-app recording none of these is in a frame; the wait is the
+     * same there, so what the user sees does not depend on how the screen
+     * is shared. The loop polls this, as it polls a hold
+     * ([CaptureService.livePausedOn]).
+     */
+    fun windowBusy(displayId: Int): Boolean {
+        val window = windowHandles[displayId] ?: return true
+        return window.busy || overlayHost.hasContentWindowOn(displayId)
+    }
 
     /** Every display's floating icon as it stands painted right now
      *  ([FloatingOverlayIcon.paintedDisc]), for a card's frame to be read
@@ -2178,8 +2245,9 @@ class OverlayUiController(
      * other: the window flies out of the icon's place, or into it
      * ([DetachedWindow.show], [DetachedWindow.remove]). Only where the user
      * asked for the change by name (Detach, Minimize, the dock gesture):
-     * the icon standing in for the window, and a window docked because
-     * auto-translate is starting, change at once.
+     * the icon standing in for the window, and a window docked because an
+     * auto-translate it cannot hold is starting ([dockWindowsForLiveStart]),
+     * change at once.
      */
     private fun showFormOn(
         display: Display,
@@ -2195,11 +2263,15 @@ class OverlayUiController(
                 // Where the icon is now, before it goes.
                 val from = if (animate) getFloatingIconRect(id) else null
                 if (!installDetachedWindowForDisplay(display, prefs, from)) return false
-                // The icon goes with whatever its lens paused forgotten
-                // (endsCapture drops the record): auto-translate and the
-                // window never share the screen, so nothing may restart it
-                // from here.
-                hideFloatingIconForDisplay(id, "swap_to_window", endsCapture = true)
+                // The icon goes. A session its lens stopped and owes a
+                // restart comes back in the window's page, where that is
+                // where a session shows now. Where it is not (more than one
+                // captured display) the record is dropped (endsCapture): no
+                // overlay tier runs with a window up, so nothing may
+                // restart one from here.
+                val windowTakesSession =
+                    CaptureService.instance?.liveSurface() == LiveSurface.WINDOW_PAGE
+                hideFloatingIconForDisplay(id, "swap_to_window", endsCapture = !windowTakesSession)
                 return !replacesIcon
             }
             ControlsForm.ICON -> {
@@ -2233,6 +2305,33 @@ class OverlayUiController(
             showFormOn(display, prefs, freshAppearance = false, animate = animate)
         }
         dropPagesNoLongerOwed(prefs)
+        // The saved form also decides where a running auto-translate shows
+        // ([liveSurface]): the session follows it in place, and the pages
+        // follow the session. The surface's other input, the app coming
+        // forward or going behind, is synced where it changes
+        // ([MainActivity.isInForeground]'s setter): the flag flips after
+        // the pass the app's start runs here, and the pass its resume runs
+        // is [reconcileFloatingIcons], which does not sync.
+        syncLiveSurface()
+    }
+
+    /**
+     * An input of where auto-translate shows changed ([liveSurface]): a
+     * running session swaps its tier in place where its surface changed
+     * ([CaptureService.onLiveSurfaceChanged]; nothing where it did not),
+     * then every page follows the session that is now its own
+     * ([syncLivePages]). The controls' own changes of form call it between
+     * saving the form and swapping the controls ([detachControls],
+     * [dockControls]), so each control goes up to a session already of its
+     * kind: the service's "can anyone still see this session" check
+     * ([CaptureService.updateForegroundState]) runs as controls come and
+     * go, and it reads a results-only session that is no longer the
+     * window's as the app's page's, which stops when the app is not in
+     * front.
+     */
+    private fun syncLiveSurface() {
+        CaptureService.instance?.onLiveSurfaceChanged()
+        syncLivePages()
     }
 
     /**
@@ -2349,10 +2448,16 @@ class OverlayUiController(
     /**
      * The pulling finger lifted. With the window out, this is Detach
      * ([detachControls]) by another road: the window and its page become
-     * the display's, the saved form is the window, a running auto-translate
-     * stops for good and the icon goes. Back in the icon, the window goes
-     * and the icon takes the slot the finger left it at, with what the drag
-     * paused resumed.
+     * the display's, the saved form is the window and the icon goes. An
+     * auto-translate the drag stopped (every drag of the icon stops one and
+     * owes its restart, [LookupPause]) comes back in the window's page: the
+     * restart is settled only once the form is saved and the window and its
+     * page are the display's, so the session that starts reads the window
+     * as its surface and its first state has a page to land in; the icon,
+     * taken down after, has nothing left to settle. Where the window cannot
+     * take a session (more than one captured display) it stays stopped for
+     * good, as before. Back in the icon, the window goes and the icon takes
+     * the slot the finger left it at, with what the drag paused resumed.
      */
     private fun endPull(displayId: Int) {
         val p = pull?.takeIf { it.displayId == displayId }
@@ -2373,13 +2478,18 @@ class OverlayUiController(
             handle.dragPause.settle(resumeLive = true)
             return
         }
-        cancelLensResumes()
-        val svc = CaptureService.instance
-        if (svc != null && (svc.isLive || svc.isLiveStartPending)) stopLiveRouted()
         Prefs(context).setControlsForm(displayId, ControlsForm.WINDOW)
+        val svc = CaptureService.instance
+        val windowTakesSession = svc?.liveSurface() == LiveSurface.WINDOW_PAGE
+        if (!windowTakesSession) {
+            cancelLensResumes()
+            if (svc != null && (svc.isLive || svc.isLiveStartPending)) stopLiveRouted()
+        }
         detachedPages.put(displayId, p.page)?.release()
         adoptDetachedWindow(displayId, p.window)
+        if (windowTakesSession) handle.dragPause.settle(resumeLive = true)
         hideFloatingIconForDisplay(displayId, "swap_to_window", endsCapture = true)
+        syncLiveSurface()
     }
 
     /** The system took the pulling drag away: the window goes, the icon
@@ -2496,37 +2606,68 @@ class OverlayUiController(
 
     /**
      * The icon on [displayId] becomes the window, from the quick settings'
-     * Detach row. Auto-translate and the window never share the screen in
-     * this build ([dockWindowsForLiveStart] is the other half), so a session
-     * running or starting stops first, and nothing a lens paused restarts it.
+     * Detach row. A session running or starting goes on, its results in the
+     * window's page from here and nothing over the game
+     * ([LiveSurface.WINDOW_PAGE]; the swap is [syncLiveSurface], the
+     * pending start reads the form when it lands).
+     *
+     * Where the window cannot take the session (more than one captured
+     * display) the old rule stands: no overlay tier runs with a window up,
+     * so the session stops first and nothing a lens paused restarts it
+     * ([dockWindowsForLiveStart] is the other half).
+     *
+     * A window the system refuses ([showFormOn] then leaves the icon up) is
+     * a Detach that did not happen: the saved form goes back to the icon
+     * and the session with it. Left saved as the window, the form would
+     * keep the session the window's ([CaptureService.liveSurface] reads the
+     * saved form) with no window to show it, waiting on one for as long as
+     * the system went on refusing it ([windowBusy]), and saying nothing.
+     * Only where the window should be up: an icon standing in for it is no
+     * refusal (the row is not offered there, [offersDetach]).
      */
     private fun detachControls(displayId: Int) {
-        cancelLensResumes()
+        val prefs = Prefs(context)
+        prefs.setControlsForm(displayId, ControlsForm.WINDOW)
         val svc = CaptureService.instance
-        if (svc != null && (svc.isLive || svc.isLiveStartPending)) stopLiveRouted()
-        Prefs(context).setControlsForm(displayId, ControlsForm.WINDOW)
+        if (svc != null && svc.liveSurface() != LiveSurface.WINDOW_PAGE) {
+            cancelLensResumes()
+            if (svc.isLive || svc.isLiveStartPending) stopLiveRouted()
+        }
+        syncLiveSurface()
         applyControlsForms(animate = true)
+        if (displayId !in windowHandles && shownFormOn(displayId, prefs) == ControlsForm.WINDOW) {
+            Log.w(TAG, "detachControls[$displayId]: the window was refused; the controls stay the icon")
+            prefs.setControlsForm(displayId, ControlsForm.ICON)
+            syncLiveSurface()
+        }
     }
 
     /**
      * The window on [displayId] becomes the icon again: the bar's Minimize
      * ([slot] null, the icon returns to its saved slot) or the dock gesture,
-     * which names the slot the finger was at.
+     * which names the slot the finger was at. A session running in the
+     * window goes on from the icon, as boxes over the game
+     * ([syncLiveSurface]).
      */
     private fun dockControls(displayId: Int, slot: IconPosition?) {
         val prefs = Prefs(context)
         slot?.let { prefs.setIconPositionForDisplay(displayId, it) }
         prefs.setControlsForm(displayId, ControlsForm.ICON)
+        syncLiveSurface()
         applyControlsForms(animate = true)
     }
 
     /**
      * Auto-translate is starting ([CaptureService.startLive], the one
-     * function every start passes): every display whose controls were left
-     * as the window goes back to the icon, whether the window is up or the
-     * icon is standing in for it, and stays there. Auto-translate then runs
-     * as it does from the icon; nothing brings the window back by itself. A
-     * start that fails afterwards (consent refused) leaves the icon too.
+     * function every start passes) somewhere other than in a window's page
+     * (more than one captured display, or the app in front on a second
+     * screen): every display whose controls were left as the window goes
+     * back to the icon, whether the window is up or the icon is standing in
+     * for it, and stays there. Auto-translate then runs as it does from the
+     * icon; nothing brings the window back by itself. A start that fails
+     * afterwards (consent refused) leaves the icon too. A session whose
+     * results go to the window's page ([LiveSurface.WINDOW_PAGE]) never
+     * comes here.
      */
     fun dockWindowsForLiveStart() {
         val prefs = Prefs(context)
@@ -2911,10 +3052,12 @@ class OverlayUiController(
         rows += QuickSetting(
             QuickSetting.Id.OCR, context.getString(R.string.floating_menu_panel_ocr), ocrName,
         ) {
-            // Show the picker over the still-open panel (the menu's holdActive
-            // keeps live capture paused). The host leaves only if a different
-            // engine is chosen (see showOcrPicker); Cancel/same-engine returns
-            // to it.
+            // Show the picker over the still-open panel. Live capture stays
+            // paused under both: by the icon menu's holdActive, and for a
+            // session in the detached window by its wait for whatever is
+            // open over the game ([windowBusy]: the window's menu, then the
+            // picker's alert). The host leaves only if a different engine is
+            // chosen (see showOcrPicker); Cancel/same-engine returns to it.
             showOcrPicker(display, prefs.sourceLangId, leave)
         }
         // MangaOCR quick toggle: only when the pack is installed and the source
@@ -2987,8 +3130,10 @@ class OverlayUiController(
     }
 
     /** Open the "Choose OCR tool" OverlayAlert for [id] on [display], stacked
-     *  over the still-open quick settings (the floating menu's holdActive keeps
-     *  live capture paused; [leave] closes that host). There's no live result
+     *  over the still-open quick settings (live capture is paused under them:
+     *  the floating menu's holdActive, or [windowBusy] for a session in the
+     *  detached window, whose menu lists the same rows; [leave] closes that
+     *  host). There's no live result
      *  to re-OCR here, so a different pick
      *  dismisses the menu (clearing holdActive) and refreshes live mode, as a
      *  tap outside the menu does: the pick is persisted by OcrPicker (an
@@ -3156,8 +3301,7 @@ class OverlayUiController(
     /** True when live/region actions should run directly on this device
      *  rather than route through MainActivity — single-screen, or the app is
      *  not foregrounded (so there is no in-app surface to hand off to). */
-    private fun effectivelySingleScreen(): Boolean =
-        Prefs.isSingleScreen(context) || !MainActivity.isInForeground
+    private fun effectivelySingleScreen(): Boolean = Prefs.effectivelySingleScreen(context)
 
     /** Start live mode — directly when [effectivelySingleScreen], else routed
      *  through MainActivity. */
@@ -3369,12 +3513,22 @@ class OverlayUiController(
     }
 
     /** Start auto-translate from an overlay control (the floating menu's
-     *  Auto button, a tap hotkey, the icon's toggle and swap) in the overlay
-     *  mode already selected. In-App Only shows its results in the app, so that
-     *  start is MainActivity's ([MainActivity.ACTION_START_LIVE]); any other
-     *  goes through [startLiveRouted]. */
+     *  Auto button, the detached window's, a tap hotkey, the icon's toggle
+     *  and swap) in the overlay mode already selected. A session whose
+     *  results show in the app's page ([LiveSurface.APP_PAGE]) is
+     *  MainActivity's to start ([MainActivity.ACTION_START_LIVE]), which
+     *  brings the app forward; any other goes through [startLiveRouted],
+     *  the detached window's among them: with the app behind on a second
+     *  screen and a window up, the window's page is where it shows, and the
+     *  app stays behind. With no service yet nothing starts either way (the
+     *  press is lost and the next finds it), so the old pref-only rule
+     *  answers there. */
     private fun startLiveFromOverlay() {
-        if (Prefs.shouldUseInAppOnlyMode(context)) {
+        val surface = CaptureService.instance?.liveSurface()
+        val inAppPage =
+            if (surface != null) surface == LiveSurface.APP_PAGE
+            else Prefs.shouldUseInAppOnlyMode(context)
+        if (inAppPage) {
             sendMainActivityIntent(MainActivity.ACTION_START_LIVE)
         } else {
             startLiveRouted()
@@ -3631,13 +3785,17 @@ class OverlayUiController(
         // its own (tap-to-lookup's Definitions): the window draws nothing
         // over the game, so that one keeps the sheet. Narrowed to its
         // capture button the window is a capture button like the icon's,
-        // and its captures take the sheet too. Auto-translate never runs
-        // with a window up, so there is nothing to stop first.
+        // and its captures take the sheet too. An auto-translate running
+        // in the page (or still starting) stops first, as a capture stops
+        // one on two screens, where the app's page is the results page:
+        // the page shows this capture from here, and the bar's Auto starts
+        // a session again. Nothing restarts it by itself.
         if (modeOverride == null) {
             val page = detachedPages[displayId]
             if (page != null && windowHandles[displayId]?.showsPage == true) {
+                if (wasLive) stopLiveRouted()
                 captureIntoWindow(displayId, region, page)
-                return false
+                return wasLive
             }
         }
         if (effectivelySingleScreen()) {

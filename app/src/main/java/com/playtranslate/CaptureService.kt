@@ -1152,6 +1152,9 @@ class CaptureService : Service() {
      *  intervening yield points. */
     val isLive: Boolean get() = liveModes.isNotEmpty()
 
+    /** True iff auto-translate is running on [displayId]. */
+    internal fun isLiveOn(displayId: Int): Boolean = liveModes.containsKey(displayId)
+
     /**
      * Per-display live-mode instances. All entries share the same
      * [Prefs.overlayMode] — multi-display doesn't expose per-display mode
@@ -1484,10 +1487,15 @@ class CaptureService : Service() {
         // The session starting now is the restart the sheet's capture would
         // have owed, so its record settles without one.
         CaptureBackendResolver.activeOverlayUi?.endCaptures(CaptureTakeover.LIVE_START)
-        // Auto-translate and the detached window never share the screen:
-        // controls left as the window go back to the icon first, whoever
-        // starts the session (the window's own Auto, a hotkey, the app).
-        CaptureBackendResolver.activeOverlayUi?.dockWindowsForLiveStart()
+        // A session whose results go to the detached window's page leaves
+        // the window as it is. Any other start (more than one captured
+        // display, the app in front on a second screen) paints over the game
+        // or feeds the app's page, and no overlay tier runs with a window
+        // up: controls left as the window go back to the icon first, whoever
+        // starts the session (a hotkey, the app).
+        if (liveSurface() != LiveSurface.WINDOW_PAGE) {
+            CaptureBackendResolver.activeOverlayUi?.dockWindowsForLiveStart()
+        }
 
         // One feedback session per start — engine warm-up, startup chip,
         // first-cycle gate, busy tracking ([LiveSessionFeedback]). The
@@ -1887,14 +1895,16 @@ class CaptureService : Service() {
      * `installLiveModeForDisplay` helper.
      *
      * Intentionally does not take a [displayId] — flavor is uniform across
-     * the active display set. The "should this display run InAppOnly?"
-     * question is handled by [Prefs.shouldUseInAppOnlyMode], which
-     * already gates on `captureDisplayIds.size <= 1`. Callers that need
-     * the per-display target collapsing (force `{primary}` for InAppOnly)
-     * do so when computing the target set passed to the mutator.
+     * the active display set. Whether the results go to a page with nothing
+     * over the game is [liveSurface]'s answer, and both of its page answers
+     * hold for one captured display only (the app's page through
+     * [Prefs.shouldUseInAppOnlyMode], which gates on
+     * `captureDisplayIds.size <= 1`; the window's by its own rule). Callers
+     * that need the per-display target collapsing (force `{primary}` for
+     * InAppOnly) do so when computing the target set passed to the mutator.
      */
     private fun desiredFlavor(prefs: Prefs = Prefs(this)): OverlayFlavor {
-        if (Prefs.shouldUseInAppOnlyMode(this)) return OverlayFlavor.IN_APP_ONLY
+        if (liveSurface() != LiveSurface.OVERLAYS) return OverlayFlavor.IN_APP_ONLY
         return when (prefs.overlayMode) {
             OverlayMode.FURIGANA -> OverlayFlavor.FURIGANA
             OverlayMode.TRANSLATION -> OverlayFlavor.TRANSLATION
@@ -1902,6 +1912,27 @@ class CaptureService : Service() {
             // Translation); named so a new mode must say what live does with it.
             OverlayMode.DEFINITIONS, OverlayMode.NONE -> OverlayFlavor.TRANSLATION
         }
+    }
+
+    /**
+     * Where auto-translate's results show now, or would if a session
+     * started now ([LiveSurface]; the rule is the pure [liveSurface] in
+     * ControlsForm.kt). The captured displays are resolved as a start
+     * resolves them (the selection through the backend's shim), so a stale
+     * selection that collapses to one display counts as one. Read at each
+     * use: its inputs (the saved form, the app coming forward on a second
+     * screen, the selection) change under a running session, and
+     * [onLiveSurfaceChanged] is what a change calls.
+     */
+    internal fun liveSurface(): LiveSurface {
+        val prefs = Prefs(this)
+        return liveSurface(
+            targets = CaptureBackendResolver.active()
+                .capturableTargets(this, gameDisplayIds.ifEmpty { setOf(primaryGameDisplayId()) }),
+            windowForm = { prefs.detachedStateForDisplay(it).form == ControlsForm.WINDOW },
+            effectivelyOneScreen = Prefs.effectivelySingleScreen(this),
+            appPageOnly = Prefs.shouldUseInAppOnlyMode(this),
+        )
     }
 
     /**
@@ -2340,6 +2371,48 @@ class CaptureService : Service() {
         setLiveDisplays(activeIds)
     }
 
+    /**
+     * An input of [liveSurface] changed under a RUNNING live session: the
+     * controls' saved form (Detach, Minimize, the dock gesture, the window
+     * pulled out of the icon), or the app coming forward or going behind
+     * on a second screen or in split-screen. The same in-place swap as
+     * [onHideGameOverlaysChanged]: the flavor is re-derived and
+     * [setLiveDisplays] rebuilds the instances whose flavor no longer
+     * matches, so the session keeps running and only where it shows changes
+     * (the window's page ⇄ boxes over the game). Its two callers are the
+     * two places those inputs change: the controls' pass
+     * ([OverlayUiController.applyControlsForms], on every pass) and the
+     * app's foreground flag ([MainActivity.isInForeground]'s setter: the
+     * flag flips in the app's resume, after the pass its start ran, and
+     * [reconcileLiveModes] leaves a results-only session alone). So with
+     * nothing to swap it must cost nothing: no-op when not live, and
+     * [setLiveDisplays] returns at once with no structural change.
+     *
+     * After a swap the controls are told ([syncIconState]), which is how
+     * each window's page learns whether the session is still its own: the
+     * flag's flip is not always followed by a change of the controls (in
+     * split-screen the icon already stands in for the window).
+     *
+     * A session that lands in the window's page this way starts that page
+     * as a start does ([beginLiveCapture]): "Searching", and nothing
+     * remembered as delivered. The stream may hold whatever an earlier
+     * session left (the overlay tiers feed it only with the app's page in
+     * view), and the new instance's first result must not be dropped as a
+     * repeat of something the page never showed.
+     */
+    fun onLiveSurfaceChanged() {
+        if (!isLive) return
+        val activeIds = gameDisplayIds.ifEmpty { setOf(primaryGameDisplayId()) }
+        if (!setLiveDisplays(activeIds)) return
+        Log.d(TAG, "onLiveSurfaceChanged: rebuilt for surface=${liveSurface()}")
+        if (isLive && liveSurface() == LiveSurface.WINDOW_PAGE) {
+            _panelState.value = PanelState.Searching
+            livePanelRecord.clear()
+            panelEmissions.clear()
+        }
+        syncIconState()
+    }
+
     /** The game language [observeSourceLanguage] last saw. Main-confined. */
     private var appliedSourceLang: SourceLangId? = null
 
@@ -2497,6 +2570,29 @@ class CaptureService : Service() {
      *  for holds, as one derived property so the two pause sources can
      *  never drift apart. */
     val livePaused: Boolean get() = holdActive || slowOcrAlert != null
+
+    /**
+     * [livePaused], or [displayId]'s session is one whose results show in
+     * the detached window's page and the window is busy
+     * ([OverlayUiController.windowBusy]: the icon standing in for it,
+     * something of ours open over the game, the window moving or typed
+     * in). What the results-only loop asks before every look
+     * ([ReconcilerLiveMode], and its delivery gate in [LiveCycleEngine]).
+     *
+     * Kept apart from [livePaused] on purpose: that one is global and every
+     * tier, the overlay painter and the region flash read it, and none of
+     * them has a window to wait for. Scoped to the window's surface too: a
+     * page left from a window (the app in front on a second screen, the
+     * icon standing in there) must not hold a session that now shows in the
+     * app or over the game.
+     */
+    internal fun livePausedOn(displayId: Int): Boolean =
+        livePaused || (
+            // The cheap read first: a loop held here polls this many times
+            // a second for as long as the user has something open.
+            CaptureBackendResolver.activeOverlayUi?.windowBusy(displayId) == true &&
+                liveSurface() == LiveSurface.WINDOW_PAGE
+            )
 
     /**
      * Common hold-to-preview begin sequence used by the floating icon's hold,
@@ -4026,11 +4122,14 @@ class CaptureService : Service() {
 
         // Stop live mode if the user can no longer see or manage it.
         if (isLive) {
-            val shouldStop = if (isInAppOnly) {
+            val shouldStop = if (isInAppOnly && liveSurface() != LiveSurface.WINDOW_PAGE) {
                 // In-App Only: results only visible while app is in foreground
                 !MainActivity.isInForeground
             } else {
-                // Overlay modes: stop if no control surface at all (no icon, no app)
+                // Overlay modes, and a results-only session whose page is
+                // the detached window's (the window, or the icon standing in
+                // for it, is its control surface): stop if there is no
+                // control surface at all (no icon, no window, no app).
                 !controlsShowing && !MainActivity.isInForeground
             }
             Log.v(TAG, "updateForegroundState: isLive=true controlsShowing=$controlsShowing isInForeground=${MainActivity.isInForeground} isInAppOnly=$isInAppOnly shouldStop=$shouldStop")

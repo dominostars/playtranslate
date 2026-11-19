@@ -501,4 +501,128 @@ class DetachedPageTest {
             com.playtranslate.audio.FakeSpeech.uninstall()
         }
     }
+
+    // ── Auto-translate in the window ─────────────────────────────────────
+
+    private var service: org.robolectric.android.controller.ServiceController<com.playtranslate.CaptureService>? = null
+
+    /** A service whose stream of auto-translate results the page can follow. */
+    private fun captureService(): com.playtranslate.CaptureService {
+        val built = org.robolectric.Robolectric.buildService(com.playtranslate.CaptureService::class.java).create()
+        service = built
+        return built.get()
+    }
+
+    @After fun stopService() {
+        service?.destroy()
+        service = null
+    }
+
+    @Test fun `a page that follows auto-translate shows what the session reports, as the app's page does`() {
+        val svc = captureService()
+        assertFalse(page.followsLive)
+
+        page.followLive(svc)
+        settle()
+        assertTrue(page.followsLive)
+        assertEquals("the stream starts with nothing to say, and nothing is shown for that", idle, page.vm.result.value)
+
+        val first = result("一つ目")
+        svc.emitResult(first)
+        settle()
+        assertSame(first, (page.vm.result.value as ResultState.Ready).result)
+
+        svc.emitError("the backend is down")
+        settle()
+        assertEquals(ResultState.Error("the backend is down"), page.vm.result.value)
+
+        val second = result("二つ目")
+        svc.emitResult(second)
+        settle()
+        assertSame("the session goes on after an error", second, (page.vm.result.value as ResultState.Ready).result)
+    }
+
+    @Test fun `following begins by dropping a capture on its way, whose end then lands nowhere`() {
+        val svc = captureService()
+        val before = result("前の")
+        page.vm.displayResult(before, ctx)
+        val capture = Capture()
+        page.follow(capture.session)
+
+        page.followLive(svc)
+        svc.emitError("looking")
+        settle()
+
+        assertTrue("its capture is called off", capture.job.isCancelled)
+        // What a session start does to it at the service: cancelled. The
+        // page must not put back what it showed before that capture.
+        capture.state.value = CaptureState.Cancelled
+        settle()
+        assertEquals(ResultState.Error("looking"), page.vm.result.value)
+    }
+
+    @Test fun `a capture of the display made elsewhere leaves a followed session's result on show`() {
+        val svc = captureService()
+        page.followLive(svc)
+        val shown = result()
+        svc.emitResult(shown)
+        settle()
+
+        // A hold-to-preview wrote the display's picture.
+        page.onCaptureImageReplaced(byCaptureJob = false)
+        page.onCaptureImageReplaced(byCaptureJob = true)
+
+        assertSame("the loop keeps result and picture current itself", shown, (page.vm.result.value as ResultState.Ready).result)
+    }
+
+    @Test fun `no longer following, the page keeps what it shows and takes nothing more`() {
+        val svc = captureService()
+        page.followLive(svc)
+        val last = result("最後")
+        svc.emitResult(last)
+        settle()
+
+        page.followLive(null)
+        svc.emitResult(result("その後"))
+        settle()
+
+        assertFalse(page.followsLive)
+        assertSame(last, (page.vm.result.value as ResultState.Ready).result)
+        // And a capture of the display made elsewhere takes it down again,
+        // as it does any result with nothing keeping it current.
+        page.onCaptureImageReplaced(byCaptureJob = false)
+        assertEquals(idle, page.vm.result.value)
+    }
+
+    @Test fun `a change of language while following says the session is looking, and what was delivered is forgotten`() {
+        val svc = captureService()
+        page.followLive(svc)
+        svc.emitResult(result())
+        settle()
+
+        prefs.setTarget("fr")
+        settle()
+
+        val status = page.vm.result.value as ResultState.Status
+        assertTrue("not the idle prompt: ${status.message}", status.message.startsWith("Searching for"))
+        assertSame(
+            "the stream is cleared, so the same text in the new pair is delivered again",
+            com.playtranslate.PanelState.Idle, svc.panelState.value,
+        )
+        assertTrue("and the page still follows", page.followsLive)
+    }
+
+    @Test fun `a released page follows no session`() {
+        val svc = captureService()
+        page.followLive(svc)
+        svc.emitError("before")
+        settle()
+
+        page.release()
+        svc.emitError("after")
+        settle()
+
+        assertFalse(page.followsLive)
+        assertEquals(ResultState.Error("before"), page.vm.result.value)
+    }
 }

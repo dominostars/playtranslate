@@ -596,6 +596,21 @@ class OverlayHost(
     }
 
     /**
+     * A window placed as [OverlayPlacement.Content] is up on [displayId]:
+     * one of the surfaces the user works in over the game (a popover, the
+     * word lens, the floating workspace, an alert, the capture sheet). Each
+     * covers the display with a card, a scrim or a page of text somewhere
+     * in it, and every add states its placement, so a surface added later
+     * is counted here without a list of them to keep. An auto-translate
+     * that reads frames of the whole screen and shows its results in the
+     * detached window's page waits while one is up
+     * ([com.playtranslate.OverlayUiController.windowBusy]): its text would
+     * be read as the game's.
+     */
+    fun hasContentWindowOn(displayId: Int): Boolean =
+        overlayWindows.any { it.displayId == displayId && it.placement == OverlayPlacement.Content }
+
+    /**
      * Add a 1×1 transparent watcher window on [displayId]. With
      * FLAG_WATCH_OUTSIDE_TOUCH it receives an ACTION_OUTSIDE — running
      * [onOutsideTouch] — for every touch elsewhere on the display, without

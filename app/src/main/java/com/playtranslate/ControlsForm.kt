@@ -62,3 +62,48 @@ fun shownControlsForm(
     } else {
         ControlsForm.ICON
     }
+
+/**
+ * Where auto-translate's results show. One answer, read by everything that
+ * depends on it: the tier a session runs ([CaptureService.desiredFlavor]),
+ * whether a start docks a window, what stops a session whose surface is gone
+ * ([CaptureService.updateForegroundState]), how a start from the controls is
+ * routed, which frames the results-only loop takes, and which page follows
+ * the loop.
+ */
+enum class LiveSurface {
+    /** Boxes over the game, from the icon. */
+    OVERLAYS,
+
+    /** The app's results page on a second screen, with nothing over the game
+     *  ([Prefs.shouldUseInAppOnlyMode]). */
+    APP_PAGE,
+
+    /** The detached window's page, with nothing over the game. */
+    WINDOW_PAGE,
+}
+
+/**
+ * [LiveSurface] from its inputs. The window's page takes the results where a
+ * session captures exactly one display ([targets], as a start resolves them),
+ * that display's controls are saved as the window ([windowForm]), and the
+ * window can be where the game is ([effectivelyOneScreen]: one viewport, or
+ * the app behind). The saved form decides, not what shows at the moment: the
+ * icon standing in for the window (one of our own screens in front, the
+ * region editor) leaves the session the window's, waiting for it
+ * ([OverlayUiController.windowBusy]).
+ *
+ * More than one captured display is never the window's: there is one stream
+ * of results ([CaptureService.panelState]) and a page per display. Otherwise
+ * [appPageOnly] is the two-screen rule, and the rest is the overlays.
+ */
+fun liveSurface(
+    targets: Set<Int>,
+    windowForm: (Int) -> Boolean,
+    effectivelyOneScreen: Boolean,
+    appPageOnly: Boolean,
+): LiveSurface = when {
+    effectivelyOneScreen && targets.size == 1 && windowForm(targets.single()) -> LiveSurface.WINDOW_PAGE
+    appPageOnly -> LiveSurface.APP_PAGE
+    else -> LiveSurface.OVERLAYS
+}

@@ -21,6 +21,7 @@ import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlayThemedContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -65,6 +66,13 @@ import kotlinx.coroutines.launch
  * when either language setting changes: a result belongs to the languages
  * it was read and translated in. It does not listen to the service's
  * `statusUpdates`, which every capture sheet's own configure emits.
+ *
+ * Besides captures the page shows an auto-translate's results, while that
+ * session's results are this window's ([followLive]): nothing is drawn over
+ * the game, and each result the loop delivers replaces the last here, as on
+ * the app's own page on a second screen. Then a language change leaves the
+ * page looking, not idle, and a capture of the display made elsewhere takes
+ * nothing down.
  */
 internal class DetachedPage(
     displayCtx: Context,
@@ -158,10 +166,80 @@ internal class DetachedPage(
                 // The first value is the languages as they stand.
                 .drop(1)
                 .collect {
-                    driver.abandon()
-                    showIdle()
+                    val svc = liveService
+                    if (svc == null) {
+                        driver.abandon()
+                        showIdle()
+                    } else {
+                        // The session goes on in the new pair, so the page
+                        // says it is looking, not that nothing was asked.
+                        // Nothing is remembered as delivered (the same text
+                        // is a new result now) and the loop looks again: a
+                        // change of the game language restarts the session
+                        // by itself, a change of the other does not.
+                        svc.clearPanel()
+                        vm.showStatus(searchingStatus(svc))
+                        svc.refreshLiveOverlay()
+                    }
                 }
         }
+    }
+
+    // ── Auto-translate in the window ─────────────────────────────────────
+
+    /** The session whose results this page shows, and the collector that
+     *  shows them; null while it follows none. */
+    private var liveService: CaptureService? = null
+    private var liveFeed: Job? = null
+
+    /** This page shows a running auto-translate's results. */
+    val followsLive: Boolean get() = liveService != null
+
+    /**
+     * [svc]'s auto-translate shows its results here from now on, or with
+     * null no longer does: the controller says which, at every start and
+     * stop of a session and every change of where one shows
+     * ([com.playtranslate.OverlayUiController.syncLivePages]). What each
+     * state of the stream shows is the app's own page's mapping
+     * ([showPanelState]).
+     *
+     * A capture still on its way ends here: a session start cancels it at
+     * the service, and its Cancelled would otherwise put what the page
+     * showed before it back over the session's "Searching". The stream is
+     * sticky, so the collector is handed its current state first: at a
+     * start that is the "Searching" the start wrote; for a session that was
+     * showing in the app's page a moment ago, its result on show.
+     *
+     * No longer following, the page keeps what it shows, as the app's page
+     * keeps a session's last result.
+     */
+    fun followLive(svc: CaptureService?) {
+        if (svc === liveService || !alive) return
+        liveFeed?.cancel()
+        liveFeed = null
+        liveService = svc
+        if (svc == null) return
+        driver.abandon()
+        liveFeed = scope.launch {
+            svc.panelState.collect { state -> vm.showPanelState(state, appCtx) { searchingStatus(svc) } }
+        }
+    }
+
+    private fun searchingStatus(svc: CaptureService): String =
+        liveSearchingStatus(ctx, prefs.sourceLangId, svc.activeRegionForDisplay(displayId))
+
+    /**
+     * Read again with the OCR tool just picked. A session this page follows
+     * re-reads itself, as on the app's page (MainActivity.onReOcrRequested):
+     * the pick is already saved and each read resolves its tool, so a fresh
+     * look reads the screen as it is now with the new one; the live tiers
+     * never state device-only. The frame saved with a session's result is
+     * not re-read: on whole-screen capture it holds this window. Otherwise
+     * the frame on show is re-read ([CapturePageDriver.reOcr]).
+     */
+    private fun reRead(deviceOnly: Boolean) {
+        val svc = liveService
+        if (svc != null) svc.refreshLiveOverlay() else driver.reOcr(deviceOnly)
     }
 
     /** The prompt before anything is captured, and under it how the window
@@ -193,8 +271,16 @@ internal class DetachedPage(
      * read the display after this capture did, this capture would finish
      * with that later frame for its image, and so it gives way like any
      * older result.
+     *
+     * A page that follows auto-translate ([followLive]) keeps what it
+     * shows: the loop itself keeps the result and the picture the display's
+     * latest, replacing both when the screen's text changes. Going idle
+     * here (a hold-to-preview wrote the picture) would also stick, since
+     * the service delivers a text once and would drop the same text as a
+     * repeat when the loop read it again.
      */
     fun onCaptureImageReplaced(byCaptureJob: Boolean) {
+        if (followsLive) return
         if (driver.inFlight && byCaptureJob) {
             driver.imageReplaced()
             return
@@ -224,6 +310,7 @@ internal class DetachedPage(
     fun release() {
         if (!alive) return
         alive = false
+        liveService = null
         driver.abandon()
         content.release()
         scope.cancel()
@@ -360,7 +447,10 @@ internal class DetachedPage(
             explanation: Explanation?,
         ) = openWordPage(word, reading, surface, lookupForm, lookupReading, explanation)
 
-        override fun canReOcr(): Boolean = driver.reOcrTarget() != null
+        /** While the page follows auto-translate the gear is always
+         *  offered, as on the app's page: the loop is what re-reads
+         *  ([reRead]). */
+        override fun canReOcr(): Boolean = followsLive || driver.reOcrTarget() != null
 
         /** The compact page: this window is small and has a bar. */
         override val compact: Boolean get() = true
@@ -388,7 +478,7 @@ internal class DetachedPage(
                 ctx,
                 provenance.sourceLangId,
                 provenance.engineToken,
-                onReOcr = { driver.reOcr(deviceOnly = true) },
+                onReOcr = { reRead(deviceOnly = true) },
                 onDownload = { backend ->
                     launchOnForegroundDisplay(
                         ctx,
@@ -399,7 +489,7 @@ internal class DetachedPage(
                     )
                 },
                 cloud = OcrPicker.CloudChoice(
-                    onReOcr = { driver.reOcr(deviceOnly = false) },
+                    onReOcr = { reRead(deviceOnly = false) },
                     onOpenPage = {
                         launchOnForegroundDisplay(
                             ctx, Intent(appCtx, PtCloudSettingsActivity::class.java), displayId,

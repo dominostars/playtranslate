@@ -103,8 +103,11 @@ internal enum class CaptureTakeover(
      *  capture-button state, or by tap-to-lookup) goes, as it goes for the
      *  app's capture with the app in front, and an earlier capture into a
      *  window still on its way is replaced. The sheet's record settles
-     *  without a restart: auto-translate and the window never share the
-     *  screen, so there is no session to give back. A two-screen window
+     *  without a restart: a capture into the window's page is the page's
+     *  result from here, and an auto-translate would write over it. One
+     *  running in the page is stopped by this same capture
+     *  ([OverlayUiController.handleRegionSelection]), and the window's Auto
+     *  is what starts one again. A two-screen window
      *  left up goes too, since this capture never replaces it as the app's
      *  would. */
     WINDOW_CAPTURE(

@@ -11,6 +11,7 @@ import com.playtranslate.capture.StreamKind
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.TextDirection
 import com.playtranslate.ocr.ReaderTranslations
+import com.playtranslate.overlay.WindowChurnGate
 import com.playtranslate.ui.GrowthLimits
 import com.playtranslate.ui.TextBox
 import kotlinx.coroutines.CoroutineScope
@@ -129,6 +130,18 @@ class ReconcilerLiveMode(
      *  box, so nothing else would re-show; one re-show after it goes lets the
      *  view drop it from its limits, and a neighbour's growth take the room. */
     private var shownUnboxedText = false
+    /** A result was translated and kept ([cachedBoxes]) but not delivered:
+     *  while its translation ran, the user opened something from the
+     *  detached window whose page it was for, or began to move or type in
+     *  that window ([CaptureService.livePausedOn]), and a page is not
+     *  rewritten under what was opened from it. The loop's own checks
+     *  cannot cover that wait: they run before the read and before the
+     *  translation, and a translation takes seconds. Owed to the page on
+     *  the first cycle that finds the window free; a cycle that finds the
+     *  same text changes nothing and would deliver nothing by itself, so
+     *  that cycle delivers what is kept, with its own frame as the
+     *  picture. Any other delivery, and the kept boxes going, settle it. */
+    private var deliveryOwed = false
     private var cycleNum = 0
 
     private val typewriterGate = TypewriterGate()
@@ -278,6 +291,7 @@ class ReconcilerLiveMode(
         cropWidth = 0
         cropHeight = 0
         shownUnboxedText = false
+        deliveryOwed = false
         engine.forceNext()
     }
 
@@ -298,7 +312,7 @@ class ReconcilerLiveMode(
      *  next cycle. */
     private suspend fun runCycle(): Long {
         val prefs = Prefs(service)
-        if (service.livePaused) return 100L
+        if (service.livePausedOn(displayId)) return 100L
         val controller = service.mediaProjectionController
         if (presenter.rendersOverlays && controller.streamKind != StreamKind.CLEAN) {
             // Consent teardown reset the verdict (a backend switch can follow
@@ -336,23 +350,53 @@ class ReconcilerLiveMode(
         val debug = prefs.debugLiveMode
         engine.consumeForce()
 
-        // A non-painting presenter on a contaminated source must not OCR
-        // raw frames: they contain this app's own overlay UI (floating
-        // icon, open menu), which the deleted InAppOnlyMode excluded via
-        // clean capture. The fact is THE SOURCE'S OWN
-        // (framesIncludeSystemUi), never the global MP verdict — on a
-        // non-default display mgr is the accessibility source while an
-        // unrelated MP session's verdict floats globally (review finding).
-        // Painting presenters only run on CLEAN streams (routing), where
-        // raw frames are clean by construction. Pacing consequence:
-        // requestClean does not advance the delivery-gate cursor, so
-        // contaminated-source panel sessions poll at the interval — exactly
-        // the deleted mode's pacing.
+        // Which frame a non-painting presenter takes on a contaminated
+        // source (one whose frames contain this app's own overlay windows)
+        // follows where its results show ([CaptureService.liveSurface]).
+        //
+        // The app's page: a clean capture, which blanks our windows on the
+        // game display for the grab, as the deleted InAppOnlyMode did. The
+        // frame is saved with the result as its picture and is what the
+        // page's OCR gear re-reads, and both want a frame with nothing of
+        // ours in it. Pacing consequence: requestClean does not advance the
+        // delivery-gate cursor, so these sessions poll at the interval —
+        // exactly the deleted mode's pacing.
+        //
+        // The detached window's page: a raw frame. A clean capture would
+        // blank the window the user is reading, on every cycle. The window
+        // is in the frame instead and the OCR paints it black (the frame is
+        // stamped as holding our overlays, and [CaptureService.runOcrRead]
+        // blacks out [OverlayUiController.ownChromeRects], the window's
+        // rect among them); whatever else of ours can be over the game
+        // holds the loop instead ([CaptureService.livePausedOn], checked
+        // above). One gap is left between the two: a window of ours just
+        // removed is still in the frames until its removal has composited,
+        // and by then it has no rect and holds nothing. The removal gate
+        // knows ([WindowChurnGate.hasUncompositedGhostOn], the signal a
+        // clean capture waits on for the same reason), so the look waits
+        // for it. Pacing consequence: raw frames advance the delivery-gate
+        // cursor, so this session parks on a still screen, and the window's
+        // own repaints wake it like any other change on the display.
+        //
+        // The fact is THE SOURCE'S OWN (framesIncludeSystemUi), never the
+        // global MP verdict — on a non-default display mgr is the
+        // accessibility source while an unrelated MP session's verdict
+        // floats globally (review finding). Painting presenters only run
+        // on CLEAN streams (routing), where raw frames are clean by
+        // construction. Read each cycle, not held: the surface changes
+        // under a running instance (the app coming forward on a second
+        // screen takes the results to its own page with no rebuild).
+        val contaminated = !presenter.rendersOverlays && mgr.framesIncludeSystemUi
+        val inWindowPage = contaminated && service.liveSurface() == LiveSurface.WINDOW_PAGE
+        if (inWindowPage && WindowChurnGate.hasUncompositedGhostOn(displayId)) {
+            engine.forceNext()
+            return GHOST_WAIT_MS
+        }
         val frame = service.withFirstGrabCardBlink(displayId, mgr) {
-            if (presenter.rendersOverlays || !mgr.framesIncludeSystemUi) {
-                mgr.requestRaw(displayId)
-            } else {
+            if (contaminated && !inWindowPage) {
                 mgr.requestClean(displayId)
+            } else {
+                mgr.requestRaw(displayId)
             }
         }
         if (frame == null) {
@@ -438,8 +482,9 @@ class ReconcilerLiveMode(
             val ocrMs = SystemClock.uptimeMillis() - ocrStartMs
 
             // A hold gesture (or the rescue alert) may have started during
-            // the OCR suspension.
-            if (service.livePaused) return 100L
+            // the OCR suspension, or the user opened something from the
+            // detached window: what the page shows is not replaced under it.
+            if (service.livePausedOn(displayId)) return 100L
 
             val boxes = cachedBoxes ?: emptyList()
             if (pipeline == null && boxes.isEmpty()) {
@@ -540,9 +585,23 @@ class ReconcilerLiveMode(
                 // limits it drew with changed.
                 val unboxed = GrowthLimits.unboxedText(groups.map { it.drawBounds }, kept).isNotEmpty()
                 if (overlayHidden || unboxed || shownUnboxedText) showBoxes(kept, groups)
+                if (deliveryOwed) {
+                    // The window is free again (the check after the read
+                    // passed, and nothing has suspended since): the result
+                    // held back while it was busy goes to its page now.
+                    deliveryOwed = false
+                    presenter.emitApplied(
+                        kept, pipeline?.ocrResult,
+                        frame.includesSystemUi, frame.includesOwnOverlays,
+                        screenshotPath = { mgr.saveToCache(raw, displayId) },
+                        attribution = read.attribution,
+                    )
+                }
                 return pacing(prefs)
             }
 
+            // Every path from here delivers what the screen holds now.
+            deliveryOwed = false
             if (toTranslate.isEmpty()) {
                 cachedBoxes = kept.ifEmpty { null }
                 if (kept.isEmpty()) {
@@ -619,6 +678,19 @@ class ReconcilerLiveMode(
             }
             cachedBoxes = kept + finalAnchors
             showBoxes(kept + finalAnchors, groups)
+            if (!presenter.rendersOverlays &&
+                service.liveSurface() == LiveSurface.WINDOW_PAGE &&
+                service.livePausedOn(displayId)
+            ) {
+                // The translation above can take seconds, and the user
+                // opened something from the detached window meanwhile (or
+                // moves it, or types in it): its page is not rewritten
+                // under that. The result is kept and owed ([deliveryOwed]);
+                // the forced cycle runs as soon as the window is free.
+                deliveryOwed = true
+                engine.forceNext()
+                return 100L
+            }
             presenter.emitApplied(
                 kept + finalAnchors, pipeline?.ocrResult,
                 frame.includesSystemUi, frame.includesOwnOverlays,
@@ -714,6 +786,12 @@ class ReconcilerLiveMode(
 
         /** Per-channel level at or below which a sample counts as black. */
         const val BLACK_LEVEL_MAX = 12
+
+        /** How soon a look held back for a removed window of ours still in
+         *  the frames asks again. The removal composites within a frame or
+         *  two, and the gate stops counting a ghost it never saw composite
+         *  after its own timeout, so the wait ends by itself. */
+        const val GHOST_WAIT_MS = 50L
     }
 }
 

@@ -2567,6 +2567,17 @@ class Prefs internal constructor(
             return true
         }
 
+        /**
+         * True when what is over the game acts for itself rather than
+         * through MainActivity: [isSingleScreen], or the app is not in
+         * front, so there is no in-app surface to hand off to. The floating
+         * controls route by it, the detached window shows only where it
+         * holds ([shownControlsForm]), and auto-translate's results go to
+         * that window only there ([liveSurface]).
+         */
+        fun effectivelySingleScreen(context: Context): Boolean =
+            isSingleScreen(context) || !MainActivity.isInForeground
+
         val DEFAULT_REGION_LIST: List<RegionEntry> = listOf(
             RegionEntry("Full screen",  0.00f, 1.00f, id = "default_full"),
             RegionEntry("Bottom 50%",   0.50f, 1.00f, id = "default_bottom_50"),

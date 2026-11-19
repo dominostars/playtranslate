@@ -46,6 +46,44 @@ class ControlsFormTest {
         )
     }
 
+    /** Where auto-translate's results show, every cell: the captured
+     *  displays (none, the one whose controls are the window, one whose
+     *  controls are the icon, both), one screen or not, and the two-screen
+     *  rule. Each expected value is written out, not computed. */
+    @Test
+    fun `the window's page takes the results for one captured display saved as the window, where the window can be`() {
+        val window = 0
+        val icon = 1
+        fun surface(targets: Set<Int>, oneScreen: Boolean, appPage: Boolean) =
+            liveSurface(targets, windowForm = { it == window }, effectivelyOneScreen = oneScreen, appPageOnly = appPage)
+
+        // The window's display alone, the window able to be there.
+        assertEquals(LiveSurface.WINDOW_PAGE, surface(setOf(window), oneScreen = true, appPage = false))
+        // The window's page comes first: with the app behind on a second
+        // screen and Show on screen off, the window is where it shows.
+        assertEquals(LiveSurface.WINDOW_PAGE, surface(setOf(window), oneScreen = true, appPage = true))
+        // The app in front on a second screen: the icon stands in there.
+        assertEquals(LiveSurface.OVERLAYS, surface(setOf(window), oneScreen = false, appPage = false))
+        assertEquals(LiveSurface.APP_PAGE, surface(setOf(window), oneScreen = false, appPage = true))
+        // A display whose controls are the icon.
+        assertEquals(LiveSurface.OVERLAYS, surface(setOf(icon), oneScreen = true, appPage = false))
+        assertEquals(LiveSurface.APP_PAGE, surface(setOf(icon), oneScreen = true, appPage = true))
+        assertEquals(LiveSurface.OVERLAYS, surface(setOf(icon), oneScreen = false, appPage = false))
+        assertEquals(LiveSurface.APP_PAGE, surface(setOf(icon), oneScreen = false, appPage = true))
+        // Two captured displays are never the window's, whichever is saved
+        // as what: one stream of results, a page per display.
+        assertEquals(LiveSurface.OVERLAYS, surface(setOf(window, icon), oneScreen = true, appPage = false))
+        assertEquals(LiveSurface.APP_PAGE, surface(setOf(window, icon), oneScreen = true, appPage = true))
+        assertEquals(LiveSurface.OVERLAYS, surface(setOf(window, icon), oneScreen = false, appPage = false))
+        assertEquals(
+            LiveSurface.OVERLAYS,
+            liveSurface(setOf(0, 1), windowForm = { true }, effectivelyOneScreen = true, appPageOnly = false),
+        )
+        // Nothing captured.
+        assertEquals(LiveSurface.OVERLAYS, surface(emptySet(), oneScreen = true, appPage = false))
+        assertEquals(LiveSurface.APP_PAGE, surface(emptySet(), oneScreen = true, appPage = true))
+    }
+
     private fun prefs() = Prefs(ApplicationProvider.getApplicationContext())
 
     @Test

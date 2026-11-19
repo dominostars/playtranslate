@@ -245,6 +245,24 @@ internal class DetachedWindow(
         R.id.detachedBarAuto, R.drawable.ic_play, ctx.getString(R.string.live_mode_auto_label),
         contentDescription = ctx.getString(R.string.live_mode_auto_translate_label),
     ).apply { onClick = { host.onToggleAuto(displayId) } }
+
+    /** Auto-translate is running. Auto then reads Pause, on the bar and in
+     *  the menu where the bar folded it, in the icon menu's own words: the
+     *  same tap stops the session ([Host.onToggleAuto]). The host says so
+     *  whenever the session starts or stops, and as a window comes up. */
+    var autoRunning = false
+        set(value) {
+            if (field == value) return
+            field = value
+            autoAction.icon = if (value) R.drawable.ic_pause else R.drawable.ic_play
+            autoAction.label = ctx.getString(
+                if (value) R.string.live_mode_pause_label else R.string.live_mode_auto_label,
+            )
+            autoAction.contentDescription = ctx.getString(
+                if (value) R.string.live_mode_pause_auto_label else R.string.live_mode_auto_translate_label,
+            )
+        }
+
     private val minimizeAction = HeaderAction(
         R.id.detachedBarMinimize, R.drawable.ic_window_minimize, ctx.getString(R.string.detached_bar_minimize),
     ).apply { onClick = { host.onMinimize(displayId) } }
@@ -387,6 +405,26 @@ internal class DetachedWindow(
     private var imeShown = false
     private var imeMode = false
     private val imeWatcher = ImeFocusWatcher(root, ::setImeMode)
+
+    /**
+     * The window is not standing still on its own: a move, resize or dock
+     * under a finger, a flight to or from the icon, or a text field of the
+     * page being typed in (the keyboard is up over the game, or on its
+     * way). An auto-translate whose results show here waits it out
+     * ([com.playtranslate.OverlayUiController.windowBusy]): a frame of the
+     * whole screen taken meanwhile holds the keyboard, or the window
+     * somewhere other than where [screenRect] says a moment later, and
+     * either would be read as the game's text.
+     */
+    val busy: Boolean get() = gesture != null || flight != null || imeMode || imeShown
+
+    /** Where the window is on its display, in display pixels: the card and
+     *  the rim around it. Null while it is not up. What a frame of the whole
+     *  screen has of this window lies inside it, so the OCR of such a frame
+     *  paints it black
+     *  ([com.playtranslate.OverlayUiController.ownChromeRects]). */
+    fun screenRect(): Rect? =
+        if (added) Rect(params.x, params.y, params.x + params.width, params.y + params.height) else null
 
     init {
         bar.setActions(

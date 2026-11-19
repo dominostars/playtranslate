@@ -76,6 +76,7 @@ import com.playtranslate.ask.Explanation
 import com.playtranslate.ui.AccessibilityHelp
 import com.playtranslate.ui.AppReadiness
 import com.playtranslate.ui.sentenceTranslationBackend
+import com.playtranslate.ui.showPanelState
 import com.playtranslate.ui.goesUpAsItLands
 import com.playtranslate.ui.twoScreenMode
 import com.playtranslate.ui.HomeAction
@@ -1677,32 +1678,21 @@ class MainActivity :
                     // "Idle" UI signals from config changes flow through
                     // svc.statusUpdates instead.
                     svc.panelState.collect { state ->
-                        when (state) {
-                            PanelState.Idle -> { /* no-op — see KDoc on _panelState */ }
-                            PanelState.Searching ->
-                                if (isLiveMode) resultVm.showStatus(searchingStatusText())
-                            // A cycle looked and found nothing. Same status the
-                            // one-shot's CaptureState.NoText renders — tappable
-                            // source language, OCR gear over the pinned frame —
-                            // so the in-app page says one thing about no text
-                            // whether a tap or the live loop did the looking.
-                            // Gated on live mode exactly as Searching is: the
-                            // hold-to-preview emission (not live) stays silent
-                            // in-app, and a sticky replay on STOP→START can't
-                            // blank a newer local result.
-                            is PanelState.NoText ->
-                                if (isLiveMode) resultVm.showStatus(
-                                    state.message,
-                                    ocrProvenance = state.ocrProvenance,
-                                )
-                            is PanelState.Result -> {
-                                editTranslationJob?.cancel()
-                                editTranslationJob = null
-                                resultVm.displayServiceResult(state.result, applicationContext)
-                            }
-                            is PanelState.Error ->
-                                resultVm.showError(state.message)
+                        // Searching and "a cycle looked and found nothing"
+                        // are this page's only while auto-translate runs:
+                        // the hold-to-preview emission (not live) stays
+                        // silent in-app, and a sticky replay on STOP→START
+                        // can't blank a newer local result. (Idle is a no-op
+                        // — see KDoc on _panelState.)
+                        val liveOnly = state is PanelState.Searching || state is PanelState.NoText
+                        if (liveOnly && !isLiveMode) return@collect
+                        if (state is PanelState.Result) {
+                            editTranslationJob?.cancel()
+                            editTranslationJob = null
                         }
+                        // What each state shows is one mapping, shared with
+                        // the detached window's page.
+                        resultVm.showPanelState(state, applicationContext, ::searchingStatusText)
                     }
                 }
                 launch {
@@ -2742,9 +2732,6 @@ class MainActivity :
 
     // ── Helpers ───────────────────────────────────────────────────────────
 
-    private fun selectedSourceLang() =
-        SourceLanguageProfiles[prefs.sourceLangId].translationCode
-
     /**
      * Sets tvLiveHint text with an inline play icon ImageSpan.
      * Called once on resume so the span is ready before first display.
@@ -2766,18 +2753,12 @@ class MainActivity :
 
     /** Returns the "Searching for X in the Y area" message for live mode. */
     private fun searchingStatusText(): String {
-        val lang = langDisplayName(selectedSourceLang())
         // The service's active region already folds in the persisted selection,
         // so prefer it outright — an unnamed override (a drawn region) resolves
         // through displayName rather than falling back to the saved entry's name.
         val region = captureService?.activeRegion ?: prefs.primaryDisplayRegion(resolvedPrimaryDisplayId())
-        val label = region.displayName(this)
-        return "Searching for $lang in the \"$label\" area"
+        return com.playtranslate.ui.liveSearchingStatus(this, prefs.sourceLangId, region)
     }
-
-    private fun langDisplayName(langCode: String): String =
-        Locale.forLanguageTag(langCode).getDisplayLanguage(Locale.getDefault())
-            .replaceFirstChar { it.uppercase(Locale.getDefault()) }
 
     private fun showEditOverlay() {
         val displayed = resultFragment?.getDisplayedOriginalText()?.takeIf { it.isNotBlank() }
@@ -3291,6 +3272,17 @@ class MainActivity :
                 field = value
                 android.util.Log.d("CaptureService", "MainActivity.isInForeground = $value")
                 CaptureService.instance?.updateForegroundState()
+                // The flag is an input of where auto-translate shows
+                // ([CaptureService.liveSurface]): a session in the detached
+                // window's page becomes boxes over the game when the app
+                // comes forward on a second screen or in split-screen, and
+                // goes back into the page when the app leaves. After the
+                // stop rule above on purpose: a session in the app's own
+                // page must still stop when the app leaves the front, and
+                // swapped first it would no longer look like one. The
+                // reconcile below never does this swap for a results-only
+                // session, which it leaves alone.
+                CaptureService.instance?.onLiveSurfaceChanged()
                 CaptureService.instance?.reconcileLiveModes("isInForeground=$value")
             }
 

@@ -288,17 +288,34 @@ class DetachedCaptureRoutingTest {
         assertNotEquals(idle, page().vm.result.value)
     }
 
-    @Test fun `auto-translate starting drops a capture on its way with the page`() {
+    @Test fun `auto-translate starting drops a capture on its way, and the page is the session's`() {
         val svc = captureService()
         windowUp()
         tap(R.id.detachedBarCapture)
+        assertEquals(d0, controller.windowCaptureDisplayIdForTest)
 
         svc.startLive()
         settle()
 
-        assertEquals(-1, controller.windowCaptureDisplayIdForTest)
-        assertNull("docked: the page is gone", controller.detachedPageForTest(d0))
-        assertNull(controller.detachedWindowForTest(d0))
+        assertEquals("the capture never lands", -1, controller.windowCaptureDisplayIdForTest)
+        assertNotNull("the window stays up", controller.detachedWindowForTest(d0))
+        assertTrue("its page follows the session", page().followsLive)
+        val shown = page().vm.result.value as ResultState.Status
+        assertTrue("and says it is looking: ${shown.message}", shown.message.startsWith("Searching for"))
+    }
+
+    @Test fun `a capture from the bar stops a session in the window before it reads the screen`() {
+        val svc = captureService()
+        windowUp()
+        svc.startLive()
+        settle()
+        assertTrue(svc.isLive)
+
+        tap(R.id.detachedBarCapture)
+
+        assertFalse("the session stops, as a capture stops one on two screens", svc.isLive)
+        assertFalse(page().followsLive)
+        assertEquals("and the capture is on its way into the page", d0, controller.windowCaptureDisplayIdForTest)
     }
 
     @Test fun `a takeover that ends captures on their way ends one into the window, and the page keeps what it showed`() {

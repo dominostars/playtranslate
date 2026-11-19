@@ -68,8 +68,11 @@ class RefusingWindowManager : ShadowWindowManagerImpl() {
  * settings detach it into the window, the window's Minimize brings the icon
  * back, the form is what a later reconcile shows, every gate that hides the
  * icon hides the window, the icon stands in wherever the window cannot be,
- * a change of form never reads as "no controls", and auto-translate and the
- * window never share the screen.
+ * a change of form never reads as "no controls", and auto-translate runs in
+ * the window's page with nothing over the game: a start leaves the window
+ * up, a change of form moves a running session between the page and the
+ * boxes over the game, and only a session the window cannot hold (two
+ * captured displays, the app in front on a second screen) docks it.
  *
  * The accessibility service is the active backend's host (created, never
  * connected), so its controller is the one the service's live start and the
@@ -116,6 +119,7 @@ class DetachedControlsTest {
         ShadowChoreographer.setPaused(false)
         activities.forEach { runCatching { it.pause().stop().destroy() } }
         MainActivity.isInForeground = false
+        MainActivity.isInMultiWindowMode = false
         service?.destroy()
         service = null
         controller.hideAll()
@@ -271,12 +275,14 @@ class DetachedControlsTest {
         assertEquals("into the icon that took its place", centreOf(icon()!!), centreOf(window.root))
     }
 
-    @Test fun `a window docked because auto-translate starts goes at once`() {
+    @Test fun `a window docked because an auto-translate it cannot hold starts goes at once`() {
         paceFrames()
         val svc = captureService()
         detach()
         land()
         val docked = window()!!
+        // Two captured displays: one stream of results, a page each.
+        svc.gameDisplayIds = setOf(d0, secondDisplay())
 
         svc.startLive()
 
@@ -563,29 +569,79 @@ class DetachedControlsTest {
         return mode
     }
 
-    @Test fun `the bar's Auto docks the window and starts auto-translate`() {
+    /** A second display, connected and on, and its id. */
+    private fun secondDisplay(): Int = ShadowDisplayManager.addDisplay("w640dp-h480dp")
+
+    private fun page() = controller.detachedPageForTest(d0)
+
+    private fun autoLabel(): String =
+        (window()!!.root.findViewById<ViewGroup>(R.id.detachedBarAuto).getChildAt(1) as android.widget.TextView)
+            .text.toString()
+
+    private fun pageStatus(): String? =
+        (page()!!.vm.result.value as? com.playtranslate.ui.ResultState.Status)?.message
+
+    /** The session runs with nothing over the game, its results the page's. */
+    private fun assertRunsInTheWindow(svc: CaptureService) {
+        assertTrue("auto-translate runs", svc.isLive)
+        assertTrue("results only: nothing is drawn over the game", svc.isInAppOnly)
+        assertEquals(LiveSurface.WINDOW_PAGE, svc.liveSurface())
+        assertTrue("the window's page follows it", page()!!.followsLive)
+    }
+
+    @Test fun `the bar's Auto starts auto-translate in the window, which stays, and then reads Pause`() {
         val svc = captureService()
         detach()
+        assertEquals(ctx.getString(R.string.live_mode_auto_label), autoLabel())
 
         tap(R.id.detachedBarAuto)
 
-        assertIconOnly()
-        assertEquals("docked for good", ControlsForm.ICON, prefs.detachedStateForDisplay(d0).form)
-        assertTrue("auto-translate runs", svc.isLive)
+        assertWindowOnly()
+        assertEquals("the form is the user's to change", ControlsForm.WINDOW, prefs.detachedStateForDisplay(d0).form)
+        assertRunsInTheWindow(svc)
+        assertEquals(ctx.getString(R.string.live_mode_pause_label), autoLabel())
+        assertTrue("the page says it is looking", pageStatus()!!.startsWith("Searching for"))
+        // The app is behind the whole time: a results-only session whose
+        // page is the app's would have stopped by now.
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+        assertRunsInTheWindow(svc)
+
+        tap(R.id.detachedBarAuto)
+
+        assertFalse("the same button stops it", svc.isLive)
+        assertEquals(ctx.getString(R.string.live_mode_auto_label), autoLabel())
+        assertFalse(page()!!.followsLive)
+        assertWindowOnly()
     }
 
-    @Test fun `a start from anywhere docks the window`() {
+    @Test fun `what the session reports shows in the window's page`() {
+        val svc = captureService()
+        detach()
+        tap(R.id.detachedBarAuto)
+
+        svc.emitError("the backend is down")
+        settle()
+
+        assertEquals(
+            "the backend is down",
+            (page()!!.vm.result.value as com.playtranslate.ui.ResultState.Error).message,
+        )
+    }
+
+    @Test fun `a start from anywhere leaves the window and runs in its page`() {
         val svc = captureService()
         detach()
 
         svc.startLive()
         settle()
 
-        assertIconOnly()
-        assertEquals(ControlsForm.ICON, prefs.detachedStateForDisplay(d0).form)
+        assertWindowOnly()
+        assertEquals(ControlsForm.WINDOW, prefs.detachedStateForDisplay(d0).form)
+        assertRunsInTheWindow(svc)
+        assertTrue(window()!!.autoRunning)
     }
 
-    @Test fun `a start while the icon stands in leaves the icon for good`() {
+    @Test fun `a start while the icon stands in is the window's, which comes back to it running`() {
         val svc = captureService()
         detach()
         val screen = ownActivity().create().start()
@@ -593,11 +649,197 @@ class DetachedControlsTest {
 
         svc.startLive()
         settle()
+        assertIconOnly()
+        assertEquals("the form stays", ControlsForm.WINDOW, prefs.detachedStateForDisplay(d0).form)
+        assertRunsInTheWindow(svc)
+
         screen.stop()
         settle()
 
+        assertWindowOnly()
+        assertRunsInTheWindow(svc)
+        assertTrue("and its Auto says so", window()!!.autoRunning)
+    }
+
+    @Test fun `one of our screens coming and going leaves a session in the window running`() {
+        val svc = captureService()
+        detach()
+        tap(R.id.detachedBarAuto)
+        val following = page()
+
+        val screen = ownActivity().create().start()
+        settle()
         assertIconOnly()
-        assertEquals(ControlsForm.ICON, prefs.detachedStateForDisplay(d0).form)
+        assertRunsInTheWindow(svc)
+        assertSame("the same page, still following", following, page())
+
+        screen.stop()
+        settle()
+        assertWindowOnly()
+        assertRunsInTheWindow(svc)
+    }
+
+    @Test fun `the app coming forward on a second screen moves a session in the window to boxes over the game, and its leaving moves it back`() {
+        val svc = captureService()
+        detach()
+        tap(R.id.detachedBarAuto)
+        assertRunsInTheWindow(svc)
+        secondDisplay()
+
+        // The app's resume: its foreground flag, then its reconcile.
+        MainActivity.isInForeground = true
+        controller.reconcileFloatingIcons(freshAppearance = false)
+        settle()
+
+        assertIconOnly()
+        assertEquals("the form stays the window", ControlsForm.WINDOW, prefs.detachedStateForDisplay(d0).form)
+        assertTrue("auto-translate goes on", svc.isLive)
+        assertEquals(LiveSurface.OVERLAYS, svc.liveSurface())
+        assertFalse("as boxes over the game, which Show on screen asks for", svc.isInAppOnly)
+        assertTrue("and the icon says it runs", icon()!!.liveMode)
+        assertFalse("the page follows it no more", page()!!.followsLive)
+
+        // Something the app's page was shown meanwhile.
+        svc.emitError("shown in the app")
+
+        // The app's stop: the flag, then the pass its leaving runs.
+        MainActivity.isInForeground = false
+        controller.applyControlsForms()
+        settle()
+
+        assertWindowOnly()
+        assertRunsInTheWindow(svc)
+        assertTrue(
+            "back in the page it starts as a start does, not from what the app was shown",
+            pageStatus()!!.startsWith("Searching for"),
+        )
+    }
+
+    @Test fun `the app coming forward in split-screen moves a session in the window to boxes over the game too`() {
+        val svc = captureService()
+        detach()
+        tap(R.id.detachedBarAuto)
+        // The app's start, on the game's own display: the icon stands in.
+        ownActivity().create().start()
+        settle()
+        assertIconOnly()
+        assertRunsInTheWindow(svc)
+
+        // Its resume, beside the game: the flag, then its reconcile, which
+        // has no controls left to change.
+        MainActivity.isInMultiWindowMode = true
+        MainActivity.isInForeground = true
+        controller.reconcileFloatingIcons(freshAppearance = false)
+        settle()
+
+        assertIconOnly()
+        assertTrue("auto-translate goes on", svc.isLive)
+        assertEquals(LiveSurface.OVERLAYS, svc.liveSurface())
+        assertFalse("as boxes over the game", svc.isInAppOnly)
+        assertFalse("and the page learns the session is not its own", page()!!.followsLive)
+    }
+
+    @Config(shadows = [RefusingWindowManager::class])
+    @Test fun `a Detach whose window the system refuses did not happen, and a running session keeps its boxes`() {
+        val svc = captureService()
+        val overGame = running(svc)
+
+        try {
+            RefusingWindowManager.refuses = { it is DetachedWindow.Root }
+            detach()
+        } finally {
+            RefusingWindowManager.refuses = null
+        }
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+
+        assertIconOnly()
+        assertEquals("the saved form is the icon again", ControlsForm.ICON, prefs.detachedStateForDisplay(d0).form)
+        assertTrue("auto-translate goes on", svc.isLive)
+        assertEquals(LiveSurface.OVERLAYS, svc.liveSurface())
+        assertFalse("as boxes over the game, not waiting on a window that never came", svc.isInAppOnly)
+        assertTrue("the tier that was running was swapped out on the way", overGame.stops > 0)
+        assertNull("no page is kept for a window that never was", page())
+
+        // The next pass has nothing left to try.
+        controller.reconcileFloatingIcons(freshAppearance = false)
+        settle()
+        assertIconOnly()
+    }
+
+    @Test fun `a start with two displays captured docks the window, as before`() {
+        val svc = captureService()
+        detach()
+        svc.gameDisplayIds = setOf(d0, secondDisplay())
+
+        svc.startLive()
+        settle()
+
+        assertIconOnly()
+        assertEquals("docked for good", ControlsForm.ICON, prefs.detachedStateForDisplay(d0).form)
+        assertTrue(svc.isLive)
+        assertFalse("boxes over the game, from the icon", svc.isInAppOnly)
+    }
+
+    @Test fun `a start with the app in front on a second screen docks the window, as before`() {
+        val svc = captureService()
+        detach()
+        secondDisplay()
+        MainActivity.isInForeground = true
+        controller.reconcileFloatingIcons(freshAppearance = false)
+        settle()
+        assertIconOnly()
+
+        svc.startLive()
+        settle()
+
+        assertEquals("docked for good", ControlsForm.ICON, prefs.detachedStateForDisplay(d0).form)
+        MainActivity.isInForeground = false
+        controller.reconcileFloatingIcons(freshAppearance = false)
+        settle()
+        assertIconOnly()
+    }
+
+    @Test fun `Minimize leaves a session running, as boxes over the game from the icon`() {
+        val svc = captureService()
+        detach()
+        tap(R.id.detachedBarAuto)
+
+        tap(R.id.detachedBarMinimize)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+
+        assertIconOnly()
+        assertTrue("auto-translate goes on", svc.isLive)
+        assertFalse("as the icon's", svc.isInAppOnly)
+        assertEquals(LiveSurface.OVERLAYS, svc.liveSurface())
+        assertTrue("and the icon says it runs", icon()!!.liveMode)
+    }
+
+    @Test fun `the dock gesture leaves a session running too`() {
+        val svc = captureService()
+        detach()
+        tap(R.id.detachedBarAuto)
+
+        dockAt(left = true, y = 250f)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+
+        assertIconOnly()
+        assertTrue(svc.isLive)
+        assertFalse(svc.isInAppOnly)
+    }
+
+    @Test fun `Capture stops a session running in the window, and nothing restarts it`() {
+        val svc = captureService()
+        detach()
+        tap(R.id.detachedBarAuto)
+        assertTrue(svc.isLive)
+
+        tap(R.id.detachedBarCapture)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+
+        assertFalse("the page is the capture's now", svc.isLive)
+        assertFalse(page()!!.followsLive)
+        assertEquals(ctx.getString(R.string.live_mode_auto_label), autoLabel())
+        assertWindowOnly()
     }
 
     @Test fun `the bar's Capture follows a change of the capture region`() {
@@ -732,16 +974,17 @@ class DetachedControlsTest {
         assertEquals(ControlsForm.WINDOW, prefs.detachedStateForDisplay(d0).form)
         assertNotNull("with the page it was pulled out with", controller.detachedPageForTest(d0))
         assertNotNull("resting where it was let go", prefs.detachedStateForDisplay(d0).bounds(landscape = true))
-        assertTrue("auto-translate stopped, as Detach stops it", mode.stops > 0)
+        assertTrue("the drag stopped the session that painted over the game", mode.stops > 0)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
-        assertFalse("and for good: nothing the drag paused brings it back", svc.isLive)
+        assertRunsInTheWindow(svc)
+        assertTrue("its Auto says it runs", window()!!.autoRunning)
         assertWindowOnly()
         // And it is the display's window: Minimize takes it back to the icon.
         tap(R.id.detachedBarMinimize)
         assertIconOnly()
     }
 
-    @Test fun `an auto-translate still starting when the window is pulled out is called off`() {
+    @Test fun `an auto-translate still starting when the window is pulled out lands in the window`() {
         prefs.iconDragAction = DragAction.PULL_OUT_WINDOW
         val svc = captureService()
         // A start waiting on something (the screen-share prompt): not
@@ -756,7 +999,29 @@ class DetachedControlsTest {
         settle()
 
         assertWindowOnly()
-        assertFalse("a start landing later would dock the window just pulled out", svc.isLiveStartPending)
+        assertTrue("it is not called off: where it lands is the window's page now", svc.isLiveStartPending)
+
+        // The start lands.
+        svc.startLive()
+        settle()
+
+        assertWindowOnly()
+        assertRunsInTheWindow(svc)
+    }
+
+    @Test fun `with two displays captured, pulling the window out stops auto-translate for good, as before`() {
+        prefs.iconDragAction = DragAction.PULL_OUT_WINDOW
+        val svc = captureService()
+        svc.gameDisplayIds = setOf(d0, secondDisplay())
+        running(svc)
+
+        val (cx, cy, inward) = beginIconDrag()
+        iconTouch(MotionEvent.ACTION_MOVE, cx + inward * 400, cy + 40)
+        iconTouch(MotionEvent.ACTION_UP, cx + inward * 400, cy + 40)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+
+        assertWindowOnly()
+        assertFalse("no overlay tier runs with a window up", svc.isLive)
     }
 
     @Test fun `dragged back to its side and let go it is still the icon, at the height the finger left it`() {
@@ -889,8 +1154,122 @@ class DetachedControlsTest {
         settle()
     }
 
-    @Test fun `detaching stops a running auto-translate, and nothing restarts it`() {
+    @Test fun `detaching leaves a running auto-translate running, in the window's page from there`() {
         val svc = captureService()
+        val overGame = running(svc)
+
+        detach()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+
+        assertWindowOnly()
+        assertEquals("the tier that painted over the game is replaced, once", 1, overGame.stops)
+        assertRunsInTheWindow(svc)
+        assertTrue("a session moved into the page starts it as a start does", pageStatus()!!.startsWith("Searching for"))
+        assertTrue(window()!!.autoRunning)
+    }
+
+    // ── What a session in the window waits for ───────────────────────────
+
+    @Test fun `a window standing still holds nothing, and one under a finger or in flight does`() {
+        paceFrames()
+        detach()
+        assertTrue("flying out of the icon", controller.windowBusy(d0))
+        land()
+        assertFalse("at rest", controller.windowBusy(d0))
+        assertEquals(
+            "and what a frame of the whole screen has of it is its rect",
+            windowParams().let { android.graphics.Rect(it.x, it.y, it.x + it.width, it.y + it.height) },
+            window()!!.screenRect(),
+        )
+        assertTrue(window()!!.screenRect() in controller.ownChromeRects(d0))
+
+        val (bx, by) = barPoint()
+        touch(MotionEvent.ACTION_DOWN, bx, by)
+        touch(MotionEvent.ACTION_MOVE, bx - 100, by + 100)
+        assertTrue("being moved", controller.windowBusy(d0))
+        touch(MotionEvent.ACTION_UP, bx - 100, by + 100)
+        land()
+        assertFalse("let go", controller.windowBusy(d0))
+        assertTrue("its rect follows it", window()!!.screenRect() in controller.ownChromeRects(d0))
+    }
+
+    @Test fun `with the icon standing in the window is not there to read around`() {
+        detach()
+        assertFalse(controller.windowBusy(d0))
+
+        val screen = ownActivity().create().start()
+        settle()
+        assertTrue(controller.windowBusy(d0))
+        assertTrue("and no rect of it is blacked out", controller.ownChromeRects(d0).none { it.width() > 400 })
+
+        screen.stop()
+        settle()
+        assertFalse(controller.windowBusy(d0))
+    }
+
+    @Test fun `the window's own menu holds a session in it`() {
+        detach()
+
+        window()!!.bar.moreButton.performClick()
+        settle()
+        assertTrue("its rows are text over the game", controller.windowBusy(d0))
+
+        window()!!.popovers.dismiss()
+        settle()
+        assertFalse(controller.windowBusy(d0))
+    }
+
+    // ── What stops a session ─────────────────────────────────────────────
+
+    @Test fun `hiding the controls stops a session in the window`() {
+        val svc = captureService()
+        detach()
+        tap(R.id.detachedBarAuto)
+        assertTrue(svc.isLive)
+
+        controller.hideAll()
+        settle()
+
+        assertFalse("nothing is left to see or stop it with", svc.isLive)
+    }
+
+    @Test fun `a session in the app's page still stops when the app leaves the front`() {
+        val svc = captureService()
+        secondDisplay()
+        prefs.hideGameOverlays = true
+        MainActivity.isInForeground = true
+        svc.startLive()
+        settle()
+        assertTrue(svc.isLive)
+        assertEquals(LiveSurface.APP_PAGE, svc.liveSurface())
+
+        MainActivity.isInForeground = false
+        svc.updateForegroundState()
+
+        assertFalse("its results show nowhere now, though the icon is up", svc.isLive)
+    }
+
+    @Test fun `a session in the app's page in split-screen stops when the app leaves, and does not turn into boxes over the game`() {
+        val svc = captureService()
+        prefs.hideGameOverlays = true
+        MainActivity.isInMultiWindowMode = true
+        MainActivity.isInForeground = true
+        svc.startLive()
+        settle()
+        assertTrue(svc.isLive)
+        assertEquals(LiveSurface.APP_PAGE, svc.liveSurface())
+
+        // The app's stop. With the app gone the one screen is the game's
+        // alone, where a session would be boxes over the game: the stop
+        // rule has to see the app's page's session before anything swaps it.
+        MainActivity.isInForeground = false
+
+        assertFalse(svc.isLive)
+    }
+
+    @Test fun `with two displays captured, detaching stops a running auto-translate, as before`() {
+        val svc = captureService()
+        svc.gameDisplayIds = setOf(d0, secondDisplay())
         val mode = running(svc)
 
         detach()
