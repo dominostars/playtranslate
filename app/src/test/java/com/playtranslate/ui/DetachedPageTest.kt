@@ -409,22 +409,29 @@ class DetachedPageTest {
     // ── One result for the display: its latest capture ───────────────────
 
     @Test fun `a capture of the display made elsewhere takes down a result on show, and a no-text status that came with its frame`() {
+        // The sheet's capture: the service's capture job.
         page.vm.displayResult(result(), ctx)
-        page.onCaptureImageReplaced()
+        page.onCaptureImageReplaced(byCaptureJob = true)
         assertEquals("the result pointed at the image that was just replaced", idle, page.vm.result.value)
 
+        // A hold-to-preview, which runs beside that job.
+        page.vm.displayResult(result(), ctx)
+        page.onCaptureImageReplaced(byCaptureJob = false)
+        assertEquals(idle, page.vm.result.value)
+
         page.vm.showStatus("No text found", screenshotPath = "/cache/capture-d0.jpg")
-        page.onCaptureImageReplaced()
+        page.onCaptureImageReplaced(byCaptureJob = true)
         assertEquals(idle, page.vm.result.value)
     }
 
     @Test fun `it leaves the idle prompt and a status with no frame as they are`() {
-        page.onCaptureImageReplaced()
+        page.onCaptureImageReplaced(byCaptureJob = true)
         assertEquals(idle, page.vm.result.value)
 
         page.vm.showError("offline")
         val error = page.vm.result.value
-        page.onCaptureImageReplaced()
+        page.onCaptureImageReplaced(byCaptureJob = true)
+        page.onCaptureImageReplaced(byCaptureJob = false)
         assertEquals(error, page.vm.result.value)
     }
 
@@ -435,11 +442,38 @@ class DetachedPageTest {
         capture.state.value = CaptureState.Translating("新しい", listOf(TextSegment("新しい")), null)
         val reading = page.vm.result.value
 
-        page.onCaptureImageReplaced()
+        page.onCaptureImageReplaced(byCaptureJob = true)
         assertEquals("its own frame: nothing changes", reading, page.vm.result.value)
+        assertFalse(capture.job.isCancelled)
 
         capture.state.value = CaptureState.Cancelled
         assertEquals(idle, page.vm.result.value)
+    }
+
+    @Test fun `a hold-to-preview that reads the display while the page's capture is still translating takes that capture down`() {
+        val capture = Capture()
+        page.follow(capture.session)
+        capture.state.value = CaptureState.Translating("新しい", listOf(TextSegment("新しい")), null)
+
+        // Not the capture job's write: a later frame, which this capture
+        // would finish with for its image.
+        page.onCaptureImageReplaced(byCaptureJob = false)
+
+        assertEquals(idle, page.vm.result.value)
+        assertTrue("its capture is called off", capture.job.isCancelled)
+        capture.state.value = CaptureState.Done(result("新しい"))
+        assertEquals("and its result lands nowhere", idle, page.vm.result.value)
+    }
+
+    @Test fun `the same while the page's capture has shown nothing but its status`() {
+        val capture = Capture()
+        page.follow(capture.session)
+        assertEquals(ResultState.Status("Capturing…"), page.vm.result.value)
+
+        page.onCaptureImageReplaced(byCaptureJob = false)
+
+        assertEquals(idle, page.vm.result.value)
+        assertTrue(capture.job.isCancelled)
     }
 
     // ── Read aloud ───────────────────────────────────────────────────────

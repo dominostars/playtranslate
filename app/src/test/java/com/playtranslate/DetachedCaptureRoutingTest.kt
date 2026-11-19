@@ -330,11 +330,11 @@ class DetachedCaptureRoutingTest {
         val shown = page.vm.result.value
 
         // Another screen's capture is not this page's.
-        controller.onCaptureImageSaved(d0 + 1)
+        controller.onCaptureImageSaved(d0 + 1, byCaptureJob = true)
         assertEquals(shown, page.vm.result.value)
 
         // The sheet's, the app's or a hold-to-preview's capture of this one.
-        controller.onCaptureImageSaved(d0)
+        controller.onCaptureImageSaved(d0, byCaptureJob = true)
         assertEquals(idle, page.vm.result.value)
     }
 

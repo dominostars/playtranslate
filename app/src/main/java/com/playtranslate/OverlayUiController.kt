@@ -1517,12 +1517,8 @@ class OverlayUiController(
             }
             if (showFormOn(display, prefs, freshAppearance)) installedAny = true
         }
-        // A page stays only for a display whose controls are still saved as
-        // the window (the icon may be standing in for it): docked, or no
-        // longer a capture display, its page goes.
-        detachedPages.keys
-            .filter { it !in wanted || prefs.detachedStateForDisplay(it).form != ControlsForm.WINDOW }
-            .forEach { dropDetachedPage(it) }
+        // Docked, or no longer a capture display, a display's page goes.
+        dropPagesNoLongerOwed(prefs, wanted)
         // The translation-error pills live on a captured display: one that
         // left the capture set (deselected, or gone) takes them with it, and
         // each shows again at its next failure where capture is.
@@ -1531,8 +1527,9 @@ class OverlayUiController(
                 errorPills.withdrawFrom(id)
             }
         }
-        // Once per reconcile, not per display, and only when an icon actually
-        // landed as a fresh appearance the user asked for.
+        // Once per reconcile, not per display, and only when controls (the
+        // icon, or the window where that is the saved form) actually landed
+        // as a fresh appearance the user asked for.
         if (installedAny && freshAppearance && userSummoned && !isMediaProjection) onFreshAccessibilityPlacement()
     }
 
@@ -1573,7 +1570,8 @@ class OverlayUiController(
     }
 
     /**
-     * Placement prompt: a floating icon has just made a fresh appearance on
+     * Placement prompt: the controls (the floating icon, or the window where
+     * that is the saved form) have just made a fresh appearance on
      * the accessibility backend and the Anki game-audio feature is on, but
      * the MediaProjection consent the recorder rides on is not held — ask for
      * it now. The recorder never prompts
@@ -1609,7 +1607,7 @@ class OverlayUiController(
      */
     private fun promptGameAudioConsentIfMissing(svc: CaptureService) {
         if (!GameAudioGate.wouldRunGivenConsent(context, svc.mediaProjectionControllerIfInitialized)) return
-        Log.i(TAG, "summoned icon placement with game audio unarmed: requesting screen-record consent")
+        Log.i(TAG, "summoned controls placement with game audio unarmed: requesting screen-record consent")
         svc.requestAudioCaptureConsent()
     }
 
@@ -2170,10 +2168,11 @@ class OverlayUiController(
      * change of form puts the new one up before the old one goes, so the
      * display is never without controls in between: the session record and
      * the service's foreground state read [hasControlsOnScreen] and would
-     * otherwise see "off" halfway through a swap. Returns true when an icon
-     * went up where no controls were (what [reconcileFloatingIcons] counts
-     * as a fresh placement); an icon that takes a window's place is not one,
-     * and gets no intro.
+     * otherwise see "off" halfway through a swap. Returns true when controls
+     * went up where none were, in either form (what [reconcileFloatingIcons]
+     * counts as a fresh placement: a window that comes straight up is as
+     * much the user's summon as an icon is). A change of form is not one,
+     * and an icon that takes a window's place gets no intro.
      *
      * With [animate] a change of form is shown as one thing becoming the
      * other: the window flies out of the icon's place, or into it
@@ -2192,6 +2191,7 @@ class OverlayUiController(
         when (shownFormOn(id, prefs)) {
             ControlsForm.WINDOW -> {
                 if (id in windowHandles) return false
+                val replacesIcon = id in iconHandles
                 // Where the icon is now, before it goes.
                 val from = if (animate) getFloatingIconRect(id) else null
                 if (!installDetachedWindowForDisplay(display, prefs, from)) return false
@@ -2200,7 +2200,7 @@ class OverlayUiController(
                 // window never share the screen, so nothing may restart it
                 // from here.
                 hideFloatingIconForDisplay(id, "swap_to_window", endsCapture = true)
-                return false
+                return !replacesIcon
             }
             ControlsForm.ICON -> {
                 if (id in iconHandles) return false
@@ -2232,17 +2232,36 @@ class OverlayUiController(
             val display = dm.getDisplay(id) ?: continue
             showFormOn(display, prefs, freshAppearance = false, animate = animate)
         }
+        dropPagesNoLongerOwed(prefs)
+    }
+
+    /**
+     * The pages no display is owed any more go. A page stays for a display
+     * whose controls are still saved as the window (the icon may be standing
+     * in for it), and for one whose window is still up whatever is saved: a
+     * window the icon could not take the place of ([showFormOn] leaves it
+     * up, so the display keeps its controls) still shows that page, and
+     * released under it the page would be a dead one in a live window.
+     * [wanted]: the displays that have controls at all, where the caller
+     * has just decided that ([reconcileFloatingIcons]).
+     */
+    private fun dropPagesNoLongerOwed(prefs: Prefs, wanted: Set<Int>? = null) {
         detachedPages.keys
-            .filter { prefs.detachedStateForDisplay(it).form != ControlsForm.WINDOW }
+            .filter { it !in windowHandles }
+            .filter {
+                (wanted != null && it !in wanted) ||
+                    prefs.detachedStateForDisplay(it).form != ControlsForm.WINDOW
+            }
             .forEach { dropDetachedPage(it) }
     }
 
     /** A capture of [displayId] wrote the display's capture image, whoever
      *  it was for ([CaptureService.captureSaveToCache]): the detached
      *  window's page no longer shows a result of an earlier capture of it
-     *  ([DetachedPage.onCaptureImageReplaced]). */
-    fun onCaptureImageSaved(displayId: Int) {
-        detachedPages[displayId]?.onCaptureImageReplaced()
+     *  ([DetachedPage.onCaptureImageReplaced]). [byCaptureJob]: the
+     *  writer is the service's one capture job. */
+    fun onCaptureImageSaved(displayId: Int, byCaptureJob: Boolean) {
+        detachedPages[displayId]?.onCaptureImageReplaced(byCaptureJob)
     }
 
     /** [displayId]'s capture region changed, whoever changed it

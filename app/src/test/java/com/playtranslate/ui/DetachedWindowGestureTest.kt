@@ -7,6 +7,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.Display
 import android.view.MotionEvent
+import android.view.Surface
 import android.view.View
 import android.view.WindowManager
 import android.widget.EditText
@@ -815,6 +816,41 @@ class DetachedWindowGestureTest {
         assertEquals("nothing was saved", Frame(400, 200, 420, 400), g.fromBounds(
             prefs.detachedStateForDisplay(d0).bounds(landscape = true)!!, room, 1f,
         ))
+    }
+
+    @Test fun `a report with nothing behind it leaves a gesture alone on a display turned on its side`() {
+        show()
+        // A phone turned to landscape: the window is laid out again, in a
+        // rotation that is not the display's natural one.
+        overlayHost.environmentReader = { testEnvironment(1280, 800, rotation = Surface.ROTATION_90) }
+        displayReportsAChange()
+        assertEquals(Frame(400, 200, 420, 400), frame())
+
+        down(barX, barY)
+        move(barX + 60, barY)
+        move(barX + 120, barY + 40)
+        displayReportsAChange()
+        assertEquals("still under the finger", Frame(520, 240, 420, 400), frame())
+
+        up(barX + 120, barY + 40)
+        assertEquals(Frame(520, 240, 420, 400), savedFrame())
+    }
+
+    @Test fun `a display turned upside down ends a gesture, though its size and its bars' room are the same`() {
+        show()
+        down(barX, barY)
+        move(barX + 60, barY)
+        move(barX + 120, barY + 40)
+        assertEquals(Frame(520, 240, 420, 400), frame())
+
+        overlayHost.environmentReader = { testEnvironment(1280, 800, rotation = Surface.ROTATION_180) }
+        displayReportsAChange()
+        assertEquals("back at its rest place, not under the finger", Frame(400, 200, 420, 400), frame())
+
+        move(barX + 200, barY + 90)
+        up(barX + 200, barY + 90)
+        assertEquals(Frame(400, 200, 420, 400), frame())
+        assertEquals("nothing was saved", Frame(400, 200, 420, 400), savedFrame())
     }
 
     @Test fun `the rest place is the saved bounds of the display's orientation`() {

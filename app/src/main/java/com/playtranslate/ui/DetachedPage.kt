@@ -177,22 +177,32 @@ internal class DetachedPage(
     /**
      * A capture of this page's display wrote its frame, whoever it was for
      * (the sheet, with the window narrowed to its button or the icon
-     * standing in; tap-to-lookup; this page itself). A result on show
-     * points at that one file for its screenshot, its OCR re-read and its
-     * cards, so a result from an earlier capture is no longer whole: the
-     * page goes back to its idle prompt. One result on show for a display,
-     * always its latest capture, as the app's own page is on two screens,
-     * where every capture is routed to it. The page's own capture in flight
-     * is that latest capture: it shows a status or a text still being
-     * translated, neither of which came with an earlier image, so nothing
-     * of it is taken down; only what a cancel would have put back is.
+     * standing in; tap-to-lookup; a hold-to-preview; this page itself). A
+     * result points at that one file for its screenshot, its OCR re-read
+     * and its cards, so anything of an earlier capture is no longer whole
+     * and the page goes back to its idle prompt. One result on show for a
+     * display, always its latest capture, as the app's own page is on two
+     * screens, where every capture is routed to it.
+     *
+     * The page's own capture in flight is that latest capture only while
+     * the writer is the service's capture job ([byCaptureJob]): the service
+     * runs one, and another would have cancelled this page's first. Then
+     * nothing on show is taken down (a status, or a text still being
+     * translated), and only what a cancel would have put back is forgotten.
+     * A hold-to-preview or an auto-translate cycle runs beside that job: it
+     * read the display after this capture did, this capture would finish
+     * with that later frame for its image, and so it gives way like any
+     * older result.
      */
-    fun onCaptureImageReplaced() {
-        driver.imageReplaced()
+    fun onCaptureImageReplaced(byCaptureJob: Boolean) {
+        if (driver.inFlight && byCaptureJob) {
+            driver.imageReplaced()
+            return
+        }
         val shown = vm.result.value
         val cameWithAnImage =
             shown is ResultState.Ready || (shown is ResultState.Status && shown.screenshotPath != null)
-        if (!cameWithAnImage) return
+        if (!driver.inFlight && !cameWithAnImage) return
         driver.abandon()
         showIdle()
     }

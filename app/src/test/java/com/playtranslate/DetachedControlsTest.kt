@@ -9,6 +9,7 @@ import android.os.SystemClock
 import android.view.Display
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.capture.CaptureLifecycle
@@ -35,9 +36,32 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.android.controller.ServiceController
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.Implementation
+import org.robolectric.annotation.Implements
 import org.robolectric.shadows.ShadowChoreographer
 import org.robolectric.shadows.ShadowDisplayManager
+import org.robolectric.shadows.ShadowWindowManagerImpl
 import java.time.Duration
+
+/**
+ * The test runtime's window manager, refusing the adds [refuses] names the
+ * way the platform refuses a window (a thrown BadTokenException). A shadow
+ * and not a wrapper: the controller takes its manager from the display's
+ * own context, which no test hands it.
+ */
+@Implements(className = "android.view.WindowManagerImpl", isInAndroidSdk = false)
+class RefusingWindowManager : ShadowWindowManagerImpl() {
+    @Implementation
+    public override fun addView(view: View, layoutParams: ViewGroup.LayoutParams) {
+        if (refuses?.invoke(view) == true) throw WindowManager.BadTokenException("refused (test)")
+        super.addView(view, layoutParams)
+    }
+
+    companion object {
+        @JvmStatic var refuses: ((View) -> Boolean)? = null
+    }
+}
 
 /**
  * The floating controls' two forms on the real controller: the icon's quick
@@ -332,6 +356,67 @@ class DetachedControlsTest {
         controller.reconcileFloatingIcons(userSummoned = true)
         settle()
         assertWindowOnly()
+    }
+
+    // ── A window the icon could not replace ──────────────────────────────
+
+    @Config(shadows = [RefusingWindowManager::class])
+    @Test fun `a window the icon could not take the place of stays up with its page`() {
+        detach()
+        val page = controller.detachedPageForTest(d0)
+        assertNotNull(page)
+
+        try {
+            RefusingWindowManager.refuses = { it is FloatingOverlayIcon }
+            tap(R.id.detachedBarMinimize)
+        } finally {
+            RefusingWindowManager.refuses = null
+        }
+
+        assertWindowOnly()
+        assertSame("the page it shows is still the display's", page, controller.detachedPageForTest(d0))
+
+        // The next pass makes the change the system refused, and the page
+        // goes with the window.
+        controller.reconcileFloatingIcons(freshAppearance = false)
+        settle()
+        assertIconOnly()
+        assertNull(controller.detachedPageForTest(d0))
+    }
+
+    // ── A summoned window is a fresh placement ───────────────────────────
+
+    /** The game-audio consent prompt a user's summon owes a fresh placement,
+     *  parked for the capture service these tests have not started. */
+    private fun promptParked(): Boolean {
+        assertNull("no capture service, so a prompt owed is parked", CaptureService.instance)
+        return field("placementPromptPending").getBoolean(controller)
+    }
+
+    @Test fun `a window the user's summon brings straight up is owed the game-audio prompt, as an icon is`() {
+        detach()
+        CaptureLifecycle.setFloatingIconSuppressed(ctx, true)
+        controller.reconcileFloatingIcons(freshAppearance = false)
+        settle()
+        assertFalse("nothing is owed with no controls up", promptParked())
+
+        CaptureLifecycle.setFloatingIconSuppressed(ctx, false)
+        controller.reconcileFloatingIcons(userSummoned = true)
+        settle()
+
+        assertWindowOnly()
+        assertTrue(promptParked())
+    }
+
+    @Test fun `a window that takes the icon's place in a summon is no fresh placement`() {
+        assertIconOnly()
+        prefs.setControlsForm(d0, ControlsForm.WINDOW)
+
+        controller.reconcileFloatingIcons(userSummoned = true)
+        settle()
+
+        assertWindowOnly()
+        assertFalse(promptParked())
     }
 
     // ── Reachable, and never "off" across a swap ─────────────────────────

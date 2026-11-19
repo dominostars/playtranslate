@@ -68,8 +68,16 @@ class CapturePageDriver(
     private var session: CaptureSession? = null
     private var collectJob: Job? = null
 
-    /** A followed capture has written to the page and not reached its end. */
-    private var inFlight = false
+    /** A followed capture has not reached its end. */
+    var inFlight = false
+        private set
+
+    /** The capture whose original was already handed over to be read
+     *  ([onOriginalToRead]). A host that collects again as it comes back to
+     *  the foreground is given the session's last state with nothing before
+     *  it, which reads as a capture that shows only its result: without this
+     *  the full-screen page read its sentence again on every return. */
+    private var readSession: CaptureSession? = null
 
     /** The page's state when the capture in flight (or the first of a run
      *  that replaced one another) began. */
@@ -118,7 +126,8 @@ class CapturePageDriver(
      * is in flight can no longer be put back whole (its image is gone), so
      * a cancel hands the host the idle state instead; with nothing in
      * flight the note is moot, the next capture taking its own. What the
-     * page shows now, if it came with an image, is the host's to take down.
+     * page shows now, and whether a capture in flight is still the latest
+     * ([inFlight]), is the host's to judge.
      */
     fun imageReplaced() {
         shownBefore = ResultState.Idle
@@ -128,7 +137,12 @@ class CapturePageDriver(
         // Before the state is shown: the page closes a word lens for the
         // read, and the state's own render would close it a moment later
         // and cut the read off.
-        captureOriginalToRead(previous, state, null)?.let(onOriginalToRead)
+        captureOriginalToRead(previous, state, null)?.let { text ->
+            if (readSession !== session) {
+                readSession = session
+                onOriginalToRead(text)
+            }
+        }
         when (state) {
             is CaptureState.InProgress -> vm.showStatus(state.message)
             // OCR done: reveal the source + "Translating…" placeholder; Done

@@ -18,6 +18,7 @@ import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.Surface
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
@@ -364,9 +365,12 @@ internal class DetachedWindow(
         turnOffSystemMoveAnimation()
     }
 
-    /** The room and orientation the window was last laid out in. */
+    /** The room, orientation and rotation the window was last laid out in.
+     *  The rotation on its own account: a display turned upside down keeps
+     *  its size, and with the same bars at both ends its room too. */
     private var room: Room? = null
     private var landscape = true
+    private var rotation = Surface.ROTATION_0
 
     /** The card's rect now. */
     private var frame: Frame? = null
@@ -731,6 +735,7 @@ internal class DetachedWindow(
         val rest = saved?.let { g.fromBounds(it, room, density) } ?: g.default(room, density)
         this.room = room
         this.landscape = landscape
+        this.rotation = env.geometry.rotation
         place(g.lifted(rest, imeLift, room), p)
         setShowsPage(g.isPage(rest.w, density))
     }
@@ -1027,7 +1032,8 @@ internal class DetachedWindow(
         val env = overlayHost.environment(displayId)
         val unchanged = env != null &&
             g.room(env.geometry.width, env.geometry.height, env.barRoom) == room &&
-            (env.geometry.width >= env.geometry.height) == landscape
+            (env.geometry.width >= env.geometry.height) == landscape &&
+            env.geometry.rotation == rotation
         if (!unchanged) endGesture()
     }
 

@@ -55,6 +55,18 @@ class CapturePageDriverTest {
     /** What the driver handed over to be read aloud. */
     private val read = mutableListOf<String>()
 
+    /** The collection the driver last started, and its body: a test runs
+     *  the body again as a host back in the foreground does ([comeBack]). */
+    private var collector: (suspend () -> Unit)? = null
+    private var collecting: Job? = null
+
+    /** The host went to the background and came back: its collection of the
+     *  capture ended and a new one begins, from the capture's last state. */
+    private fun comeBack() {
+        collecting?.cancel()
+        collecting = scope.launch { collector!!.invoke() }
+    }
+
     /** The read of a re-read's frame: a test holds it open with [frame]. */
     private val frame = kotlinx.coroutines.CompletableDeferred<android.graphics.Bitmap?>()
     private var frameReads = 0
@@ -62,7 +74,10 @@ class CapturePageDriverTest {
     private val driver = CapturePageDriver(
         vm, ctx, scope,
         service = { service },
-        collectWhileShown = { collect -> scope.launch { collect() } },
+        collectWhileShown = { collect ->
+            collector = collect
+            scope.launch { collect() }.also { collecting = it }
+        },
         pinnedScreenshotPath = { pinned },
         onSentencePending = { sentencePendings++ },
         onOriginalToRead = { read += it },
@@ -332,6 +347,46 @@ class CapturePageDriverTest {
         driver.follow(second.session)
         second.state.value = CaptureState.Translating("さようなら", segments("さようなら"), provenance())
         assertEquals(listOf("こんにちは", "さようなら"), read)
+    }
+
+    @Test
+    fun `a host that comes back to a finished capture is not handed its original again`() {
+        val capture = Capture()
+        driver.follow(capture.session)
+        capture.state.value = CaptureState.Translating("こんにちは", segments("こんにちは"), provenance())
+        val done = result()
+        capture.state.value = CaptureState.Done(done)
+        assertEquals(listOf("こんにちは"), read)
+
+        comeBack()
+        comeBack()
+
+        assertEquals("read once, however often the page is returned to", listOf("こんにちは"), read)
+        assertSame("the result is still shown", done, (vm.result.value as ResultState.Ready).result)
+    }
+
+    @Test
+    fun `nor one that comes back while it is still translating`() {
+        val capture = Capture()
+        driver.follow(capture.session)
+        capture.state.value = CaptureState.Translating("こんにちは", segments("こんにちは"), provenance())
+
+        comeBack()
+        capture.state.value = CaptureState.Done(result())
+
+        assertEquals(listOf("こんにちは"), read)
+    }
+
+    @Test
+    fun `a capture first seen at its result is read then, and once`() {
+        val capture = Capture()
+        capture.state.value = CaptureState.Done(result())
+        driver.follow(capture.session)
+        assertEquals(listOf("こんにちは"), read)
+
+        comeBack()
+
+        assertEquals(listOf("こんにちは"), read)
     }
 
     // ── A re-read that something overtook ────────────────────────────────

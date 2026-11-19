@@ -3185,10 +3185,13 @@ class CaptureService : Service() {
     /** Persist [raw] to the screenshot cache via the active capture backend:
      *  one file per display, which this write replaces. Whoever still shows
      *  a result of an earlier capture of that display is told
-     *  ([OverlayUiController.onCaptureImageSaved]), on the main thread. */
-    internal fun captureSaveToCache(raw: Bitmap, displayId: Int): String? =
+     *  ([OverlayUiController.onCaptureImageSaved]), on the main thread.
+     *  [byCaptureJob] says the writer is the service's one capture job (a
+     *  capture or a re-read, [runFrameCycle]); a hold-to-preview and an
+     *  auto-translate cycle run beside that job and are not it. */
+    internal fun captureSaveToCache(raw: Bitmap, displayId: Int, byCaptureJob: Boolean = false): String? =
         CaptureBackendResolver.active().captureSource?.saveToCache(raw, displayId)?.also {
-            val tell = { CaptureBackendResolver.activeOverlayUi?.onCaptureImageSaved(displayId) }
+            val tell = { CaptureBackendResolver.activeOverlayUi?.onCaptureImageSaved(displayId, byCaptureJob) }
             if (Looper.myLooper() == Looper.getMainLooper()) tell() else mainHandler.post { tell() }
         }
 
@@ -3491,7 +3494,7 @@ class CaptureService : Service() {
         var readerTranslations: ReaderTranslations? = null
         try {
             if (!isConfigured) return PipelineOutcome.Failed(NOT_CONFIGURED_MESSAGE)
-            val screenshotPath = captureSaveToCache(raw, displayId)
+            val screenshotPath = captureSaveToCache(raw, displayId, byCaptureJob = true)
 
             val statusBarHeight = statusBarHeightForFrame(displayId, frameIncludesSystemUi)
             val top    = maxOf((raw.height * region.top).toInt(), statusBarHeight)
