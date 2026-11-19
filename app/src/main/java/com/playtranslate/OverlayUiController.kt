@@ -290,10 +290,12 @@ class OverlayUiController(
             // editor's chrome, the pills) against the display as it is now.
             // Not gated: it touches only the windows this host holds, and a
             // host with none does nothing.
-            // A move or resize of the detached window ends first: its frame
-            // belongs to the old geometry, and a window a gesture owns is
-            // not laid out.
-            windowHandles[displayId]?.endGesture()
+            // A move or resize of the detached window ends first where the
+            // display is really another shape: its frame belongs to the old
+            // geometry, and a window a gesture owns is not laid out. A
+            // report with nothing behind it (a refresh-rate switch) leaves
+            // the gesture alone ([DetachedWindow.onDisplayChanged]).
+            windowHandles[displayId]?.onDisplayChanged()
             overlayHost.onDisplayChanged(displayId)
             if (isActiveController) {
                 // A drag session ends: its lens window, screenshot and finger

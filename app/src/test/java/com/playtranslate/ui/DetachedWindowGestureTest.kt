@@ -17,6 +17,7 @@ import com.playtranslate.R
 import com.playtranslate.WindowBounds
 import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlay.OwnWindows
+import com.playtranslate.overlay.Sides
 import com.playtranslate.testutil.RecordingWindowManager
 import com.playtranslate.testutil.testEnvironment
 import com.playtranslate.ui.DetachedWindowGeometry.Corner
@@ -696,6 +697,14 @@ class DetachedWindowGestureTest {
         assertIsTheWindow(Frame(0, 280, 420, 400))
     }
 
+    @Test fun `the system's own animation of a window that moves is off for this one`() {
+        show()
+
+        // Else the first resize after a move slides the window in from
+        // where it stood before the move.
+        assertFalse(params().canPlayMoveAnimation())
+    }
+
     @Test fun `a resize at a side never docks`() {
         show(Frame(0, 200, 420, 400))
 
@@ -722,21 +731,62 @@ class DetachedWindowGestureTest {
         assertEquals(Frame(520, 240, 420, 400), frame())
     }
 
-    @Test fun `a gesture ended from outside puts the window back at rest and the rest of the touch does nothing`() {
+    /** The display reports a change, as the controller passes it on: to
+     *  the window first, then to the host, which lays every window out. */
+    private fun displayReportsAChange() {
+        window.onDisplayChanged()
+        overlayHost.onDisplayChanged(d0)
+        layOut()
+    }
+
+    @Test fun `a display report with nothing behind it leaves a move under way alone`() {
         show()
 
         down(barX, barY)
         move(barX + 60, barY)
         move(barX + 120, barY + 40)
-        window.endGesture()
-        overlayHost.onDisplayChanged(d0)
-        layOut()
-        assertEquals("back on its saved frame", Frame(400, 200, 420, 400), frame())
+        // A refresh-rate switch: the display is the shape it was.
+        displayReportsAChange()
+        assertEquals("still under the finger", Frame(520, 240, 420, 400), frame())
 
         move(barX + 200, barY + 90)
         up(barX + 200, barY + 90)
-        assertEquals(Frame(400, 200, 420, 400), frame())
-        assertEquals(Frame(400, 200, 420, 400), savedFrame())
+        assertEquals(Frame(600, 290, 420, 400), frame())
+        assertEquals(Frame(600, 290, 420, 400), savedFrame())
+    }
+
+    @Test fun `a display report with nothing behind it leaves a resize under way alone`() {
+        show()
+
+        down(815f, 595f)
+        move(900f, 650f)
+        displayReportsAChange()
+        assertEquals("the size the finger gave it", Frame(400, 200, 505, 455), frame())
+
+        move(950f, 700f)
+        up(950f, 700f)
+        assertEquals(Frame(400, 200, 555, 505), frame())
+        assertEquals("and it is saved", Frame(400, 200, 555, 505), savedFrame())
+    }
+
+    @Test fun `a display that is really another shape ends a gesture, and the rest of the touch does nothing`() {
+        show()
+        down(barX, barY)
+        move(barX + 60, barY)
+        move(barX + 120, barY + 40)
+
+        // The bars now leave less room.
+        overlayHost.environmentReader = { testEnvironment(1280, 800, shownBars = Sides(0, 60, 0, 0)) }
+        displayReportsAChange()
+        val rest = frame()
+        assertTrue("back at its rest place, not under the finger", rest != Frame(520, 240, 420, 400))
+
+        move(barX + 200, barY + 90)
+        up(barX + 200, barY + 90)
+        assertEquals(rest, frame())
+        assertEquals("nothing was saved", Frame(400, 200, 420, 400), g.fromBounds(
+            prefs.detachedStateForDisplay(d0).bounds(landscape = true)!!, room, 1f,
+        ))
     }
 
     @Test fun `the rest place is the saved bounds of the display's orientation`() {

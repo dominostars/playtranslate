@@ -739,7 +739,12 @@ class DetachedControlsTest {
         assertEquals(d0, svc.lastInteractedDisplayId)
     }
 
-    @Test fun `a change of the display ends a move under way, and the window goes back to rest`() {
+    private fun displayReportsAChange() {
+        (field("displayListener").get(controller) as DisplayManager.DisplayListener).onDisplayChanged(d0)
+        settle()
+    }
+
+    @Test fun `a display report with nothing behind it leaves a move under way alone`() {
         detach()
         val restX = windowParams().x
         val restY = windowParams().y
@@ -748,12 +753,32 @@ class DetachedControlsTest {
         touch(MotionEvent.ACTION_MOVE, bx - 100, by + 100)
         assertEquals("the move is under way", restX - 100, windowParams().x)
 
-        (field("displayListener").get(controller) as DisplayManager.DisplayListener).onDisplayChanged(d0)
+        // What a display that adapts its refresh rate sends mid-gesture.
+        displayReportsAChange()
+        assertEquals("still under the finger", (restX - 100) to (restY + 100), windowParams().x to windowParams().y)
+
+        touch(MotionEvent.ACTION_MOVE, bx - 200, by + 100)
+        assertEquals("and it goes on", (restX - 200) to (restY + 100), windowParams().x to windowParams().y)
+        touch(MotionEvent.ACTION_UP, bx - 200, by + 100)
         settle()
-        assertEquals("back at rest", restX to restY, windowParams().x to windowParams().y)
+        assertEquals("resting where it was let go", (restX - 200) to (restY + 100), windowParams().x to windowParams().y)
+    }
+
+    @Test fun `a display that is really another shape ends a move under way, and the window goes back to rest`() {
+        detach()
+        val (bx, by) = barPoint()
+        touch(MotionEvent.ACTION_DOWN, bx, by)
+        touch(MotionEvent.ACTION_MOVE, bx - 100, by + 100)
+        val moved = windowParams().x to windowParams().y
+
+        // Turned on its side.
+        a11y.overlayHost.environmentReader = { testEnvironment(800, 1280, belowBars = false) }
+        displayReportsAChange()
+        val rest = windowParams().x to windowParams().y
+        assertNotEquals("back at rest in the display as it is now", moved, rest)
 
         touch(MotionEvent.ACTION_MOVE, bx - 200, by + 200)
-        assertEquals("the rest of the touch moves nothing", restX to restY, windowParams().x to windowParams().y)
+        assertEquals("the rest of the touch moves nothing", rest, windowParams().x to windowParams().y)
         touch(MotionEvent.ACTION_UP, bx - 200, by + 200)
         settle()
     }

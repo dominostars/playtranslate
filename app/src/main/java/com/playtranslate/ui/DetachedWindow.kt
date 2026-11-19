@@ -3,6 +3,7 @@ package com.playtranslate.ui
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -11,6 +12,7 @@ import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.util.Log
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
@@ -357,7 +359,10 @@ internal class DetachedWindow(
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
         PixelFormat.TRANSLUCENT,
-    ).apply { gravity = Gravity.TOP or Gravity.START }
+    ).apply {
+        gravity = Gravity.TOP or Gravity.START
+        turnOffSystemMoveAnimation()
+    }
 
     /** The room and orientation the window was last laid out in. */
     private var room: Room? = null
@@ -1005,9 +1010,30 @@ internal class DetachedWindow(
         if (away == 0f) overlayHost.invalidateLayout(displayId)
     }
 
-    /** End a gesture where it stands, saving nothing: the display changed
-     *  under it and the window goes back to its rest place, as the window. */
-    fun endGesture() {
+    /**
+     * The display reported a change. Most reports have nothing behind them
+     * for this window: a display that adapts its refresh rate sends one as
+     * the rate switches, which it does when a window starts to redraw, so
+     * one arrives a moment into every resize (Moto G 2025, 2026-11-18: each
+     * resize was cut short and the window put back at its saved size). A
+     * gesture under way goes on through those. Only a display that is
+     * really another shape (its size, its rotation, the room its bars
+     * leave) ends the gesture: its frame belongs to the old geometry, and
+     * the window goes back to its rest place in the new one, saving
+     * nothing.
+     */
+    fun onDisplayChanged() {
+        if (gesture == null) return
+        val env = overlayHost.environment(displayId)
+        val unchanged = env != null &&
+            g.room(env.geometry.width, env.geometry.height, env.barRoom) == room &&
+            (env.geometry.width >= env.geometry.height) == landscape
+        if (!unchanged) endGesture()
+    }
+
+    /** End a gesture where it stands, saving nothing; a window it had
+     *  docked is the window again. */
+    private fun endGesture() {
         if (gesture == null) return
         clearGesture()
         if (away != 0f && !leaving) morphTo(0f)
@@ -1287,5 +1313,57 @@ internal class DetachedWindow(
         /** Where along its bar a window pulled out of the icon is held: this
          *  far in from the bar's end at the icon's side ([showPulled]). */
         private const val PULL_GRAB_DP = 28f
+    }
+}
+
+/** The platform's private window flag "never animate position changes of the
+ *  window": the bit [WindowManager.LayoutParams.setCanPlayMoveAnimation] sets
+ *  from API 34, 0x40 in every release from Android 10 to 13 (read from each
+ *  release's WindowManager.java). */
+internal const val PRIVATE_FLAG_NO_MOVE_ANIMATION = 0x40
+
+/**
+ * Turn off the system's own animation of this window's moves. Returns
+ * whether it could.
+ *
+ * The system animates a window whose place changes together with its size,
+ * from the last frame it has on record for the window to the new one, and a
+ * change of place alone does not bring that record up to date. So the first
+ * resize of the detached window after a move slid it in from where it stood
+ * before the move (reported 2026-11-18; the stale record seen in the Thor's
+ * window dump, and the slide gone on the Moto G once the switch was set).
+ * That window is placed by the finger and by its own flights, never by the
+ * system.
+ *
+ * From API 34 the platform has a switch for it. Below that the only one is
+ * the private flag behind that switch, set through the hidden `privateFlags`
+ * field: on Google's published non-SDK lists the field is "unsupported"
+ * (usable, no promise it stays) for Android 10 to 13, the only releases
+ * this branch runs on, and those lists are final. It is the one hidden
+ * member this app touches, and it is an ornament: where a device does not
+ * have the field or refuses it (a manufacturer may block what the lists
+ * allow), nothing is set, nothing is thrown, and that device keeps the
+ * slide. [sdk] and [privateFlags] are for a test to stand in for such a
+ * device.
+ */
+@SuppressLint("DiscouragedPrivateApi")
+internal fun WindowManager.LayoutParams.turnOffSystemMoveAnimation(
+    sdk: Int = Build.VERSION.SDK_INT,
+    privateFlags: () -> java.lang.reflect.Field = { WindowManager.LayoutParams::class.java.getField("privateFlags") },
+): Boolean {
+    if (sdk >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        setCanPlayMoveAnimation(false)
+        return true
+    }
+    return try {
+        val field = privateFlags()
+        field.setInt(this, field.getInt(this) or PRIVATE_FLAG_NO_MOVE_ANIMATION)
+        true
+    } catch (e: Exception) {
+        Log.i("DetachedWindow", "no switch for the system's move animation here: ${e.javaClass.simpleName}")
+        false
+    } catch (e: LinkageError) {
+        Log.i("DetachedWindow", "no switch for the system's move animation here: ${e.javaClass.simpleName}")
+        false
     }
 }
