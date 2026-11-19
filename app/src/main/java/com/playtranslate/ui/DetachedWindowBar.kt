@@ -18,16 +18,23 @@ import com.playtranslate.R
 import com.playtranslate.themeColor
 
 /**
- * The detached window's top bar: the icon menu's actions as one row. From
- * the start: Exit, then (while anything is folded) the more button, then
- * Minimize; a gap; then Settings, Edit region, Auto and Capture at the end.
- * Capture and Auto are icon-and-label pills, the rest icons.
+ * The detached window's top bar: the icon menu's actions, and the page's
+ * Add to Anki, as one row. From the start: Exit, the more button, then
+ * Minimize; a gap; then Settings, Edit region, Anki, Auto and Capture at the
+ * end. Capture and Auto are icon-and-label pills, the rest icons.
  *
  * The actions are [HeaderAction] models, the same ones a section header's
  * row is built from, and what does not fit folds behind the more button by
  * the same pure rule ([HeaderFit]), in [Actions.foldOrder]: Minimize gives
- * way first and Capture last; Exit never folds. The more button's menu is
- * the section headers' [ActionOverflowMenu], through [FoldingActionRow].
+ * way first and Capture last; Exit never folds. The more button is always
+ * there: its menu also holds what the page's headers held, which the window
+ * adds to the folded actions. It is the section headers'
+ * [ActionOverflowMenu], through [FoldingActionRow].
+ *
+ * Capture and Auto never fold while they can stay as icons: where a pill
+ * with its label would fold, both drop their labels and stand as round icon
+ * buttons, so the window's one essential action stays on the bar down to
+ * the narrowest page.
  *
  * Neither pill draws a press effect. A repaint of ours just before a
  * capture can be served as the capture's clean frame on whole-screen
@@ -39,19 +46,24 @@ import com.playtranslate.themeColor
  */
 internal class DetachedWindowBar(context: Context) : LinearLayout(context), FoldingActionRow {
 
-    /** The bar's six actions. */
+    /** The bar's seven actions. */
     class Actions(
         val capture: HeaderAction,
         val auto: HeaderAction,
+        val anki: HeaderAction,
         val editRegion: HeaderAction,
         val settings: HeaderAction,
         val minimize: HeaderAction,
         val exit: HeaderAction,
     ) {
         /** The foldable actions, the one that stays inline longest first. */
-        val foldOrder: List<HeaderAction> get() = listOf(capture, auto, editRegion, settings, minimize)
+        val foldOrder: List<HeaderAction> get() = listOf(capture, auto, anki, editRegion, settings, minimize)
         val all: List<HeaderAction> get() = foldOrder + exit
     }
+
+    /** Whether Capture and Auto stand without their labels (class doc). */
+    var pillsIconOnly = false
+        private set
 
     private val dp = resources.displayMetrics.density
     private val itemPx = (ITEM_DP * dp).toInt()
@@ -60,7 +72,7 @@ internal class DetachedWindowBar(context: Context) : LinearLayout(context), Fold
     /** Tapped the more button (the window opens or closes the menu). */
     var onMoreClick: ((DetachedWindowBar) -> Unit)? = null
 
-    /** The more button: shown while anything is folded. */
+    /** The more button: always shown. */
     lateinit var moreButton: ImageButton
         private set
 
@@ -88,7 +100,6 @@ internal class DetachedWindowBar(context: Context) : LinearLayout(context), Fold
             setImageResource(R.drawable.ic_more_horiz)
             imageTintList = ColorStateList.valueOf(context.themeColor(R.attr.ptTextMuted))
             contentDescription = context.getString(R.string.cd_more_actions)
-            visibility = View.GONE
             setOnClickListener { onMoreClick?.invoke(this@DetachedWindowBar) }
         }
         addView(moreButton, itemParams(itemPx))
@@ -96,6 +107,7 @@ internal class DetachedWindowBar(context: Context) : LinearLayout(context), Fold
         addView(Space(context), LayoutParams(0, 0, 1f))
         addItem(actions.settings, iconButton(actions.settings))
         addItem(actions.editRegion, iconButton(actions.editRegion))
+        addItem(actions.anki, iconButton(actions.anki))
         addItem(actions.auto, pill(actions.auto, filled = false))
         addItem(actions.capture, pill(actions.capture, filled = true))
         for (a in actions.all) {
@@ -123,14 +135,23 @@ internal class DetachedWindowBar(context: Context) : LinearLayout(context), Fold
         val content = if (MeasureSpec.getMode(widthSpec) == MeasureSpec.UNSPECIFIED) null
         else MeasureSpec.getSize(widthSpec) - paddingLeft - paddingRight
         val foldable = actions.foldOrder.filter { it.available }
-        val pinned = listOf(actions.exit).filter { it.available }
-        val plan = HeaderFit.plan(
-            content, labelNatural = 0, gap = gapPx,
-            foldable = foldable.map(::widthOf), pinned = pinned.map(::widthOf), moreWidth = itemPx,
-        )
+        // Exit and the more button always stand: what folds gives the more
+        // button nothing up, since it is there already.
+        val pinned = listOf(itemPx) + listOf(actions.exit).filter { it.available }.map(::widthOf)
+        fun planWith(iconOnly: Boolean): HeaderFit.Plan {
+            setPillsIconOnly(iconOnly)
+            return HeaderFit.plan(
+                content, labelNatural = 0, gap = gapPx,
+                foldable = foldable.map(::widthOf), pinned = pinned, moreWidth = 0, overflow = false,
+            )
+        }
+        // The pills lead the fold order, so fewer inline than there are
+        // pills means one of them would fold with its label on.
+        val pills = foldable.count { viewOf.getValue(it) !is ImageButton }
+        var plan = planWith(iconOnly = false)
+        if (plan.inlineCount < pills) plan = planWith(iconOnly = true)
         val inline = foldable.subList(0, plan.inlineCount)
         for (a in actions.all) setShown(viewOf.getValue(a), a.available && (a === actions.exit || a in inline))
-        setShown(moreButton, plan.showMore)
         val nowFolded = foldable.subList(plan.inlineCount, foldable.size).toList()
         if (nowFolded != folded) {
             folded = nowFolded
@@ -151,6 +172,29 @@ internal class DetachedWindowBar(context: Context) : LinearLayout(context), Fold
     private fun setShown(v: View, shown: Boolean) {
         val want = if (shown) View.VISIBLE else View.GONE
         if (v.visibility != want) v.visibility = want
+    }
+
+    /** Capture and Auto with their labels, or as round icon buttons the
+     *  size of the others. Change-only, like every write of the fit. */
+    private fun setPillsIconOnly(iconOnly: Boolean) {
+        if (pillsIconOnly == iconOnly) return
+        pillsIconOnly = iconOnly
+        val start = (PILL_START_PAD_DP * dp).toInt()
+        val end = if (iconOnly) start else (PILL_END_PAD_DP * dp).toInt()
+        for (v in viewOf.values) {
+            if (v !is LinearLayout) continue
+            v.getChildAt(1).visibility = if (iconOnly) View.GONE else View.VISIBLE
+            v.setPaddingRelative(start, 0, end, 0)
+        }
+    }
+
+    /** [onHold] runs on a long press of [a]'s button (Anki's send at once).
+     *  A folded action has no hold: its menu row is a tap. */
+    fun setOnHold(a: HeaderAction, onHold: () -> Unit) {
+        viewOf.getValue(a).setOnLongClickListener {
+            onHold()
+            true
+        }
     }
 
     private fun itemParams(width: Int) = LayoutParams(width, itemPx).apply { marginStart = gapPx }

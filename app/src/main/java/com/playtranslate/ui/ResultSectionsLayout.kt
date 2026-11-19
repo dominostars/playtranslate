@@ -81,6 +81,21 @@ class ResultSectionsLayout @JvmOverloads constructor(
             requestLayout()
         }
 
+    /** Whether a hairline rules each stacked section off from the one above
+     *  it: for a host that shows the sections without their cards' frames
+     *  (the detached window's compact page), where nothing else says where
+     *  one ends and the next begins. A section starts at its header, or at
+     *  its card when the header is gone. Stacked only. */
+    var sectionRules: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            requestLayout()
+        }
+
+    /** The y of each rule of the last measure ([sectionRules]). */
+    private val rules = ArrayList<Int>()
+
     private val density = resources.displayMetrics.density
     private val dividerPx = max(1, (ResultSectionsGeometry.DIVIDER_DP * density).toInt())
     private val dividerMarginPx = (ResultSectionsGeometry.DIVIDER_MARGIN_DP * density).toInt()
@@ -121,6 +136,7 @@ class ResultSectionsLayout @JvmOverloads constructor(
         val inner = (width - paddingLeft - paddingRight).coerceAtLeast(0)
         placements.clear()
         dividers.clear()
+        rules.clear()
 
         val sourceHeader = shownChild(R.id.sourceHeaderRow)
         val targetHeader = shownChild(R.id.targetHeaderRow)
@@ -163,17 +179,25 @@ class ResultSectionsLayout @JvmOverloads constructor(
                 ).firstOrNull()?.paddingTop ?: 0
             }
         }
+        val top = y
+        // A rule where a section starts under another ([sectionRules]).
+        fun ruleAbove(header: View?, card: View?) {
+            if (sectionRules && (header ?: card) != null && y > top) rules += y
+        }
         if (paired) {
             y = measurePair(inner, y, sourceHeader!!, sourceCard, targetHeader!!, targetCard)
         } else {
             // Translation above Original: the stacked reading order.
             y = stack(targetHeader, inner, y)
             y = stack(targetCard, inner, y)
+            ruleAbove(sourceHeader, sourceCard)
             y = stack(sourceHeader, inner, y)
             y = stack(sourceCard, inner, y)
         }
+        ruleAbove(askHeader, askCard)
         y = stack(askHeader, inner, y)
         y = stack(askCard, inner, y)
+        ruleAbove(wordsHeader, wordsCard)
         y = stack(wordsHeader, inner, y)
         y = stack(wordsCard, inner, y)
         for (i in 0 until childCount) {
@@ -310,7 +334,17 @@ class ResultSectionsLayout @JvmOverloads constructor(
                 dividerPaint,
             )
         }
+        for (ruleY in rules) {
+            canvas.drawRect(
+                paddingLeft.toFloat(), ruleY.toFloat(),
+                (width - paddingRight).toFloat(), (ruleY + dividerPx).toFloat(),
+                dividerPaint,
+            )
+        }
     }
+
+    /** The rules of the last measure, for a test. */
+    internal fun rulesForTest(): List<Int> = rules.toList()
 
     private companion object {
         /** The sections' headers and cards, which this layout arranges by

@@ -662,4 +662,31 @@ class ResultSectionsLayoutTest {
         assertEquals(-sourceHeader.paddingTop, sourceHeader.top)
         assertEquals("the cards follow the header row", targetHeader.bottom, targetCard.top)
     }
+
+    // ── Section rules ────────────────────────────────────────────────────
+
+    @Test
+    fun `ruled, each stacked section after the first has a hairline at its top, headers or not`() {
+        layOut(500)
+        assertTrue("none unless asked for", sections.rulesForTest().isEmpty())
+
+        sections.sectionRules = true
+        layOut(500)
+        assertEquals(
+            listOf(sourceHeader.top, askHeader.top, wordsHeader.top),
+            sections.rulesForTest(),
+        )
+
+        // The compact page: the two language headers gone.
+        targetHeader.visibility = View.GONE
+        sourceHeader.visibility = View.GONE
+        layOut(500)
+        assertEquals("the Original starts at its card", targetCard.bottom, sourceCard.top)
+        assertEquals(listOf(sourceCard.top, askHeader.top, wordsHeader.top), sections.rulesForTest())
+
+        // A hidden Original has nothing to rule off.
+        sourceCard.visibility = View.GONE
+        layOut(500)
+        assertEquals(listOf(askHeader.top, wordsHeader.top), sections.rulesForTest())
+    }
 }

@@ -2206,7 +2206,7 @@ class OverlayUiController(
         // The display's page: the one a window before this left, or a new
         // one at its idle prompt.
         val page = detachedPages.getOrPut(displayId) { DetachedPage(displayCtx, wm, displayId, overlayHost) }
-        window.setPage(page.view)
+        window.attachPage(page)
         Log.i(TAG, "showDetachedWindow[$displayId]")
         // Controls are on screen: the persisted session record says so, as
         // an icon's install does.

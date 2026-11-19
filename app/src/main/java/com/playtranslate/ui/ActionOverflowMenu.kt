@@ -19,7 +19,10 @@ import com.playtranslate.themeColor
  * The table behind a row's ⋯ ([FoldingActionRow.moreAnchor]; a section header's
  * [SectionHeaderRow], the detached window's bar): one
  * row per action the header folded, in the header's order, each with the
- * action's icon at the start and its short name. A row runs exactly what
+ * action's icon at the start and its short name, and its value at the end
+ * when it has one ([HeaderAction.detail]). A row that offers more than its
+ * folded actions lists them in groups, a hairline between
+ * ([FoldingActionRow.menuGroups]). A row runs exactly what
  * the inline button runs, from the same [HeaderAction]: a tap closes the
  * menu and then runs [HeaderAction.onClick], with ⋯ as the action's anchor,
  * so a popover it opens (the text-size picker) points there.
@@ -42,17 +45,30 @@ class ActionOverflowMenu(private val row: FoldingActionRow) : PopoverContent, Fo
 
     override fun createView(ctx: Context, host: PopoverHost): View {
         this.host = host
-        items = row.foldedActions()
+        val groups = row.menuGroups().filter { it.isNotEmpty() }
+        items = groups.flatten()
         row.addListener(this)
         val density = ctx.resources.displayMetrics.density
         val padV = (LIST_V_PAD_DP * density).toInt()
         val list = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, padV, 0, padV)
-            for (a in items) {
-                val v = buildRow(ctx, a)
-                rowViews[a] = v
-                addView(v, LinearLayout.LayoutParams(MATCH, WRAP))
+            for ((i, group) in groups.withIndex()) {
+                // A hairline rules one group off from the next.
+                if (i > 0) {
+                    addView(
+                        View(ctx).apply { setBackgroundColor(ctx.themeColor(R.attr.ptDivider)) },
+                        LinearLayout.LayoutParams(MATCH, maxOf(1, density.toInt())).apply {
+                            topMargin = (RULE_V_MARGIN_DP * density).toInt()
+                            bottomMargin = (RULE_V_MARGIN_DP * density).toInt()
+                        },
+                    )
+                }
+                for (a in group) {
+                    val v = buildRow(ctx, a)
+                    rowViews[a] = v
+                    addView(v, LinearLayout.LayoutParams(MATCH, WRAP))
+                }
             }
         }
         // The host caps the card at what it can show (a split-screen or
@@ -77,7 +93,7 @@ class ActionOverflowMenu(private val row: FoldingActionRow) : PopoverContent, Fo
     }
 
     override fun onFoldChanged(row: FoldingActionRow) {
-        if (row.foldedActions() != items) host?.takeIf { it.content === this }?.dismiss()
+        if (row.menuGroups().flatten() != items) host?.takeIf { it.content === this }?.dismiss()
     }
 
     override fun onActionChanged(action: HeaderAction) {
@@ -114,6 +130,18 @@ class ActionOverflowMenu(private val row: FoldingActionRow) : PopoverContent, Fo
                 label,
                 LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = dp(ICON_GAP_DP) },
             )
+            // The action's value, at the row's end ([HeaderAction.detail]).
+            addView(View(ctx), LinearLayout.LayoutParams(0, 0, 1f))
+            addView(
+                TextView(ctx).apply {
+                    id = R.id.overflowRowDetail
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, DETAIL_SP)
+                    setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
+                },
+                LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = dp(ICON_GAP_DP) },
+            )
         }
         v.setOnClickListener {
             val h = host ?: return@setOnClickListener
@@ -134,6 +162,10 @@ class ActionOverflowMenu(private val row: FoldingActionRow) : PopoverContent, Fo
             )
         }
         v.findViewById<TextView>(R.id.overflowRowLabel).text = a.label
+        v.findViewById<TextView>(R.id.overflowRowDetail).apply {
+            text = a.detail
+            visibility = if (a.detail.isNullOrEmpty()) View.GONE else View.VISIBLE
+        }
     }
 
     private companion object {
@@ -145,6 +177,8 @@ class ActionOverflowMenu(private val row: FoldingActionRow) : PopoverContent, Fo
         const val ICON_DP = 24f
         const val ICON_GAP_DP = 16f
         const val LABEL_SP = 15f
+        const val DETAIL_SP = 13f
+        const val RULE_V_MARGIN_DP = 4f
         const val LIST_V_PAD_DP = 8f
         const val MIN_W_DP = 160f
         const val MAX_W_DP = 280f

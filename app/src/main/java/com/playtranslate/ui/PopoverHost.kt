@@ -103,10 +103,18 @@ interface PopoverContent {
  * [below] (optional) is a host child the popover must stay under: the
  * capture sheet passes its controller focus ring, which then outlines the
  * menu's rows.
+ *
+ * One host is a window of its own ([FloatingPopover], for the detached
+ * window, which can be smaller than a menu): there the anchor lives in
+ * another window and is placed by its place on the screen.
  */
 class PopoverHost(
     private val host: FrameLayout,
     private val below: View? = null,
+    /** Whether an anchor outside [host]'s tree is accepted, placed by where
+     *  it is on the screen: a host that is a window of its own, showing a
+     *  popover for a view in another of our windows ([FloatingPopover]). */
+    private val anchorsInOtherWindows: Boolean = false,
 ) {
     /** Follows the popover. */
     interface Listener {
@@ -327,16 +335,33 @@ class PopoverHost(
     private fun anchorRectInHost(a: View, out: Rect): Boolean {
         if (!a.isAttachedToWindow) return false
         var v: View = a
+        var underHost = true
         while (true) {
             if (v.visibility == View.GONE) return false
             val parent = v.parent
             if (parent === host) break
-            v = parent as? View ?: return false
+            val up = parent as? View
+            if (up == null) {
+                // The top of another window's tree.
+                underHost = false
+                break
+            }
+            v = up
         }
         out.set(0, 0, a.width, a.height)
-        host.offsetDescendantRectToMyCoords(a, out)
+        if (underHost) {
+            host.offsetDescendantRectToMyCoords(a, out)
+            return true
+        }
+        if (!anchorsInOtherWindows || !host.isAttachedToWindow) return false
+        a.getLocationOnScreen(screenA)
+        host.getLocationOnScreen(screenHost)
+        out.offset(screenA[0] - screenHost[0], screenA[1] - screenHost[1])
         return true
     }
+
+    private val screenA = IntArray(2)
+    private val screenHost = IntArray(2)
 
     /** Close the showing popover. False when none was showing. */
     fun dismiss(): Boolean {

@@ -304,7 +304,7 @@ class DetachedWindowGestureTest {
     /** The room under the bar and its hairline for a card [cardHeight] tall. */
     private fun pageRoom(cardHeight: Int): Int = cardHeight - window.bar.height - 1
 
-    @Test fun `while a corner is dragged the bar follows the window, and the page keeps its layout until release`() {
+    @Test fun `while a corner is dragged the bar and the page follow the window, before the finger lifts`() {
         show()
         assertEquals(420, window.bar.width)
         assertEquals(420, page.width)
@@ -314,28 +314,26 @@ class DetachedWindowGestureTest {
         move(875f, 645f)
         assertEquals("the window follows the finger", Frame(400, 200, 480, 450), frame())
         assertEquals("and the bar with it", 480, window.bar.width)
-        assertEquals("the page does not", 420, page.width)
-        assertEquals(pageRoom(400), page.height)
-        assertEquals("pinned to the corner that stays, the left", 0, page.left)
-
-        up(875f, 645f)
-        assertEquals("laid out once the finger lifts", 480, page.width)
+        assertEquals("and the page", 480, page.width)
         assertEquals(pageRoom(450), page.height)
+
+        move(755f, 545f)
+        assertEquals(360, page.width)
+        assertEquals(pageRoom(350), page.height)
+        up(755f, 545f)
+        assertEquals(360, page.width)
     }
 
-    @Test fun `from the left corner the page stays with the right edge`() {
+    @Test fun `from the left corner the page follows too`() {
         show()
 
         down(405f, 595f)
         move(345f, 645f)
         assertEquals(Frame(340, 200, 480, 450), frame())
         assertEquals(480, window.bar.width)
-        assertEquals(420, page.width)
-        assertEquals("60 px of new card to its left", 60, page.left)
-
-        up(345f, 645f)
         assertEquals(480, page.width)
         assertEquals(0, page.left)
+        up(345f, 645f)
     }
 
     @Test fun `the bar folds and unfolds its actions as a corner is dragged, before the finger lifts`() {
@@ -375,7 +373,7 @@ class DetachedWindowGestureTest {
         assertEquals(Frame(400, 200, 130, 400), frame())
     }
 
-    @Test fun `widened from the capture button the page shows at once, laid out for the room it appeared in`() {
+    @Test fun `widened from the capture button the page shows at once, at the window's size`() {
         show(Frame(400, 200, 120, 120))
         assertFalse(window.showsPage)
         assertEquals("under the button the page has no layout", 0, page.width)
@@ -385,19 +383,16 @@ class DetachedWindowGestureTest {
         move(645f, 315f)
         assertTrue(window.showsPage)
         assertEquals(Frame(400, 200, 250, 120), frame())
-        assertEquals("laid out as it comes into view", 250, page.width)
+        assertEquals(250, page.width)
         assertEquals("in the room under the bar", pageRoom(120), page.height)
 
         move(745f, 315f)
-        assertEquals(Frame(400, 200, 350, 120), frame())
-        assertEquals("the bar goes on with the window", 350, window.bar.width)
-        assertEquals("the page is kept while the corner is dragged on", 250, page.width)
-
-        up(745f, 315f)
+        assertEquals(350, window.bar.width)
         assertEquals(350, page.width)
+        up(745f, 315f)
     }
 
-    @Test fun `narrowed to the button and widened again in one drag, the page is laid out for the width it comes back at`() {
+    @Test fun `narrowed to the button and widened again in one drag, the page comes back at the width it has now`() {
         show()
         assertEquals(420, page.width)
 

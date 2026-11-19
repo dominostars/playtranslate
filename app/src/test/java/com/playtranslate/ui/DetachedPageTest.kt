@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -173,8 +174,92 @@ class DetachedPageTest {
         assertSame(shown, (page.vm.result.value as ResultState.Ready).result)
     }
 
-    @Test fun `the sections start straight under the bar, with no gap above the first header`() {
-        assertTrue(page.view.findViewById<ResultSectionsLayout>(R.id.resultsScrollContent).flushTop)
+    // ── The compact page ─────────────────────────────────────────────────
+
+    private val sections get() = page.view.findViewById<ResultSectionsLayout>(R.id.resultsScrollContent)
+
+    @Test fun `the page is the compact one, with no language headers, no card frames and no pill`() {
+        page.vm.displayResult(result(), ctx)
+        settle()
+
+        assertEquals(View.GONE, view(R.id.sourceHeaderRow)!!.visibility)
+        assertEquals(View.GONE, view(R.id.targetHeaderRow)!!.visibility)
+        assertEquals("the texts stay", View.VISIBLE, view(R.id.cardOriginal)!!.visibility)
+        assertEquals(View.VISIBLE, view(R.id.cardTranslation)!!.visibility)
+        val card = view(R.id.cardTranslation) as com.google.android.material.card.MaterialCardView
+        assertEquals("no frame", 0, card.strokeWidth)
+        assertEquals("no fill", android.graphics.Color.TRANSPARENT, card.cardBackgroundColor.defaultColor)
+        assertNotEquals("the floating pill is the bar's Anki here", View.VISIBLE, view(R.id.btnAnkiPill)!!.visibility)
+        assertTrue("the sections start straight under the bar", sections.flushTop)
+        assertTrue("a hairline between them, in place of the cards", sections.sectionRules)
+        assertTrue("no pill to clear at the end of the scroll", sections.paddingBottom < view(R.id.btnAnkiPill)!!.height + 64)
+        assertEquals("the headers that stay are slim", 0, view(R.id.wordsHeaderRow)!!.paddingTop)
+        assertEquals(0, view(R.id.askHeaderRow)!!.paddingTop)
+    }
+
+    @Test fun `the headers' actions are the more menu's while a result is on show, the languages always`() {
+        val idleGroups = page.menuGroups()
+        assertTrue("a status has no text to act on", idleGroups[0].isEmpty())
+        assertEquals(
+            listOf(ctx.getString(R.string.lang_translate_from), ctx.getString(R.string.lang_translate_to)),
+            idleGroups[1].map { it.label.toString() },
+        )
+        assertTrue("each language row carries its language", idleGroups[1].all { !it.detail.isNullOrEmpty() })
+
+        page.vm.displayResult(result(), ctx)
+        settle()
+        val labels = page.menuGroups()[0].map { it.label.toString() }
+
+        assertTrue(ctx.getString(R.string.header_action_read_aloud) in labels)
+        assertTrue(ctx.getString(R.string.header_action_furigana) in labels)
+        assertTrue(ctx.getString(R.string.cd_text_size) in labels)
+        assertTrue(ctx.getString(R.string.header_action_hide_original) in labels)
+        assertTrue(ctx.getString(R.string.header_action_hide_translation) in labels)
+        assertFalse("no source edit here", ctx.getString(R.string.header_action_edit) in labels)
+    }
+
+    @Test fun `hiding the original from the menu hides its text, and the row then offers to show it`() {
+        page.vm.displayResult(result(), ctx)
+        settle()
+        val hide = page.menuGroups()[0].first { it.label.toString() == ctx.getString(R.string.header_action_hide_original) }
+
+        hide.onClick!!.invoke(page.view)
+        settle()
+
+        assertEquals(View.GONE, view(R.id.cardOriginal)!!.visibility)
+        val labels = page.menuGroups()[0].map { it.label.toString() }
+        assertTrue(ctx.getString(R.string.header_action_show_original) in labels)
+        assertFalse("what acts on the hidden text goes with it", ctx.getString(R.string.header_action_read_aloud) in labels)
+    }
+
+    @Test fun `Anki is offered while a result is on show, and not on a status`() {
+        var changes = 0
+        page.onAnkiAvailableChanged = { changes++ }
+        assertFalse(page.ankiAvailable)
+
+        page.vm.displayResult(result(), ctx)
+        settle()
+        assertTrue(page.ankiAvailable)
+        assertEquals(1, changes)
+
+        page.vm.showStatus("Capturing…")
+        settle()
+        assertFalse(page.ankiAvailable)
+        assertEquals(2, changes)
+    }
+
+    @Test fun `Text size opens through the window's popover when a window is attached`() {
+        page.vm.displayResult(result(), ctx)
+        settle()
+        val shown = mutableListOf<Pair<PopoverContent, View>>()
+        page.popoverPresenter = { content, anchor -> shown += content to anchor }
+        val textSize = page.menuGroups()[0].first { it.label.toString() == ctx.getString(R.string.cd_text_size) }
+        val anchor = View(ctx)
+
+        textSize.onClick!!.invoke(anchor)
+
+        assertEquals(1, shown.size)
+        assertSame(anchor, shown[0].second)
     }
 
     @Test fun `the page offers no source edit`() {

@@ -176,6 +176,25 @@ class TranslationResultContent(
          *  Translations they need the deferred translation whatever the
          *  section's eye says ([requestDeferredCompletion]). */
         val captureModeOnScreen: OverlayMode? get() = null
+
+        /**
+         * The compact page, for a host that is a small window with a bar of
+         * its own (the detached window). The same page and the same code,
+         * arranged to spend less: no language headers (their actions are
+         * the host's to list, [TranslationSectionBinder.menuActions]), the
+         * Original and the Translation as plain text with a hairline
+         * between, no floating Anki pill (the host offers [onAddToAnki] and
+         * [onAnkiOneTap] itself), slim Ask and Words headers, and the texts
+         * fitted to the room they actually have, again on every change of
+         * the page's size.
+         */
+        val compact: Boolean get() = false
+
+        /** Show one of the page's own popovers (the text-size picker) for
+         *  [anchor]. True when the host showed it itself, which one whose
+         *  window can be smaller than the popover does; false leaves it to
+         *  the page's in-window host. */
+        fun showPopover(content: PopoverContent, anchor: View): Boolean = false
     }
 
     val scrollView: ScrollView = root.findViewById(R.id.resultsContent)
@@ -318,7 +337,9 @@ class TranslationResultContent(
             // header above it keeps its height).
             onRangeChanged = { fitTextSizes() }
         }
-        binder.onChooseFontSize = { anchor -> popovers.toggle(fontPicker, anchor) }
+        binder.onChooseFontSize = { anchor ->
+            if (!host.showPopover(fontPicker, anchor)) popovers.toggle(fontPicker, anchor)
+        }
         binder.onChooseOcr = {
             currentReady()?.ocrProvenance?.let { host.onChooseOcr(it) }
         }
@@ -352,12 +373,38 @@ class TranslationResultContent(
         // which must not resize the text being asked about. The first
         // layout of a reveal is not this path (the results are still
         // INVISIBLE; [revealFitted] fits them).
-        scrollView.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
-            if (right - left != oldRight - oldLeft && scrollView.isVisible) {
+        //
+        // The compact page fits again on a height change too: its window is
+        // resized by hand, and a keyboard moves that window instead of
+        // resizing it.
+        scrollView.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+            val resized = right - left != oldRight - oldLeft ||
+                (host.compact && bottom - top != oldBottom - oldTop)
+            if (resized && scrollView.isVisible) {
                 scrollView.post { if (host.isAlive) fitTextSizes() }
             }
         }
         root.findViewById<View>(R.id.btnResultClear).setOnClickListener { host.onClear() }
+        if (host.compact) applyCompactLook()
+    }
+
+    /** The compact page's arrangement ([Host.compact]), applied once. */
+    private fun applyCompactLook() {
+        val density = ctx.resources.displayMetrics.density
+        binder.applyCompactLook()
+        sections.flushTop = true
+        sections.sectionRules = true
+        // No pill to clear at the end of the scroll.
+        sections.setPadding(
+            sections.paddingLeft, sections.paddingTop, sections.paddingRight,
+            (COMPACT_END_PAD_DP * density).toInt(),
+        )
+        // The headers that stay (Ask, Words) lose the room a card above them
+        // needed.
+        for (id in intArrayOf(R.id.askHeaderRow, R.id.wordsHeaderRow)) {
+            val header = root.findViewById<View>(id) ?: continue
+            header.setPadding(header.paddingLeft, 0, header.paddingRight, 0)
+        }
     }
 
     // ── Reads ────────────────────────────────────────────────────────────
@@ -484,7 +531,7 @@ class TranslationResultContent(
     private fun syncAnkiPill() {
         val onShow = lastRendered is ResultState.Translating || lastRendered is ResultState.Ready
         val typing = ask.fieldHasFocus && keyboardShown()
-        ankiPill.isVisible = onShow && !typing
+        ankiPill.isVisible = !host.compact && onShow && !typing
     }
 
     /** Mirror a word-lookup state ([WordLookupsRenderer]): the tap spans +
@@ -545,9 +592,15 @@ class TranslationResultContent(
 
     /** Shrink translation and original text to the visible scroll area:
      *  half of it each when stacked, all of it each when paired
-     *  ([TranslationSectionBinder.fitToViewport]). */
+     *  ([TranslationSectionBinder.fitToViewport]); on the compact page, an
+     *  equal part each of what is really left of it
+     *  ([TranslationSectionBinder.fitToRoom]). */
     fun fitTextSizes() {
         val height = scrollView.height.takeIf { it > 0 } ?: return
+        if (host.compact) {
+            binder.fitToRoom(height)
+            return
+        }
         binder.fitToViewport(
             height, paired = sections.arrangement == ResultSectionsLayout.Arrangement.PAIRED,
         )
@@ -681,6 +734,10 @@ private fun ScrollView.restoreScrollSilently(y: Int, listener: View.OnScrollChan
     scrollTo(0, y)
     setOnScrollChangeListener(listener)
 }
+
+/** The room at the end of the compact page's scroll, where the full page
+ *  leaves the Anki pill's clearance. */
+private const val COMPACT_END_PAD_DP = 8f
 
 /** Top of [descendant] in this ScrollView's content coordinate space —
  *  independent of the current scroll offset (offsetDescendantRectToMyCoords

@@ -121,21 +121,70 @@ class DetachedWindowMenusTest {
         layOut()
     }
 
-    /** Every row of the open popover that shows [text], by its click target. */
-    private fun rowWith(text: String): View {
-        fun find(v: View): View? {
-            if (v is TextView && v.text.toString() == text) return v
-            if (v is ViewGroup) for (i in 0 until v.childCount) find(v.getChildAt(i))?.let { return it }
-            return null
+    /** The popover's own window, laid out as the window manager would and
+     *  given a turn of the looper for its card to come up. */
+    private fun popoverRoot(): ViewGroup {
+        val root = window.popovers.rootForTest as? ViewGroup ?: error("no popover window")
+        repeat(2) {
+            root.measure(
+                View.MeasureSpec.makeMeasureSpec(1280, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(800, View.MeasureSpec.EXACTLY),
+            )
+            root.layout(0, 0, 1280, 800)
+            idle()
         }
-        var v: View = find(window.root) ?: error("no row \"$text\"")
+        return root
+    }
+
+    private fun find(v: View, text: String): View? {
+        if (v is TextView && v.text.toString() == text) return v
+        if (v is ViewGroup) for (i in 0 until v.childCount) find(v.getChildAt(i), text)?.let { return it }
+        return null
+    }
+
+    /** The row of the open popover that shows [text], by its click target. */
+    private fun rowWith(text: String): View {
+        var v: View = find(popoverRoot(), text) ?: error("no row \"$text\"")
         while (!v.hasOnClickListeners()) v = v.parent as View
         return v
     }
 
+    private fun hasRow(text: String): Boolean = find(popoverRoot(), text) != null
+
+    /** A tap off the popover's card: its scrim, the window's first child. */
+    private fun tapOutside() {
+        popoverRoot().getChildAt(0).performClick()
+        idle()
+    }
+
+    /** What stands in for the results page. */
+    private class FakePage(ctx: Context) : DetachedWindow.Page {
+        override val view: View = View(ctx)
+        val speak = HeaderAction(R.id.btnSpeakOriginal, R.drawable.ic_lens_speak, "Read aloud")
+        val language = HeaderAction(R.id.detachedMenuGameLanguage, R.drawable.ic_translate, "Game Language")
+            .apply { detail = "Japanese" }
+        var groups: List<List<HeaderAction>> = listOf(listOf(speak), listOf(language))
+        val listeners = mutableListOf<FoldingActionRow.Listener>()
+        var adds = 0
+        var oneTaps = 0
+
+        override fun menuGroups() = groups
+        override fun addMenuListener(listener: FoldingActionRow.Listener) { listeners += listener }
+        override fun removeMenuListener(listener: FoldingActionRow.Listener) { listeners -= listener }
+        override var ankiAvailable = false
+            set(value) {
+                field = value
+                onAnkiAvailableChanged?.invoke()
+            }
+        override var onAnkiAvailableChanged: (() -> Unit)? = null
+        override fun addToAnki() { adds++ }
+        override fun ankiOneTap() { oneTaps++ }
+        override var popoverPresenter: ((PopoverContent, View) -> Unit)? = null
+    }
+
     // ── Quick settings ───────────────────────────────────────────────────
 
-    @Test fun `Settings opens the quick settings' rows, and a second tap closes them`() {
+    @Test fun `Settings opens the quick settings' rows, and a tap off them closes them`() {
         show()
 
         tap(bar(R.id.detachedBarSettings))
@@ -144,8 +193,25 @@ class DetachedWindowMenusTest {
         rowWith("Overlays")
         rowWith("Open PlayTranslate")
 
-        tap(bar(R.id.detachedBarSettings))
+        tapOutside()
         assertFalse(window.popovers.isShowing)
+    }
+
+    @Test fun `a popover is a window of its own, as large as the display, and goes with its card`() {
+        show(Frame(400, 200, 200, 120))
+
+        tap(window.bar.moreButton)
+        val root = popoverRoot()
+        var up: View? = root
+        while (up != null && up !== window.root) up = up.parent as? View
+        assertTrue("not inside the window, which is smaller than the menu", up == null)
+        val p = root.layoutParams as WindowManager.LayoutParams
+        assertEquals("the display's width (the overlay host pins it)", 1280, p.width)
+        assertEquals(800, p.height)
+        assertTrue("takes no keys", p.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE != 0)
+
+        tapOutside()
+        assertTrue("the window went with the card", window.popovers.rootForTest == null)
     }
 
     @Test fun `a row runs its action, and one that leaves closes the popover`() {
@@ -168,7 +234,6 @@ class DetachedWindowMenusTest {
         // Narrow enough that Minimize and Settings fold (the bar's own fold
         // table is DetachedWindowBarTest).
         show(Frame(400, 200, 300, 400))
-        assertEquals(View.VISIBLE, window.bar.moreButton.visibility)
         val folded = window.bar.foldedActions().map { it.label.toString() }
         assertTrue("Minimize folds first", ctx.getString(R.string.detached_bar_minimize) in folded)
 
@@ -180,13 +245,86 @@ class DetachedWindowMenusTest {
         assertFalse(window.popovers.isShowing)
     }
 
-    @Test fun `the more button toggles its menu`() {
+    @Test fun `the more menu lists the bar's folded actions, then the page's own, each group ruled off`() {
         show(Frame(400, 200, 300, 400))
+        val page = FakePage(ctx)
+        window.attachPage(page)
+        layOut()
+        var spoke: View? = null
+        page.speak.onClick = { spoke = it }
 
         tap(window.bar.moreButton)
-        assertTrue(window.popovers.isShowing)
-        tap(window.bar.moreButton)
+
+        assertTrue(hasRow(ctx.getString(R.string.detached_bar_minimize)))
+        assertTrue(hasRow("Read aloud"))
+        assertTrue(hasRow("Game Language"))
+        assertTrue("a row's value at its end", hasRow("Japanese"))
+        assertEquals("the menu follows the page's actions", 1, page.listeners.size)
+
+        tap(rowWith("Read aloud"))
+        assertEquals("run with the more button as its anchor", window.bar.moreButton, spoke)
         assertFalse(window.popovers.isShowing)
+        assertTrue("and no longer followed", page.listeners.isEmpty())
+    }
+
+    @Test fun `with every bar action in view the more button still opens the page's actions`() {
+        show(Frame(100, 200, 1000, 400))
+        window.attachPage(FakePage(ctx))
+        layOut()
+        assertTrue(window.bar.foldedActions().isEmpty())
+        assertEquals(View.VISIBLE, window.bar.moreButton.visibility)
+
+        tap(window.bar.moreButton)
+
+        assertTrue(hasRow("Read aloud"))
+        assertFalse(hasRow(ctx.getString(R.string.detached_bar_minimize)))
+    }
+
+    // ── The page's parts on the bar ──────────────────────────────────────
+
+    @Test fun `Anki stands on the bar while the page has a result, a tap opening the review and a hold sending the card`() {
+        show(Frame(100, 200, 1000, 400))
+        val page = FakePage(ctx)
+        window.attachPage(page)
+        layOut()
+        assertEquals("nothing to make a card of", View.GONE, bar(R.id.detachedBarAnki).visibility)
+
+        page.ankiAvailable = true
+        layOut()
+        assertEquals(View.VISIBLE, bar(R.id.detachedBarAnki).visibility)
+
+        bar(R.id.detachedBarAnki).performClick()
+        assertEquals(1, page.adds)
+        bar(R.id.detachedBarAnki).performLongClick()
+        assertEquals(1, page.oneTaps)
+        assertEquals("the hold is not a tap", 1, page.adds)
+
+        page.ankiAvailable = false
+        layOut()
+        assertEquals(View.GONE, bar(R.id.detachedBarAnki).visibility)
+    }
+
+    @Test fun `the page's own popovers open in the window's, and a page taken out is unhooked`() {
+        show()
+        val page = FakePage(ctx)
+        window.attachPage(page)
+        layOut()
+        val content = object : PopoverContent {
+            override fun createView(ctx: Context, host: PopoverHost): View = TextView(ctx).apply { text = "Text size" }
+            override fun cardWidth(ctx: Context, natural: Int): Int = 200
+        }
+
+        page.popoverPresenter!!.invoke(content, window.bar.moreButton)
+        assertTrue(window.popovers.isShowing)
+        assertTrue(hasRow("Text size"))
+
+        window.attachPage(null)
+        assertFalse("its popover goes with it", window.popovers.isShowing)
+        assertTrue(page.popoverPresenter == null)
+        assertTrue(page.onAnkiAvailableChanged == null)
+        page.ankiAvailable = true
+        layOut()
+        assertEquals(View.GONE, bar(R.id.detachedBarAnki).visibility)
     }
 
     // ── What the actions say ─────────────────────────────────────────────

@@ -338,6 +338,11 @@ class TranslationSectionBinder(
             )
         }
         sourceEye.icon = if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility
+        // The eye's name where it is listed in a menu (the compact page's);
+        // inline it is its icon and its spoken name, which stay.
+        sourceEye.label = ctx.getString(
+            if (hidden) R.string.header_action_show_original else R.string.header_action_hide_original,
+        )
         sourceRow.labelDimmed = hidden
         syncResultActions()
     }
@@ -436,6 +441,9 @@ class TranslationSectionBinder(
         // present the whole result. The eye stays put either way (pinned at
         // the end).
         targetEye.icon = if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility
+        targetEye.label = ctx.getString(
+            if (hidden) R.string.header_action_show_translation else R.string.header_action_hide_translation,
+        )
         targetRow.labelDimmed = hidden
         syncResultActions()
     }
@@ -570,6 +578,65 @@ class TranslationSectionBinder(
                 (viewportHeightPx - sourceRow.height - sourceContentOverhead()).coerceAtLeast(1),
             sourceMeasuresRuby = false,
         )
+    }
+
+    // ── The compact page ─────────────────────────────────────────────────
+
+    /**
+     * The compact look, for a host with a bar of its own to hold the
+     * headers' actions (the detached window): the two language headers are
+     * gone and the Original and the Translation are plain text on the
+     * surface, their cards' frames and inner side padding dropped. Nothing
+     * else changes: the same views, the same models, the same eyes. Applied
+     * once, when the page is built.
+     */
+    fun applyCompactLook() {
+        sourceRow.visibility = View.GONE
+        targetRow.visibility = View.GONE
+        val v = (COMPACT_TEXT_V_PAD_DP * ctx.resources.displayMetrics.density).toInt()
+        for ((card, content) in listOf(cardOriginal to originalContent, cardTranslation to translationContent)) {
+            card.setCardBackgroundColor(android.graphics.Color.TRANSPARENT)
+            card.strokeWidth = 0
+            card.radius = 0f
+            content.setPadding(0, v, 0, v)
+        }
+    }
+
+    /**
+     * The headers' actions for a menu, where the compact page lists them
+     * with its headers gone ([applyCompactLook]): the Original's (read
+     * aloud, furigana, edit), Text size wherever it is offered, then the two
+     * eyes. The same models the headers hold, so each runs and reads exactly
+     * as its button would; only the available ones.
+     */
+    fun menuActions(): List<HeaderAction> =
+        listOf(speak, furigana, edit, textSize, textSizeInSource, sourceEye, targetEye).filter { it.available }
+
+    /** The two header rows, for a menu that lists [menuActions] to follow
+     *  their changes. */
+    fun actionRows(): List<FoldingActionRow> = listOf(sourceRow, targetRow)
+
+    /** The language names the two headers show, read now. */
+    val sourceLanguageName: CharSequence get() = sourceLangLocalizedDisplayName()
+    val targetLanguageName: CharSequence get() = targetLangDisplayName()
+
+    /**
+     * The compact page's fit to its scroll viewport, [viewportHeightPx]
+     * tall: the texts on show share it, an equal part each of what their own
+     * chrome (padding, the "Translated by" and "Scanned by" rows) leaves, so
+     * the two fit in view together down to the smallest text size. The
+     * source is measured with its ruby, as the capture sheet does: here the
+     * point is that it fits.
+     */
+    fun fitToRoom(viewportHeightPx: Int) {
+        val showTarget = !prefs.hideTranslationSection
+        val showSource = !prefs.hideOriginalSection
+        val shown = (if (showTarget) 1 else 0) + (if (showSource) 1 else 0)
+        if (shown == 0) return
+        val chrome = (if (showTarget) targetContentOverhead() else 0) +
+            (if (showSource) sourceContentOverhead() else 0)
+        val each = ((viewportHeightPx - chrome) / shown).coerceAtLeast(1)
+        fitText(translationTargetPx = each, sourceTargetPx = each)
     }
 
     // ── Buttons + text fitting ───────────────────────────────────────────
@@ -822,5 +889,8 @@ class TranslationSectionBinder(
          *  selectable span (16sp) that resolves to ~0.06sp — still continuous
          *  enough for the panel's height animation to scale text smoothly. */
         const val BISECT_STEPS = 8
+
+        /** The room above and below each text of the compact page. */
+        const val COMPACT_TEXT_V_PAD_DP = 6f
     }
 }

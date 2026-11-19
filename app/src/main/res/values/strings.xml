@@ -3307,6 +3307,26 @@
          row. -->
     <string name="cd_toggle_original_visibility">Toggle original visibility</string>
 
+    <!-- Name of the eye action's row in the detached window's "More
+         actions" menu while the original (game) text is shown: tapping it
+         hides that text. A short command; the row's icon is an eye. -->
+    <string name="header_action_hide_original">Hide original</string>
+
+    <!-- Name of the same row while the original (game) text is hidden:
+         tapping it shows that text again. A short command; the row's icon
+         is a crossed-out eye. -->
+    <string name="header_action_show_original">Show original</string>
+
+    <!-- Name of the eye action's row in the detached window's "More
+         actions" menu while the translation is shown: tapping it hides the
+         translation. A short command; the row's icon is an eye. -->
+    <string name="header_action_hide_translation">Hide translation</string>
+
+    <!-- Name of the same row while the translation is hidden: tapping it
+         shows the translation again. A short command; the row's icon is a
+         crossed-out eye. -->
+    <string name="header_action_show_translation">Show translation</string>
+
     <!-- contentDescription for the eye-toggle on the words section. -->
     <string name="cd_toggle_words_visibility">Toggle words visibility</string>
 

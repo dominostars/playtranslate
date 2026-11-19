@@ -105,6 +105,11 @@ class TranslationResultContentTest {
         override val opensWithoutEntry: Boolean = false
         override fun wireLensActions(lens: MagnifierLens, resolved: SourceWordLookup.ResolvedAt) = Unit
 
+        /** The compact page ([TranslationResultContent.Host.compact]); set
+         *  before the content is built. */
+        var compactPage = false
+        override val compact: Boolean get() = compactPage
+
         val rendered = mutableListOf<ResultState>()
         val tappedWords = mutableListOf<Triple<String, String?, String?>>()
         /** Each tap's detail key (lookupForm, lookupReading). */
@@ -919,6 +924,78 @@ class TranslationResultContentTest {
         idle()
         assertEquals("still the pinned page", 500, viewportHeight)
         assertEquals("no re-fit for a height change", beforeKeyboard, sizes())
+    }
+
+    // ── The compact page's fit ───────────────────────────────────────────
+
+    /** The page built again as the compact one, in place of [setUp]'s. */
+    private fun rebuildCompact() {
+        content.release()
+        root = LayoutInflater.from(activity).inflate(R.layout.fragment_translation_result, null)
+        activity.setContentView(root)
+        host = FakeHost(activity, scope).apply { compactPage = true }
+        content = TranslationResultContent(root, activity, Prefs(activity), vm, host, keyboardShown = { keyboard })
+    }
+
+    /** Compact: the two texts share the viewport, an equal part each of
+     *  what their own chrome leaves. */
+    private fun compactRule(): Pair<Float, Float> {
+        val each = (viewportHeight - sourceChrome - translationChrome) / 2
+        return fittedTo(each, each)
+    }
+
+    @Test
+    @Config(qualifiers = "w412dp-h420dp-mdpi")
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `compact, the two texts are fitted to share what is left of the viewport, and fit in view together`() {
+        rebuildCompact()
+        renderLongResult()
+        pinPage(412, 420)
+        content.fitTextSizes()
+        assertSizes("compact", compactRule(), sizes())
+        assertBetweenBounds(sizes())
+
+        // Laid out at those sizes, the pair with its chrome is in view whole.
+        pinPage(412, 420)
+        val used = view(R.id.tvOriginal).height + view(R.id.tvTranslation).height + sourceChrome + translationChrome
+        assertTrue("$used px in a viewport of $viewportHeight", used <= viewportHeight)
+    }
+
+    @Test
+    @Config(qualifiers = "w412dp-h420dp-mdpi")
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `compact, a shorter page posts a re-fit and the text shrinks to it`() {
+        rebuildCompact()
+        renderLongResult()
+        pinPage(412, 420)
+        idle()
+        content.fitTextSizes()
+        val tall = sizes()
+        assertSizes("the tall page's fit", compactRule(), tall)
+
+        // The window dragged shorter: only the height changes.
+        pinPage(412, 340)
+        assertEquals("posted, not run inside the layout pass", tall, sizes())
+        idle()
+        assertEquals("still the pinned page", 340, viewportHeight)
+        assertSizes("re-fitted to the shorter page", compactRule(), sizes())
+        assertTrue("the Original shrank", sizes().first < tall.first)
+        assertTrue("the Translation shrank", sizes().second < tall.second)
+    }
+
+    @Test
+    @Config(qualifiers = "w412dp-h420dp-mdpi")
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `compact, with the Translation hidden the Original has the whole room`() {
+        Prefs(app).hideTranslationSection = true
+        rebuildCompact()
+        renderLongResult()
+        pinPage(412, 420)
+        content.fitTextSizes()
+
+        assertEquals(
+            px(content.binder.sourceSizeFor(viewportHeight - sourceChrome)), sizes().first, 0.01f,
+        )
     }
 
     // ── Play automatically ───────────────────────────────────────────────

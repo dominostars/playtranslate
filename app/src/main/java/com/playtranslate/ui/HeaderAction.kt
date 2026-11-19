@@ -73,6 +73,15 @@ class HeaderAction(
             notifyChanged(affectsWidth = false)
         }
 
+    /** A value shown at the end of the action's menu row (a language row's
+     *  current language); null for none. Inline buttons do not show it. */
+    var detail: CharSequence? = null
+        set(value) {
+            if (field?.toString() == value?.toString()) return
+            field = value
+            notifyChanged(affectsWidth = false)
+        }
+
     /** Runs the action. [anchor] is the view presenting it right now: the
      *  inline button, or ⋯ when it ran from the menu (a popover the action
      *  opens anchors there). */
@@ -94,6 +103,11 @@ class HeaderAction(
 interface FoldingActionRow {
     /** The available actions the last fit folded behind ⋯, in order. */
     fun foldedActions(): List<HeaderAction>
+
+    /** What the ⋯ menu lists, in groups it rules off from one another: the
+     *  folded actions as one group, unless the row has more to offer there
+     *  (the detached window's bar adds its page's actions). */
+    fun menuGroups(): List<List<HeaderAction>> = listOf(foldedActions())
 
     /** The ⋯ button: the anchor for the menu and for any popover a menu
      *  action opens. */

@@ -63,11 +63,9 @@ import kotlin.math.roundToInt
  *
  * Gestures, one arbiter ([Root]):
  *  - a bottom corner resizes ([DetachedWindowGeometry.resized]); the bar
- *    follows the window's width as it goes, folding and unfolding its
- *    actions, while the page under it keeps the layout it had and lays out
- *    once on release, since a per-frame re-layout of the page is the cost
- *    the capture sheet's drag already has; crossing the page width shows at
- *    once;
+ *    and the page follow the window's size as it goes, the bar folding and
+ *    unfolding its actions and the page fitting its text again; crossing
+ *    the page width shows at once;
  *  - the bar, and the capture button, move the window on any drag;
  *  - inside the page only a very clear sideways drag moves it
  *    ([DetachedWindowGeometry.isClearSideways]); everything else is the
@@ -116,6 +114,35 @@ internal class DetachedWindow(
         fun exitTurnsOff(): Boolean
     }
 
+    /**
+     * What the window needs of the page it shows ([attachPage]): its view,
+     * and the parts of the page that live in the window's bar because the
+     * compact page has no headers and no floating pill of its own.
+     */
+    interface Page {
+        val view: View
+
+        /** The page's actions for the more menu, in groups: what its
+         *  headers held, then its languages. */
+        fun menuGroups(): List<List<HeaderAction>>
+        fun addMenuListener(listener: FoldingActionRow.Listener)
+        fun removeMenuListener(listener: FoldingActionRow.Listener)
+
+        /** Whether there is a result on show to make a card of. */
+        val ankiAvailable: Boolean
+
+        /** [ankiAvailable] changed. */
+        var onAnkiAvailableChanged: (() -> Unit)?
+
+        /** Add to Anki: the tap opens the review, the hold sends the card. */
+        fun addToAnki()
+        fun ankiOneTap()
+
+        /** Where the page's own popovers open (its text-size picker): the
+         *  window's, which may reach past the window. */
+        var popoverPresenter: ((PopoverContent, View) -> Unit)?
+    }
+
     private val ctx: Context = overlayThemedContext(displayCtx)
     private val density = ctx.resources.displayMetrics.density
     private val slop = ViewConfiguration.get(ctx).scaledTouchSlop
@@ -140,7 +167,6 @@ internal class DetachedWindow(
     }
     val bar = DetachedWindowBar(ctx)
     private val pageSlot = FrameLayout(ctx).apply { id = R.id.detachedPageSlot }
-    private var pageView: View? = null
     private val column = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
     private val captureButton = PrimaryActionButton(ctx).apply {
         id = R.id.detachedCaptureButton
@@ -149,9 +175,29 @@ internal class DetachedWindow(
         setOnClickListener { host.onCapture(displayId) }
     }
 
-    /** The bar's popovers (its more menu, the quick settings): the page's own
-     *  host only takes anchors inside the page. */
-    val popovers = PopoverHost(card)
+    private var page: Page? = null
+
+    /** The window's popovers (the more menu, the quick settings, the page's
+     *  text-size picker), in an overlay window of their own: the window can
+     *  be smaller than any of them. */
+    val popovers = FloatingPopover(ctx, wm, displayId, overlayHost)
+
+    /** What the more button's menu lists: the bar's folded actions, then the
+     *  page's groups; it follows both for changes. */
+    private val menuRow = object : FoldingActionRow {
+        override fun foldedActions(): List<HeaderAction> = bar.foldedActions()
+        override fun menuGroups(): List<List<HeaderAction>> =
+            listOf(bar.foldedActions()) + (page?.menuGroups() ?: emptyList())
+        override val moreAnchor: View get() = bar.moreButton
+        override fun addListener(listener: FoldingActionRow.Listener) {
+            bar.addListener(listener)
+            page?.addMenuListener(listener)
+        }
+        override fun removeListener(listener: FoldingActionRow.Listener) {
+            bar.removeListener(listener)
+            page?.removeMenuListener(listener)
+        }
+    }
 
     private val captureAction = HeaderAction(
         R.id.detachedBarCapture, R.drawable.ic_capture, ctx.getString(R.string.detached_bar_capture),
@@ -160,6 +206,12 @@ internal class DetachedWindow(
         R.id.detachedBarAuto, R.drawable.ic_play, ctx.getString(R.string.live_mode_auto_label),
         contentDescription = ctx.getString(R.string.live_mode_auto_translate_label),
     ).apply { onClick = { host.onToggleAuto(displayId) } }
+    private val ankiAction = HeaderAction(
+        R.id.detachedBarAnki, R.drawable.ic_card_stack_add, ctx.getString(R.string.cd_add_to_anki),
+    ).apply {
+        available = false
+        onClick = { page?.addToAnki() }
+    }
     private val regionAction = HeaderAction(
         R.id.detachedBarRegion, R.drawable.ic_crop, ctx.getString(R.string.floating_menu_edit_region),
     ).apply { onClick = { host.onEditRegion(displayId) } }
@@ -208,11 +260,12 @@ internal class DetachedWindow(
     init {
         bar.setActions(
             DetachedWindowBar.Actions(
-                capture = captureAction, auto = autoAction, editRegion = regionAction,
+                capture = captureAction, auto = autoAction, anki = ankiAction, editRegion = regionAction,
                 settings = settingsAction, minimize = minimizeAction, exit = exitAction,
             ),
         )
-        bar.onMoreClick = { toggle(it.moreButton) { ActionOverflowMenu(bar) } }
+        bar.setOnHold(ankiAction) { page?.ankiOneTap() }
+        bar.onMoreClick = { toggle(it.moreButton) { ActionOverflowMenu(menuRow) } }
         column.addView(bar, LinearLayout.LayoutParams(MATCH, barPx))
         column.addView(
             View(ctx).apply { setBackgroundColor(ctx.themeColor(R.attr.ptDivider)) },
@@ -244,17 +297,33 @@ internal class DetachedWindow(
     fun remove() {
         endGesture()
         imeWatcher.detach()
-        popovers.dismiss()
-        pageSlot.removeAllViews()
-        pageView = null
+        attachPage(null)
         if (added) overlayHost.removeOverlayWindow(root)
         added = false
     }
 
-    /** The results page's view, shown under the bar; null takes it out. */
+    /**
+     * [page] is the window's page from here: its view under the bar, its
+     * actions in the more menu, its Add to Anki on the bar, and its popovers
+     * in the window's. Null takes the page out and unhooks it.
+     */
+    fun attachPage(page: Page?) {
+        popovers.dismiss()
+        this.page?.let {
+            it.onAnkiAvailableChanged = null
+            it.popoverPresenter = null
+        }
+        this.page = page
+        setPage(page?.view)
+        ankiAction.available = page?.ankiAvailable ?: false
+        page ?: return
+        page.onAnkiAvailableChanged = { ankiAction.available = page.ankiAvailable }
+        page.popoverPresenter = { content, anchor -> popovers.show(content, anchor) }
+    }
+
+    /** The view shown under the bar; null takes it out. */
     fun setPage(view: View?) {
         pageSlot.removeAllViews()
-        pageView = view
         if (view == null) return
         (view.parent as? ViewGroup)?.removeView(view)
         pageSlot.addView(view, FrameLayout.LayoutParams(MATCH, MATCH))
@@ -427,7 +496,6 @@ internal class DetachedWindow(
         // The user takes the window's place over from the keyboard's lift.
         imeLift = 0
         gesture = next
-        if (next is Gesture.Resize) freeze(next.corner)
     }
 
     private fun drag(ev: MotionEvent) {
@@ -448,15 +516,7 @@ internal class DetachedWindow(
             is Gesture.Resize -> {
                 val next = g.resized(gesture.start, gesture.corner, dx, dy, room, density)
                 commit(next)
-                val page = g.isPage(next.w, density)
-                // Coming into view the page is laid out once, at the room
-                // under the bar now: under the button it has no layout worth
-                // keeping (none at all, or the one from before it was
-                // narrowed).
-                if (page && !showsPage) {
-                    freeze(gesture.corner, next.w, (next.h - barPx - dividerPx).coerceAtLeast(0))
-                }
-                setShowsPage(page)
+                setShowsPage(g.isPage(next.w, density))
             }
         }
     }
@@ -486,29 +546,11 @@ internal class DetachedWindow(
      *  ([release] saves), or the display changed under it and the window
      *  goes back to its rest place. */
     fun endGesture() {
-        val ended = gesture ?: return
+        gesture ?: return
         gesture = null
         claim = Claim.NONE
         dockTimer.removeCallbacks(armDock)
         card.alpha = 1f
-        if (ended is Gesture.Resize) thaw()
-    }
-
-    /** Hold the page at one size ([width] by [height], the size it has
-     *  unless given), pinned to the corner that stays put, while a corner is
-     *  dragged: its text fit and its Words list are not laid out again for
-     *  every step of the finger. The bar is not held; it follows the
-     *  window's width, folding and unfolding its actions as it goes. */
-    private fun freeze(corner: Corner, width: Int? = null, height: Int? = null) {
-        val page = pageView ?: return
-        page.layoutParams = FrameLayout.LayoutParams(
-            width ?: page.width, height ?: page.height,
-            Gravity.TOP or if (corner == Corner.BOTTOM_LEFT) Gravity.RIGHT else Gravity.LEFT,
-        )
-    }
-
-    private fun thaw() {
-        pageView?.layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
     }
 
     // ── The bar's popovers ────────────────────────────────────────────────

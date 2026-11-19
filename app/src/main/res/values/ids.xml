@@ -57,6 +57,7 @@
     <!-- An ActionOverflowMenu row's parts. -->
     <item name="overflowRowIcon" type="id" />
     <item name="overflowRowLabel" type="id" />
+    <item name="overflowRowDetail" type="id" />
     <!-- A quick settings row's tag: the QuickSetting.Id it shows. -->
     <item name="quickSettingRow" type="id" />
     <!-- The detached window's bar: one id per action's inline view, and its
@@ -68,6 +69,9 @@
     <item name="detachedBarMinimize" type="id" />
     <item name="detachedBarExit" type="id" />
     <item name="detachedBarMore" type="id" />
+    <item name="detachedBarAnki" type="id" />
+    <item name="detachedMenuGameLanguage" type="id" />
+    <item name="detachedMenuYourLanguage" type="id" />
     <!-- The detached window's card, its page slot and its capture button. -->
     <item name="detachedCard" type="id" />
     <item name="detachedPageSlot" type="id" />

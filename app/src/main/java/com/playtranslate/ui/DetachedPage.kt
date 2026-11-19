@@ -54,6 +54,13 @@ import kotlinx.coroutines.launch
  * ([TranslationSectionBinder.setShowOnScreenAvailable]), which this one never
  * does.
  *
+ * The page is the compact one ([TranslationResultContent.Host.compact]): the
+ * window is small and has a bar, so the page shows no language headers and
+ * no floating Anki pill, and hands the window what they held
+ * ([DetachedWindow.Page]): the headers' actions and the two languages for
+ * the more menu, Add to Anki for the bar, and its text-size picker to open
+ * in the window's popover.
+ *
  * The page goes back to the idle prompt, dropping a capture on its way,
  * when either language setting changes: a result belongs to the languages
  * it was read and translated in. It does not listen to the service's
@@ -64,7 +71,7 @@ internal class DetachedPage(
     private val wm: WindowManager,
     val displayId: Int,
     private val overlayHost: OverlayHost,
-) {
+) : DetachedWindow.Page {
     private val ctx: Context = overlayThemedContext(displayCtx)
     private val appCtx: Context = ctx.applicationContext
     private val prefs = Prefs(ctx)
@@ -74,10 +81,56 @@ internal class DetachedPage(
     val vm = TranslationResultViewModel(scope)
 
     /** The page's view tree; the window shows it under its bar. */
-    val view: View = LayoutInflater.from(ctx)
+    override val view: View = LayoutInflater.from(ctx)
         .inflate(R.layout.fragment_translation_result, FrameLayout(ctx), false)
 
-    private val content = TranslationResultContent(view, ctx, prefs, vm, PageHost())
+    private val pageHost = PageHost()
+    private val content = TranslationResultContent(view, ctx, prefs, vm, pageHost)
+
+    // ── What lives in the window's bar ([DetachedWindow.Page]) ────────────
+
+    /** The two languages, which the headers this page does not show named
+     *  and opened: one menu row each, the language as its value. */
+    private val gameLanguage = HeaderAction(
+        R.id.detachedMenuGameLanguage, R.drawable.ic_translate, ctx.getString(R.string.lang_translate_from),
+    ).apply { onClick = { pageHost.onChangeLanguage(true) } }
+    private val yourLanguage = HeaderAction(
+        R.id.detachedMenuYourLanguage, R.drawable.ic_translate, ctx.getString(R.string.lang_translate_to),
+    ).apply { onClick = { pageHost.onChangeLanguage(false) } }
+
+    /** The headers' actions while a result is on show (with a status up
+     *  there is no text for them to act on), then the languages. */
+    override fun menuGroups(): List<List<HeaderAction>> {
+        gameLanguage.detail = content.binder.sourceLanguageName
+        yourLanguage.detail = content.binder.targetLanguageName
+        val forResult = if (resultOnShow(vm.result.value)) content.binder.menuActions() else emptyList()
+        return listOf(forResult, listOf(gameLanguage, yourLanguage))
+    }
+
+    override fun addMenuListener(listener: FoldingActionRow.Listener) {
+        for (row in content.binder.actionRows()) row.addListener(listener)
+    }
+
+    override fun removeMenuListener(listener: FoldingActionRow.Listener) {
+        for (row in content.binder.actionRows()) row.removeListener(listener)
+    }
+
+    /** A result to make a card of is on show: the reach the page's floating
+     *  pill has on the other surfaces. */
+    override var ankiAvailable: Boolean = false
+        private set(value) {
+            if (field == value) return
+            field = value
+            onAnkiAvailableChanged?.invoke()
+        }
+    override var onAnkiAvailableChanged: (() -> Unit)? = null
+    override var popoverPresenter: ((PopoverContent, View) -> Unit)? = null
+
+    override fun addToAnki() = pageHost.onAddToAnki()
+    override fun ankiOneTap() = pageHost.onAnkiOneTap()
+
+    private fun resultOnShow(state: ResultState): Boolean =
+        state is ResultState.Translating || state is ResultState.Ready
 
     private val driver = CapturePageDriver(
         vm, appCtx, scope,
@@ -87,11 +140,13 @@ internal class DetachedPage(
     )
 
     init {
-        // The sections start straight under the window's bar: the first
-        // header's own top padding would be a gap there.
-        view.findViewById<ResultSectionsLayout>(R.id.resultsScrollContent).flushTop = true
         showIdle()
-        scope.launch { vm.result.collect { content.render(it) } }
+        scope.launch {
+            vm.result.collect {
+                content.render(it)
+                ankiAvailable = resultOnShow(it)
+            }
+        }
         scope.launch { vm.wordLookups.collect { content.renderWordLookups(it) } }
         content.wordRows.attachCollectors(scope)
         scope.launch {
@@ -267,6 +322,17 @@ internal class DetachedPage(
         ) = openWordPage(word, reading, surface, lookupForm, lookupReading, explanation)
 
         override fun canReOcr(): Boolean = driver.reOcrTarget() != null
+
+        /** The compact page: this window is small and has a bar. */
+        override val compact: Boolean get() = true
+
+        /** The page's popovers open in the window's, which can reach past
+         *  the window; with no window, in the page. */
+        override fun showPopover(content: PopoverContent, anchor: View): Boolean {
+            val present = popoverPresenter ?: return false
+            present(content, anchor)
+            return true
+        }
 
         override val showsClearAction: Boolean get() = true
         override fun onClear() {
