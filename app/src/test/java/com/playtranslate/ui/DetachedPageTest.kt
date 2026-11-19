@@ -405,4 +405,66 @@ class DetachedPageTest {
         assertTrue(capture.job.isCancelled)
         assertEquals(ResultState.Status("Capturing…"), page.vm.result.value)
     }
+
+    // ── One result for the display: its latest capture ───────────────────
+
+    @Test fun `a capture of the display made elsewhere takes down a result on show, and a no-text status that came with its frame`() {
+        page.vm.displayResult(result(), ctx)
+        page.onCaptureImageReplaced()
+        assertEquals("the result pointed at the image that was just replaced", idle, page.vm.result.value)
+
+        page.vm.showStatus("No text found", screenshotPath = "/cache/capture-d0.jpg")
+        page.onCaptureImageReplaced()
+        assertEquals(idle, page.vm.result.value)
+    }
+
+    @Test fun `it leaves the idle prompt and a status with no frame as they are`() {
+        page.onCaptureImageReplaced()
+        assertEquals(idle, page.vm.result.value)
+
+        page.vm.showError("offline")
+        val error = page.vm.result.value
+        page.onCaptureImageReplaced()
+        assertEquals(error, page.vm.result.value)
+    }
+
+    @Test fun `the page's own capture in flight stays, and if it is then cancelled the page is idle, not back on a result whose image is gone`() {
+        page.vm.displayResult(result(), ctx)
+        val capture = Capture()
+        page.follow(capture.session)
+        capture.state.value = CaptureState.Translating("新しい", listOf(TextSegment("新しい")), null)
+        val reading = page.vm.result.value
+
+        page.onCaptureImageReplaced()
+        assertEquals("its own frame: nothing changes", reading, page.vm.result.value)
+
+        capture.state.value = CaptureState.Cancelled
+        assertEquals(idle, page.vm.result.value)
+    }
+
+    // ── Read aloud ───────────────────────────────────────────────────────
+
+    @Test fun `with Play automatically on, a capture into the window is read aloud as its text arrives`() {
+        val speech = com.playtranslate.audio.FakeSpeech()
+        speech.install()
+        try {
+            val quiet = Capture()
+            page.follow(quiet.session)
+            quiet.state.value = CaptureState.Translating("こんにちは", listOf(TextSegment("こんにちは")), null)
+            settle()
+            assertTrue("off until the user turns it on", speech.played.isEmpty())
+
+            prefs.autoPlayOriginal = true
+            val capture = Capture()
+            page.follow(capture.session)
+            capture.state.value = CaptureState.Translating("さようなら", listOf(TextSegment("さようなら")), null)
+            settle()
+            assertEquals(1, speech.played.size)
+            capture.state.value = CaptureState.Done(result("さようなら"))
+            settle()
+            assertEquals("once for a capture", 1, speech.played.size)
+        } finally {
+            com.playtranslate.audio.FakeSpeech.uninstall()
+        }
+    }
 }

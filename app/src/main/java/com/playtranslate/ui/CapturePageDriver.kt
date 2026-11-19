@@ -1,6 +1,7 @@
 package com.playtranslate.ui
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import com.playtranslate.CaptureService
 import com.playtranslate.CaptureSession
@@ -47,6 +48,16 @@ class CapturePageDriver(
     private val collectWhileShown: (suspend () -> Unit) -> Job,
     private val pinnedScreenshotPath: () -> String? = { null },
     private val onSentencePending: () -> Unit = {},
+    /** A new capture's original text, to read aloud when the user asked
+     *  for that ([captureOriginalToRead] says which states bring one). Here
+     *  and not in each host, so a page that follows captures through this
+     *  driver cannot be one that forgot to read them. */
+    private val onOriginalToRead: (String) -> Unit = {},
+    /** Reads the frame an OCR switch re-reads ([reOcr]). A parameter so a
+     *  test can hold the read open. */
+    private val decodeFrame: suspend (String) -> Bitmap? = { path ->
+        withContext(Dispatchers.IO) { BitmapFactory.decodeFile(path) }
+    },
     /** The capture this page followed was cancelled from outside it: live
      *  mode started, another capture took the service's one capture job, a
      *  region changed, the service is going. [shownBefore] is what the page
@@ -76,8 +87,21 @@ class CapturePageDriver(
     private var deferredPending: PendingTranslation? = null
 
     /** [session] is the page's capture from now on; one it followed before
-     *  is no longer read (its states cannot land over this one's). */
+     *  is no longer read (its states cannot land over this one's), and a
+     *  re-read still reading its frame ([reOcr]) is called off: started
+     *  later, it would take the service's one capture job from this capture
+     *  and put the older frame on the page. */
     fun follow(session: CaptureSession) {
+        cancelReRead()
+        take(session)
+    }
+
+    private fun cancelReRead() {
+        reOcrJob?.cancel()
+        reOcrJob = null
+    }
+
+    private fun take(session: CaptureSession) {
         collectJob?.cancel()
         if (!inFlight) shownBefore = vm.result.value
         inFlight = true
@@ -87,7 +111,24 @@ class CapturePageDriver(
         }
     }
 
+    /**
+     * The display's capture image was written again: the file a result of
+     * this page points at is one file per display, and every capture of the
+     * display rewrites it. What stood before a capture of this page's that
+     * is in flight can no longer be put back whole (its image is gone), so
+     * a cancel hands the host the idle state instead; with nothing in
+     * flight the note is moot, the next capture taking its own. What the
+     * page shows now, if it came with an image, is the host's to take down.
+     */
+    fun imageReplaced() {
+        shownBefore = ResultState.Idle
+    }
+
     private fun apply(previous: CaptureState?, state: CaptureState) {
+        // Before the state is shown: the page closes a word lens for the
+        // read, and the state's own render would close it a moment later
+        // and cut the read off.
+        captureOriginalToRead(previous, state, null)?.let(onOriginalToRead)
         when (state) {
             is CaptureState.InProgress -> vm.showStatus(state.message)
             // OCR done: reveal the source + "Translating…" placeholder; Done
@@ -124,6 +165,7 @@ class CapturePageDriver(
      *  replaced what it was reading (an edit of the source, a change of
      *  language). Its Cancelled is not delivered. */
     fun abandon() {
+        cancelReRead()
         collectJob?.cancel()
         collectJob = null
         session?.cancel()
@@ -155,8 +197,8 @@ class CapturePageDriver(
         val (prov, path) = reOcrTarget() ?: return
         reOcrJob?.cancel()
         reOcrJob = scope.launch {
-            val bmp = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(path) } ?: return@launch
-            follow(
+            val bmp = decodeFrame(path) ?: return@launch
+            take(
                 svc.processScreenshot(
                     CapturedFrame(
                         bmp, includesSystemUi = prov.frameIncludesSystemUi ?: true,

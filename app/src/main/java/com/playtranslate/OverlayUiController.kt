@@ -2237,6 +2237,14 @@ class OverlayUiController(
             .forEach { dropDetachedPage(it) }
     }
 
+    /** A capture of [displayId] wrote the display's capture image, whoever
+     *  it was for ([CaptureService.captureSaveToCache]): the detached
+     *  window's page no longer shows a result of an earlier capture of it
+     *  ([DetachedPage.onCaptureImageReplaced]). */
+    fun onCaptureImageSaved(displayId: Int) {
+        detachedPages[displayId]?.onCaptureImageReplaced()
+    }
+
     /** [displayId]'s capture region changed, whoever changed it
      *  ([CaptureService]'s region funnel): the window's Capture names the
      *  screen or the region, on its bar and on its capture button. */

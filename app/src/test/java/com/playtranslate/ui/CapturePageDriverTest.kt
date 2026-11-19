@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -51,12 +52,24 @@ class CapturePageDriverTest {
     private var sentencePendings = 0
     private val cancelled = mutableListOf<ResultState>()
 
+    /** What the driver handed over to be read aloud. */
+    private val read = mutableListOf<String>()
+
+    /** The read of a re-read's frame: a test holds it open with [frame]. */
+    private val frame = kotlinx.coroutines.CompletableDeferred<android.graphics.Bitmap?>()
+    private var frameReads = 0
+
     private val driver = CapturePageDriver(
         vm, ctx, scope,
         service = { service },
         collectWhileShown = { collect -> scope.launch { collect() } },
         pinnedScreenshotPath = { pinned },
         onSentencePending = { sentencePendings++ },
+        onOriginalToRead = { read += it },
+        decodeFrame = {
+            frameReads++
+            frame.await()
+        },
         onCancelled = { cancelled += it },
     )
 
@@ -300,5 +313,107 @@ class CapturePageDriverTest {
         driver.completeDeferred()
 
         assertEquals(0, sentencePendings)
+    }
+
+    // ── The original, read aloud ─────────────────────────────────────────
+
+    @Test
+    fun `a capture's original is handed over to be read once, as its text arrives, and the next capture's again`() {
+        val first = Capture()
+        driver.follow(first.session)
+        assertTrue("a status has nothing to read", read.isEmpty())
+
+        first.state.value = CaptureState.Translating("こんにちは", segments("こんにちは"), provenance())
+        assertEquals(listOf("こんにちは"), read)
+        first.state.value = CaptureState.Done(result())
+        assertEquals("the result is the same text", listOf("こんにちは"), read)
+
+        val second = Capture()
+        driver.follow(second.session)
+        second.state.value = CaptureState.Translating("さようなら", segments("さようなら"), provenance())
+        assertEquals(listOf("こんにちは", "さようなら"), read)
+    }
+
+    // ── A re-read that something overtook ────────────────────────────────
+
+    private fun realService(): CaptureService =
+        org.robolectric.Robolectric.buildService(CaptureService::class.java).create().get()
+
+    private fun aFrame() = android.graphics.Bitmap.createBitmap(4, 4, android.graphics.Bitmap.Config.ARGB_8888)
+
+    private fun idle() = org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    @Test
+    fun `a re-read nothing overtook starts once its frame is read`() {
+        service = realService()
+        val shown = result(screenshotPath = "/cache/d0.jpg", provenance = provenance())
+        vm.displayResult(shown, ctx)
+
+        driver.reOcr(deviceOnly = true)
+        assertEquals(1, frameReads)
+        assertSame("nothing changes while the frame is read", shown, (vm.result.value as ResultState.Ready).result)
+
+        frame.complete(aFrame())
+        idle()
+        assertFalse("the page is the re-read's from here", vm.result.value is ResultState.Ready)
+    }
+
+    @Test
+    fun `a re-read still reading its frame when another capture is followed never starts`() {
+        service = realService()
+        vm.displayResult(result(screenshotPath = "/cache/d0.jpg", provenance = provenance()), ctx)
+        driver.reOcr(deviceOnly = true)
+
+        val newer = Capture()
+        driver.follow(newer.session)
+        val done = result("新しい")
+        newer.state.value = CaptureState.Done(done)
+        frame.complete(aFrame())
+        idle()
+
+        assertSame("the newer capture's result stands", done, (vm.result.value as ResultState.Ready).result)
+        assertFalse("and its capture was not taken from it", newer.job.isCancelled)
+    }
+
+    @Test
+    fun `a re-read still reading its frame when the page abandons what it shows never starts`() {
+        service = realService()
+        vm.displayResult(result(screenshotPath = "/cache/d0.jpg", provenance = provenance()), ctx)
+        driver.reOcr(deviceOnly = true)
+
+        // Clear, or a change of language: the host puts its own state up.
+        driver.abandon()
+        vm.showStatus("idle")
+        frame.complete(aFrame())
+        idle()
+
+        assertEquals(ResultState.Status("idle"), vm.result.value)
+    }
+
+    // ── The display's image written again ────────────────────────────────
+
+    @Test
+    fun `an image written while this page's capture is in flight is its own, and a cancel then hands back idle`() {
+        vm.displayResult(result(), ctx)
+        val capture = Capture()
+        driver.follow(capture.session)
+
+        driver.imageReplaced()
+        capture.state.value = CaptureState.Cancelled
+
+        assertEquals("not the result whose image is gone", listOf<ResultState>(ResultState.Idle), cancelled)
+    }
+
+    @Test
+    fun `an image written with nothing in flight leaves what a later cancel hands back`() {
+        val shown = result()
+        vm.displayResult(shown, ctx)
+        driver.imageReplaced()
+
+        val capture = Capture()
+        driver.follow(capture.session)
+        capture.state.value = CaptureState.Cancelled
+
+        assertSame("what the page showed when that capture began", shown, (cancelled.single() as ResultState.Ready).result)
     }
 }

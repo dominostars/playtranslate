@@ -3182,9 +3182,15 @@ class CaptureService : Service() {
         return take()?.withGeometry(askedIn)
     }
 
-    /** Persist [raw] to the screenshot cache via the active capture backend. */
+    /** Persist [raw] to the screenshot cache via the active capture backend:
+     *  one file per display, which this write replaces. Whoever still shows
+     *  a result of an earlier capture of that display is told
+     *  ([OverlayUiController.onCaptureImageSaved]), on the main thread. */
     internal fun captureSaveToCache(raw: Bitmap, displayId: Int): String? =
-        CaptureBackendResolver.active().captureSource?.saveToCache(raw, displayId)
+        CaptureBackendResolver.active().captureSource?.saveToCache(raw, displayId)?.also {
+            val tell = { CaptureBackendResolver.activeOverlayUi?.onCaptureImageSaved(displayId) }
+            if (Looper.myLooper() == Looper.getMainLooper()) tell() else mainHandler.post { tell() }
+        }
 
     /** Provenance for a panel-emitted live result — the panel presenter's
      *  path to the re-OCR gear (region + source language resolved the same

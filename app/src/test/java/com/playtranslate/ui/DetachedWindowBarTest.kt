@@ -191,6 +191,32 @@ class DetachedWindowBarTest {
         assertEquals(View.VISIBLE, labelOf(actions.auto).visibility)
     }
 
+    @Test fun `a bar that has dropped the names of Capture and Auto has no shortcut, even where one would fit beside the icons`() {
+        // Names long enough that the two pills as icons leave room for Anki
+        // where the two with their names do not fit.
+        actions = DetachedWindowBar.Actions(
+            capture = action(R.id.detachedBarCapture, "Capture the whole of the screen now"),
+            auto = action(R.id.detachedBarAuto, "Translate automatically as it changes"),
+            anki = action(R.id.detachedBarAnki, "Anki"),
+            minimize = action(R.id.detachedBarMinimize, "Minimize"),
+        )
+        bar = DetachedWindowBar(activity)
+        bar.setActions(actions)
+        bar.shortcutsOffered = true
+        val named = widthOf(actions.capture) + widthOf(actions.auto)
+        val anki = widthOf(actions.anki)
+        val fixed = bar.paddingLeft + bar.paddingRight + item * 2 + gap * 2
+        val iconsAndAnki = fixed + item * 2 + anki + gap * 3
+        assertTrue("the premise: icons and Anki fit where the named pills do not", iconsAndAnki < fixed + named + gap * 2)
+
+        layOut(iconsAndAnki)
+
+        assertTrue(bar.pillsIconOnly)
+        assertEquals(View.VISIBLE, view(actions.capture).visibility)
+        assertEquals(View.VISIBLE, view(actions.auto).visibility)
+        assertEquals("a shortcut stands only beside named pills", View.GONE, view(actions.anki).visibility)
+    }
+
     @Test fun `a shortcut with nothing to act on takes no place`() {
         // The Original is hidden: nothing to read aloud.
         readAloud.available = false

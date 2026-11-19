@@ -1351,7 +1351,9 @@ internal fun WindowManager.LayoutParams.turnOffSystemMoveAnimation(
     sdk: Int = Build.VERSION.SDK_INT,
     privateFlags: () -> java.lang.reflect.Field = { WindowManager.LayoutParams::class.java.getField("privateFlags") },
 ): Boolean {
-    if (sdk >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+    // The device's own level too, not only [sdk]: the call below does not
+    // exist under 34, whatever a caller passes.
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && sdk >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
         setCanPlayMoveAnimation(false)
         return true
     }

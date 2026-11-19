@@ -323,6 +323,21 @@ class DetachedCaptureRoutingTest {
 
     // ── The page across the form's changes ───────────────────────────────
 
+    @Test fun `a capture of the display that wrote its image takes the page's older result down, and another display's does not`() {
+        windowUp()
+        val page = page()
+        page.vm.displayResult(result(), ctx)
+        val shown = page.vm.result.value
+
+        // Another screen's capture is not this page's.
+        controller.onCaptureImageSaved(d0 + 1)
+        assertEquals(shown, page.vm.result.value)
+
+        // The sheet's, the app's or a hold-to-preview's capture of this one.
+        controller.onCaptureImageSaved(d0)
+        assertEquals(idle, page.vm.result.value)
+    }
+
     @Test fun `the page and its result survive the icon standing in`() {
         windowUp()
         val page = page()

@@ -137,6 +137,7 @@ internal class DetachedPage(
         vm, appCtx, scope,
         service = { CaptureService.instance },
         collectWhileShown = { collect -> scope.launch { collect() } },
+        onOriginalToRead = { content.autoPlayOriginal(it) },
         onCancelled = ::putBack,
     )
 
@@ -172,6 +173,29 @@ internal class DetachedPage(
 
     /** A capture of this page's display: its states are the page's from here. */
     fun follow(session: CaptureSession) = driver.follow(session)
+
+    /**
+     * A capture of this page's display wrote its frame, whoever it was for
+     * (the sheet, with the window narrowed to its button or the icon
+     * standing in; tap-to-lookup; this page itself). A result on show
+     * points at that one file for its screenshot, its OCR re-read and its
+     * cards, so a result from an earlier capture is no longer whole: the
+     * page goes back to its idle prompt. One result on show for a display,
+     * always its latest capture, as the app's own page is on two screens,
+     * where every capture is routed to it. The page's own capture in flight
+     * is that latest capture: it shows a status or a text still being
+     * translated, neither of which came with an earlier image, so nothing
+     * of it is taken down; only what a cancel would have put back is.
+     */
+    fun onCaptureImageReplaced() {
+        driver.imageReplaced()
+        val shown = vm.result.value
+        val cameWithAnImage =
+            shown is ResultState.Ready || (shown is ResultState.Status && shown.screenshotPath != null)
+        if (!cameWithAnImage) return
+        driver.abandon()
+        showIdle()
+    }
 
     /**
      * A capture this page followed was cancelled from outside (another

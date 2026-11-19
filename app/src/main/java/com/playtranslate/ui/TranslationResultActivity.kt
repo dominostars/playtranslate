@@ -92,6 +92,7 @@ class TranslationResultActivity :
             },
             pinnedScreenshotPath = { intent.getStringExtra(EXTRA_SCREENSHOT_PATH) },
             onSentencePending = { sentenceFlow.completeDeferred() },
+            onOriginalToRead = { resultFragment?.autoPlayOriginal(it) },
             onCancelled = { finish() },
         )
     }

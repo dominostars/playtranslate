@@ -647,10 +647,31 @@ class DetachedControlsTest {
         assertEquals(ControlsForm.WINDOW, prefs.detachedStateForDisplay(d0).form)
         assertNotNull("with the page it was pulled out with", controller.detachedPageForTest(d0))
         assertNotNull("resting where it was let go", prefs.detachedStateForDisplay(d0).bounds(landscape = true))
-        assertTrue("auto-translate stopped for good, as Detach stops it", mode.stops > 0)
+        assertTrue("auto-translate stopped, as Detach stops it", mode.stops > 0)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+        assertFalse("and for good: nothing the drag paused brings it back", svc.isLive)
+        assertWindowOnly()
         // And it is the display's window: Minimize takes it back to the icon.
         tap(R.id.detachedBarMinimize)
         assertIconOnly()
+    }
+
+    @Test fun `an auto-translate still starting when the window is pulled out is called off`() {
+        prefs.iconDragAction = DragAction.PULL_OUT_WINDOW
+        val svc = captureService()
+        // A start waiting on something (the screen-share prompt): not
+        // running, so the drag has nothing to pause.
+        CaptureService::class.java.getDeclaredField("pendingLiveStart").apply { isAccessible = true }
+            .set(svc, kotlinx.coroutines.Job())
+        assertTrue(svc.isLiveStartPending)
+
+        val (cx, cy, inward) = beginIconDrag()
+        iconTouch(MotionEvent.ACTION_MOVE, cx + inward * 400, cy + 40)
+        iconTouch(MotionEvent.ACTION_UP, cx + inward * 400, cy + 40)
+        settle()
+
+        assertWindowOnly()
+        assertFalse("a start landing later would dock the window just pulled out", svc.isLiveStartPending)
     }
 
     @Test fun `dragged back to its side and let go it is still the icon, at the height the finger left it`() {

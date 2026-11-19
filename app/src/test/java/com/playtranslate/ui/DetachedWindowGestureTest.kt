@@ -678,6 +678,34 @@ class DetachedWindowGestureTest {
         up(100f, 300f)
 
         assertTrue(takenDown())
+        // Nothing was left to fly: no picture of the card was made for it.
+        val inCard = card as FrameLayout
+        assertFalse((0 until inCard.childCount).any { inCard.getChildAt(it) is android.widget.ImageView })
+    }
+
+    @Test fun `let go while still flying back from the side, the corner targets follow the window when it lands`() {
+        paceFrames()
+        show()
+        fun targets() = window.handlePadsForTest().map { (_, p) -> p.x to p.y }
+        val atRest = targets()
+        down(barX, barY)
+        move(300f, barY)
+        move(100f, 300f)
+        land()
+        assertIsTheIcon(0, 300)
+
+        // Back out, and let go before the window is the window again.
+        move(140f, 320f)
+        up(140f, 320f)
+        assertTrue("still on its way", card.scaleX < 1f)
+        assertEquals("the targets wait where they were", atRest, targets())
+
+        land()
+        layOut()
+        assertIsTheWindow(Frame(0, 300, 420, 400))
+        assertEquals("the place it was let go at is saved", Frame(0, 300, 420, 400), savedFrame())
+        // 24 px past each bottom corner, 34 px into the card.
+        assertEquals(listOf(-24 to 666, 386 to 666), targets())
     }
 
     @Test fun `a move the system takes away while docked is the window again`() {
