@@ -27,6 +27,10 @@ import com.playtranslate.translation.CannedReply
 import com.playtranslate.translation.SeenRequest
 import com.playtranslate.translation.recordingClient
 import com.playtranslate.tts.VoiceChoice
+import com.playtranslate.tts.answerTtsBinding
+import com.playtranslate.tts.installTtsEngine
+import com.playtranslate.tts.refuseTtsBindingsUntil
+import com.playtranslate.tts.releaseTtsEngineFromEarlierTests
 import com.playtranslate.tts.voiceSampleText
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonPrimitive
@@ -646,6 +650,31 @@ class TtsVoiceActivityTest {
         controller!!.resume()
         pumpUntil("the service's voices") { service(page).any { it.title == "Beta" } }
         assertEquals(listOf("Alpha", "Beta", "Service settings"), service(page).map { it.title })
+    }
+
+    // ── The device group's header ────────────────────────────────────────
+
+    private fun deviceHeader(page: TtsVoiceActivity) =
+        page.findViewById<View>(R.id.headerVoices).findViewById<TextView>(R.id.tvGroupTitle).text.toString()
+
+    @Test fun `the device's voices go under the engine's own name once it is bound`() {
+        releaseTtsEngineFromEarlierTests()
+        installTtsEngine(ctx, "Example Speech")
+        val page = open()
+        assertEquals("before the engine answers", "Text-to-speech", deviceHeader(page))
+        answerTtsBinding()
+        pumpUntil("the device's voices") { device(page).isNotEmpty() }
+        assertEquals("Example Speech", deviceHeader(page))
+        assertEquals(listOf("Default"), device(page).map { it.title })
+    }
+
+    @Test fun `with no engine, the device's group goes under Text-to-speech, with no language`() {
+        releaseTtsEngineFromEarlierTests()
+        val page = open()
+        // The rows are drawn after the engine has been asked for its name.
+        refuseTtsBindingsUntil("the device's group") { device(page).isNotEmpty() }
+        assertEquals(listOf("No text-to-speech engine"), device(page).map { it.title })
+        assertEquals("Text-to-speech", deviceHeader(page))
     }
 
     // ── The page's title, and the Imported recordings group ──────────────

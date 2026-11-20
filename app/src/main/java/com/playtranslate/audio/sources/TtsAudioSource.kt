@@ -22,6 +22,11 @@ object TtsAudioSource : AudioSource {
     const val ID = "tts"
     override val id = ID
     override fun label(ctx: Context): String = ctx.getString(R.string.audio_source_tts_name)
+
+    /** The engine's own name (e.g. Google's, Samsung's), as the voice page
+     *  heads the same voices; null where no engine can be bound. */
+    override suspend fun sectionTitle(ctx: Context): String? = TtsEngine.activeEngineLabel(ctx)
+
     override val toggleable = false
     override val remote = false
     override fun isEnabled(ctx: Context) = true

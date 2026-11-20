@@ -131,7 +131,9 @@ class AudioSourcePickerView(
         // is connected, the imported recordings none until a file is loaded.
         AudioSourceRegistry.all().filter { it.serves(req) && it.isSetUp(ctx) }.forEach { source ->
             val header = inflater.inflate(R.layout.settings_group_header, sections, false)
-            header.findViewById<TextView>(R.id.tvGroupTitle).text = source.label(ctx)
+            val title = header.findViewById<TextView>(R.id.tvGroupTitle)
+            title.text = source.label(ctx)
+            scope.launch { source.sectionTitle(ctx)?.let { title.text = it } }
             sections.addView(header)
             // The global TTS speed lives inside the Text-to-speech section,
             // as its own cell above the voice list — the same cell Settings'

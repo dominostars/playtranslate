@@ -94,6 +94,7 @@ class TtsVoiceActivity : AppCompatActivity() {
     }
 
     private var deviceVoices: List<Voice> = emptyList()
+    private lateinit var deviceHeader: TextView
 
     /** False once the engine check has answered that there is none. */
     private var engineAvailable = true
@@ -149,9 +150,11 @@ class TtsVoiceActivity : AppCompatActivity() {
         findViewById<View>(R.id.headerService)
             .findViewById<TextView>(R.id.tvGroupTitle).text =
             getString(R.string.audio_source_voice_service_name)
-        findViewById<View>(R.id.headerVoices)
-            .findViewById<TextView>(R.id.tvGroupTitle).text =
-            getString(R.string.tts_voices_section_header, lang.displayName())
+        // The device's voices go under the engine's name once the engine
+        // has told it (loadDeviceVoices); until then, and where no engine
+        // answers, under the generic name.
+        deviceHeader = findViewById<View>(R.id.headerVoices).findViewById(R.id.tvGroupTitle)
+        deviceHeader.text = getString(R.string.audio_source_tts_name)
 
         findViewById<MaterialButton>(R.id.btnSave).setOnClickListener {
             prefs.setVoiceChoice(lang, selected)
@@ -284,6 +287,7 @@ class TtsVoiceActivity : AppCompatActivity() {
         lifecycleScope.launch {
             engineAvailable = TtsEngine.isEngineAvailable(this@TtsVoiceActivity)
             deviceVoices = TtsEngine.voicesFor(this@TtsVoiceActivity, lang)
+            TtsEngine.activeEngineLabel(this@TtsVoiceActivity)?.let { deviceHeader.text = it }
             renderDeviceRows()
         }
     }

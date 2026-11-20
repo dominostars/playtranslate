@@ -18,8 +18,7 @@ import com.playtranslate.R
  *    differentiator, so it becomes the title; repeats within one region get a
  *    1-based suffix ("China 1", "China 2").
  *  - Otherwise (Japanese, Korean — a single region) the region says nothing
- *    the picker's section header doesn't, so the title stays the positional
- *    "Voice N".
+ *    the language doesn't, so the title stays the positional "Voice N".
  *  - The subtitle carries quality + online/offline, plus a "Needs download"
  *    tag for voices the engine enumerates but hasn't installed yet
  *    ([TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED]) — picking one otherwise
@@ -72,7 +71,9 @@ object TtsVoiceLabels {
             voice.quality >= Voice.QUALITY_LOW -> "Low quality"
             else -> "Very low quality"
         }
-        val network = if (voice.isNetworkConnectionRequired) "Online" else "Offline"
+        val network = context.getString(
+            if (voice.isNetworkConnectionRequired) R.string.tts_voice_online else R.string.tts_voice_offline,
+        )
         val parts = mutableListOf(quality, network)
         if (voice.features?.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) == true) {
             parts += context.getString(R.string.tts_voice_needs_download)

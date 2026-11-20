@@ -22,6 +22,11 @@ interface AudioSource {
     /** Localized name for the settings switch and picker section header. */
     fun label(ctx: Context): String
 
+    /** A picker section header that only asking can give: the device
+     *  engine's own name. The picker shows [label] until this answers, and
+     *  keeps it where this is null. */
+    suspend fun sectionTitle(ctx: Context): String? = null
+
     /** Whether this source shows an on/off switch in settings. TTS = false (always-on floor). */
     val toggleable: Boolean
 

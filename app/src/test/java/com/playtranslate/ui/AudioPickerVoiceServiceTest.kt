@@ -20,6 +20,9 @@ import com.playtranslate.security.SecretCodec
 import com.playtranslate.translation.CannedReply
 import com.playtranslate.translation.SeenRequest
 import com.playtranslate.translation.recordingClient
+import com.playtranslate.tts.answerTtsBinding
+import com.playtranslate.tts.installTtsEngine
+import com.playtranslate.tts.releaseTtsEngineFromEarlierTests
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -135,26 +138,36 @@ class AudioPickerVoiceServiceTest {
 
     @Test fun `with no service connected the picker has no voice service section and asks nothing`() {
         val page = open()
-        assertFalse(headers(page).contains("Voice service"))
+        assertFalse(headers(page).contains("AI Voice Service"))
         assertTrue(headers(page).contains("Text-to-speech"))
         assertTrue(seen.isEmpty())
+    }
+
+    @Test fun `the device's section goes under the engine's own name once the engine tells it`() {
+        releaseTtsEngineFromEarlierTests()
+        installTtsEngine(ctx, "Example Speech")
+        val page = open()
+        assertTrue("before the engine answers", headers(page).contains("Text-to-speech"))
+        answerTtsBinding()
+        pumpUntil("the engine's name") { headers(page).contains("Example Speech") }
+        assertFalse(headers(page).contains("Text-to-speech"))
     }
 
     @Test fun `a connected service's voices are a section above the device's`() {
         connect()
         val page = open()
         val headers = headers(page)
-        assertTrue(headers.toString(), headers.indexOf("Voice service") in 0 until headers.indexOf("Text-to-speech"))
-        pumpUntil("the service's voices") { rowsUnder(page, "Voice service").map { it.title() } == listOf("Alpha", "Beta") }
+        assertTrue(headers.toString(), headers.indexOf("AI Voice Service") in 0 until headers.indexOf("Text-to-speech"))
+        pumpUntil("the service's voices") { rowsUnder(page, "AI Voice Service").map { it.title() } == listOf("Alpha", "Beta") }
         assertEquals("https://api.openai.com/v1/audio/voices", seen.single().request.url.toString())
     }
 
     @Test fun `a tapped voice is auditioned through the service and returned as the pick, with its name`() {
         connect()
         val page = open()
-        pumpUntil("the service's voices") { rowsUnder(page, "Voice service").size == 2 }
-        rowsUnder(page, "Voice service")[1].performClick()
-        assertEquals(listOf(false, true), rowsUnder(page, "Voice service").map { it.ticked() })
+        pumpUntil("the service's voices") { rowsUnder(page, "AI Voice Service").size == 2 }
+        rowsUnder(page, "AI Voice Service")[1].performClick()
+        assertEquals(listOf(false, true), rowsUnder(page, "AI Voice Service").map { it.ticked() })
         pumpUntil("the audition request") { seen.any { it.request.method == "POST" } }
         val audition = seen.single { it.request.method == "POST" }
         assertEquals("jf_beta", audition.json["voice"]!!.jsonPrimitive.content)
@@ -170,16 +183,16 @@ class AudioPickerVoiceServiceTest {
     @Test fun `a card's picked service voice opens ticked`() {
         connect()
         val page = open(AudioSelection.Explicit("online_tts", "jf_alpha", locator = "Alpha"))
-        pumpUntil("the service's voices") { rowsUnder(page, "Voice service").size == 2 }
-        assertEquals(listOf(true, false), rowsUnder(page, "Voice service").map { it.ticked() })
+        pumpUntil("the service's voices") { rowsUnder(page, "AI Voice Service").size == 2 }
+        assertEquals(listOf(true, false), rowsUnder(page, "AI Voice Service").map { it.ticked() })
     }
 
     @Test fun `a voice the service cannot speak says so instead of playing nothing`() {
         connect()
         speechStatus = 401
         val page = open()
-        pumpUntil("the service's voices") { rowsUnder(page, "Voice service").size == 2 }
-        rowsUnder(page, "Voice service")[0].performClick()
+        pumpUntil("the service's voices") { rowsUnder(page, "AI Voice Service").size == 2 }
+        rowsUnder(page, "AI Voice Service")[0].performClick()
         pumpUntil("the toast") { ShadowToast.getTextOfLatestToast() != null }
         assertEquals("Couldn't play this audio", ShadowToast.getTextOfLatestToast())
     }

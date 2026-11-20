@@ -4508,14 +4508,18 @@
          would otherwise silently fall back to another voice. -->
     <string name="tts_voice_needs_download">Needs download</string>
 
+    <!-- Part of a device voice's subtitle, after its quality ("High
+         quality · Online"): the voice is spoken by the engine's server, so
+         it needs a network connection. -->
+    <string name="tts_voice_online">Online</string>
+
+    <!-- Part of a device voice's subtitle, after its quality ("High
+         quality · Offline"): the voice is spoken on the device and works
+         without a network connection. -->
+    <string name="tts_voice_offline">Offline</string>
+
     <!-- Subtitle on the same row. -->
     <string name="tts_no_engine_row_subtitle">No speech engine is available. Tap to add one.</string>
-
-    <!-- Section header on the TTS Voice picker activity, displayed in
-         ALL CAPS above the list of voices for a single source language.
-         %1$s = the uppercased display name of the source language
-         (already locale-aware via Locale.displayName().uppercase()). -->
-    <string name="tts_voices_section_header"><xliff:g id="language" example="JAPANESE">%1$s</xliff:g> VOICES</string>
 
     <!-- Title inside the global TTS speed cell, shown at the top of the TTS
          voice picker and under the Text-to-speech section header of the
@@ -5049,8 +5053,11 @@
 
     <!-- Audio sources (Wikimedia Commons human recordings + TTS). -->
 
-    <!-- Section header for the device text-to-speech source in the Anki audio
-         picker (the list of voices). Also the source's name elsewhere. -->
+    <!-- Header of the device's own voices, on the Text-to-speech voice page
+         and in the Anki audio picker, while the device's speech engine has
+         not told its name and when it cannot (the header is otherwise the
+         engine's own name, as the system's text-to-speech settings list it).
+         Also the source's name elsewhere. -->
     <string name="audio_source_tts_name">Text-to-speech</string>
 
     <!-- Name of the Wikimedia Commons audio source: the label of its on/off
@@ -5058,13 +5065,16 @@
          section in the Anki audio picker. -->
     <string name="audio_source_commons_name">Wikimedia Commons</string>
 
-    <!-- Name of the online text-to-speech service the user has connected
-         with their own API key (an AI voice provider). Header of its group
-         of voices on the Text-to-speech voice page, and of its section in
-         the Anki audio picker, above the device's own voices. "Voice
-         service", not "Online": device voice rows on the same page already
-         say Online or Offline for a device voice that needs the network. -->
-    <string name="audio_source_voice_service_name">Voice service</string>
+    <!-- Name of the text-to-speech service the user has connected with
+         their own API key (an AI voice provider such as OpenAI or
+         ElevenLabs, or a server of the same kind the user runs). Header of
+         its group of voices on the Text-to-speech voice page and of its
+         section in the Anki audio picker, above the device's own voices,
+         and the title of its settings page. Not "Online": device voice rows
+         on the same page already say Online or Offline for a device voice
+         that needs the network, and a server the user runs can be on their
+         own network. -->
+    <string name="audio_source_voice_service_name">AI Voice Service</string>
 
     <!-- Toast in the Anki audio picker when the row the user tapped could
          not be played (a recording that failed to download, a voice
