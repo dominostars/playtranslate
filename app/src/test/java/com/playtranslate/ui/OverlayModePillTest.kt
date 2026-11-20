@@ -14,6 +14,7 @@ import android.view.View.MeasureSpec
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.OverlayMode
@@ -35,7 +36,9 @@ import java.time.Duration
  * [OverlayModePill]: the segments and the X while expanded, the mode's glyph
  * while collapsed, the two callbacks, an idempotent render, and the morph
  * between the two states: one capsule, the disc the bar's height, its end
- * edge where the host pins it.
+ * edge where the host pins it. While the capture reads, the disc with a
+ * spinner whatever the user left; and the fade as it comes up and as it
+ * goes, its bar closing on the way out.
  */
 @RunWith(RobolectricTestRunner::class)
 class OverlayModePillTest {
@@ -71,6 +74,10 @@ class OverlayModePillTest {
     private fun disc(p: OverlayModePill): ImageView =
         descendants(p).filterIsInstance<ImageView>().single { it !== closeButton(p) }
 
+    /** The disc's sign that the capture is still reading. */
+    private fun spinner(p: OverlayModePill): ProgressBar =
+        descendants(p).filterIsInstance<ProgressBar>().single()
+
     /** [v] is drawn and takes touches: it and every ancestor below [p]
      *  visible, none faded out. */
     private fun shown(v: View, p: OverlayModePill): Boolean =
@@ -83,11 +90,13 @@ class OverlayModePillTest {
      *  animation frame the moment it is posted, so an idle drains the morph
      *  whole; and with the Choreographer paused the animator's frame time
      *  never moves. The seek is the one way to stand inside it. */
-    private fun seekMidMorph(p: OverlayModePill) {
+    private fun seekMidMorph(p: OverlayModePill) = seekMorph(p, 0.5f)
+
+    private fun seekMorph(p: OverlayModePill, fraction: Float) {
         val morph = OverlayModePill::class.java.getDeclaredField("morph")
             .apply { isAccessible = true }.get(p) as ValueAnimator
-        assertTrue("a tap runs a morph", morph.isStarted)
-        morph.setCurrentFraction(0.5f)
+        assertTrue("a morph is running", morph.isStarted)
+        morph.setCurrentFraction(fraction)
     }
 
     /** The pill as the sheet hosts it: wrapped, pinned to the top end of a
@@ -217,10 +226,13 @@ class OverlayModePillTest {
         assertNotSame(first, p.getChildAt(0))
     }
 
-    @Test fun `no options hides the control`() {
+    @Test fun `no options fades the control out, then it holds nothing`() {
         val p = pill()
         p.render(options, OverlayMode.TRANSLATION, collapsed = false)
+        idleFor(MORPH_RUN_OUT_MS)
         p.render(emptyList(), OverlayMode.TRANSLATION, collapsed = false)
+        assertEquals("up while it fades", View.VISIBLE, p.visibility)
+        idleFor(MORPH_RUN_OUT_MS)
         assertEquals(View.GONE, p.visibility)
         assertEquals(0, p.childCount)
     }
@@ -393,6 +405,273 @@ class OverlayModePillTest {
         tapAt(root, disc(p))
         assertFalse("the disc takes it", p.collapsed)
         assertEquals(listOf(true, false), collapses)
+    }
+
+    // ── while the capture reads ──────────────────────────────────────────
+
+    @Test fun `while the capture reads the pill is the disc with a spinner, whatever the user left`() {
+        for (left in listOf(false, true)) {
+            val h = Hosted()
+            h.pill.render(options, OverlayMode.TRANSLATION, collapsed = left, loading = true)
+            h.layout()
+            val p = h.pill
+            assertEquals("a disc (collapsed $left)", p.height, p.width)
+            assertTrue(shown(spinner(p), p))
+            assertFalse("no glyph under the spinner", shown(disc(p), p))
+            assertFalse(shown(bar(p), p))
+            assertEquals("what the user left is kept", left, p.collapsed)
+            val s = boundsIn(spinner(p), p)
+            assertTrue("a spinner of some size", s.width() > 0 && s.width() < p.width)
+            assertTrue("in the middle of the disc", kotlin.math.abs(s.left - (p.width - s.right)) <= 1)
+            assertTrue("in the middle of the disc", kotlin.math.abs(s.top - (p.height - s.bottom)) <= 1)
+        }
+        assertTrue(collapses.isEmpty())
+    }
+
+    @Test fun `the read ending opens the bar the user left expanded, the spinner fading out of the disc`() {
+        val h = Hosted()
+        val p = h.pill
+        p.render(options, OverlayMode.TRANSLATION, collapsed = false, loading = true)
+        h.layout()
+        val discW = p.width
+        val end = p.right
+        p.render(options, OverlayMode.TRANSLATION, collapsed = false, loading = false)
+        h.layout()
+        assertEquals("it opens from the disc, no jump", discW, p.width)
+        var last = discW
+        for (f in listOf(0.1f, 0.3f, 0.5f, 0.7f, 0.9f)) {
+            seekMorph(p, f)
+            h.layout()
+            assertTrue("growing at $f: ${p.width}", p.width > last)
+            last = p.width
+            assertEquals("the end edge stays put", end, p.right)
+            assertFalse("the glyph never flashes on the way ($f)", shown(disc(p), p))
+            assertFalse("never both contents at once ($f)", shown(bar(p), p) && shown(spinner(p), p))
+        }
+        idleFor(MORPH_RUN_OUT_MS)
+        h.layout()
+        assertTrue(p.width > last)
+        assertTrue(segments(p).all { shown(it, p) })
+        assertEquals("nothing spins once the control is up", View.INVISIBLE, spinner(p).visibility)
+        assertEquals(View.INVISIBLE, disc(p).visibility)
+        assertTrue("opening it was not the user's doing", collapses.isEmpty())
+    }
+
+    @Test fun `the read ending in a disc the user left collapsed swaps the spinner for the glyph`() {
+        val h = Hosted()
+        val p = h.pill
+        p.render(options, OverlayMode.FURIGANA, collapsed = true, loading = true)
+        h.layout()
+        val discW = p.width
+        p.render(options, OverlayMode.FURIGANA, collapsed = true, loading = false)
+        for (f in listOf(0.1f, 0.3f, 0.5f, 0.7f, 0.9f)) {
+            seekMorph(p, f)
+            h.layout()
+            assertEquals("a disc throughout ($f)", discW, p.width)
+            assertFalse("never both contents at once ($f)", shown(disc(p), p) && shown(spinner(p), p))
+        }
+        idleFor(MORPH_RUN_OUT_MS)
+        h.layout()
+        assertEquals(discW, p.width)
+        assertTrue(shown(disc(p), p))
+        assertEquals("nothing spins once the control is up", View.INVISIBLE, spinner(p).visibility)
+        assertEquals(
+            ctx.getString(R.string.capture_overlay_pill_collapsed_cd, "Furigana"),
+            disc(p).contentDescription,
+        )
+        // The disc is the control again.
+        disc(p).performClick()
+        assertFalse(p.collapsed)
+        assertEquals(listOf(false), collapses)
+    }
+
+    @Test fun `a read that starts again closes the bar to the spinner and keeps what the user left`() {
+        val h = Hosted()
+        val p = h.pill
+        p.render(options, OverlayMode.TRANSLATION, collapsed = false)
+        idleFor(MORPH_RUN_OUT_MS)
+        h.layout()
+        val barW = p.width
+        val barH = p.height
+        val end = p.right
+        p.render(options, OverlayMode.TRANSLATION, collapsed = false, loading = true)
+        h.layout()
+        assertEquals("it closes from the bar, no jump", barW, p.width)
+        for (f in listOf(0.1f, 0.3f, 0.5f, 0.7f, 0.9f)) {
+            seekMorph(p, f)
+            h.layout()
+            assertTrue("between the bar and the disc at $f: ${p.width}", p.width in (barH + 1) until barW)
+            assertEquals("the end edge stays put", end, p.right)
+            assertFalse("the glyph never flashes on the way ($f)", shown(disc(p), p))
+        }
+        idleFor(MORPH_RUN_OUT_MS)
+        h.layout()
+        assertEquals(barH, p.width)
+        assertTrue(shown(spinner(p), p))
+        assertFalse(shown(bar(p), p))
+        assertFalse("still expanded for when the read ends", p.collapsed)
+        assertTrue(collapses.isEmpty())
+    }
+
+    @Test fun `no tap changes the pill while the capture reads`() {
+        val left = pill()
+        left.render(options, OverlayMode.TRANSLATION, collapsed = true, loading = true)
+        disc(left).performClick()
+        assertTrue(left.collapsed)
+        val open = pill()
+        open.render(options, OverlayMode.TRANSLATION, collapsed = false, loading = true)
+        closeButton(open)!!.performClick()
+        assertFalse(open.collapsed)
+        assertTrue(collapses.isEmpty())
+    }
+
+    /** One touch event at [v]'s centre, dispatched from [root] down. */
+    private fun touch(root: View, v: View, action: Int) {
+        val at = boundsIn(v, root)
+        val ev = MotionEvent.obtain(0L, 0L, action, at.exactCenterX(), at.exactCenterY(), 0)
+        root.dispatchTouchEvent(ev)
+        ev.recycle()
+    }
+
+    /** The pill in a window, expanded and at rest, with its root. */
+    private fun shownInWindow(): Pair<OverlayModePill, View> {
+        val activity = Robolectric.buildActivity(Host::class.java).setup().get()
+        val p = pill()
+        val root = FrameLayout(activity).apply {
+            addView(
+                p,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP or Gravity.END,
+                ),
+            )
+        }
+        activity.setContentView(root)
+        p.render(options, OverlayMode.TRANSLATION, collapsed = false)
+        idleFor(MORPH_RUN_OUT_MS)
+        return p to root
+    }
+
+    @Test fun `a segment tapped as the bar closes for a read picks nothing and moves no highlight`() {
+        val (p, root) = shownInWindow()
+        // A read starts again: the bar is still whole on the morph's first frame.
+        p.render(options, OverlayMode.TRANSLATION, collapsed = false, loading = true)
+        assertTrue("the bar is still drawn", shown(segments(p)[1], p))
+        tapAt(root, segments(p)[1])
+        assertTrue("no mode picked", picked.isEmpty())
+
+        // The read ends: the same segment is still there to pick, which a
+        // highlight already moved onto it would refuse.
+        p.render(options, OverlayMode.TRANSLATION, collapsed = false, loading = false)
+        idleFor(MORPH_RUN_OUT_MS)
+        tapAt(root, segments(p)[1])
+        assertEquals(listOf(OverlayMode.FURIGANA), picked)
+    }
+
+    @Test fun `a tap already down on a segment when a read starts ends as nothing`() {
+        val (p, root) = shownInWindow()
+        val furigana = segments(p)[1]
+        touch(root, furigana, MotionEvent.ACTION_DOWN)
+        assertTrue("the segment has the touch", furigana.isPressed)
+        p.render(options, OverlayMode.TRANSLATION, collapsed = false, loading = true)
+        touch(root, furigana, MotionEvent.ACTION_UP)
+        idleFor(MORPH_RUN_OUT_MS)
+        assertTrue("no mode picked", picked.isEmpty())
+        assertFalse("the segment was let go", furigana.isPressed)
+    }
+
+    @Test fun `a tap on the spinner disc reaches nothing under the pill`() {
+        val (p, root) = shownInWindow()
+        p.render(options, OverlayMode.TRANSLATION, collapsed = false, loading = true)
+        idleFor(MORPH_RUN_OUT_MS)
+        val down = boundsIn(p, root).let { MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_DOWN, it.exactCenterX(), it.exactCenterY(), 0) }
+        assertTrue("the pill takes it", root.dispatchTouchEvent(down))
+        down.recycle()
+        assertTrue(picked.isEmpty())
+        assertTrue(collapses.isEmpty())
+        assertFalse(p.collapsed)
+    }
+
+    // ── coming up and going ──────────────────────────────────────────────
+
+    @Test fun `the pill fades in as it comes up`() {
+        val p = pill()
+        assertEquals("nothing before a render", View.GONE, p.visibility)
+        p.render(options, OverlayMode.TRANSLATION, collapsed = false)
+        assertEquals(View.VISIBLE, p.visibility)
+        assertEquals("from nothing", 0f, p.alpha, 0f)
+        idleFor(MORPH_RUN_OUT_MS)
+        assertEquals(1f, p.alpha, 0f)
+    }
+
+    @Test fun `leaving fades the pill out and closes its bar to the disc, with nothing reported`() {
+        val h = Hosted()
+        val p = h.pill
+        p.render(options, OverlayMode.TRANSLATION, collapsed = false)
+        idleFor(MORPH_RUN_OUT_MS)
+        h.layout()
+        val barW = p.width
+        val barH = p.height
+        val end = p.right
+        p.leave(200L)
+        h.layout()
+        assertEquals("it closes from the bar, no jump", barW, p.width)
+        assertEquals("up while it fades", View.VISIBLE, p.visibility)
+        seekMidMorph(p)
+        h.layout()
+        assertTrue("between the bar and the disc: ${p.width}", p.width in (barH + 1) until barW)
+        assertEquals("the end edge stays put", end, p.right)
+
+        idleFor(MORPH_RUN_OUT_MS)
+        assertEquals(View.GONE, p.visibility)
+        assertEquals("nothing held", 0, p.childCount)
+        assertFalse("what the user left is not touched", p.collapsed)
+        assertTrue(collapses.isEmpty())
+
+        // The same pill comes back as the user left it.
+        p.render(options, OverlayMode.TRANSLATION, collapsed = false)
+        idleFor(MORPH_RUN_OUT_MS)
+        h.layout()
+        assertEquals(View.VISIBLE, p.visibility)
+        assertEquals(1f, p.alpha, 0f)
+        assertEquals(barW, p.width)
+    }
+
+    @Test fun `a pill on its way out takes no tap`() {
+        val activity = Robolectric.buildActivity(Host::class.java).setup().get()
+        val p = pill()
+        val root = FrameLayout(activity).apply {
+            addView(
+                p,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP or Gravity.END,
+                ),
+            )
+        }
+        activity.setContentView(root)
+        p.render(options, OverlayMode.TRANSLATION, collapsed = false)
+        idleFor(MORPH_RUN_OUT_MS)
+        val furigana = segments(p)[1]
+        p.leave()
+        tapAt(root, furigana)
+        assertTrue("no mode picked", picked.isEmpty())
+        assertTrue(collapses.isEmpty())
+    }
+
+    @Test fun `a render with something to show brings back a pill on its way out`() {
+        val p = pill()
+        p.render(options, OverlayMode.TRANSLATION, collapsed = false)
+        idleFor(MORPH_RUN_OUT_MS)
+        // No text, then a read again before the fade has ended.
+        p.render(emptyList(), OverlayMode.TRANSLATION, collapsed = false)
+        p.render(options, OverlayMode.TRANSLATION, collapsed = false, loading = true)
+        idleFor(MORPH_RUN_OUT_MS)
+        assertEquals(View.VISIBLE, p.visibility)
+        assertEquals(1f, p.alpha, 0f)
+        assertTrue("the fade cut short dropped nothing", shown(spinner(p), p))
     }
 
     private companion object {

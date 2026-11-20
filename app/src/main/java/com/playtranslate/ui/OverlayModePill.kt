@@ -5,11 +5,13 @@ import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import com.playtranslate.OverlayMode
 import com.playtranslate.R
@@ -35,11 +37,23 @@ import kotlin.math.roundToInt
  * the disc's and the bar's, its contents held to its end edge, where the
  * host pins it and where the X and the disc both sit; the bar keeps its
  * size and is clipped, never squeezed; the two contents fade through, so
- * they never show or take a tap together. [render] sets a state outright.
+ * they never show or take a tap together. [render] sets a collapsed state
+ * outright.
  *
- * Idempotent: [render] rebuilds only when the options, the selection or the
- * collapsed state changed, so a host may call it from every refresh without
- * cutting a segment's slide or the morph short.
+ * While the capture is still reading ([render]'s loading) the pill is the
+ * disc whatever the user left it as, holding a spinner where the glyph
+ * goes, and nothing in it takes a touch, a bar still closing included.
+ * When the read ends the spinner gives way to
+ * the glyph, or the capsule opens to the bar if that is how the user left
+ * it; a read that starts again takes it back to the disc the same way.
+ *
+ * It fades in whenever it comes up and fades out when it goes: for want of
+ * anything to offer ([render] with no options) or as its host's capture
+ * closes ([leave]), and a bar closes to the disc as it fades.
+ *
+ * Idempotent: [render] rebuilds only when the options, the selection, the
+ * collapsed state or the loading state changed, so a host may call it from
+ * every refresh without cutting a segment's slide or the morph short.
  */
 internal class OverlayModePill(context: Context) : FrameLayout(context) {
 
@@ -52,14 +66,26 @@ internal class OverlayModePill(context: Context) : FrameLayout(context) {
     private var options: List<Pair<String, OverlayMode>> = emptyList()
     private var selected: OverlayMode? = null
 
-    /** Collapsed to the disc. A tap flips it at once and the morph follows. */
+    /** Collapsed to the disc by the user. A tap flips it at once and the
+     *  morph follows. */
     var collapsed: Boolean = false
         private set
 
+    /** The capture is still reading: the disc with the spinner, whatever
+     *  [collapsed] says, and nothing in the pill takes a touch
+     *  ([takesNoTouch]). */
+    private var loading = false
+
     /** Where the capsule stands, from the disc (0) to the bar (1): the
-     *  collapsed state's end whenever no morph is running. */
+     *  state's end whenever no morph is running. */
     private var reveal = 1f
+
+    /** What the disc holds, from the mode's glyph (0) to the spinner (1). */
+    private var spin = 0f
     private var morph: ValueAnimator? = null
+
+    /** Fading out ([leave]): nothing in it takes a touch ([takesNoTouch]). */
+    private var leaving = false
 
     private val dp = resources.displayMetrics.density
 
@@ -80,45 +106,126 @@ internal class OverlayModePill(context: Context) : FrameLayout(context) {
         setOnClickListener { setCollapsedByTap(false) }
     }
 
+    /** The disc's sign that the capture is still reading, where the glyph
+     *  goes and at its size. Invisible outside loading, which also stops
+     *  it: nothing spins over the game once a result is up. */
+    private val spinner = ProgressBar(context, null, android.R.attr.progressBarStyleSmall).apply {
+        isIndeterminate = true
+        indeterminateTintList = ColorStateList.valueOf(context.themeColor(R.attr.ptText))
+    }
+
     init {
         background = capsule
         // Mid-morph the bar runs past the capsule's start edge.
         clipToOutline = true
+        // Nothing to show until a render: the first one fades it in.
+        visibility = View.GONE
     }
 
-    /** Show [options] with [selected] marked, [collapsed] or expanded, with
-     *  no morph; an empty [options] hides the control. */
-    fun render(options: List<Pair<String, OverlayMode>>, selected: OverlayMode, collapsed: Boolean) {
+    /** Show [options] with [selected] marked: the disc with its spinner
+     *  while [loading], else [collapsed] or expanded. A pill that was not
+     *  up fades in as asked for; one that is up morphs into and out of
+     *  loading, and takes a change of [collapsed] alone with no morph. An
+     *  empty [options] fades the control out ([leave]). */
+    fun render(
+        options: List<Pair<String, OverlayMode>>,
+        selected: OverlayMode,
+        collapsed: Boolean,
+        loading: Boolean = false,
+    ) {
+        if (options.isEmpty()) {
+            if (this.options.isNotEmpty()) {
+                this.options = options
+                leave()
+            }
+            return
+        }
         val contentChanged = options != this.options || selected != this.selected
-        if (!contentChanged && collapsed == this.collapsed) return
+        val collapsedChanged = collapsed != this.collapsed
+        val loadingChanged = loading != this.loading
+        if (!contentChanged && !collapsedChanged && !loadingChanged) return
+        // Not up, or on its way out: it comes up as asked for.
+        val appearing = bar == null || leaving
         this.options = options
         this.selected = selected
-        if (collapsed != this.collapsed) {
-            this.collapsed = collapsed
-            settle()
-        }
+        this.collapsed = collapsed
+        this.loading = loading
         if (contentChanged) {
             removeAllViews()
-            bar = null
-            if (options.isNotEmpty()) {
-                bar = buildBar(options, selected).also { addView(it) }
-                addView(glyph)
-                showGlyph(selected)
-            }
+            bar = buildBar(options, selected).also { addView(it) }
+            addView(glyph)
+            addView(spinner)
+            showGlyph(selected)
         }
-        if (bar == null) {
-            settle()
-            visibility = View.GONE
-        } else {
-            visibility = View.VISIBLE
-            applyReveal()
+        val revealTo = if (loading || collapsed) 0f else 1f
+        val spinTo = if (loading) 1f else 0f
+        when {
+            appearing -> {
+                settleAt(revealTo, spinTo)
+                fadeIn()
+            }
+            loadingChanged -> morphTo(revealTo, spinTo)
+            collapsedChanged -> settleAt(revealTo, spinTo)
+            else -> applyReveal()
         }
     }
 
     /** [render] with each of [modes] under its name for a source language
      *  whose reading hint is [hint]: the one way every host names them. */
-    fun renderModes(modes: List<OverlayMode>, hint: HintTextKind, selected: OverlayMode, collapsed: Boolean) =
-        render(modes.map { context.getString(it.labelRes(hint)) to it }, selected, collapsed)
+    fun renderModes(
+        modes: List<OverlayMode>,
+        hint: HintTextKind,
+        selected: OverlayMode,
+        collapsed: Boolean,
+        loading: Boolean = false,
+    ) = render(modes.map { context.getString(it.labelRes(hint)) to it }, selected, collapsed, loading)
+
+    /** Fade out over [durationMs], a bar closing to the disc on the way,
+     *  then hold nothing: with nothing left to offer, or as the host's
+     *  capture closes. What the user left it as is not touched and nothing
+     *  is reported. A render with something to show brings it back. */
+    fun leave(durationMs: Long = FADE_MS) {
+        if (bar == null || leaving) return
+        leaving = true
+        morphTo(0f, spin, durationMs)
+        animate().cancel()
+        animate().alpha(0f).setDuration(durationMs).withEndAction { drop() }.start()
+    }
+
+    /** The end of [leave]: gone, and nothing held to measure or draw. */
+    private fun drop() {
+        morph?.cancel()
+        morph = null
+        removeAllViews()
+        bar = null
+        options = emptyList()
+        leaving = false
+        visibility = View.GONE
+    }
+
+    /** Up from nothing, or back from a [leave] cut short. */
+    private fun fadeIn() {
+        leaving = false
+        animate().cancel()
+        if (visibility != View.VISIBLE) {
+            alpha = 0f
+            visibility = View.VISIBLE
+        }
+        animate().alpha(1f).setDuration(FADE_MS).start()
+    }
+
+    /** No touch reaches the contents while the capture reads or the pill
+     *  is on its way out: a bar still closing for either would otherwise
+     *  take a pick with no result to paint it on, and a segment moves its
+     *  highlight before it reports. The pill takes the touch itself, so it
+     *  does not reach what the host has under it either, and a tap already
+     *  down on a segment when either begins is cancelled there (the
+     *  interception's own doing) and ends as nothing. */
+    private val takesNoTouch: Boolean get() = loading || leaving
+
+    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean = takesNoTouch
+
+    override fun onTouchEvent(ev: MotionEvent): Boolean = takesNoTouch || super.onTouchEvent(ev)
 
     /** Keep the pill [TOP_DP] under [topInsetPx], the top the host's
      *  content keeps clear (the status bar or a cutout), from its insets
@@ -132,42 +239,73 @@ internal class OverlayModePill(context: Context) : FrameLayout(context) {
     }
 
     /** The user's tap on the X (collapse) or on the disc: report it and
-     *  morph there from wherever the capsule stands. */
+     *  morph there from wherever the capsule stands. Nothing while loading:
+     *  the disc is the spinner's then. */
     private fun setCollapsedByTap(collapsed: Boolean) {
-        if (collapsed == this.collapsed) return
+        if (loading || collapsed == this.collapsed) return
         this.collapsed = collapsed
+        morphTo(if (collapsed) 0f else 1f, 0f)
+        onCollapsedChanged?.invoke(collapsed)
+    }
+
+    /** Morph from wherever the pill stands to [revealTo] and [spinTo]. A
+     *  capsule that changes width takes [shapeMs] and holds one thing in
+     *  its disc throughout, the spinner if either end shows it, so the
+     *  glyph never flashes on the way into or out of loading; a disc that
+     *  stays a disc swaps its content in [SWAP_MS]. */
+    private fun morphTo(revealTo: Float, spinTo: Float, shapeMs: Long = MORPH_MS) {
         morph?.cancel()
-        morph = ValueAnimator.ofFloat(reveal, if (collapsed) 0f else 1f).apply {
-            duration = MORPH_MS
+        morph = null
+        val revealFrom = reveal
+        val spinFrom = spin
+        if (revealFrom == revealTo && spinFrom == spinTo) return
+        val shape = revealFrom != revealTo
+        val held = maxOf(spinFrom, spinTo)
+        morph = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = if (shape) shapeMs else SWAP_MS
             interpolator = FastOutSlowInInterpolator()
             addUpdateListener {
-                reveal = it.animatedValue as Float
+                val t = it.animatedValue as Float
+                reveal = if (t >= 1f) revealTo else revealFrom + (revealTo - revealFrom) * t
+                spin = when {
+                    t >= 1f -> spinTo
+                    shape -> held
+                    else -> spinFrom + (spinTo - spinFrom) * t
+                }
                 applyReveal()
             }
             start()
         }
-        onCollapsedChanged?.invoke(collapsed)
     }
 
-    /** Puts the capsule at the collapsed state's end, a morph or not. */
-    private fun settle() {
+    /** Puts the pill at [revealTo] and [spinTo] outright, a morph or not. */
+    private fun settleAt(revealTo: Float, spinTo: Float) {
         morph?.cancel()
         morph = null
-        reveal = if (collapsed) 0f else 1f
+        reveal = revealTo
+        spin = spinTo
+        applyReveal()
     }
 
-    /** The contents for [reveal], and a relayout for its width. They fade
-     *  through, the glyph over the disc's end of the morph and the bar over
-     *  the rest: the glyph sits where the X does. */
+    /** The contents for [reveal] and [spin], and a relayout for the width.
+     *  They fade through: the disc's content over the disc's end of the
+     *  morph and the bar over the rest (the disc's content sits where the X
+     *  does), and in the disc the glyph over its half of [spin] and the
+     *  spinner over the other. */
     private fun applyReveal() {
         val bar = bar ?: return
         val barAlpha = ((reveal - FADE_SPLIT) / (1f - FADE_SPLIT)).coerceIn(0f, 1f)
-        val glyphAlpha = (1f - reveal / FADE_SPLIT).coerceIn(0f, 1f)
-        bar.alpha = barAlpha
-        bar.visibility = if (barAlpha > 0f) View.VISIBLE else View.INVISIBLE
-        glyph.alpha = glyphAlpha
-        glyph.visibility = if (glyphAlpha > 0f) View.VISIBLE else View.INVISIBLE
+        val discAlpha = (1f - reveal / FADE_SPLIT).coerceIn(0f, 1f)
+        show(bar, barAlpha)
+        show(glyph, discAlpha * (1f - 2f * spin).coerceIn(0f, 1f))
+        show(spinner, discAlpha * (2f * spin - 1f).coerceIn(0f, 1f))
         requestLayout()
+    }
+
+    /** [view] at [alpha]; one faded out takes no touch, focus or reading. */
+    private fun show(view: View, alpha: Float) {
+        view.alpha = alpha
+        view.visibility = if (alpha > 0f) View.VISIBLE else View.INVISIBLE
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -188,6 +326,8 @@ internal class OverlayModePill(context: Context) : FrameLayout(context) {
         glyph.setPadding(pad, pad, pad, pad)
         val square = MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY)
         glyph.measure(square, square)
+        val drawn = MeasureSpec.makeMeasureSpec((GLYPH_DP * dp).roundToInt(), MeasureSpec.EXACTLY)
+        spinner.measure(drawn, drawn)
         // A pill at every width: round ends the bar's height, so the disc
         // is a circle and the bar's ends are concentric with the track's.
         val radius = h / 2f
@@ -206,6 +346,9 @@ internal class OverlayModePill(context: Context) : FrameLayout(context) {
         bar.layout(barStart, 0, barStart + bar.measuredWidth, h)
         val glyphStart = if (rtl) 0 else w - h
         glyph.layout(glyphStart, 0, glyphStart + h, h)
+        // The spinner in the middle of the disc, where the glyph draws.
+        val inset = (h - spinner.measuredWidth) / 2
+        spinner.layout(glyphStart + inset, inset, glyphStart + inset + spinner.measuredWidth, inset + spinner.measuredHeight)
     }
 
     private fun showGlyph(mode: OverlayMode) {
@@ -277,6 +420,10 @@ internal class OverlayModePill(context: Context) : FrameLayout(context) {
         /** The disc's glyph, the size the X draws at. */
         private const val GLYPH_DP = 20
         private const val MORPH_MS = 250L
+        /** The spinner and the glyph changing places in a disc. */
+        private const val SWAP_MS = 200L
+        /** The pill coming up, and going with nothing left to offer. */
+        private const val FADE_MS = 200L
         /** Where along the morph the glyph has faded out and the bar starts
          *  to fade in. */
         private const val FADE_SPLIT = 0.4f

@@ -7,6 +7,8 @@ import android.view.Display
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.CaptureSession
@@ -15,6 +17,7 @@ import com.playtranslate.OcrManager
 import com.playtranslate.OneShotOverlayData
 import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
+import com.playtranslate.R
 import com.playtranslate.fillOneShotOverlayData
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.model.PendingTranslation
@@ -33,13 +36,17 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowChoreographer
 import java.time.Duration
 
 /**
  * The over-game capture sheet with its mode pill: what each mode paints, when
  * a collapsed start posture is honored, the rescue when a reading build lands
  * empty, the pill's picks, and the deferred translation a parked sheet waits
- * with until it leaves the park or switches to Translations.
+ * with until it leaves the park or switches to Translations. The pill as
+ * the capture's sign of work: up with a spinner from the first status, the
+ * control once the text is read, gone for no text or a failure, and out
+ * with the sheet as it closes.
  */
 @RunWith(RobolectricTestRunner::class)
 class CaptureSheetModeControlTest {
@@ -61,6 +68,7 @@ class CaptureSheetModeControlTest {
     @Before fun clearPrefs() { sp().edit().clear().commit() }
 
     @After fun tearDown() {
+        ShadowChoreographer.setPaused(false)
         sheet?.dismiss()
         host.removeAll()
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(5))
@@ -141,6 +149,38 @@ class CaptureSheetModeControlTest {
 
     private fun segments(p: OverlayModePill): List<String> =
         descendants(p).filterIsInstance<TextView>().filter { it.isClickable }.map { it.text.toString() }
+
+    /** [v] is drawn in [p]: it and every ancestor below the pill visible,
+     *  none faded out. */
+    private fun shown(v: View, p: OverlayModePill): Boolean =
+        generateSequence(v) { it.parent as? View }.takeWhile { it !== p }
+            .all { it.visibility == View.VISIBLE && it.alpha > 0f }
+
+    private fun shownSegments(p: OverlayModePill): List<String> =
+        descendants(p).filterIsInstance<TextView>().filter { it.isClickable && shown(it, p) }.map { it.text.toString() }
+
+    private fun spinnerShown(p: OverlayModePill): Boolean =
+        descendants(p).filterIsInstance<ProgressBar>().any { shown(it, p) }
+
+    /** The disc's glyph: the pill's one image whose tap expands it. */
+    private fun glyphShown(p: OverlayModePill): Boolean =
+        descendants(p).filterIsInstance<ImageView>().any {
+            shown(it, p) && it.contentDescription != ctx.getString(R.string.capture_overlay_pill_collapse_cd)
+        }
+
+    /** Past every morph and fade, and the sheet's exit slide. */
+    private fun idleLong() = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+
+    /** Frames come as the clock is moved, so an exit can be seen under
+     *  way; the runtime would otherwise run it out in one turn of the
+     *  looper. [tearDown] hands it back. */
+    private fun paceFrames() {
+        ShadowChoreographer.setPaused(true)
+        ShadowChoreographer.setFrameDelay(Duration.ofMillis(16))
+    }
+
+    /** Let what is animating run out, a frame at a time. */
+    private fun land() = repeat(60) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16)) }
 
     @Test fun `translations paints the chips and offers the modes the layer can paint`() {
         val o = open(OverlayMode.TRANSLATION)
@@ -306,8 +346,143 @@ class CaptureSheetModeControlTest {
         assertTrue("the next capture still opens parked", next.willOpenParked())
     }
 
-    @Test fun `the pill is not offered before a result is bound`() {
+    @Test fun `the pill is not up before the capture's first status`() {
         val o = open(OverlayMode.TRANSLATION)
+        assertEquals(View.GONE, pillOf(o).visibility)
         assertEquals(0, pillOf(o).childCount)
+    }
+
+    // ── the pill as the capture's sign of work ───────────────────────────
+
+    @Test fun `the pill is up with a spinner from the first status and opens to the control once the text is read`() {
+        val o = open(OverlayMode.TRANSLATION)
+        val (flow, s) = session()
+        o.observe(s)
+        idle()
+        val pill = pillOf(o)
+        assertEquals(View.VISIBLE, pill.visibility)
+        assertTrue(spinnerShown(pill))
+        assertTrue("nothing to pick from while it reads", shownSegments(pill).isEmpty())
+        assertFalse(glyphShown(pill))
+
+        flow.value = CaptureState.InProgress("Recognizing text")
+        idleLong()
+        assertTrue("still reading", spinnerShown(pill))
+
+        flow.value = translating(data(""))
+        idleLong()
+        assertEquals(listOf("Translation", "Furigana", "Definitions", "None"), shownSegments(pill))
+        assertFalse(spinnerShown(pill))
+        assertFalse("opening it was not the user's doing", prefs.captureOverlayPillCollapsed)
+    }
+
+    @Test fun `a pill the user left collapsed stays a disc, its spinner giving way to the mode's glyph`() {
+        prefs.captureOverlayPillCollapsed = true
+        val o = open(OverlayMode.TRANSLATION)
+        val (flow, s) = session()
+        o.observe(s)
+        idle()
+        val pill = pillOf(o)
+        assertTrue(spinnerShown(pill))
+        assertFalse(glyphShown(pill))
+
+        flow.value = translating(data(""))
+        idleLong()
+        assertTrue(glyphShown(pill))
+        assertFalse(spinnerShown(pill))
+        assertTrue(shownSegments(pill).isEmpty())
+        assertTrue(prefs.captureOverlayPillCollapsed)
+    }
+
+    @Test fun `no text and a failure take the pill away, and a read that starts again brings it back`() {
+        for (terminal in listOf(CaptureState.NoText("No text"), CaptureState.Failed("Failed"))) {
+            val o = open(OverlayMode.TRANSLATION)
+            val (flow, s) = session()
+            o.observe(s)
+            idle()
+            val pill = pillOf(o)
+            assertEquals(View.VISIBLE, pill.visibility)
+
+            flow.value = terminal
+            idleLong()
+            assertEquals("$terminal", View.GONE, pill.visibility)
+
+            flow.value = CaptureState.InProgress("Recognizing text")
+            idleLong()
+            assertEquals("$terminal", View.VISIBLE, pill.visibility)
+            assertTrue(spinnerShown(pill))
+            o.dismiss()
+            idle()
+        }
+    }
+
+    @Test fun `a parked strip keeps its tap hint while the capture reads`() {
+        val o = open(OverlayMode.TRANSLATION, posture = CaptureResultGeometry.COLLAPSED_POSTURE)
+        val (flow, s) = session()
+        o.observe(s)
+        flow.value = CaptureState.InProgress("Recognizing text")
+        idle()
+        assertTrue(parked(o))
+        val hint: TextView = field(o, "sliverHint")
+        assertEquals(ctx.getString(R.string.capture_sliver_expand_hint), hint.text.toString())
+        assertTrue("the pill's spinner is the sign of the work", spinnerShown(pillOf(o)))
+    }
+
+    @Test fun `the width the hint is placed by is the width it draws at, cut off or not`() {
+        val o = open(OverlayMode.TRANSLATION, posture = CaptureResultGeometry.COLLAPSED_POSTURE)
+        val hint: TextView = field(o, "sliverHint")
+        val placedBy = CaptureResultOverlay::class.java.getDeclaredMethod("fullHintRowWidthPx")
+            .apply { isAccessible = true }
+        fun drawn(): Int {
+            val free = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+            hint.measure(free, free)
+            return hint.measuredWidth
+        }
+        val whole = drawn()
+        assertTrue("the glyph and its gap lead the text", whole > hint.paint.measureText(hint.text.toString()))
+        assertTrue("the display leaves it room", whole < hint.maxWidth)
+        assertEquals("with room", whole, placedBy.invoke(o))
+
+        // A bound the whole hint does not fit: a long locale at a large font.
+        hint.maxWidth = whole - 2
+        assertEquals("the text trails off at the bound", whole - 2, drawn())
+        assertEquals("cut off", whole - 2, placedBy.invoke(o))
+    }
+
+    @Test fun `closing the sheet fades the pill out with it, its bar closing, and remembers nothing`() {
+        val o = open(OverlayMode.TRANSLATION)
+        val (flow, s) = session()
+        o.observe(s)
+        flow.value = translating(data(""))
+        idleLong()
+        val pill = pillOf(o)
+        assertEquals(4, shownSegments(pill).size)
+
+        o.animateOutAndDismiss()
+        assertTrue("the bar is closing", field<android.animation.ValueAnimator?>(pill, "morph")?.isStarted == true)
+        assertEquals("up while it fades", View.VISIBLE, pill.visibility)
+        idleLong()
+        assertEquals(View.GONE, pill.visibility)
+        assertFalse("the close is not the user collapsing it", prefs.captureOverlayPillCollapsed)
+    }
+
+    @Test fun `a result that lands under the exit slide does not bring the pill back`() {
+        val o = open(OverlayMode.TRANSLATION)
+        val (flow, s) = session()
+        o.observe(s)
+        idle()
+        val pill = pillOf(o)
+        assertTrue(spinnerShown(pill))
+
+        paceFrames()
+        o.animateOutAndDismiss()
+        flow.value = translating(data(""))
+        idle()
+        assertFalse("still sliding out", field<Boolean>(o, "dismissed"))
+        assertTrue("the result did land", layerOf(o).hasBoxes)
+
+        land()
+        assertTrue(field<Boolean>(o, "dismissed"))
+        assertEquals(View.GONE, pill.visibility)
     }
 }
