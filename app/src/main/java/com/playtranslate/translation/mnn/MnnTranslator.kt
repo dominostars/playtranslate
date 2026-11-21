@@ -278,6 +278,40 @@ class MnnTranslator private constructor(private val context: Context) {
         true
     }
 
+    /**
+     * Release the model at [modelPath] if it is switched off ([stillOff]):
+     * unload it when it is the resident one, then delete its mmap weight
+     * cache ([deleteCache]). What switching a model off does, for a model
+     * that was run while off (a run the user asked that one model for).
+     *
+     * One step under the engine's lock, the switch read inside it. The
+     * switch is what keeps the waterfall from loading the model, and during
+     * such a run it is off only by the user's leave: switched on meanwhile,
+     * a translation waiting on this lock would load the model, in mmap mode
+     * writing the very cache a delete outside the lock would be unlinking.
+     * Returns whether it was released.
+     */
+    suspend fun releaseIfOff(
+        modelPath: String,
+        stillOff: () -> Boolean,
+        deleteCache: () -> Unit,
+    ): Boolean = mutex.withLock {
+        if (!stillOff()) return@withLock false
+        if (loadedModelPath == modelPath) {
+            val state = engine.state.value
+            if (state.isModelLoaded || state is InferenceEngine.State.Error) {
+                Log.i(TAG, "Unloading MNN model run while switched off: $modelPath")
+                runCatching { engine.cleanUp() }
+                    .onFailure { Log.w(TAG, "releaseIfOff() encountered $it (ignored)") }
+            }
+            loadedModelPath = null
+            lastSystemBlock = null
+        }
+        runCatching { deleteCache() }
+            .onFailure { Log.w(TAG, "releaseIfOff() could not delete the cache: $it (ignored)") }
+        true
+    }
+
     /** Best-effort full teardown. Safe to call at app teardown. */
     fun close() {
         runCatching {

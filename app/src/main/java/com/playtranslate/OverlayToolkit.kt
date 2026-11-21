@@ -124,18 +124,26 @@ object OverlayToolkit {
         val originalText: String,
         val translatedText: String,
         val segments: List<com.playtranslate.model.TextSegment>,
+        /** The boxes' source texts, one per box that has one: the texts
+         *  [translatedText] was made from
+         *  ([com.playtranslate.model.TranslationResult.groupTexts]). Null
+         *  where the texts were not built from boxes. */
+        val unitTexts: List<String>? = null,
     )
 
     /** Build the panel texts from [ordered] boxes (the caller's chosen panel
      *  order — [panelReadingOrder] for the reconciler tier, cachedBoxes
      *  verbatim for the pinhole tier). */
-    fun panelTexts(ordered: List<TextBox>): PanelTexts = PanelTexts(
-        originalText = ordered.filter { it.sourceText.isNotEmpty() }
-            .joinToString("\n") { it.sourceText },
-        translatedText = ordered.filter { it.translatedText.isNotEmpty() }
-            .joinToString("\n\n") { it.translatedText },
-        segments = com.playtranslate.model.TextSegments.ofLines(ordered.map { it.sourceText }),
-    )
+    fun panelTexts(ordered: List<TextBox>): PanelTexts {
+        val sources = ordered.filter { it.sourceText.isNotEmpty() }.map { it.sourceText }
+        return PanelTexts(
+            originalText = sources.joinToString("\n"),
+            translatedText = ordered.filter { it.translatedText.isNotEmpty() }
+                .joinToString("\n\n") { it.translatedText },
+            segments = com.playtranslate.model.TextSegments.ofLines(ordered.map { it.sourceText }),
+            unitTexts = sources,
+        )
+    }
 
     /** The single "Translated by …" attribution for a panel emission, or null
      *  to suppress the label. A live panel result aggregates boxes translated

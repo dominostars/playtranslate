@@ -88,6 +88,17 @@ interface TranslationBackend {
      *  the source of truth for online failure modes. */
     fun isUsable(source: String, target: String): Boolean
 
+    /** Whether the backend could translate the pair if asked now, whatever
+     *  its switch says: it is set up (a key where it takes one, its model
+     *  on the device) and takes the pair. What [isUsable] is without the
+     *  switch, so a backend with one states this and derives [isUsable]
+     *  from it; the default is for a backend with no switch of its own.
+     *  The gate of a run the user asked this one service for
+     *  ([TranslationBackendRegistry.translateWith]) and of the list they
+     *  pick it from ([TranslationBackendRegistry.setUpFor]). A cooldown has
+     *  no say here either. */
+    fun isSetUpFor(source: String, target: String): Boolean = isUsable(source, target)
+
     /** Translate [text] from [source] to [target]. Throws on any failure;
      *  the waterfall falls through to the next backend on exception. */
     suspend fun translate(text: String, source: String, target: String): String

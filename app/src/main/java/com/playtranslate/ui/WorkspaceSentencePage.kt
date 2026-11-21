@@ -239,20 +239,22 @@ class WorkspaceSentencePage(
             flow?.completeDeferred()
         }
 
-        /** In the workspace's own modal layer. Its button leaves the
-         *  workspace for the settings page, on the app's screen, the way a
-         *  word page's Anki launch does. */
-        override fun onAskNeedsLlm() {
-            host.alert()
-                .askNeedsLlm(ctx) {
-                    val intent = Intent(ctx.applicationContext, TranslationServicesActivity::class.java)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    val targetDisplay = PlayTranslateApplication.foregroundDisplayId() ?: host.displayId
-                    val opts = ActivityOptions.makeBasic().setLaunchDisplayId(targetDisplay).toBundle()
-                    CaptureBackendResolver.activeOverlayUi?.dismissWorkspace()
-                    ctx.applicationContext.startActivity(intent, opts)
-                }
-                .showInParent(host.modalLayer)
+        override fun onAskNeedsLlm() = showAlert { it.askNeedsLlm(ctx) { openTranslationServices() } }
+
+        /** In the workspace's own modal layer. */
+        override fun showAlert(configure: (OverlayAlert.Builder) -> Unit) {
+            host.alert().also(configure).showInParent(host.modalLayer)
+        }
+
+        /** Leaves the workspace for the settings page, on the app's
+         *  screen, the way a word page's Anki launch does. */
+        override fun openTranslationServices() {
+            val intent = Intent(ctx.applicationContext, TranslationServicesActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val targetDisplay = PlayTranslateApplication.foregroundDisplayId() ?: host.displayId
+            val opts = ActivityOptions.makeBasic().setLaunchDisplayId(targetDisplay).toBundle()
+            CaptureBackendResolver.activeOverlayUi?.dismissWorkspace()
+            ctx.applicationContext.startActivity(intent, opts)
         }
     }
 

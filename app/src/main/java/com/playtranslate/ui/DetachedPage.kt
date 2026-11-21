@@ -218,6 +218,10 @@ internal class DetachedPage(
         liveFeed?.cancel()
         liveFeed = null
         liveService = svc
+        // No service is picked for a result while a session feeds the page:
+        // its next read would put its own translation in the pick's place.
+        // When it stops, the result it left can be picked for.
+        content.binder.translationPickerOffered = svc == null
         if (svc == null) return
         driver.abandon()
         liveFeed = scope.launch {
@@ -523,5 +527,12 @@ internal class DetachedPage(
         override fun completeDeferredTranslation() = driver.completeDeferred()
 
         override fun onAskNeedsLlm() = showAskNeedsLlm(ttsAlertTarget)
+
+        /** Over the game, in a window of its own, as the page's other
+         *  alerts are. */
+        override fun showAlert(configure: (OverlayAlert.Builder) -> Unit) =
+            showAlertOn(ttsAlertTarget) { configure(this) }
+
+        override fun openTranslationServices() = openTranslationServices(ttsAlertTarget)
     }
 }

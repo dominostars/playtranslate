@@ -83,7 +83,11 @@ class LingvaBackend(
     /** Constant: Lingva has no key to hold, so it never leaves this state. */
     override val status: BackendStatus = BackendStatus.Account(ServiceType.LINGVA.account)
 
-    override fun isUsable(source: String, target: String): Boolean = enabledProvider()
+    override fun isUsable(source: String, target: String): Boolean =
+        enabledProvider() && isSetUpFor(source, target)
+
+    /** Nothing to set up: no key, any pair. */
+    override fun isSetUpFor(source: String, target: String): Boolean = true
 
     // No credentials-change escape hatch here (nothing to reconfigure,
     // unlike Gemini/OpenAI's fingerprint clear): a cooldown ends by

@@ -173,6 +173,17 @@ class TranslationResultContent(
          *  button opening Translation services from here. */
         fun onAskNeedsLlm()
 
+        /** Show an alert of the page's on this surface, the way the host
+         *  shows its own ([onAskNeedsLlm]'s): the host makes the builder
+         *  for where it lives (an activity, a window over the game, the
+         *  workspace's modal layer), [configure] fills it, the host shows
+         *  it. The translation service picker and its failure alert. */
+        fun showAlert(configure: (OverlayAlert.Builder) -> Unit)
+
+        /** Open the Translation services page from this surface, as
+         *  [onAskNeedsLlm]'s button does. */
+        fun openTranslationServices()
+
         /** The overlay mode the capture's boxes are painted in on the game
          *  screen right now (two screens), or null with none painted. In
          *  Translations they need the deferred translation whatever the
@@ -345,6 +356,13 @@ class TranslationResultContent(
         binder.onChooseOcr = {
             currentReady()?.ocrProvenance?.let { host.onChooseOcr(it) }
         }
+        // Not an interaction in the host's sense ([Host.onInteraction]): on
+        // the in-app page that takes the capture's boxes off the game
+        // screen, the very boxes a pick fills again.
+        binder.onChooseTranslation = { showTranslationPicker() }
+        // The run is the view-model's and outlives this page, as the result
+        // does: draw whatever it holds now, and every change after.
+        host.scope.launch { vm.pickRun.collect { if (host.isAlive) renderPick() } }
         binder.onChooseLanguage = { isSource -> host.onChangeLanguage(isSource) }
         binder.setShowOnScreenAction { host.onShowOnScreenTapped() }
         ask = AskSectionBinder(
@@ -514,7 +532,7 @@ class TranslationResultContent(
                 // in flight (an edit commit clears the old translation before
                 // the new one lands); the binder shows the "Translating…"
                 // placeholder instead of an empty card.
-                binder.bindResult(result, canReOcr = host.canReOcr())
+                binder.bindResult(result, canReOcr = host.canReOcr(), picking = isPicking(result))
                 wordRows.applyWordsVisibility()
                 statusContainer.isGone = true
                 actionButtons.isVisible = host.showsClearAction
@@ -527,9 +545,63 @@ class TranslationResultContent(
                 // boxes on the game screen, picked while it was being read.
                 // No-op without a pending.
                 requestDeferredCompletion()
+                // A pick of this result that failed with no page to say so,
+                // or under a status this result is now put back from.
+                tellPickFailure()
             }
         }
         syncAnkiPill()
+    }
+
+    // ── A service picked for the result on show ──────────────────────────
+
+    /** Whether a service the user picked is translating [result] again
+     *  right now: the view-model's run ([TranslationResultViewModel.pickRun])
+     *  is for this very result and its service is still being asked. */
+    private fun isPicking(result: TranslationResult): Boolean =
+        vm.pickRun.value?.let { it.result === result && it.running } == true
+
+    /** The run started, failed or ended: draw the translation card of the
+     *  result on show again, say a failure, and nothing else. The result
+     *  itself has not changed (a landing is a Ready of its own, drawn by
+     *  [render]), so there is nothing to fit or reveal; before the funnel
+     *  has drawn this result there is nothing to redraw, and a failure
+     *  waits for that draw ([render]). */
+    private fun renderPick() {
+        val shown = (lastRendered as? ResultState.Ready)?.result ?: return
+        if (currentReady() !== shown) return
+        binder.bindTargetReady(shown, picking = isPicking(shown))
+        tellPickFailure()
+    }
+
+    /** Say that the pick for the result on show failed, in an alert, and
+     *  with that the run is over ([TranslationResultViewModel.pickFailureTold]):
+     *  nothing on show changed, so the alert is all there is. A function of
+     *  the run and the result on show, so called where either is drawn
+     *  ([renderPick], [render]), after the result's card: a failure is said
+     *  for the result it is about and for no other, and one that found no
+     *  page to say it is said when the page next draws that result. */
+    private fun tellPickFailure() {
+        val run = vm.pickRun.value ?: return
+        val failed = run.failure ?: return
+        if (currentReady() !== run.result) return
+        vm.pickFailureTold(run)
+        host.showAlert { ChosenServiceTranslation.failureAlert(it, ctx, failed) }
+    }
+
+    /** The translation service picker for the result on show
+     *  ([TranslationPicker]), on the host's alert surface. A pick runs that
+     *  result, and only it, through the service
+     *  ([TranslationResultViewModel.retranslateWith]). */
+    private fun showTranslationPicker() {
+        val result = currentReady() ?: return
+        host.showAlert { builder ->
+            TranslationPicker.populate(
+                builder, ctx, result.langContext, result.backendDisplayName,
+                onPick = { backend -> vm.retranslateWith(backend, result, ctx.applicationContext) },
+                onOpenServices = { host.openTranslationServices() },
+            )
+        }
     }
 
     /**

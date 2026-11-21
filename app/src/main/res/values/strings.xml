@@ -860,6 +860,26 @@
     <string name="ocr_picker_message">OCR is what extracts text from a screenshot. Different tools might be better for different fonts.</string>
     <!-- Accessibility label (contentDescription) for the source OCR-attribution row + gear icon. -->
     <string name="cd_choose_ocr">Choose OCR tool</string>
+    <!-- Title of the dialog opened by tapping the "Translated by ..." line (or the gear
+         beside it) under a translation. It lists the user's translation services; picking
+         one translates the text on screen again with that service. Mirror of
+         ocr_picker_title. -->
+    <string name="translation_picker_title">Choose translation service</string>
+    <!-- Body text of that same dialog, under the title. Two facts: the pick translates
+         only the text on screen, and it does not change which services the app uses
+         from now on (unlike the OCR dialog next to it, whose pick is remembered). -->
+    <string name="translation_picker_message">Translates this text again with the service you pick. Your settings stay as they are.</string>
+    <!-- Accessibility label (contentDescription) for the gear beside the
+         "Translated by ..." line; read after the line itself. -->
+    <string name="cd_choose_translation_service">Choose translation service</string>
+    <!-- Title of the alert shown when the service picked in the "Choose translation
+         service" dialog could not translate the text. The translation that was on
+         screen is still there. The reason follows as the alert's message. -->
+    <string name="translation_pick_failed_title">Couldn\'t translate</string>
+    <!-- Message of that alert when there is no more specific reason to give (an
+         on-device model failed, for example). %1$s = the service's name, a proper
+         noun (e.g. "Firefox Translations"). -->
+    <string name="translation_pick_failed_generic"><xliff:g id="service" example="Firefox Translations">%1$s</xliff:g> couldn\'t translate this text.</string>
     <!-- Accessibility label (contentDescription) for the tappable source-language
          section header on the result screen; tapping it opens the language picker.
          Names the picker it opens (lang_translate_from, "Game Language"), not the

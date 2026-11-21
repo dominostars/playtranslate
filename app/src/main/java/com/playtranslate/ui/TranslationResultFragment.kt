@@ -259,6 +259,9 @@ class TranslationResultFragment : Fragment() {
         // The Words card's live flag is per view: a view created during live
         // mode starts auto-hidden, whatever an earlier view's eye did.
         c.wordRows.setLiveMode(host?.isLiveModeRunning() == true)
+        // Nor is a service picked for a result while auto-translate feeds
+        // the page ([offerTranslationPicker]).
+        offerTranslationPicker(liveRunning = host?.isLiveModeRunning() == true)
         // Back closes an open popover (the size picker, a header's ⋯ menu)
         // before it can leave the page. Enabled exactly while one is up (the
         // open/close event is synchronous with the state); added with the
@@ -407,6 +410,17 @@ class TranslationResultFragment : Fragment() {
     fun onLiveModeChanged(running: Boolean) {
         if (view == null) return
         content.wordRows.setLiveMode(running)
+        offerTranslationPicker(liveRunning = running)
+    }
+
+    /** The translation's gear is offered except while auto-translate runs:
+     *  a pick is a translation of the result on show, and auto-translate's
+     *  next read would put its own in its place. When it stops, the result
+     *  it left on the page can be picked for like any other. Set at both
+     *  edges ([onLiveModeChanged]) and for a view created during a session
+     *  ([onViewCreated]). */
+    private fun offerTranslationPicker(liveRunning: Boolean) {
+        content.binder.translationPickerOffered = !liveRunning
     }
 
     /** Recompute the toggle's visibility + accent from the current mode.
@@ -1030,12 +1044,15 @@ class TranslationResultFragment : Fragment() {
             host?.completeDeferredTranslation()
         }
 
-        override fun onAskNeedsLlm() {
-            OverlayAlert.Builder(activity)
-                .askNeedsLlm(activity) {
-                    activity.startActivity(Intent(activity, TranslationServicesActivity::class.java))
-                }
-                .show()
+        override fun onAskNeedsLlm() = showAlert { it.askNeedsLlm(activity) { openTranslationServices() } }
+
+        /** Over the activity (or a dialog of it that is up). */
+        override fun showAlert(configure: (OverlayAlert.Builder) -> Unit) {
+            OverlayAlert.Builder(activity).also(configure).show()
+        }
+
+        override fun openTranslationServices() {
+            activity.startActivity(Intent(activity, TranslationServicesActivity::class.java))
         }
     }
 }

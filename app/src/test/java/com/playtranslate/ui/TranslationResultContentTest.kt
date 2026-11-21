@@ -10,7 +10,9 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.Button
 import android.widget.TextView
+import androidx.core.view.allViews
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
@@ -30,7 +32,12 @@ import com.playtranslate.model.PendingTranslation
 import com.playtranslate.model.TextSegments
 import com.playtranslate.model.TranslationResult
 import com.playtranslate.overlay.OverlayHost
+import com.playtranslate.translation.BackendFailure
+import com.playtranslate.translation.BackendFailureKind
+import com.playtranslate.translation.FakeSwitchedBackend
+import com.playtranslate.translation.TranslationBackend
 import com.playtranslate.translation.TranslationBackendRegistry
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -84,6 +91,12 @@ import org.robolectric.annotation.GraphicsMode
  * LLM a preset leads to the host's alert, as an interaction; and the
  * Translation eye tells an answer on show whether it may give the
  * translation away.
+ * The translation's credit has a gear: it opens the translation service
+ * picker on the host's alert surface (not an interaction in the host's
+ * sense), a pick runs the result the picker was opened for through that
+ * service by the view-model, the card draws the run while it is for the
+ * result on show, a failure is said in an alert of the host's, and the
+ * picker's settings button is the host's way to Translation services.
  */
 @RunWith(RobolectricTestRunner::class)
 class TranslationResultContentTest {
@@ -96,7 +109,10 @@ class TranslationResultContentTest {
     }
 
     private class FakeHost(activity: Activity, override val scope: CoroutineScope) : TranslationResultContent.Host {
-        override val isAlive: Boolean = true
+        /** Whether the page is there to draw and to say anything; a test
+         *  takes it away to stand for a page that is not. */
+        var alive = true
+        override val isAlive: Boolean get() = alive
         override val ttsAlertTarget: TtsAlertTarget = TtsAlertTarget.InActivity(activity)
         override val lensOverlayHost: OverlayHost? = null
         override val lensWindowManager: WindowManager = activity.windowManager
@@ -129,8 +145,19 @@ class TranslationResultContentTest {
         var askAlerts = 0
         var interactions = 0
 
+        /** Where the page's alerts are shown ([showAlert]): a layer of the
+         *  test's own, so their buttons can be read and tapped. */
+        val alertLayer = android.widget.FrameLayout(activity)
+        var alertsShown = 0
+        var servicesOpened = 0
+
         override val captureModeOnScreen: OverlayMode? get() = modeOnScreen
         override fun onAskNeedsLlm() { askAlerts++ }
+        override fun showAlert(configure: (OverlayAlert.Builder) -> Unit) {
+            alertsShown++
+            OverlayAlert.Builder(alertLayer.context).also(configure).showInParent(alertLayer)
+        }
+        override fun openTranslationServices() { servicesOpened++ }
         override fun onInteraction() { interactions++ }
         override fun onRender(state: ResultState) { rendered += state }
         override fun onWordTapped(
@@ -855,7 +882,7 @@ class TranslationResultContentTest {
         content.render(ResultState.Ready(result(LONG_SOURCE, LONG_TRANSLATION)))
         idle()
         assertEquals(View.VISIBLE, view(R.id.resultsContent).visibility)
-        assertEquals("no note row in the chrome", View.GONE, view(R.id.tvTranslationNote).visibility)
+        assertEquals("no note row in the chrome", View.GONE, view(R.id.translationNoteRow).visibility)
         assertEquals("no note row in the chrome", View.GONE, view(R.id.sourceNoteRow).visibility)
     }
 
@@ -1098,6 +1125,259 @@ class TranslationResultContentTest {
             listOf(Triple("world", AudioRequest.Kind.WORD, SourceLangId.EN)),
             speech.played.map { Triple(it.surface, it.kind, it.lang) },
         )
+    }
+
+    // ── A service picked for the result on show ──────────────────────────
+
+    private val lingva = FakeSwitchedBackend(id = "lingva", priority = 10, displayName = "Lingva")
+    private val gemini = FakeSwitchedBackend(id = "gemini", priority = 20, displayName = "Gemini", enabled = false)
+
+    /** The picks the view-model's seam was handed, each held open until the
+     *  test answers it. */
+    private val picks = mutableListOf<Pair<TranslationBackend, CompletableDeferred<ChosenServiceTranslation.Outcome>>>()
+
+    /** A translated result credited to Lingva, on show through the
+     *  view-model as a host's collector would put it. */
+    private fun showCredited(): TranslationResult {
+        TranslationBackendRegistry.init(listOf(lingva, gemini))
+        vm.chosenTranslation = { _, backend, _ ->
+            CompletableDeferred<ChosenServiceTranslation.Outcome>().also { picks += backend to it }.await()
+        }
+        val credited = result("Hello world", "Bonjour le monde").copy(backendDisplayName = "Lingva")
+        vm.displayResult(credited, app)
+        content.render(vm.result.value)
+        idle()
+        return credited
+    }
+
+    private fun alertTexts(): List<String> =
+        host.alertLayer.allViews.filterIsInstance<TextView>().map { it.text.toString() }.toList()
+
+    private fun alertButton(label: String): Button =
+        host.alertLayer.allViews.filterIsInstance<Button>().single { it.text.toString() == label }
+
+    @Test
+    fun `the credit's gear opens the service picker on the host's alert surface, and is no interaction`() {
+        try {
+            showCredited()
+            assertEquals(View.VISIBLE, view(R.id.btnTranslationService).visibility)
+
+            view(R.id.translationNoteRow).performClick()
+
+            assertEquals(1, host.alertsShown)
+            assertTrue(activity.getString(R.string.translation_picker_title) in alertTexts())
+            assertEquals(
+                "the services set up for the result's pair, the switched-off one too",
+                listOf("Lingva", "Gemini"),
+                host.alertLayer.allViews.filterIsInstance<Button>().map { it.text.toString() }.take(2).toList(),
+            )
+            assertEquals(
+                "the host's interaction takes the capture's boxes off the game screen, the ones a pick refills",
+                0, host.interactions,
+            )
+            assertTrue("opening the picker asks nobody", picks.isEmpty())
+        } finally {
+            TranslationBackendRegistry.close()
+        }
+    }
+
+    @Test
+    fun `a pick runs the result through the service, drawn dimmed until its translation lands`() {
+        try {
+            val credited = showCredited()
+            view(R.id.translationNoteRow).performClick()
+
+            alertButton("Gemini").performClick()
+            idle()
+
+            assertSame("the service picked", gemini, picks.single().first)
+            assertSame("the result is not changed while it runs", credited, content.currentReady())
+            assertEquals("Bonjour le monde", text(R.id.tvTranslation))
+            assertTrue("dimmed", view(R.id.tvTranslation).alpha < 1f)
+            assertEquals(activity.getString(R.string.status_translating), text(R.id.tvTranslationNote))
+            assertEquals("no second pick over a running one", View.GONE, view(R.id.btnTranslationService).visibility)
+
+            picks.single().second.complete(ChosenServiceTranslation.Outcome.Translated(listOf("Salut tout le monde"), "Gemini"))
+            idle()
+            content.render(vm.result.value)
+            idle()
+
+            assertEquals("Salut tout le monde", text(R.id.tvTranslation))
+            assertEquals(1f, view(R.id.tvTranslation).alpha, 0f)
+            assertEquals(activity.getString(R.string.translation_source_label, "Gemini"), text(R.id.tvTranslationNote))
+            assertEquals(View.VISIBLE, view(R.id.btnTranslationService).visibility)
+        } finally {
+            TranslationBackendRegistry.close()
+        }
+    }
+
+    @Test
+    fun `a failed pick leaves the translation as it was and says so in an alert of the host's`() {
+        try {
+            val credited = showCredited()
+            view(R.id.translationNoteRow).performClick()
+            alertButton("Gemini").performClick()
+            idle()
+            assertEquals("the picker", 1, host.alertsShown)
+
+            picks.single().second.complete(
+                ChosenServiceTranslation.Outcome.Failed("gemini", "Gemini", BackendFailure(BackendFailureKind.RATE_LIMITED, 429)),
+            )
+            idle()
+
+            assertSame(credited, content.currentReady())
+            assertEquals("Bonjour le monde", text(R.id.tvTranslation))
+            assertEquals(1f, view(R.id.tvTranslation).alpha, 0f)
+            assertEquals(activity.getString(R.string.translation_source_label, "Lingva"), text(R.id.tvTranslationNote))
+            assertEquals(View.VISIBLE, view(R.id.btnTranslationService).visibility)
+            assertEquals("and the alert", 2, host.alertsShown)
+            assertTrue(activity.getString(R.string.translation_pick_failed_title) in alertTexts())
+            assertTrue(
+                "the reason, as the error pill words it",
+                activity.getString(R.string.translation_error_rate_limited, "Gemini") in alertTexts(),
+            )
+            assertNull("said, so nothing of the run is left", vm.pickRun.value)
+
+            // Said once: the result drawn again says nothing more.
+            content.render(vm.result.value)
+            idle()
+            assertEquals(2, host.alertsShown)
+        } finally {
+            TranslationBackendRegistry.close()
+        }
+    }
+
+    /** A pick of the result on show through Gemini that fails while the
+     *  page is not there to say so ([FakeHost.alive]). The view-model holds
+     *  the failure with the run, for the page to say when it is back. */
+    private fun failPickWithNoPage(): TranslationResult {
+        val credited = showCredited()
+        view(R.id.translationNoteRow).performClick()
+        alertButton("Gemini").performClick()
+        idle()
+        host.alive = false
+        picks.single().second.complete(ChosenServiceTranslation.Outcome.Failed("gemini", "Gemini", null))
+        idle()
+        assertEquals("precondition: only the picker so far, nobody was there to say the failure", 1, host.alertsShown)
+        assertSame("precondition: the failure is held, about its result", credited, vm.pickRun.value?.result)
+        assertFalse(vm.pickRun.value!!.running)
+        host.alive = true
+        return credited
+    }
+
+    @Test
+    fun `a failure nobody was there to hear is said when the page draws its result again, once`() {
+        try {
+            val credited = failPickWithNoPage()
+
+            content.render(vm.result.value)
+            idle()
+
+            assertEquals(2, host.alertsShown)
+            assertTrue(activity.getString(R.string.translation_pick_failed_generic, "Gemini") in alertTexts())
+            assertNull(vm.pickRun.value)
+            assertSame(credited, content.currentReady())
+            assertEquals(1f, view(R.id.tvTranslation).alpha, 0f)
+
+            content.render(vm.result.value)
+            idle()
+            assertEquals("once", 2, host.alertsShown)
+        } finally {
+            TranslationBackendRegistry.close()
+        }
+    }
+
+    @Test
+    fun `a failure nobody was there to hear is never said over the result that took its place`() {
+        try {
+            failPickWithNoPage()
+            // Another capture lands before the page is back.
+            val newer = result("Good night", "Bonne nuit").copy(backendDisplayName = "Lingva")
+            vm.displayResult(newer, app)
+
+            content.render(vm.result.value)
+            idle()
+
+            assertEquals("the failure was about a result that is gone", 1, host.alertsShown)
+            assertNull(vm.pickRun.value)
+            assertEquals("Bonne nuit", text(R.id.tvTranslation))
+            assertEquals(1f, view(R.id.tvTranslation).alpha, 0f)
+        } finally {
+            TranslationBackendRegistry.close()
+        }
+    }
+
+    @Test
+    fun `a failure with no reason to give says the plain line`() {
+        try {
+            showCredited()
+            view(R.id.translationNoteRow).performClick()
+            alertButton("Gemini").performClick()
+            idle()
+
+            picks.single().second.complete(ChosenServiceTranslation.Outcome.Failed("gemini", "Gemini", null))
+            idle()
+
+            assertTrue(activity.getString(R.string.translation_pick_failed_generic, "Gemini") in alertTexts())
+        } finally {
+            TranslationBackendRegistry.close()
+        }
+    }
+
+    @Test
+    fun `the picker's settings button is the host's way to Translation services, and picks nothing`() {
+        try {
+            showCredited()
+            view(R.id.translationNoteRow).performClick()
+
+            alertButton(activity.getString(R.string.settings_cell_translation_services)).performClick()
+            idle()
+
+            assertEquals(1, host.servicesOpened)
+            assertTrue(picks.isEmpty())
+            assertNull(vm.pickRun.value)
+        } finally {
+            TranslationBackendRegistry.close()
+        }
+    }
+
+    @Test
+    fun `a pick made after another result took the page's place asks nobody`() {
+        try {
+            showCredited()
+            view(R.id.translationNoteRow).performClick()
+            // A new capture lands under the open picker.
+            val newer = result("Good night", "Bonne nuit").copy(backendDisplayName = "Lingva")
+            vm.displayResult(newer, app)
+            content.render(vm.result.value)
+            idle()
+
+            alertButton("Gemini").performClick()
+            idle()
+
+            assertTrue("the picker was for the result it was opened over", picks.isEmpty())
+            assertEquals("Bonne nuit", text(R.id.tvTranslation))
+            assertEquals(1f, view(R.id.tvTranslation).alpha, 0f)
+        } finally {
+            TranslationBackendRegistry.close()
+        }
+    }
+
+    @Test
+    fun `a surface that does not offer the picker shows the credit with no gear`() {
+        try {
+            content.binder.translationPickerOffered = false
+            showCredited()
+
+            assertEquals(View.VISIBLE, view(R.id.translationNoteRow).visibility)
+            assertEquals(View.GONE, view(R.id.btnTranslationService).visibility)
+            assertFalse(view(R.id.translationNoteRow).isClickable)
+
+            content.binder.translationPickerOffered = true
+            assertEquals("offered again on the result already on show", View.VISIBLE, view(R.id.btnTranslationService).visibility)
+        } finally {
+            TranslationBackendRegistry.close()
+        }
     }
 
     private fun clearPrefs() {

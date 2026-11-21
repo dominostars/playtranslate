@@ -16,12 +16,16 @@ import com.playtranslate.model.ReadingRow
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TextSegments
 import com.playtranslate.model.TranslationResult
+import com.playtranslate.refillOneShotOverlayData
+import com.playtranslate.translation.TranslationBackend
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /**
  * Source of truth for the translation-result surface, scoped per
@@ -55,6 +59,14 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
 
     private val _result = MutableStateFlow<ResultState>(ResultState.Idle)
     val result: StateFlow<ResultState> = _result.asStateFlow()
+
+    /** Put [state] on show: the one writer of [_result], so that whatever
+     *  takes a result's place also ends a picked service's run for that
+     *  result ([endPickReplacedBy]) and no writer has to remember it. */
+    private fun show(state: ResultState) {
+        _result.value = state
+        endPickReplacedBy(state)
+    }
 
     /** The on-screen boxes of the state the results page last rendered (two
      *  screens): what a capture's arrival is read against
@@ -168,7 +180,7 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
         // (and, for an analysis failure, the tap spans) empty and the cache
         // unwritten for an otherwise-successful translation.
         val placeholderLookupCoversText = lookups.covers(result.originalText)
-        _result.value = ResultState.Ready(result, onScreenBoxes)
+        show(ResultState.Ready(result, onScreenBoxes))
         if (!(sameTextPlaceholder && placeholderLookupCoversText)) {
             startWordLookups(result.originalText, appCtx)
         }
@@ -205,14 +217,14 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
         hint: String? = null,
     ) {
         resetWordLookups()
-        _result.value = ResultState.Status(message, showHint, ocrProvenance, screenshotPath, hint)
+        show(ResultState.Status(message, showHint, ocrProvenance, screenshotPath, hint))
     }
 
     /** Show an error. Fragment formats with the status_error string
      *  resource. Cancels any in-flight lookup. */
     fun showError(message: String) {
         resetWordLookups()
-        _result.value = ResultState.Error(message)
+        show(ResultState.Error(message))
     }
 
     /** Put back [state], one this model showed before a capture that never
@@ -224,17 +236,17 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
         when (state) {
             is ResultState.Ready -> {
                 lastSeenResult = state.result
-                _result.value = state
+                show(state)
                 startWordLookups(state.result.originalText, appCtx)
                 writeLastSentenceCache()
             }
             is ResultState.Translating -> {
-                _result.value = state
+                show(state)
                 startWordLookups(state.originalText, appCtx)
             }
             is ResultState.Status, is ResultState.Error, ResultState.Idle -> {
                 resetWordLookups()
-                _result.value = state
+                show(state)
             }
         }
     }
@@ -247,7 +259,7 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
      *  currently in Status. */
     fun setStatusHintVisibility(visible: Boolean) {
         val cur = _result.value as? ResultState.Status ?: return
-        _result.value = cur.copy(showHint = visible)
+        show(cur.copy(showHint = visible))
     }
 
     /** Show "translating..." placeholder for drag-sentence flows.
@@ -260,7 +272,7 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
         ocrProvenance: com.playtranslate.model.OcrProvenance? = null,
         onScreenBoxes: OnScreenBoxes? = null,
     ) {
-        _result.value = ResultState.Translating(originalText, segments, ocrProvenance, onScreenBoxes)
+        show(ResultState.Translating(originalText, segments, ocrProvenance, onScreenBoxes))
         startWordLookups(originalText, appCtx)
     }
 
@@ -271,7 +283,7 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
      *  in any other state, since only a placeholder still has boxes to fill. */
     fun applyTranslatingBoxes(onScreenBoxes: OnScreenBoxes?) {
         val cur = _result.value as? ResultState.Translating ?: return
-        _result.value = cur.copy(onScreenBoxes = onScreenBoxes)
+        show(cur.copy(onScreenBoxes = onScreenBoxes))
     }
 
     /** Edit-overlay commit: replace original text on the current
@@ -287,7 +299,7 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
         val newSegments = TextSegments.ofText(newText)
         when (val cur = _result.value) {
             is ResultState.Ready -> {
-                _result.value = ResultState.Ready(
+                show(ResultState.Ready(
                     cur.result.copy(
                         originalText = newText,
                         translatedText = "",
@@ -296,15 +308,18 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
                         // so the "Scanned by …" row + gear hide and re-OCR (which would
                         // discard the edit) is disabled.
                         ocrProvenance = null,
+                        // Nor is it the capture's groups: the edited text is
+                        // translated, and translated again, as one text.
+                        groupTexts = null,
                         // The edit's own re-translate lands via updateTranslation — a
                         // surviving pending would let a later reveal clobber it with
                         // the OLD source's translation.
                         pendingTranslation = null,
                     )
-                )
+                ))
             }
             is ResultState.Translating -> {
-                _result.value = ResultState.Translating(newText, newSegments)
+                show(ResultState.Translating(newText, newSegments))
             }
             else -> return
         }
@@ -321,17 +336,17 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
     fun updateTranslation(translated: String, backendDisplayName: String? = null, appCtx: Context) {
         when (val cur = _result.value) {
             is ResultState.Ready -> {
-                _result.value = ResultState.Ready(
+                show(ResultState.Ready(
                     cur.result.copy(
                         translatedText = translated,
                         backendDisplayName = backendDisplayName,
                         // A caller-supplied translation supersedes a deferred one.
                         pendingTranslation = null,
                     )
-                )
+                ))
             }
             is ResultState.Translating -> {
-                _result.value = ResultState.Ready(
+                show(ResultState.Ready(
                     TranslationResult(
                         originalText = cur.originalText,
                         segments = cur.segments,
@@ -342,7 +357,7 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
                         backendDisplayName = backendDisplayName,
                         langContext = Prefs(appCtx).langContext(),
                     )
-                )
+                ))
             }
             else -> { /* No-op for Idle/Status/Error */ }
         }
@@ -373,7 +388,7 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
     ) {
         val cur = _result.value as? ResultState.Ready ?: return
         if (cur.result.pendingTranslation != expected) return
-        _result.value = ResultState.Ready(
+        show(ResultState.Ready(
             cur.result.copy(
                 translatedText = translated,
                 note = note,
@@ -381,7 +396,136 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
                 pendingTranslation = null,
             ),
             onScreenBoxes ?: cur.onScreenBoxes,
-        )
+        ))
+        writeLastSentenceCache()
+    }
+
+    // ── A service the user picked for the result on show ─────────────────
+
+    /** The run of the result on show through a service the user picked
+     *  ([retranslateWith]), null with none. Beside the result, never in it:
+     *  the result stays whole while the run is in flight, so nothing that
+     *  keeps a result (a state put back after a cancelled capture, a card
+     *  made from the page) can take a half-made one. A page draws the run
+     *  only while its [PickRun.result] is the very result on show.
+     *
+     *  All there is to know of a pick is here, its failure included
+     *  ([PickRun.failure]): one value with one rule for what ends it
+     *  ([endPickReplacedBy]), so a failure cannot outlive the result it is
+     *  about. */
+    private val _pickRun = MutableStateFlow<PickRun?>(null)
+    internal val pickRun: StateFlow<PickRun?> = _pickRun.asStateFlow()
+
+    private var pickJob: Job? = null
+
+    /** How a pick is translated; [ChosenServiceTranslation.run] but in a
+     *  test. */
+    internal var chosenTranslation:
+        suspend (Context, TranslationBackend, TranslationResult) -> ChosenServiceTranslation.Outcome =
+        ChosenServiceTranslation::run
+
+    /** Whether [result] is the result on show, the same object: what a run
+     *  started for it must still find to land or to report. Identity, not
+     *  equality: a result put back by [restore] is the object it was, and
+     *  an equal-looking one from another capture is not. */
+    private fun isOnShow(result: TranslationResult): Boolean =
+        (_result.value as? ResultState.Ready)?.result === result
+
+    /**
+     * Run [on], the result the translation service picker was opened for,
+     * through [backend], the service the user picked in it: the same texts,
+     * translated again by that one service ([ChosenServiceTranslation]). A
+     * no-op when [on] is no longer the result on show (another took its
+     * place under the open picker). A pick made while another runs replaces
+     * it: the earlier run's answer, if one still comes, is dropped.
+     *
+     * On [viewModelScope], so a page rebuilt meanwhile finds the run still
+     * going. It lands only on the result it was started for
+     * ([isOnShow]): the translation, the service's name as the credit, no
+     * note (the user chose this service, so its answer is not a fallback)
+     * and, for a capture with boxes for the game screen, those boxes filled
+     * again group by group ([refillOneShotOverlayData]; boxes that cannot
+     * be refilled stay as they are). A failure leaves the result as it is
+     * and, again only while the result is still on show, becomes the run's
+     * own state ([PickRun.failure]) until the page has said so
+     * ([pickFailureTold]).
+     *
+     * Whatever takes the result's place ends the run and calls its request
+     * off ([endPickReplacedBy]): another result, new text being translated,
+     * an edit, an error. A status does not: it stands over the result while
+     * a capture is made, and a capture that is cancelled puts the same
+     * result back ([restore]), which then still takes the landing. A run
+     * that ends under a status with nothing put back lands nowhere.
+     */
+    fun retranslateWith(backend: TranslationBackend, on: TranslationResult, appCtx: Context) {
+        if (!isOnShow(on)) return
+        pickJob?.cancel()
+        val run = PickRun(on, backend.displayName)
+        _pickRun.value = run
+        pickJob = viewModelScope.launch {
+            try {
+                val outcome = chosenTranslation(appCtx, backend, on)
+                // A pick made meanwhile called this run off, and its service
+                // can answer all the same: a reply already in hand comes back
+                // through steps a cancellation does not interrupt (the
+                // release of a switched-off on-device model). It would land
+                // on the result both runs are for and turn the newer pick's
+                // answer away, so only the run that is still the model's
+                // lands or reports, as on the capture sheet.
+                if (_pickRun.value !== run) return@launch
+                // The request is over, so nothing is left to call off: the
+                // landing below takes the result's place, which ends the
+                // run as any replacement does.
+                pickJob = null
+                when (outcome) {
+                    is ChosenServiceTranslation.Outcome.Translated -> landPick(on, outcome)
+                    is ChosenServiceTranslation.Outcome.Failed ->
+                        if (isOnShow(on)) _pickRun.value = PickRun(on, backend.displayName, outcome)
+                }
+            } finally {
+                // Only the run that is still the model's is taken down: a
+                // newer pick already put its own up, and a failure to tell
+                // stands in this run's place.
+                if (_pickRun.value === run) _pickRun.value = null
+            }
+        }
+    }
+
+    /** The page has said that [run] failed, which is the last of it. */
+    internal fun pickFailureTold(run: PickRun) {
+        if (_pickRun.value === run) _pickRun.value = null
+    }
+
+    /** End the picked service's run when [next], now on show, has taken
+     *  its result's place: the request is called off, since its answer has
+     *  nowhere to land and it would otherwise go on asking the service for
+     *  a result nobody sees, and a failure not yet told is dropped, since
+     *  it is about a result nobody sees. The run stays under a status, and
+     *  under its own result put back. */
+    private fun endPickReplacedBy(next: ResultState) {
+        val run = _pickRun.value ?: return
+        if (next is ResultState.Status || (next as? ResultState.Ready)?.result === run.result) return
+        pickJob?.cancel()
+        pickJob = null
+        _pickRun.value = null
+    }
+
+    private fun landPick(on: TranslationResult, outcome: ChosenServiceTranslation.Outcome.Translated) {
+        val cur = _result.value as? ResultState.Ready ?: return
+        if (cur.result !== on) return
+        show(ResultState.Ready(
+            on.copy(
+                translatedText = outcome.text,
+                note = null,
+                backendDisplayName = outcome.backendDisplayName,
+                // A new translation derived from this result: nothing put
+                // off is left to land over it (TranslationResult's rule).
+                pendingTranslation = null,
+            ),
+            cur.onScreenBoxes?.let { boxes ->
+                refillOneShotOverlayData(boxes.data, outcome.perUnit)?.let { boxes.copy(data = it) } ?: boxes
+            },
+        ))
         writeLastSentenceCache()
     }
 
@@ -453,15 +597,37 @@ class TranslationResultViewModel(scope: CoroutineScope) : ViewModel(scope) {
     }
 }
 
+/** A run of [result] through a service the user picked for it, named
+ *  [serviceName] ([TranslationResultViewModel.retranslateWith]). [result]
+ *  is the object that was on show when it started; a page draws the run
+ *  while that same object is on show.
+ *
+ *  [failure] is null while the service is being asked ([running]). A run
+ *  that failed stays, holding what the service answered, until the page
+ *  has said so ([TranslationResultViewModel.pickFailureTold]); one that
+ *  translated is over the moment it lands. */
+internal class PickRun(
+    val result: TranslationResult,
+    val serviceName: String,
+    val failure: ChosenServiceTranslation.Outcome.Failed? = null,
+) {
+    /** The service is still being asked: the page shows the translation
+     *  it has dimmed, under "Translating…", only then. */
+    val running: Boolean get() = failure == null
+}
+
 /**
  * Paintable "show on screen" boxes for the current in-app result (the
  * dual-screen counterpart of the capture panel's header toggle): the one-shot
  * pipeline's overlay geometry plus the display the capture came from. Carried
  * ONLY by the one-shot capture collector's Translating (skeletons, filling in as
- * the translations arrive) / Ready (translated) writes. Every other write path
- * defaults it to null, which is what makes "any new content dismisses the
- * on-screen boxes" enforceable in the fragment's single render funnel instead
- * of at N call sites.
+ * the translations arrive) / Ready (translated) writes, and kept, filled again,
+ * by the two writes that give the same capture a translation: the deferred
+ * completion ([TranslationResultViewModel.applyDeferredTranslation]) and a
+ * service the user picked for it ([TranslationResultViewModel.retranslateWith]).
+ * Every other write path defaults it to null, which is what makes "any new
+ * content dismisses the on-screen boxes" enforceable in the fragment's single
+ * render funnel instead of at N call sites.
  */
 data class OnScreenBoxes(
     val data: OneShotOverlayData,

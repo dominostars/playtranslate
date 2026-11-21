@@ -75,14 +75,50 @@
                 android:textColor="?attr/ptText"
                 android:lineSpacingMultiplier="1" />
 
-            <TextView
-                android:id="@+id/tvTranslationNote"
-                android:layout_width="match_parent"
+            <!-- "Translated by <service>" (or the warning that stands in its
+                 place) + gear. Tapping the row opens the translation service
+                 picker, which runs this result through the service picked.
+                 Built as the source's "Scanned by" row (sourceNoteRow) is:
+                 wrap_content so only the label and gear are the tap target,
+                 paddingTop in place of a top margin and a paddingBottom the
+                 negative bottom margin cancels, so the tap area reaches the
+                 card's bottom inset without the card growing. No
+                 contentDescription on the row: it is read as its label, then
+                 the gear's description. A warning can run to several lines,
+                 so the label has the weight: it gives way and wraps while the
+                 gear keeps its size. -->
+            <LinearLayout
+                android:id="@+id/translationNoteRow"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:textColor="?attr/ptTextHint"
-                android:textSize="11sp"
-                android:visibility="gone" />
+                android:layout_marginBottom="-14dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingTop="6dp"
+                android:paddingBottom="14dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:foreground="?attr/selectableItemBackground"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/tvTranslationNote"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="?attr/ptTextHint"
+                    android:textSize="11sp" />
+
+                <ImageView
+                    android:id="@+id/btnTranslationService"
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
+                    android:layout_marginStart="6dp"
+                    android:contentDescription="@string/cd_choose_translation_service"
+                    android:src="@drawable/ic_settings"
+                    app:tint="?attr/ptTextHint" />
+
+            </LinearLayout>
 
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>

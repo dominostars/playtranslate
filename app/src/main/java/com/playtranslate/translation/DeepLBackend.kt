@@ -173,7 +173,10 @@ class DeepLBackend(
     }
 
     override fun isUsable(source: String, target: String): Boolean =
-        enabledProvider() && !keyProvider().isNullOrBlank() &&
+        enabledProvider() && isSetUpFor(source, target)
+
+    override fun isSetUpFor(source: String, target: String): Boolean =
+        !keyProvider().isNullOrBlank() &&
             // DeepL has no Thai. Without this guard a Thai pair reaches the API
             // as source/target_lang=TH (the `else` in toDeepLCode) and 400s per
             // request; returning false lets the waterfall fall back cleanly.

@@ -490,6 +490,32 @@ class FrozenReviewDefinitionsTest {
         assertEquals(OverlayMode.NONE, toolPrefs.mode)
     }
 
+    @Test fun `the review's sheet credits its translation with no service gear`() {
+        // The picture's boxes are the tool's own, painted from its own
+        // translations: a service picked in the sheet would not reach them.
+        open(OverlayMode.TRANSLATION)
+        land(auLine(hello, left = 200, top = 600))
+        backend.runs.last().value = CaptureState.Done(
+            TranslationResult(
+                originalText = "hello world",
+                segments = listOf(TextSegment("hello world")),
+                translatedText = "hi",
+                timestamp = "",
+                backendDisplayName = "Lingva",
+                langContext = com.playtranslate.Prefs(ctx).langContext(),
+            ),
+            OneShotOverlayData(emptyList(), 0, 0, frame.width, frame.height, frame.width, frame.height, emptyList()),
+        )
+        settle()
+
+        val sheet: CaptureResultOverlay = panel!!.field("overlay")
+        val root: ViewGroup = sheet.field("root")
+        val row = root.findViewById<View>(R.id.translationNoteRow)
+        assertEquals("the credit is said", View.VISIBLE, row.visibility)
+        assertEquals(View.GONE, root.findViewById<View>(R.id.btnTranslationService).visibility)
+        assertFalse(row.isClickable)
+    }
+
     private companion object {
         const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
     }

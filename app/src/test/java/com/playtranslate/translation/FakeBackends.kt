@@ -333,3 +333,66 @@ internal class FakeSharedPreferences : SharedPreferences {
         }
     }
 }
+
+/** A service with a switch of its own, for the run the user asks one
+ *  service for ([TranslationBackendRegistry.translateWith]) and the list
+ *  they pick it from: [enabled] is the switch, [setUp] whether it could
+ *  translate if asked (its key saved, its model on the device), and
+ *  [isUsable] is both, as on the real backends. It takes part in cooldowns
+ *  through its own [cooldownState]; [reply] decides each text's call (a
+ *  translation, a throw, a suspension). [requiresInternet] picks the online
+ *  or the offline shape. Counters say what the registry called. */
+internal open class FakeSwitchedBackend(
+    final override val id: BackendId,
+    final override val priority: Int,
+    final override val displayName: String = "fake-switched-$id",
+    final override val requiresInternet: Boolean = true,
+    @Volatile var enabled: Boolean = true,
+    @Volatile var setUp: Boolean = true,
+    val cooldownState: CooldownState = CooldownState(context = null, backendId = id),
+    private val reply: suspend (String) -> String = { "$id:$it" },
+) : TranslationBackend, Cooldownable {
+    override val status: BackendStatus = BackendStatus.Hidden
+    override val isDegradedFallback: Boolean = false
+    val translateCalls = AtomicInteger(0)
+    val recordSuccessCalls = AtomicInteger(0)
+
+    override fun isUsable(source: String, target: String): Boolean = enabled && isSetUpFor(source, target)
+    override fun isSetUpFor(source: String, target: String): Boolean = setUp
+    override suspend fun translate(text: String, source: String, target: String): String {
+        translateCalls.incrementAndGet()
+        return reply(text)
+    }
+
+    override fun unavailableUntil(): Long? = cooldownState.unavailableUntil()
+    override fun unavailableDescription(): String? = cooldownState.unavailableDescription()
+    override fun unavailableCause(): CooldownCause? = cooldownState.unavailableCause()
+    override fun recordSuccess(attemptStartedAtMs: Long) {
+        recordSuccessCalls.incrementAndGet()
+        cooldownState.recordSuccess(attemptStartedAtMs)
+    }
+    override fun onConnectivityRestored(): Boolean = cooldownState.onConnectivityRestored()
+    override fun resetCooldown() = cooldownState.resetCooldown()
+}
+
+/** [FakeSwitchedBackend] that also takes several texts in one call:
+ *  [batchReply] decides the batch call, the per-text calls stay [reply]'s
+ *  (the registry's retry after a batch reply it could not use). */
+internal class FakeSwitchedBatchBackend(
+    id: BackendId,
+    priority: Int,
+    displayName: String = "fake-switched-batch-$id",
+    enabled: Boolean = true,
+    setUp: Boolean = true,
+    reply: suspend (String) -> String = { "$id:$it" },
+    private val batchReply: suspend (List<String>) -> List<String> = { texts -> texts.map { "$id:$it" } },
+) : FakeSwitchedBackend(
+    id = id, priority = priority, displayName = displayName, enabled = enabled, setUp = setUp, reply = reply,
+), BatchTranslator {
+    val batchCalls = AtomicInteger(0)
+
+    override suspend fun translateBatch(texts: List<String>, source: String, target: String): List<String> {
+        batchCalls.incrementAndGet()
+        return batchReply(texts)
+    }
+}

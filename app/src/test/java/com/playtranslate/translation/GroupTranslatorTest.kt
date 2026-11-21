@@ -3,6 +3,9 @@ package com.playtranslate.translation
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.TranslationCache
+import com.playtranslate.language.ChineseScriptVariant
+import com.playtranslate.language.SourceLangId
+import com.playtranslate.model.TranslationLangContext
 import com.playtranslate.ui.DegradedWarningKind
 import com.playtranslate.ocr.ReaderTranslations
 import kotlinx.coroutines.Job
@@ -30,6 +33,13 @@ import java.util.concurrent.atomic.AtomicInteger
  * itself is pinned through the service's delegators in
  * [com.playtranslate.TranslateWithReaderTest]. Japanese to English, the
  * default pair.
+ *
+ * And [GroupTranslator.translateWith], the run of a result's texts through
+ * the one service the user picked for it: past the cache both ways (its
+ * entry for the text is not the answer, and the pick's answer is not made
+ * its entry), with no word to the degradation sink, in the result's own
+ * Chinese script, and with the cache's routing identity reconciled when it
+ * ends, since its answer can end a cooldown.
  */
 @RunWith(RobolectricTestRunner::class)
 class GroupTranslatorTest {
@@ -266,5 +276,96 @@ class GroupTranslatorTest {
         val silent = GroupTranslator(ctx, TranslationCache.shared)
         assertEquals(listOf("waterfall" to "Fake", "waterfall" to "Fake"), pairs(silent.translateGroupsSeparately(listOf("一", "二"))))
         assertEquals("waterfall", silent.translateOnce("三").text)
+    }
+
+    // ── A service the user picked for a result ───────────────────────────
+
+    private val jaToEn = TranslationLangContext(SourceLangId.JA, "en", ChineseScriptVariant.SIMPLIFIED)
+
+    @Test fun `a picked service is asked past the cache, and its answer is not cached`() = runBlocking {
+        val picked = FakeSwitchedBackend(id = "picked", priority = 20, displayName = "Picked", enabled = false)
+        TranslationBackendRegistry.init(listOf(waterfall, picked))
+        val translator = GroupTranslator(ctx, TranslationCache.shared)
+        // The configured service's translation of the text, cached.
+        assertEquals(listOf("waterfall" to "Fake"), pairs(translator.translateGroupsSeparately(listOf("一"))))
+
+        val result = translator.translateWith("picked", listOf("一", "二"), jaToEn)
+
+        assertEquals(
+            "the cache's entry for the text is not the pick's answer",
+            listOf("picked:一" to "Picked", "picked:二" to "Picked"), pairs(result),
+        )
+        assertNull("a pick's answer carries no fallback note", result.firstNotNullOfOrNull { it.note })
+        // The next capture of the same texts is the configured service's
+        // again: its cached one still served, and the text only the pick
+        // translated not in the cache at all.
+        assertEquals(
+            listOf("waterfall" to "Fake", "waterfall" to "Fake"),
+            pairs(translator.translateGroupsSeparately(listOf("一", "二"))),
+        )
+        assertEquals("一 from the cache, 二 from the waterfall", 2, waterfall.translateCalls.get())
+        assertEquals(2, picked.translateCalls.get())
+    }
+
+    @Test fun `a picked service's answer says nothing to the degradation sink`() = runBlocking {
+        val kinds = mutableListOf<DegradedWarningKind>()
+        TranslationBackendRegistry.init(listOf(waterfall, FakeDegradedBackend(id = "mlkit-fake", priority = 99)))
+        val translator = GroupTranslator(ctx, TranslationCache.shared) { kinds += it }
+
+        val result = translator.translateWith("mlkit-fake", listOf("一"), jaToEn)
+
+        assertEquals("the fallback picked on purpose is no fallback", listOf("offline-fallback" to "fake-degraded"), pairs(result))
+        assertNull(result.single().note)
+        assertEquals(emptyList<DegradedWarningKind>(), kinds)
+    }
+
+    @Test fun `a picked service's answer is in the result's own Chinese script, not the setting's`() = runBlocking {
+        // The setting is Simplified (the default); the result was made in
+        // Traditional. The service answers in Simplified, as every one does.
+        val picked = FakeSwitchedBackend(id = "picked", priority = 10, reply = { "简体中文" })
+        TranslationBackendRegistry.init(listOf(picked))
+        val translator = GroupTranslator(ctx, TranslationCache.shared)
+
+        val traditional = translator.translateWith(
+            "picked", listOf("一"), TranslationLangContext(SourceLangId.JA, "zh", ChineseScriptVariant.TRADITIONAL),
+        )
+        val simplified = translator.translateWith(
+            "picked", listOf("一"), TranslationLangContext(SourceLangId.JA, "zh", ChineseScriptVariant.SIMPLIFIED),
+        )
+
+        assertEquals("簡體中文", traditional.single().text)
+        assertEquals("简体中文", simplified.single().text)
+    }
+
+    @Test fun `a pick whose answer ends a cooldown leaves no fallback entry to be shown at once`() = runBlocking {
+        val online = FakeSwitchedBackend(id = "online", priority = 10, displayName = "Online").apply {
+            cooldownState.recordParsedFailure(System.currentTimeMillis() + 60_000, "Rate limited")
+        }
+        val fallback = FakeOnlineBackend(id = "fallback", priority = 20, displayName = "Fallback", response = "fallback")
+        TranslationBackendRegistry.init(listOf(online, fallback))
+        val translator = GroupTranslator(ctx, TranslationCache.shared)
+        // While the preferred service cools down the fallback answers, and
+        // its answer is cached under the fallback's identity.
+        assertEquals(listOf("fallback" to "Fallback"), pairs(translator.translateGroupsSeparately(listOf("一"))))
+        assertEquals(listOf("fallback" to "Fallback"), pairs(translator.translationsAtOnce(listOf("一"), reader = null)))
+
+        translator.translateWith("online", listOf("二"), jaToEn)
+
+        assertNull("the pick's answer ended the cooldown", online.unavailableUntil())
+        // The identity moved with it, at once: a read that does not go
+        // through the waterfall no longer finds the fallback's entry.
+        assertEquals(listOf<Pair<String?, String?>>(null to null), pairs(translator.translationsAtOnce(listOf("一"), reader = null)))
+    }
+
+    @Test fun `a pick that fails throws what the registry threw and still reconciles`() = runBlocking {
+        val cause = IOException("down")
+        val picked = FakeSwitchedBackend(id = "picked", priority = 10, reply = { throw cause })
+        TranslationBackendRegistry.init(listOf(picked))
+        val translator = GroupTranslator(ctx, TranslationCache.shared)
+
+        val thrown = runCatching { translator.translateWith("picked", listOf("一"), jaToEn) }.exceptionOrNull()
+
+        assertEquals(true, thrown is ChosenServiceFailedException)
+        assertEquals(cause, thrown?.cause)
     }
 }

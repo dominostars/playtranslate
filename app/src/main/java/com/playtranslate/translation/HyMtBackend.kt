@@ -57,7 +57,10 @@ import com.playtranslate.translation.llm.StatusStringIds
 class HyMtBackend(
     context: Context,
     enabledProvider: () -> Boolean,
-) : OnDeviceLlmBackend(context, enabledProvider) {
+    /** The licence's territory, apart from the switch
+     *  ([OnDeviceLlmBackend]'s permitted). */
+    permitted: () -> Boolean,
+) : OnDeviceLlmBackend(context, enabledProvider, permitted) {
 
     override val id: BackendId = "hymt_mnn"
     override val displayName: String = context.getString(R.string.hymt_display_name)

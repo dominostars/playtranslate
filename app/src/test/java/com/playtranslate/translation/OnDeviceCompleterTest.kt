@@ -95,7 +95,7 @@ class OnDeviceCompleterTest {
             GemmaE2BMnnBackend(ctx) { true },
         )
         val translationOnly: List<TranslationBackend> = listOf(
-            HyMtBackend(ctx) { true },
+            HyMtBackend(ctx, enabledProvider = { true }, permitted = { true }),
             HyMt2Backend(ctx) { true },
         )
         chatModels.forEach { assertTrue("${it.id} answers prompts", it is PromptCompleter) }

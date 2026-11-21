@@ -856,9 +856,11 @@ class AskSectionBinderTest {
         val note = view<TextView>(R.id.tvTranslationNote)
         assertEquals("size", note.textSize, footer.textSize)
         assertEquals("colour", note.currentTextColor, footer.currentTextColor)
+        // The note's gap is its row's top padding (the row is the tap
+        // target of the translation service picker).
         assertEquals(
             "gap above",
-            (note.layoutParams as ViewGroup.MarginLayoutParams).topMargin,
+            view<View>(R.id.translationNoteRow).paddingTop,
             (footer.layoutParams as ViewGroup.MarginLayoutParams).topMargin,
         )
         assertTrue("italic", italic(footer))

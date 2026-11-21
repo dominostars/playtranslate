@@ -57,6 +57,7 @@ import com.playtranslate.OneShotOverlayData
 import com.playtranslate.PlayTranslateApplication
 import com.playtranslate.deferredCompletionNeeded
 import com.playtranslate.fillOneShotOverlayData
+import com.playtranslate.refillOneShotOverlayData
 import com.playtranslate.fillsBoxesOf
 import com.playtranslate.OverlayMode
 import com.playtranslate.OverlaySurface
@@ -77,6 +78,7 @@ import com.playtranslate.overlay.OverlayHost
 import com.playtranslate.overlay.Sides
 import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
+import com.playtranslate.translation.TranslationBackend
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -278,6 +280,32 @@ class CaptureResultOverlay(
      *  service re-OCR. */
     var chooseOcr: ((OcrProvenance, String) -> Unit)? = null
 
+    /** Whether the translation's credit has its gear here, which opens the
+     *  translation service picker ([TranslationPicker]). False for a host
+     *  whose picture's boxes are painted from translations of its own (the
+     *  camera and import reviews): a pick would change the sheet's
+     *  translation and leave those boxes saying the old one. */
+    var translationPickerOffered = true
+        set(value) {
+            field = value
+            binder?.translationPickerOffered = value
+        }
+
+    /** The run of the result on show through a service the user picked
+     *  ([retranslateWith]) and its job; null with none. Beside the result,
+     *  never in it: [lastResult] stays whole while the run is in flight, so
+     *  a stash taken meanwhile (a page opened from the sheet) holds the
+     *  translation that was on show, not a half-made result. Whatever
+     *  replaces what is on show ends it ([endPick]). */
+    private var pickRun: PickRun? = null
+    private var pickJob: Job? = null
+
+    /** How a pick is translated; [ChosenServiceTranslation.run] but in a
+     *  test. */
+    internal var chosenTranslation:
+        suspend (Context, TranslationBackend, TranslationResult) -> ChosenServiceTranslation.Outcome =
+        ChosenServiceTranslation::run
+
     /** The language headers' tap action. Default (null): dismiss this sheet
      *  and open the language picker — the user re-captures on return. A host
      *  that still holds its input across the round trip (the PROCESS_TEXT
@@ -350,7 +378,9 @@ class CaptureResultOverlay(
 
     /** Overlay boxes for the currently-bound result: the latest
      *  [CaptureState.Translating]'s (skeletons, filling in as the translations
-     *  arrive), then the translated boxes from [CaptureState.Done]. Null otherwise
+     *  arrive), then the translated boxes from [CaptureState.Done], filled
+     *  again when the result is translated again (the deferred completion,
+     *  a service the user picked for it: [retranslateWith]). Null otherwise
      *  (stash re-show, no-text, post-edit); null with no status in flight
      *  either leaves the mode pill down ([updateModeControl]). */
     private var overlayData: OneShotOverlayData? = null
@@ -988,6 +1018,8 @@ class CaptureResultOverlay(
             val sp = r?.screenshotPath
             if (p != null && sp != null) showOcrPicker(p, sp)
         }
+        b.translationPickerOffered = translationPickerOffered
+        b.onChooseTranslation = { lastResult?.let { showTranslationPicker(it) } }
         b.onChooseLanguage = { isSource -> changeLanguage(isSource) }
         val fontPicker = FontSizeRangePopover(ctx, prefs).apply {
             onRangeChanged = { refitForFontRange() }
@@ -2031,6 +2063,10 @@ class CaptureResultOverlay(
         dismissWordLens()
         wordLookups.reset()
         askSession.bind(null)
+        // And a service picked for the result that was on show has nothing
+        // to land on: [lastResult] survives a status, so without this a pick
+        // would come in over the status of a re-read begun meanwhile.
+        endPick()
         // No-text status affordances, each its own tappable span (so tapping one can't
         // trigger the other): the source-language name is accent-colored → source picker
         // (same as the source header); the gear → OCR picker, shown only when a pinned
@@ -2088,6 +2124,9 @@ class CaptureResultOverlay(
         if (sourceLens?.isShowing == true && lastResult?.originalText != result.originalText) {
             dismissWordLens()
         }
+        // Another result on show than the one a picked service is
+        // translating: that run is over.
+        if (pickRun?.result !== result) endPick()
         lastResult = result
         // The Ask section's question is about this sentence: binding
         // another one ends the question in hand, the same one keeps it.
@@ -2101,7 +2140,8 @@ class CaptureResultOverlay(
         // pill's spinner gives way to the control.
         statusInFlight = false
         updateModeControl()
-        b.bindResult(result)   // also paints furigana (bindResult → bindSource)
+        // also paints furigana (bindResult → bindSource)
+        b.bindResult(result, picking = pickRun?.result === result)
         wordRows?.applyWordsVisibility()
         b.tvOriginal.onTapAtOffset = { offset -> onSourceTapped(offset) }
         // The source's word lookup: its analysis gives the taps their spans
@@ -2925,6 +2965,9 @@ class CaptureResultOverlay(
         captureSession?.cancel()
         captureSession = null
         sessionJob = null
+        // Nor may a service picked for the old source land its translation
+        // of it over the edit's.
+        endPick()
         // Commit the edit to state IMMEDIATELY (blank translation = retranslating)
         // so re-opening Edit reads the new text, then gate the async translation by
         // generation so an older translateOnce can't roll back a newer edit.
@@ -2937,6 +2980,9 @@ class CaptureResultOverlay(
             // The source is no longer the OCR output — drop provenance so the
             // "Scanned by …" row + gear hide and a re-OCR can't clobber the edit.
             ocrProvenance = null,
+            // Nor is it the capture's groups: the edited text is translated,
+            // and translated again, as one text.
+            groupTexts = null,
             // The edit re-translates the NEW source itself (below) — a surviving
             // pending would let a later reveal clobber it with the OLD source's
             // translation.
@@ -3078,12 +3124,99 @@ class CaptureResultOverlay(
      *  (the app's page takes the screen, so an over-game sheet goes, like
      *  its other pages; an in-activity host's stays behind it). */
     private fun showAskNeedsLlm() {
+        showAlertOn(alertTarget) { askNeedsLlm(ctx) { openTranslationServices() } }
+    }
+
+    /** Translation services, from this sheet: the app's page takes the
+     *  screen, so an over-game sheet goes, like its other pages; an
+     *  in-activity host's stays behind it. */
+    private fun openTranslationServices() {
+        launchOnForegroundDisplay(Intent(ctx.applicationContext, TranslationServicesActivity::class.java))
+        if (dismissOnActivityLaunch) dismissForPage()
+    }
+
+    // ── A service picked for the result on show ──────────────────────────
+
+    /** The translation service picker for [result] ([TranslationPicker]),
+     *  on this sheet's own alert surface. A pick runs that result, and only
+     *  it, through the service ([retranslateWith]). */
+    private fun showTranslationPicker(result: TranslationResult) {
         showAlertOn(alertTarget) {
-            askNeedsLlm(ctx) {
-                launchOnForegroundDisplay(Intent(ctx.applicationContext, TranslationServicesActivity::class.java))
-                if (dismissOnActivityLaunch) dismissForPage()
+            TranslationPicker.populate(
+                this, ctx, result.langContext, result.backendDisplayName,
+                onPick = { backend -> retranslateWith(backend, result) },
+                onOpenServices = { openTranslationServices() },
+            )
+        }
+    }
+
+    /**
+     * Run [on], the result the picker was opened for, through [backend],
+     * the service the user picked in it ([ChosenServiceTranslation]): the
+     * page's rule ([TranslationResultViewModel.retranslateWith]) in this
+     * sheet's own funnel. A no-op when [on] is no longer on show.
+     *
+     * [lastResult] is not touched while it runs: the translation stays on
+     * show, dimmed, under a "Translating…" credit
+     * ([TranslationSectionBinder.bindTargetReady]). It lands in one bind:
+     * the translation, the service's name as the credit, no note, and the
+     * capture's boxes filled again group by group and swapped in place,
+     * those that are up ([fillBoxes]; with no boxes to refill, a sheet
+     * re-shown from its result alone, they stay as they are). A failure
+     * leaves what is on show and says so in an alert.
+     *
+     * Whatever takes the result's place meanwhile ends the run ([endPick]),
+     * so it lands only while it is still the sheet's.
+     */
+    private fun retranslateWith(backend: TranslationBackend, on: TranslationResult) {
+        if (dismissed || lastResult !== on || !resultOnShow) return
+        val b = binder ?: return
+        endPick()
+        val run = PickRun(on, backend.displayName)
+        pickRun = run
+        b.bindTargetReady(on, picking = true)
+        pickJob = scope.launch {
+            val outcome = chosenTranslation(ctx.applicationContext, backend, on)
+            // An ended run was cancelled with its job; this is for a
+            // translation that came back all the same.
+            if (dismissed || pickRun !== run) return@launch
+            pickRun = null
+            pickJob = null
+            when (outcome) {
+                is ChosenServiceTranslation.Outcome.Translated -> {
+                    // Fill the boxes BEFORE the rebind, as the deferred
+                    // completion does, so the mode control reads them.
+                    val refilled = refillOneShotOverlayData(overlayData, outcome.perUnit)
+                    if (refilled != null) overlayData = refilled
+                    bindResult(
+                        on.copy(
+                            translatedText = outcome.text,
+                            note = null,
+                            backendDisplayName = outcome.backendDisplayName,
+                            // A new translation derived from this result:
+                            // nothing put off is left to land over it.
+                            pendingTranslation = null,
+                        ),
+                    )
+                    if (refilled != null) fillBoxes(refilled)
+                    updateModeControl()
+                }
+                is ChosenServiceTranslation.Outcome.Failed -> {
+                    b.bindTargetReady(on, picking = false)
+                    showAlertOn(alertTarget) { ChosenServiceTranslation.failureAlert(this, ctx, outcome) }
+                }
             }
         }
+    }
+
+    /** End a picked service's run, if one is going: what it was translating
+     *  is no longer what the sheet shows (another result, a status, an edit
+     *  of the source). Its translation is dropped; the bind that follows
+     *  draws the card afresh. */
+    private fun endPick() {
+        pickJob?.cancel()
+        pickJob = null
+        pickRun = null
     }
 
     /** The Ask section's finished answer about the result on show, for the

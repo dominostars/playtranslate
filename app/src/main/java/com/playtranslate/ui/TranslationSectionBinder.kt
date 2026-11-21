@@ -97,6 +97,10 @@ class TranslationSectionBinder(
     private val sourceNoteRow: View = root.findViewById(R.id.sourceNoteRow)
     private val tvSourceNote: TextView = root.findViewById(R.id.tvSourceNote)
     private val btnSourceOcr: ImageView = root.findViewById(R.id.btnSourceOcr)
+    // "Translated by <service>" + gear, under the translation: the row
+    // [tvTranslationNote] sits in.
+    private val translationNoteRow: View = root.findViewById(R.id.translationNoteRow)
+    private val btnTranslationService: ImageView = root.findViewById(R.id.btnTranslationService)
 
     // ── Header actions (fold priority order; eyes pinned) ────────────────
 
@@ -150,6 +154,8 @@ class TranslationSectionBinder(
         // on a plain ImageView too, so both surfaces match. (The header actions
         // are tinted by their row for the same reason.)
         btnSourceOcr.imageTintList =
+            ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextHint))
+        btnTranslationService.imageTintList =
             ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextHint))
         // Neither whole-result action is offered until a host says so
         // (show-on-screen via setShowOnScreenAvailable, text size via
@@ -211,6 +217,44 @@ class TranslationSectionBinder(
      *  Each surface opens its own OCR picker. Null → the row is inert. */
     var onChooseOcr: (() -> Unit)? = null
 
+    /** Invoked when the user taps the translation's attribution row (text
+     *  or gear). Each surface opens its translation service picker
+     *  ([TranslationPicker]), whose pick runs the result on show through
+     *  that one service. Null → no gear and the row is inert. */
+    var onChooseTranslation: (() -> Unit)? = null
+        set(value) {
+            field = value
+            applyTranslationServiceGear()
+        }
+
+    /** Whether the surface offers the translation service picker right now:
+     *  false where a pick could not stand (auto-translate is feeding the
+     *  page, whose next read would replace it) or could not reach what the
+     *  surface shows (the camera and import reviews paint their boxes from
+     *  translations of their own). The gear goes and comes with it on the
+     *  row already bound. */
+    var translationPickerOffered: Boolean = true
+        set(value) {
+            if (field == value) return
+            field = value
+            applyTranslationServiceGear()
+        }
+
+    /** Whether the row bound last credits a translation a service can be
+     *  picked for: a label on show, and no pick of this result still
+     *  running ([bindTargetReady]). */
+    private var translationCredited = false
+
+    /** The gear and the row's tap, from everything that decides them: the
+     *  row as bound ([translationCredited]), the surface's offer
+     *  ([translationPickerOffered]) and its having a picker to open
+     *  ([onChooseTranslation]). */
+    private fun applyTranslationServiceGear() {
+        val canChoose = translationCredited && translationPickerOffered && onChooseTranslation != null
+        btnTranslationService.visibility = if (canChoose) View.VISIBLE else View.GONE
+        translationNoteRow.isClickable = canChoose
+    }
+
     /** Invoked when the user taps a language section header — `isSource = true` for the
      *  source (original) header, false for the target (translation) header. Each surface
      *  opens the language picker for that side. Null → the headers are inert. */
@@ -254,6 +298,8 @@ class TranslationSectionBinder(
 
     init {
         sourceNoteRow.setOnClickListener { onChooseOcr?.invoke() }
+        translationNoteRow.setOnClickListener { onChooseTranslation?.invoke() }
+        applyTranslationServiceGear()
         labelOriginal.setOnClickListener { onChooseLanguage?.invoke(true) }
         labelTranslation.setOnClickListener { onChooseLanguage?.invoke(false) }
         for (size in listOf(textSize, textSizeInSource)) {
@@ -492,31 +538,44 @@ class TranslationSectionBinder(
 
     /** Bind the target text + note for a Ready result. A blank translation means a
      *  re-translate is in flight (edit commit): show the "Translating…"
-     *  placeholder and suppress the now-stale backend label. */
-    fun bindTargetReady(result: TranslationResult) {
+     *  placeholder and suppress the now-stale backend label.
+     *
+     *  [picking]: a service the user picked is translating this result again
+     *  ([ChosenServiceTranslation]). The result is not changed while it runs,
+     *  so its translation stays on show, dimmed, and the row under it says
+     *  "Translating…" in place of the credit, without the gear. The card
+     *  keeps its size, and what lands replaces the whole of it at once. */
+    fun bindTargetReady(result: TranslationResult, picking: Boolean = false) {
         val retranslating = result.translatedText.isBlank()
         tvTranslation.text =
             if (retranslating) ctx.getString(R.string.status_translating)
             else result.translatedText
+        tvTranslation.alpha = if (picking && !retranslating) PICKING_TEXT_ALPHA else 1f
         val warning = result.note
         val sourceLabel = result.backendDisplayName?.let {
             ctx.getString(R.string.translation_source_label, it)
         }
-        val bottomLabel = if (retranslating) null else (warning ?: sourceLabel)
+        val credit = if (retranslating) null else (warning ?: sourceLabel)
+        val bottomLabel = if (picking && credit != null) ctx.getString(R.string.status_translating) else credit
         tvTranslationNote.text = bottomLabel ?: ""
-        tvTranslationNote.visibility = if (bottomLabel != null) View.VISIBLE else View.GONE
+        translationNoteRow.visibility = if (bottomLabel != null) View.VISIBLE else View.GONE
         tvTranslationNote.setTypeface(
             null,
-            if (warning == null && sourceLabel != null) Typeface.ITALIC else Typeface.NORMAL,
+            if (!picking && warning == null && sourceLabel != null) Typeface.ITALIC else Typeface.NORMAL,
         )
+        translationCredited = credit != null && !picking
+        applyTranslationServiceGear()
     }
 
     /** Target placeholder while a translation is still pending (drag-sentence /
      *  Translating state). */
     fun setTargetTranslatingPlaceholder() {
         tvTranslation.text = ctx.getString(R.string.status_translating)
+        tvTranslation.alpha = 1f
         tvTranslationNote.text = ""
-        tvTranslationNote.visibility = View.GONE
+        translationNoteRow.visibility = View.GONE
+        translationCredited = false
+        applyTranslationServiceGear()
     }
 
     /** Update both section headers to the current source/target language names. */
@@ -530,11 +589,16 @@ class TranslationSectionBinder(
     /** Bind a Ready result: source + attribution row + target + labels +
      *  the persisted section visibilities. [canReOcr]: whether a switch of
      *  OCR tool can act on this result (the host still holds the capture);
-     *  the panel's default is "a cached screenshot exists". */
-    fun bindResult(result: TranslationResult, canReOcr: Boolean = result.screenshotPath != null) {
+     *  the panel's default is "a cached screenshot exists". [picking]: a
+     *  service the user picked is translating it again ([bindTargetReady]). */
+    fun bindResult(
+        result: TranslationResult,
+        canReOcr: Boolean = result.screenshotPath != null,
+        picking: Boolean = false,
+    ) {
         bindSource(result.segments)
         bindSourceOcr(result.ocrProvenance, canReOcr = canReOcr)
-        bindTargetReady(result)
+        bindTargetReady(result, picking)
         updateLabels()
         applyOriginalVisibility()
         applyTranslationVisibility()
@@ -798,17 +862,18 @@ class TranslationSectionBinder(
      */
     fun targetContentOverhead(): Int {
         val live = translationContent.height - tvTranslation.height
-        if (tvTranslationNote.visibility == View.VISIBLE && tvTranslationNote.height == 0 &&
-            tvTranslationNote.text.isNotEmpty()
-        ) {
+        if (translationNoteRow.visibility == View.VISIBLE && translationNoteRow.height == 0) {
             val w = (translationContent.width - translationContent.paddingLeft - translationContent.paddingRight)
                 .coerceAtLeast(0)
-            tvTranslationNote.measure(
+            translationNoteRow.measure(
                 View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.AT_MOST),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
             )
-            val topMargin = (tvTranslationNote.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.topMargin ?: 0
-            return live + tvTranslationNote.measuredHeight + topMargin
+            // As [sourceContentOverhead]: the row's bottom padding is tap
+            // area a negative bottom margin cancels, so both margins count.
+            val lp = translationNoteRow.layoutParams as? android.view.ViewGroup.MarginLayoutParams
+            val vMargins = (lp?.topMargin ?: 0) + (lp?.bottomMargin ?: 0)
+            return live + translationNoteRow.measuredHeight + vMargins
         }
         return live
     }
@@ -918,5 +983,10 @@ class TranslationSectionBinder(
 
         /** The room above and below each text of the compact page. */
         const val COMPACT_TEXT_V_PAD_DP = 6f
+
+        /** The translation on show while a service the user picked is
+         *  translating it again: still readable, plainly not the final
+         *  word. */
+        const val PICKING_TEXT_ALPHA = 0.4f
     }
 }

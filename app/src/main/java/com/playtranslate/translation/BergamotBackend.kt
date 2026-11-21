@@ -38,9 +38,11 @@ class BergamotBackend(
      *  OfflineFallbackTranslators). */
     override val usableAsOfflineFallback: Boolean = true
 
-    override fun isUsable(source: String, target: String): Boolean {
+    override fun isUsable(source: String, target: String): Boolean =
+        enabledProvider() && isSetUpFor(source, target)
+
+    override fun isSetUpFor(source: String, target: String): Boolean {
         if (!supportsNativeRuntime()) return false
-        if (!enabledProvider()) return false
         if (source.equals(target, ignoreCase = true)) return false
         return manager.isInstalled(source, target) // implies supportsPair
     }

@@ -322,6 +322,18 @@ class CompletionFailedException(
 ) : Exception("No backend answered the prompt", cause)
 
 /**
+ * Thrown by [TranslationBackendRegistry.translateWith] when the one service
+ * the user picked did not translate every text. [backend] is that service
+ * (null when it is no longer registered) and [cause] what it threw, the
+ * failure to tell the user about; null when nothing was sent (the service
+ * gone, or not set up for the pair).
+ */
+class ChosenServiceFailedException(
+    val backend: TranslationBackend?,
+    cause: Throwable?,
+) : Exception("The chosen service did not translate", cause)
+
+/**
  * Backends that can return the list of models the configured API key
  * is allowed to call. Used by the LLM model-picker activity to render
  * a list of selectable options without baking a hardcoded list per

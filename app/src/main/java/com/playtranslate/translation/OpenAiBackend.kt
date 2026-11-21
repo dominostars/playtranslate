@@ -249,7 +249,9 @@ class OpenAiBackend(
     override fun isUsable(source: String, target: String): Boolean =
         // A future client-side daily cap could gate here too, but v1 lets
         // the meter be informational only.
-        enabledProvider() && credential() != null
+        enabledProvider() && isSetUpFor(source, target)
+
+    override fun isSetUpFor(source: String, target: String): Boolean = credential() != null
 
     override suspend fun translate(text: String, source: String, target: String): String {
         val system = QwenChatTemplate.systemPrompt(source, target)

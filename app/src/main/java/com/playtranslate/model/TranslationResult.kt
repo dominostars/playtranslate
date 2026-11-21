@@ -183,4 +183,24 @@ data class TranslationResult(
      *  unknown (a deserialized legacy value); consumers gate on `> 0`, and
      *  [timestamp] stays the display string it always was. */
     val createdAtMs: Long = System.currentTimeMillis(),
-)
+    /** The source texts [translatedText] was made from, in order, where it
+     *  was made from more than one: a capture's OCR groups are translated
+     *  one by one and their translations joined with a blank line. What a
+     *  run of this result through a service the user picks translates
+     *  again ([translationUnits]), which is what lets it refill the
+     *  capture's boxes group by group. Null where the translation was made
+     *  from [originalText] as one text (a drag, a selection, an edit). An
+     *  edit of the source clears it with the provenance: the groups are no
+     *  longer what is on show. */
+    val groupTexts: List<String>? = null,
+) {
+    /** The texts this result's translation is made from, one translation
+     *  each: its groups ([groupTexts]), else the whole original. */
+    val translationUnits: List<String>
+        get() = groupTexts?.takeIf { it.isNotEmpty() } ?: listOf(originalText)
+
+    companion object {
+        /** What joins the units' translations into [translatedText]. */
+        const val UNIT_SEPARATOR = "\n\n"
+    }
+}

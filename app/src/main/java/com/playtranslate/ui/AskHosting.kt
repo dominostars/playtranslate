@@ -78,16 +78,23 @@ internal fun OverlayAlert.Builder.askNeedsLlm(
  * a moment before: never from a lifecycle event, a reconnect or a timer.
  */
 internal fun showAskNeedsLlm(target: TtsAlertTarget) = showAlertOn(target) {
-    askNeedsLlm(target.context) {
-        when (target) {
-            is TtsAlertTarget.InActivity ->
-                target.activity.startActivity(Intent(target.activity, TranslationServicesActivity::class.java))
-            is TtsAlertTarget.Overlay -> launchOnForegroundDisplay(
-                target.context,
-                Intent(target.context.applicationContext, TranslationServicesActivity::class.java),
-                target.displayId,
-            )
-        }
+    askNeedsLlm(target.context) { openTranslationServices(target) }
+}
+
+/** Opens the Translation services page from the surface [target] names:
+ *  from the activity where the surface lives in one, and from an over-game
+ *  surface as a new task on the foreground display
+ *  ([launchOnForegroundDisplay]). For a button the user just tapped on that
+ *  surface: the Ask alert's, the translation service picker's. */
+internal fun openTranslationServices(target: TtsAlertTarget) {
+    when (target) {
+        is TtsAlertTarget.InActivity ->
+            target.activity.startActivity(Intent(target.activity, TranslationServicesActivity::class.java))
+        is TtsAlertTarget.Overlay -> launchOnForegroundDisplay(
+            target.context,
+            Intent(target.context.applicationContext, TranslationServicesActivity::class.java),
+            target.displayId,
+        )
     }
 }
 

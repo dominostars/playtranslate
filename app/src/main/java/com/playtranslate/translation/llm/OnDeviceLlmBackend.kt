@@ -33,6 +33,12 @@ data class DiskFootprint(val human: String, val hasCache: Boolean)
 abstract class OnDeviceLlmBackend(
     protected val context: Context,
     protected val enabledProvider: () -> Boolean,
+    /** Whether the model may be run here at all, apart from the user's
+     *  switch: a licence's territory (Hunyuan-MT 1.5). Read by
+     *  [isSetUpFor], which the switch has no say in, so a run the user asks
+     *  one model for cannot pass a restriction the switch's provider also
+     *  carries. */
+    private val permitted: () -> Boolean = { true },
 ) : TranslationBackend {
 
     protected abstract val modelHelper: ModelHelper
@@ -100,24 +106,55 @@ abstract class OnDeviceLlmBackend(
     // CaptureService.translateGroupsSeparately cache-skip.
     final override val isDegradedFallback: Boolean = false
 
-    final override fun isUsable(source: String, target: String): Boolean {
-        if (!canRun()) return false
+    final override fun isUsable(source: String, target: String): Boolean =
+        enabledProvider() && isSetUpFor(source, target)
+
+    final override fun isSetUpFor(source: String, target: String): Boolean {
+        if (!onDevice()) return false
         if (source.equals(target, ignoreCase = true)) return false
         return supportsPair(source, target)
     }
 
     /** Whether the model can be run at all right now, whatever it is asked:
      *  the device can host it, the user has it switched on, and it is on
-     *  disk. The part of [isUsable] that is not about a language pair. */
-    protected fun canRun(): Boolean {
+     *  disk. The part of [isUsable] that is not about a language pair. The
+     *  switch stays in it: a question is only ever put to a model that is
+     *  switched on ([OnDeviceChatLlmBackend.canComplete]). */
+    protected fun canRun(): Boolean = enabledProvider() && onDevice()
+
+    /** The device can host the model, it may be run here, and it is on
+     *  disk: [canRun] without the user's switch. */
+    private fun onDevice(): Boolean {
         // Hardware gate is the cheapest check and a hard prerequisite — a
         // device that can't even host the native library never proceeds. This
         // mirrors the UI's row-disabling logic so the waterfall can never
         // accidentally select an un-runnable backend even if a pref persists
         // across an OS / device change.
         if (!meetsHardwareRequirements()) return false
-        if (!enabledProvider()) return false
+        if (!permitted()) return false
         return modelHelper.isInstalled(context)
+    }
+
+    /**
+     * After a run the user asked this one model for
+     * ([com.playtranslate.translation.TranslationBackendRegistry.translateWith]):
+     * a model that is switched off is released as switching it off releases
+     * it, unloaded and its mmap weight cache deleted, so one translation
+     * does not leave gigabytes resident and a model-sized cache on disk
+     * that only the switch ever removes. A model that is switched on stays
+     * loaded as after any translation, and is not made to wait for the
+     * engine's lock to learn that: another translation can be holding it.
+     * For one that is off the switch is read again under that lock
+     * ([MnnTranslator.releaseIfOff]), so a model switched on during the run
+     * is left alone.
+     */
+    suspend fun releaseAfterChosenRun() {
+        if (enabledProvider()) return
+        MnnTranslator.getInstance(context).releaseIfOff(
+            modelPath = modelHelper.file(context).absolutePath,
+            stillOff = { !enabledProvider() },
+            deleteCache = { modelHelper.deleteMmapCache(context) },
+        )
     }
 
     /**

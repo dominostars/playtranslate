@@ -3120,6 +3120,7 @@ class CaptureService : Service() {
                 ),
                 langContext        = Prefs(this).langContext(),
                 createdAtMs        = capturedAtWallMs,
+                groupTexts         = ocrResult.groups.map { it.text },
             )
         )
         // COMMIT ON DELIVERY: every caller of THIS function delivers what
@@ -3189,6 +3190,7 @@ class CaptureService : Service() {
             backendDisplayName = backendDisplayName,
             ocrProvenance = ocrProvenance,
             langContext = Prefs(this).langContext(),
+            groupTexts = texts.unitTexts,
         ))
     }
 
@@ -3835,6 +3837,7 @@ class CaptureService : Service() {
                     ) else null,
                     langContext         = Prefs(this@CaptureService).langContext(srcId),
                     createdAtMs         = capturedAtWallMs,
+                    groupTexts          = groupTexts,
                 ),
                 // Deferred: keep the SKELETONS — the deferred completion fills
                 // them when the translation finally runs.

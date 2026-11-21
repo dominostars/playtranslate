@@ -134,7 +134,10 @@ class GeminiBackend(
     }
 
     override fun isUsable(source: String, target: String): Boolean =
-        enabledProvider() && !keyProvider().isNullOrBlank()
+        enabledProvider() && isSetUpFor(source, target)
+
+    override fun isSetUpFor(source: String, target: String): Boolean =
+        !keyProvider().isNullOrBlank()
 
     override suspend fun translate(text: String, source: String, target: String): String {
         val system = QwenChatTemplate.systemPrompt(source, target)

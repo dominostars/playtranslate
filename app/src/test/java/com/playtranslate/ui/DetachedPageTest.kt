@@ -7,6 +7,7 @@ import android.view.Display
 import android.view.View
 import android.view.WindowManager
 import android.widget.TextView
+import androidx.core.view.allViews
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.CaptureSession
 import com.playtranslate.CaptureState
@@ -42,6 +43,11 @@ import java.time.Duration
  * outside leaves on it, the language change that resets it, that it offers
  * no source edit, and its Anki pill's over-game route. The controller's side (which captures reach it, when it is dropped)
  * is DetachedCaptureRoutingTest.
+ * The translation's credit has its gear for a capture's result: the picker
+ * is an alert over the game, a pick lands on the page, and its settings
+ * button starts the app's page. While the page follows auto-translate there
+ * is no gear (the session's next read would replace a pick); it is back,
+ * for the result the session left, when the session ends.
  */
 @RunWith(RobolectricTestRunner::class)
 class DetachedPageTest {
@@ -624,5 +630,103 @@ class DetachedPageTest {
 
         assertFalse(page.followsLive)
         assertEquals(ResultState.Error("before"), page.vm.result.value)
+    }
+
+    // ── A service picked for the result on show ──────────────────────────
+
+    /** A result a service is credited for, as a capture's is. */
+    private fun credited(original: String = "こんにちは") = result(original).copy(backendDisplayName = "Lingva")
+
+    private val gearShown: Boolean
+        get() = view(R.id.btnTranslationService)?.visibility == View.VISIBLE &&
+            view(R.id.translationNoteRow)?.isClickable == true
+
+    /** The buttons of the alert last added over the game, by their labels. */
+    private fun alertButton(label: String): android.widget.Button =
+        wm.added.last().first.allViews.filterIsInstance<android.widget.Button>()
+            .single { it.text.toString() == label }
+
+    private fun <T> withServices(block: () -> T): T {
+        com.playtranslate.translation.TranslationBackendRegistry.init(
+            listOf(
+                com.playtranslate.translation.FakeSwitchedBackend(id = "lingva", priority = 10, displayName = "Lingva"),
+                com.playtranslate.translation.FakeSwitchedBackend(id = "gemini", priority = 20, displayName = "Gemini", enabled = false),
+            ),
+        )
+        return try { block() } finally { com.playtranslate.translation.TranslationBackendRegistry.close() }
+    }
+
+    @Test fun `the credit's gear opens the service picker over the game, and a pick lands on the page`() = withServices {
+        page.vm.chosenTranslation = { _, backend, _ ->
+            ChosenServiceTranslation.Outcome.Translated(listOf("hello again"), backend.displayName)
+        }
+        page.vm.displayResult(credited(), ctx)
+        settle()
+        assertTrue(gearShown)
+        val windowsBefore = wm.added.size
+
+        view(R.id.translationNoteRow)!!.performClick()
+        settle()
+        assertEquals("one overlay window, the picker", windowsBefore + 1, wm.added.size)
+
+        alertButton("Gemini").performClick()
+        settle()
+
+        val landed = (page.vm.result.value as ResultState.Ready).result
+        assertEquals("hello again", landed.translatedText)
+        assertEquals("Gemini", landed.backendDisplayName)
+        assertEquals("hello again", (view(R.id.tvTranslation) as TextView).text.toString())
+    }
+
+    @Test fun `a failed pick is said in an alert over the game`() = withServices {
+        page.vm.chosenTranslation = { _, _, _ -> ChosenServiceTranslation.Outcome.Failed("gemini", "Gemini", null) }
+        val on = credited()
+        page.vm.displayResult(on, ctx)
+        settle()
+        view(R.id.translationNoteRow)!!.performClick()
+        settle()
+        val afterPicker = wm.added.size
+
+        alertButton("Gemini").performClick()
+        settle()
+
+        assertEquals("one more overlay window, the alert", afterPicker + 1, wm.added.size)
+        assertSame(on, (page.vm.result.value as ResultState.Ready).result)
+        assertTrue(
+            wm.added.last().first.allViews.filterIsInstance<TextView>()
+                .any { it.text.toString() == ctx.getString(R.string.translation_pick_failed_title) },
+        )
+    }
+
+    @Test fun `the picker's settings button starts Translation services`() = withServices {
+        page.vm.displayResult(credited(), ctx)
+        settle()
+        view(R.id.translationNoteRow)!!.performClick()
+        settle()
+
+        alertButton(ctx.getString(R.string.settings_cell_translation_services)).performClick()
+        settle()
+
+        val started = shadowOf(ctx as android.app.Application).nextStartedActivity
+        assertEquals(TranslationServicesActivity::class.java.name, started?.component?.className)
+    }
+
+    @Test fun `while the page follows auto-translate the credit has no gear, and it is back when the session ends`() {
+        val svc = captureService()
+        page.vm.displayResult(credited(), ctx)
+        settle()
+        assertTrue("a capture's result", gearShown)
+
+        page.followLive(svc)
+        val fed = credited("一つ目")
+        svc.emitResult(fed)
+        settle()
+        assertEquals("the credit is still said", View.VISIBLE, view(R.id.translationNoteRow)?.visibility)
+        assertFalse("the session's next read would replace a pick", gearShown)
+
+        page.followLive(null)
+        settle()
+        assertSame(fed, (page.vm.result.value as ResultState.Ready).result)
+        assertTrue("the result the session left can be picked for", gearShown)
     }
 }

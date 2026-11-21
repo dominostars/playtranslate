@@ -134,6 +134,14 @@ data class OneShotOverlayData(
      *  up over another ([OverlayUiController.presentCapture]). Null where
      *  nothing recorded it. */
     val frameGeometry: DisplayGeometry? = null,
+    /** One box per OCR group, as the capture built them, in the groups'
+     *  order: [boxes] before any fill, kept through every fill (a `copy`
+     *  carries it). A final fill drops the boxes whose translation came
+     *  back blank ([fillOneShotOverlayData]), after which [boxes] can no
+     *  longer be matched to the groups by position; a second translation
+     *  of the same groups fills these instead
+     *  ([refillOneShotOverlayData]). */
+    val skeleton: List<TextBox> = boxes,
 ) {
     /** Whether the translation presentation has anything to paint: boxes,
      *  as skeletons or with text. False once a final fill dropped every box
@@ -168,6 +176,18 @@ internal fun fillOneShotOverlayData(
     }.filter { it.translatedText.isNotBlank() }
     return skeleton.copy(boxes = filled)
 }
+
+/** [data]'s boxes filled again from [texts], one per OCR group, for a
+ *  capture whose groups were translated a second time (a service the user
+ *  picked for the result on show): [fillOneShotOverlayData] over the
+ *  capture's own boxes ([OneShotOverlayData.skeleton]), so a group whose
+ *  first translation was blank and lost its box has one again if this
+ *  translation is not, and one that is blank now loses it. Null as that
+ *  fill is: no data, or a count that is not the groups'. */
+internal fun refillOneShotOverlayData(
+    data: OneShotOverlayData?,
+    texts: List<String>,
+): OneShotOverlayData? = fillOneShotOverlayData(data?.let { it.copy(boxes = it.skeleton) }, texts)
 
 /** [skeleton] with a translation filled in progress: box i takes `known[i]` as
  *  its text where that is known and not blank, and every other box stays as it

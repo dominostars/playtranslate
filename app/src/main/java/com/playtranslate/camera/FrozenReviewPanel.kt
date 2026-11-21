@@ -404,6 +404,10 @@ class FrozenReviewPanel(
         // content) the arbiter is a pure passthrough to the lookup.
         o.outsideLookupRouter = { ev -> zoomGesture.onOutsideTouch(ev) }
         o.retranslate = { text -> backend.translateForPanel(text) }
+        // No service is picked for this result: the picture's boxes are
+        // painted from the tool's own translations, which a pick made in
+        // the sheet would not reach.
+        o.translationPickerOffered = false
         o.chooseOcr = { prov, _ ->
             // The shared picker's activity form (same one the in-app results
             // page uses). A downloaded pick re-OCRs the SAME retained frame

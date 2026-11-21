@@ -10,6 +10,7 @@ import com.playtranslate.language.ShortTextTokenCounters
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.language.isShortText
+import com.playtranslate.model.TranslationLangContext
 import com.playtranslate.net.NetworkConnectivity
 import com.playtranslate.ocr.ReaderTranslations
 import com.playtranslate.ui.DegradedMessages
@@ -558,6 +559,49 @@ class GroupTranslator(
         val outcome = translate(text, target)
         onDegraded(outcome.kind)
         return GroupTranslation(target.localize(outcome.text), outcome.note, outcome.backendDisplayName)
+    }
+
+    /**
+     * Translate [texts] with the one service [id], which the user picked
+     * for a result on show ([TranslationBackendRegistry.translateWith]):
+     * one translation per text, in order, each named as that service's.
+     * Under [langContext], the pair and the Chinese script the result was
+     * made under, not the settings at call time, so the texts come back in
+     * the terms of the result they replace.
+     *
+     * Apart from the waterfall's calls in three ways. The cache is not read
+     * (it would answer with the configured services' translation, the one
+     * being replaced) and not written (the next capture of this text is the
+     * configured services' again: a pick changes no setting). No note is
+     * made and [onDegraded] is not told: the user chose this service, so
+     * its answer is not a fallback. Throws
+     * [ChosenServiceFailedException] when the service did not translate
+     * every text.
+     *
+     * The run can end a cooldown (its answer) or start one (its failure),
+     * which moves who the waterfall would ask first, so the cache's routing
+     * identity is reconciled when it ends, as after any change the user
+     * makes to the services ([reconcileBackendPreference]).
+     */
+    suspend fun translateWith(
+        id: BackendId,
+        texts: List<String>,
+        langContext: TranslationLangContext,
+    ): List<GroupTranslation> {
+        val target = TranslationTarget(
+            source = SourceLanguageProfiles[langContext.sourceLangId].translationCode,
+            target = langContext.targetLang,
+            chineseVariant = langContext.chineseVariant,
+            sourceIsTraditional = langContext.sourceLangId == SourceLangId.ZH_HANT,
+            sourceId = langContext.sourceLangId,
+        )
+        try {
+            return TranslationBackendRegistry.translateWith(id, texts, target.source, target.target).map {
+                GroupTranslation(target.localize(it.text), note = null, backendDisplayName = it.backend.displayName)
+            }
+        } finally {
+            reconcileBackendPreference()
+        }
     }
 
     /**

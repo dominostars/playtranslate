@@ -6,9 +6,11 @@ import com.playtranslate.diagnostics.TranslationDiag
 import com.playtranslate.translation.llm.OnDeviceLlmBackend
 import com.playtranslate.translation.llm.OnDeviceLlmTransientException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
@@ -193,6 +195,27 @@ object TranslationBackendRegistry {
         if (ordered.isEmpty()) {
             throw IllegalStateException("TranslationBackendRegistry has no backends — was init() called?")
         }
+        return singlePass(text, source, target, ordered, chosen = false)
+    }
+
+    /**
+     * [translate]'s pass over [ordered] for one text. [chosen] is a run the
+     * user asked one service for ([translateWith], whose [ordered] is that
+     * one service, already found set up for the pair): the usable gate and
+     * the cooldown skip are not applied, nothing is reported to
+     * [onlineAttemptListener], and a failure is thrown as
+     * [ChosenServiceFailedException] with what the service threw. Everything
+     * else is the waterfall's own: the call, the success it records.
+     */
+    private suspend fun singlePass(
+        text: String,
+        source: String,
+        target: String,
+        ordered: List<TranslationBackend>,
+        chosen: Boolean,
+    ): WaterfallResult {
+        // What the chosen service threw, for the caller to tell the user.
+        var chosenFailure: Exception? = null
         // First on-device LLM (if any) that threw OnDeviceLlmTransientException
         // during this call. Propagated into the eventual WaterfallResult so the
         // caller can skip caching the fallback's output — without this, a
@@ -210,19 +233,21 @@ object TranslationBackendRegistry {
         val attempts = ArrayList<OnlineAttempt>(2)
         try {
             for (backend in ordered) {
-                if (!backend.isUsable(source, target)) continue
+                if (!chosen && !backend.isUsable(source, target)) continue
                 // Cooldown skip: backends in a parsed/ladder cooldown stay out
                 // of rotation until retryAt elapses. The cache layer doesn't
                 // need a per-result signal — [preferredOnlineId] excludes
                 // cooled-down backends, so the cache's preferred-backend
                 // reconcile invalidates stale entries on cooldown enter/exit.
+                // A chosen service is asked past its cooldown: only the skip
+                // is lifted, as for a question asked again ([complete]).
                 //
                 // `now` is read per-iteration: an earlier backend may have
                 // hung for many seconds before failing, during which a
                 // shorter cooldown on this one could have elapsed.
                 val now = System.currentTimeMillis()
                 val coolDown = (backend as? Cooldownable)?.unavailableUntil()
-                if (coolDown != null && coolDown > now) {
+                if (!chosen && coolDown != null && coolDown > now) {
                     Log.d(TAG, "Backend ${backend.id} skipped (cooldown ${coolDown - now}ms remaining)")
                     trail.add("${backend.displayName}[cooldown ${(coolDown - now) / 1000}s]")
                     eventful = true
@@ -234,6 +259,7 @@ object TranslationBackendRegistry {
                 val sentAt = SystemClock.elapsedRealtime()
                 try {
                     val translated = backend.translate(text, source, target)
+                    if (chosen) requireAnswered(text, translated)
                     (backend as? Cooldownable)?.recordSuccess(attemptStartedAt)
                     trail.add("${backend.displayName}[ok]")
                     if (backend.requiresInternet) {
@@ -261,12 +287,91 @@ object TranslationBackendRegistry {
                     eventful = true
                     recordFailureDiag(backend, e)
                     if (backend.requiresInternet) attempts += failedAttempt(backend, e, sentAt)
+                    chosenFailure = e
                 }
+            }
+            if (chosen) {
+                logWaterfall("chosen FAILED", trail)
+                throw ChosenServiceFailedException(ordered.single(), chosenFailure)
             }
             logWaterfall("single ALL FAILED", trail)
             throw IllegalStateException("All translation backends failed")
         } finally {
-            reportOnlineAttempts(attempts)
+            if (!chosen) reportOnlineAttempts(attempts)
+        }
+    }
+
+    /** The backends that could translate the pair if asked now, whatever
+     *  their switches and cooldowns say ([TranslationBackend.isSetUpFor]),
+     *  in the waterfall's order: what the user picks one service from. */
+    fun setUpFor(source: String, target: String): List<TranslationBackend> =
+        orderedBackends().filter { it.isSetUpFor(source, target) }
+
+    /**
+     * Translate [texts] with the one service [id], which the user picked
+     * for these texts: no other service is tried. The waterfall's own
+     * passes run over that one service ([singlePass], [batchWaterfall]),
+     * so the request is the one a capture would send it (one batch call
+     * where it takes one, the per-text retry after a reply the batch could
+     * not use), with three differences. It is asked whether or not it is
+     * switched on, provided it is set up for the pair
+     * ([TranslationBackend.isSetUpFor]). It is asked past a cooldown: only
+     * the skip is lifted, so an answer clears the cooldown as any answer
+     * does and a failure is recorded by the backend as on any call, where a
+     * [CooldownState] leaves a cooldown that is still running as it is. An
+     * answer with no text in it, for a text that has some, is a failure and
+     * clears nothing ([requireAnswered]).
+     * And nothing is reported to [onlineAttemptListener]: a failure is
+     * said where the service was picked, as a question's is ([complete]).
+     *
+     * All or nothing: one result per text, in order, each naming the
+     * service; when any text is left untranslated (the service threw for
+     * it, or answered it with nothing), or the service is gone
+     * or not set up for the pair (then nothing is sent), it throws
+     * [ChosenServiceFailedException]. Cancellation re-throws.
+     *
+     * An on-device model that is switched off is released when the run
+     * ends, however it ends
+     * ([OnDeviceLlmBackend.releaseAfterChosenRun]).
+     */
+    suspend fun translateWith(
+        id: BackendId,
+        texts: List<String>,
+        source: String,
+        target: String,
+    ): List<WaterfallResult> {
+        if (texts.isEmpty()) return emptyList()
+        val backend = byId(id)
+        if (backend == null || !backend.isSetUpFor(source, target)) {
+            throw ChosenServiceFailedException(backend, null)
+        }
+        val only = listOf(backend)
+        try {
+            return if (texts.size == 1) {
+                listOf(singlePass(texts[0], source, target, only, chosen = true))
+            } else {
+                // The attempts are the pass's bookkeeping; a chosen run
+                // reports none.
+                batchWaterfall(texts, source, target, only, ArrayList(), chosen = true)
+            }
+        } finally {
+            if (backend is OnDeviceLlmBackend) {
+                withContext(NonCancellable) { backend.releaseAfterChosenRun() }
+            }
+        }
+    }
+
+    /** A chosen service's [translated] for [text] must say something: an
+     *  answer with no text in it, for a text that has some, is the service
+     *  failing that text, thrown before the answer is counted
+     *  ([Cooldownable.recordSuccess]) as a question's empty answer is
+     *  ([complete]). A chosen run is asked past a cooldown, and an answer
+     *  that translated nothing is no sign that the cooldown's cause is
+     *  over. Only a chosen run's rule: the waterfall's own passes take what
+     *  a service returns, as they did, and never ask a cooling service. */
+    private fun requireAnswered(text: String, translated: String) {
+        if (translated.isBlank() && text.isNotBlank()) {
+            throw StructuralFailureException("Empty translation", BackendFailure.BAD_RESPONSE)
         }
     }
 
@@ -460,16 +565,22 @@ object TranslationBackendRegistry {
 
     /** [translateBatch]'s waterfall proper, for two or more texts. Appends
      *  one [OnlineAttempt] to [attempts] per online backend it calls; the
-     *  caller reports them once the pass ends, however it ends. */
+     *  caller reports them once the pass ends, however it ends. [chosen]
+     *  is [singlePass]'s: the one service of [ordered] is asked whatever
+     *  its switch and cooldown say, and texts left untranslated are thrown
+     *  as [ChosenServiceFailedException] with what it threw. */
     private suspend fun batchWaterfall(
         texts: List<String>,
         source: String,
         target: String,
         ordered: List<TranslationBackend>,
         attempts: MutableList<OnlineAttempt>,
+        chosen: Boolean = false,
     ): List<WaterfallResult> {
         val results = arrayOfNulls<WaterfallResult>(texts.size)
         var pendingIndices: List<Int> = texts.indices.toList()
+        // What the chosen service threw, for the caller to tell the user.
+        var chosenFailure: Exception? = null
         // Per-index displacement signal: when a non-batching on-device
         // LLM throws transient on this batch, every text that subsequently
         // succeeds at a fallback backend carries this id so the caller
@@ -481,9 +592,9 @@ object TranslationBackendRegistry {
 
         for (backend in ordered) {
             if (pendingIndices.isEmpty()) break
-            if (!backend.isUsable(source, target)) continue
+            if (!chosen && !backend.isUsable(source, target)) continue
             val coolDown = (backend as? Cooldownable)?.unavailableUntil()
-            if (coolDown != null && coolDown > System.currentTimeMillis()) {
+            if (!chosen && coolDown != null && coolDown > System.currentTimeMillis()) {
                 Log.d(TAG, "Backend ${backend.id} skipped (cooldown ${coolDown - System.currentTimeMillis()}ms remaining)")
                 trail.add("${backend.displayName}[cooldown ${(coolDown - System.currentTimeMillis()) / 1000}s]")
                 eventful = true
@@ -506,6 +617,7 @@ object TranslationBackendRegistry {
                             "Backend ${backend.id} returned ${translated.size} translations for ${pendingTexts.size} inputs"
                         )
                     }
+                    if (chosen) pendingTexts.forEachIndexed { i, t -> requireAnswered(t, translated[i]) }
                     (backend as? Cooldownable)?.recordSuccess(batchStartedAt)
                     trail.add("${backend.displayName}[ok]")
                     if (backend.requiresInternet) {
@@ -546,6 +658,7 @@ object TranslationBackendRegistry {
                     )
                     trail.add("${backend.displayName}[batch-parse, per-text retry]")
                     batchAnswered = e.serverAnswered
+                    chosenFailure = e
                 } catch (e: Exception) {
                     Log.w(
                         TAG,
@@ -555,6 +668,7 @@ object TranslationBackendRegistry {
                     eventful = true
                     recordFailureDiag(backend, e)
                     if (backend.requiresInternet) attempts += failedAttempt(backend, e, batchSentAt)
+                    chosenFailure = e
                     // Fall through to the next backend with the FULL
                     // pending list. Intentional: per-text retry inside
                     // the same backend would defeat the batching point
@@ -583,7 +697,10 @@ object TranslationBackendRegistry {
                         async {
                             if (transientHit) null else {
                                 try {
-                                    backend.translate(t, source, target).also { succeededSoFar.incrementAndGet() }
+                                    backend.translate(t, source, target).also {
+                                        if (chosen) requireAnswered(t, it)
+                                        succeededSoFar.incrementAndGet()
+                                    }
                                 } catch (e: CancellationException) {
                                     throw e
                                 } catch (e: Exception) {
@@ -621,6 +738,8 @@ object TranslationBackendRegistry {
                 }
                 throw e
             }
+
+            firstFailure.get()?.let { chosenFailure = it }
 
             // If memory pressure forced a transient bailout, treat the
             // whole backend as failed for THIS batch — drop any results
@@ -691,10 +810,11 @@ object TranslationBackendRegistry {
 
         val anyDegraded = results.any { it != null && it.isDegraded }
         if (eventful && (anyDegraded || pendingIndices.isNotEmpty())) {
-            logWaterfall("batch ${texts.size}", trail)
+            logWaterfall(if (chosen) "chosen ${texts.size}" else "batch ${texts.size}", trail)
         }
 
         if (pendingIndices.isNotEmpty()) {
+            if (chosen) throw ChosenServiceFailedException(ordered.single(), chosenFailure)
             throw IllegalStateException(
                 "All translation backends failed for ${pendingIndices.size} of ${texts.size} texts"
             )

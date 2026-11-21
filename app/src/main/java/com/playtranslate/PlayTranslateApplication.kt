@@ -172,6 +172,10 @@ class PlayTranslateApplication : Application() {
                         Prefs(this).hyMtEnabled &&
                             !RegionPolicy.isHunyuanRestricted(this)
                     },
+                    // The same check without the switch: a run the user
+                    // asks this one model for is not gated by the switch,
+                    // and must still be refused here.
+                    permitted = { !RegionPolicy.isHunyuanRestricted(this) },
                 ),
                 HyMt2Backend(
                     // No region AND-gate here, unlike the 1.5 backend above:
