@@ -26,7 +26,8 @@ import com.playtranslate.themeColor
  * The camera control pill's gear menu: tapping the settings gear grows the
  * pill downward (and leftward to the floating icon menu's panel width) to
  * reveal the rows mirroring that menu's gear panel — source language, OCR
- * engine, and (for reading-capable languages) Overlays. Rows carry the
+ * engine, and Overlays, the tool's one control for what it paints over the
+ * frame. Rows carry the
  * floating panel's title/value shape ([R.layout.settings_row_value],
  * compacted, chevron hidden) recolored for the camera's white-on-scrim
  * chrome. The gear takes the accent tint while open; tapping it again or
@@ -46,17 +47,22 @@ class CameraGearMenu(
     private val controlsHost: ViewGroup,
     private val onLanguageRow: () -> Unit,
     private val onOcrRow: () -> Unit,
-    /** Cycle the overlay flavor (Translation ↔ Furigana/Pinyin). The row
-     *  mirrors the floating menu's Overlays row: cycles IN PLACE, updating
-     *  its value without closing the menu. */
-    private val onCycleOverlayMode: () -> Unit,
+    /** The modes the Overlays row cycles through right now, in order: what
+     *  the tool can paint in its current state (a review also offers None).
+     *  Read at every open and every tap. The row is the tool's one control
+     *  for the mode; it is left out while there is nothing to choose. */
+    private val overlayModes: () -> List<OverlayMode>,
+    /** The mode on show now: the Overlays row's value. */
+    private val overlayMode: () -> OverlayMode,
+    /** The row's pick, the mode after the current one
+     *  ([OverlayMode.nextIn]). The row mirrors the floating menu's Overlays
+     *  row: it cycles IN PLACE, its value following without the menu
+     *  closing. */
+    private val onPickOverlayMode: (OverlayMode) -> Unit,
     /** The hosting tool's OCR selection scope (inheriting global until set),
      *  which the OCR row's value label resolves through. Defaults to the
      *  camera's. */
     private val ocrScope: com.playtranslate.OcrTokenScope = com.playtranslate.OcrTokenScope.CAMERA,
-    /** The hosting tool's overlay flavor — the Overlays row's value label.
-     *  Defaults to the camera's scope. */
-    private val overlayMode: () -> OverlayMode = { Prefs(activity).cameraOverlayMode },
 ) {
     private val prefs = Prefs(activity)
     private val density = activity.resources.displayMetrics.density
@@ -228,11 +234,11 @@ class CameraGearMenu(
             close()
             onOcrRow()
         }
-        // Overlays row (the floating panel's): shown when the language has a
-        // reading mode to switch to; tapping cycles the flavor IN PLACE —
-        // the menu stays open and the value text follows.
+        // Overlays row (the floating panel's): shown while the tool has more
+        // than one mode to paint in; a tap moves to the next IN PLACE, the
+        // menu staying open and the value text following.
         val hintKind = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
-        if (hintKind != HintTextKind.NONE) {
+        if (overlayModes().size > 1) {
             menuHost.addView(divider())
             val row = addRow(
                 inflater,
@@ -241,13 +247,13 @@ class CameraGearMenu(
             ) {}
             val value = row.findViewById<TextView>(R.id.tvRowValue)
             row.setOnClickListener {
-                onCycleOverlayMode()
+                onPickOverlayMode(OverlayMode.nextIn(overlayModes(), overlayMode()))
                 value.text = overlayModeLabel(hintKind)
             }
         }
     }
 
-    /** User-facing name of the hosting tool's current overlay flavor. */
+    /** User-facing name of the mode the hosting tool shows now. */
     private fun overlayModeLabel(hintKind: HintTextKind): String =
         activity.getString(overlayMode().labelRes(hintKind))
 

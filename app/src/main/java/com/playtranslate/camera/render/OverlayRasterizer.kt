@@ -7,9 +7,13 @@ import android.graphics.Rect
 import android.util.Log
 import android.view.View
 import com.playtranslate.BuildConfig
+import com.playtranslate.R
+import com.playtranslate.themeColor
 import com.playtranslate.ui.OverlayRenderConfig
+import com.playtranslate.ui.TapLookupGeometry
 import com.playtranslate.ui.TextBox
 import com.playtranslate.ui.TranslationOverlayView
+import com.playtranslate.ui.WordBoxesView
 
 private const val TAG = "OverlayRasterizer"
 
@@ -191,3 +195,78 @@ private fun scaledRect(r: Rect, s: Float) = Rect(
     (r.left * s).toInt(), (r.top * s).toInt(),
     (r.right * s).toInt(), (r.bottom * s).toInt(),
 )
+
+/**
+ * One warpable outline per word of the live preview's Definitions mode:
+ * [words] are the words' boxes in the keyframe's AU pixels
+ * ([TapLookupGeometry.wordBoxes]), [trackKeys] the tracked region (its
+ * line) each rides. Drawn by the capture's own word-box stroke
+ * ([WordBoxesView.strokeBox]) at [renderScale] raster pixels per AU pixel,
+ * the stroke and the corners sized in raster pixels, so at the base view
+ * scale they are the review's own. The regions parallel [words] one to one
+ * (a tap is matched to a word by its region's index), so none is skipped: a
+ * degenerate box still gets a one-pixel raster. Main-thread only.
+ */
+internal fun rasterizeWordOutlines(
+    context: Context,
+    words: List<TapLookupGeometry.WordBox>,
+    trackKeys: List<Int>,
+    renderScale: Float,
+): List<RasterRegion> {
+    if (words.isEmpty()) return emptyList()
+    val s = renderScale.coerceIn(0.5f, 2.5f)
+    val density = context.resources.displayMetrics.density
+    // The canvas below is scaled by s, so sizes given in raster pixels are
+    // divided by it.
+    val strokeAu = WordBoxesView.BOX_STROKE_DP * density / s
+    val radiusAu = WordBoxesView.BOX_RADIUS_DP * density / s
+    val stroke = WordBoxesView.strokePaint(context.themeColor(R.attr.ptAccent), strokeAu)
+    return words.mapIndexed { i, word ->
+        // The stroke straddles the box's edge; a full width past it keeps
+        // the antialiased rim inside the bitmap.
+        val b = word.screenBounds().apply { inset(-strokeAu, -strokeAu) }
+        val left = kotlin.math.floor(b.left).toInt()
+        val top = kotlin.math.floor(b.top).toInt()
+        val auRect = Rect(
+            left, top,
+            maxOf(left + 1, kotlin.math.ceil(b.right).toInt()),
+            maxOf(top + 1, kotlin.math.ceil(b.bottom).toInt()),
+        )
+        val bmp = Bitmap.createBitmap(
+            maxOf(1, kotlin.math.ceil(auRect.width() * s).toInt()),
+            maxOf(1, kotlin.math.ceil(auRect.height() * s).toInt()),
+            Bitmap.Config.ARGB_8888,
+        )
+        val canvas = Canvas(bmp)
+        canvas.scale(s, s)
+        canvas.translate(-left.toFloat(), -top.toFloat())
+        WordBoxesView.strokeBox(canvas, word, stroke, radiusAu)
+        RasterRegion(bitmap = bmp, auRect = auRect, trackKey = trackKeys.getOrElse(i) { -1 }, pixelsPerAu = s)
+    }
+}
+
+/**
+ * The index of the word a touch at view ([x], [y]) picks among the live
+ * preview's outlines: [words] are the boxes the installed regions were
+ * rasterized from ([rasterizeWordOutlines], index for index). The touch is
+ * taken back to each word's own AU plane ([WarpOverlayView.viewToAu]) and
+ * measured against the word's box there, by the rule the review's boxes
+ * are picked by ([TapLookupGeometry.nearest]): a slanted word is met as it
+ * is drawn, never by the upright bitmap around it, whose empty corners
+ * reach over its neighbours. [slopPx] and every distance compared are in
+ * view pixels. Null off every word, and while nothing is drawn.
+ */
+internal fun WarpOverlayView.wordIndexAt(
+    words: List<TapLookupGeometry.WordBox>,
+    x: Float,
+    y: Float,
+    slopPx: Float,
+): Int? {
+    val au = FloatArray(2)
+    return TapLookupGeometry.nearest(words.size, slopPx) { i ->
+        val auPerViewPx = viewToAu(i, x, y, au) ?: return@nearest null
+        val reach = TapLookupGeometry.reach(words[i], au[0], au[1])
+        TapLookupGeometry.Reach(reach.edge / auPerViewPx, reach.centre / auPerViewPx)
+    }
+}
+

@@ -36,6 +36,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import com.playtranslate.camera.render.OverlayRasterizer
 import com.playtranslate.camera.render.RasterRegion
+import com.playtranslate.camera.render.rasterizeWordOutlines
+import com.playtranslate.camera.render.wordIndexAt
 import com.playtranslate.camera.render.SnapshotCore
 import com.playtranslate.camera.render.WarpOverlayView
 import com.playtranslate.camera.tracker.CnFrameConverter
@@ -48,7 +50,9 @@ import com.playtranslate.camera.tracker.TrackerEngine
 import com.playtranslate.language.SourceLanguageEngines
 import com.playtranslate.language.SourceLanguageProfiles
 import com.playtranslate.ui.OverlayRenderConfig
+import com.playtranslate.ui.TapLookupGeometry
 import com.playtranslate.ui.TextBox
+import com.playtranslate.ui.WordLookupSession
 import com.playtranslate.ui.noTextStatusMessage
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
@@ -239,8 +243,7 @@ class CameraSession(
 
     private class BuiltOverlays(
         val ocr: OcrManager.OcrResult,
-        val boxes: List<TextBox>,
-        val trackKeys: List<Int>,
+        val shown: Shown,
         val trackRegionsAu: List<Pair<Int, android.graphics.Rect>>,
         val groupColors: List<Pair<Int, Int>>,
         val auW: Int,
@@ -282,10 +285,32 @@ class CameraSession(
         frozenRenderBoost = boost
     }
 
+    /** A word of the live preview's Definitions outlines: its box in the
+     *  keyframe's AU pixels ([TapLookupGeometry.wordBoxes], so [box] holds
+     *  its text), the tracked line it rides and that line's text. What a
+     *  tap on the outline hands to the snapshot it starts ([liveWordAt]). */
+    class LiveWord internal constructor(
+        internal val box: TapLookupGeometry.WordBox,
+        val lineKey: Int,
+        val lineText: String,
+    ) {
+        /** The word's text in its line. */
+        val surface: String get() = box.surface
+    }
+
+    /** What the warp view shows, in a form that can be rendered again at
+     *  another scale: a flavor's text boxes, or Definitions' word outlines.
+     *  One value for everything that holds "what is on show" (the
+     *  crispness re-raster, the anchor LRU's payload), so the two kinds
+     *  never need a path each. */
+    private sealed interface Shown {
+        class Boxes(val boxes: List<TextBox>, val trackKeys: List<Int>) : Shown
+        class Words(val words: List<LiveWord>) : Shown
+    }
+
     // Last-shown raster state (MAIN THREAD only): feeds the dirty diff and
     // the crispness re-raster on scale drift.
-    private var lastShownBoxes: List<TextBox>? = null
-    private var lastShownKeys: List<Int> = emptyList()
+    private var lastShown: Shown? = null
     private var lastShownRegions: List<RasterRegion>? = null
     private var lastShownAuW = 0
     private var lastShownAuH = 0
@@ -424,8 +449,11 @@ class CameraSession(
             // over the snapshot; cancellation-first kills an in-flight
             // acquire's OCR rather than letting it run for nobody.
             if (onFrozen != null) {
-                freezeCallback = null
+                // FROZEN before the request is let go, so whoever asks "may
+                // I freeze" ([freezePending], then [mode]) never finds a
+                // moment that is neither.
                 mode = Mode.FROZEN
+                freezeCallback = null
                 // The no-usable-text hint narrates AUTO-detection; a snapshot
                 // replaces that mode, and no frame will ever clear the hint
                 // while frozen (pause gets this for free from wipeDisplay —
@@ -475,9 +503,8 @@ class CameraSession(
                     // snapshot's own showRegions swap replaces them at Done.
                     if (!keepOverlays) {
                         warpView?.clearRegions()
-                        lastShownBoxes = null
+                        lastShown = null
                         lastShownRegions = null
-                        lastShownKeys = emptyList()
                         lastShownAuW = 0
                         lastShownAuH = 0
                         rasterScale = 1f
@@ -745,10 +772,11 @@ class CameraSession(
                     onSlowOcr()
                 }
             }
-            // The furigana flavor needs no translation: the same-language
-            // request, for which the cloud reader asks its service for none.
+            // Readings and word outlines need no translation: the
+            // same-language request, for which the cloud reader asks its
+            // service for none.
             val frameId = FrameReaders.frameId("cam")
-            val request = if (flavor == OverlayMode.FURIGANA) {
+            val request = if (flavor == OverlayMode.FURIGANA || flavor == OverlayMode.DEFINITIONS) {
                 ReadRequest.sameLanguage(
                     srcId, screenshotWidth = auW, frameId = frameId,
                     scope = com.playtranslate.OcrTokenScope.CAMERA,
@@ -958,7 +986,7 @@ class CameraSession(
 
     /** Build boxes for the camera's current [Prefs.cameraOverlayMode],
      *  register the flavor's tracked regions (groups for translation, lines
-     *  for reading — the per-region homography units), rasterize, and hand
+     *  for readings and word outlines — the per-region homography units), rasterize, and hand
      *  the raster regions to the warp view. Two-phase for the translation
      *  flavor: first what can be shown at once (the reading's own
      *  translations, [reader], keyed by [ocr]'s group index, and the cache's
@@ -975,9 +1003,10 @@ class CameraSession(
     ) {
         val mode = prefs.cameraOverlayMode
         when (mode) {
-            // The camera stores translations or the hint (OverlayMode.offered);
-            // the other two are named so a new mode must say what it paints here.
-            OverlayMode.TRANSLATION, OverlayMode.DEFINITIONS, OverlayMode.NONE -> {
+            // None is the review's boxes switch and never a stored mode
+            // (OverlayMode.offered); it is named so a new mode must say
+            // what it paints here.
+            OverlayMode.TRANSLATION, OverlayMode.NONE -> {
                 // usableGroups already dropped blank groups, so this filter is
                 // a no-op that KEEPS the index alignment with [groupColors]
                 // (sampled per gated group at acquire); the reader's positions
@@ -1013,7 +1042,7 @@ class CameraSession(
                     ph.copy(translatedText = translations.getOrElse(idx) { "" })
                 }
                 showRegions(filled, trackKeys, auW, auH, epoch)
-                rememberBuilt(ocr, filled, trackKeys, regions, groupColors, auW, auH, mode, epoch)
+                rememberBuilt(ocr, Shown.Boxes(filled, trackKeys), regions, groupColors, auW, auH, mode, epoch)
             }
             OverlayMode.FURIGANA -> {
                 val engine = SourceLanguageEngines.get(context, prefs.sourceLangId)
@@ -1040,17 +1069,55 @@ class CameraSession(
                     }
                 }
                 showRegions(boxes, trackKeys, auW, auH, epoch)
-                rememberBuilt(ocr, boxes, trackKeys, lineRegions, groupColors, auW, auH, mode, epoch)
+                rememberBuilt(ocr, Shown.Boxes(boxes, trackKeys), lineRegions, groupColors, auW, auH, mode, epoch)
+            }
+            OverlayMode.DEFINITIONS -> {
+                // An outline around every word the lens can look up, the
+                // boxes a review draws ([TapLookupGeometry.wordBoxes]). One
+                // tracked region per OCR LINE, as for readings: a word's
+                // outline rides its line's plane.
+                val lines = ocr.lines()
+                val lineRegions = lines.mapIndexed { key, line -> key to line.bounds }
+                installTrackRegions(lineRegions, epoch)
+                val engine = SourceLanguageEngines.get(context, prefs.sourceLangId)
+                val tokens = lines.map { if (it.text.isEmpty()) emptyList() else engine.tokenize(it.text) }
+                if (!displayEpoch.isCurrent(epoch)) return
+                // The boxes are AU geometry, their pad and gap the review's
+                // own on screen: dp through the view scale.
+                val perViewPx = context.resources.displayMetrics.density /
+                    withContext(Dispatchers.Main) { baseRenderScale(auW, auH) }
+                val words = lines.indices.flatMap { i ->
+                    TapLookupGeometry.wordBoxes(
+                        lines[i], i, tokens[i].map { it.surface },
+                        padPx = WordLookupSession.BOX_PAD_DP * perViewPx,
+                        gapPx = WordLookupSession.BOX_GAP_DP * perViewPx,
+                    ).map { LiveWord(it, lineKey = i, lineText = lines[i].text) }
+                }
+                val shown = Shown.Words(words)
+                show(shown, auW, auH, epoch)
+                rememberBuilt(ocr, shown, lineRegions, groupColors, auW, auH, mode, epoch)
             }
         }
+    }
+
+    /** The word of the live Definitions outlines a touch at view ([x],
+     *  [y]) picks: in its box as the tracker draws it now, or within the
+     *  review's tap buffer of one, by the review's own rule
+     *  ([wordIndexAt]). Null in every other mode and state, and off every
+     *  word. Main thread. */
+    fun liveWordAt(x: Float, y: Float): LiveWord? {
+        if (mode != Mode.LIVE) return null
+        val words = (lastShown as? Shown.Words)?.words ?: return null
+        val slop = WordLookupSession.BUFFER_DP * context.resources.displayMetrics.density
+        val index = warpView?.wordIndexAt(words.map { it.box }, x, y, slop) ?: return null
+        return words.getOrNull(index)
     }
 
     /** Snapshot the finished display payload so the anchor LRU can restore
      *  this scene instantly on re-lock. */
     private fun rememberBuilt(
         ocr: OcrManager.OcrResult,
-        boxes: List<TextBox>,
-        trackKeys: List<Int>,
+        shown: Shown,
         regions: List<Pair<Int, android.graphics.Rect>>,
         groupColors: List<Pair<Int, Int>>,
         auW: Int,
@@ -1064,7 +1131,7 @@ class CameraSession(
             // how the LRU ends up serving one scene's content on another
             // scene's geometry.
             if (!displayEpoch.isCurrent(epoch)) return
-            lastBuilt = BuiltOverlays(ocr, boxes, trackKeys, regions, groupColors, auW, auH, mode, langKey())
+            lastBuilt = BuiltOverlays(ocr, shown, regions, groupColors, auW, auH, mode, langKey())
         }
     }
 
@@ -1132,7 +1199,7 @@ class CameraSession(
         acquireJob = scope.launch(Dispatchers.Default) {
             try {
                 installTrackRegions(payload.trackRegionsAu, epoch)
-                showRegions(payload.boxes, payload.trackKeys, payload.auW, payload.auH, epoch)
+                show(payload.shown, payload.auW, payload.auH, epoch)
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 Log.w(TAG, "relock display failed", e)
@@ -1207,18 +1274,21 @@ class CameraSession(
         return CameraCoordinates(auW, auH, w, h).scale
     }
 
-    /** Rasterize AU-space boxes (main thread — view machinery) and install
-     *  them in the warp view. [trackKeys] parallels [boxes]. */
+    /** Rasterize AU-space boxes and install them in the warp view.
+     *  [trackKeys] parallels [boxes]. */
     private suspend fun showRegions(
         boxes: List<TextBox>,
         trackKeys: List<Int>,
         auW: Int,
         auH: Int,
         epoch: Int,
-    ) {
+    ) = show(Shown.Boxes(boxes, trackKeys), auW, auH, epoch)
+
+    /** Rasterize [shown] (main thread — view machinery) and install it in
+     *  the warp view. */
+    private suspend fun show(shown: Shown, auW: Int, auH: Int, epoch: Int) {
         withContext(Dispatchers.Main) {
             if (!displayEpoch.isCurrent(epoch)) return@withContext
-            val rasterizer = OverlayRasterizer(context, OverlayRenderConfig.from(prefs))
             // frozenRenderBoost: the review zoom's crispness factor — 1f in
             // every live mode (gestures only exist while FROZEN; unfreeze
             // resets it), so the live path's raster scale is untouched.
@@ -1226,16 +1296,32 @@ class CameraSession(
             // Dirty diff against the last show at the same keyframe size —
             // a skeleton→filled swap re-renders only the boxes that changed.
             val previous = if (lastShownAuW == auW && lastShownAuH == auH) lastShownRegions else null
-            val regions: List<RasterRegion> =
-                rasterizer.rasterize(boxes, auW, auH, trackKeys, renderScale = base, previous = previous)
+            val regions = rasterize(shown, auW, auH, base, previous)
             ensureWarpView().setRegions(regions, auW, auH)
-            lastShownBoxes = boxes
-            lastShownKeys = trackKeys
+            lastShown = shown
             lastShownRegions = regions
             lastShownAuW = auW
             lastShownAuH = auH
             rasterScale = base
         }
+    }
+
+    /** [shown] as warpable rasters at [scale] raster pixels per AU pixel.
+     *  A word outline's regions parallel its words one to one, which is
+     *  how [liveWordAt] takes a tap back to each word's own plane. Main
+     *  thread. */
+    private fun rasterize(
+        shown: Shown,
+        auW: Int,
+        auH: Int,
+        scale: Float,
+        previous: List<RasterRegion>?,
+    ): List<RasterRegion> = when (shown) {
+        is Shown.Boxes -> OverlayRasterizer(context, OverlayRenderConfig.from(prefs))
+            .rasterize(shown.boxes, auW, auH, shown.trackKeys, renderScale = scale, previous = previous)
+        is Shown.Words -> rasterizeWordOutlines(
+            context, shown.words.map { it.box }, shown.words.map { it.lineKey }, scale,
+        )
     }
 
     /** Crispness re-raster: when the tracked scale has drifted well past the
@@ -1244,9 +1330,9 @@ class CameraSession(
      *  the swap). Main thread. */
     private fun maybeRerasterForScale(trackedScale: Float) {
         if (rerasterPending) return
-        // Hidden boxes (hideFrozenOverlays keeps lastShownBoxes) must not come back on a zoom.
+        // Hidden boxes (hideFrozenOverlays keeps lastShown) must not come back on a zoom.
         if (warpView?.hasVisibleRegions != true) return
-        val boxes = lastShownBoxes ?: return
+        val shown = lastShown ?: return
         // Desired raster resolution = the tracked zoom relative to the anchor
         // TIMES the base view scale (rasters are view-resolution now, not
         // AU-resolution) — both sides of the drift check share units.
@@ -1254,7 +1340,6 @@ class CameraSession(
         val ratio = if (desired > rasterScale) desired / rasterScale else rasterScale / desired
         if (ratio < RASTER_SCALE_DRIFT) return
         rerasterPending = true
-        val keys = lastShownKeys
         val auW = lastShownAuW
         val auH = lastShownAuH
         val targetScale = desired.coerceIn(0.5f, 2.5f)
@@ -1263,9 +1348,8 @@ class CameraSession(
         val epoch = displayEpoch.current()
         scope.launch(Dispatchers.Main) {
             try {
-                if (!displayEpoch.isCurrent(epoch) || lastShownBoxes !== boxes) return@launch
-                val rasterizer = OverlayRasterizer(context, OverlayRenderConfig.from(prefs))
-                val regions = rasterizer.rasterize(boxes, auW, auH, keys, renderScale = targetScale)
+                if (!displayEpoch.isCurrent(epoch) || lastShown !== shown) return@launch
+                val regions = rasterize(shown, auW, auH, targetScale, previous = null)
                 ensureWarpView().setRegions(regions, auW, auH)
                 lastShownRegions = regions
                 rasterScale = targetScale
@@ -1365,9 +1449,8 @@ class CameraSession(
         postHint(false)
         overlayHost.post {
             warpView?.clearRegions()
-            lastShownBoxes = null
+            lastShown = null
             lastShownRegions = null
-            lastShownKeys = emptyList()
             lastShownAuW = 0
             lastShownAuH = 0
             rasterScale = 1f
@@ -1413,6 +1496,12 @@ class CameraSession(
      *  the shake, so only frames received before it are safely pre-impulse.
      *  Published the same way as [freezeKeepsOverlays]. */
     private var freezeTapDownMs = 0L
+
+    /** A freeze was asked for ([requestFreeze]) and the next analyzed frame
+     *  has not served it yet. One freeze is in flight at a time: a second
+     *  request in that gap would replace the first one's callback and tap
+     *  time, so whoever asks checks this first. */
+    val freezePending: Boolean get() = freezeCallback != null
 
     /** Whether warp overlays are currently being drawn. Main thread. */
     fun hasLiveOverlays(): Boolean = warpView?.hasVisibleRegions == true
@@ -1821,8 +1910,14 @@ class CameraSession(
             try {
                 when (prefs.cameraOverlayMode) {
                     OverlayMode.FURIGANA -> buildAndShow(ocr, colors, auW, auH, epoch)
-                    OverlayMode.TRANSLATION, OverlayMode.DEFINITIONS, OverlayMode.NONE ->
+                    OverlayMode.TRANSLATION, OverlayMode.NONE ->
                         showFrozenTranslationBoxes(ocr, colors, translations, auW, auH, epoch)
+                    // A snapshot's word boxes are the review panel's, drawn
+                    // over the frozen frame ([ReviewWordBoxes]): nothing of
+                    // this session's stays over it.
+                    OverlayMode.DEFINITIONS -> withContext(Dispatchers.Main) {
+                        if (displayEpoch.isCurrent(epoch)) warpView?.clearRegions()
+                    }
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e

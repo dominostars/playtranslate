@@ -5,19 +5,10 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
-import android.view.Display
 import android.view.MotionEvent
 import android.view.ViewConfiguration
-import android.view.WindowManager
 import com.playtranslate.OcrManager
-import com.playtranslate.overlay.OverlayHost
-import com.playtranslate.ui.DragLookupController
-import com.playtranslate.ui.MagnifierLens
-import com.playtranslate.ui.TtsAlertTarget
-import com.playtranslate.ui.WorkspaceRoute
-import com.playtranslate.ui.WordLookupPopup
-import com.playtranslate.ui.showAnkiNotInstalledDialog
-import com.playtranslate.overlay.OwnWindows
+import com.playtranslate.ui.LookupLensKit
 import kotlin.math.abs
 
 /**
@@ -40,7 +31,7 @@ import kotlin.math.abs
  * assumes bitmap coordinates == screen coordinates.
  *
  * Main thread only. Every surface is an activity window
- * (TYPE_APPLICATION_PANEL); no overlay permission involved.
+ * ([LookupLensKit.inActivity]); no overlay permission involved.
  */
 class CameraWordLookup(
     private val activity: Activity,
@@ -74,22 +65,19 @@ class CameraWordLookup(
      *  itself only runs at fit. */
     private val viewTransform: () -> android.graphics.Matrix? = { null },
 ) {
-    private val magnifier = MagnifierLens(
-        activity, OwnWindows.managerOf(activity), Display.DEFAULT_DISPLAY,
-        overlayHost = null,
-    )
-    private val popup = WordLookupPopup(activity, OwnWindows.managerOf(activity))
-    private val controller = DragLookupController(
-        activity, Display.DEFAULT_DISPLAY, popup, magnifier,
-        // Dead in this configuration: every consumer that would touch it
-        // (a Speak button's alerts, the Anki-not-installed dialog) is overridden
-        // with an activity surface below. Constructed only to satisfy the
-        // shared signature, same as the snapshot panel's host.
-        overlayHost = OverlayHost(activity, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY),
-        ttsAlertTarget = TtsAlertTarget.InActivity(activity),
-        showAnkiNotInstalled = { showAnkiNotInstalledDialog(activity) },
-        route = WorkspaceRoute.None,
-    )
+    private val controller = LookupLensKit.inActivity(activity).lookup
+
+    /** A tap on the frame (a release inside touch slop, before the hold
+     *  delay), offered before this lookup's own tap path: the review's
+     *  Definitions word boxes take one that lands on a word, or closes
+     *  their card ([ReviewWordBoxes.onTap]). True when it was taken, and
+     *  this gesture ends with nothing looked up here. */
+    var onTap: ((x: Float, y: Float) -> Boolean)? = null
+
+    /** This lookup's lens is about to come up (a hold, a drag, a tap on
+     *  text): a card of the word boxes gives way to it, so two lenses are
+     *  never up together. */
+    var onLensRevealed: (() -> Unit)? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private val touchSlop = ViewConfiguration.get(activity).scaledTouchSlop
@@ -127,39 +115,7 @@ class CameraWordLookup(
                 // lookup is absent there rather than wrong (Codex finding).
                 val (ox, oy) = hostOrigin()
                 if (ox != 0 || oy != 0) return false
-                val coords = CameraCoordinates(scene.auWidth, scene.auHeight, w, h, fitMode)
-                val zoomMatrix = viewTransform()
-                fun project(r: Rect): Rect {
-                    val v = coords.auToView(r)
-                    val z = zoomMatrix ?: return v
-                    val rf = android.graphics.RectF(v)
-                    z.mapRect(rf)
-                    return Rect(
-                        Math.round(rf.left), Math.round(rf.top),
-                        Math.round(rf.right), Math.round(rf.bottom),
-                    )
-                }
-                val viewLines = scene.lines.map { line ->
-                    val pb = project(line.bounds)
-                    // The oriented dims must ride the SAME transform as the
-                    // bounds — a bare copy would pair view-space bounds with
-                    // AU-space dims. The chain here is fit-scale + pinch
-                    // (scale+translate), so the effective scales fall out of
-                    // the projected AABB; should they ever disagree (a
-                    // non-similarity transform), fail soft to an upright
-                    // line — AABB hit-testing, never wrong geometry.
-                    val sx = if (line.bounds.width() > 0) pb.width().toFloat() / line.bounds.width() else 1f
-                    val sy = if (line.bounds.height() > 0) pb.height().toFloat() / line.bounds.height() else 1f
-                    val similar = kotlin.math.abs(sx - sy) <= 0.04f * maxOf(sx, sy)
-                    val ang = if (similar) line.angleDeg else 0f
-                    line.copy(
-                        bounds = pb,
-                        symbols = line.symbols.map { s -> s.copy(bounds = project(s.bounds)) },
-                        angleDeg = ang,
-                        orientedWidth = if (ang != 0f) line.orientedWidth * sx else 0f,
-                        orientedHeight = if (ang != 0f) line.orientedHeight * sy else 0f,
-                    )
-                }
+                val viewLines = scene.linesInView(w, h, fitMode, viewTransform())
                 // No near-text gate on the DOWN: a hold or drag ANYWHERE on
                 // the frozen frame should raise the magnifier (the floating
                 // icon behaves the same over empty areas); the text check
@@ -207,6 +163,11 @@ class CameraWordLookup(
             MotionEvent.ACTION_UP -> {
                 if (!tracking) return false
                 endTracking()
+                // A tap is the word boxes' first, while they are up.
+                if (!revealed && onTap?.invoke(ev.rawX, ev.rawY) == true) {
+                    controller.cancelDrag()
+                    return true
+                }
                 // Quick tap on bare background: end quietly — revealing
                 // would flash a lens that the release lookup immediately
                 // dismisses for want of a hit.
@@ -254,6 +215,7 @@ class CameraWordLookup(
 
     private fun reveal() {
         revealed = true
+        onLensRevealed?.invoke()
         controller.revealLens()
     }
 

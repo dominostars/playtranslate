@@ -193,9 +193,10 @@ class CaptureResultOverlay(
     /** The sheet's two persisted presentation axes, independent per host flow.
      *  [overlayMode] is what the boxes paint over the frame (the surface's own
      *  [OverlayMode], None for nothing), read coerced to what the source
-     *  language offers and written the moment the mode pill is tapped;
-     *  [offeredOverlayModes] is what that pill offers, empty for a host with
-     *  no frame to paint over. [startPosture] is where the user left the
+     *  language offers and written the moment a mode is picked
+     *  ([selectOverlayMode]); [offeredOverlayModes] is what the mode control
+     *  offers (the pill, or the host's own: [hostOwnsModeControl]), empty for
+     *  a host with no frame to paint over. [startPosture] is where the user left the
      *  panel: parked in the sliver, or the height they dragged it to (see
      *  [CaptureResultGeometry]'s posture encoding) — read when a flow starts
      *  and written on dismissal ("it opens how you left it"). Default: the
@@ -371,6 +372,12 @@ class CaptureResultOverlay(
 
     /** The overlay-mode control, a root child above everything. */
     private val modePill = OverlayModePill(ctx)
+
+    /** The host has a mode control of its own (the camera and import tools'
+     *  Overlays row, which picks through [selectOverlayMode]), so this sheet
+     *  never brings its pill up: the tools' own buttons hold the corner the
+     *  pill is pinned to. Set by the host before [show]. */
+    var hostOwnsModeControl = false
 
     /** Definitions' dimming ([CaptureOverlayLayer.scrimHolder]): a root child
      *  beneath the panel at all times, while the boxes rise above a parked
@@ -1562,8 +1569,9 @@ class CaptureResultOverlay(
     /** Paint [data] in the chosen mode: a first paint, or a swap in place of
      *  boxes already up (the skeleton to translated promotion as a fill or
      *  Done lands). The host's presenter paints for the camera and import
-     *  reviews (it reads the flavor itself); the layer paints for the
-     *  over-game sheet, where live mode owns the surface and refuses it. */
+     *  reviews (it reads the mode itself, Definitions' word boxes
+     *  included); the layer paints for the over-game sheet, where live mode
+     *  owns the surface and refuses it. */
     private fun paintBoxes(data: OneShotOverlayData) {
         val mode = presentationPrefs.overlayMode
         boxPresenter?.let { presenter ->
@@ -1646,12 +1654,13 @@ class CaptureResultOverlay(
         placeSliverHint()   // nothing covers the strip any more: the row re-centres
     }
 
-    /** The mode pill: paint the bound result in [mode] and remember it. A
-     *  switch to Translations on a deferred result runs the skipped
-     *  translation, so the skeletons fill instead of pulsing forever; a
-     *  switch to None while parked leaves nothing on screen but the strip,
-     *  so the panel comes up. */
-    private fun selectOverlayMode(mode: OverlayMode) {
+    /** The user's pick of a mode, from the mode pill or from the host's own
+     *  control ([hostOwnsModeControl]): paint the bound result in [mode] and
+     *  remember it. A switch to Translations on a deferred result runs the
+     *  skipped translation, so the skeletons fill instead of pulsing
+     *  forever; a switch to None while parked leaves nothing on screen but
+     *  the strip, so the panel comes up. */
+    fun selectOverlayMode(mode: OverlayMode) {
         if (presentationPrefs.overlayMode == mode) return
         presentationPrefs.overlayMode = mode
         val data = overlayData
@@ -1987,9 +1996,10 @@ class CaptureResultOverlay(
      *  Idempotent: the pill rebuilds only on a change, so every refresh may
      *  call this. Not during the exit, which has faded it out already
      *  ([animateOutAndDismiss]): a state that lands under the slide must
-     *  not bring it back. */
+     *  not bring it back. Never in a host with a control of its own
+     *  ([hostOwnsModeControl]). */
     private fun updateModeControl() {
-        if (animatingOut) return
+        if (animatingOut || hostOwnsModeControl) return
         val hint = SourceLanguageProfiles[prefs.sourceLangId].hintTextKind
         val offered = if (overlayData == null && !statusInFlight) {
             emptyList()
@@ -3086,8 +3096,9 @@ class CaptureResultOverlay(
      *  driving the words while parked. Read from the sheet's own mode, not
      *  what the layer last painted, so the keys are the sheet's from the
      *  first frame (the read still running) and go back to the game the
-     *  moment another mode is picked, with or without data. The camera and
-     *  import hosts never offer Definitions. */
+     *  moment another mode is picked, with or without data. Never in the
+     *  camera and import hosts, which draw Definitions themselves, for
+     *  touch only: their words have no cursor for the D-pad to drive. */
     private val holdsKeysForDefinitions: Boolean
         get() = boxPresenter == null && presentationPrefs.overlayMode == OverlayMode.DEFINITIONS
 
@@ -3170,8 +3181,8 @@ class CaptureResultOverlay(
         // the controller's, as they are while the sheet is parked. The sheet
         // parks with the words' cursor on the word nearest above its edge
         // (the touch rules' edge, above which a word is the word's), the
-        // cursor's column first; with no word up there the cursor stays. The
-        // camera and import hosts never offer Definitions.
+        // cursor's column first; with no word up there the cursor stays.
+        // Never in the camera and import hosts, whose words are touch's.
         private val leaveLoc = IntArray(2)
         override fun leaveSheetUp(fromOnScreen: Rect): Boolean {
             if (!holdsKeysForDefinitions) return false

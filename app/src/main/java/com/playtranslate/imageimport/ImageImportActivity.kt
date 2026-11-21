@@ -21,7 +21,6 @@ import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import com.playtranslate.DetectionLog
 import com.playtranslate.OcrTokenScope
-import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.applyEdgeToEdge
@@ -184,10 +183,17 @@ class ImageImportActivity : AppCompatActivity() {
                 )
             },
             onOcrRow = { showPillOcrPicker() },
-            onCycleOverlayMode = { cycleOverlayFlavor() },
-            // The import tool's own scoped selections label the rows.
+            // The Overlays row is the review's one mode control: what the
+            // review offers (None, its boxes switch, among them), what it
+            // shows, and a pick that goes through the review's sheet, which
+            // remembers it and repaints. That path never translates, so a
+            // pick mid-load can't duplicate the pipeline's in-flight
+            // backend batch.
+            overlayModes = { controller.reviewOfferedModes },
+            overlayMode = { controller.reviewOverlayMode },
+            onPickOverlayMode = { controller.selectOverlayMode(it) },
+            // The import tool's own scoped selection labels the OCR row.
             ocrScope = OcrTokenScope.IMPORT,
-            overlayMode = { prefs.importOverlayMode },
         )
         sessionLangKey = langKey()
         sessionRenderConfig = OverlayRenderConfig.from(prefs)
@@ -555,22 +561,6 @@ class ImageImportActivity : AppCompatActivity() {
                 prefs.setImportOcrBackendToken(srcId, backend.selectionToken)
             },
         ).show()
-    }
-
-    /** Cycle the import tool's own Translation vs Furigana/Pinyin flavor
-     *  (the gear menu's Overlays row; cycles in place, menu stays open).
-     *  Repaints only when boxes are actually the current presentation —
-     *  painting from an expanded panel would resurrect boxes it didn't ask
-     *  for; the pref applies whenever boxes next show. The repaint path
-     *  never translates, so a cycle mid-load can't duplicate the pipeline's
-     *  in-flight backend batch. */
-    private fun cycleOverlayFlavor() {
-        prefs.importOverlayMode = if (prefs.importOverlayMode == OverlayMode.TRANSLATION) {
-            OverlayMode.FURIGANA
-        } else {
-            OverlayMode.TRANSLATION
-        }
-        if (controller.isReviewing && session.hasVisibleOverlays()) session.showOverlays()
     }
 
     // ── Slow-OCR rescue prompt ──────────────────────────────────────────

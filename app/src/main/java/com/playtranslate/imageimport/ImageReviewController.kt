@@ -137,8 +137,8 @@ class ImageReviewController(
             }
         },
         presentationPrefs = object : CaptureResultOverlay.PresentationPrefs {
-            // The import tool keeps its boxes switch beside its flavor, as the
-            // camera does: None is the switch off, a flavor pick turns it on.
+            // The import tool keeps its boxes switch beside its mode, as the
+            // camera does: None is the switch off, a mode pick turns it on.
             override var overlayMode: OverlayMode
                 get() = if (prefs.importBoxesEnabled) prefs.overlayModeFor(OverlaySurface.IMPORT) else OverlayMode.NONE
                 set(value) {
@@ -194,6 +194,17 @@ class ImageReviewController(
 
     val isReviewing: Boolean get() = panel.hasActiveReview
     val isCropActive: Boolean get() = panel.isCropActive
+
+    // ── The review's overlay mode (the gear's Overlays row) ─────────────
+
+    /** What the review paints: import's mode, None with its boxes off. */
+    val reviewOverlayMode: OverlayMode get() = panel.overlayMode
+
+    /** The modes the Overlays row cycles through. */
+    val reviewOfferedModes: List<OverlayMode> get() = panel.offeredOverlayModes
+
+    /** The Overlays row's pick. */
+    fun selectOverlayMode(mode: OverlayMode) = panel.selectOverlayMode(mode)
 
     init {
         backButton.setOnClickListener { if (isReviewing) dismissReview() else onExit() }

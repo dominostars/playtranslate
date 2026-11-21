@@ -156,22 +156,46 @@ internal object TapLookupGeometry {
      * that overlap and both contain it), the one whose centre is nearer.
      * Slanted boxes are measured in their own frame.
      */
-    fun hitTest(boxes: List<WordBox>, x: Float, y: Float, slopPx: Float): Int? {
+    fun hitTest(boxes: List<WordBox>, x: Float, y: Float, slopPx: Float): Int? =
+        nearest(boxes.size, slopPx) { reach(boxes[it], x, y) }
+
+    /** How far a point is from a word's box: from its [edge] (0 inside
+     *  it) and from its [centre]. */
+    class Reach(val edge: Float, val centre: Float)
+
+    /** How far ([x], [y]) is from [box], measured in the box's own frame,
+     *  so a slanted box is met as it is drawn and never by the upright
+     *  rectangle around it. */
+    fun reach(box: WordBox, x: Float, y: Float): Reach {
+        val (px, py) = box.toBoxFrame(x, y)
+        val r = box.rect
+        val dx = max(max(r.left - px, px - r.right), 0f)
+        val dy = max(max(r.top - py, py - r.bottom), 0f)
+        return Reach(hypot(dx, dy), hypot(px - r.centerX(), py - r.centerY()))
+    }
+
+    /**
+     * Which of [count] words a touch picks: the one rule, for every way a
+     * touch meets word boxes ([hitTest]; the camera's live outlines, whose
+     * touch is first taken back through the tracker's transform; a word
+     * sought by its text). [reachOf] gives a word's distance from the
+     * touch, or null for a word that is not a candidate. A word takes the
+     * touch from no farther than [slop]; the closest wins, a touch inside
+     * a box being at distance 0, so the box it is in beats a neighbour
+     * whose buffer also reaches it; among words at the same distance, the
+     * one whose centre is nearer.
+     */
+    inline fun nearest(count: Int, slop: Float, reachOf: (index: Int) -> Reach?): Int? {
         var best = -1
         var bestEdge = Float.MAX_VALUE
         var bestCentre = Float.MAX_VALUE
-        for ((i, box) in boxes.withIndex()) {
-            val (px, py) = box.toBoxFrame(x, y)
-            val r = box.rect
-            val dx = max(max(r.left - px, px - r.right), 0f)
-            val dy = max(max(r.top - py, py - r.bottom), 0f)
-            val edge = hypot(dx, dy)
-            if (edge > slopPx) continue
-            val centre = hypot(px - r.centerX(), py - r.centerY())
-            if (edge < bestEdge || (edge == bestEdge && centre < bestCentre)) {
+        for (i in 0 until count) {
+            val reach = reachOf(i) ?: continue
+            if (reach.edge > slop) continue
+            if (reach.edge < bestEdge || (reach.edge == bestEdge && reach.centre < bestCentre)) {
                 best = i
-                bestEdge = edge
-                bestCentre = centre
+                bestEdge = reach.edge
+                bestCentre = reach.centre
             }
         }
         return best.takeIf { it >= 0 }

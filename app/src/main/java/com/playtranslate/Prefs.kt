@@ -69,13 +69,16 @@ enum class OverlayMode {
          *  is [hint], in display order. The hint mode needs a hint to draw
          *  (the icon swap gesture's rule). Live mode paints translations or
          *  the hint and nothing else; a capture adds the word boxes and None;
-         *  the camera and import tools keep their own boxes switch for
-         *  "nothing", since their live preview paints the flavor regardless. */
+         *  the camera and import tools add the word boxes, and keep their
+         *  own boxes switch for "nothing" (their reviews offer None through
+         *  it), since the camera's live preview always paints its mode. */
         fun offered(surface: OverlaySurface, hint: HintTextKind): List<OverlayMode> {
             val hintMode = if (hint == HintTextKind.NONE) emptyList() else listOf(FURIGANA)
             return when (surface) {
-                OverlaySurface.LIVE, OverlaySurface.CAMERA, OverlaySurface.IMPORT ->
+                OverlaySurface.LIVE ->
                     listOf(TRANSLATION) + hintMode
+                OverlaySurface.CAMERA, OverlaySurface.IMPORT ->
+                    listOf(TRANSLATION) + hintMode + listOf(DEFINITIONS)
                 OverlaySurface.CAPTURE ->
                     listOf(TRANSLATION) + hintMode + listOf(DEFINITIONS, NONE)
             }
@@ -87,6 +90,12 @@ enum class OverlayMode {
          *  precedent). */
         fun coerce(stored: OverlayMode, surface: OverlaySurface, hint: HintTextKind): OverlayMode =
             if (stored in offered(surface, hint)) stored else TRANSLATION
+
+        /** The mode a control that cycles through [offered] moves to from
+         *  [current]: the one after it, the first after the last, and the
+         *  first when [current] is not among them. [offered] is not empty. */
+        fun nextIn(offered: List<OverlayMode>, current: OverlayMode): OverlayMode =
+            offered[(offered.indexOf(current) + 1) % offered.size]
     }
 }
 
@@ -1394,8 +1403,10 @@ class Prefs internal constructor(
         get() = sp.getFloat("capture_panel_posture", CaptureResultGeometry.NO_POSTURE)
         set(v) = sp.edit { putFloat("capture_panel_posture", v) }
 
-    /** Camera snapshot: paint the result's boxes over the frozen frame.
-     *  Default ON. Also decides whether live overlays are kept through the
+    /** Camera snapshot: paint the result's boxes over the frozen frame, in
+     *  the camera's mode. Off is the review's None on the gear menu's
+     *  Overlays row; the live preview paints its mode either way. Default
+     *  ON. Also decides whether live overlays are kept through the
      *  shutter's freeze (they track the very frame being frozen). */
     var cameraBoxesEnabled: Boolean
         get() = sp.getBoolean("camera_boxes_enabled", true)
@@ -1407,7 +1418,8 @@ class Prefs internal constructor(
         get() = sp.getFloat("camera_panel_posture", CaptureResultGeometry.NO_POSTURE)
         set(v) = sp.edit { putFloat("camera_panel_posture", v) }
 
-    /** The camera tool's own overlay flavor (Translation vs Furigana/Pinyin),
+    /** The camera tool's own overlay mode (Translation, Furigana/Pinyin or
+     *  Definitions), which its live preview and its snapshots paint in,
      *  cycled from the camera pill's gear menu, as the source language offers
      *  it ([overlayModeFor]): a hint pick reads as Translation on a language
      *  without one. Inherit-until-set: unset reads the global [overlayMode],

@@ -8,6 +8,7 @@ import android.view.WindowManager
 import androidx.core.view.isVisible
 import com.playtranslate.CaptureSession
 import com.playtranslate.OcrTokenScope
+import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
 import com.playtranslate.camera.render.FrozenLookupScene
 import com.playtranslate.language.SourceLangId
@@ -83,7 +84,9 @@ class FrozenReviewPanel(
     /** The retained frame under review, or null when none — read at use
      *  time so replacements are picked up automatically. */
     private val bitmap: () -> Bitmap?,
-    /** The flow's on-frame box rendering — see [CaptureResultOverlay.BoxPresenter]. */
+    /** The flow's on-frame box rendering for its own modes (translations,
+     *  readings) — see [CaptureResultOverlay.BoxPresenter]. Definitions is
+     *  this panel's, the same for both flows ([ReviewWordBoxes]). */
     private val boxPresenter: CaptureResultOverlay.BoxPresenter,
     /** The flow's boxes-toggle + start-collapsed persistence. */
     private val presentationPrefs: CaptureResultOverlay.PresentationPrefs,
@@ -173,6 +176,85 @@ class FrozenReviewPanel(
         onSettled = { onZoomSettled() },
     )
 
+    /** A mode this one review opens in, over the remembered one, until the
+     *  user picks: a tap on a live word opens its snapshot in Definitions
+     *  (with the sheet parked, [CaptureResultOverlay.overlayModeOverride])
+     *  without writing it, as the over-game tap-to-lookup does. Null for
+     *  every other review; cleared with the episode. */
+    private var modeOverride: OverlayMode? = null
+
+    /** The flow's presentation prefs as this review reads them: its mode
+     *  under [modeOverride]. A pick is the user's: it ends the override and
+     *  is remembered. Everything here that asks what the review paints
+     *  asks this, never the flow's prefs directly. */
+    private val reviewPrefs = object : CaptureResultOverlay.PresentationPrefs {
+        override var overlayMode: OverlayMode
+            get() = modeOverride ?: presentationPrefs.overlayMode
+            set(value) {
+                modeOverride = null
+                presentationPrefs.overlayMode = value
+            }
+        override val offeredOverlayModes: List<OverlayMode>
+            get() = presentationPrefs.offeredOverlayModes
+        override var startPosture: Float
+            get() = presentationPrefs.startPosture
+            set(value) {
+                presentationPrefs.startPosture = value
+            }
+    }
+
+    /** The review's Definitions mode: the capture sheet's own word boxes
+     *  and card over this flow's frame, in the full-bleed host under the
+     *  sheet. Fed the scene's lines where the frame shows them now. */
+    private val words = ReviewWordBoxes(
+        activity,
+        host = regionUi.fullBleedHost,
+        linesInView = {
+            backend.lookupScene()?.let { scene ->
+                val (w, h) = hostSize()
+                ReviewWordBoxes.Scene(scene.linesInView(w, h, fitMode, zoomMatrix()), scene.screenshotPath)
+            }
+        },
+        // The words replace whatever the flow had over the frame (the
+        // camera's kept live overlays stay up until then, so the frame is
+        // never bare between the two).
+        onBuilt = { boxPresenter.hide() },
+    )
+
+    /** What the sheet paints the frame through: the word boxes in
+     *  Definitions, the flow's own rasters in its other modes, never both. */
+    private val framePresenter = object : CaptureResultOverlay.BoxPresenter {
+        override fun show(data: com.playtranslate.OneShotOverlayData): Boolean {
+            if (reviewPrefs.overlayMode == OverlayMode.DEFINITIONS) {
+                words.show()
+                return true
+            }
+            words.hide()
+            return boxPresenter.show(data)
+        }
+
+        override fun update(data: com.playtranslate.OneShotOverlayData) {
+            if (reviewPrefs.overlayMode == OverlayMode.DEFINITIONS) {
+                words.show()
+                return
+            }
+            words.hide()
+            boxPresenter.update(data)
+        }
+
+        override fun hide() {
+            words.hide()
+            boxPresenter.hide()
+        }
+    }
+
+    init {
+        // A tap on the frame is a word's first while the boxes are up; the
+        // drag lens coming up (a hold, a drag) takes a word's card down.
+        wordLookup.onTap = { x, y -> words.onTap(x, y) }
+        wordLookup.onLensRevealed = { words.closeCard() }
+    }
+
     /** The raster boost last committed to the session — the settle
      *  hysteresis baseline (mirrors the live path's RASTER_SCALE_DRIFT). */
     private var lastRasterBoost = 1f
@@ -213,6 +295,8 @@ class FrozenReviewPanel(
             }
             setOverlayTransform(zoom.toHomographyRow())
         }
+        // The word boxes follow the picture.
+        words.place()
         // The active-region indicator follows the transform in place.
         val au = currentRegionForIndicator()
         if (au != null) {
@@ -258,11 +342,34 @@ class FrozenReviewPanel(
      *  must not admit region-filtered results. */
     val hasActiveRegion: Boolean get() = regionAu != null
 
+    // ── Overlay mode (the host's Overlays row is the one control) ───────
+
+    /** What the review paints over the frame: the flow's mode, None with
+     *  its boxes off. */
+    val overlayMode: OverlayMode get() = reviewPrefs.overlayMode
+
+    /** The modes the host's control cycles through for a review. */
+    val offeredOverlayModes: List<OverlayMode> get() = reviewPrefs.offeredOverlayModes
+
+    /** The user's pick on the host's control. With a review up it goes
+     *  through the sheet, which remembers it and repaints as its own pill
+     *  would ([CaptureResultOverlay.selectOverlayMode]); with none there is
+     *  nothing to paint and it is only remembered. */
+    fun selectOverlayMode(mode: OverlayMode) {
+        val o = overlay
+        if (o != null) o.selectOverlayMode(mode) else reviewPrefs.overlayMode = mode
+    }
+
     // ── Review lifecycle ────────────────────────────────────────────────
 
     /** Build the in-app panel with every over-game behavior overridden, then
-     *  run the backend pipeline into it. */
-    fun startReview(frame: Bitmap) {
+     *  run the backend pipeline into it. [openWord]: the user tapped that
+     *  word on the live preview, and this review is the snapshot the tap
+     *  took: it opens in Definitions with the sheet parked, whatever is
+     *  remembered and with nothing written, and the word's card comes up
+     *  once the frame's own read has boxed it. */
+    fun startReview(frame: Bitmap, openWord: ReviewWordRequest? = null) {
+        modeOverride = if (openWord != null) OverlayMode.DEFINITIONS else null
         val o = CaptureResultOverlay(
             activity,
             OwnWindows.managerOf(activity),
@@ -273,8 +380,13 @@ class FrozenReviewPanel(
             OverlayHost(activity, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY),
             sheetHost = ActivitySheetHost(panelHost),
         )
-        o.boxPresenter = boxPresenter
-        o.presentationPrefs = presentationPrefs
+        o.boxPresenter = framePresenter
+        o.presentationPrefs = reviewPrefs
+        // The override's own start: parked, and its posture not recorded.
+        o.overlayModeOverride = modeOverride
+        // The tool's gear menu has the mode control (its Overlays row); the
+        // sheet's pill would sit under the tool's own top-row buttons.
+        o.hostOwnsModeControl = true
         o.ttsAlertTarget = TtsAlertTarget.InActivity(activity)
         // Tap-a-word lens hosted as an activity window (the panel's wm IS
         // the activity's WindowManager) — no overlay permission involved.
@@ -356,6 +468,7 @@ class FrozenReviewPanel(
         val backdrop = renderViewSpaceBackdrop(frame, w, h)
         o.show(w, h, backdrop)
         backdrop?.recycle()
+        openWord?.let { words.openWhenShown(it) }
         val s = backend.runReview(frame, regionAu, deviceOnly = deviceOnly)
         reviewSession = s
         o.observe(s)
@@ -395,8 +508,11 @@ class FrozenReviewPanel(
         val o = overlay ?: return
         val frame = bitmap() ?: return
         // The lookup lens describes the outgoing scene (its lines/region
-        // are about to be replaced) — take it down with the re-run.
+        // are about to be replaced) — take it down with the re-run, and a
+        // word's card with it (the boxes stay until the new read replaces
+        // them, as the rasters do).
         wordLookup.dismiss()
+        words.closeCard()
         val s = backend.runReview(frame, regionAu, preOcrDelayMs, deviceOnly)
         reviewSession = s
         o.observe(s)
@@ -458,6 +574,8 @@ class FrozenReviewPanel(
         lastRasterBoost = 1f
         setRenderScaleBoost(1f)
         wordLookup.dismiss()
+        words.hide()
+        modeOverride = null
         // Region + its UI die with the episode (see regionAu), and so does
         // the frame's device-only statement.
         if (cropActive) {
@@ -476,6 +594,7 @@ class FrozenReviewPanel(
      *  about to die. */
     fun release() {
         wordLookup.destroy()
+        words.release()
         regionUi.destroy()
         overlay?.let { o ->
             o.onDismiss = null
@@ -503,6 +622,7 @@ class FrozenReviewPanel(
         // sheet comes back exactly as left; visibility only, no dismissal).
         // An open word-lookup lens goes too — it floats above the editor.
         wordLookup.dismiss()
+        words.closeCard()
         regionUi.hideIndicator()
         panelHost.isVisible = false
         onControlsChanged()

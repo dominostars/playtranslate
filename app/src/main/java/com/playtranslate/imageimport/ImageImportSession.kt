@@ -601,11 +601,17 @@ class ImageImportSession(
             try {
                 when (prefs.importOverlayMode) {
                     OverlayMode.FURIGANA -> showFurigana(ocr, auW, auH, epoch)
-                    // The import tool stores translations or the hint
-                    // (OverlayMode.offered); the other two are named so a new
-                    // mode must say what it paints here.
-                    OverlayMode.TRANSLATION, OverlayMode.DEFINITIONS, OverlayMode.NONE ->
+                    // None is the review's boxes switch, which never asks
+                    // for a paint; it is named so a new mode must say what
+                    // it paints here.
+                    OverlayMode.TRANSLATION, OverlayMode.NONE ->
                         showTranslationBoxes(ocr, colors, translations, auW, auH, epoch)
+                    // The word boxes are the review panel's, drawn over the
+                    // image ([com.playtranslate.camera.ReviewWordBoxes]):
+                    // nothing of this session's stays over it.
+                    OverlayMode.DEFINITIONS -> withContext(Dispatchers.Main) {
+                        if (displayEpoch.isCurrent(epoch)) warpView?.clearRegions()
+                    }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e

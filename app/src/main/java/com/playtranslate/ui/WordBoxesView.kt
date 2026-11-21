@@ -139,19 +139,10 @@ internal class WordBoxesView(context: Context) : FrameLayout(context) {
 
     /** Every box stroked, over the spotlight and its glow. */
     private val boxesView = object : View(context) {
-        private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = dp(BOX_STROKE_DP)
-            color = accent
-        }
+        private val stroke = strokePaint(accent, dp(BOX_STROKE_DP))
 
         override fun onDraw(canvas: Canvas) {
-            for (box in boxes) {
-                val save = canvas.save()
-                if (box.angleDeg != 0f) canvas.rotate(box.angleDeg, box.pivotX, box.pivotY)
-                canvas.drawRoundRect(box.rect, boxRadius, boxRadius, stroke)
-                canvas.restoreToCount(save)
-            }
+            for (box in boxes) strokeBox(canvas, box, stroke, boxRadius)
         }
     }
 
@@ -188,6 +179,28 @@ internal class WordBoxesView(context: Context) : FrameLayout(context) {
     companion object {
         const val BOX_STROKE_DP = 2f
         const val BOX_RADIUS_DP = 6f
+
+        /** The paint every word's box is stroked with, [widthPx] wide in
+         *  the canvas's own units. */
+        fun strokePaint(accent: Int, widthPx: Float) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = widthPx
+            color = accent
+        }
+
+        /** One word's box, stroked: the one drawing of a word of
+         *  Definitions. This view draws its boxes with it, and so does the
+         *  camera's live preview, which rasterizes each word's outline and
+         *  warps it with the tracked frame
+         *  ([com.playtranslate.camera.render.rasterizeWordOutlines]), so a
+         *  word looks the same live and in a review. */
+        fun strokeBox(canvas: Canvas, box: TapLookupGeometry.WordBox, stroke: Paint, radius: Float) {
+            val save = canvas.save()
+            if (box.angleDeg != 0f) canvas.rotate(box.angleDeg, box.pivotX, box.pivotY)
+            canvas.drawRoundRect(box.rect, radius, radius, stroke)
+            canvas.restoreToCount(save)
+        }
+
         /** 40% black over the game, the word's box the hole in it. */
         const val SPOTLIGHT_SCRIM_ALPHA = 0x66
         const val GLOW_CORE_SPREAD_DP = 2f

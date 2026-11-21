@@ -219,6 +219,30 @@ class WarpOverlayView(context: Context) : View(context) {
         syncShimmer()
     }
 
+    /** Where the view point ([x], [y]) lies in the keyframe's AU
+     *  coordinates, as region [index] is drawn now: taken back through
+     *  that region's own transform (the tracked plane it rides, and the
+     *  review zoom), into [out] as (auX, auY). Returns how many AU pixels
+     *  one view pixel is there, for bringing an AU distance back to the
+     *  screen; null while the region is not drawn or its transform cannot
+     *  be inverted. How a touch on the live preview is measured against
+     *  the geometry a raster was drawn from ([wordIndexAt]), never against
+     *  the raster's own rectangle. Main thread. */
+    fun viewToAu(index: Int, x: Float, y: Float, out: FloatArray): Float? {
+        if (index !in 0 until visibleCount) return null
+        if (!matrices[index].invert(hitInverse)) return null
+        out[0] = x
+        out[1] = y
+        hitInverse.mapPoints(out)
+        val region = regions[index]
+        // Region pixels to AU: the raster's own scale, from its origin.
+        out[0] = region.auRect.left + out[0] / region.pixelsPerAu
+        out[1] = region.auRect.top + out[1] / region.pixelsPerAu
+        return (hitInverse.mapRadius(1f) / region.pixelsPerAu).takeIf { it > 0f }
+    }
+
+    private val hitInverse = Matrix()
+
     private fun perRegionUnchanged(fresh: Map<Int, DoubleArray>): Boolean {
         val last = lastPerRegionAu
         if (fresh.size != last.size) return false

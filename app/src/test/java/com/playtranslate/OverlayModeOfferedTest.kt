@@ -19,13 +19,26 @@ class OverlayModeOfferedTest {
     private val hintless = listOf(HintTextKind.NONE)
     private val hinted = listOf(HintTextKind.FURIGANA, HintTextKind.PINYIN, HintTextKind.HARAKAT)
 
-    @Test fun `auto-translate, the camera and the import tool offer translations, plus the hint on a hint language`() {
-        for (surface in listOf(OverlaySurface.LIVE, OverlaySurface.CAMERA, OverlaySurface.IMPORT)) {
+    @Test fun `auto-translate offers translations, plus the hint on a hint language`() {
+        for (hint in hintless) {
+            assertEquals(hint.name, listOf(TRANSLATION), OverlayMode.offered(OverlaySurface.LIVE, hint))
+        }
+        for (hint in hinted) {
+            assertEquals(hint.name, listOf(TRANSLATION, FURIGANA), OverlayMode.offered(OverlaySurface.LIVE, hint))
+        }
+    }
+
+    @Test fun `the camera and the import tool add the word boxes, and leave None to their boxes switch`() {
+        for (surface in listOf(OverlaySurface.CAMERA, OverlaySurface.IMPORT)) {
             for (hint in hintless) {
-                assertEquals("$surface $hint", listOf(TRANSLATION), OverlayMode.offered(surface, hint))
+                assertEquals("$surface $hint", listOf(TRANSLATION, DEFINITIONS), OverlayMode.offered(surface, hint))
             }
             for (hint in hinted) {
-                assertEquals("$surface $hint", listOf(TRANSLATION, FURIGANA), OverlayMode.offered(surface, hint))
+                assertEquals(
+                    "$surface $hint",
+                    listOf(TRANSLATION, FURIGANA, DEFINITIONS),
+                    OverlayMode.offered(surface, hint),
+                )
             }
         }
     }
@@ -45,6 +58,19 @@ class OverlayModeOfferedTest {
                 OverlayMode.offered(OverlaySurface.CAPTURE, hint),
             )
         }
+    }
+
+    @Test fun `a cycling control moves to the next offered mode, wraps, and starts over from a mode it does not offer`() {
+        val four = listOf(TRANSLATION, FURIGANA, DEFINITIONS, NONE)
+        assertEquals(FURIGANA, OverlayMode.nextIn(four, TRANSLATION))
+        assertEquals(DEFINITIONS, OverlayMode.nextIn(four, FURIGANA))
+        assertEquals(NONE, OverlayMode.nextIn(four, DEFINITIONS))
+        assertEquals(TRANSLATION, OverlayMode.nextIn(four, NONE))
+        val two = listOf(TRANSLATION, NONE)
+        assertEquals(NONE, OverlayMode.nextIn(two, TRANSLATION))
+        assertEquals(TRANSLATION, OverlayMode.nextIn(two, NONE))
+        // A Furigana kept through a language without readings is not offered.
+        assertEquals(TRANSLATION, OverlayMode.nextIn(two, FURIGANA))
     }
 
     @Test fun `an offered value reads as itself and an unoffered one as translations`() {

@@ -38,6 +38,7 @@ import androidx.core.view.isVisible
 import com.playtranslate.CaptureService
 import com.playtranslate.DetectionLog
 import com.playtranslate.OverlayMode
+import com.playtranslate.OverlaySurface
 import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.applyEdgeToEdge
@@ -211,7 +212,9 @@ class CameraActivity : AppCompatActivity() {
                 )
             },
             onOcrRow = { showPillOcrPicker() },
-            onCycleOverlayMode = { cycleOverlayFlavor() },
+            overlayModes = { overlayRowModes() },
+            overlayMode = { overlayRowMode() },
+            onPickOverlayMode = { pickOverlayMode(it) },
         )
         onBackPressedDispatcher.addCallback(this) {
             val controller = snapshotController
@@ -464,26 +467,36 @@ class CameraActivity : AppCompatActivity() {
 
     /** Tap the preview to drive AF/AE metering at that point — continuous AF
      *  alone won't reliably lock close-range text on budget modules, which
-     *  leaves OCR reading defocused frames. */
+     *  leaves OCR reading defocused frames. A tap on a word of the live
+     *  Definitions outlines is the word's instead: it takes a snapshot, as
+     *  the shutter would, and opens that word's definition in its review.
+     *  [PreviewTaps] says which touch is which. */
     private fun installTapToFocus() {
-        previewView.setOnTouchListener { v, event ->
-            if (event.actionMasked == android.view.MotionEvent.ACTION_UP) {
-                val point = previewView.meteringPointFactory.createPoint(event.x, event.y)
-                val future = camera?.cameraControl?.startFocusAndMetering(
-                    FocusMeteringAction.Builder(point).build()
-                )
-                // When the sweep completes (focused OR failed — either way
-                // the image changed), kick the session: a defocused-frame
-                // anchor or no-text verdict must not sit out the 30 s
-                // staleness age when the user just fixed the focus.
-                future?.addListener(
-                    { session?.onDeliberateRefocus() },
-                    ContextCompat.getMainExecutor(this),
-                )
-                v.performClick()
-            }
-            true
-        }
+        previewView.setOnTouchListener(
+            PreviewTaps(
+                this,
+                wordAt = { x, y -> session?.liveWordAt(x, y) },
+                onWord = { word, rawX, rawY, downUptimeMs ->
+                    snapshotController?.freezeForWord(word, rawX, rawY, downUptimeMs)
+                },
+                onFocus = { x, y -> focusAt(x, y) },
+            )
+        )
+    }
+
+    private fun focusAt(x: Float, y: Float) {
+        val point = previewView.meteringPointFactory.createPoint(x, y)
+        val future = camera?.cameraControl?.startFocusAndMetering(
+            FocusMeteringAction.Builder(point).build()
+        )
+        // When the sweep completes (focused OR failed — either way
+        // the image changed), kick the session: a defocused-frame
+        // anchor or no-text verdict must not sit out the 30 s
+        // staleness age when the user just fixed the focus.
+        future?.addListener(
+            { session?.onDeliberateRefocus() },
+            ContextCompat.getMainExecutor(this),
+        )
     }
 
     /** The read settings changed — source language (LanguageSetupActivity
@@ -540,45 +553,42 @@ class CameraActivity : AppCompatActivity() {
         ).show()
     }
 
-    // ── Overlay flavor (the gear menu's Overlays row) ──────────────────────
+    // ── Overlay mode (the gear menu's Overlays row) ────────────────────────
+    //
+    // The row is the camera's one control for what is painted over the
+    // frame, and it writes the camera-scoped mode, so it never touches the
+    // over-game surfaces (no stopping a running screen-capture live session,
+    // which is built on the GLOBAL mode this setting does not move). While a
+    // snapshot is up it is the review's control: it also offers None, the
+    // review's boxes switch, and its pick goes through the review's sheet.
 
-    /** Cycle the CAMERA's own Translation ↔ Furigana/Pinyin flavor. Fired by
-     *  the gear menu's Overlays row, which mirrors the floating icon menu's
-     *  (cycles in place, menu stays open) — but writes the camera-scoped
-     *  flavor, so it never touches the over-game surfaces (no stopping a
-     *  running screen-capture live session, which is built on the GLOBAL
-     *  flavor this setting no longer moves). */
-    private fun cycleOverlayFlavor() {
-        val next = if (prefs.cameraOverlayMode == OverlayMode.TRANSLATION) {
-            OverlayMode.FURIGANA
-        } else {
-            OverlayMode.TRANSLATION
-        }
-        prefs.cameraOverlayMode = next
-        onOverlayModeChanged(next)
-    }
+    /** The snapshot review the row acts on, or null while the viewfinder is
+     *  live or paused. */
+    private fun frozenReview(): CameraSnapshotController? = snapshotController?.takeIf { it.isFrozen }
 
-    /** Re-flavor the camera overlays from the cached OCR result — the scene
-     *  didn't change, so no re-OCR. While FROZEN (the switcher is visible in
-     *  the snapshot's overlays presentation) the frozen render path is used
-     *  instead: it reads the new flavor and never calls the translator, so a
-     *  toggle mid-load can't duplicate the snapshot pipeline's in-flight
-     *  backend batch — translation boxes show skeletons until the pipeline's
-     *  own results land. */
-    private fun onOverlayModeChanged(@Suppress("UNUSED_PARAMETER") mode: OverlayMode) {
-        val s = session ?: return
-        if (snapshotController?.isFrozen == true) {
-            // Repaint only when boxes are actually the current presentation.
-            // The old flavor toggle could only fire while boxes owned the
-            // frame (its visibility gate); the gear's Overlays row fires
-            // from any presentation, and painting here from an expanded
-            // panel would resurrect boxes it didn't ask for. The pref is
-            // written either way — the new flavor applies whenever boxes
-            // next show.
-            if (s.hasLiveOverlays()) s.showFrozenOverlays()
-        } else {
-            s.onOverlayModeChanged()
+    /** The modes the row cycles through now. */
+    private fun overlayRowModes(): List<OverlayMode> =
+        frozenReview()?.reviewOfferedModes
+            ?: OverlayMode.offered(OverlaySurface.CAMERA, SourceLanguageProfiles[prefs.sourceLangId].hintTextKind)
+
+    /** The row's value: the review's mode while a snapshot is up (None with
+     *  its boxes off), the camera's otherwise. */
+    private fun overlayRowMode(): OverlayMode = frozenReview()?.reviewOverlayMode ?: prefs.cameraOverlayMode
+
+    /** The row's pick. A snapshot's goes through its sheet, which remembers
+     *  it and repaints the frozen frame: that path reads the new mode and
+     *  never calls the translator, so a pick mid-load can't duplicate the
+     *  snapshot pipeline's in-flight backend batch. A live one re-flavors
+     *  the overlays from the cached OCR result: the scene didn't change, so
+     *  no re-OCR. */
+    private fun pickOverlayMode(mode: OverlayMode) {
+        val review = frozenReview()
+        if (review != null) {
+            review.selectOverlayMode(mode)
+            return
         }
+        prefs.cameraOverlayMode = mode
+        session?.onOverlayModeChanged()
     }
 
     // ── Slow-OCR rescue prompt ─────────────────────────────────────────────

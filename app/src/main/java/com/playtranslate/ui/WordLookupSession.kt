@@ -1,14 +1,11 @@
 package com.playtranslate.ui
 
-import android.content.Context
 import android.graphics.Rect
 import android.util.Log
 import android.view.KeyEvent
-import android.view.WindowManager
 import com.playtranslate.OcrManager
 import com.playtranslate.language.TextOrientation
 import com.playtranslate.language.TokenSpan
-import com.playtranslate.overlay.OverlayHost
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,11 +36,10 @@ import kotlinx.coroutines.withContext
  * host's restart through the lens's own rule). Main thread only.
  */
 internal class WordLookupSession(
-    context: Context,
-    displayCtx: Context,
-    wm: WindowManager,
-    overlayHost: OverlayHost,
-    displayId: Int,
+    /** The card's lens and its controller, built for this host: over the
+     *  game, or in an activity (the camera and import reviews). The session
+     *  owns them from here and takes them down in [release]. */
+    kit: LookupLensKit,
     private val density: Float,
     private val view: WordBoxesView,
     private val scope: CoroutineScope,
@@ -52,16 +48,8 @@ internal class WordLookupSession(
     private val onEnded: () -> Unit,
     private val onBoxesSettled: (hasBoxes: Boolean) -> Unit,
 ) {
-    private val magnifier = MagnifierLens(
-        displayCtx, wm, displayId, overlayHost, takesControllerFocus = false,
-    )
-    private val lookup = DragLookupController(
-        context = context,
-        displayId = displayId,
-        popup = WordLookupPopup(displayCtx, wm, displayId, overlayHost),
-        magnifier = magnifier,
-        overlayHost = overlayHost,
-    )
+    private val magnifier = kit.magnifier
+    private val lookup = kit.lookup
 
     private var lines: List<OcrManager.OcrLine> = emptyList()
     private var lineTokens: List<List<TokenSpan>> = emptyList()
@@ -116,12 +104,9 @@ internal class WordLookupSession(
             }
             if (closed) return@launch
             lineTokens = tokens
-            boxes = lines.indices.flatMap { i ->
-                TapLookupGeometry.wordBoxes(
-                    lines[i], i, tokens[i].map { it.surface },
-                    padPx = BOX_PAD_DP * density, gapPx = BOX_GAP_DP * density,
-                )
-            }
+            // The lines as they stand now: the same texts these tokens are
+            // of, where a host has moved them since ([relocate]).
+            boxes = boxAll(this@WordLookupSession.lines, tokens)
             if (selected?.let { it >= boxes.size } == true) selected = null
             if (cursor?.let { it >= boxes.size } == true) cursor = null
             pending = false
@@ -129,6 +114,54 @@ internal class WordLookupSession(
             view.setHighlight(highlight)
             onBoxesSettled(boxes.isNotEmpty())
         }
+    }
+
+    /** Every word of [lines] boxed, by their tokenizations [tokens]. */
+    private fun boxAll(
+        lines: List<OcrManager.OcrLine>,
+        tokens: List<List<TokenSpan>>,
+    ): List<TapLookupGeometry.WordBox> = lines.indices.flatMap { i ->
+        TapLookupGeometry.wordBoxes(
+            lines[i], i, tokens[i].map { it.surface },
+            padPx = BOX_PAD_DP * density, gapPx = BOX_GAP_DP * density,
+        )
+    }
+
+    /** The same lines, moved on screen (the host's picture was zoomed or
+     *  panned under them): box them where they are now, at once, with the
+     *  tokens already in hand. While their tokens are still on the way the
+     *  tokenization goes on undisturbed and lands on these places, so a
+     *  host that moves them every frame of a gesture never starts it over.
+     *  A card that is up closes, its word having moved from under it.
+     *  False, with nothing done, when [moved] are not the loaded lines'
+     *  texts: those are [load]'s. */
+    fun relocate(moved: List<OcrManager.OcrLine>): Boolean {
+        if (closed || moved.size != lines.size) return false
+        if (moved.indices.any { moved[it].text != lines[it].text }) return false
+        if (selected != null) closeCard()
+        lines = moved
+        if (pending) return true
+        boxes = boxAll(moved, lineTokens)
+        view.setBoxes(boxes)
+        view.setHighlight(highlight)
+        return true
+    }
+
+    /** The box of the word [surface] nearest to ([x], [y]), no farther from
+     *  it than [radiusPx]; with none, the box a tap there lands on; null
+     *  with neither. For a host that knows which word the user picked
+     *  before these lines were read: the camera's tap on a live word, whose
+     *  snapshot is a frame of its own, read afresh, so the word may sit a
+     *  little away from where it was tapped. */
+    fun boxFor(surface: String, x: Float, y: Float, radiusPx: Float): Int? =
+        TapLookupGeometry.nearest(boxes.size, radiusPx) { i ->
+            boxes[i].takeIf { it.surface == surface }?.let { TapLookupGeometry.reach(it, x, y) }
+        } ?: TapLookupGeometry.hitTest(boxes, x, y, BUFFER_DP * density)
+
+    /** Open the card on the box at [index] ([boxFor]), as a tap on it does. */
+    fun open(index: Int) {
+        if (closed) return
+        select(index)
     }
 
     /** The frame's saved path and time arrived after the lines (a capture
@@ -180,9 +213,16 @@ internal class WordLookupSession(
      *  selection goes first, so the card's end ([onCardGone]) leaves the
      *  boxes up. */
     fun closeCard() {
+        deselect()
+        lookup.dismiss()
+    }
+
+    /** No word is selected any more, its card being gone already: for a
+     *  host that keeps the boxes up when a card ends by its own means
+     *  ([onEnded]), where an over-game host closes instead. */
+    fun deselect() {
         selected = null
         view.setHighlight(highlight)
-        lookup.dismiss()
     }
 
     /** The card ended. With the selection still set it ended by its own

@@ -76,11 +76,14 @@ class WordLookupSessionTest {
     /** Built on first use, so a test can attach a controller first. */
     private val session by lazy {
         WordLookupSession(
-            context = ctx,
-            displayCtx = ctx,
-            wm = wm,
-            overlayHost = host,
-            displayId = Display.DEFAULT_DISPLAY,
+            kit = LookupLensKit.overGame(
+                context = ctx,
+                displayCtx = ctx,
+                wm = wm,
+                overlayHost = host,
+                displayId = Display.DEFAULT_DISPLAY,
+                takesControllerFocus = false,
+            ),
             density = ctx.resources.displayMetrics.density,
             view = view,
             scope = scope,
@@ -613,5 +616,162 @@ class WordLookupSessionTest {
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
         press(KeyEvent.KEYCODE_BUTTON_A)
         assertNull(selected())
+    }
+
+    // ── a host whose picture moves, and a word known before the read ─────
+
+    /** [helloWorld] moved by ([dx], [dy]): the same line, shown elsewhere. */
+    private fun moved(dx: Int, dy: Int) = line("hello world", 300 + dy, (0 until 11).map { 100 + dx + it * 20 })
+
+    @Test fun `the same lines moved on screen are boxed where they are now, at once, without tokenizing again`() {
+        var tokenized = 0
+        tokenizer = { text -> tokenized++; text.split(' ').filter { it.isNotEmpty() }.map { TokenSpan(it, it) } }
+        load(helloWorld)
+        assertEquals(1, tokenized)
+        settled.clear()
+
+        assertTrue(session.relocate(listOf(moved(dx = 40, dy = 100))))
+
+        assertFalse("no tokenization to wait for", session.pending)
+        assertEquals(1, tokenized)
+        assertEquals(listOf("hello", "world"), view.shownBoxes.map { it.surface })
+        assertEquals("the boxes are on the moved line", 400f - 3f * ctx.resources.displayMetrics.density, view.shownBoxes[0].rect.top)
+        assertTrue("a tap where the word is now picks it", session.onTapAt(190f, 415f))
+        assertEquals(0, selected())
+        assertEquals("the first load's settle is the only one reported", emptyList<Boolean>(), settled)
+    }
+
+    @Test fun `moving the lines closes a card, whose word has moved from under it`() {
+        load(helloWorld)
+        session.onTapAt(150f, 315f)
+        assertEquals(0, selected())
+
+        assertTrue(session.relocate(listOf(moved(dx = 0, dy = 100))))
+
+        assertNull(selected())
+        assertNull(highlighted())
+        assertEquals("closed by the session, so the presentation goes on", 0, ended)
+    }
+
+    @Test fun `other lines are not moved but loaded`() {
+        load(helloWorld)
+        val other = line("goodbye world", 300, (0 until 13).map { 100 + it * 20 })
+        assertFalse("another text is another read", session.relocate(listOf(other)))
+        assertEquals(listOf("hello", "world"), view.shownBoxes.map { it.surface })
+
+        session.load(listOf(other), null, 0L)
+        settle()
+        assertEquals(listOf("goodbye", "world"), view.shownBoxes.map { it.surface })
+    }
+
+    @Test fun `lines moved while their tokens are on the way keep the one tokenization, which lands where they are now`() {
+        val gate = CompletableDeferred<Unit>()
+        var tokenized = 0
+        tokenizer = { text ->
+            tokenized++
+            gate.await()
+            text.split(' ').filter { it.isNotEmpty() }.map { TokenSpan(it, it) }
+        }
+        session.load(listOf(helloWorld), null, 0L)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(session.pending)
+
+        // A gesture moves them frame after frame while they are tokenized.
+        assertTrue(session.relocate(listOf(moved(dx = 10, dy = 30))))
+        assertTrue(session.relocate(listOf(moved(dx = 20, dy = 60))))
+        assertTrue(session.relocate(listOf(moved(dx = 40, dy = 100))))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue("still the first tokenization", session.pending)
+        assertTrue("nothing drawn before the tokens are in", view.shownBoxes.isEmpty())
+
+        gate.complete(Unit)
+        settle()
+
+        assertEquals("tokenized once", 1, tokenized)
+        assertEquals(listOf("hello", "world"), view.shownBoxes.map { it.surface })
+        assertEquals("at the last place they were moved to", 400f - 3f * ctx.resources.displayMetrics.density, view.shownBoxes[0].rect.top)
+        assertEquals(listOf(true), settled)
+    }
+
+    @Test fun `a word known by its text is found nearest to where it was picked, then under the point, then not at all`() {
+        // "world" twice: 220..320 on the first line, 100..200 on the second.
+        val second = line("world hello", 400, (0 until 11).map { 100 + it * 20 })
+        load(helloWorld, second)
+        val radius = 96f * ctx.resources.displayMetrics.density
+
+        assertEquals("the one on the first line", 1, session.boxFor("world", 270f, 320f, radius))
+        assertEquals("the one on the second line", 2, session.boxFor("world", 150f, 410f, radius))
+        assertEquals(
+            "a text this read does not have falls back to the word under the point",
+            0, session.boxFor("absent", 150f, 315f, radius),
+        )
+        assertNull("no such text and no word there", session.boxFor("absent", 900f, 900f, radius))
+        assertNull("the text exists, but too far from the point to be the same word", session.boxFor("hello", 900f, 900f, 10f))
+    }
+
+    @Test fun `a word sought by its text is measured against a slanted box as it is drawn, not the upright rectangle around it`() {
+        // "w" on a line turned 20 degrees about (250, 120), 300 long and 40
+        // tall in its own frame: its left end rises, its right end drops,
+        // and the upright rectangle around it reaches down to y = 190.
+        val slanted = OcrManager.OcrLine(
+            text = "w", bounds = Rect(100, 50, 400, 190),
+            angleDeg = 20f, orientedWidth = 300f, orientedHeight = 40f,
+        )
+        // The same word upright, under that rectangle's empty bottom-left corner.
+        val upright = line("w", 200, listOf(100))
+        load(slanted, upright)
+        val radius = 96f * ctx.resources.displayMetrics.density
+
+        // (140, 185) is inside the slanted word's rectangle but some 75 px
+        // from the word itself, and 15 px above the upright one.
+        assertEquals(1, session.boxFor("w", 140f, 185f, radius))
+        assertEquals("on the slanted word's own raised end", 0, session.boxFor("w", 140f, 80f, radius))
+    }
+
+    @Test fun `opening a found word is a tap on it`() {
+        load(helloWorld)
+        session.open(1)
+        assertEquals(1, selected())
+        assertEquals(1, highlighted())
+    }
+
+    @Test fun `a host that keeps the boxes up when a card ends drops only the selection`() {
+        load(helloWorld)
+        session.onTapAt(150f, 315f)
+        session.deselect()
+        assertNull(selected())
+        assertNull(highlighted())
+        assertTrue("the boxes stay", session.hasBoxes)
+        assertTrue("and take the next tap", session.onTapAt(270f, 315f))
+        assertEquals(1, selected())
+    }
+
+    @Test fun `a session hosted in an activity builds its card from the activity's own windows`() {
+        val activity = org.robolectric.Robolectric.buildActivity(android.app.Activity::class.java).setup().get()
+        val inApp = WordLookupSession(
+            kit = LookupLensKit.inActivity(activity),
+            density = ctx.resources.displayMetrics.density,
+            view = WordBoxesView(overlayThemedContext(ctx)),
+            scope = scope,
+            tokenize = { tokenizer(it) },
+            onEnded = {},
+            onBoxesSettled = {},
+        )
+        try {
+            inApp.load(listOf(helloWorld), null, 0L)
+            val deadline = System.currentTimeMillis() + 3000
+            while (inApp.pending && System.currentTimeMillis() < deadline) {
+                shadowOf(Looper.getMainLooper()).idle()
+                Thread.sleep(5)
+            }
+            assertTrue(inApp.onTapAt(150f, 315f))
+            assertTrue(inApp.hasCard)
+            assertFalse(
+                "no overlay window is involved",
+                host.hasContentWindowOn(Display.DEFAULT_DISPLAY),
+            )
+        } finally {
+            inApp.release()
+        }
     }
 }

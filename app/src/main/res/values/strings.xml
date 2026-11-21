@@ -3060,7 +3060,9 @@
 
     <!-- Title of the Overlays row in the floating-icon menu's expanded settings
          panel; its value is the current overlay mode (Translation, Furigana,
-         Pinyin), and tapping the row cycles through the available modes. -->
+         Pinyin), and tapping the row cycles through the available modes. The
+         Camera and Import file tools' gear menus have the same row, where the
+         value can also be Definitions or None. -->
     <string name="floating_menu_panel_overlays">Overlays</string>
 
     <!-- Last row of the floating-icon menu's expanded settings panel; opens
@@ -3162,14 +3164,18 @@
          per-hanzi pronunciation). -->
     <string name="overlay_mode_option_pinyin">Pinyin</string>
 
-    <!-- Overlay mode chooser option (captures only) — draw a box around every
-         word on the captured screen; a tap on a box opens that word's
-         dictionary definition. One word, fits a four-segment control. -->
+    <!-- Overlay mode chooser option (captures, and the Camera and Import file
+         tools): draw a box around every word on the screen or picture; a tap
+         on a box opens that word's dictionary definition. One word, fits a
+         four-segment control; also shown as the value of the tools' Overlays
+         row. -->
     <string name="overlay_mode_option_definitions">Definitions</string>
 
-    <!-- Overlay mode chooser option (captures only) — draw nothing over the
-         captured screen; the result shows only in the panel. One short word,
-         fits a four-segment control. -->
+    <!-- Overlay mode chooser option (captures, and the Camera and Import file
+         tools' pictures): draw nothing over the captured screen or picture;
+         the result shows only in the panel. One short word, fits a
+         four-segment control; also shown as the value of the tools' Overlays
+         row. -->
     <string name="overlay_mode_option_none">None</string>
 
     <!-- Accessibility description of the capture's overlay-mode control while

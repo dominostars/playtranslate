@@ -144,9 +144,9 @@ class CameraSnapshotController(
             }
         },
         presentationPrefs = object : CaptureResultOverlay.PresentationPrefs {
-            // The camera keeps its boxes switch beside its flavor: the live
-            // preview paints the flavor whatever the review's switch says, so
-            // None is the switch off, and a flavor pick turns it on.
+            // The camera keeps its boxes switch beside its mode: the live
+            // preview paints the mode whatever the review's switch says, so
+            // None is the switch off, and a mode pick turns it on.
             override var overlayMode: OverlayMode
                 get() = if (prefs.cameraBoxesEnabled) prefs.overlayModeFor(OverlaySurface.CAMERA) else OverlayMode.NONE
                 set(value) {
@@ -208,6 +208,17 @@ class CameraSnapshotController(
     val isFrozen: Boolean
         get() = session.mode == CameraSession.Mode.FROZEN
 
+    // ── The snapshot review's overlay mode (the gear's Overlays row) ────
+
+    /** What the review paints: the camera's mode, None with its boxes off. */
+    val reviewOverlayMode: OverlayMode get() = panel.overlayMode
+
+    /** The modes the Overlays row cycles through while a snapshot is up. */
+    val reviewOfferedModes: List<OverlayMode> get() = panel.offeredOverlayModes
+
+    /** The Overlays row's pick while a snapshot is up. */
+    fun selectOverlayMode(mode: OverlayMode) = panel.selectOverlayMode(mode)
+
     init {
         playPauseButton.setOnClickListener { togglePlayPause() }
         installShutterImpactRecorder()
@@ -246,28 +257,50 @@ class CameraSnapshotController(
         syncControls()
     }
 
+    /** The shutter: freeze with the frame chosen around the shutter tap.
+     *  Its recorded impact time is trusted only when this activation
+     *  clearly WAS that touch: a keyboard/a11y click must not anchor
+     *  pre-tap selection to some earlier, abandoned tap. (A >1 s
+     *  press-and-hold also lands here as no-anchor — its impact has already
+     *  rung down, so the newest frame is the right pick anyway.) */
     private fun freeze() {
-        if (session.mode == CameraSession.Mode.FROZEN) return
-        preFreezeMode = session.mode
-        // Boxes-on snapshot taken while live boxes are up: ASK to keep them
-        // through the load and swap in the snapshot's boxes at Done — no
-        // skeleton flash. A request, not a fact: the session downgrades it
-        // when the pre-tap ring freezes an older frame the live boxes never
-        // tracked, so [keptLiveOverlays] is assigned from the callback's
-        // reported outcome, never from this request.
-        val keepOverlays = prefs.cameraBoxesEnabled && session.hasLiveOverlays()
-        // One freeze in flight at a time; re-enabled by syncControls on
-        // either outcome.
-        shutterButton.isEnabled = false
-        // Trust the recorded impact time only when this activation clearly
-        // WAS that touch: a keyboard/a11y click must not anchor pre-tap
-        // selection to some earlier, abandoned tap. (A >1 s press-and-hold
-        // also lands here as no-anchor — its impact has already rung down,
-        // so the newest frame is the right pick anyway.)
         val downMs = shutterDownUptimeMs
         val tapDown =
             if (downMs > 0 && SystemClock.uptimeMillis() - downMs <= 1000L) downMs else 0L
-        session.requestFreeze(keepOverlays, tapDown) { bitmap, keptOverlays ->
+        freeze(tapDown, word = null)
+    }
+
+    /** A tap on [word] of the live preview's Definitions outlines, at
+     *  screen ([x], [y]), its finger down at [downUptimeMs]: take the
+     *  snapshot the shutter would (the same frame choice, the tap's own
+     *  impact the anchor) and open that word's card in its review, which
+     *  comes up in Definitions with the sheet parked. */
+    fun freezeForWord(word: CameraSession.LiveWord, x: Float, y: Float, downUptimeMs: Long) {
+        freeze(downUptimeMs, ReviewWordRequest(word.surface, x, y))
+    }
+
+    private fun freeze(tapDownUptimeMs: Long, word: ReviewWordRequest?) {
+        // One freeze in flight at a time. The shutter is disabled while one
+        // is; a tap on a live word is not a button, so the rule is asked of
+        // the session, which holds the request until a frame serves it.
+        // Pending first, then frozen: the session marks itself frozen
+        // before it lets the request go, so read in this order there is no
+        // moment between the two.
+        if (session.freezePending || session.mode == CameraSession.Mode.FROZEN) return
+        preFreezeMode = session.mode
+        // A snapshot that will show boxes, taken while live boxes are up:
+        // ASK to keep them through the load and swap in the snapshot's own
+        // when its read lands — no bare frame in between. A word's snapshot
+        // always shows its boxes; the shutter's does when the review's
+        // boxes are on. A request, not a fact: the session downgrades it
+        // when the pre-tap ring freezes an older frame the live boxes never
+        // tracked, so [keptLiveOverlays] is assigned from the callback's
+        // reported outcome, never from this request.
+        val keepOverlays = (word != null || prefs.cameraBoxesEnabled) && session.hasLiveOverlays()
+        // The shutter shows it: re-enabled by syncControls on either
+        // outcome.
+        shutterButton.isEnabled = false
+        session.requestFreeze(keepOverlays, tapDownUptimeMs) { bitmap, keptOverlays ->
             if (released) {
                 bitmap.recycle()
                 return@requestFreeze
@@ -291,7 +324,7 @@ class CameraSnapshotController(
             activity.requestedOrientation =
                 android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED
             syncControls()
-            panel.startReview(bitmap)
+            panel.startReview(bitmap, openWord = word)
         }
     }
 

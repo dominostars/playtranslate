@@ -32,7 +32,10 @@ import com.playtranslate.ui.RegionIndicatorView
  */
 class CameraRegionUi(
     private val activity: Activity,
-    private val fullBleedHost: ViewGroup,
+    /** The tool's full-bleed host over the frame and UNDER the sheet: the
+     *  region's dim and dashes draw here, and so do the review's
+     *  Definitions word boxes ([ReviewWordBoxes]). */
+    val fullBleedHost: ViewGroup,
     private val controlsHost: ViewGroup,
 ) {
     private val dp = activity.resources.displayMetrics.density
