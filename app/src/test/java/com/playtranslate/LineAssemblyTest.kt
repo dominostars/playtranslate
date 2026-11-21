@@ -112,6 +112,32 @@ class LineAssemblyTest {
     }
 
     @Test
+    fun neighbouringBubbles_oneAndAHalfLineHeightsApart_stayTwoLines() {
+        // `UNSPAR-` and `FOLLOW`, the facing lines of two side-by-side comic
+        // bubbles as the Thor's detector boxed them on 2026-11-19: on one level,
+        // 26 px apart at 18 px tall (1.44 line heights). A stitch distance of 1.5
+        // read them as one line, `UNSPAR- FOLLOW`.
+        assertPartition(
+            LineAssembler.assembleLineIndices(listOf(box(665, 908, 734, 926), box(760, 901, 823, 919))),
+            n = 2, sizes = listOf(1, 1),
+        )
+    }
+
+    @Test
+    fun wordsUpToOneLineHeightApart_areOneLine_beyondItTwo() {
+        // The split is a gap of MORE than one line height. The widest gap between
+        // two ordinary words of one line on the grouping corpus measured 0.93.
+        assertEquals(
+            listOf(listOf(0, 1)),
+            LineAssembler.assembleLineIndices(listOf(box(0, 0, 100, 20), box(120, 0, 200, 20))),
+        )
+        assertPartition(
+            LineAssembler.assembleLineIndices(listOf(box(0, 0, 100, 20), box(121, 0, 200, 20))),
+            n = 2, sizes = listOf(1, 1),
+        )
+    }
+
+    @Test
     fun staircaseWithinTol_runningMeanDoesNotChain() {
         // Centers 100/135/170/205 (tol 40): consecutive steps < tol, endpoints > tol
         // → two lines, NOT one chain. (Also the gently-staggered/slanted case.)
@@ -467,10 +493,13 @@ class LineAssemblyTest {
         val frameB = AngleFrame(13f, 700, 390)
         val w1 = slantedWord("Wone", Rect(170, 280, 430, 320), frameA)
         val w2 = slantedWord("Wtwo", Rect(570, 370, 830, 410), frameB)
-        // Upright box whose deskewed position is (u=200, v=30) in frame A.
+        // Upright box whose deskewed position is (u=210, v=30) in frame A. That
+        // puts it 0.8 line heights from Wtwo in frame B, inside the stitch
+        // distance (at u=200 it sat at 1.05, which stitched only while the
+        // distance was 1.5).
         val rA = Math.toRadians(5.0)
-        val ux = (300 + 200 * Math.cos(rA) - 30 * Math.sin(rA)).toFloat()
-        val uy = (300 + 200 * Math.sin(rA) + 30 * Math.cos(rA)).toFloat()
+        val ux = (300 + 210 * Math.cos(rA) - 30 * Math.sin(rA)).toFloat()
+        val uy = (300 + 210 * Math.sin(rA) + 30 * Math.cos(rA)).toFloat()
         val uBox = OcrBox.upright(
             Rect((ux - 40).toInt(), (uy - 16).toInt(), (ux + 40).toInt(), (uy + 16).toInt()),
         ).copy(angleUnmeasured = true)

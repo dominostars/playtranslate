@@ -32,6 +32,29 @@ import com.playtranslate.language.TextOrientation
  * collection artifact into a priority. `build_grouping_report.py` deliberately
  * prints no aggregate row for the same reason.
  *
+ * ## Changed 2026-11-20: rows and the list rule
+ *
+ * The table above describes the code as it graduated. Two things changed
+ * after an English comic page came out with its bubbles cut into single lines
+ * and stitched across each other: rows are no longer banded across the frame
+ * ([buildRows]), and the list rule abstains on centred lettering
+ * ([listCentredAbstain]). A third change belongs to the same report and sits
+ * upstream, in [LineAssembler] (its stitch distance, 1.5 to 1.0 line heights).
+ *
+ * Verification status, stated honestly: measured on the twin over
+ * results-1786212247819 and on a replay of that page's device word boxes, NOT
+ * yet by a device harness run. The row and list changes together, by column:
+ *
+ *     column (stanzas)                 split      merged     cells that flip
+ *     recorded engines, 131 seeds      24 -> 18   34 -> 32   FF VII fixed; 0_v6Mbv… PASS -> MERGE
+ *     Paddle, word-spaced, 64 seeds    18 -> 13   44 -> 44   FF X, wtvqb70a… fixed; 0_v6Mbv…, tacticsogre_lets_cling… broke
+ *
+ * `0_v6Mbv…` (an Arabic rewards list) passed before only because a mis-fused
+ * row lifted its mean pitch over [listPitch]. The page itself, five device
+ * captures, bubbles whole out of 9 with all three changes: 4, 4, 2, 3, 3
+ * before and 9, 9, 9, 8, 8 after, the two 8s being a detector fault (two
+ * lines boxed as one) that no grouping rule reaches.
+ *
  * ## Why a different architecture
  *
  * Measured on the corpus (host-side twin `flowgraph.py`, 2026-07-25): labelling
@@ -102,6 +125,8 @@ import com.playtranslate.language.TextOrientation
  *    the FF-family command columns;
  *  - a cue-free stack of >= [listRaggedRows] rows under [listRaggedNarrow] of
  *    the screen holding neither margin.
+ * The last two abstain on centred lettering, which is a comic bubble or a
+ * heading far more often than a menu ([listCentredAbstain]).
  * Vertical text abstains outright, for the production split's reasons plus one
  * of its own: manga bubbles (え? / ここじゃ / ないの?) are exactly the shape the
  * rule would misread.
@@ -188,6 +213,18 @@ import com.playtranslate.language.TextOrientation
  *    floor already judges the fragments directly.
  *  - Estimating chain pitch as the best-supported cluster rather than from the
  *    first pair was also recommended: [modalPitch] already does exactly that.
+ *
+ * From the 2026-11-19 comic-page investigation, each measured on the twin:
+ *  - **A tight-leading veto on the list paths** (rows whose boxes touch are
+ *    wrapped text, not items): glues the FF GBA, FF XII, Persona 4 Golden and
+ *    Tactics Ogre menus at every threshold from 0 to 0.3 of the row thickness.
+ *    Real menus have touching boxes too.
+ *  - **The title-case path abstaining on EVERY all-caps stack**, centred or
+ *    not: costs the left-aligned HP / MP label stacks (7 on the Paddle
+ *    column, merged stanzas 44 to 58).
+ *  - **The title-case path abstaining on every centred stack, lowercase or
+ *    not**: fixes two more centred headings but glues the Persona 4 Golden
+ *    social-link list.
  *
  * ## Contract
  *
@@ -377,8 +414,34 @@ class FlowGraphStrategy(
     private val listRaggedRows: Int = 5,
     /** Fraction of screen width the ragged path allows. */
     private val listRaggedNarrow: Float = 0.34f,
-    /** em: edge-clustering tolerance for the ragged path. */
+    /** em: edge-clustering tolerance for the ragged path and for [listCentredAbstain]. */
     private val listEdgeTol: Float = 1.00f,
+    /**
+     * CENTRED text is not a list. A stack whose rows share a centre line
+     * (within [listEdgeTol]) but not a start edge is centred lettering: a comic
+     * bubble, a centred heading. Two paths misread it, and each abstains:
+     *  - the ragged path always. "Holds neither margin" is true of every
+     *    centred block, so that path took whole bubbles of five rows or more
+     *    for ragged menus;
+     *  - the title-case path when the stack has NO lowercase letter. Every row
+     *    of all-caps lettering opens with a capital, so the capital says
+     *    nothing there. With lowercase present the capitals are still evidence
+     *    and the path is left alone.
+     *
+     * Measured on the twin, results-1786212247819: every block the list rule
+     * wrongly explodes on the corpus is centre-clustered (19 of 19 over the
+     * recorded-engine and Paddle columns of the word-spaced languages: comic
+     * bubbles and two centred two-line headings). Split stanzas 24 to 18 on
+     * the recorded engines and 18 to 13 on the Paddle column of the word-spaced
+     * languages, with the row change above. Cost, and it is the shape of the
+     * rule: a centred ALL-CAPS title menu too wide or too tight for the
+     * spacious path now comes out as one block. One cell does it, Tactics
+     * Ogre's NEW GAME / CONTINUE / … on the Paddle column (32% of the screen).
+     * Not reached: short all-caps bubbles whose edges all happen to line up
+     * (JUST / HAVE / TO GIVE / UP), which are start-clustered and so not
+     * centred by this test.
+     */
+    private val listCentredAbstain: Boolean = true,
     override val name: String = "flowgraph",
 ) : GroupingStrategy {
 
@@ -462,7 +525,8 @@ class FlowGraphStrategy(
 
     /**
      * One row = one visual line of the block: boxes whose cross-axis spans
-     * overlap and whose inline gap is under about one em. Coordinates are FLOW
+     * overlap and whose inline gap is under about one em ([buildRows] has the
+     * exact relation). Coordinates are FLOW
      * coordinates — for vertical text the cross axis is negated x, so columns
      * advance right-to-left in increasing order and every later stage is
      * orientation-agnostic.
@@ -525,48 +589,76 @@ class FlowGraphStrategy(
         }
     }
 
+    /**
+     * Rows are the connected components of ONE relation between two boxes:
+     * their cross-axis spans overlap by [rowOverlap] of the thinner one, their
+     * thicknesses are within [rowThicknessCap], and they sit within
+     * [inlineGapEm] of each other along the text. Every test is asked of the
+     * two boxes themselves, so nothing a third box does can put two boxes in
+     * one row.
+     *
+     * Until 2026-11-20 this banded the whole partition first: boxes were
+     * sorted on the cross axis and each joined the first band it overlapped,
+     * the band's span growing to cover it, and only then were bands cut on
+     * inline gaps. A band is frame-wide, so a line from ANOTHER block that
+     * straddled two stacked lines of this one widened the band until it held
+     * both, and stacked lines whose boxes overlap along the text (leading
+     * tighter than the glyph box, which is every comic bubble) came out as one
+     * Row twice a line thick. That Row sits off the block's pitch grid, so the
+     * rhythm cut then split the block on both sides of it. On the 131-seed run
+     * the two forms differ on 7 frames and 12 rows: 8 pairs of stacked lines
+     * (`Items` + `Magic`, `HP…` + `MP…`) and 4 furigana columns that had been
+     * fused to their base column.
+     *
+     * The order of [part] decides nothing but exact ties: components are sets,
+     * members are ordered along the text and rows along the flow.
+     */
     private fun buildRows(part: List<RecognizedRegion>, vertical: Boolean, rtl: Boolean): List<Row> {
-        fun crossOf(b: Rect) = if (vertical) -b.right to -b.left else b.top to b.bottom
-        fun inlineOf(b: Rect) = if (vertical) b.top to b.bottom else b.left to b.right
-
-        class Band(val members: MutableList<RecognizedRegion>, var lo: Int, var hi: Int)
-
-        val ordered = part.sortedBy { crossOf(it.box.bounds).first }
-        val bands = ArrayList<Band>()
-        for (r in ordered) {
-            val (lo, hi) = crossOf(r.box.bounds)
-            val band = bands.firstOrNull { b ->
-                val ov = minOf(b.hi, hi) - maxOf(b.lo, lo)
-                val thick = maxOf(b.hi - b.lo, hi - lo).toDouble() /
-                    maxOf(1, minOf(b.hi - b.lo, hi - lo))
-                ov > 0 && thick <= rowThicknessCap && ov >= rowOverlap * minOf(b.hi - b.lo, hi - lo)
-            }
-            if (band == null) {
-                bands += Band(mutableListOf(r), lo, hi)
+        val n = part.size
+        val crossLo = IntArray(n)
+        val crossHi = IntArray(n)
+        val inLo = IntArray(n)
+        val inHi = IntArray(n)
+        val em = DoubleArray(n)
+        for (i in 0 until n) {
+            val b = part[i].box.bounds
+            if (vertical) {
+                crossLo[i] = -b.right; crossHi[i] = -b.left; inLo[i] = b.top; inHi[i] = b.bottom
             } else {
-                band.members += r
-                band.lo = minOf(band.lo, lo)
-                band.hi = maxOf(band.hi, hi)
+                crossLo[i] = b.top; crossHi[i] = b.bottom; inLo[i] = b.left; inHi[i] = b.right
             }
+            em[i] = emOf(part[i], vertical)
         }
 
-        val rows = ArrayList<Row>()
-        for (band in bands) {
-            val inOrder = band.members.sortedBy { inlineOf(it.box.bounds).first }
-            var cur = mutableListOf(inOrder.first())
-            for (r in inOrder.drop(1)) {
-                val prevHi = cur.maxOf { inlineOf(it.box.bounds).second }
-                val gap = inlineOf(r.box.bounds).first - prevHi
-                val em = (cur + r).maxOf { emOf(it, vertical) }
-                if (gap <= inlineGapEm * em) {
-                    cur += r
-                } else {
-                    rows += Row(cur, vertical, rtl); cur = mutableListOf(r)
-                }
-            }
-            rows += Row(cur, vertical, rtl)
+        fun sameRow(i: Int, j: Int): Boolean {
+            val ov = minOf(crossHi[i], crossHi[j]) - maxOf(crossLo[i], crossLo[j])
+            val thin = minOf(crossHi[i] - crossLo[i], crossHi[j] - crossLo[j])
+            val thick = maxOf(crossHi[i] - crossLo[i], crossHi[j] - crossLo[j])
+            if (ov <= 0 || ov < rowOverlap * thin) return false
+            if (thick.toDouble() / maxOf(1, thin) > rowThicknessCap) return false
+            val gap = maxOf(inLo[j] - inHi[i], inLo[i] - inHi[j])
+            return gap <= inlineGapEm * maxOf(em[i], em[j])
         }
-        return rows.sortedBy { it.crossLo }
+
+        val root = IntArray(n) { it }
+        fun find(i: Int): Int {
+            var x = i
+            while (root[x] != x) { root[x] = root[root[x]]; x = root[x] }
+            return x
+        }
+        for (i in 0 until n) {
+            for (j in i + 1 until n) {
+                if (sameRow(i, j)) root[find(i)] = find(j)
+            }
+        }
+        val components = LinkedHashMap<Int, MutableList<Int>>()
+        for (i in 0 until n) components.getOrPut(find(i)) { ArrayList() } += i
+        return components.values
+            .map { members ->
+                val inOrder = members.sortedWith(compareBy({ inLo[it] }, { crossLo[it] }))
+                Row(inOrder.map { part[it] }, vertical, rtl)
+            }
+            .sortedWith(compareBy({ it.crossLo }, { it.inLo }))
     }
 
     // ── stage 3: graph ───────────────────────────────────────────────────────
@@ -789,11 +881,19 @@ class FlowGraphStrategy(
         val pitch = (1 until seg.size).sumOf { seg[it].center - seg[it - 1].center } /
             (seg.size - 1) / em
         if (width <= listNarrow * screenWidth && pitch > listPitch) return true
+        val tol = listEdgeTol * em
+        val startClustered = (seg.maxOf { it.effStart } - seg.minOf { it.effStart }) <= tol
+        // Centred lettering: the rows share a centre line and not a start edge.
+        // See [listCentredAbstain] for the two paths that abstain on it.
+        val centred = listCentredAbstain && !startClustered &&
+            (seg.maxOf { it.inCenter } - seg.minOf { it.inCenter }) <= tol
         // A column of named commands ("Ability / Switch / Card / Config"): every
         // row opens with a capital and none closes a sentence. Cased scripts only.
+        // In centred all-caps lettering the capital is no evidence at all.
         if (listTitleCase && !unspacedScript(ctx.sourceLang) &&
             width <= listTitledNarrow * screenWidth &&
-            seg.all { opensCapital(it.text) } && seg.none { endsSentence(it.text) }
+            seg.all { opensCapital(it.text) } && seg.none { endsSentence(it.text) } &&
+            !(centred && seg.none { hasLower(it.text) })
         ) {
             return true
         }
@@ -818,10 +918,9 @@ class FlowGraphStrategy(
         }
         // A wider column may still be a list if its edges are RAGGED: wrapped
         // text holds one margin and fills to the other, a stack of items
-        // holds neither.
+        // holds neither. Nor does centred text, which holds its centre instead.
         if (seg.size < listRaggedRows || width > listRaggedNarrow * screenWidth) return false
-        val tol = listEdgeTol * em
-        val startClustered = (seg.maxOf { it.effStart } - seg.minOf { it.effStart }) <= tol
+        if (centred) return false
         val endClustered = (seg.maxOf { it.inEnd } - seg.minOf { it.inEnd }) <= tol
         if (startClustered && endClustered) return false
         if (startClustered && wrappedTail(seg, tol)) return false

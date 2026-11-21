@@ -46,8 +46,22 @@ object LineAssembler {
     private const val YCENTER_THS = 0.5
     /** Max height deviation to admit a box to a line, × the line's mean height (EasyOCR `height_ths`). */
     private const val HEIGHT_THS = 0.5
-    /** Horizontal gap that splits a band into separate lines/columns, × the line's mean height. */
-    private const val GAP_THS = 1.5
+    /**
+     * Horizontal gap that splits a band into separate lines/columns, × the line's mean height.
+     *
+     * 1.0 since 2026-11-20, 1.5 before. At 1.5 the words of two side-by-side comic
+     * bubbles were stitched into one line: their lines sit 1.4 to 1.5 line heights
+     * apart (`UNSPAR-` | `FOLLOW`, 26 px at 18 px tall, on the page that showed it).
+     * Measured on the word boxes of the 65 word-spaced grouping seeds (612 same-band
+     * neighbour pairs): the widest gap between two ordinary words of one line is 0.93
+     * line heights, and the 61 pairs between 1.0 and 1.5 are number grids, a label and
+     * its value (`HP | 815/2192`), separate items side by side and neighbouring
+     * bubbles, none of them running text. Known cost: a value more than a line height
+     * from its label (`S.Lv | 1`) is no longer part of the label's line. 0.75 and 0.5
+     * (EasyOCR's default) break real lines on the same seeds, so this is not a number
+     * to lower further without that measurement.
+     */
+    private const val GAP_THS = 1.0
 
     /**
      * Stitch recognized word-regions into line-regions. [regions] are already

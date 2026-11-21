@@ -91,6 +91,82 @@ class FlowGraphStrategyTest {
         )
     }
 
+    // ── rows ─────────────────────────────────────────────────────────────────
+
+    // Two neighbouring speech bubbles of an English comic page, as the Thor's
+    // Paddle column read them on 2026-11-19 (1080 px wide capture). They sit
+    // half a line out of step, and the lettering's leading is tighter than its
+    // glyph boxes, so stacked lines overlap on the cross axis.
+    private val bubbleRight = listOf(
+        line("AS A", 718, 501, 765, 520),
+        line("FELLOW", 704, 518, 777, 539),
+        line("MEMBER OF", 689, 538, 792, 557),
+        line("A CLAN", 707, 555, 774, 573),
+        line("BOUND TO", 697, 572, 785, 590),
+        line("BABYLS,", 703, 589, 778, 611),
+    )
+    private val bubbleLeft = listOf(
+        line("I CAN", 281, 548, 332, 564),
+        line("UNDERSTAND", 251, 563, 361, 583),
+        line("JUST HOW", 264, 582, 349, 598),
+        line("MUCH RESOLVE", 244, 598, 369, 615),
+        line("THIS MUST", 262, 614, 353, 632),
+        line("TAKE.", 281, 630, 332, 649),
+    )
+
+    @Test
+    fun stackedLines_bridgedByANeighbouringBlock_stayTwoRows() {
+        // `I CAN` straddles `MEMBER OF` and `A CLAN`. Banding the frame put all
+        // three in one band, and the two stacked lines, which overlap along the
+        // text, came out as ONE row twice a line thick; the rhythm cut then
+        // split the bubble on both sides of it (five groups for two bubbles).
+        // The list rule is off so that this pins the rows alone.
+        val g = groupsOf(bubbleRight + bubbleLeft, ctx(screenWidth = 1080f), FlowGraphStrategy(listEnabled = false))
+        assertEquals("the right bubble is one block", 1, bubbleRight.map { g[it.text] }.toSet().size)
+        assertEquals("the left bubble is one block", 1, bubbleLeft.map { g[it.text] }.toSet().size)
+        assertTrue("and they are two blocks", g["AS A"] != g["I CAN"])
+    }
+
+    @Test
+    fun fragmentsOfOneLine_joinIntoARow_aWideGapDoesNot() {
+        // The relation is asked of two boxes at a time, and a row is its
+        // connected component: `MULT.` and `per level` are far apart but each
+        // is within 0.6 em of `x0.1`. The value column, several em away, is not.
+        // Given out of order: the row reads along the text whatever order the
+        // recognizer emitted its fragments in.
+        val regions = listOf(
+            line("per level", 295, 100, 430, 130),
+            line("Gold", 560, 100, 640, 130),
+            line("MULT.", 100, 100, 200, 130),
+            line("x0.1", 215, 102, 280, 130),
+        )
+        val groups = FlowGraphStrategy().group(regions, ctx(screenWidth = 1000f))
+        assertEquals(
+            setOf(listOf("MULT.", "x0.1", "per level"), listOf("Gold")),
+            groups.map { g -> g.regions.map { it.text } }.toSet(),
+        )
+    }
+
+    @Test
+    fun tallBoxBesideStackedLines_isNoRowWithAnyOfThem() {
+        // A rotated tab label down the side of a panel overlaps every line it
+        // passes and sits right beside them. The thickness cap keeps it out of
+        // their rows; without it one tab would chain the whole stack into a
+        // single row.
+        val regions = listOf(
+            line("Main Menu", 60, 100, 100, 400),
+            line("The first line of the panel", 110, 100, 600, 140),
+            line("and the second line of it", 110, 150, 600, 190),
+            line("and then the third one.", 110, 200, 560, 240),
+        )
+        val g = groupsOf(regions, ctx(screenWidth = 1000f))
+        assertEquals(
+            "the three lines are one block",
+            1, regions.drop(1).map { g[it.text] }.toSet().size,
+        )
+        assertTrue("the tab is not in it", g["Main Menu"] != g["The first line of the panel"])
+    }
+
     // ── rhythm ───────────────────────────────────────────────────────────────
 
     @Test
@@ -171,6 +247,90 @@ class FlowGraphStrategyTest {
         assertEquals(
             "a mid-thought line must hold its successor",
             g["旅先で、宿屋がない時や、"], g["ビンボーな時には、"],
+        )
+    }
+
+    // ── list rule: centred lettering ─────────────────────────────────────────
+
+    @Test
+    fun centredBubble_holdingNeitherMargin_isNotARaggedMenu() {
+        // Six centred rows hold neither margin, which is all the ragged path
+        // asks. `TAKE.` closes a sentence, so the title-case path is out of it
+        // and this pins the ragged path alone. Before: six groups.
+        val g = groupsOf(bubbleLeft, ctx(screenWidth = 1080f))
+        assertEquals("a centred bubble is one block", 1, g.values.toSet().size)
+    }
+
+    @Test
+    fun centredAllCapsLettering_isNotAColumnOfCommands() {
+        // Four rows, under the ragged path's floor of five, so this pins the
+        // title-case path alone: every row of all-caps lettering opens with a
+        // capital and none closes a sentence. Before: four groups.
+        val g = groupsOf(bubbleRight.take(4), ctx(screenWidth = 1080f))
+        assertEquals("centred all-caps lettering is one block", 1, g.values.toSet().size)
+    }
+
+    @Test
+    fun centredAbstention_off_isTheRuleAsItShippedBefore() {
+        // The harness's `flowgraph-centred-off` column measures this switch.
+        val before = FlowGraphStrategy(listCentredAbstain = false)
+        assertEquals(6, groupsOf(bubbleLeft, ctx(screenWidth = 1080f), before).values.toSet().size)
+        assertEquals(4, groupsOf(bubbleRight.take(4), ctx(screenWidth = 1080f), before).values.toSet().size)
+    }
+
+    /** [regions] is one block until the list rule explodes it into one group a row. */
+    private fun assertExplodedByTheListRule(regions: List<RecognizedRegion>, screenWidth: Float) {
+        val c = ctx(screenWidth = screenWidth)
+        assertEquals(
+            "one block with the list rule off",
+            1, groupsOf(regions, c, FlowGraphStrategy(listEnabled = false)).values.toSet().size,
+        )
+        assertEquals("one group a row", regions.size, groupsOf(regions, c).values.toSet().size)
+    }
+
+    @Test
+    fun allCapsLabels_sharingTheirStartEdge_areStillAColumnOfCommands() {
+        // Labels of one width share a centre line AND a start edge. Centred
+        // means the centre line alone, so this is a label column and its
+        // capitals stay evidence. Abstaining on every all-caps stack cost seven
+        // HP / MP stacks on the corpus's Paddle column. Packed tighter than an
+        // em so that the spacious path is out of it.
+        assertExplodedByTheListRule(
+            listOf(
+                line("HP", 100, 100, 160, 130),
+                line("MP", 100, 132, 162, 162),
+                line("TP", 100, 164, 158, 194),
+            ),
+            screenWidth = 1000f,
+        )
+    }
+
+    @Test
+    fun centredMenu_withLowercase_isStillAColumnOfCommands() {
+        // Centred, but mixed case: a capital at the head of each row is still
+        // a choice the text made. Abstaining here glued a real menu on the corpus.
+        assertExplodedByTheListRule(
+            listOf(
+                line("New Game Plus", 370, 100, 630, 130),
+                line("Continue", 410, 150, 590, 180),
+                line("Quit", 450, 200, 550, 230),
+            ),
+            screenWidth = 1000f,
+        )
+    }
+
+    @Test
+    fun raggedStack_holdingNoAxisAtAll_isStillAList() {
+        // Neither margin and no centre line either: the ragged path's own case.
+        assertExplodedByTheListRule(
+            listOf(
+                line("1 Potion", 100, 100, 250, 130),
+                line("Hi-Ether x3", 160, 150, 380, 180),
+                line("22 Phoenix Down", 120, 200, 400, 230),
+                line("Tent", 190, 250, 280, 280),
+                line("3 Elixir", 105, 300, 300, 330),
+            ),
+            screenWidth = 1000f,
         )
     }
 

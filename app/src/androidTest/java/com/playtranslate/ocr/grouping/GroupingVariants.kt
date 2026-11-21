@@ -64,6 +64,16 @@ object GroupingVariants {
             "flowgraph-census",
             FlowGraphStrategy(listPunctCensus = true, name = "flowgraph-census"),
         ),
+        // The list rule as it shipped until 2026-11-20, when the ragged and
+        // title-case paths began to abstain on centred lettering (comic
+        // bubbles were being exploded one line a group). That change was
+        // measured on the host twin only; this column is its device flip
+        // table. Its known cost is a centred ALL-CAPS title menu coming out
+        // as one block (Tactics Ogre's, on the Paddle column).
+        Variant(
+            "flowgraph-centred-off",
+            FlowGraphStrategy(listCentredAbstain = false, name = "flowgraph-centred-off"),
+        ),
         // Retired columns and their answers, recorded so nobody re-runs them:
         //  - `flowgraph-vert` (ruby gate 1.65 + no vertical chain rhythm) WON
         //    and is now the default above, so the column is redundant.
