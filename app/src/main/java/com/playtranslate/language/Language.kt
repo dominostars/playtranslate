@@ -1,6 +1,24 @@
 package com.playtranslate.language
 
+import android.icu.text.LocaleDisplayNames
+import android.icu.util.ULocale
 import com.google.mlkit.nl.translate.TranslateLanguage
+
+/**
+ * The name of the locale [tag] as CLDR composes it, written in [locale]:
+ * "Chinese (Simplified)", "Chinese (Traditional, Taiwan)". The one composition
+ * behind every script-qualified language name the app shows.
+ *
+ * Not [java.util.Locale.getDisplayName]: on Android that joins the language to
+ * the script's stand-alone name and gives "Chinese (Simplified Han)". A host
+ * JVM gives the short form for that same call, so no unit test of it shows what
+ * a device shows; this goes through the platform's ICU on both.
+ */
+internal fun localeDisplayName(tag: String, locale: java.util.Locale): String =
+    LocaleDisplayNames
+        .getInstance(ULocale.forLocale(locale), LocaleDisplayNames.DialectHandling.STANDARD_NAMES)
+        .localeDisplayName(ULocale.forLanguageTag(tag))
+        .replaceFirstChar { it.uppercase(locale) }
 
 /**
  * Identifier for every source language PlayTranslate supports (or will support
@@ -64,6 +82,8 @@ enum class SourceLangId(val code: String) {
 
     /** Display name in [locale]. e.g. `JA.displayName(Locale.forLanguageTag("en"))` → "Japanese";
      *  `JA.displayName(Locale.forLanguageTag("ja"))` → "日本語". Defaults to system locale.
+     *  The two Chinese ids carry their script, "Chinese (Simplified)" and
+     *  "Chinese (Traditional)" ([localeDisplayName]).
      *  First-char casing uses the display [locale] so Turkish display names
      *  title-case correctly (e.g. "ispanyolca" → "İspanyolca").
      *
@@ -84,13 +104,19 @@ enum class SourceLangId(val code: String) {
      *  seams keep their space. Same method, opposite spacing, because the locale
      *  argument differs. See docs/l10n-language-parameters.md (Thai block). */
     fun displayName(locale: java.util.Locale = java.util.Locale.getDefault()): String = when (this) {
-        ZH      -> java.util.Locale.forLanguageTag("zh-Hans").getDisplayName(locale)
-            .replaceFirstChar { it.uppercase(locale) }
-        ZH_HANT -> java.util.Locale.forLanguageTag("zh-Hant").getDisplayName(locale)
-            .replaceFirstChar { it.uppercase(locale) }
-        else    -> java.util.Locale.forLanguageTag(code).getDisplayLanguage(locale)
-            .replaceFirstChar { it.uppercase(locale) }
+        ZH      -> localeDisplayName("zh-Hans", locale)
+        ZH_HANT -> localeDisplayName("zh-Hant", locale)
+        else    -> languageName(locale)
     }
+
+    /** The language's name alone in [locale], with no script: "Chinese" for
+     *  [ZH] and [ZH_HANT] both, and [displayName] itself for every other
+     *  language. For a place too narrow for the qualified name whose reader
+     *  already knows which Chinese is meant (a results page's section header);
+     *  everywhere the two are told apart or chosen between reads [displayName]. */
+    fun languageName(locale: java.util.Locale = java.util.Locale.getDefault()): String =
+        java.util.Locale.forLanguageTag(code).getDisplayLanguage(locale)
+            .replaceFirstChar { it.uppercase(locale) }
 
     companion object {
         /** Region codes that imply Traditional Chinese script. */

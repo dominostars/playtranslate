@@ -4,7 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.util.Locale
 
 class ChineseScriptVariantTest {
 
@@ -36,18 +35,6 @@ class ChineseScriptVariantTest {
         assertEquals(4, ChineseScriptVariant.all.size)
     }
 
-    @Test fun `displayLabel is script-qualified, not bare Chinese`() {
-        val tw = ChineseScriptVariant.TRADITIONAL_TW.displayLabel(Locale.ENGLISH)
-        assertTrue("expected Chinese in '$tw'", tw.contains("Chinese"))
-        assertTrue("expected Taiwan in '$tw'", tw.contains("Taiwan"))
-        val simp = ChineseScriptVariant.SIMPLIFIED.displayLabel(Locale.ENGLISH)
-        assertTrue("expected Simplified in '$simp'", simp.contains("Simplified"))
-    }
-
-    @Test fun `targetDisplayName uses variant for Chinese and plain name otherwise`() {
-        val zhTw = ChineseScriptVariant.targetDisplayName("zh", ChineseScriptVariant.TRADITIONAL_TW, Locale.ENGLISH)
-        assertTrue("expected Taiwan in '$zhTw'", zhTw.contains("Taiwan"))
-        // Non-Chinese target ignores the (stale) variant and shows the language name.
-        assertEquals("French", ChineseScriptVariant.targetDisplayName("fr", ChineseScriptVariant.TRADITIONAL_TW, Locale.ENGLISH))
-    }
+    // The variants' display names are in LanguageNamesTest: they are composed by
+    // the platform's ICU, which a plain JVM test cannot call.
 }

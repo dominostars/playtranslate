@@ -578,10 +578,16 @@ class TranslationSectionBinder(
         applyTranslationServiceGear()
     }
 
-    /** Update both section headers to the current source/target language names. */
+    /** Update both section headers to the current source/target languages.
+     *  A header names the language alone, "Chinese" and never "Chinese
+     *  (Simplified)": it shares its row with the section's actions, which fold
+     *  behind ⋯ as the name grows, and a tap on it opens the picker, where the
+     *  script is named. */
     fun updateLabels() {
-        labelOriginal.text = sourceLangLocalizedDisplayName()
-        labelTranslation.text = targetLangDisplayName()
+        labelOriginal.text = prefs.sourceLangId.languageName(Locale.forLanguageTag(prefs.targetLang))
+        labelTranslation.text = prefs.targetLang.let { code ->
+            ChineseScriptVariant.targetLanguageName(code, Locale.forLanguageTag(code))
+        }
     }
 
     // ── Convenience for surfaces that bind a whole result at once (panel) ─
@@ -698,7 +704,10 @@ class TranslationSectionBinder(
      *  actions' changes listens here. */
     fun actionRows(): List<FoldingActionRow> = listOf(sourceRow, targetRow)
 
-    /** The language names the two headers show, read now. */
+    /** The two languages' whole names, script included ("Chinese
+     *  (Simplified)"), read now: for a host that names them where there is
+     *  room, as the detached window's menu rows do. The headers themselves
+     *  show less ([updateLabels]). */
     val sourceLanguageName: CharSequence get() = sourceLangLocalizedDisplayName()
     val targetLanguageName: CharSequence get() = targetLangDisplayName()
 

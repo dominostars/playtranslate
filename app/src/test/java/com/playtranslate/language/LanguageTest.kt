@@ -77,7 +77,7 @@ class LanguageTest {
         assertEquals(OcrBackend.MLKitChinese, profile.mlKitFloor)
         assertEquals(HintTextKind.PINYIN, profile.hintTextKind)
         assertEquals(false, profile.preferTraditional)
-        assertEquals(SourceLangId.ZH.displayName(), profile.id.displayName())
+        assertEquals(SourceLangId.ZH, profile.id)
     }
 
     @Test fun `ZH_HANT profile shares ZH traits but prefers traditional`() {
@@ -86,7 +86,7 @@ class LanguageTest {
         assertEquals(OcrBackend.MLKitChinese, profile.mlKitFloor)
         assertEquals(HintTextKind.PINYIN, profile.hintTextKind)
         assertEquals(true, profile.preferTraditional)
-        assertEquals(SourceLangId.ZH_HANT.displayName(), profile.id.displayName())
+        assertEquals(SourceLangId.ZH_HANT, profile.id)
     }
 
     @Test fun `RU profile has no ML Kit floor and Cyrillic traits`() {

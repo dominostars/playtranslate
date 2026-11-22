@@ -23,14 +23,13 @@ enum class ChineseScriptVariant(val code: String) {
 
     /**
      * Localized picker / settings label, e.g. "Chinese (Simplified)",
-     * "Chinese (Traditional, Taiwan)". Uses `getDisplayName` (which includes the
-     * script + region subtags) rather than `getDisplayLanguage` (which would
-     * flatten all four to bare "Chinese"), exactly as [SourceLangId.displayName]
-     * does for the `zh-Hant` source.
+     * "Chinese (Traditional, Taiwan)": the locale's whole name (script and
+     * region), where `getDisplayLanguage` would flatten all four to bare
+     * "Chinese". Composed by [localeDisplayName], exactly as
+     * [SourceLangId.displayName] is for the two Chinese sources.
      */
     fun displayLabel(locale: Locale = Locale.getDefault()): String =
-        Locale.forLanguageTag(code).getDisplayName(locale)
-            .replaceFirstChar { it.uppercase(locale) }
+        localeDisplayName(code, locale)
 
     companion object {
         /** The single backend / pack / cache code every variant collapses to.
@@ -71,7 +70,7 @@ enum class ChineseScriptVariant(val code: String) {
         /** Human label for a target language: the script-qualified Chinese
          *  [variant] label (e.g. "Chinese (Traditional, Taiwan)") when [targetLang]
          *  is Chinese, else the plain language name. [variant] is ignored for
-         *  non-Chinese targets. Used by Settings / onboarding / result-panel rows
+         *  non-Chinese targets. Used by Settings / onboarding / menu rows
          *  where bare `getDisplayLanguage` would flatten all four to "Chinese". */
         fun targetDisplayName(
             targetLang: String,
@@ -79,7 +78,13 @@ enum class ChineseScriptVariant(val code: String) {
             locale: Locale = Locale.getDefault(),
         ): String =
             if (isChineseTarget(targetLang)) variant.displayLabel(locale)
-            else Locale.forLanguageTag(targetLang).getDisplayLanguage(locale)
+            else targetLanguageName(targetLang, locale)
+
+        /** A target language's name alone, with no script or region: "Chinese"
+         *  whichever variant is chosen. The target's twin of
+         *  [SourceLangId.languageName], for the same narrow places. */
+        fun targetLanguageName(targetLang: String, locale: Locale = Locale.getDefault()): String =
+            Locale.forLanguageTag(targetLang).getDisplayLanguage(locale)
                 .replaceFirstChar { it.uppercase(locale) }
     }
 }
