@@ -292,6 +292,53 @@ class DefRowHtmlTest {
         assertEquals(list.replace(" data-inert", ""), full)
     }
 
+    /** A definition that links to another word, as Jitendex writes one. */
+    private val linked = """[{"type":"structured-content","content":["See also ",""" +
+        """{"tag":"a","href":"?query=%E9%A3%9F%E3%81%86&wildcards=off&primary_reading=%E3%81%8F%E3%81%86","content":"食う"}]}]"""
+
+    // Mutations: a list's row draws the link; a row that opens nothing
+    // draws it; each definition numbers its links from 0.
+    @Test fun `a dictionary's link to another word is a target of a full row that opens, and its text in any other row`() {
+        val imported = listOf(
+            ImportedSenseGroup(
+                "Jitendex",
+                listOf(ImportedSense("flat", scRowid = 5L), ImportedSense("flat", scRowid = 6L)),
+                dictId = "jt",
+            ),
+        )
+        val d = data().copy(importedGroups = imported)
+        val content = mapOf(5L to linked, 6L to linked)
+        val lens = html(d, structured = content, full = true)
+        // Numbered over the row: two links to one word are two targets.
+        assertEquals(lens, 1, lens.count("data-act=\"${DefAction.reference(0, "食う", "くう")}\""))
+        assertEquals(lens, 1, lens.count("data-act=\"${DefAction.reference(1, "食う", "くう")}\""))
+        for (plain in listOf(html(d, structured = content), html(d, structured = content, full = true, opens = false))) {
+            assertFalse(plain, plain.contains("data-act=\"ref:"))
+            assertEquals(plain, 2, plain.count("See also 食う"))
+        }
+    }
+
+    // Mutations: the block follows links untold; the Anki sheet's block does.
+    @Test fun `a page's imported block follows its dictionaries' links to other words only where it is told to`() {
+        val groups = listOf(ImportedSenseGroup("Jitendex", listOf(ImportedSense("flat", scRowid = 5L)), dictId = "jt"))
+        val content = mapOf(5L to linked)
+        val page = pageRow(DefRow.Imported("imp", groups, links = true), content)
+        val anchor = "<a class=\"gloss-link\" role=\"link\" data-act=\"${DefAction.reference(0, "食う", "くう")}\">食う</a>"
+        assertTrue(page, page.contains(anchor))
+        val plain = pageRow(DefRow.Imported("imp", groups), content)
+        assertFalse(plain, plain.contains("data-act"))
+        // The link is the whole difference.
+        assertEquals(plain, page.replace(anchor, "食う"))
+        val sheet = pageRow(
+            DefRow.Imported(
+                "imp", groups, DefRow.SenseLook.SHEET, DefRow.Curation(emptySet(), removable = true), links = true,
+            ),
+            content,
+        )
+        assertFalse(sheet, sheet.contains("data-act=\"ref:"))
+        assertTrue(sheet, sheet.contains("See also 食う"))
+    }
+
     @Test fun `each imported dictionary stands under its title, a tap target of its own with the arrow that shuts it`() {
         val imported = listOf(
             ImportedSenseGroup(
@@ -450,6 +497,61 @@ class DefRowHtmlTest {
         // The dictionary is named once, on its first definition.
         assertEquals(flat, 1, flat.count("JITENDEX"))
         assertTrue(flat, flat.contains("<div class=\"sg\">flat dine</div>"))
+    }
+
+    // Mutations: every page sense reports its text; an example is left
+    // unmarked; the gloss or the translation is marked as the source's.
+    @Test fun `a page sense reports taps on its text only where its host asked, its example marked as the source language`() {
+        fun sense(words: Boolean) = pageRow(
+            DefRow.Sense(
+                "s0", null, "NOUN", "gloss", misc = "note",
+                examples = listOf(DefRow.Example("例文です", "An example.", italic = true)),
+                words = words,
+            ),
+        )
+        val plain = sense(false)
+        val tappable = sense(true)
+        assertTrue(tappable, tappable.startsWith("<div class=\"row sense\" id=\"k7\" data-row data-words>"))
+        assertTrue(tappable, tappable.contains("<div class=\"exs\" data-lang=\"ja\">例文です</div>"))
+        assertEquals(tappable, 1, tappable.count("data-lang"))
+        // The two marks are the whole difference.
+        assertFalse(plain, plain.contains("data-words") || plain.contains("data-lang"))
+        assertEquals(plain, tappable.replace(" data-words", "").replace(" data-lang=\"ja\"", ""))
+    }
+
+    // Mutations: the block reports its text untold; a flat definition names
+    // no dictionary; the Anki sheet's block reports its text.
+    @Test fun `a page's imported block reports taps on its text with the dictionary every definition is from`() {
+        val glossary = """[{"type":"structured-content","content":{"tag":"span","content":"structured eat"}}]"""
+        val groups = listOf(
+            ImportedSenseGroup(
+                "Jitendex", listOf(ImportedSense("flat eat", scRowid = 5L), ImportedSense("flat dine")), dictId = "jt",
+            ),
+        )
+        fun strip(h: String) = h.replace(" data-words", "").replace(" data-dict=\"jt\"", "")
+        // A block with structured content: its flat definitions name their
+        // dictionary as the structured ones' scope does.
+        val content = mapOf(5L to glossary)
+        val styled = pageRow(DefRow.Imported("imp", groups, words = true), content)
+        assertTrue(styled, styled.startsWith("<div class=\"row impf\" id=\"k7\" data-row data-words>"))
+        assertTrue(styled, styled.contains("data-dictionary=\"jt\""))
+        assertTrue(styled, styled.contains("<div class=\"def-row\" data-dict=\"jt\"><div class=\"def-text\">flat dine"))
+        assertEquals(pageRow(DefRow.Imported("imp", groups), content), strip(styled))
+        // A block of flat definitions only.
+        val flat = pageRow(DefRow.Imported("imp", groups, words = true))
+        assertTrue(flat, flat.startsWith("<div class=\"row impl\" id=\"k7\" data-row data-words>"))
+        assertEquals(flat, 2, flat.count("<div class=\"sense\" data-dict=\"jt\">"))
+        assertEquals(pageRow(DefRow.Imported("imp", groups)), strip(flat))
+        // Under a curation a tap on a definition does nothing.
+        for (c in listOf(content, emptyMap())) {
+            val sheet = pageRow(
+                DefRow.Imported(
+                    "imp", groups, DefRow.SenseLook.SHEET, DefRow.Curation(emptySet(), removable = true), words = true,
+                ),
+                c,
+            )
+            assertFalse(sheet, sheet.contains("data-words") || sheet.contains("data-dict="))
+        }
     }
 
     @Test fun `a sheet sense carries a remove button for itself and one for each example`() {

@@ -42,7 +42,7 @@ internal object DefRowHtml {
         is DefRow.Word -> word(ctx, row, domId, structured, sourceLang)
         is DefRow.More -> more(row, domId)
         is DefRow.Imported -> imported(ctx, row, domId, structured)
-        is DefRow.Sense -> sense(ctx, row, domId)
+        is DefRow.Sense -> sense(ctx, row, domId, sourceLang)
         is DefRow.SheetWord -> sheetWord(ctx, row, domId, structured, sourceLang)
     }
 
@@ -166,8 +166,12 @@ internal object DefRowHtml {
         val sheet = if (row.look == DefRow.SenseLook.SHEET) " sheet" else ""
         val removeLabel = ctx.getString(R.string.anki_word_remove_content_description)
         val styled = row.groups.any { g -> g.senses.any { s -> s.scRowid?.let { it in structured } == true } }
+        // A tap on the text is reported only where the host asked for it,
+        // and never under a curation.
+        val wordTaps = row.words && row.curation == null
+        val words = if (wordTaps) " data-words" else ""
         if (styled) {
-            return "<div class=\"row impf$sheet\" id=\"$domId\" data-row>" +
+            return "<div class=\"row impf$sheet\" id=\"$domId\" data-row$words>" +
                 DefinitionsDocument.contentHtml(
                     WordDefinitionData(
                         word = "", reading = null, senses = emptyList(), freqScore = 0, isCommon = false,
@@ -178,10 +182,12 @@ internal object DefRowHtml {
                     importedCuration = row.curation?.let {
                         DefinitionsDocument.ImportedCuration(it.removed, it.removable, removeLabel)
                     },
+                    references = row.links && row.curation == null,
+                    wordTaps = wordTaps,
                 ) + "</div>"
         }
         val sb = StringBuilder(512)
-        sb.append("<div class=\"row impl\" id=\"").append(domId).append("\" data-row>")
+        sb.append("<div class=\"row impl\" id=\"").append(domId).append("\" data-row").append(words).append('>')
         var flat = 0
         for (group in row.groups) {
             var labelled = false
@@ -193,7 +199,13 @@ internal object DefRowHtml {
                     if (sense.pos.isNotBlank()) add(sense.pos)
                 }.joinToString(" \u00b7 ").uppercase(Locale.ROOT)
                 labelled = true
-                sb.append("<div class=\"sense").append(sheet).append("\">")
+                sb.append("<div class=\"sense").append(sheet).append('"')
+                // Whose text this is, for a tap on it (the styled block
+                // names its dictionary on its scope).
+                if (wordTaps && group.dictId.isNotEmpty()) {
+                    sb.append(" data-dict=\"").append(htmlEscape(group.dictId)).append('"')
+                }
+                sb.append('>')
                 appendSense(
                     sb, null, eyebrow,
                     group.accentColor.takeIf { row.look == DefRow.SenseLook.PAGE },
@@ -206,16 +218,18 @@ internal object DefRowHtml {
         return sb.append("</div>").toString()
     }
 
-    private fun sense(ctx: Context, row: DefRow.Sense, domId: String): String {
+    private fun sense(ctx: Context, row: DefRow.Sense, domId: String, sourceLang: String): String {
         val sb = StringBuilder(512)
         sb.append("<div class=\"row sense")
             .append(if (row.look == DefRow.SenseLook.SHEET) " sheet" else "")
             .append(if (row.number != null) " num" else "")
-            .append("\" id=\"").append(domId).append("\" data-row>")
+            .append("\" id=\"").append(domId).append("\" data-row")
+            .append(if (row.words) " data-words" else "").append('>')
         appendSense(
             sb, row.number, row.pos, row.posColor, row.gloss, row.misc, row.examples,
             ctx.getString(R.string.anki_word_remove_content_description),
             removeAct = if (row.removable) DefAction.REMOVE else null,
+            exampleLang = sourceLang.takeIf { row.words && it.isNotEmpty() },
         )
         return sb.append("</div>").toString()
     }
@@ -223,7 +237,9 @@ internal object DefRowHtml {
     /** What a sense holds: the number column, then the eyebrow, the gloss,
      *  the register note and each example behind its rail, then the ✕ that
      *  removes it ([removeAct], null for none). An example's own ✕ sits
-     *  beside it. */
+     *  beside it. [exampleLang] marks each example's sentence as written in
+     *  that language (`data-lang`, which changes nothing of how it draws):
+     *  what tells a tap on it from a tap on the gloss. */
     private fun appendSense(
         sb: StringBuilder,
         number: Int?,
@@ -234,7 +250,13 @@ internal object DefRowHtml {
         examples: List<DefRow.Example>,
         removeLabel: String,
         removeAct: String?,
+        exampleLang: String? = null,
     ) {
+        val exampleOpen = if (exampleLang == null) {
+            "<div class=\"ex\"><div class=\"exi\"><div class=\"exs\">"
+        } else {
+            "<div class=\"ex\"><div class=\"exi\"><div class=\"exs\" data-lang=\"" + htmlEscape(exampleLang) + "\">"
+        }
         number?.let {
             sb.append("<div class=\"sn\">").append(String.format(Locale.getDefault(), "%d", it)).append("</div>")
         }
@@ -247,8 +269,7 @@ internal object DefRowHtml {
         sb.append("<div class=\"sg\">").append(htmlEscape(gloss)).append("</div>")
         misc?.let { sb.append("<div class=\"sm\">").append(htmlEscape(it)).append("</div>") }
         for (ex in examples) {
-            sb.append("<div class=\"ex\"><div class=\"exi\"><div class=\"exs\">")
-                .append(htmlEscape(ex.text)).append("</div>")
+            sb.append(exampleOpen).append(htmlEscape(ex.text)).append("</div>")
             if (ex.translation.isNotBlank()) {
                 sb.append("<div class=\"ext").append(if (ex.italic) " it" else "").append("\">")
                     .append(htmlEscape(ex.translation)).append("</div>")
@@ -409,6 +430,9 @@ internal object DefRowHtml {
                     DefinitionsDocument.contentHtml(
                         none.copy(importedGroups = d.importedGroups), structured, localize,
                         collapse = DefinitionsDocument.ImportedCollapse(row.shutDictionaries, arrow),
+                        // A link opens its word as the row opens its own:
+                        // live where the row's links are and the row opens.
+                        references = row.full && row.opens,
                     ),
                 )
                 .append("</div>")

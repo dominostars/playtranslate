@@ -10,6 +10,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isGone
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
+import com.playtranslate.overlay.OwnWindows
 import com.playtranslate.AnkiManager
 import com.playtranslate.R
 import com.playtranslate.applyAccentOverlay
@@ -54,13 +55,21 @@ class WordDetailBottomSheet : DialogFragment() {
         /** [WordDetailBinder.Args.explanation], written when non-null
          *  ([putExplanation]). */
         private const val ARG_EXPLANATION     = "explanation"
+        /** When true, the sheet's sentence is its own arguments' alone: the
+         *  host activity's live sentence ([SentenceContextProvider]) is not
+         *  this page's. For the page of a word met in another page's
+         *  definitions, which is in no sentence, and for every sheet opened
+         *  from it. */
+        private const val ARG_OWN_SENTENCE    = "own_sentence"
 
         /** [lookupForm] and [lookupReading] are the key the page resolves
          *  its entry with ([WordDetailBinder.Args.lookupForm]); null for an
          *  opener with no key of its own, whose bundle then carries none and
          *  reads back as [WordDetailBinder.Args] defaults it, under [word]
          *  and [reading], exactly like a bundle from before the key existed.
-         *  [explanation] is [WordDetailBinder.Args.explanation]. */
+         *  [explanation] is [WordDetailBinder.Args.explanation].
+         *  [ownSentence] keeps the host activity's live sentence out of
+         *  the sheet ([ownsSentence]). */
         fun newInstance(
             word: String,
             reading: String? = null,
@@ -74,9 +83,11 @@ class WordDetailBottomSheet : DialogFragment() {
             lookupForm: String? = null,
             lookupReading: String? = null,
             explanation: Explanation? = null,
+            ownSentence: Boolean = false,
         ) = WordDetailBottomSheet().apply {
                 arguments = Bundle().apply {
                     putString(ARG_WORD, word)
+                    if (ownSentence) putBoolean(ARG_OWN_SENTENCE, true)
                     putExplanation(ARG_EXPLANATION, explanation)
                     if (reading != null) putString(ARG_READING, reading)
                     if (lookupForm != null) {
@@ -142,13 +153,29 @@ class WordDetailBottomSheet : DialogFragment() {
             return args.copy(lookupForm = lookupForm, lookupReading = bundle.getString(ARG_LOOKUP_READING))
         }
 
+        /** Whether a sheet with [bundle] keeps the host activity's live
+         *  sentence out ([newInstance]'s `ownSentence`). */
+        internal fun ownsSentence(bundle: Bundle?): Boolean =
+            bundle?.getBoolean(ARG_OWN_SENTENCE, false) == true
+
+        /** The live sentence a sheet with [bundle] takes from [host], the
+         *  activity it is shown in: the activity's own where it gives one
+         *  ([SentenceContextProvider]), and none for a sheet that keeps it
+         *  out ([ownsSentence]). */
+        internal fun hostSentence(bundle: Bundle?, host: Any?): SentenceContext? =
+            if (ownsSentence(bundle)) null
+            else (host as? SentenceContextProvider)?.currentSentenceContext()
+
         /** The sheet a Words or Other matches cell of [parent]'s page opens:
          *  a word found inside [parent]'s word, so in the same sentence, with
          *  [parent]'s sentence and screenshot for its Anki card. A host
          *  activity's live provider ([SentenceContextProvider]) still answers
-         *  first, as on every sheet it hosts. [parent]'s explanation stays
-         *  behind: it is about [parent]'s word, and this sheet's card is
-         *  for another. */
+         *  first, as on every sheet it hosts, unless [parent]'s sheet kept
+         *  it out ([parentSheet], that sheet's arguments, read by
+         *  [ownsSentence]): a word found inside a dictionary word is no
+         *  more in the activity's sentence than that word was, however many
+         *  sheets deep. [parent]'s explanation stays behind: it is about
+         *  [parent]'s word, and this sheet's card is for another. */
         internal fun nestedInstance(
             parent: WordDetailBinder.Args?,
             word: String,
@@ -156,6 +183,7 @@ class WordDetailBottomSheet : DialogFragment() {
             surface: String?,
             lookupForm: String,
             lookupReading: String?,
+            parentSheet: Bundle? = null,
         ) = newInstance(
             word = word,
             reading = reading,
@@ -167,6 +195,7 @@ class WordDetailBottomSheet : DialogFragment() {
             sentencePending = parent?.sentencePending,
             lookupForm = lookupForm,
             lookupReading = lookupReading,
+            ownSentence = ownsSentence(parentSheet),
         )
     }
 
@@ -240,9 +269,41 @@ class WordDetailBottomSheet : DialogFragment() {
 
         // Embedded mode: the host activity implements [SentenceContextProvider]
         // and supplies live sentence context (VM-driven); the binder falls
-        // back to launch-time args when there is none.
-        override fun sentenceContext(): SentenceContext? =
-            (activity as? SentenceContextProvider)?.currentSentenceContext()
+        // back to launch-time args when there is none. A sheet that owns its
+        // sentence takes none of the activity's.
+        override fun sentenceContext(): SentenceContext? = hostSentence(arguments, activity)
+
+        /** The lens stands over this sheet: added through the sheet's own
+         *  window where it has one (a panel added through the activity's
+         *  would be under the dialog), through the activity's where the
+         *  sheet is embedded in it. */
+        override fun wordLens(): WordLensHost? {
+            val activity = activity ?: return null
+            return WordLensHost(
+                wm = dialog?.window?.let { OwnWindows.managerOf(it) } ?: OwnWindows.managerOf(activity),
+                displayId = android.view.Display.DEFAULT_DISPLAY,
+                overlayHost = null,
+                ttsAlertTarget = TtsAlertTarget.InActivity(activity),
+                screenSize = {
+                    val dm = resources.displayMetrics
+                    android.graphics.Point(dm.widthPixels, dm.heightPixels)
+                },
+            )
+        }
+
+        override fun openDictionaryWord(
+            word: String,
+            reading: String?,
+            surface: String?,
+            lookupForm: String,
+            lookupReading: String?,
+        ) {
+            newInstance(
+                word = word, reading = reading, surface = surface,
+                lookupForm = lookupForm, lookupReading = lookupReading,
+                ownSentence = true,
+            ).show(childFragmentManager, TAG)
+        }
 
         override fun openWordDetail(
             word: String,
@@ -251,8 +312,10 @@ class WordDetailBottomSheet : DialogFragment() {
             lookupForm: String,
             lookupReading: String?,
         ) {
-            nestedInstance(launchArgs, word, reading, surface, lookupForm, lookupReading)
-                .show(childFragmentManager, TAG)
+            nestedInstance(
+                launchArgs, word, reading, surface, lookupForm, lookupReading,
+                parentSheet = arguments,
+            ).show(childFragmentManager, TAG)
         }
 
         override fun openAnkiReview(args: WordDetailBinder.WordAnkiArgs) {

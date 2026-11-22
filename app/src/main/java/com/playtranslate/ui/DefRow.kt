@@ -40,7 +40,10 @@ internal sealed class DefRow {
      * [full] is whether the definitions' links are live. False, for a list
      * whose row taps through to the word's own page: they are inert, so a
      * tap anywhere but a button or a dictionary's title is the row's. True,
-     * where the row is where the word is read (the lens).
+     * where the row is where the word is read (the lens): there a
+     * dictionary's link to another word is followed too
+     * ([DefAction.reference]) when the row [opens], since such a link opens
+     * its word as the row opens its own.
      */
     data class Word(
         override val id: String,
@@ -102,12 +105,24 @@ internal sealed class DefRow {
      * labelled block per dictionary, in full, with live links. Under a
      * [curation] (the Anki word sheet) the definitions taken off the card
      * are left out and the rest carry a ✕.
+     *
+     * [links] is whether a dictionary's links to its other words are
+     * followed here ([DefAction.reference]): on the word's page, where the
+     * host opens the word a link names. False, and under a curation, such a
+     * link is its text alone.
+     *
+     * [words] is whether a tap on the definitions' text is reported with
+     * the text it fell in ([DefinitionDocument.TextTap]), for a host that
+     * looks the tapped word up: the word's page again. Never under a
+     * curation, where a tap on a definition does nothing.
      */
     data class Imported(
         override val id: String,
         val groups: List<com.playtranslate.model.ImportedSenseGroup>,
         val look: SenseLook = SenseLook.PAGE,
         val curation: Curation? = null,
+        val links: Boolean = false,
+        val words: Boolean = false,
     ) : DefRow()
 
     /**
@@ -126,7 +141,9 @@ internal sealed class DefRow {
      * as it should read, blank for none; [posColor] overrides its colour),
      * the [gloss], the register note ([misc]) and its [examples].
      * [removable] draws the ✕ that takes the sense off a card
-     * ([DefAction.REMOVE]).
+     * ([DefAction.REMOVE]). [words] is whether a tap on its text is
+     * reported with the text it fell in, as [Imported.words]: an example's
+     * sentence is then marked as written in the source language.
      */
     data class Sense(
         override val id: String,
@@ -138,6 +155,7 @@ internal sealed class DefRow {
         val posColor: Int? = null,
         val look: SenseLook = SenseLook.PAGE,
         val removable: Boolean = false,
+        val words: Boolean = false,
     ) : DefRow()
 
     /** An example sentence under a sense: the source line and, once it is
@@ -267,6 +285,87 @@ internal object DefAction {
     /** The title of the pack's own definitions in a word row that also
      *  draws an imported dictionary: shut or open them. */
     const val OWN_DICTIONARY = "$DICTIONARY:own"
+
+    private const val REFERENCE = "ref"
+
+    /** The word a dictionary's link points at ([reference]): its [term] and,
+     *  where the link names one, the [reading] that tells it from the other
+     *  words written the same way. */
+    data class Reference(val term: String, val reading: String?)
+
+    /**
+     * A dictionary's link to another word (Yomitan's `?query=…`), where the
+     * surface follows them: open that word. [n] is the link's place among
+     * its row's links, which is all that tells two links to one word apart:
+     * a target is found by its row and its action, in the page
+     * (`applyCursor`) and in every walker of its targets. The term and the
+     * reading are percent-encoded, so the action is safe as an attribute
+     * value, inside the selector the cursor is drawn by, and around the `:`
+     * that parts them.
+     */
+    fun reference(n: Int, term: String, reading: String?): String = buildString {
+        append(REFERENCE).append(':').append(n).append(':').append(encode(term))
+        if (!reading.isNullOrEmpty()) append(':').append(encode(reading))
+    }
+
+    /** The word a [reference] action names; null for any other action, and
+     *  for one that does not read back whole. */
+    fun referenceOf(action: String): Reference? {
+        if (!action.startsWith("$REFERENCE:")) return null
+        val parts = action.split(':')
+        if (parts.size != 3 && parts.size != 4) return null
+        if (parts[1].toIntOrNull() == null) return null
+        val term = decode(parts[2])?.takeIf { it.isNotBlank() } ?: return null
+        val reading = if (parts.size == 4) decode(parts[3])?.takeIf { it.isNotEmpty() } ?: return null else null
+        return Reference(term, reading)
+    }
+
+    private fun unreserved(c: Char): Boolean =
+        c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c == '-' || c == '.' || c == '_' || c == '~'
+
+    private fun encode(s: String): String = buildString {
+        for (b in s.toByteArray(Charsets.UTF_8)) {
+            val u = b.toInt() and 0xFF
+            if (u < 128 && unreserved(u.toChar())) {
+                append(u.toChar())
+            } else {
+                append('%').append(HEX[u shr 4]).append(HEX[u and 0xF])
+            }
+        }
+    }
+
+    /** [s] read back from [encode]; null when it holds anything [encode]
+     *  never writes, bytes that are no text among them. */
+    private fun decode(s: String): String? {
+        val bytes = java.io.ByteArrayOutputStream(s.length)
+        var i = 0
+        while (i < s.length) {
+            val c = s[i]
+            if (c == '%') {
+                if (i + 2 >= s.length) return null
+                val hi = HEX.indexOf(s[i + 1])
+                val lo = HEX.indexOf(s[i + 2])
+                if (hi < 0 || lo < 0) return null
+                bytes.write((hi shl 4) or lo)
+                i += 3
+            } else {
+                if (!unreserved(c)) return null
+                bytes.write(c.code)
+                i++
+            }
+        }
+        return try {
+            Charsets.UTF_8.newDecoder()
+                .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                .decode(java.nio.ByteBuffer.wrap(bytes.toByteArray()))
+                .toString()
+        } catch (_: java.nio.charset.CharacterCodingException) {
+            null
+        }
+    }
+
+    private const val HEX = "0123456789ABCDEF"
 }
 
 /** What names the pack's own definitions in [DefRow.Word.shutDictionaries].

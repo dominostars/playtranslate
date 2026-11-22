@@ -188,6 +188,30 @@ class WorkspaceWordDetailPage(
             host.push(nested(word, reading, surface, lookupForm, lookupReading))
         }
 
+        /** The lens stands over the workspace, in its window host. */
+        override fun wordLens(): WordLensHost = WordLensHost(
+            wm = host.wm,
+            displayId = host.displayId,
+            overlayHost = host.overlayHost,
+            ttsAlertTarget = TtsAlertTarget.Overlay(ctx, host.overlayHost, host.wm, host.displayId),
+            screenSize = {
+                val dm = ctx.resources.displayMetrics
+                android.graphics.Point(dm.widthPixels, dm.heightPixels)
+            },
+        )
+
+        override fun openDictionaryWord(
+            word: String,
+            reading: String?,
+            surface: String?,
+            lookupForm: String,
+            lookupReading: String?,
+        ) {
+            // A dictionary word: its page has no sentence, screenshot or
+            // capture moment, and neither has any page opened from it.
+            host.push(WorkspaceWordDetailPage(word, reading, surface, lookupForm, lookupReading))
+        }
+
         override fun openAnkiReview(args: WordDetailBinder.WordAnkiArgs) {
             // In-window editor when the AnkiDroid permission is already held
             // — the headline flow: editor, deck picker, save, all without
@@ -210,7 +234,7 @@ class WorkspaceWordDetailPage(
                             sentenceWordResults = args.sentenceWordResults,
                             sourceLangId = args.sourceLangId,
                             sentencePending = args.sentencePending,
-                            audioAnchorMs = audioAnchorMs,
+                            audioAnchorMs = audioAnchorMs.takeIf { args.gameAudio },
                             target = args.target,
                             notes = args.notes,
                         ),
@@ -313,7 +337,7 @@ class WorkspaceWordDetailPage(
                 putExtra(WordAnkiReviewActivity.EXTRA_SENTENCE_TRANSLATION, it)
             }
             putExtra(WordAnkiReviewActivity.EXTRA_SOURCE_LANG, args.sourceLangId.code)
-            audioAnchorMs?.let {
+            audioAnchorMs?.takeIf { args.gameAudio }?.let {
                 putExtra(WordAnkiReviewActivity.EXTRA_AUDIO_ANCHOR_MS, it)
             }
             // The card's own word and the note it starts with;

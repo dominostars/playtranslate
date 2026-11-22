@@ -305,7 +305,7 @@ class TranslationResultContent(
             ctx, host.lensWindowManager, host.lensDisplayId, host.lensOverlayHost,
             scope = host.scope,
             ttsAlertTarget = host.ttsAlertTarget,
-            binder = binder,
+            text = BoundSourceText(binder),
             screenSize = { host.screenSize() },
             opensWithoutEntry = host.opensWithoutEntry,
             deckBadges = true,

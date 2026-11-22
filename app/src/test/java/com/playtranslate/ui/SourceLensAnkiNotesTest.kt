@@ -277,4 +277,100 @@ class SourceLensAnkiNotesTest {
         val page = pushed.single() as WorkspaceWordDetailPage
         assertEquals(emptyMap<CardTarget, Explanation>(), page.sentenceContext()!!.explanations)
     }
+
+    // ── A link in a row's definitions to another word ───────────────────
+
+    private fun WorkspaceWordDetailPage.named(field: String): Any? =
+        WorkspaceWordDetailPage::class.java.getDeclaredField(field).apply { isAccessible = true }.get(this)
+
+    // Mutations: the link opens the row's own word; the tapped unit's
+    // context is read for a secondary's link; the row's answer or its
+    // surface rides to the linked word's page; the row's sentence or its
+    // capture moment does not.
+    @Test
+    fun `a link in a row's definitions opens the linked word's page in that row's sentence, with none of the row's answer`() {
+        val pushed = mutableListOf<WorkspacePage>()
+        val host = Proxy.newProxyInstance(
+            WorkspaceHost::class.java.classLoader, arrayOf(WorkspaceHost::class.java),
+        ) { _, method, args ->
+            if (method.name == "push") pushed += args[0] as WorkspacePage
+            null
+        } as WorkspaceHost
+        show(
+            WorkspaceRoute.PushInto(host),
+            eat = LensActionContext(
+                "食べる", reading = "たべる", surface = "食べた", entry = eatEntry,
+                sentence = sentence.text, screenshotPath = null, audioAnchorMs = 42L,
+                lookupForm = "たべる", lookupReading = "たべ",
+            ),
+        )
+        tap("食べる", DefAction.EXPLAIN)
+        answer("It is the plain past of to eat.")
+
+        pastDebounce()
+        tap("食べる", DefAction.reference(0, "食う", "くう"))
+
+        val page = pushed.single() as WorkspaceWordDetailPage
+        assertEquals(
+            listOf<Any?>("食う", "くう", null, "食う", "くう"),
+            listOf("word", "reading", "surface", "lookupForm", "lookupReading").map { page.named(it) },
+        )
+        val context = page.sentenceContext()!!
+        assertEquals("the row's own sentence", sentence.text, context.original)
+        assertEquals(emptyMap<CardTarget, Explanation>(), context.explanations)
+        assertEquals("the row's own capture moment", 42L, page.audioAnchorMs)
+        assertNull("the lens went with the tap", lens.rootViewForTest())
+    }
+
+    // Mutation: a link in the tapped unit's row reads no context at all.
+    @Test
+    fun `a link in the tapped unit's row opens the linked word in the tapped unit's sentence`() {
+        val pushed = mutableListOf<WorkspacePage>()
+        val host = Proxy.newProxyInstance(
+            WorkspaceHost::class.java.classLoader, arrayOf(WorkspaceHost::class.java),
+        ) { _, method, args ->
+            if (method.name == "push") pushed += args[0] as WorkspacePage
+            null
+        } as WorkspaceHost
+        show(WorkspaceRoute.PushInto(host))
+
+        pastDebounce()
+        tap("猫", DefAction.reference(0, "子猫", null))
+
+        val page = pushed.single() as WorkspaceWordDetailPage
+        assertEquals(listOf<Any?>("子猫", null, "子猫", null), listOf("word", "reading", "lookupForm", "lookupReading").map { page.named(it) })
+        assertEquals(sentence.text, page.sentenceContext()!!.original)
+    }
+
+    // Mutations: the secondary's index is dropped; a link is an open of
+    // its own, outside the opens' debounce, in either order.
+    @Test
+    fun `the lens tells its owner of a link with the row it is in, and one gesture is one open`() {
+        val links = mutableListOf<Triple<Int?, String, String?>>()
+        var opens = 0
+        lens.onReferenceTap = { secondary, term, reading -> links += Triple(secondary, term, reading) }
+        lens.onOpenTap = { opens++ }
+        val dm = controller.get().resources.displayMetrics
+        lens.show(dm.widthPixels / 2, dm.heightPixels * 3 / 4, dm.widthPixels, dm.heightPixels)
+        lens.makeInteractive()
+        lens.setSplitDefinitions(section("猫", "ねこ"), listOf(section("食べる", "たべる")))
+        idle()
+
+        pastDebounce()
+        tap("食べる", DefAction.reference(0, "食う", "くう"))
+        // The same gesture reaching the row as well is not a second open.
+        tap("猫", DefAction.OPEN)
+        pastDebounce()
+        tap("猫", DefAction.reference(1, "子猫", null))
+
+        assertEquals(listOf<Triple<Int?, String, String?>>(Triple(0, "食う", "くう"), Triple(null, "子猫", null)), links)
+        assertEquals(0, opens)
+
+        // Nor is a link the gesture reaches after the row's own open.
+        pastDebounce()
+        tap("猫", DefAction.OPEN)
+        tap("猫", DefAction.reference(1, "子猫", null))
+        assertEquals(1, opens)
+        assertEquals(2, links.size)
+    }
 }

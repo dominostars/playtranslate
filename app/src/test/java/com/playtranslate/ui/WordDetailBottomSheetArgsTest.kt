@@ -159,6 +159,41 @@ class WordDetailBottomSheetArgsTest {
         assertEquals(null, nested.screenshotPath)
     }
 
+    // Mutations: every sheet owns its sentence; a sheet opened from one
+    // that does goes back to the activity's (the parent sheet's arguments
+    // not read).
+    @Test
+    fun `a sheet that owns its sentence says so, and so does every sheet opened from it`() {
+        val plain = WordDetailBottomSheet.newInstance(word = "弾ける")
+        val own = WordDetailBottomSheet.newInstance(word = "興", lookupForm = "興", ownSentence = true)
+        assertEquals(false, WordDetailBottomSheet.ownsSentence(plain.requireArguments()))
+        assertEquals(false, WordDetailBottomSheet.ownsSentence(null))
+        assertEquals(true, WordDetailBottomSheet.ownsSentence(own.requireArguments()))
+        // It carries no sentence of its own either.
+        assertEquals(null, roundTrip(own).sentenceOriginal)
+        assertEquals(null, roundTrip(own).screenshotPath)
+        fun nested(from: WordDetailBottomSheet) = WordDetailBottomSheet.nestedInstance(
+            roundTrip(from), "興味", "きょうみ", null, "興味", "きょうみ", parentSheet = from.requireArguments(),
+        )
+        assertEquals(true, WordDetailBottomSheet.ownsSentence(nested(own).requireArguments()))
+        assertEquals("two sheets deep", true, WordDetailBottomSheet.ownsSentence(nested(nested(own)).requireArguments()))
+        assertEquals(false, WordDetailBottomSheet.ownsSentence(nested(plain).requireArguments()))
+    }
+
+    // Mutation: a sheet that owns its sentence takes its activity's.
+    @Test
+    fun `a sheet takes the live sentence of the activity it is shown in, unless it owns its sentence`() {
+        val live = SentenceContext("一番うまく弾けた！", "I played it best!", null)
+        val activity = object : SentenceContextProvider {
+            override fun currentSentenceContext() = live
+        }
+        val plain = WordDetailBottomSheet.newInstance(word = "弾ける").requireArguments()
+        val own = WordDetailBottomSheet.newInstance(word = "興", lookupForm = "興", ownSentence = true).requireArguments()
+        assertEquals(live, WordDetailBottomSheet.hostSentence(plain, activity))
+        assertEquals(null, WordDetailBottomSheet.hostSentence(own, activity))
+        assertEquals("an activity with no sentence to give", null, WordDetailBottomSheet.hostSentence(plain, Any()))
+    }
+
     @Test
     fun `the key round-trips beside the display`() {
         val args = roundTrip(

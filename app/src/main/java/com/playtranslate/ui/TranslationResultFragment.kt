@@ -868,20 +868,38 @@ class TranslationResultFragment : Fragment() {
         /** The unit of a row: the tapped one, or a secondary by index. */
         fun unitOf(secondary: Int?): SourceWordLookup.Resolved? =
             if (secondary == null) resolved else secondaries.getOrNull(secondary)
-        // The answer standing in a row is read at the tap, before the lens
-        // is dismissed and its rows' answers go with it.
-        fun openDetail(unit: SourceWordLookup.Resolved, explanation: Explanation?) {
+        /** The detail of a word, in the sentence on show: the one open for
+         *  a row's own word and for a word its definitions link to. */
+        fun openWord(
+            word: String,
+            reading: String?,
+            surface: String?,
+            lookupForm: String,
+            lookupReading: String?,
+            explanation: Explanation?,
+        ) {
             dismissWordPopup()
             host?.onInteraction()
             val ready = currentReady()
             host?.onWordTapped(
-                unit.word, unit.reading, unit.surface,
+                word, reading, surface,
                 ready?.screenshotPath,
                 ready?.originalText,
                 ready?.translatedText,
                 currentSettledRows()?.toLegacyMap() ?: emptyMap(),
-                unit.lookupForm, unit.lookupReading, explanation,
+                lookupForm, lookupReading, explanation,
             )
+        }
+        // The answer standing in a row is read at the tap, before the lens
+        // is dismissed and its rows' answers go with it.
+        fun openDetail(unit: SourceWordLookup.Resolved, explanation: Explanation?) =
+            openWord(unit.word, unit.reading, unit.surface, unit.lookupForm, unit.lookupReading, explanation)
+        // A link in a row's definitions to another word: that word's
+        // detail, as the row opens its own. It was not found in the
+        // sentence, so it has no surface there, and the row's answer is not
+        // about it. Only a row that opens draws such links.
+        lens.onReferenceTap = { _, term, reading ->
+            openWord(term, reading, surface = null, lookupForm = term, lookupReading = reading, explanation = null)
         }
         if (displayEntry != null) {
             lens.onOpenTap = { openDetail(resolved, lens.explanationOf(null)) }

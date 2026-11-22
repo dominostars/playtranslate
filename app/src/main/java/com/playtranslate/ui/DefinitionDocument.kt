@@ -126,7 +126,34 @@ internal class DefinitionDocument(
     private val onLayout: () -> Unit = {},
     /** Where a chunk's content is fetched and its markup built. */
     private val buildOn: CoroutineDispatcher = Dispatchers.Default,
+    /** A tap on the text of a row that reports them
+     *  ([DefRow.Imported.words], [DefRow.Sense.words]); null for a document
+     *  with no such row. */
+    private val onTextTap: ((row: DefRow, tap: TextTap) -> Unit)? = null,
 ) {
+    /**
+     * A tap on a row's text, as the page reports it: the run of [text] it
+     * fell in (one line of meaning, without the readings set over its
+     * words) and the tapped character's [offset] in it; the language the
+     * markup says the text is in ([lang]) and the dictionary it is from
+     * ([dictId]), each "" where the markup says nothing. [id] names the run
+     * to [mark], for as long as the page keeps it: until the next tap, or
+     * until its row is drawn again.
+     */
+    class TextTap(val id: Int, val text: String, val offset: Int, val lang: String, val dictId: String)
+
+    /** Where the page drew the first line of a marked part of a run, in
+     *  CSS px from the document's corner ([markRectOnScreen]). */
+    class MarkBox(val left: Int, val top: Int, val width: Int, val height: Int)
+
+    /**
+     * The page's answer to [mark] for a tap: the box of the marked part's
+     * first line, or null when that run's text is no longer in the page.
+     * Null is also how a painted mark is reported gone, when its row was
+     * drawn again or new rows were set.
+     */
+    var onMark: ((tapId: Int, box: MarkBox?) -> Unit)? = null
+
     private val app = ctx.applicationContext
     private val density = ctx.resources.displayMetrics.density
     private val rtl = ctx.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
@@ -283,7 +310,11 @@ internal class DefinitionDocument(
 
     /** The view is a focus stop only while a row offers something to act
      *  on: a block of plain definitions (a word page's senses) is passed
-     *  over, as the native rows it replaced were. */
+     *  over, as the native rows it replaced were. What a row's own content
+     *  offers is known only once the page has laid it out: a block of
+     *  imported definitions that follows its dictionaries' links
+     *  ([DefRow.Imported.links]) is a stop when one of them holds a link,
+     *  which the page reports as a target like any other. */
     private fun syncFocusable() {
         view?.isFocusable = rows.any {
             when (it) {
@@ -292,7 +323,8 @@ internal class DefinitionDocument(
                 is DefRow.Word -> it.opens || it.speak != null || it.trailing != null ||
                     it.data.importedGroups.isNotEmpty()
                 is DefRow.More -> true
-                is DefRow.Imported -> it.curation?.removable == true
+                is DefRow.Imported -> it.curation?.removable == true ||
+                    (it.links && targets.any { t -> t.rowId == it.id && t.act.isNotEmpty() })
                 is DefRow.Sense -> it.removable || it.examples.any { e -> e.removeIndex != null }
                 is DefRow.SheetWord -> true
             }
@@ -524,6 +556,18 @@ internal class DefinitionDocument(
             perform(row, act)
         }
 
+        override fun onText(gen: Int, domId: String, tapId: Int, lang: String, dictId: String, text: String, offset: Int) {
+            if (gen != this@DefinitionDocument.gen) return
+            val rowId = rowIds[domId] ?: return
+            val row = rows.firstOrNull { it.id == rowId } ?: return
+            if (offset !in text.indices) return
+            onTextTap?.invoke(row, TextTap(tapId, text, offset, lang, dictId))
+        }
+
+        override fun onMark(tapId: Int, left: Int, top: Int, width: Int, height: Int) {
+            onMark?.invoke(tapId, if (width <= 0) null else MarkBox(left, top, width, height))
+        }
+
         override fun onRendererGone() {
             shell = null
             if (recoveredContent == content) {
@@ -619,6 +663,48 @@ internal class DefinitionDocument(
      *  not hold it. For a host that anchors its scroll on a row. */
     fun rowTopPx(rowId: String): Int? =
         targets.firstOrNull { it.rowId == rowId }?.let { (it.top * density).roundToInt() }
+
+    /** Asks the page where characters [start] up to [end] of tap [tapId]'s
+     *  run are; it answers through [onMark]. With [draw] it also paints
+     *  them as the tapped word, until [unmark], the next tap, or their row
+     *  being drawn again. Without, a mark painted before is cleared. */
+    fun mark(tapId: Int, start: Int, end: Int, draw: Boolean) {
+        shell?.exec("ptMark($tapId,$start,$end,$draw)")
+    }
+
+    /** Clears the painted mark, if there is one. */
+    fun unmark() {
+        shell?.exec("ptUnmark()")
+    }
+
+    /** [box] on screen now, as [rectOnScreen] places a target; false when
+     *  the view is not shown or none of the box is in what shows of it (the
+     *  page was scrolled since the tap). */
+    fun markRectOnScreen(box: MarkBox, out: Rect): Boolean {
+        val v = view ?: return false
+        if (!v.isShown) return false
+        out.set(
+            (box.left * density).roundToInt(),
+            (box.top * density).roundToInt(),
+            ((box.left + box.width) * density).roundToInt(),
+            ((box.top + box.height) * density).roundToInt(),
+        )
+        val visible = Rect()
+        if (!v.getLocalVisibleRect(visible) || !Rect.intersects(visible, out)) return false
+        val loc = IntArray(2)
+        v.getLocationOnScreen(loc)
+        out.offset(loc[0], loc[1])
+        return true
+    }
+
+    /** What a cursor on [t] needs to show of the view, top to bottom in its
+     *  own px ([revealRect]): for a host that scrolls the view itself to a
+     *  target inside a row (the lens). */
+    internal fun revealSpanPx(t: DocTarget): IntRange {
+        val r = Rect()
+        revealRect(t, r)
+        return r.top..r.bottom
+    }
 
     /** The id of the row at [y] (the view's own px), or of the first row
      *  below it; null for none. Rows that stand side by side share a top,
@@ -847,6 +933,8 @@ internal class DefinitionDocument(
     private fun laidOut(laid: List<DocTarget>, laidHeads: Map<String, DocHead>, redrawn: Set<String>) {
         targets = laid
         heads = laidHeads
+        // What a row's content offers a cursor is known only now.
+        syncFocusable()
         val was = cursor
         val now = was?.let { DocNav.settle(laid, it.rowId, it.act) }
         if (was != null && now != null && now.act != was.act) setCursor(now) else cursor = now

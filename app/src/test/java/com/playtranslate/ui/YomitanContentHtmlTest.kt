@@ -186,6 +186,73 @@ class YomitanContentHtmlTest {
         assertFalse(html.contains("gloss-link"))
     }
 
+    // ── Links to another word, where the caller follows them ────────────
+
+    private fun followed(
+        glossaryJson: String,
+        refs: YomitanContentHtml.References = YomitanContentHtml.References(),
+    ) = YomitanContentHtml.glossaryHtml(glossaryJson, "d1", references = refs)!!
+
+    private fun link(href: String, text: String = "猫") =
+        """{"tag":"a","href":"$href","content":"$text"}"""
+
+    // Mutations: the link keeps an href; the reading is dropped; the link's
+    // own language is dropped.
+    @Test
+    fun `a followed link to a word reports the word and its reading, and navigates nowhere`() {
+        val html = followed(
+            """[{"type":"structured-content","content":
+               {"tag":"a","lang":"ja",
+                "href":"?query=%E7%99%BD%E3%81%91%E3%82%8B&wildcards=off&primary_reading=%E3%81%97%E3%82%89%E3%81%91%E3%82%8B",
+                "content":[{"tag":"ruby","content":["白",{"tag":"rt","content":"しら"}]},"ける"]}}]"""
+        )
+        val act = DefAction.reference(0, "白ける", "しらける")
+        assertTrue(html, html.contains("<a class=\"gloss-link\" role=\"link\" data-act=\"$act\" lang=\"ja\">"))
+        assertFalse(html, html.contains("href"))
+        assertTrue("the link's text is drawn as it was", html.contains("<rt class=\"gloss-sc-rt\">しら</rt>"))
+        assertEquals(DefAction.Reference("白ける", "しらける"), DefAction.referenceOf(act))
+    }
+
+    // Mutation: every link of a row is numbered 0, so two links to one word
+    // are one target.
+    @Test
+    fun `followed links are numbered over everything one counter is handed to`() {
+        val refs = YomitanContentHtml.References()
+        val first = followed(
+            """[{"type":"structured-content","content":[${link("?query=%E7%8C%AB")}," and ",${link("?query=%E7%8C%AB")}]}]""",
+            refs,
+        )
+        val second = followed("""[{"type":"structured-content","content":${link("?query=%E7%8A%AC", "犬")}}]""", refs)
+        assertTrue(first, first.contains("data-act=\"${DefAction.reference(0, "猫", null)}\""))
+        assertTrue(first, first.contains("data-act=\"${DefAction.reference(1, "猫", null)}\""))
+        assertTrue(second, second.contains("data-act=\"${DefAction.reference(2, "犬", null)}\""))
+    }
+
+    @Test
+    fun `a followed link's term is read as a query string is`() {
+        val spaced = followed("""[{"type":"structured-content","content":${link("?wildcards=off&query=ice+cream%21")}}]""")
+        assertTrue(spaced, spaced.contains("data-act=\"${DefAction.reference(0, "ice cream!", null)}\""))
+        assertEquals(DefAction.Reference("ice cream!", null), YomitanContentHtml.referenceOf("?query=ice+cream%21"))
+        assertEquals(DefAction.Reference("猫", "ねこ"), YomitanContentHtml.referenceOf("?primary_reading=%E3%81%AD%E3%81%93&query=%E7%8C%AB"))
+    }
+
+    // Mutation: any internal href becomes a link, whatever it names.
+    @Test
+    fun `an internal link that names no word stays its text, followed or not`() {
+        for (href in listOf("?query=", "?query=%20", "?query=%ZZ", "?wildcards=off", "?", "#top", "javascript:alert(1)", "")) {
+            assertNull(href, YomitanContentHtml.referenceOf(href))
+            val html = followed("""[{"type":"structured-content","content":${link(href)}}]""")
+            assertTrue(href, html.contains("猫"))
+            assertFalse(href, html.contains("gloss-link") || html.contains("data-act"))
+        }
+    }
+
+    @Test
+    fun `a link out of the app is the same anchor whether links to words are followed or not`() {
+        val json = """[{"type":"structured-content","content":${link("https://example.com/x", "source")}}]"""
+        assertEquals(render(json), followed(json))
+    }
+
     @Test
     fun `javascript hrefs render text only`() {
         val html = render(

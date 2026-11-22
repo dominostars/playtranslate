@@ -168,7 +168,32 @@ class WordDetailBinder(
         val sentencePending: com.playtranslate.model.PendingTranslation?,
         val target: CardTarget,
         val notes: String,
+        /** Whether the card may take the game's audio of the page's capture
+         *  moment, where the host has one. False for a word met in a
+         *  definition's text ([DefinitionWordTaps]): it was never heard in
+         *  the game. */
+        val gameAudio: Boolean = true,
     )
+
+    /**
+     * A tap the Definitions block reports. Its one tap target is a
+     * dictionary's link to another word ([DefAction.reference]), which
+     * opens that word's page as a Words or Other matches cell opens its
+     * own, on this page's sentence. The linked word was not found in the
+     * sentence, so it has no surface there. A link out of the app opens
+     * itself and never comes here.
+     */
+    @androidx.annotation.VisibleForTesting
+    internal fun onDefinitionsAction(action: String) {
+        val reference = DefAction.referenceOf(action) ?: return
+        if (!ui.isAlive) return
+        ui.openWordDetail(
+            reference.term, reference.reading,
+            surface = null,
+            lookupForm = reference.term,
+            lookupReading = reference.reading,
+        )
+    }
 
     interface Ui {
         /** The host view tree is still live (the fragment's isAdded / the
@@ -203,6 +228,25 @@ class WordDetailBinder(
             lookupForm: String,
             lookupReading: String?,
         )
+
+        /** The window a lens over this page's definitions is shown in, for
+         *  a word tapped in their text ([DefinitionWordTaps]). Null, the
+         *  default, for a host with none to give: its definitions take no
+         *  word taps. */
+        fun wordLens(): WordLensHost? = null
+
+        /** Open the page of a word met in this page's definitions, tapped
+         *  in their text or linked from the lens that tap opened: a
+         *  dictionary word, on no sentence and with no screenshot or
+         *  capture moment, whatever this page has. Otherwise as
+         *  [openWordDetail]. */
+        fun openDictionaryWord(
+            word: String,
+            reading: String?,
+            surface: String?,
+            lookupForm: String,
+            lookupReading: String?,
+        ) {}
 
         /** Open the editable word review for [args]. The host owns the
          *  AnkiDroid-permission gate (rationale + request on an Activity;
@@ -415,6 +459,9 @@ class WordDetailBinder(
         /** A sense's index across the lookup's entries (the order
          *  [DefinitionResolver.translateExamples] answers in) to its row. */
         val rowOfSense: Map<Int, Int>,
+        /** The lens for a word tapped in the block's text; null where the
+         *  host gives it no window ([Ui.wordLens]). */
+        val taps: DefinitionWordTaps?,
     )
 
     /** The Words and Other matches sections' lists, each one definitions
@@ -442,8 +489,14 @@ class WordDetailBinder(
         explain = null
     }
 
-    /** Lets the Definitions card's page go. */
+    /** The lens for a word tapped in the Definitions card's text; null
+     *  before the card is built and where the host gives it no window. */
+    @androidx.annotation.VisibleForTesting
+    internal fun wordTapsForTest(): DefinitionWordTaps? = definitions?.taps
+
+    /** Lets the Definitions card's page go, the lens over it first. */
     private fun releaseDefinitions() {
+        definitions?.taps?.release()
         definitions?.document?.release()
         definitions = null
     }
@@ -982,7 +1035,9 @@ class WordDetailBinder(
 
     private fun handleOneTapWordResult(
         result: AnkiSendResult,
-        pill: PillAnkiButton,
+        /** The button that shows the send running; null for a send with
+         *  none (a lens row's, whose lens went with the press). */
+        pill: PillAnkiButton?,
         mode: CardMode,
         fallback: WordAnkiArgs,
     ) {
@@ -990,7 +1045,7 @@ class WordDetailBinder(
             is AnkiSendResult.Success -> {
                 val msgRes = result.shortfallRes() ?: ankiAddedSuccessRes(mode)
                 Toast.makeText(ctx, msgRes, Toast.LENGTH_SHORT).show()
-                pill.setLoading(false)
+                pill?.setLoading(false)
             }
             is AnkiSendResult.Failed -> {
                 ui.present(
@@ -1003,17 +1058,128 @@ class WordDetailBinder(
                             ctx.themeColor(R.attr.ptAccentOn),
                         ) {},
                 )
-                pill.setLoading(false)
+                pill?.setLoading(false)
             }
             is AnkiSendResult.NeedsMapping -> {
                 // Dispatcher already toasted; the host decides how mapping
                 // continues (dialog, or the editable review fallback).
                 ui.openFieldMapping(result, mode, fallback)
-                pill.setLoading(false)
+                pill?.setLoading(false)
             }
             // Unreachable: one-tap passes no oversizePrompt.
-            is AnkiSendResult.Declined -> pill.setLoading(false)
+            is AnkiSendResult.Declined -> pill?.setLoading(false)
         }
+    }
+
+    // ── A word tapped in the Definitions card's text ────────────────────
+
+    /**
+     * The actions of the lens a tap on a word in the Definitions card's
+     * text opens ([DefinitionWordTaps]). Its word is a dictionary word, met
+     * in a definition and not in the page's sentence: a row opens that
+     * word's page on no sentence ([Ui.openDictionaryWord]), as does a link
+     * in the row's own definitions; its Anki button opens the editable
+     * review of a card with no sentence, screenshot or game audio, and held
+     * sends that card at once. The lens goes with each: what they open
+     * belongs to the page's window, which the lens stands over.
+     */
+    private fun wireDictionaryWordLens(lens: MagnifierLens, resolved: SourceWordLookup.ResolvedAt) {
+        val secondaries = resolved.secondaries()
+        fun unitOf(secondary: Int?): SourceWordLookup.Resolved? =
+            if (secondary == null) resolved.word else secondaries.getOrNull(secondary)
+        fun open(word: String, reading: String?, surface: String?, lookupForm: String, lookupReading: String?) {
+            lens.dismiss()
+            if (ui.isAlive) ui.openDictionaryWord(word, reading, surface, lookupForm, lookupReading)
+        }
+        fun open(unit: SourceWordLookup.Resolved) =
+            open(unit.word, unit.reading?.takeIf { it.isNotEmpty() }, unit.surface, unit.lookupForm, unit.lookupReading)
+        lens.onOpenTap = { open(resolved.word) }
+        lens.onSecondaryOpenTap = { i -> secondaries.getOrNull(i)?.let(::open) }
+        lens.onReferenceTap = { _, term, reading -> open(term, reading, null, term, reading) }
+        lens.onAnkiTap = { secondary ->
+            unitOf(secondary)?.let { unit ->
+                lens.dismiss()
+                if (ui.isAlive) reviewDictionaryWord(unit)
+            }
+        }
+        lens.onAnkiLongPress = { secondary ->
+            unitOf(secondary)?.let { unit ->
+                lens.dismiss()
+                if (ui.isAlive) oneTapDictionaryWord(unit)
+            }
+        }
+    }
+
+    private fun dictionaryWordFields(unit: SourceWordLookup.Resolved): LensCardFields =
+        lensCardFields(ctx, unit.word, unit.reading, unit.surface, unit.lookupForm, unit.lookupReading, unit.entry)
+
+    /** The editable review of a dictionary word: its own fields, as every
+     *  lens row's card has them ([lensCardFields]), on no sentence. */
+    private fun dictionaryWordAnkiArgs(unit: SourceWordLookup.Resolved, fields: LensCardFields): WordAnkiArgs =
+        wordAnkiArgs(
+            SentenceContext(null, null, null),
+            target = fields.target ?: pageCardTarget(unit.surface, unit.lookupForm, unit.lookupReading),
+            word = unit.word,
+            reading = fields.reading,
+            pos = fields.pos,
+            definition = fields.definition,
+            screenshotPath = null,
+            freqScore = fields.freqScore,
+            isCommon = unit.entry?.isCommon == true,
+            sourceLangId = Prefs(ctx.applicationContext).sourceLangId,
+        ).copy(gameAudio = false)
+
+    private fun reviewDictionaryWord(unit: SourceWordLookup.Resolved) {
+        if (!AnkiManager(ctx).isAnkiDroidInstalled()) {
+            ui.showAnkiNotInstalled()
+            return
+        }
+        ui.openAnkiReview(dictionaryWordAnkiArgs(unit, dictionaryWordFields(unit)))
+    }
+
+    /** The held Anki button of a dictionary word's row: its word card at
+     *  once, by the page's own one-tap rules ([oneTapWordFromDetail]: the
+     *  editable review where the permission or the deck is missing). */
+    private fun oneTapDictionaryWord(unit: SourceWordLookup.Resolved) {
+        val ankiManager = AnkiManager(ctx)
+        if (!ankiManager.isAnkiDroidInstalled()) {
+            ui.showAnkiNotInstalled()
+            return
+        }
+        val fields = dictionaryWordFields(unit)
+        val fallback = dictionaryWordAnkiArgs(unit, fields)
+        val prefs = Prefs(ctx.applicationContext)
+        if (!ankiManager.hasPermission() || prefs.ankiDeckId < 0L) {
+            ui.openAnkiReview(fallback)
+            return
+        }
+        val appCtx = ctx.applicationContext
+        val sourceLangId = prefs.sourceLangId
+        // The lens is gone: this is the send's only sign until it lands.
+        Toast.makeText(ctx, R.string.anki_adding_in_progress, Toast.LENGTH_SHORT).show()
+        ui.launchOneTap(
+            send = {
+                appCtx.oneTapSend(
+                    word = unit.word,
+                    reading = fields.reading,
+                    pos = fields.pos,
+                    entry = unit.entry,
+                    entries = unit.entries,
+                    fallbackDefinition = fields.definition,
+                    freqScore = fields.freqScore,
+                    pitch = fields.pitch,
+                    frequencies = fields.frequencies,
+                    // No sentence: a word card, whatever mode is preferred.
+                    sentenceOriginal = null,
+                    sentenceTranslation = null,
+                    wordsPayload = null,
+                    screenshotPath = null,
+                    sourceLangId = sourceLangId,
+                    target = fields.target,
+                )
+            },
+            presentResult = { (result, mode) -> handleOneTapWordResult(result, null, mode, fallback) },
+        )
     }
 
     /** Builds the page's primary content into [content] and returns the
@@ -1111,9 +1277,12 @@ class WordDetailBinder(
         // text, never machine-translated); then a row per sense.
         val rows = mutableListOf<DefRow>()
         val rowOfSense = HashMap<Int, Int>()
+        // A word tapped in the card's text opens its lens, where the host
+        // has a window for one: the rows then report taps on their text.
+        val taps = ui.wordLens()?.let { DefinitionWordTaps(ctx, scope, it, ::wireDictionaryWordLens) }
         val importedGroups = primary.importedSenses
         if (importedGroups.any { it.senses.isNotEmpty() }) {
-            rows += DefRow.Imported(IMPORTED_ROW_ID, importedGroups)
+            rows += DefRow.Imported(IMPORTED_ROW_ID, importedGroups, links = true, words = taps != null)
         }
         val italic = targetSupportsItalics(ctx)
         fun senseRow(
@@ -1133,6 +1302,7 @@ class WordDetailBinder(
             examples = examples.mapIndexed { i, ex ->
                 DefRow.Example(ex.text, translations?.getOrNull(i).orEmpty(), italic)
             },
+            words = taps != null,
         )
 
         if (isTargetDriven) {
@@ -1186,12 +1356,14 @@ class WordDetailBinder(
             val document = DefinitionDocument(
                 ctx, definitionsCard, scope,
                 theme = { cardDocTheme(ctx, DEFINITIONS_BASE_PX) },
-                // Nothing in the block is a tap target; its links open
-                // themselves.
-                onAction = { _, _ -> },
+                onAction = { _, action -> onDefinitionsAction(action) },
+                onTextTap = taps?.let { t -> { _, tap -> t.onTextTap(tap) } },
             )
+            taps?.attach(document)
             document.setRows(rows, language)
-            definitions = DefinitionsBlock(document, rows, language, rowOfSense)
+            definitions = DefinitionsBlock(document, rows, language, rowOfSense, taps)
+        } else {
+            taps?.release()
         }
 
         // ── In this sentence (the user's AI model, about the page's sentence) ──

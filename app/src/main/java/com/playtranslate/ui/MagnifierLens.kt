@@ -335,6 +335,13 @@ class MagnifierLens(
      *  secondaries list — the containing phrase on the space-delimited
      *  surfaces, a member word on JA. Never fires outside split mode. */
     var onSecondaryOpenTap: ((Int) -> Unit)? = null
+    /** Fires when a link in a row's definitions to another word is tapped
+     *  or activated by the controller ([DefAction.reference]): the row
+     *  (null for the tapped unit's, else the secondary's index), the word
+     *  the link names and, where it names one, its reading. The owner opens
+     *  that word as it opens the row's own. Only a row that opens draws
+     *  such links, so an owner with no open for a row never hears of one. */
+    var onReferenceTap: ((secondary: Int?, term: String, reading: String?) -> Unit)? = null
     /** Fires when the split body's "Load more" row ([setSplitDefinitions]
      *  with a [LensLoadMore]) is tapped or activated by the controller,
      *  never while the row is loading. The host resolves the held-back
@@ -1037,6 +1044,7 @@ class MagnifierLens(
             density = density,
             onOpenTap = { onOpenTap?.invoke() },
             onSecondaryOpenTap = { i -> onSecondaryOpenTap?.invoke(i) },
+            onReferenceTap = { i, term, reading -> onReferenceTap?.invoke(i, term, reading) },
             onLoadMoreTap = { onLoadMoreTap?.invoke() },
             onAnkiTap = { i -> onAnkiTap?.invoke(i) },
             onAnkiLongPress = { i -> onAnkiLongPress?.invoke(i) },
@@ -1255,6 +1263,9 @@ class MagnifierLens(
         private val density: Float,
         private val onOpenTap: () -> Unit,
         private val onSecondaryOpenTap: (Int) -> Unit,
+        /** A link to another word in a row's definitions
+         *  ([MagnifierLens.onReferenceTap]). */
+        private val onReferenceTap: (secondary: Int?, term: String, reading: String?) -> Unit,
         private val onLoadMoreTap: () -> Unit,
         /** A row's Anki button, tapped and held: null for the tapped unit's
          *  row, else the secondary's index. */
@@ -1600,6 +1611,8 @@ class MagnifierLens(
                 override fun onOpen(row: LensItem) {
                     if (row.secondary == null) fireOpenTap() else fireSecondaryOpenTap(row.secondary)
                 }
+                override fun onReference(row: LensItem, term: String, reading: String?) =
+                    fireReferenceTap(row.secondary, term, reading)
                 override fun onTrailing(row: LensItem, shown: DefRow.Trailing) = onAnkiTap(row.secondary)
                 override fun onTrailingHold(row: LensItem) = onAnkiLongPress(row.secondary)
                 override suspend fun speak(row: LensItem) = onSpeak(row.secondary)
@@ -2021,6 +2034,15 @@ class MagnifierLens(
             if (now - lastOpenTapMs < 300L) return
             lastOpenTapMs = now
             onSecondaryOpenTap(index)
+        }
+
+        /** A link to another word: an open like the rows' own, and
+         *  debounced with them (one gesture, one action). */
+        private fun fireReferenceTap(secondary: Int?, term: String, reading: String?) {
+            val now = SystemClock.uptimeMillis()
+            if (now - lastOpenTapMs < 300L) return
+            lastOpenTapMs = now
+            onReferenceTap(secondary, term, reading)
         }
 
         /** The "Load more" row's click: inert while the host resolves the
@@ -2775,10 +2797,13 @@ class MagnifierLens(
 
         /** The cursor walks the list's targets as a page's does ([DocNav]):
          *  up and down between rows, left and right among a row's own
-         *  targets (the row, its Speak, its Anki). A row reached by a
-         *  vertical move reads top-aligned: its top in the document IS its
-         *  resting scroll offset. The pill, there only while no row shows,
-         *  is a lone target. */
+         *  targets (the row, its Speak, its Anki, its dictionaries' titles
+         *  and the links in its definitions). A row reached by a vertical
+         *  move reads top-aligned: its top in the document IS its resting
+         *  scroll offset. A target of the same row can stand below what
+         *  shows of a long row, or above it: the body scrolls just far
+         *  enough to show it. The pill, there only while no row shows, is a
+         *  lone target. */
         private fun moveNav(dir: SheetNavGeometry.Dir) {
             if (pillCursor && pillView.isShown) return
             val cur = docTarget(docCursor)
@@ -2795,6 +2820,14 @@ class MagnifierLens(
             val next = DocNav.next(list.targets, cur, docDir, navRtl) ?: return
             if (next.rowId != cur.rowId) {
                 list.rowTop(next.rowId)?.let { definitionsScroll.smoothScrollTo(0, it) }
+            } else {
+                val span = list.revealSpan(next)
+                val top = definitionsScroll.scrollY
+                if (span.first < top) {
+                    definitionsScroll.smoothScrollTo(0, span.first)
+                } else if (span.last > top + definitionsScroll.height) {
+                    definitionsScroll.smoothScrollTo(0, span.last - definitionsScroll.height)
+                }
             }
             setCursor(pill = false, doc = next.rowId to next.act)
         }

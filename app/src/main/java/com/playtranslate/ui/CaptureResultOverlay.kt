@@ -1046,7 +1046,7 @@ class CaptureResultOverlay(
             overlayHost = if (wordLensInActivity) null else overlayHost,
             scope = scope,
             ttsAlertTarget = alertTarget,
-            binder = b,
+            text = BoundSourceText(b),
             screenSize = { Point(screenW, screenH) },
             // The open works entry-or-not — it opens the sentence view — so
             // every section opens.

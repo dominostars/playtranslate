@@ -90,6 +90,13 @@ internal class WordRowList<T>(
         /** The row itself was tapped: open the word. */
         fun onOpen(row: T)
 
+        /** A link in [row]'s definitions to another word was tapped
+         *  ([DefAction.reference]): open [term], read as [reading] where the
+         *  link names one, as [onOpen] opens the row's own word. Only a list
+         *  whose rows' links are live reports it (`full`); the default is
+         *  for the lists whose rows have none. */
+        fun onReference(row: T, term: String, reading: String?) {}
+
         /** The second button was tapped while it showed [shown], which is
          *  what the user acted on. */
         fun onTrailing(row: T, shown: DefRow.Trailing)
@@ -316,7 +323,14 @@ internal class WordRowList<T>(
                 publish()
             }
             DefAction.EXPLAIN_RETRY -> explanations.retry(row.id)
-            else -> toggleDictionary(row, action)
+            else -> {
+                val reference = DefAction.referenceOf(action)
+                if (reference != null) {
+                    host.onReference(state, reference.term, reference.reading)
+                } else {
+                    toggleDictionary(row, action)
+                }
+            }
         }
     }
 
@@ -493,6 +507,10 @@ internal class WordRowList<T>(
 
     /** The top of row [id] in [view]'s own px; null when it is gone. */
     fun rowTop(id: String): Int? = document.rowTopPx(id)
+
+    /** What a cursor on [target] needs to show of [view], top to bottom in
+     *  its own px ([DefinitionDocument.revealSpanPx]). */
+    fun revealSpan(target: DocTarget): IntRange = document.revealSpanPx(target)
 
     /** The id of the word at [index] in the list as last set. */
     fun idAt(index: Int): String? = ids.getOrNull(index)

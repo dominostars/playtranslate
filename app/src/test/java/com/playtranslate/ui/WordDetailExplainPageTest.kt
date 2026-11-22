@@ -127,14 +127,23 @@ class WordDetailExplainPageTest {
      *  word could also be "leaden" (the page's Other matches), and a text
      *  splits on spaces, "leaded" read as "lead". */
     private class FakeEngine : SourceLanguageEngine {
+        /** While set, every lookup waits for it: a test's way of keeping a
+         *  tapped word's lookup out until it says so. */
+        @Volatile var hold: CompletableDeferred<Unit>? = null
+        /** The lookups of "leaden" asked for so far. */
+        val leadenLookups = AtomicInteger(0)
         override val profile = SourceLanguageProfiles[SourceLangId.EN]
         override suspend fun preload(): PreloadResult = PreloadResult.Success
         override suspend fun tokenize(text: String): List<TokenSpan> =
             text.split(' ').filter { it.isNotBlank() }.map { TokenSpan(it, if (it == "leaded") "lead" else it) }
-        override suspend fun lookup(word: String, reading: String?): DictionaryResponse? = when (word) {
-            "lead" -> DictionaryResponse(listOf(LEAD))
-            "leaden" -> DictionaryResponse(listOf(LEADEN))
-            else -> null
+        override suspend fun lookup(word: String, reading: String?): DictionaryResponse? {
+            if (word == "leaden") leadenLookups.incrementAndGet()
+            hold?.await()
+            return when (word) {
+                "lead" -> DictionaryResponse(listOf(LEAD))
+                "leaden" -> DictionaryResponse(listOf(LEADEN))
+                else -> null
+            }
         }
         override suspend fun alternativesOf(span: TokenSpan, primaryIds: Set<Long>): List<TokenSpan> =
             if (span.lookupForm == "leaden") emptyList() else listOf(TokenSpan(span.surface, "leaden"))
@@ -149,7 +158,20 @@ class WordDetailExplainPageTest {
         var llmAlerts = 0
         override val isAlive: Boolean get() = alive
         override fun sentenceContext(): SentenceContext? = hostContext
-        override fun openWordDetail(word: String, reading: String?, surface: String?, lookupForm: String, lookupReading: String?) {}
+        /** The window the page's definitions may show a lens in; null, as
+         *  for a host with none, unless a test gives one. */
+        var lensHost: WordLensHost? = null
+        override fun wordLens(): WordLensHost? = lensHost
+        /** Each dictionary word's page the binder asked for, as [opened]. */
+        val dictionaryWords = mutableListOf<List<String?>>()
+        override fun openDictionaryWord(word: String, reading: String?, surface: String?, lookupForm: String, lookupReading: String?) {
+            dictionaryWords += listOf(word, reading, surface, lookupForm, lookupReading)
+        }
+        /** Each page the binder asked for: word, reading, surface, lookup form, lookup reading. */
+        val opened = mutableListOf<List<String?>>()
+        override fun openWordDetail(word: String, reading: String?, surface: String?, lookupForm: String, lookupReading: String?) {
+            opened += listOf(word, reading, surface, lookupForm, lookupReading)
+        }
         override fun openAnkiReview(args: WordDetailBinder.WordAnkiArgs) { reviews += args }
         override fun showAnkiNotInstalled() {
             error("AnkiDroid counts as installed here")
@@ -171,6 +193,7 @@ class WordDetailExplainPageTest {
     private lateinit var root: View
     private lateinit var binder: WordDetailBinder
     private val ui = RecordingUi()
+    private val engine = FakeEngine()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     /** What the model answers the question in flight, completed by the test. */
@@ -191,6 +214,9 @@ class WordDetailExplainPageTest {
     )
 
     private val sentence = "The window had leaded glass."
+
+    /** A line of definition text the tests tap "leaden" in, at 2 to 7. */
+    private val glossLine = "a leaden metal"
     private val otherSentence = "The pipes were made of lead."
 
     /** [sentence] as the user corrected it on the results screen. */
@@ -213,7 +239,7 @@ class WordDetailExplainPageTest {
         sp().edit().clear().commit()
         Prefs(app).sourceLang = "en"
         Prefs(app).setTarget("en")
-        engines[SourceLangId.EN] = FakeEngine()
+        engines[SourceLangId.EN] = engine
         shadowOf(app.packageManager).installPackage(PackageInfo().apply { packageName = "com.ichi2.anki" })
         controller = Robolectric.buildActivity(Host::class.java).setup()
         activity = controller.get()
@@ -221,6 +247,7 @@ class WordDetailExplainPageTest {
 
     @After fun tearDown() {
         ui.alive = false
+        engine.hold?.complete(Unit)
         if (::binder.isInitialized) binder.release()
         scope.cancel()
         controller.pause().stop().destroy()
@@ -258,11 +285,264 @@ class WordDetailExplainPageTest {
 
     private fun giveLlm() = TranslationBackendRegistry.addOnlineBackend(llm)
 
+    // Mutations: the link opens nothing; it opens with the page's own
+    // surface; a page that is gone opens one; another action opens one.
+    @Test fun `a dictionary's link in the page's definitions opens the linked word's page, as a Words cell opens its own`() {
+        open(launch)
+
+        binder.onDefinitionsAction(DefAction.reference(0, "leaden", "ˈlɛdən"))
+        binder.onDefinitionsAction(DefAction.reference(1, "plumb", null))
+
+        assertEquals(
+            listOf(
+                listOf("leaden", "ˈlɛdən", null, "leaden", "ˈlɛdən"),
+                listOf("plumb", null, null, "plumb", null),
+            ),
+            ui.opened,
+        )
+        // No other action of a row is the block's, and a page that is gone
+        // opens nothing.
+        for (other in listOf(DefAction.OPEN, DefAction.dictionary(0), DefAction.removeItem(0), "ref:0:")) {
+            binder.onDefinitionsAction(other)
+        }
+        ui.alive = false
+        binder.onDefinitionsAction(DefAction.reference(0, "leaden", null))
+        assertEquals(2, ui.opened.size)
+    }
+
     private fun answer(text: String) {
         val r = reply
         reply = CompletableDeferred()
         r.complete(text)
         awaitUntil("the answer is drawn") { shownTexts().contains(text.trim()) }
+    }
+
+    // ── A word tapped in the Definitions card's text ────────────────────
+
+    /** The Definitions card's page, the first definitions document of the
+     *  content, loaded so that what it is sent is run. */
+    private fun definitionsPage(): android.webkit.WebView {
+        val web = all(content).filterIsInstance<DefinitionDocumentView>().first().pageView as android.webkit.WebView
+        shadowOf(web).webViewClient.onPageFinished(web, "")
+        idle()
+        return web
+    }
+
+    private fun android.webkit.WebView.lastScript(): String = shadowOf(this).lastEvaluatedJavascript.orEmpty()
+
+    /** The page's bridge call [name] with [args], as the page makes it. */
+    private fun android.webkit.WebView.page(name: String, vararg args: Any) {
+        val bridge = shadowOf(this).getJavascriptInterface("PTBridge")
+        val types = args.map { if (it is Int) Int::class.java else String::class.java }.toTypedArray()
+        bridge.javaClass.getMethod(name, *types).invoke(bridge, *args)
+        idle()
+    }
+
+    /** The page reports a tap on the gloss of the Definitions card's one
+     *  row, on [word] of [line], and answers the mark the page's lens asks
+     *  for: the lens for that word comes up. */
+    private fun tapWord(web: android.webkit.WebView, tapId: Int, line: String, word: String): MagnifierLens {
+        val at = line.indexOf(word)
+        web.page("onText", 1, "k0", tapId, "", "", line, at + 1)
+        awaitUntil("the page is asked where the word is") {
+            web.lastScript() == "ptMark($tapId,$at,${at + word.length},false)"
+        }
+        web.page("onMark", tapId, 10, 8, 60, 16)
+        val taps = binder.wordTapsForTest()!!
+        awaitUntil("the lens for $word is up") { taps.isShowing }
+        assertEquals("the word is marked as the lens comes up", "ptMark($tapId,$at,${at + word.length},true)", web.lastScript())
+        val lens = taps.lensForTest().javaClass.getDeclaredField("lens").apply { isAccessible = true }
+            .get(taps.lensForTest()) as MagnifierLens
+        idle()
+        return lens
+    }
+
+    private fun MagnifierLens.rowOf(word: String): DefRow.Word =
+        shownRowsForTest().filterIsInstance<DefRow.Word>().first { it.data.word == word }
+
+    private fun lensHost() = WordLensHost(
+        wm = com.playtranslate.overlay.OwnWindows.managerOf(activity),
+        displayId = android.view.Display.DEFAULT_DISPLAY,
+        overlayHost = null,
+        ttsAlertTarget = TtsAlertTarget.InActivity(activity),
+        screenSize = {
+            val dm = activity.resources.displayMetrics
+            android.graphics.Point(dm.widthPixels, dm.heightPixels)
+        },
+    )
+
+    // Mutations: the rows report no taps on a host with a window; the
+    // tapped word's row offers its explanation in this text; the row opens
+    // the page's own way, on the page's sentence; the lens outlives the
+    // open; its mark does.
+    @Test fun `a word tapped in the definitions opens its lens as a dictionary word's, and its row opens that word on no sentence`() {
+        ui.lensHost = lensHost()
+        giveLlm()
+        open(launch)
+        val web = definitionsPage()
+        web.page("onLayout", 1, 400, "[]", "[]", "[]")
+
+        val lens = tapWord(web, tapId = 5, line = "a leaden metal", word = "leaden")
+
+        val row = lens.rowOf("leaden")
+        assertEquals("a dictionary word is in no sentence to ask about", null, row.explain)
+        assertEquals(DefRow.Trailing.ANKI, row.trailing)
+        org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(400))
+        lens.tapRowForTest(row.id)
+        idle()
+
+        assertEquals(listOf(listOf<String?>("leaden", null, "leaden", "leaden", null)), ui.dictionaryWords)
+        assertEquals("the page's own way of opening a word was not taken", emptyList<List<String?>>(), ui.opened)
+        assertFalse("the lens went with the open", binder.wordTapsForTest()!!.isShowing)
+        assertEquals("ptUnmark()", web.lastScript())
+    }
+
+    // Mutations: the card takes the page's sentence, its screenshot or its
+    // game audio; the review is opened under the page's own word.
+    @Test fun `the Anki button of a word tapped in the definitions opens a card with no sentence, screenshot or game audio`() {
+        ui.lensHost = lensHost()
+        open(launch.copy(screenshotPath = "/shot.png"))
+        val web = definitionsPage()
+        web.page("onLayout", 1, 400, "[]", "[]", "[]")
+
+        val lens = tapWord(web, tapId = 7, line = "a leaden metal", word = "leaden")
+        lens.tapRowForTest(lens.rowOf("leaden").id, DefAction.TRAILING)
+        idle()
+
+        val review = ui.reviews.single()
+        assertEquals("leaden", review.word)
+        assertTrue(review.definition, review.definition.contains("dull and heavy"))
+        assertEquals(null, review.sentenceOriginal)
+        assertEquals(null, review.sentenceTranslation)
+        assertEquals(null, review.screenshotPath)
+        assertEquals("", review.notes)
+        assertFalse(review.gameAudio)
+        assertFalse("the lens went with the button", binder.wordTapsForTest()!!.isShowing)
+    }
+
+    // Mutations: text that is not the source language's opens a lens; a tap
+    // between words does; a word whose line left the page does.
+    @Test fun `a tap on text that is no word of the language, or whose line is gone, opens nothing`() {
+        ui.lensHost = lensHost()
+        open(launch)
+        val web = definitionsPage()
+        web.page("onLayout", 1, 400, "[]", "[]", "[]")
+        val taps = binder.wordTapsForTest()!!
+
+        // Text its markup says is another language's.
+        web.page("onText", 1, "k0", 3, "es", "", "un metal pesado", 3)
+        // The source language's own text, but the tap fell between words.
+        web.page("onText", 1, "k0", 4, "en", "", "a leaden metal", 1)
+        repeat(20) { idle(); Thread.sleep(5) }
+        assertFalse(web.lastScript(), web.lastScript().startsWith("ptMark("))
+
+        // A word of the language, whose line has left the page by the time
+        // the page is asked where it is.
+        web.page("onText", 1, "k0", 5, "en", "", "a leaden metal", 3)
+        awaitUntil("the page is asked where the word is") { web.lastScript() == "ptMark(5,2,8,false)" }
+        web.page("onMark", 5, 0, 0, 0, 0)
+        repeat(20) { idle(); Thread.sleep(5) }
+        assertFalse(taps.isShowing)
+        assertEquals("nothing was painted", "ptMark(5,2,8,false)", web.lastScript())
+    }
+
+    /** The page reports a tap on "leaden" of [glossLine] as tap [tapId] and
+     *  answers the mark asked for it with a box [top] down the page: the
+     *  word's lookup is out. */
+    private fun tapLeaden(web: android.webkit.WebView, tapId: Int, top: Int = 8) {
+        web.page("onText", 1, "k0", tapId, "", "", glossLine, 3)
+        awaitUntil("the page is asked where tap $tapId's word is") { web.lastScript() == "ptMark($tapId,2,8,false)" }
+        web.page("onMark", tapId, 10, top, 60, 16)
+    }
+
+    /** Lets the lookups a test held end, and waits out any of them that
+     *  has nothing to show. */
+    private fun endLookups(taps: DefinitionWordTaps) {
+        engine.hold!!.complete(Unit)
+        engine.hold = null
+        awaitUntil("a lens is up") { taps.isShowing }
+        repeat(20) { idle(); Thread.sleep(5) }
+    }
+
+    private fun wordPageWithLens(): android.webkit.WebView {
+        ui.lensHost = lensHost()
+        open(launch)
+        val web = definitionsPage()
+        web.page("onLayout", 1, 400, "[]", "[]", "[]")
+        return web
+    }
+
+    // Mutations: a lookup presents although a later tap was made (the lens
+    // presenter's latest-tap rule dropped); the tap is forgotten whenever a
+    // lens is dismissed, a replaced one too.
+    @Test fun `a word tapped twice before its lens is up gets one lens, marked and standing over its text`() {
+        val web = wordPageWithLens()
+        val taps = binder.wordTapsForTest()!!
+        engine.hold = CompletableDeferred()
+
+        tapLeaden(web, tapId = 5)
+        tapLeaden(web, tapId = 6)
+        assertFalse("both lookups are out", taps.isShowing)
+        endLookups(taps)
+
+        assertTrue(taps.isShowing)
+        assertEquals("the word is marked under the lens, and nothing took the mark off", "ptMark(6,2,8,true)", web.lastScript())
+        assertEquals("the lens still has its text, which its Load more is checked against", glossLine, taps.displayed())
+        assertTrue("and its word's place", taps.wordRect(2..7, android.graphics.Rect()))
+    }
+
+    // Mutations: a new tap leaves the lens that is up; the new tap's lens
+    // comes up without its mark.
+    @Test fun `a tap the page reports while a lens is up takes that lens down, and the next lens has its mark`() {
+        val web = wordPageWithLens()
+        val taps = binder.wordTapsForTest()!!
+        tapWord(web, tapId = 5, line = glossLine, word = "leaden")
+
+        // A tap that opens nothing: text its markup says is another language's.
+        web.page("onText", 1, "k0", 6, "es", "", "un metal pesado", 3)
+        assertFalse("the lens went with the tap", taps.isShowing)
+        assertEquals("ptUnmark()", web.lastScript())
+
+        tapWord(web, tapId = 7, line = glossLine, word = "leaden")
+        // A tap on a word, taken by the page before this lens covered it.
+        web.page("onText", 1, "k0", 8, "", "", glossLine, 3)
+        assertFalse("the earlier lens went with the tap", taps.isShowing)
+        awaitUntil("the page is asked where the word is") { web.lastScript() == "ptMark(8,2,8,false)" }
+        web.page("onMark", 8, 10, 8, 60, 16)
+        awaitUntil("the new tap's lens is up") { taps.isShowing }
+        repeat(20) { idle(); Thread.sleep(5) }
+
+        assertTrue(taps.isShowing)
+        assertEquals("ptMark(8,2,8,true)", web.lastScript())
+        assertEquals(glossLine, taps.displayed())
+    }
+
+    // Mutations: only the first answer to a mark is kept; a later answer
+    // starts the lookup again.
+    @Test fun `the page's later answer for a word still being looked up moves where its lens is placed`() {
+        val web = wordPageWithLens()
+        val taps = binder.wordTapsForTest()!!
+        val first = android.graphics.Rect()
+        val moved = android.graphics.Rect()
+        engine.hold = CompletableDeferred()
+        val before = engine.leadenLookups.get()
+
+        tapLeaden(web, tapId = 5, top = 8)
+        assertTrue(taps.wordRect(2..7, first))
+        awaitUntil("the word's lookup is out") { engine.leadenLookups.get() > before }
+        val out = engine.leadenLookups.get()
+        // The rows above the word grew: the page's layout report measures
+        // the mark again and answers with where the word is now.
+        web.page("onMark", 5, 10, 48, 60, 16)
+        assertTrue(taps.wordRect(2..7, moved))
+        repeat(20) { idle(); Thread.sleep(5) }
+        assertEquals("the answer starts no second lookup", out, engine.leadenLookups.get())
+        assertFalse("the answer alone puts up no lens", taps.isShowing)
+        endLookups(taps)
+
+        val down = (40 * activity.resources.displayMetrics.density).toInt()
+        assertEquals("the word's place is the page's latest answer", first.top + down, moved.top)
+        assertEquals("ptMark(5,2,8,true)", web.lastScript())
     }
 
     // ── The page's views, found by what they show ──────────────────────
@@ -629,6 +909,11 @@ class WordDetailExplainPageTest {
                 "getCtx" -> ctx
                 "getScope" -> scope
                 "getDisplayId" -> Display.DEFAULT_DISPLAY
+                // What the page's lens over its definitions is shown through.
+                "getWm" -> com.playtranslate.overlay.OwnWindows.manager(ctx)
+                "getOverlayHost" -> com.playtranslate.overlay.OverlayHost(
+                    ctx, android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                )
                 "getModalLayer" -> modal
                 "alert" -> OverlayAlert.Builder(ctx)
                 "invalidateNav" -> { cursor += args?.get(0) as View?; null }

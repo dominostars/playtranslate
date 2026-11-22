@@ -1,5 +1,6 @@
 package com.playtranslate.ui
 
+import android.graphics.Rect
 import android.app.Activity
 import android.content.ContextWrapper
 import android.content.res.Resources
@@ -21,6 +22,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -61,6 +63,10 @@ class DefinitionDocumentTest {
     private lateinit var doc: DefinitionDocument
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val actions = mutableListOf<Pair<String, String>>()
+    /** The taps on a row's text the host was told of, each with its row. */
+    private val texts = mutableListOf<Pair<String, DefinitionDocument.TextTap>>()
+    /** What the host was told of its marks: the tap, and the box or null. */
+    private val marks = mutableListOf<Pair<Int, DefinitionDocument.MarkBox?>>()
     /** The host's `onLayout` calls. */
     private var layouts = 0
 
@@ -80,7 +86,9 @@ class DefinitionDocumentTest {
             onLayout = { layouts++ },
             // Inline, so a step's sends have happened when it returns.
             buildOn = Dispatchers.Main.immediate,
+            onTextTap = { row, tap -> texts += row.id to tap },
         )
+        doc.onMark = { tapId, box -> marks += tapId to box }
     }
 
     @After fun tearDown() {
@@ -140,6 +148,86 @@ class DefinitionDocumentTest {
         val bridge = shadowOf(web).getJavascriptInterface("PTBridge")
         bridge.javaClass.getMethod("onAction", String::class.java, String::class.java).invoke(bridge, domId, act)
         idle()
+    }
+
+    /** The page reports a tap on a row's text. */
+    private fun text(gen: Int, domId: String, tapId: Int, lang: String, dictId: String, text: String, offset: Int) {
+        val bridge = shadowOf(web).getJavascriptInterface("PTBridge")
+        val s = String::class.java
+        val i = Int::class.java
+        bridge.javaClass.getMethod("onText", i, s, i, s, s, s, i)
+            .invoke(bridge, gen, domId, tapId, lang, dictId, text, offset)
+        idle()
+    }
+
+    /** The page answers a mark. */
+    private fun marked(tapId: Int, left: Int, top: Int, width: Int, height: Int) {
+        val bridge = shadowOf(web).getJavascriptInterface("PTBridge")
+        val i = Int::class.java
+        bridge.javaClass.getMethod("onMark", i, i, i, i, i).invoke(bridge, tapId, left, top, width, height)
+        idle()
+    }
+
+    private fun wordSense(id: String) = DefRow.Sense(
+        id, number = null, pos = "", gloss = "gloss of $id",
+        examples = listOf(DefRow.Example("例文です", "", italic = false)), words = true,
+    )
+
+    // Mutations: a tap from a row set since replaced is taken; a row is
+    // named by its element's id; a tap outside its own text is taken.
+    @Test fun `a tap on a row's text reaches the host with its row, and one of another row set or of no row does not`() {
+        doc.setRows(listOf(wordSense("s0"), wordSense("s1")), "ja")
+        pageReady()
+
+        text(1, "k1", 7, "ja", "jt", "例文です", 2)
+
+        val (row, tap) = texts.single()
+        assertEquals("s1", row)
+        assertEquals(listOf<Any>(7, "例文です", 2, "ja", "jt"), listOf(tap.id, tap.text, tap.offset, tap.lang, tap.dictId))
+        // Another row set's tap, a row the document does not hold, and an
+        // offset that is in no text.
+        text(0, "k1", 8, "ja", "", "例文です", 2)
+        text(1, "k9", 9, "ja", "", "例文です", 2)
+        text(1, "k1", 10, "", "", "abc", 3)
+        text(1, "k1", 11, "", "", "abc", -1)
+        assertEquals(1, texts.size)
+    }
+
+    // Mutations: the page is told to paint when only asked to measure; a
+    // mark's loss is told as a box; the clear is not sent.
+    @Test fun `the page is asked for a mark and to clear it, and its answer or the mark's loss reaches the host`() {
+        doc.setRows(listOf(wordSense("s0")), "ja")
+        pageReady()
+
+        doc.mark(7, 2, 4, draw = false)
+        assertEquals("ptMark(7,2,4,false)", sent())
+        doc.mark(7, 2, 4, draw = true)
+        assertEquals("ptMark(7,2,4,true)", sent())
+        marked(7, 10, 20, 30, 16)
+        marked(7, 0, 0, 0, 0)
+        doc.unmark()
+        assertEquals("ptUnmark()", sent())
+
+        assertEquals(listOf(7, 7), marks.map { it.first })
+        val box = marks[0].second!!
+        assertEquals(listOf(10, 20, 30, 16), listOf(box.left, box.top, box.width, box.height))
+        assertNull("a box of no width is the mark gone", marks[1].second)
+    }
+
+    // Mutations: the box is placed by the screen alone; one out of sight is
+    // placed all the same.
+    @Test fun `a mark is on screen where the page drew it, and nowhere once none of it shows`() {
+        doc.setRows(rows(2), "ja")
+        pageReady()
+        layout(1, 400)
+        idle()
+
+        val out = Rect()
+        assertTrue(doc.markRectOnScreen(DefinitionDocument.MarkBox(10, 20, 30, 16), out))
+        val at = IntArray(2).also { view.getLocationOnScreen(it) }
+        // A JVM test's density is 1: CSS px are px.
+        assertEquals(Rect(at[0] + 10, at[1] + 20, at[0] + 40, at[1] + 36), out)
+        assertFalse(doc.markRectOnScreen(DefinitionDocument.MarkBox(10, 100_000, 30, 16), out))
     }
 
     private fun killRenderer() {
@@ -328,6 +416,24 @@ class DefinitionDocumentTest {
         assertTrue(view.isFocusable)
         doc.setRows(listOf(DefRow.Word("u", data.copy(importedGroups = emptyList()), opens = false)), "ja")
         assertFalse(view.isFocusable)
+    }
+
+    // Mutations: the block is a stop whatever it holds; it is one only by
+    // its curation; a block not told to follow links is a stop for one.
+    @Test fun `a page's imported block is a focus stop once the page lays out a link in it, and the link's tap reaches the host`() {
+        val groups = listOf(ImportedSenseGroup("Dict", listOf(ImportedSense("one")), dictId = "d"))
+        val ref = DefAction.reference(0, "猫", "ねこ")
+        doc.setRows(listOf(DefRow.Imported("imp", groups, links = true)), "ja")
+        pageReady()
+        assertFalse("nothing is known of its content yet", view.isFocusable)
+        // Its definitions hold no link: the block alone, which takes no tap.
+        layout(1, 100, """["k0","",0,0,300,100]""")
+        assertFalse(view.isFocusable)
+        layout(1, 100, """["k0","",0,0,300,100,"k0","$ref",40,30,60,20]""")
+        assertTrue(view.isFocusable)
+        assertEquals(listOf<NavTarget?>(DocNavTarget(doc, "imp", ref)), doc.navActions().map { it.target })
+        tap("k0", ref)
+        assertEquals(listOf("imp" to ref), actions)
     }
 
     @Test fun `emptying keeps the shell at one pixel for the rows that follow`() {

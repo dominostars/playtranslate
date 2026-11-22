@@ -100,6 +100,21 @@ class WordCardDefinitionTest {
         assertTrue("dictionary label rides the imported row", html.contains(">Jitendex · n</div>"))
     }
 
+    // Mutation: the card's glossary is rendered with links to words followed.
+    @Test
+    fun `a dictionary's link to another word is its text on a card, never an action`() {
+        val linked = """[{"type":"structured-content","content":["See ",""" +
+            """{"tag":"a","href":"?query=%E7%8A%AC&wildcards=off","content":"犬"}]}]"""
+        val def = WordCardDefinition(fallback = "1. cat (flat)", entry = entry(imported = listOf(jitendex)))
+
+        val html = def.panelHtml(
+            classStyler, YomitanStyledData(structured = mapOf(7L to linked), dictStyles = emptyMap()), header, noMisc,
+        )
+
+        assertTrue(html, html.contains("See 犬"))
+        assertFalse(html, html.contains("data-act") || html.contains("gloss-link") || html.contains("role=\"link\""))
+    }
+
     @Test
     fun `no styled payload keeps the imported sense flat`() {
         val def = WordCardDefinition(

@@ -46,6 +46,20 @@ internal class DefinitionShell private constructor(
         /** A tap on [act] in the row whose DOM id is [domId]. */
         fun onAction(domId: String, act: String)
 
+        /** A tap on the text of a row of row set [gen] that reports them
+         *  (`data-words`): [text] is the run it fell in and [offset] the
+         *  tapped character's place in it, [lang] the language the markup
+         *  says that text is in and [dictId] the dictionary it is from,
+         *  each "" where the markup says nothing. [tapId] names the run to
+         *  `ptMark`. Default: a host with no such rows hears of none. */
+        fun onText(gen: Int, domId: String, tapId: Int, lang: String, dictId: String, text: String, offset: Int) {}
+
+        /** The page's reply to `ptMark` for [tapId]: the box of the marked
+         *  part's first line, in CSS px from the root's corner; a box of no
+         *  [width] when that run's text is no longer in the page, which is
+         *  also how a painted mark is reported gone. */
+        fun onMark(tapId: Int, left: Int, top: Int, width: Int, height: Int) {}
+
         /** The render process died; this shell is destroyed. Every shell of
          *  the app dies with it, since they share that process. */
         fun onRendererGone()
@@ -96,6 +110,16 @@ internal class DefinitionShell private constructor(
         @JavascriptInterface
         fun onAction(domId: String, act: String) {
             MAIN.post { listener?.onAction(domId, act) }
+        }
+
+        @JavascriptInterface
+        fun onText(gen: Int, domId: String, tapId: Int, lang: String, dictId: String, text: String, offset: Int) {
+            MAIN.post { listener?.onText(gen, domId, tapId, lang, dictId, text, offset) }
+        }
+
+        @JavascriptInterface
+        fun onMark(tapId: Int, left: Int, top: Int, width: Int, height: Int) {
+            MAIN.post { listener?.onMark(tapId, left, top, width, height) }
         }
     }
 

@@ -20,18 +20,30 @@ import com.google.gson.JsonParser
  * its declaration and inject properties outside the whitelist (the CSSOM
  * would reject such values too — Yomitan assigns per-property).
  *
- * Deliberate degradations, all graceful: `?`-internal cross-references
- * unwrap to their text (no in-app search surface to navigate), and an
- * image's collapse/appearance dance is reduced to the image itself with
- * declared sizing. External http(s) links are real anchors — in-app the
- * WebView's client routes the tap to the system browser instead of
- * navigating.
+ * Deliberate degradations, all graceful: an image's collapse/appearance
+ * dance is reduced to the image itself with declared sizing. External
+ * http(s) links are real anchors — in-app the WebView's client routes the
+ * tap to the system browser instead of navigating. A dictionary's link to
+ * another of its words (`?query=…`) is a link only where the caller follows
+ * them ([References]): there it carries the action the page reports its
+ * tap by ([DefAction.reference]) and no href, so nothing navigates.
+ * Everywhere else, on an Anki card among them, its text stands alone.
  */
 internal object YomitanContentHtml {
 
     /** Origin the shell's CSP + the WebView's request interception allow;
      *  media URLs are `$MEDIA_ORIGIN/media/<dictId>/<zip-relative path>`. */
     const val MEDIA_ORIGIN = "https://pt-media.internal"
+
+    /**
+     * Handed to [glossaryHtml] by a caller that follows a dictionary's
+     * links to its other words: one for everything drawn into one row, since
+     * it numbers the row's links as they are written
+     * ([DefAction.reference]).
+     */
+    class References {
+        internal var next = 0
+    }
 
     /** Converts one glossary array's JSON to HTML; null when [glossaryJson]
      *  doesn't parse (caller falls back to the flat text). */
@@ -41,6 +53,9 @@ internal object YomitanContentHtml {
         /** False for Anki cards (no media pipeline v1): img nodes emit
          *  nothing; every other node renders as usual. */
         includeImages: Boolean = true,
+        /** Non-null where a link to another word is followed
+         *  ([References]); null leaves such a link as its text. */
+        references: References? = null,
     ): String? {
         val root = try {
             JsonParser.parseString(glossaryJson)
@@ -50,7 +65,7 @@ internal object YomitanContentHtml {
         if (!root.isJsonArray) return null
         val items = root.asJsonArray
             .mapNotNull { item ->
-                itemHtml(item, dictId, includeImages)
+                itemHtml(item, dictId, includeImages, references)
                     .takeIf { h -> h.isNotBlank() }
                     // Card mode: an image nested in a container survives
                     // image-stripping as a TEXT-LESS wrapper — drop the
@@ -66,7 +81,12 @@ internal object YomitanContentHtml {
 
     // ── Glossary items ──────────────────────────────────────────────────
 
-    private fun itemHtml(item: JsonElement, dictId: String, includeImages: Boolean): String = when {
+    private fun itemHtml(
+        item: JsonElement,
+        dictId: String,
+        includeImages: Boolean,
+        refs: References?,
+    ): String = when {
         item.isJsonPrimitive && item.asJsonPrimitive.isString -> multiline(item.asString)
         item.isJsonObject -> {
             val obj = item.asJsonObject
@@ -74,7 +94,7 @@ internal object YomitanContentHtml {
                 "text" -> multiline(str(obj, "text").orEmpty())
                 "image" -> if (includeImages) imageHtml(obj, dictId) else ""
                 "structured-content" ->
-                    obj.get("content")?.let { nodeHtml(it, dictId, includeImages) }.orEmpty()
+                    obj.get("content")?.let { nodeHtml(it, dictId, includeImages, refs) }.orEmpty()
                 else -> ""
             }
         }
@@ -83,22 +103,27 @@ internal object YomitanContentHtml {
 
     // ── Structured-content nodes ────────────────────────────────────────
 
-    private fun nodeHtml(node: JsonElement, dictId: String, includeImages: Boolean): String = when {
+    private fun nodeHtml(
+        node: JsonElement,
+        dictId: String,
+        includeImages: Boolean,
+        refs: References?,
+    ): String = when {
         node.isJsonPrimitive && node.asJsonPrimitive.isString -> multiline(node.asString)
-        node.isJsonArray -> node.asJsonArray.joinToString("") { nodeHtml(it, dictId, includeImages) }
-        node.isJsonObject -> elementHtml(node.asJsonObject, dictId, includeImages)
+        node.isJsonArray -> node.asJsonArray.joinToString("") { nodeHtml(it, dictId, includeImages, refs) }
+        node.isJsonObject -> elementHtml(node.asJsonObject, dictId, includeImages, refs)
         else -> ""
     }
 
     /** The closed tag switch. Unknown tags render NOTHING (their content
      *  included) — matching Yomitan, where an unrecognized tag returns null
      *  and the node is dropped. */
-    private fun elementHtml(obj: JsonObject, dictId: String, includeImages: Boolean): String {
+    private fun elementHtml(obj: JsonObject, dictId: String, includeImages: Boolean, refs: References?): String {
         return when (val tag = str(obj, "tag")) {
             "br" -> "<br>"
 
             "ruby", "rt", "rp", "table", "thead", "tbody", "tfoot", "tr" -> {
-                val html = container(tag, obj, dictId, includeImages, attrs(obj, style = false, title = false))
+                val html = container(tag, obj, dictId, includeImages, refs, attrs(obj, style = false, title = false))
                 if (tag == "table") "<div class=\"gloss-sc-table-container\">$html</div>" else html
             }
 
@@ -106,28 +131,38 @@ internal object YomitanContentHtml {
                 val extra = StringBuilder()
                 int(obj, "colSpan")?.takeIf { it > 1 }?.let { extra.append(" colspan=\"$it\"") }
                 int(obj, "rowSpan")?.takeIf { it > 1 }?.let { extra.append(" rowspan=\"$it\"") }
-                container(tag, obj, dictId, includeImages, attrs(obj, style = true, title = false) + extra.toString())
+                container(tag, obj, dictId, includeImages, refs, attrs(obj, style = true, title = false) + extra.toString())
             }
 
             "span", "div", "ol", "ul", "li", "details", "summary" -> {
                 val extra = if (tag == "details" && obj.get("open")?.takeIf { it.isJsonPrimitive }
                         ?.asJsonPrimitive?.let { it.isBoolean && it.asBoolean } == true
                 ) " open" else ""
-                container(tag, obj, dictId, includeImages, attrs(obj, style = true, title = true) + extra)
+                container(tag, obj, dictId, includeImages, refs, attrs(obj, style = true, title = true) + extra)
             }
 
             "img" -> if (includeImages) imageHtml(obj, dictId) else ""
 
             "a" -> {
-                val content = obj.get("content")?.let { nodeHtml(it, dictId, includeImages) }.orEmpty()
+                val content = obj.get("content")?.let { nodeHtml(it, dictId, includeImages, refs) }.orEmpty()
                 val href = str(obj, "href").orEmpty()
+                val reference = if (refs != null) referenceOf(href) else null
                 when {
                     // External links: real anchors. In-app the WebView's
                     // client hands the tap to the system browser; on Anki
                     // cards the reviewer's own link handling applies.
                     href.startsWith("http:") || href.startsWith("https:") ->
                         "<a class=\"gloss-link\" href=\"${esc(href)}\">$content</a>"
-                    // Internal search links (Yomitan's ?query=…): the
+                    // A link to another word (Yomitan's ?query=…), where the
+                    // caller follows them: no href, so the page reports its
+                    // tap as the row's action and nothing navigates. The
+                    // link's own language rides along, as on any element.
+                    reference != null && refs != null -> {
+                        val act = DefAction.reference(refs.next++, reference.term, reference.reading)
+                        val lang = str(obj, "lang")?.takeIf { LANG.matches(it) }?.let { " lang=\"$it\"" }.orEmpty()
+                        "<a class=\"gloss-link\" role=\"link\" data-act=\"${esc(act)}\"$lang>$content</a>"
+                    }
+                    // Elsewhere, and for any other internal link: the
                     // cross-reference text stands alone.
                     else -> content
                 }
@@ -142,9 +177,10 @@ internal object YomitanContentHtml {
         obj: JsonObject,
         dictId: String,
         includeImages: Boolean,
+        refs: References?,
         attributes: CharSequence,
     ): String {
-        val content = obj.get("content")?.let { nodeHtml(it, dictId, includeImages) }.orEmpty()
+        val content = obj.get("content")?.let { nodeHtml(it, dictId, includeImages, refs) }.orEmpty()
         return "<$tag class=\"gloss-sc-$tag\"$attributes>$content</$tag>"
     }
 
@@ -167,6 +203,34 @@ internal object YomitanContentHtml {
                 ?.let { sb.append(" style=\"").append(esc(it)).append("\"") }
         }
         return sb.toString()
+    }
+
+    /**
+     * The word an internal link's [href] names: Yomitan's search link,
+     * `?query=<term>` with an optional `primary_reading=<reading>` among its
+     * other parameters, each percent-encoded as a query string is (a `+` is
+     * a space). Null for any other href, and for one whose term does not
+     * decode or is blank.
+     */
+    internal fun referenceOf(href: String): DefAction.Reference? {
+        if (!href.startsWith("?")) return null
+        var term: String? = null
+        var reading: String? = null
+        for (pair in href.substring(1).split('&')) {
+            val eq = pair.indexOf('=')
+            if (eq <= 0) continue
+            val value = try {
+                java.net.URLDecoder.decode(pair.substring(eq + 1), "UTF-8")
+            } catch (_: IllegalArgumentException) {
+                continue
+            }
+            when (pair.substring(0, eq)) {
+                "query" -> if (term == null) term = value.trim()
+                "primary_reading" -> if (reading == null) reading = value.trim()
+            }
+        }
+        val t = term?.takeIf { it.isNotEmpty() } ?: return null
+        return DefAction.Reference(t, reading?.takeIf { it.isNotEmpty() })
     }
 
     private fun imageHtml(obj: JsonObject, dictId: String): String {

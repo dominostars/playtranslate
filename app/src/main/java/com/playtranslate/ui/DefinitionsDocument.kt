@@ -309,6 +309,13 @@ internal object DefinitionsDocument {
   color: var(--pt-secondary);
 }
 .gloss-link { color: var(--pt-accent); text-decoration: underline; }
+/* A link to another word reports its tap as an action and so takes a
+   controller's cursor, drawn as every control's is. A link that wraps is
+   lit on each of its lines. */
+.gloss-link[data-act] {
+  border-radius: 3px; -webkit-box-decoration-break: clone; box-decoration-break: clone;
+}
+.gloss-link[data-act]:active, .gloss-link.cur { background: var(--pt-press); }
 .gloss-image { max-width: 100%; height: auto; border-radius: 4px; vertical-align: text-bottom; }
 .gloss-sc-table-container { overflow-x: auto; max-width: 100%; }
 .gloss-sc-table { border-collapse: collapse; }
@@ -415,7 +422,10 @@ ruby > rt { font-size: .5em; }
      * To the page: `ptTheme`, `ptApplyDictCss`, `ptSet(html, gen)` (all the
      * rows), `ptAppend(html, gen)` (more rows at the end), `ptReplace(id,
      * html, gen)` (one element), `ptCursor(rowId, act)` (the controller's
-     * highlight). From the page: `PTBridge.onLayout(gen, height, targets,
+     * highlight), and `ptMark(tapId, start, end, draw)` / `ptUnmark()`, the
+     * host's answer to a tap on a row's text (`PTBridge.onText`, from a row
+     * marked `data-words`; `PTBridge.onMark` is the page's reply). From the
+     * page: `PTBridge.onLayout(gen, height, targets,
      * heads)` after every change, and when the rows' height changes with
      * none (a late image, an opened `<details>`), `targets` a flat JSON
      * array of rowId, act, left, top, width, height (CSS px from the root's
@@ -490,6 +500,10 @@ $DOCUMENT_JS
      */
     private const val ROW_CSS = """
 .row { position: relative; }
+/* The highlight of a word tapped in a row's text (ptMark): boxes in a layer
+   over the rows and outside the root, which takes no touch and no room. */
+#pt-marks { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; }
+#pt-marks > div { position: absolute; background: var(--pt-rail); border-radius: 2px; }
 /* The hairline between rows, inset from the start like the native divider. */
 .row + .row::before {
   content: ''; position: absolute; top: 0; left: 16px; right: 0; height: 1px;
@@ -814,6 +828,11 @@ button.act:active, .act.cur { background: var(--pt-press); }
   // The rows replaced since the last report, by their element ids: what the
   // next report's layout redraws.
   var redrawn = [];
+  // The text the last tap on a row's words fell in, and the part of it the
+  // host took (see wordTap and ptMark).
+  var run = null;
+  var mark = null;
+  var taps = 0;
 
   function rootEl() { return document.getElementById('root'); }
 
@@ -853,6 +872,10 @@ button.act:active, .act.cur { background: var(--pt-press); }
       heads.push(hs[j].parentNode.id, Math.round(hb.top - base.top), Math.round(hb.height));
     }
     de.classList.remove('ptm');
+    // The rows may have moved under the mark: it is measured again where
+    // its text is now and the host told, also one that is only measured so
+    // far, whose lens is still to be placed on the box.
+    if (mark) placeMark(true);
     sent = Math.ceil(base.height);
     var rows = redrawn;
     redrawn = [];
@@ -895,6 +918,8 @@ button.act:active, .act.cur { background: var(--pt-press); }
     gen = g;
     redrawn = [];
     rootEl().innerHTML = html;
+    run = null;
+    dropMark(true);
     applyCursor();
     settle();
   };
@@ -911,6 +936,10 @@ button.act:active, .act.cur { background: var(--pt-press); }
     if (!el) return;
     el.outerHTML = html;
     redrawn.push(id);
+    if (run && !document.contains(run.nodes[0])) {
+      run = null;
+      dropMark(true);
+    }
     applyCursor();
     settle();
   };
@@ -984,11 +1013,225 @@ button.act:active, .act.cur { background: var(--pt-press); }
     }
     if (!row) return;
     var el = t.closest('[data-act]');
-    if (!el) return;
+    if (!el) {
+      if (row.hasAttribute('data-words')) wordTap(e, row);
+      return;
+    }
     if (window.PTBridge && window.PTBridge.onAction) {
       window.PTBridge.onAction(row.id, el.getAttribute('data-act'));
     }
   });
+
+  // ── A word tapped in a row's text ────────────────────────────────────
+  // A row that asks for it (data-words) reports a tap on its text that was
+  // no action's and no link's: the run of text the tap fell in and where in
+  // it (PTBridge.onText), with the language that text is marked as and the
+  // dictionary it is from, where the markup says. A run is one line of
+  // meaning: the text of the nearest block around the tap, between its line
+  // breaks and the blocks inside it, without the readings set over its
+  // words (rt, rp). What a word is, and whether this is text to look words
+  // up in, is the host's to say. It answers with the part of the run it
+  // took (ptMark), which the page measures and, when asked, paints, in a
+  // layer over the rows: no row's content is touched. One run and one mark
+  // at a time; a new tap takes the place of the last.
+
+  // Whether an element's text runs on in the line around it.
+  function flows(el) {
+    var d = getComputedStyle(el).display;
+    return d === 'inline' || d === 'contents' || d.indexOf('ruby') === 0;
+  }
+
+  function collectRuns(el, runs) {
+    for (var n = el.firstChild; n; n = n.nextSibling) {
+      if (n.nodeType === 3) { runs[runs.length - 1].push(n); continue; }
+      if (n.nodeType !== 1) continue;
+      var tag = n.nodeName;
+      if (tag === 'RT' || tag === 'RP') continue;
+      if (tag === 'BR') { runs.push([]); continue; }
+      if (flows(n)) { collectRuns(n, runs); continue; }
+      // A block inside the block: its text is a run of its own, and the
+      // text after it starts another.
+      runs.push([]);
+    }
+  }
+
+  // The first text of a ruby that is the word and not its reading.
+  function baseText(ruby) {
+    var w = document.createTreeWalker(ruby, 4);
+    for (var n = w.nextNode(); n; n = w.nextNode()) {
+      if (n.data.length && !n.parentNode.closest('rt,rp')) return n;
+    }
+    return null;
+  }
+
+  // The character of the text node under the point. The caret falls on the
+  // nearer side of a character, so the one before it and the one after are
+  // both tried against their own boxes, as drawn and then a little wider.
+  // -1 when the point is on neither.
+  function charUnder(tn, caret, x, y) {
+    var slops = [0, 4];
+    for (var s = 0; s < slops.length; s++) {
+      for (var i = caret - 1; i <= caret; i++) {
+        if (i < 0 || i >= tn.data.length) continue;
+        var r = document.createRange();
+        r.setStart(tn, i);
+        r.setEnd(tn, i + 1);
+        var bs = r.getClientRects();
+        for (var k = 0; k < bs.length; k++) {
+          if (x >= bs[k].left - slops[s] && x <= bs[k].right + slops[s] &&
+              y >= bs[k].top - slops[s] && y <= bs[k].bottom + slops[s]) return i;
+        }
+      }
+    }
+    return -1;
+  }
+
+  function wordTap(e, row) {
+    var t = e.target;
+    // The row's own labels are no text to look a word up in, and a summary
+    // opens and shuts what is under it.
+    if (t.closest('summary,button,.pos-h,.sp,.sn,.sm,.dict-t')) return;
+    if (!document.caretRangeFromPoint) return;
+    var c = document.caretRangeFromPoint(e.clientX, e.clientY);
+    var tn = c ? c.startContainer : null;
+    if (!tn || tn.nodeType !== 3 || !row.contains(tn)) return;
+    var at;
+    var over = tn.parentNode.closest('rt,rp');
+    if (over) {
+      // A tap on the reading over a word is a tap on the word.
+      var ruby = over.closest('ruby');
+      tn = ruby ? baseText(ruby) : null;
+      if (!tn) return;
+      at = 0;
+    } else {
+      at = charUnder(tn, c.startOffset, e.clientX, e.clientY);
+      if (at < 0) return;
+    }
+    var block = tn.parentNode;
+    while (block !== row && flows(block)) block = block.parentNode;
+    var runs = [[]];
+    collectRuns(block, runs);
+    var nodes = null;
+    for (var i = 0; i < runs.length && !nodes; i++) {
+      if (runs[i].indexOf(tn) >= 0) nodes = runs[i];
+    }
+    if (!nodes) return;
+    var starts = [];
+    var text = '';
+    for (var j = 0; j < nodes.length; j++) {
+      starts.push(text.length);
+      text += nodes[j].data;
+    }
+    var le = tn.parentNode.closest('[lang],[data-lang]');
+    var lang = le && row.contains(le) ? (le.getAttribute('data-lang') || le.getAttribute('lang') || '') : '';
+    var de = tn.parentNode.closest('[data-dictionary],[data-dict]');
+    var dict = de && row.contains(de)
+      ? (de.getAttribute('data-dictionary') || de.getAttribute('data-dict') || '') : '';
+    dropMark(false);
+    run = { id: ++taps, nodes: nodes, starts: starts };
+    if (window.PTBridge && window.PTBridge.onText) {
+      window.PTBridge.onText(gen, row.id, run.id, lang, dict, text, starts[nodes.indexOf(tn)] + at);
+    }
+  }
+
+  function clearMarks() {
+    var m = document.getElementById('pt-marks');
+    if (m) m.textContent = '';
+  }
+
+  // The mark is over. With tell the host hears of it: a mark it did not end
+  // itself, whose text is no longer in the page.
+  function dropMark(tell) {
+    var was = mark;
+    mark = null;
+    clearMarks();
+    if (tell && was && window.PTBridge && window.PTBridge.onMark) {
+      window.PTBridge.onMark(was.id, 0, 0, 0, 0);
+    }
+  }
+
+  // The boxes of the run's characters from s up to e, a text node at a
+  // time, so a reading set over a word among them is no part of the mark.
+  // Null when the run's text has left the page, or holds no such part.
+  function markBoxes(s, e) {
+    if (!run) return null;
+    var out = [];
+    for (var i = 0; i < run.nodes.length; i++) {
+      var n = run.nodes[i];
+      if (!document.contains(n)) return null;
+      var from = Math.max(s - run.starts[i], 0);
+      var to = Math.min(e - run.starts[i], n.data.length);
+      if (to <= from) continue;
+      var r = document.createRange();
+      r.setStart(n, from);
+      r.setEnd(n, to);
+      var bs = r.getClientRects();
+      for (var k = 0; k < bs.length; k++) {
+        if (bs[k].width > 0 && bs[k].height > 0) out.push(bs[k]);
+      }
+    }
+    return out.length ? out : null;
+  }
+
+  // Paints the mark where its text is now. With tell, reports the box of
+  // its first line from the root's corner, as a target's is reported: the
+  // boxes whose middle is within the first box's height.
+  function placeMark(tell) {
+    if (!mark) return;
+    var bs = markBoxes(mark.s, mark.e);
+    if (!bs) {
+      dropMark(true);
+      return;
+    }
+    clearMarks();
+    if (mark.draw) {
+      var m = document.getElementById('pt-marks');
+      if (!m) {
+        m = document.createElement('div');
+        m.id = 'pt-marks';
+        document.body.appendChild(m);
+      }
+      for (var i = 0; i < bs.length; i++) {
+        var d = document.createElement('div');
+        d.style.left = (bs[i].left + window.pageXOffset) + 'px';
+        d.style.top = (bs[i].top + window.pageYOffset) + 'px';
+        d.style.width = bs[i].width + 'px';
+        d.style.height = bs[i].height + 'px';
+        m.appendChild(d);
+      }
+    }
+    if (!tell) return;
+    var f = bs[0];
+    var l = f.left, t = f.top, r = f.right, b = f.bottom;
+    for (var j = 1; j < bs.length; j++) {
+      var mid = (bs[j].top + bs[j].bottom) / 2;
+      if (mid < f.top || mid > f.bottom) continue;
+      l = Math.min(l, bs[j].left);
+      t = Math.min(t, bs[j].top);
+      r = Math.max(r, bs[j].right);
+      b = Math.max(b, bs[j].bottom);
+    }
+    var base = rootEl().getBoundingClientRect();
+    if (window.PTBridge && window.PTBridge.onMark) {
+      window.PTBridge.onMark(mark.id, Math.round(l - base.left), Math.round(t - base.top),
+        Math.max(1, Math.round(r - l)), Math.max(1, Math.round(b - t)));
+    }
+  }
+
+  // The host's answer to a tap: the part of run id's text it took, from s
+  // up to e. Its first line's box is reported (PTBridge.onMark), or a box
+  // of no width when that run is no longer the page's; with draw it is
+  // painted until ptUnmark, a new tap, or its text leaving the page.
+  window.ptMark = function (id, s, e, draw) {
+    if (!run || run.id !== id) {
+      if (window.PTBridge && window.PTBridge.onMark) window.PTBridge.onMark(id, 0, 0, 0, 0);
+      return;
+    }
+    mark = { id: id, s: s, e: e, draw: !!draw };
+    placeMark(true);
+  };
+
+  window.ptUnmark = function () { dropMark(false); };
 
   // Direct, not via a frame: this is what fires when a hidden view first
   // gets its real width. Only a new width reports: the host sizes the
@@ -1116,6 +1359,15 @@ button.act:active, .act.cur { background: var(--pt-press); }
      *
      * [collapse] (a word row only) gives each dictionary its title line and
      * leaves a shut one's definitions out (see [ImportedCollapse]).
+     *
+     * [references] is whether a dictionary's links to its other words are
+     * followed where this markup is drawn ([DefAction.reference]): each is
+     * then a link numbered over the whole call, which is why a row's
+     * imported definitions are built in one. False leaves each as its text.
+     *
+     * [wordTaps] (a word page's imported block) names the dictionary of a
+     * definition drawn as flat text too (`data-dict`), as the scope of a
+     * structured one already does: whose text a tap on it fell in.
      */
     fun contentHtml(
         data: WordDefinitionData,
@@ -1127,8 +1379,11 @@ button.act:active, .act.cur { background: var(--pt-press); }
         label: String? = null,
         importedCuration: ImportedCuration? = null,
         collapse: ImportedCollapse? = null,
+        references: Boolean = false,
+        wordTaps: Boolean = false,
     ): String {
         val sb = StringBuilder()
+        val refs = if (references) YomitanContentHtml.References() else null
         label?.takeIf { it.isNotBlank() }?.let {
             sb.append("<div class=\"label-warn\">").append(htmlEscape(it)).append("</div>")
         }
@@ -1167,6 +1422,13 @@ button.act:active, .act.cur { background: var(--pt-press); }
             // curation's wrapper and ✕ (see the file header).
             val scopeOpen = "<div class=\"gloss-scope\" data-dictionary=\"" + htmlEscape(group.dictId) + "\">"
             val headerColor = group.accentColor?.let { " style=\"color:${cssHex(it)}\"" }.orEmpty()
+            // Not `data-dictionary`: that is the scope the dictionary's own
+            // stylesheet applies in, which a flat row is outside of.
+            val flatOpen = if (wordTaps && group.dictId.isNotEmpty()) {
+                "<div class=\"def-row\" data-dict=\"" + htmlEscape(group.dictId) + "\"><div class=\"def-text\">"
+            } else {
+                "<div class=\"def-row\"><div class=\"def-text\">"
+            }
             val shut = collapse != null && group.dictionaryKey() in collapse.shut
             if (collapse != null) {
                 appendDictionaryTitle(
@@ -1192,10 +1454,9 @@ button.act:active, .act.cur { background: var(--pt-press); }
                     previousHeader = header
                 }
                 val body = sense.scRowid?.let { structured[it] }
-                    ?.let { YomitanContentHtml.glossaryHtml(it, group.dictId) }
+                    ?.let { YomitanContentHtml.glossaryHtml(it, group.dictId, references = refs) }
                     ?.let { scopeOpen + it + "</div>" }
-                    ?: ("<div class=\"def-row\"><div class=\"def-text\">" +
-                        htmlEscape(sense.definition).replace("\n", "<br>") + "</div></div>")
+                    ?: (flatOpen + htmlEscape(sense.definition).replace("\n", "<br>") + "</div></div>")
                 if (importedCuration == null) {
                     sb.append(body)
                 } else {

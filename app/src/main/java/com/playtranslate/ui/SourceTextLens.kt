@@ -21,19 +21,18 @@ import kotlinx.coroutines.launch
  * "Load more (n)" row for the sections whose definitions would be
  * machine-translated ([SourceWordLookup.ResolvedAt.pending], resolved on
  * tap by [loadMore]). One presenter for every
- * surface that binds a source text through [TranslationSectionBinder]:
- * the in-app results fragment, the over-game capture sheet and the
- * workspace's Sentence page.
+ * surface that shows text to tap words in ([Text]): the source text bound
+ * through [TranslationSectionBinder] ([BoundSourceText]: the in-app
+ * results fragment, the over-game capture sheet and the workspace's
+ * Sentence page) and the definitions of a word's own page
+ * ([DefinitionWordTaps]).
  * What differs per surface is only the window it lives in ([overlayHost]
  * null = the activity window) and what a row's open and Anki button DO
  * ([wireActions]).
  *
- * Geometry is the sheet's [wordRectOnScreen]: the span's FIRST line box,
- * so a wrapped word anchors on its first line, with the right edge falling
- * back to the line's right edge when the offset past the word lands on the
- * next line (getPrimaryHorizontal would return that line's start and
- * collapse the box mid-screen). The controller cursor's ring reads the
- * same rects, so the two can't drift.
+ * Geometry is the text's own ([Text.wordRect]): the span's FIRST line box,
+ * so a wrapped word anchors on its first line. The controller cursor's
+ * ring reads the same rects ([wordRectOnScreen]), so the two can't drift.
  *
  * Staleness: the resolve suspends, and a result/edit binding meanwhile must
  * not let a stale span open a lens over the new text (with the new
@@ -50,7 +49,7 @@ class SourceTextLens(
     private val overlayHost: OverlayHost?,
     private val scope: CoroutineScope,
     private val ttsAlertTarget: TtsAlertTarget,
-    private val binder: TranslationSectionBinder,
+    private val text: Text,
     /** The display's size in px, read at tap time (rotation-safe). */
     private val screenSize: () -> Point,
     /** Whether the tapped unit opens even without a dictionary entry: the
@@ -72,6 +71,32 @@ class SourceTextLens(
      *  indexes cover the sections it added. */
     private val wireActions: (lens: MagnifierLens, resolved: SourceWordLookup.ResolvedAt) -> Unit,
 ) {
+    /**
+     * The text a lens stands over, as its surface draws it. A span is a
+     * char range of [displayed], the text the tap's [wordSpans] were
+     * computed against.
+     */
+    interface Text {
+        /** The text on show now. Read at the tap and again after the
+         *  lookup: a lens never opens over text that changed meanwhile. */
+        fun displayed(): String
+
+        /** Screen rect of [span]'s first line box; false while it cannot be
+         *  placed (the text is not laid out, or [span] is no longer what
+         *  this text was asked about). */
+        fun wordRect(span: IntRange, out: Rect): Boolean
+
+        /** Marks [span] as the word the lens is about, or clears the mark
+         *  (null). */
+        fun setHighlight(span: IntRange?)
+
+        /** Whether the text is a sentence a row's explain question can be
+         *  about, which is what gives the lens's rows their explain button.
+         *  False for text that is no sentence the user was reading (a
+         *  definition): no button. */
+        val explains: Boolean get() = true
+    }
+
     /** Gate for surfaces that switch the lens off (the sheet's hosts that
      *  keep their own word handling). */
     var enabled: Boolean = true
@@ -87,7 +112,10 @@ class SourceTextLens(
 
     private var lens: MagnifierLens? = null
     private var speech: LensSpeech? = null
-    private val locTmp = IntArray(2)
+
+    /** Counts the taps that found a word: a lookup presents only while its
+     *  tap is the latest ([onTapAtOffset]). */
+    private var taps = 0
 
     // The showing lens's body state, read by [bindBody]: set by [present]
     // once the previous lens is dismissed (and updated by [loadMore]),
@@ -106,18 +134,23 @@ class SourceTextLens(
 
     /** The lens for the span under [offset] (a tap on the source text, or
      *  the controller cursor's A press with [fromController], which
-     *  pre-selects the word's row so the next A opens). No span = no-op. */
+     *  pre-selects the word's row so the next A opens). No span = no-op.
+     *  A later tap takes the place of one still being looked up, whichever
+     *  lookup ends first: one tap, one lens, and no lens put up only to be
+     *  replaced. */
     fun onTapAtOffset(offset: Int, fromController: Boolean = false) {
         if (!enabled) return
         val span = wordSpans.firstOrNull { offset in it.range } ?: return
-        val tappedText = binder.displayedSourceText()
+        val tappedText = text.displayed()
+        val tap = ++taps
         scope.launch {
             try {
                 val resolvedAt = SourceWordLookup.resolveAt(
                     ctx.applicationContext, tappedText, span.range.first,
                     span.lookupForm, span.reading, span.token,
                 )
-                if (binder.displayedSourceText() != tappedText) return@launch
+                if (tap != taps) return@launch
+                if (text.displayed() != tappedText) return@launch
                 val rect = Rect()
                 if (!wordRectOnScreen(span.range, rect)) return@launch
                 present(span.range, rect, resolvedAt, fromController, tappedText)
@@ -147,7 +180,7 @@ class SourceTextLens(
         // onDismiss is the single funnel for every teardown path, so the
         // speech + highlight cleanup lives here, not only in dismiss().
         lens.onDismiss = {
-            binder.setWordHighlight(null)
+            text.setHighlight(null)
             speech?.release()
             speech = null
             if (this.lens === lens) {
@@ -171,7 +204,7 @@ class SourceTextLens(
             unit?.let { SpeakRequest(it.word, Prefs(ctx).sourceLangId, reading = it.reading) }
         }
         wireActions(lens, resolvedAt)
-        binder.setWordHighlight(span)
+        text.setHighlight(span)
         val size = screenSize()
         lens.show(rect.centerX(), rect.top, size.x, size.y, anchorHeight = rect.height())
         bindBody(lens, LensScroll.Top)
@@ -196,8 +229,10 @@ class SourceTextLens(
         // What a row's explain question is about: the displayed text the
         // units were resolved against, under the pair their lookup read (the
         // settings', as [SourceWordLookup.resolveAt] reads them), and each
-        // unit's own word, reading and the form it was found as.
-        val sentence = presentedText?.let { askSentence(it, Prefs(ctx).langContext()) }
+        // unit's own word, reading and the form it was found as. None over
+        // text that is no sentence to ask about ([Text.explains]).
+        val sentence = presentedText?.takeIf { text.explains }
+            ?.let { askSentence(it, Prefs(ctx).langContext()) }
         // Every section, the tapped unit's and a related one's, is built
         // here and nowhere else. Every one offers Anki, a unit with no entry
         // too: its card goes with no definition.
@@ -240,7 +275,7 @@ class SourceTextLens(
         loadJob = scope.launch {
             try {
                 val filled = SourceWordLookup.resolvePending(ctx.applicationContext, at)
-                if (this@SourceTextLens.lens !== lens || binder.displayedSourceText() != presentedText) return@launch
+                if (this@SourceTextLens.lens !== lens || text.displayed() != presentedText) return@launch
                 currentAt = filled
                 loadingMore = false
                 wireActions(lens, filled)
@@ -257,9 +292,36 @@ class SourceTextLens(
         }
     }
 
-    /** Screen rect of [span]'s FIRST line box inside the source text, or
-     *  false while the text isn't laid out. */
-    fun wordRectOnScreen(span: IntRange, out: Rect): Boolean {
+    /** Screen rect of [span]'s first line box in the text ([Text.wordRect]);
+     *  false while it cannot be placed. */
+    fun wordRectOnScreen(span: IntRange, out: Rect): Boolean = text.wordRect(span, out)
+
+    /** Tear the lens down (fires its onDismiss, which stops speech and
+     *  clears the highlight). No-op when none is up. */
+    fun dismiss() {
+        lens?.dismiss()
+    }
+}
+
+/**
+ * A source text bound through [binder] as the text a [SourceTextLens]
+ * stands over: the original line of a results page, a capture sheet or the
+ * workspace's Sentence page.
+ *
+ * A word's rect is its FIRST line box, so a wrapped word anchors on its
+ * first line, with the right edge falling back to the line's right edge
+ * when the offset past the word lands on the next line
+ * (getPrimaryHorizontal would return that line's start and collapse the
+ * box mid-screen).
+ */
+class BoundSourceText(private val binder: TranslationSectionBinder) : SourceTextLens.Text {
+    private val locTmp = IntArray(2)
+
+    override fun displayed(): String = binder.displayedSourceText()
+
+    override fun setHighlight(span: IntRange?) = binder.setWordHighlight(span)
+
+    override fun wordRect(span: IntRange, out: Rect): Boolean {
         val tv = binder.tvOriginal
         if (!tv.isShown) return false
         val layout = tv.layout ?: return false
@@ -289,11 +351,5 @@ class SourceTextLens(
             locTmp[0] + right, locTmp[1] + bottom,
         )
         return true
-    }
-
-    /** Tear the lens down (fires its onDismiss, which stops speech and
-     *  clears the highlight). No-op when none is up. */
-    fun dismiss() {
-        lens?.dismiss()
     }
 }

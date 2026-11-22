@@ -305,6 +305,28 @@ class DefinitionsDocumentTest {
     }
 
     @Test
+    fun `the shell takes a tap on a row's text after every action and link, and paints its mark in a layer of its own`() {
+        // Catches: the word tap taken before a button or a link, the mark's
+        // entry points or its report dropped, and a mark layer that takes
+        // touches or room.
+        val shell = shell()
+        assertTrue(shell.contains("if (row.hasAttribute('data-words')) wordTap(e, row);"))
+        assertTrue(shell.indexOf("closest('[data-act]')") < shell.indexOf("wordTap(e, row)"))
+        assertTrue(shell.contains("PTBridge.onText(gen, row.id, run.id, lang, dict, text,"))
+        assertTrue(shell.contains("window.ptMark = function (id, s, e, draw)"))
+        assertTrue(shell.contains("window.ptUnmark = function ()"))
+        assertTrue(shell.contains("window.PTBridge.onMark(mark.id,"))
+        // A layout report measures the mark again and tells the host, one
+        // that is not painted yet too: its lens is placed on that box.
+        assertTrue(shell.contains("if (mark) placeMark(true);"))
+        assertFalse(shell.contains("mark.draw) placeMark("))
+        assertTrue(shell.contains("#pt-marks { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; }"))
+        // The readings over a word are no part of a run, and a summary's tap is its own.
+        assertTrue(shell.contains("if (tag === 'RT' || tag === 'RP') continue;"))
+        assertTrue(shell.contains("t.closest('summary,button,.pos-h,.sp,.sn,.sm,.dict-t')"))
+    }
+
+    @Test
     fun `pack senses keep numbering and localized pos headers`() {
         val html = content(
             data(

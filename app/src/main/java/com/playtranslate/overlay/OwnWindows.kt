@@ -57,6 +57,13 @@ object OwnWindows {
     /** The ticking manager for [activity]'s own window; never null. */
     fun managerOf(activity: Activity): WindowManager =
         TickingWindowManager(activity.windowManager)
+
+    /** The ticking manager for [window]'s own manager: a panel added
+     *  through it is a child of that window and stands over it, which for a
+     *  dialog's window is over the dialog, where the activity's manager
+     *  would put it under. */
+    fun managerOf(window: android.view.Window): WindowManager =
+        TickingWindowManager(window.windowManager)
 }
 
 /**

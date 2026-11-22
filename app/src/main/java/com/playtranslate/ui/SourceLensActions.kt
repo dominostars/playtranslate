@@ -59,7 +59,28 @@ data class LensActionContext(
      *  tap, whatever its provider gave; a Words row's opener hands in its
      *  row's. */
     val explanation: Explanation? = null,
-)
+) {
+    /**
+     * The context of the word a link in this row's definitions names
+     * ([MagnifierLens.onReferenceTap]): [term], read as [reading] where the
+     * link names one, in this row's own sentence, screenshot and capture
+     * moment, so the link opens its word exactly as the row opens its own.
+     * The linked word was not found in the sentence, so it has no surface
+     * there, no entry looked up yet (the page it opens resolves its own
+     * under [term] and [reading]) and none of the row's answer, which is
+     * about the row's word.
+     */
+    fun referenced(term: String, reading: String?): LensActionContext = copy(
+        word = term,
+        reading = reading,
+        surface = null,
+        entry = null,
+        entries = emptyList(),
+        lookupForm = term,
+        lookupReading = reading,
+        explanation = null,
+    )
+}
 
 /**
  * What the lens's open-detail tap hands the workspace page it presents:
@@ -104,6 +125,60 @@ fun WorkspaceWordDetailPage(args: LensDetailArgs): WorkspaceWordDetailPage =
         audioAnchorMs = args.audioAnchorMs,
         sentenceContext = { args.sentenceContext },
     )
+
+/** The fields of the card a lens row makes of its word ([lensCardFields]). */
+internal class LensCardFields(
+    val reading: String,
+    val pos: String,
+    val definition: String,
+    val freqScore: Int,
+    val pitch: List<Int>,
+    val frequencies: List<FrequencyTag>,
+    /** The row's [lensRowCardTarget]: the word as an unlisted target for a
+     *  row with no entry, null for one with an entry. */
+    val target: CardTarget?,
+)
+
+/**
+ * The card's fields from a lens row's [entry]: the one rule for every lens,
+ * whatever sentence its word was found in, or none. A row with no entry, a
+ * word no dictionary lists, gives the reading the lens showed and nothing
+ * else (no part of speech, definition, frequency or pitch), and names the
+ * word as an [CardTarget.unlisted] target.
+ */
+internal fun lensCardFields(
+    context: Context,
+    word: String,
+    reading: String?,
+    surface: String?,
+    lookupForm: String,
+    lookupReading: String?,
+    entry: DictionaryEntry?,
+): LensCardFields {
+    // Card reading + pitch/freq follow the occurrence reading the lens showed
+    // (明日 → あす), falling back to the primary headword when there was none.
+    val occHeadword = entry?.selectHeadword(word, word, reading)
+    // Take the reading from the SELECTED headword, not the raw reading, so the
+    // card's reading stays consistent with its pitch/freq (same occHeadword)
+    // and can't persist a reading the entry doesn't list if the occurrence
+    // reading ever arrives unvalidated. With no entry the lens's reading is
+    // all there is.
+    val cardReading = if (entry == null) {
+        reading?.takeIf { it != word }.orEmpty()
+    } else {
+        occHeadword?.reading?.takeIf { it != occHeadword.written } ?: ""
+    }
+    val headword = entry?.headwordDisplay(occHeadword, word)
+    return LensCardFields(
+        reading = cardReading,
+        pos = entry?.let { context.firstSensePosLabel(it) }.orEmpty(),
+        definition = entry?.let { flatCardDefinition(it) }.orEmpty(),
+        freqScore = entry?.freqScore ?: 0,
+        pitch = headword?.pitch.orEmpty(),
+        frequencies = headword?.frequencies.orEmpty(),
+        target = lensRowCardTarget(entry, surface, lookupForm, lookupReading),
+    )
+}
 
 /**
  * Opens the detail of one looked-up unit in its sentence: the workspace
@@ -321,6 +396,11 @@ class SourceLensActions(
         if (currentSecondary != null) {
             lens.onSecondaryOpenTap = { i -> contextOf(i)?.let { openSentenceInApp(it) } }
         }
+        // A link in a row's definitions to another word: that word's detail,
+        // by the row's own open path and in the row's own sentence.
+        lens.onReferenceTap = { secondary, term, reading ->
+            contextOf(secondary)?.let { openSentenceInApp(it.referenced(term, reading)) }
+        }
     }
 
     /** The context of a row: the tapped unit's ([current]), or a
@@ -472,30 +552,14 @@ class SourceLensActions(
         }
     }
 
-    /** The card's fields from the row's [entry]. A row with none, a word no
-     *  dictionary lists, gives the reading the lens showed and nothing else
-     *  (no part of speech, definition, frequency or pitch), and names the
-     *  word as an [CardTarget.unlisted] target for its sentence card. */
+    /** The card's fields from the row's [entry] ([lensCardFields]), with
+     *  the row's sentence as the cache holds it now. */
     private fun snapshotLensFieldsForAnki(
         word: String, entry: DictionaryEntry?, cur: LensActionContext,
     ): LensAnkiSnapshot {
-        // Card reading + pitch/freq follow the occurrence reading the lens showed
-        // (明日 → あす), falling back to the primary headword when there was none.
-        val occHeadword = entry?.selectHeadword(word, word, cur.reading)
-        // Take the reading from the SELECTED headword, not raw cur.reading, so the
-        // card's reading stays consistent with its pitch/freq (same occHeadword)
-        // and can't persist a reading the entry doesn't list if the occurrence
-        // reading ever arrives unvalidated. With no entry the lens's reading is
-        // all there is.
-        val reading = if (entry == null) {
-            cur.reading?.takeIf { it != word }.orEmpty()
-        } else {
-            occHeadword?.reading?.takeIf { it != occHeadword.written } ?: ""
-        }
-        val pos = entry?.let { context.firstSensePosLabel(it) }.orEmpty()
-        val definition = entry?.let { flatCardDefinition(it) }.orEmpty()
-        val headword = entry?.headwordDisplay(occHeadword, word)
-        val target = lensRowCardTarget(entry, cur.surface, cur.lookupForm ?: word, cur.lookupReading)
+        val fields = lensCardFields(
+            context, word, cur.reading, cur.surface, cur.lookupForm ?: word, cur.lookupReading, entry,
+        )
         val sentence = cur.sentence
         val sentenceTranslation = LastSentenceCache
             .takeIf { it.original == sentence }?.translation
@@ -509,12 +573,12 @@ class SourceLensActions(
             .takeIf { it.original == sentence }?.wordResults
         return LensAnkiSnapshot(
             word = word,
-            reading = reading,
-            pos = pos,
-            definition = definition,
-            freqScore = entry?.freqScore ?: 0,
-            pitch = headword?.pitch.orEmpty(),
-            frequencies = headword?.frequencies.orEmpty(),
+            reading = fields.reading,
+            pos = fields.pos,
+            definition = fields.definition,
+            freqScore = fields.freqScore,
+            pitch = fields.pitch,
+            frequencies = fields.frequencies,
             screenshotPath = cur.screenshotPath,
             sentence = sentence,
             sentenceTranslation = sentenceTranslation,
@@ -522,7 +586,7 @@ class SourceLensActions(
             sourceLangCode = Prefs(context).sourceLangId.code,
             audioAnchorMs = cur.audioAnchorMs,
             notes = cur.explanation?.text.orEmpty(),
-            target = target,
+            target = fields.target,
         )
     }
 
