@@ -245,8 +245,14 @@ interface SourceLanguageEngine {
      */
     suspend fun inflectionTable(entry: DictionaryEntry): List<InflectionForm>? = null
 
-    /** Character-level lookup. JA returns [com.playtranslate.model.KanjiDetail];
-     *  ZH returns [com.playtranslate.model.HanziDetail]. Other engines return null.
+    /** The character rows of a word's detail page: one for each distinct
+     *  ideograph of [written] ([ideographsOf]) the dictionaries hold a
+     *  meaning for, in the word's order. JA returns
+     *  [com.playtranslate.model.KanjiDetail]s; ZH returns
+     *  [com.playtranslate.model.HanziDetail]s, each holding every dictionary
+     *  entry of its character, the readings [reading] gives the character
+     *  first ([reading] is the headword's own, as the page shows it). Other
+     *  engines return none.
      *
      *  [targetLang] selects which language's meanings to return when the pack
      *  carries multiple (KANJIDIC2 ships en/fr/es/pt). Implementations fall
@@ -254,7 +260,11 @@ interface SourceLanguageEngine {
      *  [com.playtranslate.model.CharacterDetail.meaningsLang] to what they
      *  actually returned, so the caller can decide whether to machine-translate.
      */
-    suspend fun lookupCharacter(literal: Char, targetLang: String = "en"): CharacterDetail? = null
+    suspend fun characterBreakdown(
+        written: String,
+        reading: String?,
+        targetLang: String = "en",
+    ): List<CharacterDetail> = emptyList()
 
     /**
      * The single authoritative analysis of [text] — the source every
@@ -309,6 +319,12 @@ interface SourceLanguageEngine {
 }
 
 private val MEMBER_SPLIT_WHITESPACE = Regex("\\s+")
+
+/** The characters a word's page breaks down ([SourceLanguageEngine.characterBreakdown]):
+ *  the distinct CJK ideographs of [written], Unified Ideographs and
+ *  Extension A, in the word's order. */
+internal fun ideographsOf(written: String): List<Char> =
+    written.filter { c -> c.code in 0x4E00..0x9FFF || c.code in 0x3400..0x4DBF }.toList().distinct()
 
 /** [SourceLanguageEngine.memberWordsOf]'s default: whitespace split of a
  *  space-delimited multi-word headword ("a great deal" → a/great/deal),

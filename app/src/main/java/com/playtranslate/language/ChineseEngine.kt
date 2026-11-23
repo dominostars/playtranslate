@@ -227,39 +227,21 @@ class ChineseEngine(
      * CC-CEDICT contains most common hanzi as single-character entries with
      * pinyin + definitions, so we reuse the word-level dict path rather than
      * maintaining a separate per-character table. A character with several
-     * readings shows the one its lookup leads with ([ChineseEntryGroups]).
+     * entries (沙 is shā "sand", shà "to sift" and the surname Shā) shows
+     * them all, the readings the word uses first
+     * ([ChineseEntryGroups.characterGroups]).
      */
-    override suspend fun lookupCharacter(literal: Char, targetLang: String): CharacterDetail? {
-        val entry = dict.lookup(literal.toString(), profile.preferTraditional)?.entries?.firstOrNull()
-        val imported = yomitan.importedKanji(literal)
-        // Imported zh-source kanji meanings win when present (the user installed
-        // the dict and ordered it), carrying their declared language; else the
-        // CC-CEDICT single-char glosses. Mirrors JapaneseEngine.lookupCharacter.
-        val meanings: List<String>
-        val meaningsLang: String
-        if (imported != null && imported.meanings.isNotEmpty()) {
-            meanings = imported.meanings
-            meaningsLang = imported.meaningsLang
-        } else {
-            meanings = entry?.senses?.flatMap { it.targetDefinitions }.orEmpty()
-            meaningsLang = "en"
-        }
-        if (meanings.isEmpty()) return null
-        // Pinyin/readings stay CC-CEDICT — Yomitan kanji on/kun readings don't
-        // map to pinyin. Headword.reading is already tone-marked; reformat
-        // (idempotent) so the hanzi row matches the definition's tone format.
-        val pinyin = entry?.headwords?.firstOrNull()?.reading
-            ?.takeIf { it.isNotBlank() }
-            ?.let { PinyinFormatter.numberedToToneMarks(it) }
-        return HanziDetail(
-            literal = literal,
-            meanings = meanings,
-            pinyin = pinyin,
-            isCommon = entry?.isCommon == true,
-            freqScore = entry?.freqScore ?: 0,
-            meaningsLang = meaningsLang,
-            frequencies = yomitan.kanjiFrequencies(literal),
+    override suspend fun characterBreakdown(written: String, reading: String?, targetLang: String): List<CharacterDetail> {
+        val used = ChineseWordMatch.characterReadings(written, reading)
+        return ideographsOf(written).mapNotNull { hanziDetail(it, used[it].orEmpty()) }
+    }
+
+    private suspend fun hanziDetail(literal: Char, usedReadings: List<String>): HanziDetail? {
+        val groups = ChineseEntryGroups.characterGroups(
+            dict.alternativeGroups(literal.toString(), profile.preferTraditional), usedReadings,
         )
+        return ChineseEntryGroups.hanziDetail(literal, groups, yomitan.importedKanji(literal))
+            ?.copy(frequencies = yomitan.kanjiFrequencies(literal))
     }
 
     /**

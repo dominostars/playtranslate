@@ -108,7 +108,7 @@ internal object ChineseWordMatch {
      */
     fun memberSplit(headword: String, listed: Set<String>, headwordReading: String?): List<TokenSpan> {
         if (headword.length < 2 || headword.any { it.isSurrogate() }) return emptyList()
-        val tokens = headwordReading?.trim()?.split(' ')?.takeIf { it.size == headword.length }
+        val tokens = syllables(headword, headwordReading)
         val members = LinkedHashMap<String, String?>()
         var start = 0
         for (piece in backwardMaximalMatch(headword, listed, allowWhole = false)) {
@@ -121,5 +121,32 @@ internal object ChineseWordMatch {
             start = end
         }
         return members.map { (surface, reading) -> TokenSpan(surface = surface, lookupForm = surface, reading = reading) }
+    }
+
+    /**
+     * The readings [headword] gives each of its characters, for the Hanzi
+     * group of the word's page: a character's syllables in the order the
+     * word uses them, distinct (银行 yín háng gives 行 háng; 分离分子 fēn lí
+     * fèn zǐ gives 分 fēn, then fèn). Sliced by the rule [memberSplit]'s
+     * hints follow, so the two sections of one page read a character the
+     * same way; a reading that is not one token per character gives none.
+     */
+    fun characterReadings(headword: String, headwordReading: String?): Map<Char, List<String>> {
+        val tokens = syllables(headword, headwordReading) ?: return emptyMap()
+        val readings = LinkedHashMap<Char, MutableList<String>>()
+        headword.forEachIndexed { i, c ->
+            val own = readings.getOrPut(c) { mutableListOf() }
+            if (tokens[i] !in own) own.add(tokens[i])
+        }
+        return readings
+    }
+
+    /** [headwordReading] as one token per character of [headword], or null
+     *  when it is not written so: no reading, another token count, or a
+     *  headword holding a surrogate pair, whose characters a token index
+     *  cannot name. */
+    private fun syllables(headword: String, headwordReading: String?): List<String>? {
+        if (headword.any { it.isSurrogate() }) return null
+        return headwordReading?.trim()?.split(' ')?.takeIf { it.size == headword.length }
     }
 }

@@ -1395,71 +1395,72 @@ class WordDetailBinder(
         }
 
         // ── Character breakdown group (Kanji / Hanzi) ────────────────────
-        val cjkChars = (primary.headwords.firstOrNull()?.written ?: primary.slug)
-            .filter { c -> c.code in 0x4E00..0x9FFF || c.code in 0x3400..0x4DBF }
-            .toList().distinct()
-
-        if (cjkChars.isNotEmpty()) {
-            val characterDetails = withContext(Dispatchers.IO) {
-                cjkChars.mapNotNull { engine.lookupCharacter(it, targetLangCode) }
+        // The engine breaks the headword down, with the reading the page
+        // shows it under: a hanzi with several entries leads with the one
+        // this word uses.
+        val anchor = primary.headwords.firstOrNull()
+        val characterDetails = withContext(Dispatchers.IO) {
+            engine.characterBreakdown(anchor?.written ?: primary.slug, anchor?.reading, targetLangCode)
+        }
+        if (ui.isAlive && characterDetails.isNotEmpty()) {
+            val headerTitle = when (characterDetails.first()) {
+                is KanjiDetail -> ctx.getString(R.string.word_detail_group_kanji)
+                is HanziDetail -> ctx.getString(R.string.word_detail_group_hanzi)
             }
-            if (ui.isAlive && characterDetails.isNotEmpty()) {
-                val headerTitle = when (characterDetails.first()) {
-                    is KanjiDetail -> ctx.getString(R.string.word_detail_group_kanji)
-                    is HanziDetail -> ctx.getString(R.string.word_detail_group_hanzi)
+            // Rows whose pack-resolved meanings are still in English while
+            // the user asked for something else. CC-CEDICT hanzi always
+            // land here; JA kanji only when KANJIDIC2 has no native gloss
+            // in the user's target language (i.e. outside en/fr/es/pt).
+            val needsMt = targetLangCode != "en" && characterDetails.any {
+                it.meaningsLang != targetLangCode
+            }
+            val countLabel = ctx.resources.getQuantityString(
+                R.plurals.word_detail_chars_count,
+                characterDetails.size,
+                characterDetails.size
+            )
+            val suffix = if (needsMt && enToTargetTranslator != null)
+                ctx.getString(R.string.word_detail_char_meanings_mt, countLabel)
+            else
+                countLabel
+            addGroupHeader(content, headerTitle, suffix)
+            val charCard = addGroupCard(content)
+            // Each meanings line still to be machine translated, with the
+            // meanings it shows: one per block, so a hanzi's entries are
+            // translated apart and each lands under its own pinyin.
+            val untranslated = mutableListOf<Pair<List<String>, TextView>>()
+            characterDetails.forEachIndexed { index, detail ->
+                if (index > 0) addInsetDivider(charCard, indentPx = dpRes(R.dimen.pt_row_h_padding))
+                addCharacterRow(charCard, detail) { meanings, view ->
+                    if (detail.meaningsLang != targetLangCode) untranslated += meanings to view
                 }
-                // Rows whose pack-resolved meanings are still in English while
-                // the user asked for something else. CC-CEDICT hanzi always
-                // land here; JA kanji only when KANJIDIC2 has no native gloss
-                // in the user's target language (i.e. outside en/fr/es/pt).
-                val needsMt = targetLangCode != "en" && characterDetails.any {
-                    it.meaningsLang != targetLangCode
-                }
-                val countLabel = ctx.resources.getQuantityString(
-                    R.plurals.word_detail_chars_count,
-                    characterDetails.size,
-                    characterDetails.size
-                )
-                val suffix = if (needsMt && enToTargetTranslator != null)
-                    ctx.getString(R.string.word_detail_char_meanings_mt, countLabel)
-                else
-                    countLabel
-                addGroupHeader(content, headerTitle, suffix)
-                val charCard = addGroupCard(content)
-                val meaningsRegistry = mutableMapOf<Int, TextView>()
-                characterDetails.forEachIndexed { index, detail ->
-                    if (index > 0) addInsetDivider(charCard, indentPx = dpRes(R.dimen.pt_row_h_padding))
-                    addCharacterRow(charCard, detail, index, meaningsRegistry)
-                }
+            }
 
-                if (needsMt && enToTargetTranslator != null) {
-                    // Localize Simplified MT output to the chosen Traditional
-                    // variant (this path bypasses DefinitionResolver).
-                    val charConverter = ChineseScriptConverter.forTarget(
-                        targetLangCode, Prefs(ctx.applicationContext).targetChineseVariant,
-                    )
-                    // Launch translations on the host scope so buildContent
-                    // returns immediately and the Anki button / more-examples
-                    // setup isn't blocked behind ML Kit. Each row updates as
-                    // its MT resolves.
-                    characterDetails.forEachIndexed { index, detail ->
-                        if (detail.meaningsLang == targetLangCode) return@forEachIndexed
-                        if (detail.meanings.isEmpty()) return@forEachIndexed
-                        scope.launch {
-                            // Mirror addCharacterRow's display — the full
-                            // meanings list joined by ", " — so the translator
-                            // sees the same surface the user would otherwise read.
-                            val source = detail.meanings.joinToString(", ")
-                            val translated = runCatching {
-                                withContext(Dispatchers.IO) { enToTargetTranslator.translate(source) }
-                            }.getOrNull()
-                            if (!translated.isNullOrBlank() && ui.isAlive) {
-                                // MT emits Simplified; convert to the chosen
-                                // Traditional variant. The kanji/hanzi breakdown
-                                // bypasses DefinitionResolver, so convert here.
-                                val localized = charConverter?.convert(translated) ?: translated
-                                meaningsRegistry[index]?.text = dedupeMtCsv(localized)
-                            }
+            if (needsMt && enToTargetTranslator != null) {
+                // Localize Simplified MT output to the chosen Traditional
+                // variant (this path bypasses DefinitionResolver).
+                val charConverter = ChineseScriptConverter.forTarget(
+                    targetLangCode, Prefs(ctx.applicationContext).targetChineseVariant,
+                )
+                // Launch translations on the host scope so buildContent
+                // returns immediately and the Anki button / more-examples
+                // setup isn't blocked behind ML Kit. Each line updates as
+                // its MT resolves.
+                for ((meanings, view) in untranslated) {
+                    scope.launch {
+                        // Mirror addCharacterRow's display — the block's
+                        // meanings joined by ", " — so the translator sees
+                        // the same surface the user would otherwise read.
+                        val source = meanings.joinToString(", ")
+                        val translated = runCatching {
+                            withContext(Dispatchers.IO) { enToTargetTranslator.translate(source) }
+                        }.getOrNull()
+                        if (!translated.isNullOrBlank() && ui.isAlive) {
+                            // MT emits Simplified; convert to the chosen
+                            // Traditional variant. The kanji/hanzi breakdown
+                            // bypasses DefinitionResolver, so convert here.
+                            val localized = charConverter?.convert(translated) ?: translated
+                            view.text = dedupeMtCsv(localized)
                         }
                     }
                 }
@@ -2402,20 +2403,26 @@ class WordDetailBinder(
 
     /**
      * Kanji / Hanzi row: 56dp surface tile holding the character and a
-     * flex meaning column with labelled readings and a mono meta line
-     * (JLPT / grade / strokes / imported frequency data).
+     * column of its blocks ([characterBlocks]), each a meanings line with
+     * its labelled readings under it, then a mono meta line for the
+     * character as a whole (JLPT / grade / strokes / imported frequency
+     * data). A kanji is one block. A hanzi is one per dictionary entry, set
+     * apart by a gap wider than the one inside a block, so each pinyin
+     * reads with the meanings above it and the meta line with none of them;
+     * the tile then stands at the top, beside the first entry, where a
+     * centred one would stand beside a later entry.
      *
-     * [meaningsRegistry] (when non-null) records the meanings [TextView]
-     * by [index] so a background MT coroutine can swap its text once the
-     * translator returns. [index] defaults to -1 for call sites that don't
-     * need async updates.
+     * [onMeanings] is handed each block's meanings with the [TextView]
+     * showing them, so a background MT coroutine can swap its text once the
+     * translator returns.
      */
     private fun addCharacterRow(
         parent: LinearLayout,
         detail: CharacterDetail,
-        index: Int = -1,
-        meaningsRegistry: MutableMap<Int, TextView>? = null,
+        onMeanings: (List<String>, TextView) -> Unit,
     ) {
+        val blocks = characterBlocks(detail)
+        val stacked = blocks.size > 1
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -2439,6 +2446,7 @@ class WordDetailBinder(
             setBackgroundResource(R.drawable.bg_word_kanji_tile)
             layoutParams = LinearLayout.LayoutParams(dp(56), dp(56)).also {
                 it.marginEnd = dp(14)
+                if (stacked) it.gravity = Gravity.TOP
             }
         }
         tile.addView(TextView(ctx).apply {
@@ -2460,61 +2468,70 @@ class WordDetailBinder(
                 .also { it.gravity = Gravity.CENTER_VERTICAL }
         }
 
-        if (detail.meanings.isNotEmpty()) {
-            val meaningsTv = TextView(ctx).apply {
-                text = detail.meanings.joinToString(", ")
-                textSize = 14f
-                setTextColor(ctx.themeColor(R.attr.ptText))
-                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            }
-            col.addView(meaningsTv)
-            if (index >= 0 && meaningsRegistry != null) {
-                meaningsRegistry[index] = meaningsTv
-            }
-        }
-
-        // Labelled readings — the "on:" / "kun:" / "pinyin:" labels use a
-        // small-caps Inter-ish label and the value itself sits in the
-        // default sans for CJK compatibility. One row per label: reading
-        // lists are rendered in full (no truncation), so each value needs
-        // the column's whole width to wrap into — sharing one horizontal
-        // line would squeeze the later pair into a sliver.
-        for ((label, value) in buildReadingLines(detail)) {
-            val line = LinearLayout(ctx).apply {
-                orientation = LinearLayout.HORIZONTAL
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).also { it.topMargin = dp(3) }
-            }
-            line.addView(TextView(ctx).apply {
-                text = ctx.getString(R.string.word_detail_label_format, label.uppercase(Locale.ROOT))
-                textSize = 10f
-                isAllCaps = true
-                letterSpacing = 0.08f
-                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                setTextColor(ctx.themeColor(R.attr.ptTextHint))
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).also {
-                    it.marginEnd = dp(4)
-                    // Optically align the small-caps label with the taller
-                    // value text's first line when the value wraps.
-                    it.topMargin = dp(1)
+        blocks.forEachIndexed { blockIndex, block ->
+            // The gap that sets this block apart from the one above it,
+            // taken by the block's first line.
+            var gapAbove = if (blockIndex > 0) dp(CHARACTER_BLOCK_GAP_DP) else 0
+            if (block.meanings.isNotEmpty()) {
+                val meaningsTv = TextView(ctx).apply {
+                    text = block.meanings.joinToString(", ")
+                    textSize = 14f
+                    setTextColor(ctx.themeColor(R.attr.ptText))
+                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).also { it.topMargin = gapAbove }
                 }
-            })
-            line.addView(TextView(ctx).apply {
-                text = value
-                textSize = 12f
-                setTextColor(ctx.themeColor(R.attr.ptTextMuted))
-                layoutParams = LinearLayout.LayoutParams(
-                    0,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    1f,
-                )
-            })
-            col.addView(line)
+                gapAbove = 0
+                col.addView(meaningsTv)
+                onMeanings(block.meanings, meaningsTv)
+            }
+
+            // Labelled readings — the "on:" / "kun:" / "pinyin:" labels use a
+            // small-caps Inter-ish label and the value itself sits in the
+            // default sans for CJK compatibility. One row per label: reading
+            // lists are rendered in full (no truncation), so each value needs
+            // the column's whole width to wrap into — sharing one horizontal
+            // line would squeeze the later pair into a sliver.
+            for ((label, value) in block.readingLines) {
+                val line = LinearLayout(ctx).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).also { it.topMargin = dp(3) + gapAbove }
+                }
+                gapAbove = 0
+                line.addView(TextView(ctx).apply {
+                    text = ctx.getString(R.string.word_detail_label_format, label.uppercase(Locale.ROOT))
+                    textSize = 10f
+                    isAllCaps = true
+                    letterSpacing = 0.08f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    setTextColor(ctx.themeColor(R.attr.ptTextHint))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).also {
+                        it.marginEnd = dp(4)
+                        // Optically align the small-caps label with the taller
+                        // value text's first line when the value wraps.
+                        it.topMargin = dp(1)
+                    }
+                })
+                line.addView(TextView(ctx).apply {
+                    text = value
+                    textSize = 12f
+                    setTextColor(ctx.themeColor(R.attr.ptTextMuted))
+                    layoutParams = LinearLayout.LayoutParams(
+                        0,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        1f,
+                    )
+                })
+                col.addView(line)
+            }
         }
 
         val meta = buildMetaLine(detail)
@@ -2527,29 +2544,13 @@ class WordDetailBinder(
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).also { it.topMargin = dp(3) }
+                ).also { it.topMargin = if (stacked) dp(CHARACTER_BLOCK_GAP_DP) else dp(3) }
             })
         }
 
         row.addView(col)
 
         parent.addView(row)
-    }
-
-    private fun buildReadingLines(detail: CharacterDetail): List<Pair<String, String>> = when (detail) {
-        is KanjiDetail -> buildList {
-            // An imported dict that doesn't follow the on/kun convention
-            // (JPDB's usage-ranked list) gets one neutral line — its
-            // readings mix both kinds, so ON/KUN labels would mislabel.
-            if (detail.combinedReadings.isNotEmpty()) {
-                add("readings" to detail.combinedReadings.joinToString(", "))
-            } else {
-                if (detail.onReadings.isNotEmpty())  add("on" to detail.onReadings.joinToString(", "))
-                if (detail.kunReadings.isNotEmpty()) add("kun" to detail.kunReadings.joinToString(", "))
-            }
-        }
-        is HanziDetail -> if (!detail.pinyin.isNullOrBlank())
-            listOf("pinyin" to detail.pinyin) else emptyList()
     }
 
     private fun buildMetaLine(detail: CharacterDetail): CharSequence {
@@ -2632,6 +2633,44 @@ class WordDetailBinder(
  *  empty tokenization. */
 internal fun detailSurfaceSpan(spans: List<TokenSpan>, word: String): TokenSpan? =
     spans.firstOrNull { it.lookupForm == word } ?: spans.firstOrNull()
+
+/** The gap between two blocks of one character row, and above the row's
+ *  meta line when it has several: wider than the 3dp inside a block. */
+private const val CHARACTER_BLOCK_GAP_DP = 12
+
+/** One block of a character row: a meanings line and the labelled reading
+ *  lines under it. */
+internal data class CharacterBlock(
+    val meanings: List<String>,
+    val readingLines: List<Pair<String, String>>,
+)
+
+/**
+ * A character's row as its blocks, top to bottom. A kanji is one: its
+ * meanings over its on and kun lines. A hanzi is one per dictionary entry
+ * in the engine's order ([HanziDetail.entries]), each entry's meanings over
+ * its own pinyin, so no entry's pronunciation stands under another's
+ * meanings.
+ */
+internal fun characterBlocks(detail: CharacterDetail): List<CharacterBlock> = when (detail) {
+    is KanjiDetail -> listOf(CharacterBlock(detail.meanings, buildList {
+        // An imported dict that doesn't follow the on/kun convention
+        // (JPDB's usage-ranked list) gets one neutral line — its
+        // readings mix both kinds, so ON/KUN labels would mislabel.
+        if (detail.combinedReadings.isNotEmpty()) {
+            add("readings" to detail.combinedReadings.joinToString(", "))
+        } else {
+            if (detail.onReadings.isNotEmpty())  add("on" to detail.onReadings.joinToString(", "))
+            if (detail.kunReadings.isNotEmpty()) add("kun" to detail.kunReadings.joinToString(", "))
+        }
+    }))
+    is HanziDetail -> detail.entries.map { entry ->
+        CharacterBlock(
+            entry.meanings,
+            if (entry.readings.isEmpty()) emptyList() else listOf("pinyin" to entry.readings.joinToString(", ")),
+        )
+    }
+}
 
 /** The chain from a detail page's [word], the key it resolves
  *  ([WordDetailBinder.Args.lookupForm]), to the [surface] it was found as,

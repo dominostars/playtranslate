@@ -238,15 +238,16 @@ data class Example(
  * single-character CC-CEDICT entries already in its pack (pinyin, meanings,
  * frequency).
  *
- * [meaningsLang] is the BCP-47 code of the language [meanings] are currently
+ * [meaningsLang] is the BCP-47 code of the language the meanings are currently
  * expressed in. For Japanese this can be one of the languages KANJIDIC2 ships
- * natively (en/fr/es/pt); for Chinese it's always "en" (CC-CEDICT source).
- * Callers compare against the user's target language to decide whether the
- * UI needs to run the meanings through machine translation.
+ * natively (en/fr/es/pt); for Chinese it's "en" (CC-CEDICT source) unless an
+ * imported dictionary's meanings won. Callers compare against the user's
+ * target language to decide whether the UI needs to run the meanings through
+ * machine translation. The meanings themselves are each kind's own: a kanji
+ * has one list, a hanzi one per dictionary entry ([HanziDetail.entries]).
  */
 sealed interface CharacterDetail {
     val literal: Char
-    val meanings: List<String>
     val meaningsLang: String
 }
 
@@ -257,7 +258,7 @@ sealed interface CharacterDetail {
  */
 data class KanjiDetail(
     override val literal: Char,
-    override val meanings: List<String>,
+    val meanings: List<String>,
     override val meaningsLang: String,
     val onReadings: List<String>,
     val kunReadings: List<String>,
@@ -275,18 +276,35 @@ data class KanjiDetail(
 ) : CharacterDetail
 
 /**
+ * One block of a hanzi's row: meanings and the pinyin they are read with,
+ * tone-marked, a proper noun's capital kept ("shā", "Shā"). A pack entry has
+ * one reading. An imported character dictionary's meanings are not divided
+ * by reading, so its one block carries every reading the pack has, or none
+ * when the pack does not list the character.
+ */
+data class HanziEntry(
+    val readings: List<String>,
+    val meanings: List<String>,
+)
+
+/**
  * Per-hanzi detail reconstituted from the Chinese pack's single-character
  * CC-CEDICT entries, optionally enriched by an imported zh-source Yomitan
- * kanji dictionary. Pinyin is tone-marked; [freqScore] matches the 0-5 star
- * scale used by [DictionaryEntry.freqScore]. [meaningsLang] is "en" for the
- * CC-CEDICT (Chinese↔English) glosses but carries an imported dictionary's
- * declared language when its meanings win, so the breakdown's MT fallback
- * behaves correctly; non-English UIs without a match rely on MT fallback.
+ * kanji dictionary. [entries] is never empty and holds every dictionary
+ * entry of the character in the order its row shows them: the readings the
+ * word on the page uses, the character's other readings as a lookup orders
+ * them, proper nouns (surnames) last
+ * ([com.playtranslate.language.ChineseEntryGroups.characterGroups]).
+ * [isCommon] and [freqScore] (the 0-5 star scale of
+ * [DictionaryEntry.freqScore]) are the character's own, not one reading's.
+ * [meaningsLang] is "en" for the CC-CEDICT (Chinese↔English) glosses but
+ * carries an imported dictionary's declared language when its meanings win,
+ * so the breakdown's MT fallback behaves correctly; non-English UIs without
+ * a match rely on MT fallback.
  */
 data class HanziDetail(
     override val literal: Char,
-    override val meanings: List<String>,
-    val pinyin: String?,
+    val entries: List<HanziEntry>,
     val isCommon: Boolean,
     val freqScore: Int,
     override val meaningsLang: String = "en",

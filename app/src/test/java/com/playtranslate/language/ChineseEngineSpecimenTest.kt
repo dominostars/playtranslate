@@ -131,8 +131,40 @@ class ChineseEngineSpecimenTest {
             assertEquals("jié guǒ", engine.lookup("结果", null)!!.entries.single().headwords.first().reading)
             assertEquals("yào", engine.lookup("要", null)!!.entries.single().headwords.first().reading)
             assertEquals("pǎo", engine.lookup("跑", null)!!.entries.single().headwords.first().reading)
-            // The detail page's Hanzi row reads the same lead.
-            assertEquals("yào", (engine.lookupCharacter('要', "en") as HanziDetail).pinyin)
+            // The detail page's Hanzi row reads the same lead, and holds
+            // the character's other entries under it.
+            val yao = engine.characterBreakdown("要", null).single() as HanziDetail
+            assertEquals(listOf(listOf("yào"), listOf("yāo")), yao.entries.map { it.readings })
+            // 沙, the character of the 2026-11 field report: every entry,
+            // the surname last.
+            val sha = engine.characterBreakdown("沙", "shā").single() as HanziDetail
+            assertEquals(listOf(listOf("shā"), listOf("shà"), listOf("Shā")), sha.entries.map { it.readings })
+            assertEquals(listOf("(dialect) to sift; to sieve"), sha.entries[1].meanings)
+            assertEquals(listOf("surname Sha"), sha.entries[2].meanings)
+            // A word's own reading leads its characters: 银行 is háng where
+            // a lookup of 行 leads with xíng, 地方 is dì where 地 leads with
+            // the particle, and 长大 is zhǎng. A neutral tone names no entry.
+            fun leads(word: String, reading: String) =
+                runBlocking { engine.characterBreakdown(word, reading) }.map { it.literal to (it as HanziDetail).entries.first().readings.single() }
+            assertEquals(listOf('银' to "yín", '行' to "háng"), leads("银行", "yín háng"))
+            assertEquals(listOf('地' to "dì", '方' to "fāng"), leads("地方", "dì fang"))
+            assertEquals(listOf('长' to "zhǎng", '大' to "dà"), leads("长大", "zhǎng dà"))
+            assertEquals("xíng", (engine.characterBreakdown("行", null).single() as HanziDetail).entries.first().readings.single())
+            // A proper noun's capital is the compound's: 中 leads with its
+            // common word, the entry written Zhōng last.
+            val zhong = engine.characterBreakdown("中国", "Zhōng guó").first() as HanziDetail
+            assertEquals("zhōng", zhong.entries.first().readings.single())
+            assertEquals("Zhōng", zhong.entries.last().readings.single())
+            // A repeated character has one row, and text that is no
+            // ideograph has none.
+            assertEquals(listOf('妈'), engine.characterBreakdown("妈妈", "mā ma").map { it.literal })
+            assertEquals(emptyList<Char>(), engine.characterBreakdown("OK", null).map { it.literal })
+            // A Traditional reader's 里 is 里: the unit of length and the
+            // surname, without 裡's "lining" and 裏's cross-reference.
+            val hantLi = hant.characterBreakdown("公里", "gōng lǐ").last() as HanziDetail
+            assertEquals(listOf(listOf("lǐ"), listOf("Lǐ")), hantLi.entries.map { it.readings })
+            assertFalse(hantLi.entries.flatMap { it.meanings }.any { "lining" in it })
+            assertTrue(hantLi.entries.first().meanings.first().startsWith("li, ancient measure"))
             // 得 after a verb: HanLP's standing dé is no context, the table's
             // particle leads.
             val de = engine.tokenize("他跑得很快").single { it.surface == "得" }

@@ -1,10 +1,14 @@
 package com.playtranslate.language
 
 import com.playtranslate.model.DictionaryEntry
+import com.playtranslate.model.HanziDetail
+import com.playtranslate.model.HanziEntry
 import com.playtranslate.model.Headword
+import com.playtranslate.model.ImportedKanji
 import com.playtranslate.model.PosVocabulary
 import com.playtranslate.model.Sense
 import com.playtranslate.model.expressionFrom
+import java.util.Locale
 
 /** One CC-CEDICT line as the ZH pack stores it: one entry row, its
  *  simplified form (headword position 0), its traditional form (position 1,
@@ -155,6 +159,71 @@ internal object ChineseEntryGroups {
         return groups.filterIndexed { i, _ -> i != index }
             .map { it.reading }
             .filterTo(LinkedHashSet()) { PinyinFormatter.canonicalPinyin(it) != own }
+    }
+
+    /**
+     * The entries a character's row shows on a word's page, out of the
+     * character's [groups] as a lookup orders them. They are every reading
+     * of the written character the lookup leads with: all of a Simplified
+     * reader's 沙 (shā, shà and the surname Shā), and for a Traditional
+     * reader's 里 the character 里 and not 裡 or 裏, which are other
+     * characters in that script and stand among 里's groups only because
+     * they share its simplified form (a variant's cross-reference line, 㑺
+     * among 俊's, leaves the same way).
+     *
+     * The readings the word uses come first, in the order it uses them
+     * ([usedReadings], tone-marked, matched as a lookup's reading hint is by
+     * [hintedIndex]), so 银行 shows 行 háng before xíng. A proper noun is
+     * never one of them: a compound's capital is the compound's own (中国
+     * Zhōng guó), so the syllables are compared lowercased, and proper nouns
+     * stay after every common word, where [groups] has them. A syllable no
+     * group carries, a neutral tone among them (地方 dì fang), moves
+     * nothing.
+     */
+    fun characterGroups(groups: List<EntryGroup>, usedReadings: List<String>): List<EntryGroup> {
+        val form = groups.firstOrNull()?.displayedForm ?: return emptyList()
+        val own = groups.filter { it.displayedForm == form }
+        val used = usedReadings
+            .mapNotNull { hintedIndex(own, it.lowercase(Locale.ROOT))?.let(own::get) }
+            .distinct()
+        return used + (own - used.toSet())
+    }
+
+    /**
+     * The Hanzi row of [literal] from its [groups], already in the row's
+     * order ([characterGroups]), and what an imported character dictionary
+     * holds for it; null when neither gives a meaning. One block per group,
+     * its glosses under its own pinyin. An imported dictionary's meanings
+     * win when it has any (the user installed it and ordered it), carrying
+     * its declared language, as a kanji's do in the Japanese engine; they
+     * are not divided by reading and a Yomitan kanji entry's on and kun
+     * readings are not pinyin, so they stand as one block under every
+     * reading the pack lists. Common and the frequency score are the
+     * character's: common in any of its entries, and the highest score
+     * among them, which only a Traditional reader's character standing for
+     * two simplified ones can differ on.
+     */
+    fun hanziDetail(literal: Char, groups: List<EntryGroup>, imported: ImportedKanji?): HanziDetail? {
+        val packEntries = groups.map(::toEntry)
+        val entries: List<HanziEntry>
+        val meaningsLang: String
+        if (imported != null && imported.meanings.isNotEmpty()) {
+            entries = listOf(HanziEntry(groups.map { it.reading }.distinct(), imported.meanings))
+            meaningsLang = imported.meaningsLang
+        } else {
+            entries = groups.zip(packEntries) { group, entry ->
+                HanziEntry(listOf(group.reading), entry.senses.flatMap { it.targetDefinitions })
+            }
+            meaningsLang = "en"
+        }
+        if (entries.isEmpty()) return null
+        return HanziDetail(
+            literal = literal,
+            entries = entries,
+            isCommon = packEntries.any { it.isCommon == true },
+            freqScore = packEntries.maxOfOrNull { it.freqScore } ?: 0,
+            meaningsLang = meaningsLang,
+        )
     }
 
     /** The group as the one entry a lookup returns. */

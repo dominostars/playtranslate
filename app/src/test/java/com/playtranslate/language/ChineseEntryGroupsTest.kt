@@ -1,5 +1,7 @@
 package com.playtranslate.language
 
+import com.playtranslate.model.HanziEntry
+import com.playtranslate.model.ImportedKanji
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -221,5 +223,153 @@ class ChineseEntryGroupsTest {
         assertEquals(setOf("dōng xi"), ChineseEntryGroups.otherReadings(thingFirst, 1))
         val single = ChineseEntryGroups.groups(listOf(line(1, "fang4", "放", glosses = listOf("to put"))), "放", false)
         assertEquals(emptySet<String>(), ChineseEntryGroups.otherReadings(single, 0))
+    }
+
+    // ── A character's row on a word's page ──────────────────────────────
+
+    /** 沙 as the pack has it: the surname's line first. */
+    private val sha = listOf(
+        line(46766, "Sha1", "沙", glosses = listOf("surname Sha"), freq = 47, common = false),
+        line(46767, "sha1", "沙", glosses = listOf("granule", "sand", "CL:粒[li4]"), freq = 47, common = false),
+        line(46768, "sha4", "沙", glosses = listOf("(dialect) to sift; to sieve"), freq = 47, common = false),
+    )
+
+    private val xing = listOf(
+        line(90001, "hang2", "行", glosses = listOf("row", "line", "profession"), freq = 70),
+        line(90002, "heng2", "行", glosses = listOf("used in 道行[dao4 heng2]"), freq = 70),
+        line(90003, "xing2", "行", glosses = listOf("to walk", "to go"), freq = 70),
+    )
+
+    private fun row(lines: List<CedictLine>, surface: String, used: List<String>, traditional: Boolean = false, lead: (String) -> String? = { null }) =
+        ChineseEntryGroups.characterGroups(ChineseEntryGroups.groups(lines, surface, traditional, lead), used)
+
+    // Mutations: the row is the lead group alone; proper nouns are dropped.
+    @Test fun `a character's row holds every entry of the character, the surname last`() {
+        assertEquals(listOf("shā", "shà", "Shā"), row(sha, "沙", emptyList()).map { it.reading })
+        // With no word reading the order is the lookup's own.
+        val lookup = ChineseEntryGroups.groups(xing, "行", false, lead("行" to "xing2"))
+        assertEquals(listOf("xíng", "háng", "héng"), lookup.map { it.reading })
+        assertEquals(lookup, ChineseEntryGroups.characterGroups(lookup, emptyList()))
+        assertEquals(emptyList<EntryGroup>(), ChineseEntryGroups.characterGroups(emptyList(), listOf("shā")))
+    }
+
+    // Mutations: the hint is ignored; the used readings follow the lookup's
+    // order and not the word's; a matched group is listed twice.
+    @Test fun `the readings the word uses lead, in the word's order, and the rest keep the lookup's`() {
+        val named = lead("行" to "xing2")
+        // 银行 yín háng.
+        assertEquals(listOf("háng", "xíng", "héng"), row(xing, "行", listOf("háng"), lead = named).map { it.reading })
+        // A word using two readings of one character: both lead, as used.
+        assertEquals(listOf("héng", "háng", "xíng"), row(xing, "行", listOf("héng", "háng"), lead = named).map { it.reading })
+        assertEquals(listOf("háng", "héng", "xíng"), row(xing, "行", listOf("háng", "héng"), lead = named).map { it.reading })
+        // The lead named again changes nothing, and no group is listed twice.
+        assertEquals(listOf("xíng", "háng", "héng"), row(xing, "行", listOf("xíng", "xíng"), lead = named).map { it.reading })
+        // A reading written numbered names its group as a lookup's hint does.
+        assertEquals(listOf("háng", "xíng", "héng"), row(xing, "行", listOf("hang2"), lead = named).map { it.reading })
+    }
+
+    // Mutations: the syllable is compared with its capital; a proper noun
+    // the word names leads.
+    @Test fun `a compound's capital names the common word, and a proper noun never leads one`() {
+        val zhong = listOf(
+            line(2901, "Zhong1", "中", glosses = listOf("China", "surname Zhong"), freq = 80),
+            line(2902, "zhong1", "中", glosses = listOf("within", "among", "middle"), freq = 80),
+            line(2903, "zhong4", "中", glosses = listOf("to hit (the mark)"), freq = 80),
+        )
+        // 中国 Zhōng guó: the capital is the compound's.
+        assertEquals(listOf("zhōng", "zhòng", "Zhōng"), row(zhong, "中", listOf("Zhōng")).map { it.reading })
+        assertEquals(listOf("zhòng", "zhōng", "Zhōng"), row(zhong, "中", listOf("Zhòng")).map { it.reading })
+        // 沙特 Shā tè: the surname stays last.
+        assertEquals(listOf("shā", "shà", "Shā"), row(sha, "沙", listOf("Shā")).map { it.reading })
+    }
+
+    @Test fun `a syllable no entry carries moves nothing, a neutral tone among them`() {
+        // 萝卜 luó bo: the pack lists 卜 as bǔ and bó, and bo names neither.
+        val bu = listOf(
+            line(8001, "bo2", "卜", "蔔", listOf("used in 蘿蔔|萝卜[luo2 bo5]"), freq = 40),
+            line(8002, "bu3", "卜", null, listOf("to divine", "to forecast"), freq = 40),
+        )
+        val lookup = ChineseEntryGroups.groups(bu, "卜", false, lead("卜" to "bu3"))
+        assertEquals(listOf("bǔ", "bó"), lookup.map { it.reading })
+        assertEquals(lookup, ChineseEntryGroups.characterGroups(lookup, listOf("bo")))
+        assertEquals(lookup, ChineseEntryGroups.characterGroups(lookup, listOf("zzz", "")))
+    }
+
+    // Mutations: every group stands in the row whatever its form; the row
+    // keeps the forms the lead does not have.
+    @Test fun `a row is the written character the lookup leads with, not the characters that share its simplified form`() {
+        // A Traditional reader's 里 is 里, and the surname written 里: 裡 and
+        // 裏 are other characters there.
+        val hant = row(li, "里", emptyList(), traditional = true)
+        assertEquals(listOf("里" to "lǐ", "里" to "Lǐ"), hant.map { it.displayedForm to it.reading })
+        assertEquals(listOf(80258L), hant[0].lines.map { it.id })
+        // A Simplified reader's 里 is all of them, in one lǐ entry.
+        val hans = row(li, "里", emptyList())
+        assertEquals(listOf("lǐ", "Lǐ"), hans.map { it.reading })
+        assertEquals(listOf(71416L, 80258L), hans[0].lines.map { it.id })
+        // A Simplified reader's 乾 is the trigram: dry is written 干.
+        val qian = listOf(
+            line(3060, "Gan1", "干", "乾", listOf("surname Gan"), freq = 63),
+            line(3061, "gan1", "干", "乾", listOf("dry", "dried food"), freq = 63),
+            line(3062, "qian2", "乾", null, listOf("one of the Eight Trigrams 八卦[ba1 gua4]"), freq = 50),
+        )
+        assertEquals(listOf("qián"), row(qian, "乾", emptyList()).map { it.reading })
+        // A Traditional reader's 乾 is both, dry first as the commoner word,
+        // and the word's reading leads.
+        assertEquals(listOf("gān", "qián", "Gān"), row(qian, "乾", emptyList(), traditional = true).map { it.reading })
+        assertEquals(listOf("qián", "gān", "Gān"), row(qian, "乾", listOf("qián"), traditional = true).map { it.reading })
+    }
+
+    // Mutations: the row holds the first group's meanings alone; the
+    // imported meanings are added beside the pack's; the imported block
+    // names the first reading alone; the character is common only when its
+    // first entry is.
+    @Test fun `a hanzi's row is one block per entry, or an imported dictionary's meanings under every reading`() {
+        val groups = row(sha, "沙", listOf("shà"))
+        val pack = ChineseEntryGroups.hanziDetail('沙', groups, imported = null)!!
+        assertEquals(
+            listOf(
+                HanziEntry(listOf("shà"), listOf("(dialect) to sift; to sieve")),
+                HanziEntry(listOf("shā"), listOf("granule", "sand", "CL:粒[lì]")),
+                HanziEntry(listOf("Shā"), listOf("surname Sha")),
+            ),
+            pack.entries,
+        )
+        assertEquals("en", pack.meaningsLang)
+        assertEquals(2, pack.freqScore)
+        assertFalse(pack.isCommon)
+        assertEquals('沙', pack.literal)
+
+        val imported = ImportedKanji(
+            meanings = listOf("Sand", "Kies"), onReadings = listOf("サ"), kunReadings = emptyList(), meaningsLang = "de",
+        )
+        val merged = ChineseEntryGroups.hanziDetail('沙', groups, imported)!!
+        assertEquals(listOf(HanziEntry(listOf("shà", "shā", "Shā"), listOf("Sand", "Kies"))), merged.entries)
+        assertEquals("de", merged.meaningsLang)
+        assertEquals(2, merged.freqScore)
+
+        // An import with no meaning for the character leaves the pack's.
+        val bare = imported.copy(meanings = emptyList())
+        assertEquals(pack, ChineseEntryGroups.hanziDetail('沙', groups, bare))
+        // A character only the import knows has its meanings and no pinyin.
+        assertEquals(
+            listOf(HanziEntry(emptyList(), listOf("Sand", "Kies"))),
+            ChineseEntryGroups.hanziDetail('沙', emptyList(), imported)!!.entries,
+        )
+        // No meaning anywhere is no row.
+        assertNull(ChineseEntryGroups.hanziDetail('沙', emptyList(), null))
+        assertNull(ChineseEntryGroups.hanziDetail('沙', emptyList(), bare))
+
+        // Common and the score are the character's: any entry's, the highest.
+        val mixed = listOf(
+            line(1, "a1", "啊", glosses = listOf("ah"), freq = 20, common = false),
+            line(2, "a5", "啊", glosses = listOf("(particle)"), freq = 20, common = true),
+        )
+        assertTrue(ChineseEntryGroups.hanziDetail('啊', row(mixed, "啊", emptyList()), null)!!.isCommon)
+        val twoWords = listOf(
+            line(3061, "gan1", "干", "乾", listOf("dry"), freq = 63, common = false),
+            line(3062, "qian2", "乾", null, listOf("one of the Eight Trigrams"), freq = 50, common = false),
+        )
+        assertEquals(3, ChineseEntryGroups.hanziDetail('乾', row(twoWords, "乾", listOf("qián"), traditional = true), null)!!.freqScore)
     }
 }

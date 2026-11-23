@@ -96,6 +96,31 @@ class ChineseWordMatchTest {
         assertEquals("fàng", span.reading)
     }
 
+    // Mutations: a character keeps its first syllable alone; a repeated
+    // syllable is listed twice; a miscounted reading is sliced anyway.
+    @Test fun `each character carries the syllables the word gives it, in the word's order`() {
+        assertEquals(mapOf('银' to listOf("yín"), '行' to listOf("háng")), ChineseWordMatch.characterReadings("银行", "yín háng"))
+        // One character read two ways in one word, and one read one way twice.
+        assertEquals(
+            mapOf('分' to listOf("fēn", "fèn"), '离' to listOf("lí"), '子' to listOf("zǐ")),
+            ChineseWordMatch.characterReadings("分离分子", "fēn lí fèn zǐ"),
+        )
+        assertEquals(mapOf('伯' to listOf("bó", "bo")), ChineseWordMatch.characterReadings("伯伯", "bó bo"))
+        assertEquals(mapOf('常' to listOf("cháng")), ChineseWordMatch.characterReadings("常常", "cháng cháng"))
+        // The capital is kept: whether it names a proper noun is the row's rule.
+        assertEquals(listOf("Zhōng"), ChineseWordMatch.characterReadings("中国", "Zhōng guó")['中'])
+        // One character has its one syllable.
+        assertEquals(mapOf('沙' to listOf("shà")), ChineseWordMatch.characterReadings("沙", "shà"))
+    }
+
+    @Test fun `a reading that is not one token per character gives no character a reading`() {
+        assertEquals(emptyMap<Char, List<String>>(), ChineseWordMatch.characterReadings("银行", "yínháng"))
+        assertEquals(emptyMap<Char, List<String>>(), ChineseWordMatch.characterReadings("银行", "yín"))
+        assertEquals(emptyMap<Char, List<String>>(), ChineseWordMatch.characterReadings("银行", null))
+        // A character outside the BMP is two chars, which a token index cannot name.
+        assertEquals(emptyMap<Char, List<String>>(), ChineseWordMatch.characterReadings("𠮷", "jí jí"))
+    }
+
     private fun members(headword: String, listed: Set<String>, reading: String?): List<String> =
         ChineseWordMatch.memberSplit(headword, listed, reading).map { it.surface }
 }

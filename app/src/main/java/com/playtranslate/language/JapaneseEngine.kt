@@ -104,7 +104,10 @@ class JapaneseEngine(private val appContext: Context) : SourceLanguageEngine {
      * return null exactly as before imports existed: a row with readings
      * but no meaning isn't worth a breakdown slot.
      */
-    override suspend fun lookupCharacter(literal: Char, targetLang: String): CharacterDetail? {
+    override suspend fun characterBreakdown(written: String, reading: String?, targetLang: String): List<CharacterDetail> =
+        ideographsOf(written).mapNotNull { kanjiDetail(it, targetLang) }
+
+    private suspend fun kanjiDetail(literal: Char, targetLang: String): KanjiDetail? {
         val base = dict.lookupKanji(literal, targetLang)
         val imported = yomitan.importedKanji(literal)
         val meanings: List<String>
