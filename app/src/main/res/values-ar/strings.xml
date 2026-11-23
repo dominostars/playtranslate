@@ -1254,6 +1254,8 @@
     <string name="floating_menu_panel_detach">تحويل إلى نافذة</string>
 
     <string name="detached_bar_capture">التقاط</string>
+    <string name="cd_detached_capture_screen">التقاط الشاشة</string>
+    <string name="cd_detached_capture_region">التقاط المنطقة</string>
 
     <string name="detached_bar_minimize">تصغير</string>
 
@@ -2029,6 +2031,11 @@
     <string name="tts_voice_default_subtitle">الصوت الافتراضي للمحرك</string>
 
     <string name="tts_voice_needs_download">يتطلب تنزيلاً</string>
+    <string name="tts_voice_quality_very_high">جودة عالية جدًا</string>
+    <string name="tts_voice_quality_high">جودة عالية</string>
+    <string name="tts_voice_quality_normal">جودة عادية</string>
+    <string name="tts_voice_quality_low">جودة منخفضة</string>
+    <string name="tts_voice_quality_very_low">جودة منخفضة جدًا</string>
 
     <string name="tts_voice_online">عبر الإنترنت</string>
 

@@ -119,7 +119,10 @@ class ActionOverflowMenu(private val row: FoldingActionRow) : PopoverContent, Fo
     private val isCurrent: Boolean get() = host?.content === this
 
     /** A group's heading: small and muted, starting where the rows' icons
-     *  start. */
+     *  start. It spans the card, so it aligns to the card's start edge,
+     *  not its own text's: a Latin heading (PlayTranslate) in a
+     *  right-to-left menu would otherwise sit at the left, apart from the
+     *  others. */
     private fun buildHeading(ctx: Context, title: CharSequence): View {
         val density = ctx.resources.displayMetrics.density
         fun dp(v: Float) = (v * density).toInt()
@@ -130,6 +133,7 @@ class ActionOverflowMenu(private val row: FoldingActionRow) : PopoverContent, Fo
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
+            textAlignment = View.TEXT_ALIGNMENT_VIEW_START
             isAccessibilityHeading = true
             setPaddingRelative(dp(ROW_H_PAD_DP), dp(HEADING_TOP_PAD_DP), dp(ROW_H_PAD_DP), dp(HEADING_BOTTOM_PAD_DP))
         }

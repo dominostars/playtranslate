@@ -1473,3 +1473,23 @@ Round-1 fixes: none were made (round 1 found nothing; the Disposition applied no
 ### Disposition (round 2, 2026-11-23)
 
 Applied after the final review at the developer's request, by the coordinator, without a further review round: `detached_status_idle_hint` «…изменить его размер» → «…изменить размер окна» (round 2's 💬), and `ocr_picker_message` (outside the delta) gets the final stop its English has, as its new twin `translation_picker_message` does. Analyzer, mechanical check and `:app:processDebugResources` green afterwards.
+
+## Feature-time review 2026-11-23 (voice quality levels, the detached Capture button's spoken name: 7 keys localized with the code change)
+
+Mechanical: `python3 scripts/l10n_diff.py --locale app/src/main/res/values-ru/strings.xml` -> "values-ru   missing=0  orphan=0  modified=0"; each of the 7 keys has English's previous and next key as its neighbours (the two spoken names after `detached_bar_capture`, before `detached_bar_minimize`; the five levels after `tts_voice_needs_download`, before `tts_voice_online`); no raw quote or apostrophe, no em dash, no leading or trailing space, no line break. **No 🛑 issues.**
+
+### Findings
+
+None.
+
+### Checked (no findings)
+
+- **Values:** «Очень высокое качество» / «Высокое качество» / «Обычное качество» / «Низкое качество» / «Очень низкое качество».
+- **The five levels as a set:** one noun, «качество», the word of `note_mlkit_*` («более низкое качество») and `offline_backend_quality_label` «Качество»; one adjective pair (высокое / низкое) with «очень» at both ends, so the scale reads symmetrically and the five stay distinct. «Обычное» for the middle fits "a standard voice" and does not reuse «Среднее» (`tr_service_quality_okay`, the translation-service scale). `tr_service_quality_better` is also «Высокое качество», but on the translation service page, a different scale on a different screen; no reader meets both in one list.
+- **Style against what follows:** sentence case like «Онлайн» / «Офлайн» / «Требуется загрузка»; nominative phrases, so «Очень низкое качество · Офлайн · Требуется загрузка» reads as three tags.
+- **The spoken names:** «Захватить экран» is `icon_action_capture_screen` byte for byte; «Захватить область» uses «область» as `floating_menu_btn_capture_region` «Захват\nобласти» does. Both hold `detached_bar_capture` «Захватить» as a word and are infinitives, the file's command form for buttons, so the pair reads as one button's two names.
+- Render, from the code: the subtitle is `TtsVoiceLabels.subtitle` (quality · Online/Offline [· Needs download], joined with " · "), drawn in `settings_row_choice`'s `tvRowSubtitle` (13 sp, wrap_content, no maxLines) by `TtsVoiceActivity.addChoiceRow` and by the Anki audio picker (`AudioSourcePickerView.renderRows`, same layout), so a long subtitle wraps and no width limit applies. The spoken name is set by `DetachedWindow.refreshActions` as the button's contentDescription; the pill keeps `detached_bar_capture`.
+
+### Verdict
+
+**PASS**: 🛑 0 / ❌ 0 / ⚠️ 0 / 💬 0. Not checked: nothing was seen on a device or heard through TalkBack.

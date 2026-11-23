@@ -727,3 +727,22 @@ A fresh read of all 28 values against English and its comments, zh-rCN's value o
 ### Disposition (round 2, 2026-11-23)
 
 Round 2 found nothing; nothing applied.
+
+## Feature-time review 2026-11-23 (voice quality levels, the detached Capture button's spoken name: 7 keys localized with the code change)
+
+Mechanical: `scripts/l10n_diff.py` missing=0 orphan=0; the 5 `tts_voice_quality_*` keys sit between `tts_voice_needs_download` and `tts_voice_online`, and the 2 `cd_detached_capture_*` keys between `detached_bar_capture` and `detached_bar_minimize`, as in English; no raw quote or apostrophe, no em dash, no leading or trailing space, no line break; each spoken name contains `detached_bar_capture` (case-insensitive, as `DetachedCaptureSpokenNameTest` checks). **No 🛑.**
+
+### Findings
+
+None.
+
+### Clean areas
+
+- **Scale.** 極高質素 / 高質素 / 標準質素 / 低質素 / 極低質素: 質素 is this file's word (`note_mlkit_*` 質素較低, `offline_backend_quality_label` 質素, `deepl_settings_about` 高質素), the 质量→質素 swap applied; no 質量 or 品質 survives. Five distinct values, symmetric around 標準質素. As the subtitle reads: 「極高質素 · 線上 · 需要下載」. Traditional characters only; no glyph from the 啓 説 閲 裏 着 set occurs.
+- **Mainland vocabulary.** Read against the Hong Kong swap list: 擷取 (not 截取), 螢幕 (not 屏幕), 區域; nothing on the list survives in the 7 values.
+- **Spoken names.** 擷取螢幕 is byte-identical to `icon_action_capture_screen`; 擷取區域 uses 區域, the word of `floating_menu_btn_capture_region` 擷取\n區域. Both hold 擷取 (`detached_bar_capture`), are one line, verb-object commands.
+- **Render.** Both surfaces put the subtitle in `settings_row_choice`'s `tvRowSubtitle` (13 sp, no maxLines, no ellipsize: `TtsVoiceActivity.addChoiceRow`, `AudioSourcePickerView`), so a long level wraps and never clips; no width finding is possible here.
+
+### Verdict
+
+**PASS**: 0 🛑 / 0 ❌ / 0 ⚠️ / 0 💬. Nothing for the coordinator to decide.

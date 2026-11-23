@@ -1346,6 +1346,8 @@
     <string name="floating_menu_panel_open_app">打开 <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
     <string name="floating_menu_panel_detach">转为窗口</string>
     <string name="detached_bar_capture">截取</string>
+    <string name="cd_detached_capture_screen">截取屏幕</string>
+    <string name="cd_detached_capture_region">截取区域</string>
     <string name="detached_bar_minimize">最小化</string>
     <string name="detached_status_idle">点按“截取”以翻译游戏画面</string>
     <string name="detached_status_idle_hint">拖动顶部栏以移动此窗口。拖动底部任一角以调整大小。其他操作都在 ⋯ 菜单中。</string>
@@ -2095,6 +2097,11 @@
     <string name="tts_voice_default_subtitle">引擎的默认语音</string>
 
     <string name="tts_voice_needs_download">需要下载</string>
+    <string name="tts_voice_quality_very_high">极高质量</string>
+    <string name="tts_voice_quality_high">高质量</string>
+    <string name="tts_voice_quality_normal">标准质量</string>
+    <string name="tts_voice_quality_low">低质量</string>
+    <string name="tts_voice_quality_very_low">极低质量</string>
     <string name="tts_voice_online">在线</string>
     <string name="tts_voice_offline">离线</string>
 

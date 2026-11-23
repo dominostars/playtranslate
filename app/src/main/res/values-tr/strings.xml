@@ -1345,6 +1345,8 @@
     <string name="floating_menu_panel_detach">Pencere olarak ayır</string>
 
     <string name="detached_bar_capture">Yakala</string>
+    <string name="cd_detached_capture_screen">Ekranı yakala</string>
+    <string name="cd_detached_capture_region">Bölgeyi yakala</string>
 
     <string name="detached_bar_minimize">Küçült</string>
 
@@ -2020,6 +2022,11 @@
     <string name="tts_voice_default_subtitle">Motorun varsayılan sesi</string>
 
     <string name="tts_voice_needs_download">İndirme gerekli</string>
+    <string name="tts_voice_quality_very_high">Çok yüksek kalite</string>
+    <string name="tts_voice_quality_high">Yüksek kalite</string>
+    <string name="tts_voice_quality_normal">Normal kalite</string>
+    <string name="tts_voice_quality_low">Düşük kalite</string>
+    <string name="tts_voice_quality_very_low">Çok düşük kalite</string>
 
     <string name="tts_voice_online">Çevrimiçi</string>
 

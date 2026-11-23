@@ -1438,7 +1438,8 @@
          service could not speak (wrong key, no network, quota spent), and
          the device's own text-to-speech voice was used in its place. The
          card has audio; this tells the user it is the device voice.
-         "Voice service" is the name in audio_source_voice_service_name. -->
+         "voice service" is the generic term for the service whose name is
+         audio_source_voice_service_name ("AI Voice Service"). -->
     <string name="anki_added_voice_fell_back">Added to <xliff:g id="brand_anki" example="Anki">Anki</xliff:g> (voice service unavailable, device voice used)</string>
 
     <!-- Success toast for a card whose screenshot could not be handed to
@@ -3099,9 +3100,23 @@
          Keep it to one short word; the bar is narrow. -->
     <string name="detached_bar_capture">Capture</string>
 
-    <!-- Accessibility label, and name in the bar's overflow menu, of the
-         detached window's Minimize button: closes the window and brings the
-         floating icon back. -->
+    <!-- Spoken name (screen readers, voice control) of the detached window's
+         Capture button while the capture region is the whole screen: it
+         captures the game screen and translates it. Must contain the
+         button's visible label (detached_bar_capture) as a word, so that a
+         voice command naming the label reaches the button. One line. -->
+    <string name="cd_detached_capture_screen">Capture screen</string>
+
+    <!-- Spoken name of the same Capture button while a custom capture
+         region is set: it captures only that region of the game screen.
+         Must contain the button's visible label (detached_bar_capture) as a
+         word, like cd_detached_capture_screen, and use the same word for
+         "region" as floating_menu_btn_capture_region. One line. -->
+    <string name="cd_detached_capture_region">Capture region</string>
+
+    <!-- Accessibility label (screen readers, voice control) of the detached
+         window's Minimize button, an icon that always stays on the bar:
+         closes the window and brings the floating icon back. -->
     <string name="detached_bar_minimize">Minimize</string>
 
     <!-- Shown in the detached window before anything has been captured.
@@ -4550,6 +4565,29 @@
          hasn't downloaded it yet (KEY_FEATURE_NOT_INSTALLED); picking it
          would otherwise silently fall back to another voice. -->
     <string name="tts_voice_needs_download">Needs download</string>
+
+    <!-- First part of a device voice's subtitle ("Very high quality ·
+         Online"): the highest of the five quality levels the text-to-speech
+         engine reports for a voice. The five (very high, high, normal, low,
+         very low) must stay distinct and read as one scale. -->
+    <string name="tts_voice_quality_very_high">Very high quality</string>
+
+    <!-- First part of a device voice's subtitle ("High quality · Online"):
+         the second of the engine's five quality levels. -->
+    <string name="tts_voice_quality_high">High quality</string>
+
+    <!-- First part of a device voice's subtitle ("Normal quality ·
+         Offline"): the middle of the engine's five quality levels, a
+         standard voice. -->
+    <string name="tts_voice_quality_normal">Normal quality</string>
+
+    <!-- First part of a device voice's subtitle ("Low quality · Offline"):
+         the fourth of the engine's five quality levels. -->
+    <string name="tts_voice_quality_low">Low quality</string>
+
+    <!-- First part of a device voice's subtitle ("Very low quality ·
+         Offline"): the lowest of the engine's five quality levels. -->
+    <string name="tts_voice_quality_very_low">Very low quality</string>
 
     <!-- Part of a device voice's subtitle, after its quality ("High
          quality · Online"): the voice is spoken by the engine's server, so

@@ -1311,6 +1311,8 @@
     <string name="floating_menu_panel_detach">결과 창으로 전환</string>
 
     <string name="detached_bar_capture">캡처</string>
+    <string name="cd_detached_capture_screen">화면 캡처</string>
+    <string name="cd_detached_capture_region">영역 캡처</string>
 
     <string name="detached_bar_minimize">최소화</string>
 
@@ -2052,6 +2054,11 @@
     <string name="tts_voice_default_subtitle">엔진의 기본 음성</string>
 
     <string name="tts_voice_needs_download">다운로드 필요</string>
+    <string name="tts_voice_quality_very_high">매우 높은 품질</string>
+    <string name="tts_voice_quality_high">높은 품질</string>
+    <string name="tts_voice_quality_normal">보통 품질</string>
+    <string name="tts_voice_quality_low">낮은 품질</string>
+    <string name="tts_voice_quality_very_low">매우 낮은 품질</string>
 
     <string name="tts_voice_online">온라인</string>
 

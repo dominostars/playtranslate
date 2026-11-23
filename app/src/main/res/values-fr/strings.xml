@@ -1356,6 +1356,8 @@
     <string name="floating_menu_panel_detach">Détacher</string>
 
     <string name="detached_bar_capture">Capturer</string>
+    <string name="cd_detached_capture_screen">Capturer l\'écran</string>
+    <string name="cd_detached_capture_region">Capturer la zone</string>
 
     <string name="detached_bar_minimize">Réduire</string>
 
@@ -2048,6 +2050,11 @@
     <string name="tts_voice_default_subtitle">La voix par défaut du moteur</string>
 
     <string name="tts_voice_needs_download">Téléchargement requis</string>
+    <string name="tts_voice_quality_very_high">Très haute qualité</string>
+    <string name="tts_voice_quality_high">Haute qualité</string>
+    <string name="tts_voice_quality_normal">Qualité standard</string>
+    <string name="tts_voice_quality_low">Basse qualité</string>
+    <string name="tts_voice_quality_very_low">Très basse qualité</string>
 
     <string name="tts_voice_online">En ligne</string>
 

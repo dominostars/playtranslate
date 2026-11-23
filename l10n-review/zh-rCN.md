@@ -1324,3 +1324,21 @@ A fresh read of all 28 values, each beside its on-screen neighbours, with the re
 ### Disposition (round 2, 2026-11-23)
 
 Round 2 found nothing. Applied after the final review at the developer's request, by the coordinator, without a further review round: `ocr_picker_message` (outside the delta) gets the final stop its English has, as its new twin `translation_picker_message` does. Analyzer, mechanical check and `:app:processDebugResources` green afterwards.
+
+## Feature-time review 2026-11-23 (voice quality levels, the detached Capture button's spoken name: 7 keys localized with the code change)
+
+Mechanical: `scripts/l10n_diff.py` missing=0 orphan=0; the 5 `tts_voice_quality_*` keys sit between `tts_voice_needs_download` and `tts_voice_online`, and the 2 `cd_detached_capture_*` keys between `detached_bar_capture` and `detached_bar_minimize`, as in English; no raw quote or apostrophe, no em dash, no leading or trailing space, no line break; each spoken name contains `detached_bar_capture` (case-insensitive, as `DetachedCaptureSpokenNameTest` checks). **No 🛑.**
+
+### Findings
+
+None.
+
+### Clean areas
+
+- **Scale.** 极高质量 / 高质量 / 标准质量 / 低质量 / 极低质量: 质量 is the file's word (`note_mlkit_*` 质量较低, `offline_backend_quality_label`, `deepl_settings_about` 高质量). Five distinct values, symmetric around 标准质量 ("a standard voice"). 极高 / 极低 are the idiomatic label forms; `tr_service_speed_very_slow` says 非常慢 on another screen, a predicate where 非常 is the natural word, so the two do not need to match. As the subtitle reads: 「极高质量 · 在线 · 需要下载」. Simplified only, no Latin run, so no Pangu space is owed.
+- **Spoken names.** 截取屏幕 is byte-identical to `icon_action_capture_screen`; 截取区域 uses 区域, the word of `floating_menu_btn_capture_region` 截取\n区域. Both hold 截取 (`detached_bar_capture`), are one line, verb-object commands, a pair differing only in the object.
+- **Render.** Both surfaces put the subtitle in `settings_row_choice`'s `tvRowSubtitle` (13 sp, no maxLines, no ellipsize: `TtsVoiceActivity.addChoiceRow`, `AudioSourcePickerView`), so a long level wraps and never clips; no width finding is possible here.
+
+### Verdict
+
+**PASS**: 0 🛑 / 0 ❌ / 0 ⚠️ / 0 💬. Nothing for the coordinator to decide.

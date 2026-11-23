@@ -64,13 +64,15 @@ object TtsVoiceLabels {
     }
 
     private fun subtitle(context: Context, voice: Voice): String {
-        val quality = when {
-            voice.quality >= Voice.QUALITY_VERY_HIGH -> "Very high quality"
-            voice.quality >= Voice.QUALITY_HIGH -> "High quality"
-            voice.quality >= Voice.QUALITY_NORMAL -> "Normal quality"
-            voice.quality >= Voice.QUALITY_LOW -> "Low quality"
-            else -> "Very low quality"
-        }
+        val quality = context.getString(
+            when {
+                voice.quality >= Voice.QUALITY_VERY_HIGH -> R.string.tts_voice_quality_very_high
+                voice.quality >= Voice.QUALITY_HIGH -> R.string.tts_voice_quality_high
+                voice.quality >= Voice.QUALITY_NORMAL -> R.string.tts_voice_quality_normal
+                voice.quality >= Voice.QUALITY_LOW -> R.string.tts_voice_quality_low
+                else -> R.string.tts_voice_quality_very_low
+            },
+        )
         val network = context.getString(
             if (voice.isNetworkConnectionRequired) R.string.tts_voice_online else R.string.tts_voice_offline,
         )

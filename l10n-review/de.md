@@ -1383,3 +1383,23 @@ None.
 ### Disposition (round 2, 2026-11-23)
 
 Round 2 found nothing. Applied after the final review at the developer's request, by the coordinator, without a further review round: `ocr_picker_message` (outside the delta) gets the final stop its English has, as its new twin `translation_picker_message` does. Analyzer, mechanical check and `:app:processDebugResources` green afterwards.
+
+## Feature-time review 2026-11-23 (voice quality levels, the detached Capture button's spoken name: 7 keys localized with the code change)
+
+Mechanical: `python3 scripts/l10n_diff.py --locale app/src/main/res/values-de/strings.xml` -> "values-de   missing=0  orphan=0  modified=0"; each of the 7 keys has English's previous and next key as its neighbours (the two spoken names after `detached_bar_capture`, before `detached_bar_minimize`; the five levels after `tts_voice_needs_download`, before `tts_voice_online`); no raw quote or apostrophe, no em dash, no leading or trailing space, no line break. **No 🛑 issues.**
+
+### Findings
+
+None.
+
+### Checked (no findings)
+
+- **Values:** «Sehr hohe Qualität» / «Hohe Qualität» / «Normale Qualität» / «Niedrige Qualität» / «Sehr niedrige Qualität».
+- **The five levels as a set:** one noun, «Qualität», the word of `note_mlkit_*` («geringere Qualität») and `offline_backend_quality_label`; hohe / niedrige, the usual antonym pair, with «Sehr» at both ends. «Normale» for the middle is right here and «Standardqualität» would be wrong: in this file «Standard» means default, and the same voice list's first row is `tts_voice_default` «Standard» («Die Standardstimme der Engine»), so a «Standard…» level would read as "the default voice".
+- **Style against what follows:** «Online» / «Offline» / «Download erforderlich»; noun phrases capitalised as German requires, so «Hohe Qualität · Offline · Download erforderlich» reads as three tags.
+- **The spoken names:** «Bildschirm aufnehmen» is `icon_action_capture_screen` byte for byte; «Bereich aufnehmen» uses «Bereich» as `floating_menu_btn_capture_region` «Bereich\naufnehmen» does. Both hold `detached_bar_capture` «Aufnehmen» (case-insensitively, as the test reads it) as a word; infinitive commands, the German UI norm and the file's own.
+- Render, from the code: the subtitle is `TtsVoiceLabels.subtitle` (quality · Online/Offline [· Needs download], joined with " · "), drawn in `settings_row_choice`'s `tvRowSubtitle` (13 sp, wrap_content, no maxLines) by `TtsVoiceActivity.addChoiceRow` and by the Anki audio picker (`AudioSourcePickerView.renderRows`, same layout), so a long subtitle wraps and no width limit applies. The spoken name is set by `DetachedWindow.refreshActions` as the button's contentDescription; the pill keeps `detached_bar_capture`.
+
+### Verdict
+
+**PASS**: 🛑 0 / ❌ 0 / ⚠️ 0 / 💬 0. Not checked: nothing was seen on a device or heard through TalkBack.

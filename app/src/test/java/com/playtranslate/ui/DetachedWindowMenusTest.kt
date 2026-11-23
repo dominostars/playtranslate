@@ -500,13 +500,13 @@ class DetachedWindowMenusTest {
     @Test fun `Capture names the screen or the region, on the bar and on the button`() {
         show()
         val button = window.root.findViewById<View>(R.id.detachedCaptureButton)
-        assertEquals("Capture Screen", bar(R.id.detachedBarCapture).contentDescription.toString())
+        assertEquals("Capture screen", bar(R.id.detachedBarCapture).contentDescription.toString())
         assertEquals("Capture\nScreen", button.contentDescription.toString())
 
         host.fullScreen = false
         window.refreshActions()
 
-        assertEquals("Capture Region", bar(R.id.detachedBarCapture).contentDescription.toString())
+        assertEquals("Capture region", bar(R.id.detachedBarCapture).contentDescription.toString())
         assertEquals("Capture\nRegion", button.contentDescription.toString())
     }
 

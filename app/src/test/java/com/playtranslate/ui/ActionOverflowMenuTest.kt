@@ -182,6 +182,32 @@ class ActionOverflowMenuTest {
     }
 
     @Test
+    fun `under RTL every heading sits at the start edge, a Latin one too`() {
+        val grouped = object : FoldingActionRow {
+            override fun foldedActions() = emptyList<HeaderAction>()
+            override fun menuGroups() = listOf(
+                MenuGroup("هذه النتيجة", listOf(edit)),
+                MenuGroup("PlayTranslate", listOf(size)),
+            )
+            override val moreAnchor: View get() = row.moreButton
+            override fun addListener(listener: FoldingActionRow.Listener) {}
+            override fun removeListener(listener: FoldingActionRow.Listener) {}
+        }
+        root.layoutDirection = View.LAYOUT_DIRECTION_RTL
+        popovers.show(ActionOverflowMenu(grouped), row.moreButton)
+        layoutAt(allInline - 1)   // lay the card out
+        val list = rows().first().parent as LinearLayout
+        val headings = (0 until list.childCount).map(list::getChildAt)
+            .filterIsInstance<TextView>().filter { it.isAccessibilityHeading }
+        assertEquals(listOf("هذه النتيجة", "PlayTranslate"), headings.map { it.text.toString() })
+        for (h in headings) {
+            val layout = h.layout
+            assertTrue("«${h.text}» is narrower than its line", layout.getLineWidth(0) < layout.width)
+            assertEquals("«${h.text}» ends at the right edge", layout.width.toFloat(), layout.getLineRight(0), 0.5f)
+        }
+    }
+
+    @Test
     fun `the card is at least its minimum width`() {
         open()
         val box = root.getChildAt(root.childCount - 1)

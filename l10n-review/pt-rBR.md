@@ -1298,3 +1298,23 @@ Widths are `Measure.java` (Roboto) at 1.0× unless a scale is named. Constraints
 ### Disposition (round 2, 2026-11-23)
 
 Applied after the final review at the developer's request, by the coordinator, without a further review round: `tts_auto_play_original_subtitle` drops its final period (round 2's 💬: one phrase now, beside «Ao consultar uma palavra»), and `ocr_picker_message` (outside the delta) gets the final stop its English has, as its new twin `translation_picker_message` does. Analyzer, mechanical check and `:app:processDebugResources` green afterwards.
+
+## Feature-time review 2026-11-23 (voice quality levels, the detached Capture button's spoken name: 7 keys localized with the code change)
+
+Mechanical: `python3 scripts/l10n_diff.py --locale app/src/main/res/values-pt-rBR/strings.xml` -> "values-pt-rBR   missing=0  orphan=0  modified=0"; each of the 7 keys has English's previous and next key as its neighbours (the two spoken names after `detached_bar_capture`, before `detached_bar_minimize`; the five levels after `tts_voice_needs_download`, before `tts_voice_online`); no raw quote or apostrophe, no em dash, no leading or trailing space, no line break. **No 🛑 issues.**
+
+### Findings
+
+None.
+
+### Checked (no findings)
+
+- **Values:** «Qualidade muito alta» / «Qualidade alta» / «Qualidade normal» / «Qualidade baixa» / «Qualidade muito baixa».
+- **The five levels as a set:** one noun, «qualidade», the word of `note_mlkit_*` («qualidade inferior») and `offline_backend_quality_label`; one order for all five, alta / baixa with «muito» at both ends. «normal» is right and «Qualidade padrão» would not be: «Padrão» is this file's default (`tts_voice_default`, the same list's first row).
+- **Style against what follows:** sentence case like «Online» / «Offline» / «Precisa baixar»; Brazilian vocabulary throughout.
+- **The spoken names:** «Capturar tela» is `icon_action_capture_screen` byte for byte (tela, not ecrã); «Capturar região» uses «região» as `floating_menu_btn_capture_region` «Capturar\nregião» does. Both hold `detached_bar_capture` «Capturar» as a word; infinitives, neutral for the você register.
+- Render, from the code: the subtitle is `TtsVoiceLabels.subtitle` (quality · Online/Offline [· Needs download], joined with " · "), drawn in `settings_row_choice`'s `tvRowSubtitle` (13 sp, wrap_content, no maxLines) by `TtsVoiceActivity.addChoiceRow` and by the Anki audio picker (`AudioSourcePickerView.renderRows`, same layout), so a long subtitle wraps and no width limit applies. The spoken name is set by `DetachedWindow.refreshActions` as the button's contentDescription; the pill keeps `detached_bar_capture`.
+
+### Verdict
+
+**PASS**: 🛑 0 / ❌ 0 / ⚠️ 0 / 💬 0. Not checked: nothing was seen on a device or heard through TalkBack.

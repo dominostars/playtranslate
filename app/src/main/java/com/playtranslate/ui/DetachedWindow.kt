@@ -741,13 +741,17 @@ internal class DetachedWindow(
     fun refreshActions() {
         val fullScreen = host.regionIsFullScreen(displayId)
         val captureIcon = if (fullScreen) R.drawable.ic_capture else R.drawable.ic_picture_in_picture_alt
-        // The icon menu's two-line label, for the button and (on one line)
-        // for the bar's spoken name.
+        // The icon menu's two-line label, for the button. The bar's spoken
+        // name is a one-line string of its own, written to contain the
+        // pill's visible label: joining the two-line label's lines cannot
+        // be right in every script (a space inside a CJK or Thai word).
         val captureName = ctx.getString(
             if (fullScreen) R.string.floating_menu_capture_screen else R.string.floating_menu_btn_capture_region,
         )
         captureAction.icon = captureIcon
-        captureAction.contentDescription = captureName.replace('\n', ' ')
+        captureAction.contentDescription = ctx.getString(
+            if (fullScreen) R.string.cd_detached_capture_screen else R.string.cd_detached_capture_region,
+        )
         captureButton.show(captureIcon, captureName, fillColor = accent, contentColor = onAccent)
         val turnsOff = host.exitTurnsOff()
         turnOffRow.icon = if (turnsOff) R.drawable.ic_mode_off_on else R.drawable.ic_exit_to_app

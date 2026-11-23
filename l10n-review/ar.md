@@ -1516,3 +1516,21 @@ Read fresh against the code and the on-screen neighbours, as sets.
 ### Disposition (round 2, 2026-11-23)
 
 Round 2 found nothing. Applied after the final review at the developer's request, by the coordinator, without a further review round: `ocr_picker_message` (outside the delta) gets the final stop its English has, as its new twin `translation_picker_message` does. Analyzer, mechanical check and `:app:processDebugResources` green afterwards.
+
+## Feature-time review 2026-11-23 (voice quality levels, the detached Capture button's spoken name: 7 keys localized with the code change)
+
+Mechanical: `scripts/l10n_diff.py` missing=0 orphan=0; the 5 `tts_voice_quality_*` keys sit between `tts_voice_needs_download` and `tts_voice_online`, and the 2 `cd_detached_capture_*` keys between `detached_bar_capture` and `detached_bar_minimize`, as in English; no raw quote or apostrophe, no em dash, no leading or trailing space, no line break; each spoken name contains `detached_bar_capture` (case-insensitive, as `DetachedCaptureSpokenNameTest` checks). **No 🛑.**
+
+### Findings
+
+None.
+
+### Clean areas
+
+- **Scale.** جودة عالية جدًا / جودة عالية / جودة عادية / جودة منخفضة / جودة منخفضة جدًا: جودة is the file's word (`note_mlkit_*` جودة أقل, `offline_backend_quality_label` الجودة). Five distinct values, symmetric around جودة عادية; the adjectives agree with the feminine جودة, and جدًا is spelled as the file spells it in all 9 of its uses (tanween before the alif, as `tr_service_speed_very_slow` بطيء جدًا). Every value opens with an Arabic letter and holds no Latin or digit, so each part, and the subtitle the code joins with neutral " · ", lays out right to left: 「جودة عالية جدًا · عبر الإنترنت · يتطلب تنزيلاً」.
+- **Spoken names.** التقاط الشاشة is byte-identical to `icon_action_capture_screen`; التقاط المنطقة uses المنطقة, the word of `floating_menu_btn_capture_region` التقاط\nالمنطقة. Both open with التقاط (`detached_bar_capture`) as its own word, are one line, and use the verbal noun as the file's button names do; the pair differs only in its object.
+- **Render.** Both surfaces put the subtitle in `settings_row_choice`'s `tvRowSubtitle` (13 sp, no maxLines, no ellipsize: `TtsVoiceActivity.addChoiceRow`, `AudioSourcePickerView`), so a long level wraps and never clips; no width finding is possible here.
+
+### Verdict
+
+**PASS**: 0 🛑 / 0 ❌ / 0 ⚠️ / 0 💬. Nothing for the coordinator to decide.

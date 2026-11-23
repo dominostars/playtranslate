@@ -1226,3 +1226,21 @@ Not re-opened: ウィンドウで表示 for "Detach", the shared キャプチャ
 ### Disposition (round 2, 2026-11-23)
 
 Round 2 found nothing; nothing applied.
+
+## Feature-time review 2026-11-23 (voice quality levels, the detached Capture button's spoken name: 7 keys localized with the code change)
+
+Mechanical: `scripts/l10n_diff.py` missing=0 orphan=0; the 5 `tts_voice_quality_*` keys sit between `tts_voice_needs_download` and `tts_voice_online`, and the 2 `cd_detached_capture_*` keys between `detached_bar_capture` and `detached_bar_minimize`, as in English; no raw quote or apostrophe, no em dash, no leading or trailing space, no line break; each spoken name contains `detached_bar_capture` (case-insensitive, as `DetachedCaptureSpokenNameTest` checks). **No 🛑.**
+
+### Findings
+
+None.
+
+### Clean areas
+
+- **Scale.** 非常に高品質 / 高品質 / 標準品質 / 低品質 / 非常に低品質: one noun, 品質, the file's word for quality (`note_mlkit_*` 「品質は低下します」, `offline_backend_quality_label` 品質, `degraded_warning_*` 翻訳品質). Five distinct values, symmetric around 標準品質, which says the comment's "a standard voice". 非常に matches `tr_service_speed_very_slow` 非常に遅い; 高品質 takes 非常に as a な-adjective (非常に高品質な). As the subtitle reads: 「非常に高品質 · オンライン · ダウンロードが必要」, noun-ending parts throughout, no あなた, no punctuation to add.
+- **Spoken names.** 画面をキャプチャ is byte-identical to `icon_action_capture_screen`; 範囲をキャプチャ uses 範囲, the word of `floating_menu_btn_capture_region` キャプチャ\n範囲. Both hold キャプチャ (`detached_bar_capture`) whole, are one line, and form a pair that differs only in its object. The menu label キャプチャ\n全画面 says 全画面, but the brief and the English comment tie the spoken name to `icon_action_capture_screen`, and 画面 against 範囲 tells the two states apart.
+- **Render.** Both surfaces put the subtitle in `settings_row_choice`'s `tvRowSubtitle` (13 sp, no maxLines, no ellipsize: `TtsVoiceActivity.addChoiceRow`, `AudioSourcePickerView`), so a long level wraps and never clips; no width finding is possible here.
+
+### Verdict
+
+**PASS**: 0 🛑 / 0 ❌ / 0 ⚠️ / 0 💬. Nothing for the coordinator to decide.

@@ -1487,3 +1487,21 @@ Read fresh, screen by screen, against the code that draws each string and the Ko
 ### Disposition (round 2, 2026-11-23)
 
 Round 2 found nothing. Applied after the final review at the developer's request, by the coordinator, without a further review round: `ocr_picker_message` (outside the delta) gets the final stop its English has, as its new twin `translation_picker_message` does. Analyzer, mechanical check and `:app:processDebugResources` green afterwards.
+
+## Feature-time review 2026-11-23 (voice quality levels, the detached Capture button's spoken name: 7 keys localized with the code change)
+
+Mechanical: `scripts/l10n_diff.py` missing=0 orphan=0; the 5 `tts_voice_quality_*` keys sit between `tts_voice_needs_download` and `tts_voice_online`, and the 2 `cd_detached_capture_*` keys between `detached_bar_capture` and `detached_bar_minimize`, as in English; no raw quote or apostrophe, no em dash, no leading or trailing space, no line break; each spoken name contains `detached_bar_capture` (case-insensitive, as `DetachedCaptureSpokenNameTest` checks). **No 🛑.**
+
+### Findings
+
+None.
+
+### Clean areas
+
+- **Scale.** 매우 높은 품질 / 높은 품질 / 보통 품질 / 낮은 품질 / 매우 낮은 품질: 품질 is the file's word (`note_mlkit_*` 품질 저하, `offline_backend_quality_label`). Five distinct values, symmetric around 보통 품질; 매우 matches `tr_service_speed_very_slow` 매우 느림. 띄어쓰기 correct throughout. As the subtitle reads: 「매우 높은 품질 · 온라인 · 다운로드 필요」, noun phrases throughout. 낮은 품질 and 보통 품질 also stand in the translation service picker's four-step scale (`tr_service_quality_bad` / `_okay`), on another screen and never beside a voice row, so the shared wording collides nowhere.
+- **Spoken names.** 화면 캡처 is byte-identical to `icon_action_capture_screen`; 영역 캡처 uses 영역, the word of `floating_menu_btn_capture_region` 영역\n캡처. Both hold 캡처 (`detached_bar_capture`) as its own word, are one line, noun-style button names as the file's buttons are; no particle is involved.
+- **Render.** Both surfaces put the subtitle in `settings_row_choice`'s `tvRowSubtitle` (13 sp, no maxLines, no ellipsize: `TtsVoiceActivity.addChoiceRow`, `AudioSourcePickerView`), so a long level wraps and never clips; no width finding is possible here.
+
+### Verdict
+
+**PASS**: 0 🛑 / 0 ❌ / 0 ⚠️ / 0 💬. Nothing for the coordinator to decide.

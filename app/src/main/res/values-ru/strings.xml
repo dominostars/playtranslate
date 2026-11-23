@@ -1373,6 +1373,8 @@
     <string name="floating_menu_panel_detach">Открепить в окно</string>
 
     <string name="detached_bar_capture">Захватить</string>
+    <string name="cd_detached_capture_screen">Захватить экран</string>
+    <string name="cd_detached_capture_region">Захватить область</string>
 
     <string name="detached_bar_minimize">Свернуть</string>
 
@@ -2158,6 +2160,11 @@
     <string name="tts_voice_default_subtitle">Голос движка по умолчанию</string>
 
     <string name="tts_voice_needs_download">Требуется загрузка</string>
+    <string name="tts_voice_quality_very_high">Очень высокое качество</string>
+    <string name="tts_voice_quality_high">Высокое качество</string>
+    <string name="tts_voice_quality_normal">Обычное качество</string>
+    <string name="tts_voice_quality_low">Низкое качество</string>
+    <string name="tts_voice_quality_very_low">Очень низкое качество</string>
 
     <string name="tts_voice_online">Онлайн</string>
 

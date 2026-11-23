@@ -1250,6 +1250,8 @@
     <string name="floating_menu_panel_detach">แยกเป็นหน้าต่าง</string>
 
     <string name="detached_bar_capture">จับภาพ</string>
+    <string name="cd_detached_capture_screen">จับภาพหน้าจอ</string>
+    <string name="cd_detached_capture_region">จับภาพพื้นที่</string>
 
     <string name="detached_bar_minimize">ย่อ</string>
 
@@ -1995,6 +1997,11 @@
     <string name="tts_voice_default_subtitle">เสียงเริ่มต้นของเอนจิน</string>
 
     <string name="tts_voice_needs_download">ต้องดาวน์โหลด</string>
+    <string name="tts_voice_quality_very_high">คุณภาพสูงมาก</string>
+    <string name="tts_voice_quality_high">คุณภาพสูง</string>
+    <string name="tts_voice_quality_normal">คุณภาพปกติ</string>
+    <string name="tts_voice_quality_low">คุณภาพต่ำ</string>
+    <string name="tts_voice_quality_very_low">คุณภาพต่ำมาก</string>
 
     <string name="tts_voice_online">ออนไลน์</string>
 

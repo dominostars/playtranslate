@@ -1316,3 +1316,23 @@ None.
 ### Disposition (round 2, 2026-11-23)
 
 Round 2 found nothing; nothing applied.
+
+## Feature-time review 2026-11-23 (voice quality levels, the detached Capture button's spoken name: 7 keys localized with the code change)
+
+Mechanical: `python3 scripts/l10n_diff.py --locale app/src/main/res/values-es/strings.xml` -> "values-es   missing=0  orphan=0  modified=0"; each of the 7 keys has English's previous and next key as its neighbours (the two spoken names after `detached_bar_capture`, before `detached_bar_minimize`; the five levels after `tts_voice_needs_download`, before `tts_voice_online`); no raw quote or apostrophe, no em dash, no leading or trailing space, no line break. **No 🛑 issues.**
+
+### Findings
+
+None.
+
+### Checked (no findings)
+
+- **Values:** «Calidad muy alta» / «Calidad alta» / «Calidad normal» / «Calidad baja» / «Calidad muy baja».
+- **The five levels as a set:** one noun, «calidad», the word of `note_mlkit_*` («menor calidad») and `offline_backend_quality_label`; one order (noun, then adjective) for all five, alta / baja with «muy» at both ends, so the set reads as one scale. «normal» does not collide with the default voice («Predeterminada»).
+- **Style against what follows:** sentence case like «En línea» / «Sin conexión» / «Requiere descarga».
+- **The spoken names:** «Capturar pantalla» is `icon_action_capture_screen` byte for byte; «Capturar región» uses «región» as `floating_menu_btn_capture_region` «Capturar\nregión» does, and matches its article-less form. Both hold `detached_bar_capture` «Capturar» as a word; infinitives, neutral for the tú register.
+- Render, from the code: the subtitle is `TtsVoiceLabels.subtitle` (quality · Online/Offline [· Needs download], joined with " · "), drawn in `settings_row_choice`'s `tvRowSubtitle` (13 sp, wrap_content, no maxLines) by `TtsVoiceActivity.addChoiceRow` and by the Anki audio picker (`AudioSourcePickerView.renderRows`, same layout), so a long subtitle wraps and no width limit applies. The spoken name is set by `DetachedWindow.refreshActions` as the button's contentDescription; the pill keeps `detached_bar_capture`.
+
+### Verdict
+
+**PASS**: 🛑 0 / ❌ 0 / ⚠️ 0 / 💬 0. Not checked: nothing was seen on a device or heard through TalkBack.

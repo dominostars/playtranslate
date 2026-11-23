@@ -1368,6 +1368,8 @@
     <string name="floating_menu_panel_detach">ウィンドウで表示</string>
 
     <string name="detached_bar_capture">キャプチャ</string>
+    <string name="cd_detached_capture_screen">画面をキャプチャ</string>
+    <string name="cd_detached_capture_region">範囲をキャプチャ</string>
 
     <string name="detached_bar_minimize">最小化</string>
 
@@ -2129,6 +2131,11 @@
     <string name="tts_voice_default_subtitle">エンジンのデフォルト音声</string>
 
     <string name="tts_voice_needs_download">ダウンロードが必要</string>
+    <string name="tts_voice_quality_very_high">非常に高品質</string>
+    <string name="tts_voice_quality_high">高品質</string>
+    <string name="tts_voice_quality_normal">標準品質</string>
+    <string name="tts_voice_quality_low">低品質</string>
+    <string name="tts_voice_quality_very_low">非常に低品質</string>
 
     <string name="tts_voice_online">オンライン</string>
 

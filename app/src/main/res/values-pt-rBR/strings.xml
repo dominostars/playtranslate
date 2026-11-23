@@ -1311,6 +1311,8 @@
     <string name="floating_menu_panel_detach">Abrir em janela</string>
 
     <string name="detached_bar_capture">Capturar</string>
+    <string name="cd_detached_capture_screen">Capturar tela</string>
+    <string name="cd_detached_capture_region">Capturar região</string>
 
     <string name="detached_bar_minimize">Minimizar</string>
 
@@ -2057,6 +2059,11 @@
     <string name="tts_voice_default_subtitle">A voz padrão do mecanismo</string>
 
     <string name="tts_voice_needs_download">Precisa baixar</string>
+    <string name="tts_voice_quality_very_high">Qualidade muito alta</string>
+    <string name="tts_voice_quality_high">Qualidade alta</string>
+    <string name="tts_voice_quality_normal">Qualidade normal</string>
+    <string name="tts_voice_quality_low">Qualidade baixa</string>
+    <string name="tts_voice_quality_very_low">Qualidade muito baixa</string>
 
     <string name="tts_voice_online">Online</string>
 

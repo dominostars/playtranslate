@@ -1311,6 +1311,8 @@
     <string name="floating_menu_panel_detach">Tách thành cửa sổ</string>
 
     <string name="detached_bar_capture">Chụp</string>
+    <string name="cd_detached_capture_screen">Chụp màn hình</string>
+    <string name="cd_detached_capture_region">Chụp vùng</string>
 
     <string name="detached_bar_minimize">Thu nhỏ</string>
 
@@ -2065,6 +2067,11 @@
     <string name="tts_voice_default_subtitle">Giọng nói mặc định của công cụ</string>
 
     <string name="tts_voice_needs_download">Cần tải xuống</string>
+    <string name="tts_voice_quality_very_high">Chất lượng rất cao</string>
+    <string name="tts_voice_quality_high">Chất lượng cao</string>
+    <string name="tts_voice_quality_normal">Chất lượng tiêu chuẩn</string>
+    <string name="tts_voice_quality_low">Chất lượng thấp</string>
+    <string name="tts_voice_quality_very_low">Chất lượng rất thấp</string>
 
     <string name="tts_voice_online">Trực tuyến</string>
 

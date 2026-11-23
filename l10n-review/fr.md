@@ -1288,3 +1288,23 @@ Widths re-measured with `Measure.java` (Roboto) and the constraints read in the 
 ### Disposition (round 2, 2026-11-23)
 
 Round 2 found nothing. Applied after the final review at the developer's request, by the coordinator, without a further review round: `ocr_picker_message` (outside the delta) gets the final stop its English has, as its new twin `translation_picker_message` does. Analyzer, mechanical check and `:app:processDebugResources` green afterwards.
+
+## Feature-time review 2026-11-23 (voice quality levels, the detached Capture button's spoken name: 7 keys localized with the code change)
+
+Mechanical: `python3 scripts/l10n_diff.py --locale app/src/main/res/values-fr/strings.xml` -> "values-fr   missing=0  orphan=0  modified=0"; each of the 7 keys has English's previous and next key as its neighbours (the two spoken names after `detached_bar_capture`, before `detached_bar_minimize`; the five levels after `tts_voice_needs_download`, before `tts_voice_online`); no raw quote or apostrophe (`Capturer l\'écran` escapes its apostrophe), no em dash, no leading or trailing space, no line break. **No 🛑 issues.**
+
+### Findings
+
+None.
+
+### Checked (no findings)
+
+- **Values:** «Très haute qualité» / «Haute qualité» / «Qualité standard» / «Basse qualité» / «Très basse qualité».
+- **The five levels as a set:** one noun, «qualité», the word of `note_mlkit_*` («qualité inférieure») and `offline_backend_quality_label`; haute / basse with «Très» at both ends. The middle level puts the noun first because «standard» is postnominal in French; «haute qualité» / «qualité standard» / «basse qualité» is the ordinary French pairing and the file already mixes orders on its other scale («Mauvaise qualité», «Qualité correcte»). «standard» does not collide with the default voice, which is «Par défaut» in this file, and it matches the comment's "a standard voice". Weighed and not raised: an all-postnominal set («Qualité élevée … Qualité faible») would be equally natural and no clearer.
+- **Style against what follows:** sentence case like «En ligne» / «Hors ligne» / «Téléchargement requis».
+- **The spoken names:** «Capturer l\'écran» is `icon_action_capture_screen` byte for byte; «Capturer la zone» uses «zone», the word of `floating_menu_btn_capture_region` «Zone de\ncapture», with the article of its sibling `floating_menu_edit_region` «Modifier la zone» (the zone the user set). Both hold `detached_bar_capture` «Capturer» as a word; infinitive commands as in the rest of the file.
+- Render, from the code: the subtitle is `TtsVoiceLabels.subtitle` (quality · Online/Offline [· Needs download], joined with " · "), drawn in `settings_row_choice`'s `tvRowSubtitle` (13 sp, wrap_content, no maxLines) by `TtsVoiceActivity.addChoiceRow` and by the Anki audio picker (`AudioSourcePickerView.renderRows`, same layout), so a long subtitle wraps and no width limit applies. The spoken name is set by `DetachedWindow.refreshActions` as the button's contentDescription; the pill keeps `detached_bar_capture`.
+
+### Verdict
+
+**PASS**: 🛑 0 / ❌ 0 / ⚠️ 0 / 💬 0. Not checked: nothing was seen on a device or heard through TalkBack.

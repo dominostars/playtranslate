@@ -1393,3 +1393,23 @@ Outside the delta, for the coordinator (not a finding against these 28 keys): th
 ### Disposition (round 2, 2026-11-23)
 
 Round 2 found nothing. Applied after the final review at the developer's request, by the coordinator, without a further review round: `ocr_picker_message` (outside the delta) gets the final stop its English has, as its new twin `translation_picker_message` does; and `floating_menu_panel_open_app` (outside the delta) «PlayTranslate uygulamasını aç» → «Aç: PlayTranslate», on round 2's note: the old value measured 205.5 dp, which the detached window's menu (208 dp) cut above the default font size and the floating menu's settings panel (about 159 dp: 300 dp card, 219 dp lane, 12 dp padding each side, a 24 dp icon with 12 dp margin) cut at every size. The new value is 118.0 dp (135.7 at 1.15). It is the parameters file's colon form, chosen by a separate Turkish reviewer over «PlayTranslate'ı aç», which would put a suffix on the placeholder; a verb before the colon is new to the file. Analyzer, mechanical check and `:app:processDebugResources` green afterwards.
+
+## Feature-time review 2026-11-23 (voice quality levels, the detached Capture button's spoken name: 7 keys localized with the code change)
+
+Mechanical: `python3 scripts/l10n_diff.py --locale app/src/main/res/values-tr/strings.xml` -> "values-tr   missing=0  orphan=0  modified=0"; each of the 7 keys has English's previous and next key as its neighbours (the two spoken names after `detached_bar_capture`, before `detached_bar_minimize`; the five levels after `tts_voice_needs_download`, before `tts_voice_online`); no raw quote or apostrophe, no em dash, no leading or trailing space, no line break. **No 🛑 issues.**
+
+### Findings
+
+None.
+
+### Checked (no findings)
+
+- **Values:** «Çok yüksek kalite» / «Yüksek kalite» / «Normal kalite» / «Düşük kalite» / «Çok düşük kalite».
+- **The five levels as a set:** one noun, «kalite», the word of `note_mlkit_*` («daha düşük kalite») and `offline_backend_quality_label` «Kalite»; yüksek / düşük with «Çok» at both ends, «Normal» in the middle, distinct from `tr_service_quality_okay` «Orta kalite» on the other scale. Adjective before noun throughout, the natural Turkish order.
+- **Style against what follows:** sentence case like «Çevrimiçi» / «Çevrimdışı» / «İndirme gerekli»; no runtime uppercasing on this row, so no i/İ concern.
+- **The spoken names:** «Ekranı yakala» is `icon_action_capture_screen` byte for byte; «Bölgeyi yakala» uses «bölge» as `floating_menu_btn_capture_region` «Bölgeyi\nYakala» does, in the accusative like «Ekranı». Both hold `detached_bar_capture` «Yakala» as a word (lowercased under the Turkish locale «yakala», no dotted/dotless I in it). The bare imperative is the bar label's own form, which the English comment says the name must contain as a word; a polite «yakalayın» would no longer hold it as one.
+- Render, from the code: the subtitle is `TtsVoiceLabels.subtitle` (quality · Online/Offline [· Needs download], joined with " · "), drawn in `settings_row_choice`'s `tvRowSubtitle` (13 sp, wrap_content, no maxLines) by `TtsVoiceActivity.addChoiceRow` and by the Anki audio picker (`AudioSourcePickerView.renderRows`, same layout), so a long subtitle wraps and no width limit applies. The spoken name is set by `DetachedWindow.refreshActions` as the button's contentDescription; the pill keeps `detached_bar_capture`.
+
+### Verdict
+
+**PASS**: 🛑 0 / ❌ 0 / ⚠️ 0 / 💬 0. Not checked: nothing was seen on a device or heard through TalkBack.

@@ -846,12 +846,12 @@ class DetachedControlsTest {
         val svc = captureService()
         detach()
         val capture = window()!!.root.findViewById<View>(R.id.detachedBarCapture)
-        assertEquals("Capture Screen", capture.contentDescription.toString())
+        assertEquals("Capture screen", capture.contentDescription.toString())
 
         svc.configureOverride(d0, RegionEntry("", 0.2f, 0.8f, 0.2f, 0.8f))
         settle()
 
-        assertEquals("Capture Region", capture.contentDescription.toString())
+        assertEquals("Capture region", capture.contentDescription.toString())
     }
 
     // ── Touches on the window ────────────────────────────────────────────
