@@ -112,7 +112,10 @@ internal fun offersShowOnScreen(showsOnScreen: Boolean, boxes: OnScreenBoxes?, l
  * as a surface that follows a capture session handles [state] after
  * [previous] (the pair [com.playtranslate.CaptureSession.stateWithPrevious]
  * gives), or null when this state brings nothing to read: each session's
- * text once, when the listener first sees it.
+ * text once, when the listener first sees it. The same rule says when a
+ * capture's original is copied by itself ([copyOriginalWhenRead]), over a
+ * listen of its own that follows the capture from its start and is not
+ * restarted with a page.
  *
  * That is the first Translating, where the page shows the original while
  * the translation runs; a later one that only fills boxes
@@ -123,7 +126,7 @@ internal fun offersShowOnScreen(showsOnScreen: Boolean, boxes: OnScreenBoxes?, l
  * imported page, an import whose translation needs no wait).
  *
  * A capture that asked for a mode of its own ([modeOverride], tap-to-lookup's
- * Definitions) is up to look words up, and reads nothing.
+ * Definitions) is up to look words up, and neither reads nor copies.
  *
  * Auto-translate's results, history, edits and a sheet coming back from a
  * page reach their surfaces by other paths than a session's states, so

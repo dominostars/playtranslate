@@ -75,6 +75,7 @@ import com.playtranslate.translation.OfflineModelReclaimer
 import com.playtranslate.ask.Explanation
 import com.playtranslate.ui.AccessibilityHelp
 import com.playtranslate.ui.AppReadiness
+import com.playtranslate.ui.copyOriginalWhenRead
 import com.playtranslate.ui.sentenceTranslationBackend
 import com.playtranslate.ui.showPanelState
 import com.playtranslate.ui.goesUpAsItLands
@@ -1853,8 +1854,10 @@ class MainActivity :
      *  game screen as the icon's captures do. Its result goes up over the
      *  game on the other screen, where nothing else shows a read is under
      *  way, so the icons there spin while it reads
-     *  ([CaptureService.showReadOnIcons]). Every capture this activity starts
-     *  comes through here. */
+     *  ([CaptureService.showReadOnIcons]). Its original is copied when the
+     *  capture reads it, with this activity on show or not
+     *  ([com.playtranslate.ui.copyOriginalWhenRead]). Every capture this
+     *  activity starts comes through here. */
     private fun followCapture(svc: CaptureService, session: CaptureSession, captureId: Long? = null) {
         oneShotCaptureId = if (supportsShowOnScreen()) {
             captureId ?: CaptureBackendResolver.activeOverlayUi
@@ -1863,6 +1866,9 @@ class MainActivity :
             null
         }
         _currentCaptureSession.value = session
+        // lifecycleScope and not the STARTED collector: that one stops with
+        // the activity, and a copy made from it came late or twice.
+        lifecycleScope.copyOriginalWhenRead(applicationContext, session) { oneShotModeOverride }
         if (supportsShowOnScreen()) svc.showReadOnIcons(session)
     }
 

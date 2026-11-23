@@ -160,6 +160,7 @@ class ImageReviewController(
                 }
         },
         tokenScope = OcrTokenScope.IMPORT,
+        copiesCaptureOriginal = false,
         fitMode = CameraCoordinates.FitMode.FIT,
         zoomPolicy = com.playtranslate.camera.ReviewZoom.CeilingPolicy.IMPORT,
         setImageTransform = { m ->

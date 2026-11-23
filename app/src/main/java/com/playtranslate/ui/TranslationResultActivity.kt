@@ -28,6 +28,7 @@ import com.playtranslate.CaptureService
 import com.playtranslate.applyEdgeToEdge
 import com.playtranslate.ask.Explanation
 import com.playtranslate.capture.CaptureBackendResolver
+import com.playtranslate.OverlayMode
 import com.playtranslate.Prefs
 import com.playtranslate.RegionEntry
 import com.playtranslate.R
@@ -92,6 +93,8 @@ class TranslationResultActivity :
             },
             pinnedScreenshotPath = { intent.getStringExtra(EXTRA_SCREENSHOT_PATH) },
             onSentencePending = { sentenceFlow.completeDeferred() },
+            modeOverride = intent.getStringExtra(EXTRA_OVERLAY_MODE_OVERRIDE)
+                ?.let { name -> OverlayMode.entries.firstOrNull { it.name == name } },
             onOriginalToRead = { resultFragment?.autoPlayOriginal(it) },
             onCancelled = { finish() },
         )
@@ -657,6 +660,13 @@ class TranslationResultActivity :
          *  bitmap) live on, instead of the multi-display "primary" which
          *  could be a different screen. */
         const val EXTRA_TARGET_DISPLAY_ID = "extra_target_display_id"
+        /** The mode the capture this page is opened for asked for itself
+         *  (an [OverlayMode] name: tap-to-lookup's Definitions), sent when
+         *  that capture was meant for the sheet over the game and no sheet
+         *  could go up (OverlayUiController's launchResultActivity). The
+         *  page shows it as any capture; its original is neither read
+         *  aloud nor copied by itself ([CapturePageDriver]). */
+        const val EXTRA_OVERLAY_MODE_OVERRIDE = "extra_overlay_mode_override"
         /** Set by the capture overlay's open-detail launch so this screen can
          *  signal a return (back / toolbar-back) to re-show the overlay. */
         const val EXTRA_FROM_CAPTURE_OVERLAY = "extra_from_capture_overlay"

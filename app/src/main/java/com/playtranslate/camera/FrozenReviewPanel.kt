@@ -93,6 +93,10 @@ class FrozenReviewPanel(
     /** Which per-surface OCR selection the panel's picker persists to, and
      *  which scope its download deep-links carry. */
     private val tokenScope: OcrTokenScope,
+    /** Whether the flow's reviews are captures Auto Copy to Clipboard
+     *  copies ([CaptureResultOverlay.copiesCaptureOriginal]): the camera's
+     *  snapshots are, an imported file's pages are not. */
+    private val copiesCaptureOriginal: Boolean,
     /** AU→view mapping mode; must match the flow's image scale type. */
     private val fitMode: CameraCoordinates.FitMode,
     /** The flow's zoom ceiling policy (IMPORT native-capped, CAMERA
@@ -387,6 +391,7 @@ class FrozenReviewPanel(
         // The tool's gear menu has the mode control (its Overlays row); the
         // sheet's pill would sit under the tool's own top-row buttons.
         o.hostOwnsModeControl = true
+        o.copiesCaptureOriginal = copiesCaptureOriginal
         o.ttsAlertTarget = TtsAlertTarget.InActivity(activity)
         // Tap-a-word lens hosted as an activity window (the panel's wm IS
         // the activity's WindowManager) — no overlay permission involved.

@@ -114,6 +114,8 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
     private lateinit var switchVerticalGrow: MaterialSwitch
     private lateinit var rowEdgeIndicator: View
     private lateinit var switchEdgeIndicator: MaterialSwitch
+    private lateinit var rowAutoCopy: View
+    private lateinit var switchAutoCopy: MaterialSwitch
 
     // ── Capture-display refs + state ──────────────────────────────────────
     private lateinit var captureDisplaySection: View
@@ -147,6 +149,8 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
         switchVerticalGrow = rowVerticalGrow.findViewById(R.id.switchRowToggle)
         rowEdgeIndicator = findViewById(R.id.rowEdgeIndicator)
         switchEdgeIndicator = rowEdgeIndicator.findViewById(R.id.switchRowToggle)
+        rowAutoCopy = findViewById(R.id.rowAutoCopy)
+        switchAutoCopy = rowAutoCopy.findViewById(R.id.switchRowToggle)
         captureDisplaySection = findViewById(R.id.captureDisplaySection)
         llDisplayOptions = findViewById(R.id.llDisplayOptions)
 
@@ -415,6 +419,20 @@ class CaptureOverlaySettingsActivity : SettingsSubPageActivity() {
             prefs.edgeIndicatorEnabled = checked
         }
         rowEdgeIndicator.setOnClickListener { switchEdgeIndicator.toggle() }
+
+        // -- Auto Copy to Clipboard toggle (always shown) --
+        // Read as each capture's text is read (copyOriginalWhenRead): just persist.
+        rowAutoCopy.findViewById<TextView>(R.id.tvRowTitle).text =
+            getString(R.string.settings_auto_copy_title)
+        rowAutoCopy.findViewById<TextView>(R.id.tvRowSubtitle).apply {
+            text = getString(R.string.settings_auto_copy_subtitle)
+            isVisible = true
+        }
+        switchAutoCopy.isChecked = prefs.autoCopyOriginal
+        switchAutoCopy.setOnCheckedChangeListener { _, checked ->
+            prefs.autoCopyOriginal = checked
+        }
+        rowAutoCopy.setOnClickListener { switchAutoCopy.toggle() }
     }
 
     /** The furigana filter only runs on a Japanese source (OcrManager's call

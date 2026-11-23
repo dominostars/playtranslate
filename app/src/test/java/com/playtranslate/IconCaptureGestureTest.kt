@@ -289,6 +289,35 @@ class IconCaptureGestureTest {
         started().mapNotNull { it.component?.className }
             .filter { it == TranslationResultActivity::class.java.name }
 
+    // Codex review, 2026-11-22: the fallback page was not told that its
+    // capture was tap-to-lookup's, so with Auto Copy to Clipboard on it
+    // copied the screen's text as an ordinary capture's page does.
+    @Test fun `with no service the fallback result page is told a tap-to-lookup capture's mode, and a capture's page none`() {
+        prefs.iconTapAction = TapAction.TAP_TO_LOOKUP
+        val icon = icon()
+        assertNull(CaptureService.instance)
+
+        icon.onTap!!.invoke()
+        settle()
+        assertEquals(
+            "tap-to-lookup's page",
+            listOf<String?>(OverlayMode.DEFINITIONS.name),
+            resultPageModes(),
+        )
+
+        // The hold ships bound to the capture.
+        icon.onHoldStart!!.invoke()
+        icon.onHoldEnd!!.invoke()
+        settle()
+        assertEquals("a capture's page", listOf<String?>(null), resultPageModes())
+    }
+
+    /** The mode each full-screen result page started since the last call
+     *  was told its capture asked for; null for none. */
+    private fun resultPageModes(): List<String?> =
+        started().filter { it.component?.className == TranslationResultActivity::class.java.name }
+            .map { it.getStringExtra(TranslationResultActivity.EXTRA_OVERLAY_MODE_OVERRIDE) }
+
     // The stop is a message to the app, so the drag a slide turns the hold
     // into finds the session still running; it must not pause it and start
     // it again when the lens closes. The capture itself went to the app,

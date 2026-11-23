@@ -3225,8 +3225,8 @@
 
     <!-- Group header (rendered UPPERCASE) above the overlay settings on the Capture
          and overlay screen: the Overlay Mode chooser, the "minimum text size" slider,
-         the "filter furigana" switch, the "widen vertical text" switch and the "edge
-         indicator" switch. "Overlay" is
+         the "filter furigana" switch, the "widen vertical text" switch, the "edge
+         indicator" switch and the "Auto Copy to Clipboard" switch. "Overlay" is
          what the app draws over the game
          (the translation boxes on the game's text, and the result panel), so use the
          same word as the screen title (settings_cell_capture_overlay) and the Overlay
@@ -3262,6 +3262,23 @@
     <string name="settings_edge_indicator_title">Edge indicator</string>
     <!-- Subtitle under the "edge indicator" switch row, explaining the glow. -->
     <string name="settings_edge_indicator_subtitle">Show a soft glow around the screen while the overlay is on screen.</string>
+    <!-- Title of the "Auto Copy to Clipboard" switch row, the last row of the
+         Overlay group on the Capture and overlay screen. While ON, each time the
+         user captures the screen (or takes a snapshot in the Camera tool), the
+         text read from the game, in the game's own language, is copied to the
+         device's clipboard by itself, so it can be pasted into another app.
+         "Auto" is "automatically"; the translation is not copied. -->
+    <string name="settings_auto_copy_title">Auto Copy to Clipboard</string>
+    <!-- Subtitle under the "Auto Copy to Clipboard" switch row: says what is
+         copied and when. "The original text" is the text read from the game,
+         shown in the results under the header "Original" (the wording of
+         tts_auto_play_original_title). "A capture" is one screen capture the
+         user asked for; "auto-translate" is the app's mode that keeps
+         translating the screen as it changes, named as in
+         settings_header_auto_translate, during which nothing is copied. Keep
+         the two short sentences, as in tts_auto_play_original_subtitle. Small
+         grey text, may wrap. -->
+    <string name="settings_auto_copy_subtitle">Copies the original text after a capture. Not during auto-translate.</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG

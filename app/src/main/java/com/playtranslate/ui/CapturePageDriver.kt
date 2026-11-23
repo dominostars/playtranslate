@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import com.playtranslate.CaptureService
 import com.playtranslate.CaptureSession
 import com.playtranslate.CaptureState
+import com.playtranslate.OverlayMode
 import com.playtranslate.capture.CapturedFrame
 import com.playtranslate.fillsBoxesOf
 import com.playtranslate.model.OcrProvenance
@@ -39,7 +40,10 @@ import kotlinx.coroutines.withContext
 class CapturePageDriver(
     private val vm: TranslationResultViewModel,
     private val appCtx: Context,
-    /** Where the deferred completion and the re-read's decode run. */
+    /** Where the deferred completion and the re-read's decode run, and the
+     *  listen that copies a capture's original ([copyOriginalWhenRead]): it
+     *  goes on while the host is in the background, as the activity's own
+     *  scope does. */
     private val scope: CoroutineScope,
     private val service: () -> CaptureService?,
     /** Runs the session's collector for as long as the host shows the page:
@@ -48,6 +52,13 @@ class CapturePageDriver(
     private val collectWhileShown: (suspend () -> Unit) -> Job,
     private val pinnedScreenshotPath: () -> String? = { null },
     private val onSentencePending: () -> Unit = {},
+    /** The mode the page's capture asked for itself: tap-to-lookup's
+     *  Definitions, where that capture could not go up as the sheet over
+     *  the game and fell back to a page. The page shows such a capture as
+     *  any other (it paints no boxes); its original, and a re-read's, is
+     *  neither read ([captureOriginalToRead]) nor copied
+     *  ([copyOriginalWhenRead]), as on the sheet. */
+    private val modeOverride: OverlayMode? = null,
     /** A new capture's original text, to read aloud when the user asked
      *  for that ([captureOriginalToRead] says which states bring one). Here
      *  and not in each host, so a page that follows captures through this
@@ -114,6 +125,10 @@ class CapturePageDriver(
         if (!inFlight) shownBefore = vm.result.value
         inFlight = true
         this.session = session
+        // Every page this driver feeds shows a capture of the screen, whose
+        // original is copied when the capture reads it. In [scope] and not
+        // in the collection below, which stops while the page is hidden.
+        scope.copyOriginalWhenRead(appCtx, session) { modeOverride }
         collectJob = collectWhileShown {
             session.stateWithPrevious.collect { (previous, state) -> apply(previous, state) }
         }
@@ -137,7 +152,7 @@ class CapturePageDriver(
         // Before the state is shown: the page closes a word lens for the
         // read, and the state's own render would close it a moment later
         // and cut the read off.
-        captureOriginalToRead(previous, state, null)?.let { text ->
+        captureOriginalToRead(previous, state, modeOverride)?.let { text ->
             if (readSession !== session) {
                 readSession = session
                 onOriginalToRead(text)

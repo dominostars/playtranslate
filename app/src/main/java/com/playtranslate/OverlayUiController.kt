@@ -4000,6 +4000,12 @@ class OverlayUiController(
                 putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_LEFT_FRAC, region.left)
                 putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_RIGHT_FRAC, region.right)
                 putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_TARGET_DISPLAY_ID, displayId)
+                // A page has no Definitions to open in, but it is told the
+                // capture was tap-to-lookup's: such a capture's original is
+                // neither read aloud nor copied by itself.
+                capture.modeOverride?.let {
+                    putExtra(com.playtranslate.ui.TranslationResultActivity.EXTRA_OVERLAY_MODE_OVERRIDE, it.name)
+                }
             }
             if (frame != null) {
                 val path = savePreCapturedScreenshot(frame.bitmap)

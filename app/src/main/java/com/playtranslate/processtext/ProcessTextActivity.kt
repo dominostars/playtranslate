@@ -105,6 +105,9 @@ class ProcessTextActivity : AppCompatActivity() {
                 get() = CaptureResultGeometry.NO_POSTURE
                 set(_) {}
         }
+        // The text is the user's own selection, not a capture: Auto Copy to
+        // Clipboard leaves the clipboard alone.
+        o.copiesCaptureOriginal = false
         o.ttsAlertTarget = TtsAlertTarget.InActivity(this)
         // Tap-a-word lens hosted as an activity window (the panel's wm IS
         // the activity's WindowManager) — no overlay permission involved.

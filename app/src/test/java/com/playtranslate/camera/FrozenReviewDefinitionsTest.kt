@@ -181,8 +181,14 @@ class FrozenReviewDefinitionsTest {
     )
 
     /** A review of [frame] in [mode], the read not landed yet; [openWord]
-     *  when it is the snapshot a tap on a live word took. */
-    private fun open(mode: OverlayMode, openWord: ReviewWordRequest? = null): ToolPrefs {
+     *  when it is the snapshot a tap on a live word took; [copies] as the
+     *  tool says of its reviews (the camera's are copied by Auto Copy to
+     *  Clipboard, an imported file's are not). */
+    private fun open(
+        mode: OverlayMode,
+        openWord: ReviewWordRequest? = null,
+        copies: Boolean = false,
+    ): ToolPrefs {
         val toolPrefs = ToolPrefs(mode)
         val p = FrozenReviewPanel(
             activity = activity,
@@ -193,6 +199,7 @@ class FrozenReviewDefinitionsTest {
             boxPresenter = presenter,
             presentationPrefs = toolPrefs,
             tokenScope = OcrTokenScope.IMPORT,
+            copiesCaptureOriginal = copies,
             fitMode = CameraCoordinates.FitMode.FIT,
             zoomPolicy = ReviewZoom.CeilingPolicy.IMPORT,
             setImageTransform = {},
@@ -488,6 +495,59 @@ class FrozenReviewDefinitionsTest {
         land(auLine(hello, left = 200, top = 600))
         assertNull(boxesView())
         assertEquals(OverlayMode.NONE, toolPrefs.mode)
+    }
+
+    // ── Auto Copy to Clipboard ───────────────────────────────────────────
+
+    /** Every text that reaches the clipboard from here on, in order. */
+    private fun clipboardWrites(): List<String?> {
+        val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
+        val writes = mutableListOf<String?>()
+        cm.addPrimaryClipChangedListener { writes += cm.primaryClip?.getItemAt(0)?.text?.toString() }
+        return writes
+    }
+
+    @Test fun `with Auto Copy on the camera's snapshot is copied once its text is read, and a re-read of it again`() {
+        com.playtranslate.Prefs(ctx).autoCopyOriginal = true
+        val copied = clipboardWrites()
+        open(OverlayMode.TRANSLATION, copies = true)
+        assertTrue("nothing while the frame is read: $copied", copied.isEmpty())
+
+        land(auLine(hello, left = 200, top = 600))
+        assertEquals(listOf<String?>(hello), copied)
+        backend.runs.last().value = done()
+        settle()
+        assertEquals("its result is the same text", listOf<String?>(hello), copied)
+
+        panel!!.reRunReview()
+        land(auLine(hello, left = 200, top = 600))
+        assertEquals("the new read's text", listOf<String?>(hello, hello), copied)
+    }
+
+    @Test fun `an imported page is never copied`() {
+        com.playtranslate.Prefs(ctx).autoCopyOriginal = true
+        val copied = clipboardWrites()
+        open(OverlayMode.TRANSLATION, copies = false)
+        land(auLine(hello, left = 200, top = 600))
+        backend.runs.last().value = done()
+        settle()
+        assertTrue("$copied", copied.isEmpty())
+    }
+
+    @Test fun `the snapshot a tap on a live word took is not copied`() {
+        com.playtranslate.Prefs(ctx).autoCopyOriginal = true
+        val copied = clipboardWrites()
+        open(OverlayMode.NONE, openWord = ReviewWordRequest("world", 270f, 315f), copies = true)
+        land(auLine(hello, left = 200, top = 600))
+        assertEquals("precondition: the word's card is up", 1, selected())
+        assertTrue("up to look a word up: $copied", copied.isEmpty())
+    }
+
+    @Test fun `with Auto Copy off the camera's snapshot is not copied`() {
+        val copied = clipboardWrites()
+        open(OverlayMode.TRANSLATION, copies = true)
+        land(auLine(hello, left = 200, top = 600))
+        assertTrue("$copied", copied.isEmpty())
     }
 
     @Test fun `the review's sheet credits its translation with no service gear`() {

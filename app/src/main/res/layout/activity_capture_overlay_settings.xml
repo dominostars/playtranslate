@@ -535,6 +535,19 @@
                     <include layout="@layout/settings_row_switch"
                         android:id="@+id/rowEdgeIndicator" />
 
+                    <View
+                        android:id="@+id/dividerEdgeIndicator"
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="@dimen/pt_row_h_padding"
+                        android:background="?attr/ptDivider" />
+
+                    <!-- Auto Copy to Clipboard toggle (always shown).
+                         Title/subtitle + checked state wired in
+                         CaptureOverlaySettingsActivity.setupOverlaySection. -->
+                    <include layout="@layout/settings_row_switch"
+                        android:id="@+id/rowAutoCopy" />
+
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

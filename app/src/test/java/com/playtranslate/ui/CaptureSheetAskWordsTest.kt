@@ -1652,4 +1652,67 @@ class CaptureSheetAskWordsTest {
         follow(o, translating("The cat sleeps in the sun."))
         assertTrue(speech.played.isEmpty())
     }
+
+    // ── Auto Copy to Clipboard: the original text ────────────────────────
+
+    /** Every text that reaches the clipboard from here on, in order. */
+    private fun clipboardWrites(): List<String?> {
+        val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
+        val writes = mutableListOf<String?>()
+        cm.addPrimaryClipChangedListener { writes += cm.primaryClip?.getItemAt(0)?.text?.toString() }
+        return writes
+    }
+
+    @Test fun `a capture's original is copied once as its text arrives, and its result adds nothing`() {
+        prefs.autoCopyOriginal = true
+        val copied = clipboardWrites()
+        val o = open(screen, text(1), text(1))
+        assertTrue("a sheet shown with a result it was handed copies nothing", copied.isEmpty())
+
+        val states = follow(o, CaptureState.InProgress("Reading"))
+        assertTrue("nothing to copy yet", copied.isEmpty())
+        states.value = translating("The cat sleeps in the sun.")
+        settle()
+        assertEquals("copied as it arrives, before the translation", listOf<String?>("The cat sleeps in the sun."), copied)
+
+        states.value = CaptureState.Done(result("The cat sleeps in the sun.", "Le chat dort au soleil."))
+        settle()
+        assertEquals("the result that follows its text is not copied again", 1, copied.size)
+    }
+
+    @Test fun `a re-read of the capture copies its new text`() {
+        prefs.autoCopyOriginal = true
+        val copied = clipboardWrites()
+        val o = open(screen, text(1), text(1))
+        follow(o, translating("The cat sleeps in the sun."))
+        follow(o, translating("The cat sleeps in the sum."))
+        assertEquals(listOf<String?>("The cat sleeps in the sun.", "The cat sleeps in the sum."), copied)
+    }
+
+    @Test fun `a sheet in tap-to-lookup's mode copies nothing`() {
+        prefs.autoCopyOriginal = true
+        val copied = clipboardWrites()
+        val o = open(screen, text(1), text(1))
+        o.overlayModeOverride = OverlayMode.DEFINITIONS
+        follow(o, translating("The cat sleeps in the sun."))
+        assertTrue("up to look words up: $copied", copied.isEmpty())
+    }
+
+    @Test fun `a host whose text is not a capture's copies nothing, and still reads it aloud`() {
+        prefs.autoCopyOriginal = true
+        prefs.autoPlayOriginal = true
+        val copied = clipboardWrites()
+        val o = open(screen, text(1), text(1))
+        o.copiesCaptureOriginal = false
+        follow(o, translating("The cat sleeps in the sun."))
+        assertTrue("an imported page, a selection: $copied", copied.isEmpty())
+        assertEquals(listOf(sentence("The cat sleeps in the sun.")), speech.played)
+    }
+
+    @Test fun `with Auto Copy off a capture's original is not copied`() {
+        val copied = clipboardWrites()
+        val o = open(screen, text(1), text(1))
+        follow(o, translating("The cat sleeps in the sun."))
+        assertTrue("$copied", copied.isEmpty())
+    }
 }

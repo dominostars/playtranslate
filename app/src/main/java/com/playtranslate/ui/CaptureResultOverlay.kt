@@ -409,6 +409,13 @@ class CaptureResultOverlay(
      *  pill is pinned to. Set by the host before [show]. */
     var hostOwnsModeControl = false
 
+    /** Whether a capture this sheet follows is one Auto Copy to Clipboard
+     *  copies ([copyOriginalWhenRead]): a capture of the screen, which
+     *  the sheet over the game shows, and the Camera tool's snapshot. False
+     *  for the hosts whose text is not a capture's: an imported file's
+     *  pages and select-to-translate. Set by the host before [observe]. */
+    var copiesCaptureOriginal = true
+
     /** Definitions' dimming ([CaptureOverlayLayer.scrimHolder]): a root child
      *  beneath the panel at all times, while the boxes rise above a parked
      *  strip ([syncChipsOrder]), so a card never dims the strip. */
@@ -1256,6 +1263,10 @@ class CaptureResultOverlay(
         sessionJob?.cancel()
         captureSession?.cancel()
         captureSession = session
+        // Its original is copied when the capture reads it, where this
+        // host's captures are copied. A sheet in tap-to-lookup's mode
+        // ([overlayModeOverride]) copies nothing.
+        if (copiesCaptureOriginal) scope.copyOriginalWhenRead(ctx, session) { overlayModeOverride }
         sessionJob = scope.launch {
             session.stateWithPrevious.collect { (previous, state) ->
                 when (state) {

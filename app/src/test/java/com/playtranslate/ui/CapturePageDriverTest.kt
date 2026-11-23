@@ -5,6 +5,8 @@ import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.CaptureService
 import com.playtranslate.CaptureSession
 import com.playtranslate.CaptureState
+import com.playtranslate.OverlayMode
+import com.playtranslate.Prefs
 import com.playtranslate.RegionEntry
 import com.playtranslate.language.ChineseScriptVariant
 import com.playtranslate.language.SourceLangId
@@ -55,6 +57,12 @@ class CapturePageDriverTest {
     /** What the driver handed over to be read aloud. */
     private val read = mutableListOf<String>()
 
+    /** Every text that reached the clipboard, in order. */
+    private val copied = mutableListOf<String?>()
+    private val clipboard = ctx.getSystemService(android.content.ClipboardManager::class.java).also { cm ->
+        cm.addPrimaryClipChangedListener { copied += cm.primaryClip?.getItemAt(0)?.text?.toString() }
+    }
+
     /** The collection the driver last started, and its body: a test runs
      *  the body again as a host back in the foreground does ([comeBack]). */
     private var collector: (suspend () -> Unit)? = null
@@ -65,6 +73,12 @@ class CapturePageDriverTest {
     private fun comeBack() {
         collecting?.cancel()
         collecting = scope.launch { collector!!.invoke() }
+    }
+
+    /** The host went to the background: its collection of the capture
+     *  ended. Its scope goes on, as an activity's does. */
+    private fun goBehind() {
+        collecting?.cancel()
     }
 
     /** The read of a re-read's frame: a test holds it open with [frame]. */
@@ -91,6 +105,7 @@ class CapturePageDriverTest {
     @After
     fun tearDown() {
         scope.cancel()
+        ctx.getSharedPreferences("playtranslate_prefs", Context.MODE_PRIVATE).edit().clear().commit()
     }
 
     /** A capture as the service hands one out: its states are the test's to
@@ -387,6 +402,101 @@ class CapturePageDriverTest {
         comeBack()
 
         assertEquals(listOf("こんにちは"), read)
+    }
+
+    // ── The original, copied (Auto Copy to Clipboard) ────────────────────
+
+    @Test
+    fun `with Auto Copy on a capture's original is copied once, as its text arrives, and the next capture's replaces it`() {
+        Prefs(ctx).autoCopyOriginal = true
+        val first = Capture()
+        driver.follow(first.session)
+        assertTrue("a status has nothing to copy", copied.isEmpty())
+
+        first.state.value = CaptureState.Translating("こんにちは", segments("こんにちは"), provenance())
+        assertEquals("copied before the translation is back", listOf<String?>("こんにちは"), copied)
+        first.state.value = CaptureState.Done(result())
+        assertEquals("the result is the same text", listOf<String?>("こんにちは"), copied)
+
+        val second = Capture()
+        driver.follow(second.session)
+        second.state.value = CaptureState.Translating("さようなら", segments("さようなら"), provenance())
+        assertEquals(listOf<String?>("こんにちは", "さようなら"), copied)
+    }
+
+    @Test
+    fun `a host that comes back to a capture does not copy it over what the user copied since`() {
+        Prefs(ctx).autoCopyOriginal = true
+        val capture = Capture()
+        driver.follow(capture.session)
+        capture.state.value = CaptureState.Translating("こんにちは", segments("こんにちは"), provenance())
+        capture.state.value = CaptureState.Done(result())
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("", "the user's own copy"))
+
+        comeBack()
+        comeBack()
+
+        assertEquals(listOf<String?>("こんにちは", "the user's own copy"), copied)
+    }
+
+    // Codex review, 2026-11-22: the copy was made from the page's own
+    // collection of its capture, which stops while the page is hidden. A
+    // capture read then was not on the clipboard when the user pasted in
+    // the app they had switched to, and was copied on the way back, over
+    // what they had copied since.
+    @Test
+    fun `a capture read while its host is in the background is copied then, and the host coming back copies nothing`() {
+        Prefs(ctx).autoCopyOriginal = true
+        val capture = Capture()
+        driver.follow(capture.session)
+
+        goBehind()
+        capture.state.value = CaptureState.Translating("こんにちは", segments("こんにちは"), provenance())
+        capture.state.value = CaptureState.Done(result())
+        assertEquals("copied as the capture read it", listOf<String?>("こんにちは"), copied)
+        assertTrue("the hidden page showed and read nothing: $read", read.isEmpty())
+
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("", "the user's own copy"))
+        comeBack()
+        comeBack()
+
+        assertEquals(listOf<String?>("こんにちは", "the user's own copy"), copied)
+        assertEquals("back on show, the page reads it once", listOf("こんにちは"), read)
+    }
+
+    @Test
+    fun `with Auto Copy off a capture copies nothing`() {
+        val capture = Capture()
+        driver.follow(capture.session)
+        capture.state.value = CaptureState.Translating("こんにちは", segments("こんにちは"), provenance())
+        capture.state.value = CaptureState.Done(result())
+        assertTrue("$copied", copied.isEmpty())
+        assertEquals("and it is still read", listOf("こんにちは"), read)
+    }
+
+    // Codex review, 2026-11-22: a tap-to-lookup capture that cannot go up as
+    // the sheet over the game opens a full-screen page, and the page copied
+    // and read its text as an ordinary capture's.
+    @Test
+    fun `a page opened for a tap-to-lookup capture shows it and neither copies nor reads its original`() {
+        Prefs(ctx).autoCopyOriginal = true
+        val lookupPage = CapturePageDriver(
+            vm, ctx, scope,
+            service = { service },
+            collectWhileShown = { collect -> scope.launch { collect() } },
+            modeOverride = OverlayMode.DEFINITIONS,
+            onOriginalToRead = { read += it },
+            onCancelled = { cancelled += it },
+        )
+        val capture = Capture()
+        lookupPage.follow(capture.session)
+        capture.state.value = CaptureState.Translating("こんにちは", segments("こんにちは"), provenance())
+        val done = result()
+        capture.state.value = CaptureState.Done(done)
+
+        assertSame("the page shows the capture", done, (vm.result.value as ResultState.Ready).result)
+        assertTrue("nothing copied: $copied", copied.isEmpty())
+        assertTrue("nothing read: $read", read.isEmpty())
     }
 
     // ── A re-read that something overtook ────────────────────────────────

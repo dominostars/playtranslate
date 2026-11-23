@@ -168,6 +168,7 @@ class CameraSnapshotController(
                 }
         },
         tokenScope = OcrTokenScope.CAMERA,
+        copiesCaptureOriginal = true,
         fitMode = CameraCoordinates.FitMode.FILL,
         zoomPolicy = ReviewZoom.CeilingPolicy.CAMERA,
         setImageTransform = { m ->

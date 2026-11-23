@@ -76,10 +76,49 @@ class CaptureOverlaySettingsLayoutTest {
                 "rowFilterFurigana".takeIf { japanese },
                 "dividerFilterFurigana".takeIf { japanese },
                 "rowVerticalGrow", "dividerVerticalGrow",
-                "rowEdgeIndicator",
+                "rowEdgeIndicator", "dividerEdgeIndicator",
+                "rowAutoCopy",
             ),
             visibleRows(activity, R.id.rowEdgeIndicator),
         )
+    }
+
+    /** The Overlay card's last row: Auto Copy to Clipboard, off on a new
+     *  install, saved by its own tap either way, and shown as saved when the
+     *  page is opened again. */
+    @Test
+    fun autoCopyRow_offUntilTapped_savedByItsTap() {
+        fun open(): Activity {
+            val controller = Robolectric.buildActivity(CaptureOverlaySettingsActivity::class.java)
+            val thrown = runCatching { controller.create() }.exceptionOrNull()
+            assertTrue("$thrown", thrown == null || thrown is UnsupportedOperationException)
+            return controller.get()
+        }
+        fun Activity.row(): View = findViewById(R.id.rowAutoCopy)
+        fun Activity.on(): Boolean =
+            row().findViewById<com.google.android.material.materialswitch.MaterialSwitch>(R.id.switchRowToggle).isChecked
+
+        val page = open()
+        assertEquals(
+            "Auto Copy to Clipboard",
+            page.row().findViewById<android.widget.TextView>(R.id.tvRowTitle).text.toString(),
+        )
+        val subtitle = page.row().findViewById<android.widget.TextView>(R.id.tvRowSubtitle)
+        assertEquals(View.VISIBLE, subtitle.visibility)
+        assertEquals(
+            "Copies the original text after a capture. Not during auto-translate.",
+            subtitle.text.toString(),
+        )
+        assertEquals("off on a new install", false, page.on())
+        assertEquals(false, Prefs(ctx).autoCopyOriginal)
+
+        page.row().performClick()
+        assertEquals(true, Prefs(ctx).autoCopyOriginal)
+        assertEquals("the edge indicator's own setting is untouched", true, Prefs(ctx).edgeIndicatorEnabled)
+        assertEquals("shown as saved when the page is opened again", true, open().on())
+
+        page.row().performClick()
+        assertEquals("off is saved the same way", false, Prefs(ctx).autoCopyOriginal)
     }
 
     /** The OCR group's order: its header, PlayTranslate Cloud's card (debug

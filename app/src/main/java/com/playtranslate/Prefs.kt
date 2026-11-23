@@ -1397,6 +1397,14 @@ class Prefs internal constructor(
         get() = sp.getBoolean(KEY_EDGE_INDICATOR_ENABLED, true)
         set(v) = sp.edit { putBoolean(KEY_EDGE_INDICATOR_ENABLED, v) }
 
+    /** The Capture and overlay page's "Auto Copy to Clipboard": a capture's
+     *  original text goes to the clipboard by itself
+     *  ([com.playtranslate.ui.copyOriginalWhenRead] says which captures).
+     *  Off until the user turns it on. */
+    var autoCopyOriginal: Boolean
+        get() = sp.getBoolean(KEY_AUTO_COPY_ORIGINAL, false)
+        set(v) = sp.edit { putBoolean(KEY_AUTO_COPY_ORIGINAL, v) }
+
     /** Over-game capture: the panel posture the last dismissal left behind, so
      *  the next capture opens there. */
     var capturePanelPosture: Float
@@ -2509,6 +2517,7 @@ class Prefs internal constructor(
         const val KEY_HIDE_GAME_OVERLAYS                   = "hide_game_overlays"
         /** Public so a showing result panel can [observe] it. */
         const val KEY_EDGE_INDICATOR_ENABLED               = "edge_indicator_enabled"
+        private const val KEY_AUTO_COPY_ORIGINAL           = "auto_copy_original"
         private const val KEY_OVERLAY_MIN_TEXT_SP          = "overlay_min_text_sp"
         private const val KEY_FILTER_FURIGANA              = "filter_furigana"
         private const val KEY_LAST_UPDATE_CHECK            = "last_update_check"
