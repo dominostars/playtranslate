@@ -276,6 +276,11 @@
     <string name="ocr_picker_title">เลือกเครื่องมือ OCR</string>
     <string name="ocr_picker_message">OCR คือสิ่งที่ดึงข้อความออกมาจากภาพหน้าจอ เครื่องมือที่ต่างกันอาจเหมาะกับแบบอักษรที่ต่างกัน</string>
     <string name="cd_choose_ocr">เลือกเครื่องมือ OCR</string>
+    <string name="translation_picker_title">เลือกบริการแปล</string>
+    <string name="translation_picker_message">บริการที่คุณเลือกจะแปลข้อความนี้อีกครั้ง การตั้งค่าของคุณจะยังคงเหมือนเดิม</string>
+    <string name="cd_choose_translation_service">เลือกบริการแปล</string>
+    <string name="translation_pick_failed_title">ไม่สามารถแปลได้</string>
+    <string name="translation_pick_failed_generic"><xliff:g id="service" example="Firefox Translations">%1$s</xliff:g> ไม่สามารถแปลข้อความนี้ได้</string>
     <string name="cd_change_source_language">เปลี่ยนภาษาของเกม</string>
     <string name="cd_change_target_language">เปลี่ยนภาษาของคุณ</string>
 
@@ -403,6 +408,8 @@
     <string name="icon_gesture_tap">แตะ</string>
 
     <string name="icon_action_lookup_words">วางไว้บนคำเพื่อดูคำจำกัดความ</string>
+
+    <string name="icon_action_pull_out_window">ดึงหน้าต่างผลลัพธ์ออกมา</string>
 
     <string name="icon_action_show_translations">แสดงคำแปลบนหน้าจอ</string>
 
@@ -1240,6 +1247,22 @@
 
     <string name="floating_menu_panel_open_app">เปิด <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
 
+    <string name="floating_menu_panel_detach">แยกเป็นหน้าต่าง</string>
+
+    <string name="detached_bar_capture">จับภาพ</string>
+
+    <string name="detached_bar_minimize">ย่อ</string>
+
+    <string name="detached_status_idle">แตะ “จับภาพ” เพื่อแปลหน้าจอเกม</string>
+
+    <string name="detached_status_idle_hint">ลากแถบด้านบนเพื่อย้ายหน้าต่างนี้ ลากมุมด้านล่างเพื่อปรับขนาด ตัวเลือกอื่นๆ อยู่ในเมนู ⋯</string>
+
+    <string name="detached_menu_group_result">ผลลัพธ์นี้</string>
+
+    <string name="detached_menu_group_text">ข้อความ</string>
+
+    <string name="detached_menu_group_capture">การจับภาพ</string>
+
     <string name="floating_menu_drag_instruction">ลากนิ้วเพื่อจับภาพพื้นที่ที่ต้องการ</string>
 
     <!-- ═══ DEEPL SETTINGS — API-key field label ═══ -->
@@ -1294,6 +1317,10 @@
 
     <string name="settings_edge_indicator_subtitle">แสดงแสงเรืองนุ่มนวลรอบขอบหน้าจอขณะที่การซ้อนทับปรากฏอยู่</string>
 
+    <string name="settings_auto_copy_title">คัดลอกไปยังคลิปบอร์ดอัตโนมัติ</string>
+
+    <string name="settings_auto_copy_subtitle">คัดลอกข้อความต้นฉบับหลังการจับภาพ ยกเว้นระหว่างการแปลอัตโนมัติ</string>
+
     <!-- ═══ HOTKEY SETUP DIALOG ═══ -->
 
     <string name="dialog_hotkey_setup_title">ตั้งค่าปุ่มลัด</string>
@@ -1333,6 +1360,14 @@
     <string name="header_action_edit">แก้ไขข้อความ</string>
 
     <string name="cd_toggle_original_visibility">สลับการแสดงต้นฉบับ</string>
+
+    <string name="header_action_hide_original">ซ่อนต้นฉบับ</string>
+
+    <string name="header_action_show_original">แสดงต้นฉบับ</string>
+
+    <string name="header_action_hide_translation">ซ่อนคำแปล</string>
+
+    <string name="header_action_show_translation">แสดงคำแปล</string>
 
     <string name="cd_toggle_words_visibility">สลับการแสดงคำ</string>
 
@@ -1961,10 +1996,23 @@
 
     <string name="tts_voice_needs_download">ต้องดาวน์โหลด</string>
 
+    <string name="tts_voice_online">ออนไลน์</string>
+
+    <string name="tts_voice_offline">ออฟไลน์</string>
+
     <string name="tts_no_engine_row_subtitle">ไม่มีเอนจินเสียงที่ใช้ได้ แตะเพื่อเพิ่ม</string>
 
-    <string name="tts_voices_section_header">เสียงภาษา<xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
     <string name="tts_speed_title">ความเร็ว</string>
+
+    <string name="tts_auto_play_header">อ่านออกเสียงอัตโนมัติ</string>
+
+    <string name="tts_auto_play_words_title">คำ</string>
+
+    <string name="tts_auto_play_words_subtitle">เมื่อค้นหาคำ</string>
+
+    <string name="tts_auto_play_original_title">ข้อความต้นฉบับ</string>
+
+    <string name="tts_auto_play_original_subtitle">หลังการจับภาพ ยกเว้นระหว่างการแปลอัตโนมัติ</string>
 
     <string name="tts_no_engine_dialog_title">ไม่มีการอ่านออกเสียงข้อความ</string>
 
@@ -2183,7 +2231,7 @@
     <string name="audio_source_tts_name">การอ่านออกเสียงข้อความ</string>
 
     <string name="audio_source_commons_name">Wikimedia Commons</string>
-    <string name="audio_source_voice_service_name">บริการเสียงพูด</string>
+    <string name="audio_source_voice_service_name">บริการเสียงพูด AI</string>
     <string name="audio_error_playing">ไม่สามารถเล่นเสียงนี้ได้</string>
     <string name="voice_service_connect_title">เชื่อมต่อบริการเสียงพูด</string>
     <string name="voice_service_connect_subtitle">ใช้เสียง AI ออนไลน์ด้วยคีย์ API ของคุณเอง</string>

@@ -1389,3 +1389,101 @@ Different states keep different nouns. Particles after the service name and the 
 #### Disposition (round 2, 2026-11-16)
 
 The open ⚠️ applied byte-exact at the developer's request: `icon_action_tap_to_lookup` 「탭으로 단어 검색 켜기」. With it no ⚠️ is open, so the locale passes. After applying: mech_check 0 errors, aapt2 ok, only delta keys changed, `:app:processDebugResources` green.
+
+## Delta review 2026-11-23 (translation service picker, detached window, Auto Copy to Clipboard, text-to-speech auto-play, AI Voice Service: 27 new keys, 1 changed, 1 orphan removed)
+
+Mechanical layer: `python3 mech_check.py ko` -> `ko: 28 keys checked, 0 problems, 0 warnings`; `l10n_diff.py --english-base en-base.xml` -> `values-ko   missing=0  orphan=0  modified=1` (the one MODIFIED, `audio_source_voice_service_name`, listed by design; loc 「AI 음성 서비스」 carries the new meaning). `git diff` of the file holds the 27 inserted keys, the changed value and the removed `tts_voices_section_header`, nothing else. The single placeholder span is byte-identical to English; ⋯ is U+22EF in both files; no em or en dash, double space or stray edge space in any delta value. **No 🛑 issues.**
+
+### Findings
+
+None.
+
+### Clean areas (checked, no findings)
+
+**Translation service picker, read as one alert.** Title 번역 서비스 선택 is built as 「OCR 도구 선택」 with 번역 서비스 (= `settings_cell_translation_services`), and `cd_choose_translation_service` repeats it, as `cd_choose_ocr` repeats the OCR title; TalkBack reads 「DeepL 번역」 then 「번역 서비스 선택」. The message 「선택한 서비스로 이 텍스트만 다시 번역합니다. 설정은 그대로 유지됩니다.」 carries both facts (만 for "only this text", and the settings left alone, which tells it apart from the OCR picker whose pick is remembered) and names nothing that could be read as the footer button. Under it the existing headers 온라인 번역 / 오프라인 번역, then the footer 번역 서비스 + 취소. The failure alert as a set: 번역할 수 없음 (byte-matches `anki_translation_error` and `hold_translation_failed`, and the file already titles alerts with noun-final ~수 없음: 아직 저장할 수 없음, 키를 확인할 수 없음), the body 「%1$s이(가) 이 텍스트를 번역하지 못했습니다.」, and 확인. Read with real values: Firefox Translations이(가), DeepL이(가), Gemini이(가), ML Kit이(가), Hunyuan-MT 7B이(가), and a typed Korean name such as 「내 서버이(가)」 all read correctly with the combined form.
+
+**Detached window.** One name for the window, 결과 창, at both ways in: the gesture row 결과 창 꺼내기 under 드래그 beside 단어 위에 올려 정의 보기 (꺼내다 is the drawer verb the comment asks for, and it describes the drag away from the screen edge; noun-final like 빠른 메뉴 열기, 화면 캡처), and the panel row 결과 창으로 전환 beside 「PlayTranslate 열기」, a command that says what happens where a bare 분리 would have nothing visible to separate from. The hint then says 이 창, as English says "this window". Bar: 자동 / 일시정지 and 캡처 are all bare nouns, as the icon menu's 화면\n캡처; 최소화 is AOSP's own `minimize_button_text` (checked in the local AOSP WindowManager Shell ko file). `detached_status_idle` 「“캡처” 버튼을 눌러 게임 화면을 번역하세요」 is built as its sibling `status_idle` 「“번역” 버튼을 눌러 게임 화면을 캡처하세요」 (no final period, as the sibling and English), and the quoted name byte-matches `detached_bar_capture`. The hint follows `label_region_drag_hint` (…하려면 … 드래그하세요), keeps 가장자리 (edge) apart from 모서리 (corner) as that string does, says 아래쪽 as that string does, and 아래쪽 모서리 fits the code (`DetachedWindow`: two pads, bottom left and bottom right; Korean need not mark "a"); 크기 조절 is AOSP's `accessibility_action_pip_resize`. Menu headings as a set: 이 결과 / 텍스트 / 캡처 / PlayTranslate. The capture heading and the folded Capture row are both 캡처: in this register the Korean button is the bare noun too, 캡처하기 would be the only ~하기 on the bar, and a heading such as 캡처 설정 would misname a group that holds Auto, Capture and Edit region; English has the same coincidence. Menu rows: 원문 숨기기 / 원문 표시 / 번역 숨기기 / 번역 표시, one pair of words used identically in both pairs, the file's own pair (`hidden_word_hide_content_description` 단어 숨기기 / `hidden_word_show_content_description` 단어 표시), 번역 숨기기 also matching `history_hide_translations_toggle_title`; they sit with 글자 크기, 소리 내어 읽기, Anki에 추가, 영역 편집 as noun-final rows.
+
+**Auto Copy to Clipboard.** 클립보드 and 복사 are Android's words (AOSP SystemUI ko, fetched: `clipboard` 「클립보드」, `clipboard_overlay_text_copied` 「복사됨」; the file's `history_action_copy` 복사, `toast_copied` 복사됨). Title 클립보드에 자동 복사 follows the Overlay group's noun-final rows (가장자리 표시); Korean has no title case to carry. The subtitle 「캡처 후 원문을 복사합니다. 자동 번역 중에는 복사하지 않습니다.」 mirrors `tts_auto_play_original_subtitle` 「캡처 후 소리 내어 읽습니다. 자동 번역 중에는 읽지 않습니다.」 word for word except the verb; 자동 번역 = `settings_header_auto_translate`, 원문 = `tts_auto_play_original_title` and `section_original`. Both are whole 합니다체 sentences, not a calque of the verbless English.
+
+**Text-to-speech page.** Header 자동 재생 (the everyday Korean "autoplay"), rows 단어 (= `section_words`) and 원문 (= `section_original`), both nouns for the thing played. 「단어를 검색할 때 소리 내어 읽습니다.」 uses the file's lookup word (단어 검색: `onboarding_a11y_row_lookup_title`, `icon_action_tap_to_lookup`, `words_loading`) and its read-aloud phrase (`header_action_read_aloud`). Voice subtitle parts 온라인 / 오프라인 match the headers 온라인 번역 / 오프라인 번역 and stand alone before 다운로드 필요. `audio_source_voice_service_name` 「AI 음성 서비스」 uses the file's Latin AI (`service_llm_badge` AI, `settings_header_advanced_llm` 고급 AI 설정, `ask_no_llm_title` AI 모델) and is not 온라인; the other `voice_service_*` strings and `anki_added_voice_fell_back` keep the generic 음성 서비스, as English keeps "voice service" there. It renders as a group header in `TtsVoiceActivity` and in `AudioSourcePickerView` (settings_group_header, wraps) and as the `OnlineTtsServiceActivity` toolbar title.
+
+**Widths** (Measure.java `--lang ko`, Noto Sans CJK):
+
+| widget | text | width | room |
+|---|---|---|---|
+| menu rows, 15 sp medium, one line | 원문 숨기기 / 원문 표시 / 번역 숨기기 / 번역 표시 / 최소화 | 72.7 / 58.9 / 72.7 / 58.9 / 41.4 dp | ≤ 208 dp (neighbours 글자 크기 58.9, 소리 내어 읽기 90.3, Anki에 추가 75.1) |
+| menu headings, 12 sp medium, one line | 이 결과 / 텍스트 / 캡처 | 36.1 / 33.1 / 22.1 dp | ≤ 248 dp (PlayTranslate 74.0) |
+| toolbar title, 22 sp regular, one line | AI 음성 서비스 | 132.4 dp; 172.1 dp at 1.3× | 296 dp on a 360 dp phone |
+| bar pill label, 14 sp | 캡처 beside 자동 / 일시정지 | 25.8 dp (pill 74.8 dp) beside 25.8 / 51.5 dp | English Capture 49.1 dp; never clips (the bar drops names first) |
+| quick-settings panel row, 15 sp medium, one line ellipsized (`QuickSettingsRows.populate`) | 결과 창으로 전환 | 104.1 dp | narrower than its neighbour 「PlayTranslate 열기」 123.8 dp in the same panel |
+
+### Source-side notes
+
+- `TtsVoiceLabels.subtitle` (`TtsVoiceLabels.kt:67-72`) hard-codes the quality part in English, so a Korean voice row reads 「High quality · 온라인 · 다운로드 필요」. Already known from the brief; no string can fix it.
+- Outside the delta, not filed: the translator's hand-back names 7 Korean values that still hold an em dash the English has since dropped. Spot-checked 3 of them, all as stated: `audio_source_game_enable_hint` (EN 「Not recording. Turn on to capture…」, KO 「녹음 중이 아님 — 켜면 …」), `error_capture_blocked_secure`, `llm_status_low_memory_badge`. The analyzer does not list them as MODIFIED (their English changed before the `l10n-sync` baseline). The other 4 were not checked.
+
+### Korean appendix
+
+- **Particles after a variable:** one contact point in the delta, `translation_pick_failed_generic` 「%1$s이(가)」, combined form. No particle follows a fixed brand in the delta.
+- **띄어쓰기:** 번역할 수 없음, 번역하지 못했습니다, 소리 내어, 자동 번역 중에는, 결과 창, 상단 바, 아래쪽 모서리, 이 결과 all spaced per the norms; no parenthesis in the delta.
+- **Register:** 합니다체 in every sentence (picker message, failure message, the three subtitles, the hint's last sentence), polite imperative ~하세요 in the idle text and hint, nouns or ~기 on titles, rows and headings, as the file does.
+- **Quotes:** “캡처” with the file's “ ”.
+
+### Verdict (round 1)
+
+**PASS**: 🛑 0 / ❌ 0 / ⚠️ 0 / 💬 0. Nothing for the coordinator to apply.
+
+### Disposition (round 1, 2026-11-23)
+
+No findings, nothing applied. The file stands as translated.
+
+### Round 2 (2026-11-23), final review after applying round 1
+
+Mechanical layer: `python3 mech_check.py ko` -> `ko: 28 keys checked, 0 problems, 0 warnings`; `l10n_diff.py --english-base en-base.xml` -> `values-ko   missing=0  orphan=0  modified=1` (`audio_source_voice_service_name`, listed by design; loc 「AI 음성 서비스」). `git diff` of the file holds the 27 inserted keys, the one changed value and the removed `tts_voices_section_header`, nothing else; no code or layout still names the removed key. A scripted scan of the 28 values finds no em or en dash, no NBSP or zero-width character, no double or edge space and no raw apostrophe; ⋯ is U+22EF in English and Korean. **No 🛑 issues.**
+
+Round-1 fixes: none were filed, so none were applied. All 28 values compared by script with the translator's hand-back table are byte-identical, so the file stands as translated and this read is of the translator's own text, judged without leaning on round 1's PASS.
+
+#### Findings (round 2)
+
+None.
+
+#### Clean areas (round 2)
+
+Read fresh, screen by screen, against the code that draws each string and the Korean strings beside it.
+
+**Translation service picker** (`TranslationPicker.kt`: title, message, section labels, service buttons, `beginFooter`, outlined button with a gear icon, Cancel). Title 번역 서비스 선택 has the structure of 「OCR 도구 선택」. The message 「선택한 서비스로 이 텍스트만 다시 번역합니다. 설정은 그대로 유지됩니다.」 states both facts (만 for "only this text"; settings left alone, which sets it apart from the OCR picker whose pick is remembered) and describes no button, so the footer's 번역 서비스 cannot be read as what it explains. Considered and not filed: the title and the footer button share 번역 서비스, where English tells "service" from the page name "services" by the plural; Korean has no plural to mark, the footer sits after a rule with a gear icon, and the title mirrors the OCR twin as the comment asks. TalkBack reads the credit 「DeepL 번역」 then the gear's 번역 서비스 선택, as `cd_choose_ocr` follows 「… 인식」.
+
+**Failure alert** (`ChosenServiceTranslation.failureAlert`): title 번역할 수 없음 byte-matches `anki_translation_error` and `hold_translation_failed`; body 「%1$s이(가) 이 텍스트를 번역하지 못했습니다.」; button 확인. Read with real names: Firefox Translations이(가), DeepL이(가), Gemini이(가), ML Kit이(가), Hunyuan-MT 7B이(가), PlayTranslate Cloud이(가), a typed Korean name 「내 서버이(가)」; the combined form reads correctly with each. Noun-final ~수 없음 title over a past-tense ~지 못했습니다 body is the ordinary Korean alert pairing.
+
+**Detached window bar and idle text** (`DetachedWindow.kt`, `DetachedPage.showIdle`). The pills 자동 / 일시정지 and 캡처 are bare nouns, as the icon menu's 화면\n캡처. 「“캡처” 버튼을 눌러 게임 화면을 번역하세요」 quotes `detached_bar_capture` byte for byte, is built as `status_idle` 「“번역” 버튼을 눌러 게임 화면을 캡처하세요」 (눌러 for "Tap", no final period, as English and the sibling). The hint 「이 창을 이동하려면 상단 바를 드래그하세요. 크기를 조절하려면 아래쪽 모서리를 드래그하세요. 나머지 기능은 모두 ⋯ 메뉴에 있습니다.」 puts each purpose first as Korean does, takes the right particles (창을, 바를, 모서리를, 메뉴에), and 상단 바 cannot be taken for Android's status bar (상태 표시줄). 최소화 and 크기 조절 re-checked in the saved AOSP WM Shell ko file (`minimize_button_text` line 115, `accessibility_action_pip_resize` line 31).
+
+**Detached window menu** (`DetachedWindow.Menu.menuGroups`). Headings 이 결과 / 텍스트 / 캡처 / PlayTranslate over the rows Anki에 추가, 소리 내어 읽기 | 후리가나 or 병음, 원문 숨기기 / 원문 표시, 번역 숨기기 / 번역 표시, 글자 크기 | folded 자동 and 캡처, 영역 편집, the language rows, OCR, MangaOCR, 오버레이 | PlayTranslate 열기 and the turn-off row. 숨기기 / 표시 is one pair used identically in both pairs, the file's own (`hidden_word_hide_content_description` / `_show_`), and `TranslationSectionBinder` (:392, :493) shows one of each pair at a time. Considered and not filed: 이 결과 against 현재 결과 (both natural, 이 결과 follows English "This result"); the 텍스트 heading over the 글자 크기 row (글자 크기 is the file's established text-size term); a folded 캡처 row under the 캡처 heading (Korean's bare-noun button cannot differ from the noun, and English has the same coincidence).
+
+**Gestures page and quick-settings panel.** 결과 창 꺼내기 under 드래그 beside 단어 위에 올려 정의 보기 (`DragAction.titleRes`); 꺼내다 is the drawer verb the comment asks for, noun-final as 빠른 메뉴 열기. The panel row 결과 창으로 전환 (one line, ellipsized: `QuickSettingsRows.populate`, maxLines 1, END) says what happens where a literal 분리 would show nothing to separate from, and names the window as the gesture row does; the hint's 이 창 then follows English "this window".
+
+**Overlay group** (`CaptureOverlaySettingsActivity`, rowAutoCopy after rowEdgeIndicator). 클립보드에 자동 복사 is noun-final like 가장자리 표시, 세로 텍스트 넓히기, OCR 결과에서 후리가나 제외. 클립보드 and 복사 re-checked in the saved SystemUI ko file (`clipboard` 「클립보드」 line 932, `clipboard_overlay_text_copied` 「복사됨」 line 1311), and match the file's 복사 / 복사됨. The subtitle 「캡처 후 원문을 복사합니다. 자동 번역 중에는 복사하지 않습니다.」 and `tts_auto_play_original_subtitle` 「캡처 후 소리 내어 읽습니다. 자동 번역 중에는 읽지 않습니다.」 share 캡처 후 and 「자동 번역 중에는 …지 않습니다」 and differ only in the verb (and the object 원문, which the TTS row's title already names); 자동 번역 = `settings_header_auto_translate`, 원문 = `tts_auto_play_original_title` = `section_original`.
+
+**Text-to-speech page** (`activity_tts_voice.xml` order: speed, 자동 재생 with 단어 and 원문, AI 음성 서비스, the engine's voices, 가져온 녹음). Header 자동 재생, row titles 단어 (= `section_words`) and 원문 as nouns for the thing played. 「단어를 검색할 때 소리 내어 읽습니다.」 is a whole sentence where English is a fragment. Considered and not filed: 검색 is also the dictionary search box's word (`dictionary_search_hint`), but the file names the lookup 단어 검색 throughout (`onboarding_a11y_row_lookup_title`, `words_loading`, `icon_action_tap_to_lookup`), so the subtitle follows the file. Voice row subtitle (`TtsVoiceLabels.subtitle`): 「High quality · 온라인」, 「High quality · 오프라인 · 다운로드 필요」; 온라인 / 오프라인 stand alone and match the picker's 온라인 번역 / 오프라인 번역 (the English quality part is code, already known).
+
+**AI Voice Service.** 「AI 음성 서비스」 uses the file's Latin AI (`service_llm_badge`, `settings_header_advanced_llm`, `ask_no_llm_title`), is not 온라인, and renders as the TTS page header, the Anki audio picker section (`OnlineTtsAudioSource.label`) and the `OnlineTtsServiceActivity` toolbar title. The four other strings that say "voice service" in English (`anki_added_voice_fell_back`, `voice_service_connect_title`, `voice_service_failed_title`, `voice_service_remove_confirm_title`) keep the generic 음성 서비스 in Korean, so nothing names the page by its old title.
+
+**Widths**, re-measured with Measure.java `--lang ko`:
+
+| widget | text | width | room |
+|---|---|---|---|
+| menu rows, 15 sp medium, one line | 원문 숨기기 / 원문 표시 / 번역 숨기기 / 번역 표시 / 최소화 | 72.7 / 58.9 / 72.7 / 58.9 / 41.4 dp | ≤ 208 dp |
+| menu headings, 12 sp medium, one line | 이 결과 / 텍스트 / 캡처 | 36.1 / 33.1 / 22.1 dp | ≤ 248 dp |
+| quick-settings row, 15 sp medium, one line | 결과 창으로 전환 | 104.1 dp | under its neighbour 「PlayTranslate 열기」 123.8 dp |
+| bar pill label, 14 sp medium | 캡처 beside 자동 / 일시정지 | 25.8 dp beside 25.8 / 51.5 dp | never clips (the bar drops names first) |
+| toolbar title, 22 sp regular, one line | AI 음성 서비스 | 132.4 dp; 172.1 dp at 1.3× | 296 dp on a 360 dp phone |
+
+**Korean particles, spacing, register.** One particle after a variable, 이(가) in `translation_pick_failed_generic`; every fixed particle agrees with its final sound (창을 / 창으로, 바를, 모서리를, 텍스트를 / 텍스트만, 설정은, 서비스로, 크기를). 띄어쓰기 correct throughout (번역할 수 없음, 소리 내어, 자동 번역 중에는, 캡처 후, 결과 창, 상단 바, 아래쪽 모서리, AI 음성 서비스). 합니다체 in every sentence, polite ~하세요 in the idle text and hint, nouns or ~기 on titles, rows and headings. Quotes “ ”.
+
+#### Verdict (round 2)
+
+**PASS**: 🛑 0 / ❌ 0 / ⚠️ 0 / 💬 0. Nothing for the coordinator to apply or decide.
+
+### Disposition (round 2, 2026-11-23)
+
+Round 2 found nothing. Applied after the final review at the developer's request, by the coordinator, without a further review round: `ocr_picker_message` (outside the delta) gets the final stop its English has, as its new twin `translation_picker_message` does. Analyzer, mechanical check and `:app:processDebugResources` green afterwards.

@@ -628,3 +628,102 @@ The review is complete. The "(review in progress)" marker on this round's mechan
 #### Disposition (round 2, 2026-11-16)
 
 Not applied: 語法 → 文法 in `ask_preset_grammar_breakdown` and `ask_out_of_scope`. Round 1 passed 語法解析 and the round-2 note on Hong Kong usage is from memory, unchecked, so it is a word choice left to the developer rather than an obvious fix.
+
+## Delta review 2026-11-23 (translation service picker, detached window, Auto Copy to Clipboard, text-to-speech auto-play, AI Voice Service: 27 new keys, 1 changed, 1 orphan removed)
+
+Mechanical layer: `mech_check.py zh-rHK` -> `zh-rHK: 28 keys checked, 0 problems, 0 warnings`; `l10n_diff.py --english-base en-base.xml` -> `values-zh-rHK   missing=0  orphan=0  modified=1` (`audio_source_voice_service_name`, base "Voice service", now "AI Voice Service", loc AI 語音服務: it holds the new meaning, listed by design). `git diff` on the locale file shows exactly the 27 added lines, the one changed line and the removal of `tts_voices_section_header`; nothing else moved. One `<xliff:g>` span in the delta (`translation_pick_failed_generic`), byte-identical to English. **No 🛑 issues.**
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| (none) | | | | No finding. Each value was read on its screen against English, the key's comment, its call site, this file's neighbours and zh-rCN's value of the same key. |
+
+### Clean areas (checked, no findings)
+
+**Translation service picker, read as one alert.** 選擇翻譯服務 / 你選擇的服務會重新翻譯這段文字。你的設定保持不變。 / 線上翻譯 and 離線翻譯 (the existing headers) / 翻譯服務 and 取消 in the footer. The title mirrors `ocr_picker_title` (選擇 OCR 工具), and `cd_choose_translation_service` is the same text as the title, as `cd_choose_ocr` is. The message's subject is the service the user picks, so it cannot be read as describing the 翻譯服務 button under the lists, and it carries both facts of the comment (this text again; settings unchanged). The failure alert reads 無法翻譯 / Firefox Translations 無法翻譯這段文字。 / 好的; the title is byte-identical to `anki_translation_error` and `hold_translation_failed`. With every example name (DeepL, Gemini, ML Kit, Hunyuan-MT 7B) the Pangu space after the placeholder is right. A custom service named in Chinese would show one space between two Han runs (我的伺服器 無法翻譯…); that is the file's existing pattern for a service-name fill (`%1$s 目前離線`), and dropping the space would jam every Latin name against Han, so it is not raised.
+
+**Detached window.**
+- The window's name: 拉出結果視窗 under 拖曳 on the gestures page (beside 移到詞語上以查看釋義, 擷取螢幕, 開啟快速選單), 轉為視窗 on the panel row beside 開啟 PlayTranslate, and 此視窗 in the hint. One word, 視窗, which is AOSP WM Shell zh-rHK's (新視窗, 管理視窗; fetched) and this file's (上下文視窗).
+- The bar: 擷取 beside 自動 / 暫停. 擷取 is the file's capture verb (擷取\n螢幕, 擷取螢幕). `detached_bar_minimize` 最小化 is AOSP WM Shell zh-rHK's `minimize_button_text` (fetched, beside 最大化 / 關閉).
+- The idle text 點按「擷取」以翻譯遊戲畫面 mirrors `status_idle` (點按「翻譯」以擷取遊戲畫面), and its quoted word byte-matches `detached_bar_capture`.
+- The hint: 拖曳 (drag), 調整大小 (AOSP zh-rHK `accessibility_action_pip_resize`, fetched), 選單, 操作 (as in `cd_more_actions` 更多操作), and the ⋯ kept with spaces as `a11y_restricted_settings_addendum` writes 點按 ⋮ 選單. 頂部列 was weighed: 列 is Android zh-HK's word for a UI bar (狀態列, 導覽列), and in Hong Kong and Taiwan usage 列 is a row, which is what this bar is (a row of buttons). 標題列 would be wrong, since the bar has no title. The translator's 頂部按鈕列 is also fine, but the current text is not unclear, so nothing is raised.
+- The menu, read as a set: 目前結果 / 文字 / 螢幕擷取 / PlayTranslate. 目前 follows the swap table (目前版本, 保留目前引擎). 螢幕擷取 is the noun (`notif_channel_name`, `history_capture_screen_cd`), so it stays apart from the command 擷取, which shows as a row under it when the bar folds. 文字 heads a group whose last row is 文字大小. The rows: 新增到 Anki, 朗讀; the reading-hint switch, 隱藏原文 / 顯示原文, 隱藏譯文 / 顯示譯文, 文字大小; 編輯區域 and the rest. One verb pair, 隱藏 / 顯示, used identically in both pairs; 原文 and 譯文 are `section_original` and `section_translation`; 隱藏譯文 is also `history_hide_translations_toggle_title`.
+
+**Auto Copy to Clipboard.** 自動複製到剪貼簿 under 邊緣指示器 and its subtitle. 剪貼簿 is AOSP SystemUI zh-rHK's word (`clipboard` = 剪貼簿, `build_number_copy_toast` = 版本號碼已複製到剪貼簿。; fetched), and 複製 is this file's (`toast_copied` 已複製). No title case problem in Han. The subtitle 擷取後複製原文。自動翻譯期間除外。 shares 擷取後 and 自動翻譯期間除外 byte for byte with `tts_auto_play_original_subtitle`. 原文 is `tts_auto_play_original_title` and `section_original`; 自動翻譯 is `settings_header_auto_translate`. X除外 is a native construction under a switch, not a calque of "Not during".
+
+**Text-to-speech page, read as a page.** The header AI 語音服務 over 連接語音服務 / 透過你自己的 API 金鑰使用線上 AI 語音; the device voices' header 文字轉語音 with subtitles that now read "High quality · 線上" and "High quality · 離線 · 需要下載"; 速度; the header 自動播放 over 詞語 / 查詢詞語時播放發音 and 原文 / 擷取後朗讀。自動翻譯期間除外。.
+- 線上 / 離線 are the picker headers' words (線上翻譯 / 離線翻譯) and the file's 目前離線, short standalone status words beside 需要下載.
+- The titles are nouns: 詞語 (`section_words`) and 原文 (not 譯文).
+- 播放發音 for words against 朗讀 for the original text is a real distinction, not drift: a word can be played from a recording, while the original text is spoken by text-to-speech (朗讀 as in `header_action_read_aloud`, `cd_read_original_aloud` 朗讀原文). 查詢詞語 is `onboarding_a11y_row_lookup_title`; 發音 is `yomitan_category_pronunciation`. Neither subtitle is a fragment.
+- AI 語音服務: "AI" is the file's one word (`service_llm_badge` AI, 進階 AI 設定, AI 模型), Pangu-spaced, and not 線上, so it stays apart from the device rows' 線上. The other `voice_service_*` strings and `anki_added_voice_fell_back` keep the generic 語音服務, as English keeps "voice service".
+
+**Widths** (Measure.java, `--lang zh-rHK`, Noto Sans CJK and Roboto; font scale 1, with 1.3 where noted):
+
+| widget | style | room | measured |
+|---|---|---|---|
+| menu rows `header_action_*` | 15 sp medium, one line | ≤ 208 dp | 隱藏原文 / 顯示原文 / 隱藏譯文 / 顯示譯文 60.0 each (78.0 at 1.3) |
+| menu row `detached_bar_minimize` | same | ≤ 208 | 最小化 45.0 (58.5 at 1.3) |
+| menu row `detached_bar_capture` (folded) | same | ≤ 208 | 擷取 30.0; neighbours 新增到 Anki 78.7, 文字大小 60.0, 編輯區域 60.0 |
+| menu headings | 12 sp medium, one line | ≤ 248 | 目前結果 48.0, 文字 24.0, 螢幕擷取 48.0 (PlayTranslate 74.0) |
+| toolbar title `audio_source_voice_service_name` | 22 sp regular, one line | 296 (360 dp phone) | AI 語音服務 113.8 (147.9 at 1.3) |
+| bar pill label `detached_bar_capture` | 14 sp medium (`DetachedWindowBar.iconAndLabel`) | drops its name when narrow | 擷取 28.0 = 自動 28.0 = 暫停 28.0 (36.4 at 1.3); pill 77 dp against English Capture 49.5 (98.5 dp) |
+
+Nothing is near a limit. The bar keeps its names longer than English does.
+
+### Traditional Chinese (Hong Kong) appendix
+
+**Against zh-rCN, key by key.** 15 of the 28 values are glyph conversions of zh-rCN's (or identical to it): the picker title, the gear's label, the failure title and message, the message apart from 设置→設定, 最小化, 文字, the four hide/show rows, 離線, 自動播放, 原文 and AI 語音服務. Each of those was read for a surviving Mainland word, and none has one: 選擇, 重新翻譯, 這段文字, 保持不變, 無法翻譯, 隱藏 / 顯示, 播放 are ordinary Hong Kong text. The other 13 carry swaps, each right: 窗口→視窗 (3), 截取→擷取 (5), 屏幕→螢幕, 当前→目前, 拖动→拖曳 (2), 栏→列, 菜单→選單, 剪贴板→剪貼簿, 在线→線上, 单词→詞語 (2), “ ”→「」.
+
+**Script checks over the 28 values.** No 设置 屏幕 截取 保存 打开 设备 菜单 拖动 当前 单词 在线 窗口 剪贴板 质量 网络 信息 视频 默认 栏 響應 重置 or their converted forms; no 啓 説 閲 裏 着 爲 (為 in 轉為 is the Hong Kong form); every Han character is in Big5, the only character outside it being the English's ⋯ (U+22EF), kept as the comment asks; quotes are 「」 only; no 您; no straight quotes; Han/Latin spacing matches zh-rCN's in every key (the only Latin contacts are AI 語音服務 and the placeholder in `translation_pick_failed_generic`).
+
+**Android wording, fetched for this review** (AOSP `main`, frameworks/base, `values-zh-rHK`; 3 fetches): WindowManager Shell `minimize_button_text` 最小化, `new_window_text` 新視窗, `manage_windows_text` 管理視窗, `accessibility_action_pip_resize` 調整大小; SystemUI `clipboard` 剪貼簿, `build_number_copy_toast` 版本號碼已複製到剪貼簿。, `clipboard_overlay_text_copied` 已複製. They agree with the translator's hand-back.
+
+**Settled decisions not reopened.** 點按 over AOSP's 輕按 (decided 2026-10-05). The open 語法 / 文法 word choice from 2026-11-16 is outside this delta.
+
+**zh-TW and zh-MO readers**, who also get this file: 視窗, 剪貼簿, 最小化, 線上 / 離線, 選單, 調整大小 are their words too. Nothing in this delta is Hong Kong-only vocabulary.
+
+### Source-side notes
+
+- `DetachedWindow.kt:750` sets the bar Capture button's screen-reader label to `floating_menu_capture_screen` (or `floating_menu_btn_capture_region`) with `replace('\n', ' ')`. In this file that gives 擷取 螢幕 / 擷取 區域, with a space between two Han runs. TalkBack reads it fine, so it is cosmetic. A string cannot fix it without breaking the two-line icon-menu button; the code would need a CJK-aware join or a label of its own.
+- `TtsVoiceLabels.subtitle` hard-codes the quality part in English, so a voice row reads "High quality · 線上 · 需要下載", half English. That is already known (CONTEXT); a string cannot fix it.
+
+### Verdict (round 1)
+
+**PASS**: 0 🛑 / 0 ❌ / 0 ⚠️ / 0 💬. Nothing to apply. Not checked here: nothing was seen on a device; the widths come from the fonts Measure.java ships, not from a running layout.
+
+### Disposition (round 1, 2026-11-23)
+
+No findings. Applied by the coordinator, carried from zh-rCN (zh-rHK follows zh-rCN): `settings_auto_copy_subtitle` and `tts_auto_play_original_subtitle` join the 除外 clause with a comma (擷取後複製原文，自動翻譯期間除外。 / 擷取後朗讀，自動翻譯期間除外。), as the zh-rCN reviewer's 💬 did there. Noted for the developer, not string-fixable: the bar's Capture screen-reader label is built by replacing the icon-menu label's line break with a space (DetachedWindow.kt:750), so it reads 擷取 螢幕. Mechanical check after the change: `zh-rHK: 28 keys checked, 0 problems, 0 warnings`.
+
+### Round 2 (2026-11-23), final review after applying round 1
+
+Mechanical layer: `mech_check.py zh-rHK` -> `zh-rHK: 28 keys checked, 0 problems, 0 warnings`; `l10n_diff.py --english-base en-base.xml` -> `values-zh-rHK   missing=0  orphan=0  modified=1` (`audio_source_voice_service_name`, base "Voice service", now "AI Voice Service", loc AI 語音服務: the new meaning, listed by design). `git diff` on the locale file: the 27 added keys at English's anchors, the changed key replaced in place, and the removal of `tts_voices_section_header` (0 occurrences left in this file, in English and in `app/src/main/java`); nothing else. The one `<xliff:g>` span (`translation_pick_failed_generic`) is byte-identical to English. **No 🛑 issues.**
+
+Round-1 change checked: round 1 had no findings; the coordinator carried zh-rCN's 💬 here, joining the 除外 clause with a comma in `settings_auto_copy_subtitle` (擷取後複製原文，自動翻譯期間除外。) and `tts_auto_play_original_subtitle` (擷取後朗讀，自動翻譯期間除外。). Both landed and are byte-identical to a script conversion of zh-rCN's current values (截取→擷取 aside). The two still mirror each other word for word (擷取後 … ，自動翻譯期間除外。). 自動翻譯期間 is the file's phrase (`settings_capture_interval_hint` 在自動翻譯期間擷取遊戲畫面的頻率。) and 自動翻譯 is `settings_header_auto_translate`. Under 邊緣指示器, whose subtitle also ends in 。 (疊加層顯示期間，螢幕四周會出現柔和的光暈。), the auto-copy row reads alike. On the TTS page 查詢詞語時播放發音 (no 。) sits over 擷取後朗讀，自動翻譯期間除外。, the same mix English has and the page already has (`tts_voice_default_subtitle` without 。, `tts_no_engine_row_subtitle` with it). The fix broke no neighbour.
+
+#### Findings (round 2)
+
+None.
+
+#### Clean areas (round 2)
+
+A fresh read of all 28 values against English and its comments, zh-rCN's value of the same key, this file's neighbours, and the call sites (`DetachedWindow.kt:242/267/334`, `DetachedPage.kt:252-253`).
+
+- **Picker, as one alert:** 選擇翻譯服務 / 你選擇的服務會重新翻譯這段文字。你的設定保持不變。 / 線上翻譯 and 離線翻譯 over the buttons / 翻譯服務 and 取消. The title has `ocr_picker_title`'s shape (選擇 OCR 工具), the gear's label equals it as `cd_choose_ocr` does, and TalkBack reads 由 DeepL 翻譯 then 選擇翻譯服務. The message carries both facts and its subject is the picked service, so it cannot be read as describing the footer button; the footer is `settings_cell_translation_services` exactly.
+- **Failure alert:** 無法翻譯 (= `anki_translation_error` = `hold_translation_failed`) / Firefox Translations 無法翻譯這段文字。 / 好的. Read with DeepL, Gemini, ML Kit and Hunyuan-MT 7B: one Pangu space, natural. The space a Chinese custom name would get is the file's settled pattern for service-name slots (由 %1$s 翻譯).
+- **Bar and idle text:** 自動 / 暫停 beside 擷取 (the file's capture command, as in 擷取\n螢幕 and 擷取螢幕); 點按「擷取」以翻譯遊戲畫面 mirrors `status_idle` 點按「翻譯」以擷取遊戲畫面 and quotes `detached_bar_capture` byte for byte in 「」. The hint uses 拖曳 (`icon_gesture_drag`), 頂部列 (Android zh-HK's 列 for a bar, as this file's 狀態列; round 1 weighed it, no new evidence), 此視窗, 調整大小, 其他操作 (cf. 更多操作) and keeps ⋯ spaced as 點按 ⋮ 選單. 最小化 is the window-control word.
+- **Menu, as a set:** headings 目前結果 / 文字 / 螢幕擷取 / PlayTranslate; 螢幕擷取 is the noun (`notif_channel_name`), apart from the command row 擷取 under it when the bar folds. Rows 隱藏原文 / 顯示原文 / 隱藏譯文 / 顯示譯文: one verb pair used identically, 原文 / 譯文 = `section_original` / `section_translation`, matching the eye labels 切換原文可見性 / 切換譯文可見性 and `history_hide_translations_toggle_title`.
+- **Entry points:** 拉出結果視窗 under 拖曳 beside 移到詞語上以查看釋義 and the other `icon_action_*` commands; 轉為視窗 on the panel beside 開啟 PlayTranslate, 語言, 疊加層. One window name, 視窗, across the three strings and the file's 上下文視窗.
+- **Auto Copy:** 自動複製到剪貼簿, 剪貼簿 being AOSP zh-rHK's word (round 1 and translator fetched it; not refetched) and 複製 the file's (已複製, 複製).
+- **TTS page:** 自動播放 over 詞語 / 查詢詞語時播放發音 and 原文 / 擷取後朗讀，自動翻譯期間除外。; titles are nouns equal to `section_words` / `section_original`; 播放 (words may be recordings) against 朗讀 (spoken text) is a real distinction. 線上 / 離線 are the picker headers' words and short status words before 需要下載. AI 語音服務 uses the file's one Latin "AI" (AI, 進階 AI 設定, AI 模型), Pangu-spaced, not 線上; the other `voice_service_*` keep 語音服務, as English does.
+- **Widths** re-measured (Measure.java, `--lang zh-rHK`): menu rows at 15 sp medium 60.0 / 45.0 (最小化) / 30.0 (擷取) against ≤ 208 dp; headings at 12 sp medium 48.0 / 24.0 / 48.0 against 248; toolbar title AI 語音服務 at 22 sp 113.8 against 296; bar pill labels at 14 sp medium 擷取 = 自動 = 暫停 = 28.0 (36.4 at 1.3). Nothing near a limit.
+- **Script, by script over the 28 values:** 105 distinct Han characters, all in Big5 (the only non-Big5 character is the English's ⋯ U+22EF); none of 啓 説 閲 裏 着 爲 綫 户 衞 衆 峯 羣 or other OpenCC HK variants (線 in 線上 / 離線, 為 in 轉為); no Mainland word from the parameters block's swap table; 「」 only, no “ ” or straight quotes, no 您, no dash. Every value is zh-rCN's structure with the Hong Kong swaps, and nothing in the delta is Hong Kong-only vocabulary that a zh-TW or zh-MO reader would trip on.
+
+#### Verdict (round 2)
+
+**PASS**: 0 🛑 / 0 ❌ / 0 ⚠️ / 0 💬. The coordinator's carried comma fix landed byte-exact and keeps the two subtitles mirrored. Not checked: nothing was seen on a device; widths are from Measure.java's fonts, not a running layout.
+
+### Disposition (round 2, 2026-11-23)
+
+Round 2 found nothing; nothing applied.

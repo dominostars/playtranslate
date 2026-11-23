@@ -1400,3 +1400,119 @@ Source-side note:
 #### Disposition (round 2, 2026-11-16)
 
 The optional 💬 applied byte-exact at the developer's request: `anki_content_glossary_desc` («لحقول أنواع البطاقات…»). The English has the same field-versus-card-type mismatch; reported as a source-side note. After applying: mech_check 0 errors, aapt2 ok, only delta keys changed, `:app:processDebugResources` green.
+
+## Delta review 2026-11-23 (translation service picker, detached window, Auto Copy to Clipboard, text-to-speech auto-play, AI Voice Service: 27 new keys, 1 changed, 1 orphan removed)
+
+Mechanical layer: `mech_check.py ar` -> `ar: 28 keys checked, 0 problems, 0 warnings`; `l10n_diff.py --english-base <en-base>` -> `values-ar   missing=0  orphan=0  modified=1` (the one MODIFIED is `audio_source_voice_service_name`, by design, now «خدمة الصوت بالذكاء الاصطناعي»). `git diff` of the locale file holds the 27 added strings at their English positions, the one changed line, and the removal of `tts_voices_section_header`; nothing outside the delta moved. No bidi controls, NBSP, tatweel, raw apostrophes or em dashes in the new values. **No 🛑 issues.**
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| detached_status_idle_hint | 💬 | اسحب الشريط العلوي لنقل هذه النافذة. اسحب إحدى الزاويتين السفليتين لتغيير حجمها. كل ما عدا ذلك في القائمة ⋯. | اسحب الشريط العلوي لنقل هذه النافذة. اسحب إحدى الزاويتين السفليتين لتغيير حجمها. بقية الإجراءات في القائمة ⋯. | «كل ما عدا ذلك» calques "Everything else", and its singular «ذلك» reads as pointing back to the resize sentence alone. «بقية الإجراءات» says what the menu holds, in the word of the ⋯ button's own label «مزيد من الإجراءات» (`cd_more_actions`, DetachedWindowBar.kt:149, also the menu's pane title). Optional: the current sentence is grammatical and understood. |
+
+### Clean areas (checked, no findings)
+
+**Translation service picker and its failure alert.**
+- The title «اختيار خدمة ترجمة» mirrors `ocr_picker_title` «اختيار أداة OCR» (verbal noun + construct), and `cd_choose_translation_service` is the same text, as `cd_choose_ocr` is in this file. TalkBack reads it after «تمت الترجمة بواسطة DeepL».
+- The message «تُعاد ترجمة هذا النص بالخدمة التي تختارها. تبقى إعداداتك كما هي.» carries both facts (this text only; nothing saved). «تُعاد» agrees with the feminine «ترجمة». It speaks of "the service you choose", so it introduces the buttons under it and cannot be read as describing the footer button «خدمات الترجمة» (`settings_cell_translation_services`). The dialog as a set: title, message, «الترجمات عبر الإنترنت» / «الترجمات دون اتصال», then «خدمات الترجمة» and «إلغاء».
+- The alert: «تعذّرت الترجمة» byte-matches `anki_translation_error` and `hold_translation_failed`, then «تعذّر على خدمة Firefox Translations ترجمة هذا النص.», then «موافق». «تعذّر على + agent + verbal noun» is the standard construction. «خدمة» before the name keeps the file's error-pill frame («خدمة %1$s: …», the 2026-09-29 decision), which is also what the alert shows for an online service's reason (ChosenServiceTranslation.message), so both messages of this alert name the service the same way. Calling ML Kit or an on-device model a «خدمة» matches the picker, which lists them as translation services.
+
+**Gestures page and the panel row.**
+- `icon_action_pull_out_window` «إخراج نافذة النتائج» sits under the gesture «السحب» beside «عرض تعريف الكلمة عند المرور فوقها» (DragAction has these two). The translator's reason for «إخراج» over «سحب» holds: «السحب: سحب نافذة النتائج» would read as moving a window. «إخراج» is the verb for taking something out of a drawer. It names the window «نافذة النتائج» once, and the window's own strings say «هذه النافذة». The row wraps (settings_row_choice, Text.PT.RowTitle, no maxLines).
+- `floating_menu_panel_detach` «تحويل إلى نافذة» beside «فتح PlayTranslate», «اللغة», «التراكبات». Avoiding a lone «فصل» (Disconnect in everyday Android Arabic) is right, and «تحويل إلى …» is a common command form.
+
+**Detached window bar, idle text and menu.**
+- `detached_bar_capture` «التقاط» is the file's command form (`floating_menu_capture_screen` «التقاط\nالشاشة», `icon_action_capture_screen` «التقاط الشاشة»); `detached_menu_group_capture` «الالتقاط» is the definite noun (`settings_cell_capture_overlay` «الالتقاط والتراكب»). Command and noun differ, as the comment asks.
+- `detached_status_idle` «اضغط على «التقاط» لترجمة شاشة اللعبة» follows `status_idle`, and the quoted word byte-matches `detached_bar_capture`.
+- The hint's grammar: «إحدى الزاويتين السفليتين» (feminine dual, genitive) is exact, as DetachedWindow has two bottom-corner pads (BOTTOM_LEFT, BOTTOM_RIGHT); «حجمها» refers to «النافذة». "⋯" kept. The one wording note is the 💬 above.
+- `detached_bar_minimize` «تصغير» is AOSP's Minimize (the translator's fetch of WMShell `minimize_button_text`; I did not re-fetch).
+- The four headings as a set: «هذه النتيجة» / «النص» / «الالتقاط» / «PlayTranslate». Headings, not sentences. The rows under them («إضافة إلى Anki», «قراءة بصوت عالٍ», «إخفاء/إظهار النص الأصلي», «إخفاء/إظهار الترجمة», «حجم النص», «تعديل المنطقة», «تصغير») are all verbal-noun commands.
+- Hide/show: one pair of verbs, «إخفاء» / «إظهار», used identically in both pairs and taken from `cd_toggle_original_visibility` «إظهار/إخفاء النص الأصلي» and `cd_toggle_translation_visibility` «إظهار/إخفاء الترجمة»; the objects are the section names `section_original` «النص الأصلي» and `section_translation` «الترجمة».
+
+**Auto Copy to Clipboard.**
+- «النسخ التلقائي إلى الحافظة»: «الحافظة» is Android's clipboard word in Arabic (the translator's SystemUI fetch; the file had no clipboard term), and «النسخ» is the file's copy («نسخ», «تم النسخ»).
+- The subtitle «يُنسخ النص الأصلي بعد كل التقاط. لا يُنسخ أثناء الترجمة التلقائية.» mirrors `tts_auto_play_original_subtitle` «يُنطق بعد كل التقاط. لا يُنطق أثناء الترجمة التلقائية.» word for word apart from the verb; «النص الأصلي» = `tts_auto_play_original_title`, «الترجمة التلقائية» = `settings_header_auto_translate`. Two full sentences, not a calqued fragment.
+
+**Text-to-speech page.**
+- `tts_auto_play_header` «النطق التلقائي» over «الكلمات» (= `section_words`) and «النص الأصلي» (= `section_original`), with «تُنطق الكلمة عند البحث عنها.» and «يُنطق بعد كل التقاط. …» under them. One verb across header and both subtitles; «يُنطق» agrees with the masculine row title; «البحث عن» is the file's lookup («البحث عن الكلمات»). Avoiding «التشغيل التلقائي», the file's OEM Autostart term, is a defensible call; «النطق» is already the file's TTS speech word (`voice_service_model_not_listed_message`, `local_audio_*`).
+- `tts_voice_online` «عبر الإنترنت» / `tts_voice_offline` «دون اتصال» are the file's Online/Offline (the picker headers, `degraded_warning_offline`), short standalone status words beside `tts_voice_needs_download` «يتطلب تنزيلاً». The subtitle's order is a code issue (source-side note 1).
+- `audio_source_voice_service_name` «خدمة الصوت بالذكاء الاصطناعي»: AI as «الذكاء الاصطناعي» in running text per the 2026-11-16 ruling (Latin «AI» only on the chip), not «عبر الإنترنت». It keeps the generic «خدمة الصوت» as its head, so `anki_added_voice_fell_back`, `voice_service_failed_title` «لم تستجب خدمة الصوت» and `voice_service_remove_confirm_title` «إزالة خدمة الصوت؟», which keep the generic wording as English does, still read as this service. It reads as one noun phrase in all three places (group header, Anki picker section, toolbar title).
+
+**Widths** (Measure.java, Noto Naskh Arabic UI; the tool has only the regular Arabic face, which is what a 500-weight request gets on a system font set of 400 and 700, from memory, not checked on the Thor). Render code read: ActionOverflowMenu rows 15 sp medium, maxLines 1, room 280 − 16 − 24 − 16 − 16 = 208 dp; headings 12 sp medium, maxLines 1, room 248 dp; DetachedWindowBar pill label 14 sp sans-serif-medium (PILL_LABEL_SP, DetachedWindowBar.kt:308-309), maxLines 1; the Arabic face is the same at either weight, so the pill numbers hold.
+
+| widget | room | ar (1.0) | ar (1.3) | English |
+|---|---|---|---|---|
+| menu row `detached_bar_minimize` | 208 dp | 33.3 | 43.2 | |
+| menu rows hide / show original | 208 dp | 101.7 / 101.0 | 132.2 / 131.3 | Hide original 85.1 |
+| menu rows hide / show translation | 208 dp | 74.0 / 73.3 | 96.2 | Show translation 113.0 |
+| headings result / text / capture | 248 dp | 50.8 / 22.1 / 32.8 | 66.0 / – / 42.7 | This result 56.8 |
+| bar pill `detached_bar_capture` beside Auto «تلقائي», 14 sp medium | drops names sooner | 31.1 beside 29.7 | 40.4 beside 38.6 | Capture 49.5, Auto 29.7 (medium) |
+| panel row `floating_menu_panel_detach` | | 87.6 | 113.9 | neighbour «فتح PlayTranslate» 117.9 |
+| toolbar `audio_source_voice_service_name`, 22 sp | 296 dp (360 dp phone) | 252.4 | 328.0 (290.2 at 1.15) | 157.7 (205.0 at 1.3) |
+
+Everything fits at the default scale with room to spare. The one overflow is the toolbar title at font scale 1.3 on a 360 dp phone, where it ellipsizes (English does not). Not a finding: no natural Arabic for "AI voice service" fits 296 dp at 1.3 («خدمة صوت الذكاء الاصطناعي» 307.1, «خدمة صوت بالذكاء الاصطناعي» 315.4), and the short ones drop "AI" («خدمة الأصوات الذكية», 220.6, "smart voices") or bring Latin «AI» into running text against the 2026-11-16 ruling.
+
+### Source-side notes
+
+1. **`TtsVoiceLabels.subtitle` (TtsVoiceLabels.kt:66-80) hard-codes the voice quality in English** and puts it first, so in ar a voice row's subtitle starts with a Latin letter and lays out as an LTR paragraph. Computed with `java.text.Bidi`: `LTR para: [L:High quality · ] [R:عبر الإنترنت · يتطلب تنزيلاً]`. On an RTL screen it is left-aligned, and an Arabic reader meets the parts as Needs download, Online, High quality from the right. No string can fix it; localizing the five quality labels would (they would then lead with Arabic). Confirms the translator's note 1, from the code, not seen on a device.
+2. **Stale English comment on `anki_added_voice_fell_back`**: it says "Voice service" is the name in `audio_source_voice_service_name`, which is now "AI Voice Service". ar is unaffected (the toast's «خدمة الصوت» is the new name's head); other locales may be steered wrong by it.
+
+### Arabic appendix
+
+**RTL, first strong character.** All 28 values open with an Arabic letter (computed: every first strong character is AL, with each `<xliff:g>` replaced by its example). Bidi runs with real values, `java.text.Bidi`, default direction:
+- «تعذّر على خدمة Firefox Translations ترجمة هذا النص.» -> `RTL para: [R:تعذّر على خدمة ] [L:Firefox Translations] [R: ترجمة هذا النص.]`; the same shape for «Hunyuan-MT 7B» and «Gemma 3» (a trailing digit stays inside the Latin run), and a user-typed Arabic name («خادمي») is one RTL run.
+- The hint, current and suggested: one RTL run, with «⋯.» at its end on the Arabic side (U+22EF is not a mirrored character).
+- The alert's other message shape, for comparison: «خدمة DeepL: نفدت الحصة الشهرية» -> `[R:خدمة ] [L:DeepL] [R:: نفدت الحصة الشهرية]`.
+
+**Placeholder grammar.** The one placeholder, `translation_pick_failed_generic`'s service name, is the second term of the construct «خدمة %1$s», where a Latin or typed name needs no case ending and no agreement; the verb «تعذّر» is impersonal, so a feminine or plural-looking name changes nothing.
+
+**Postposed modifiers in bare noun phrases.**
+- «النسخ التلقائي إلى الحافظة»: the definite adjective can only agree with «النسخ», and «إلى الحافظة» attaches to the verbal noun (copy to).
+- «خدمة الصوت بالذكاء الاصطناعي»: «بالذكاء الاصطناعي» attaches either to «خدمة» (an AI service) or to «الصوت» (a voice made by AI); both readings are "AI voice service", and neither attaches it to anything wrong.
+- «النطق التلقائي», «إخراج نافذة النتائج», «تحويل إلى نافذة», «اختيار خدمة ترجمة», «هذه النتيجة»: an agreeing adjective, a construct chain, or a prepositional phrase on a verbal noun; no ambiguous attachment.
+
+**Still owed (device):** the earlier sections' device pass, and, new here, the voice-row subtitle's alignment (source-side note 1) and the toolbar title at font scale 1.3.
+
+### Verdict (round 1)
+
+**PASS.** 0 🛑, 0 ❌, 0 ⚠️, 1 💬 (optional, `detached_status_idle_hint`). The 28 values read as a native's, in the file's register and terms; every cross-reference byte-matches; every one-line widget fits at the default scale.
+
+### Disposition (round 1, 2026-11-23)
+
+Applied by the coordinator: `detached_status_idle_hint`, last sentence «بقية الإجراءات في القائمة ⋯.» (💬; the ⋯ button's own word, where the old sentence copied the English). Noted for the developer, not string-fixable: the voice-row subtitle's quality part is hard-coded English in `TtsVoiceLabels`, which makes the Arabic line left-to-right; the `anki_added_voice_fell_back` comment still names the service "Voice service". Mechanical check after the fix: `ar: 28 keys checked, 0 problems, 0 warnings`.
+
+### Round 2 (2026-11-23), final review after applying round 1
+
+Mechanical layer: `mech_check.py ar` -> `ar: 28 keys checked, 0 problems, 0 warnings`; `l10n_diff.py --english-base <en-base>` -> `values-ar   missing=0  orphan=0  modified=1` (the one MODIFIED is `audio_source_voice_service_name`, by design: base "Voice service", now "AI Voice Service", loc «خدمة الصوت بالذكاء الاصطناعي»). `git diff` of the locale file (read-only) holds exactly the 27 added strings at their English positions, the one changed line and the removal of `tts_voices_section_header`, which is gone from the file; nothing else moved. Swept by script: every one of the 28 values opens with an Arabic letter (first strong character AL, each `<xliff:g>` replaced by its example), and none holds a bidi control, NBSP, tatweel, raw apostrophe or em dash. **No 🛑 issues.**
+
+Round-1 fix checked: `detached_status_idle_hint` now ends «بقية الإجراءات في القائمة ⋯.», byte-identical to round 1's suggested value, and the old «كل ما عدا ذلك» is gone. It is a plain nominal sentence (subject «بقية الإجراءات», predicate «في القائمة ⋯»), its «الإجراءات» is the word of the ⋯ button's label `cd_more_actions` «مزيد من الإجراءات», and the two sentences before it are untouched. `java.text.Bidi`: `RTL para: [R:اسحب الشريط العلوي … بقية الإجراءات في القائمة ⋯.]`, one run, with «⋯.» on the Arabic side. The hint wraps (status hint text), so no width question. The fix broke no neighbour: no other string quotes the hint, and the idle line above it is unchanged.
+
+#### Findings (round 2)
+
+None.
+
+#### Clean areas (round 2)
+
+Read fresh against the code and the on-screen neighbours, as sets.
+
+- **The picker.** Credit «تمت الترجمة بواسطة DeepL», gear read as «اختيار خدمة ترجمة» (= `cd_choose_translation_service`, the same text as the title, as `cd_choose_ocr` = `ocr_picker_title` «اختيار أداة OCR» in this file). Then the title, the message «تُعاد ترجمة هذا النص بالخدمة التي تختارها. تبقى إعداداتك كما هي.» (both facts; it speaks of the service you choose, so it introduces the buttons below and not the footer), the headers «الترجمات عبر الإنترنت» / «الترجمات دون اتصال», and the footer «خدمات الترجمة» (= `settings_cell_translation_services`) and «إلغاء». Formal register, «إعداداتك» as the file's 2nd-person possessive.
+- **The failure alert.** «تعذّرت الترجمة» (byte-match `anki_translation_error`, `hold_translation_failed`), message «تعذّر على خدمة %1$s ترجمة هذا النص.», «موافق». Read in `ChosenServiceTranslation.message`: an online service's failure takes the error pill's text instead (`translation_error_*`, all «خدمة %1$s: …»), so both message shapes of this one alert name the service with «خدمة» before it. Bidi with real names: `[R:تعذّر على خدمة ] [L:Firefox Translations] [R: ترجمة هذا النص.]`, the same shape for «Hunyuan-MT 7B» and «ML Kit». The name is the second term of a construct after an impersonal verb, so no case or agreement touches it.
+- **The bar and the idle text.** Pills «تلقائي» / «إيقاف مؤقت» (existing) and «التقاط» (`detached_bar_capture`, the command form of `floating_menu_capture_screen` «التقاط\nالشاشة»); the idle line «اضغط على «التقاط» لترجمة شاشة اللعبة» quotes it byte for byte. Read in `DetachedWindow`: the window's own big Capture button (`captureButton`, labelled with `floating_menu_capture_screen`) shows only when the window is too small for the page, so it is never on screen with the idle line.
+- **The menu's four headings and rows** (`DetachedWindow.Menu.menuGroups`): «هذه النتيجة» over «إضافة إلى Anki», «قراءة بصوت عالٍ»; «النص» over the ruby switch, «إخفاء/إظهار النص الأصلي», «إخفاء/إظهار الترجمة», «حجم النص»; «الالتقاط» (definite noun) over the folded «تلقائي» / «التقاط» (command), «تعديل المنطقة», the languages, OCR, MangaOCR, «التراكبات»; «PlayTranslate» over «فتح PlayTranslate», «إيقاف» / «إخفاء». Headings are noun phrases, rows verbal-noun commands. Hide/show is one pair of verbs, «إخفاء» / «إظهار», used the same way in both pairs and taken from `cd_toggle_original_visibility` / `cd_toggle_translation_visibility`, with the objects `section_original` «النص الأصلي» and `section_translation` «الترجمة». «تصغير» (`detached_bar_minimize`) is not used elsewhere in the file for anything else.
+- **Gestures page and the panel row.** «إخراج نافذة النتائج» under «السحب» beside «عرض تعريف الكلمة عند المرور فوقها» (verbal nouns, as all `icon_action_*`), naming the window once as «نافذة النتائج», which the hint calls «هذه النافذة». «تحويل إلى نافذة» beside «اللغة», «التراكبات», «فتح PlayTranslate». Round 1's reasons (no «سحب» under «السحب», no lone «فصل») stand; nothing new to reopen them.
+- **The Overlay group's last rows.** «مؤشر الحواف» / «إظهار توهّج خفيف…» then «النسخ التلقائي إلى الحافظة» («الحافظة», Android's word; «النسخ» = `toast_copied` «تم النسخ») and «يُنسخ النص الأصلي بعد كل التقاط. لا يُنسخ أثناء الترجمة التلقائية.», word for word the TTS subtitle apart from the verb, with «النص الأصلي» = `tts_auto_play_original_title` and «الترجمة التلقائية» = `settings_header_auto_translate`. «التقاط» as a counted noun is the file's own («من التقاط جديد», `translation_error_discard_card_message`).
+- **The TTS page** (`TtsVoiceActivity`: headers «التسجيلات المستوردة», «خدمة الصوت بالذكاء الاصطناعي», «تحويل النص إلى كلام», then «السرعة», then «النطق التلقائي»). «النطق التلقائي» over «الكلمات» («تُنطق الكلمة عند البحث عنها.») and «النص الأصلي» («يُنطق بعد كل التقاط. لا يُنطق أثناء الترجمة التلقائية.»): one verb across header and both subtitles, «يُنطق» masculine with the row title, «البحث عن» the file's lookup. Voice-row parts «عبر الإنترنت» / «دون اتصال» are the file's Online/Offline, standalone like «يتطلب تنزيلاً». «خدمة الصوت بالذكاء الاصطناعي» keeps «خدمة الصوت» as its head beside «ربط خدمة صوت», «لم تستجب خدمة الصوت», «إزالة خدمة الصوت؟» and the toast «خدمة الصوت غير متاحة», which keep the generic wording as English does; AI is «الذكاء الاصطناعي» in running text per the 2026-11-16 ruling. Its voices' Anki labels are the voice names (`OnlineTtsAudioSource.selectionLabel`), so the name is never composed with other text.
+- **Widths** re-measured with Measure.java (Noto Naskh Arabic UI; render code read in `ActionOverflowMenu`: headings 12 sp medium and rows 15 sp medium, both one line, ellipsized). At 1.0 / 1.3: menu rows «تصغير» 33.3 / 43.2, hide/show original 101.7 / 132.2, hide/show translation 74.0 / 96.2 (room 208 dp); headings 50.8 / 66.0, 22.1 / 28.7, 32.8 / 42.7 (room 248 dp); bar pill «التقاط» 31.1 / 40.4 beside «تلقائي» 29.7 / 38.6 at 14 sp medium; panel row 87.6 / 113.9. All fit. The toolbar title is 252.4 dp at 22 sp, 328.0 at 1.3, so it ellipsizes on a 360 dp phone at 1.3, as round 1 recorded. Not reopened: the shortest form that keeps the ruling's AI, «خدمة صوت بالذكاء الاصطناعي», is 315.4 dp at 1.3 and overflows too.
+
+#### Source-side note (round 2)
+
+- **The menu's fourth heading, "PlayTranslate", lays out left-aligned in Arabic.** From the code, not seen on a device: `ActionOverflowMenu.buildHeading` adds the heading as a `MATCH_PARENT` TextView with the default text alignment, so its alignment follows the text's own paragraph direction. `app_name` opens with a Latin letter (`java.text.Bidi`: `LTR para: [L:PlayTranslate]`), so in an RTL menu that heading sits at the left edge while «هذه النتيجة», «النص» and «الالتقاط» sit at the right. No string can fix it (`app_name` is not translatable). `textAlignment = View.TEXT_ALIGNMENT_VIEW_START` on the heading would. The rows are `WRAP_CONTENT` and placed by the row's layout direction, so «فتح PlayTranslate» is unaffected. Round 1's two source-side notes (the hard-coded English voice quality in `TtsVoiceLabels.subtitle`, the stale `anki_added_voice_fell_back` comment) still stand.
+
+#### Verdict (round 2)
+
+**PASS.** 0 🛑, 0 ❌, 0 ⚠️, 0 💬. The round-1 fix landed byte-exact and broke nothing near it; the 28 values read as a native's, in the file's register and terms, every cross-reference byte-matches, and every one-line widget fits at the default scale. Still owed and not string issues: the device pass (the voice-row subtitle's direction, the toolbar title at 1.3, and now the "PlayTranslate" heading's alignment).
+
+### Disposition (round 2, 2026-11-23)
+
+Round 2 found nothing. Applied after the final review at the developer's request, by the coordinator, without a further review round: `ocr_picker_message` (outside the delta) gets the final stop its English has, as its new twin `translation_picker_message` does. Analyzer, mechanical check and `:app:processDebugResources` green afterwards.

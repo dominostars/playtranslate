@@ -296,8 +296,13 @@
 
     <string name="ocr_source_label">Reconocido por <xliff:g id="ocr_engine" example="PaddleOCR">%1$s</xliff:g></string>
     <string name="ocr_picker_title">Elegir herramienta de OCR</string>
-    <string name="ocr_picker_message">El OCR es lo que extrae el texto de una captura de pantalla. Distintas herramientas pueden funcionar mejor con distintos tipos de fuente</string>
+    <string name="ocr_picker_message">El OCR es lo que extrae el texto de una captura de pantalla. Distintas herramientas pueden funcionar mejor con distintos tipos de fuente.</string>
     <string name="cd_choose_ocr">Elegir herramienta de OCR</string>
+    <string name="translation_picker_title">Elegir servicio de traducción</string>
+    <string name="translation_picker_message">El servicio que elijas volverá a traducir solo este texto. Tus ajustes no cambian.</string>
+    <string name="cd_choose_translation_service">Elegir servicio de traducción</string>
+    <string name="translation_pick_failed_title">No se pudo traducir</string>
+    <string name="translation_pick_failed_generic"><xliff:g id="service" example="Firefox Translations">%1$s</xliff:g> no pudo traducir este texto.</string>
     <string name="cd_change_source_language">Cambiar el idioma del juego</string>
     <string name="cd_change_target_language">Cambiar tu idioma</string>
 
@@ -438,6 +443,8 @@
     <string name="icon_gesture_tap">Tocar</string>
 
     <string name="icon_action_lookup_words">Pasar sobre una palabra para ver su definición</string>
+
+    <string name="icon_action_pull_out_window">Sacar la ventana de resultados</string>
 
     <string name="icon_action_show_translations">Mostrar traducciones en pantalla</string>
 
@@ -1302,6 +1309,22 @@
 
     <string name="floating_menu_panel_open_app">Abrir <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
 
+    <string name="floating_menu_panel_detach">Convertir en ventana</string>
+
+    <string name="detached_bar_capture">Capturar</string>
+
+    <string name="detached_bar_minimize">Minimizar</string>
+
+    <string name="detached_status_idle">Toca Capturar para traducir la pantalla del juego</string>
+
+    <string name="detached_status_idle_hint">Arrastra la barra superior para mover esta ventana. Arrastra una esquina inferior para cambiar su tamaño. Todo lo demás está en el menú ⋯.</string>
+
+    <string name="detached_menu_group_result">Este resultado</string>
+
+    <string name="detached_menu_group_text">Texto</string>
+
+    <string name="detached_menu_group_capture">Captura</string>
+
     <string name="floating_menu_drag_instruction">Arrastra el dedo para capturar un área específica</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
@@ -1360,6 +1383,10 @@
 
     <string name="settings_edge_indicator_subtitle">Muestra un brillo suave alrededor de la pantalla mientras la superposición está visible.</string>
 
+    <string name="settings_auto_copy_title">Copia automática en el portapapeles</string>
+
+    <string name="settings_auto_copy_subtitle">Copia el texto original al hacer una captura, pero no durante la traducción automática.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
          ═══════════════════════════════════════════════════════════════ -->
@@ -1403,6 +1430,14 @@
     <string name="header_action_edit">Editar texto</string>
 
     <string name="cd_toggle_original_visibility">Mostrar u ocultar el original</string>
+
+    <string name="header_action_hide_original">Ocultar el original</string>
+
+    <string name="header_action_show_original">Mostrar el original</string>
+
+    <string name="header_action_hide_translation">Ocultar la traducción</string>
+
+    <string name="header_action_show_translation">Mostrar la traducción</string>
 
     <string name="cd_toggle_words_visibility">Mostrar u ocultar las palabras</string>
 
@@ -2042,10 +2077,23 @@
 
     <string name="tts_voice_needs_download">Requiere descarga</string>
 
+    <string name="tts_voice_online">En línea</string>
+
+    <string name="tts_voice_offline">Sin conexión</string>
+
     <string name="tts_no_engine_row_subtitle">No hay ningún motor de voz disponible. Toca para añadir uno.</string>
 
-    <string name="tts_voices_section_header">VOCES EN <xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
     <string name="tts_speed_title">Velocidad</string>
+
+    <string name="tts_auto_play_header">Reproducción automática</string>
+
+    <string name="tts_auto_play_words_title">Palabras</string>
+
+    <string name="tts_auto_play_words_subtitle">Al consultar una palabra</string>
+
+    <string name="tts_auto_play_original_title">Texto original</string>
+
+    <string name="tts_auto_play_original_subtitle">Al hacer una captura, pero no durante la traducción automática.</string>
 
     <string name="tts_no_engine_dialog_title">Sin texto a voz</string>
 
@@ -2285,7 +2333,7 @@
     <string name="audio_source_tts_name">Texto a voz</string>
 
     <string name="audio_source_commons_name">Wikimedia Commons</string>
-    <string name="audio_source_voice_service_name">Servicio de voz</string>
+    <string name="audio_source_voice_service_name">Servicio de voz de IA</string>
     <string name="audio_error_playing">No se pudo reproducir este audio</string>
     <string name="voice_service_connect_title">Conectar un servicio de voz</string>
     <string name="voice_service_connect_subtitle">Usa una voz de IA en línea con tu propia clave de API</string>

@@ -293,8 +293,13 @@
 
     <string name="ocr_source_label">Nhận dạng bởi <xliff:g id="ocr_engine" example="PaddleOCR">%1$s</xliff:g></string>
     <string name="ocr_picker_title">Chọn công cụ OCR</string>
-    <string name="ocr_picker_message">OCR là công nghệ trích xuất văn bản từ ảnh chụp màn hình. Các công cụ khác nhau có thể phù hợp hơn với những phông chữ khác nhau</string>
+    <string name="ocr_picker_message">OCR là công nghệ trích xuất văn bản từ ảnh chụp màn hình. Các công cụ khác nhau có thể phù hợp hơn với những phông chữ khác nhau.</string>
     <string name="cd_choose_ocr">Chọn công cụ OCR</string>
+    <string name="translation_picker_title">Chọn dịch vụ dịch thuật</string>
+    <string name="translation_picker_message">Dịch vụ bạn chọn sẽ dịch lại văn bản này. Cài đặt của bạn vẫn giữ nguyên.</string>
+    <string name="cd_choose_translation_service">Chọn dịch vụ dịch thuật</string>
+    <string name="translation_pick_failed_title">Không thể dịch</string>
+    <string name="translation_pick_failed_generic"><xliff:g id="service" example="Firefox Translations">%1$s</xliff:g> không thể dịch văn bản này.</string>
     <string name="cd_change_source_language">Đổi ngôn ngữ trò chơi</string>
     <string name="cd_change_target_language">Đổi ngôn ngữ của bạn</string>
 
@@ -435,6 +440,8 @@
     <string name="icon_gesture_tap">Nhấn</string>
 
     <string name="icon_action_lookup_words">Đưa lên một từ để xem định nghĩa</string>
+
+    <string name="icon_action_pull_out_window">Kéo cửa sổ kết quả ra</string>
 
     <string name="icon_action_show_translations">Hiện bản dịch trên màn hình</string>
 
@@ -1301,6 +1308,22 @@
 
     <string name="floating_menu_panel_open_app">Mở <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
 
+    <string name="floating_menu_panel_detach">Tách thành cửa sổ</string>
+
+    <string name="detached_bar_capture">Chụp</string>
+
+    <string name="detached_bar_minimize">Thu nhỏ</string>
+
+    <string name="detached_status_idle">Nhấn Chụp để dịch màn hình trò chơi</string>
+
+    <string name="detached_status_idle_hint">Kéo thanh trên cùng để di chuyển cửa sổ này. Kéo một góc dưới để đổi kích thước. Các thao tác khác nằm trong menu ⋯.</string>
+
+    <string name="detached_menu_group_result">Kết quả này</string>
+
+    <string name="detached_menu_group_text">Văn bản</string>
+
+    <string name="detached_menu_group_capture">Chụp màn hình</string>
+
     <string name="floating_menu_drag_instruction">Kéo ngón tay để chụp một khu vực cụ thể</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
@@ -1359,6 +1382,10 @@
 
     <string name="settings_edge_indicator_subtitle">Hiện một vầng sáng dịu quanh viền màn hình khi có lớp phủ.</string>
 
+    <string name="settings_auto_copy_title">Tự động sao chép vào bảng nhớ tạm</string>
+
+    <string name="settings_auto_copy_subtitle">Sao chép văn bản gốc sau mỗi lần chụp. Không sao chép trong khi tự động dịch.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
          ═══════════════════════════════════════════════════════════════ -->
@@ -1402,6 +1429,14 @@
     <string name="header_action_edit">Chỉnh sửa văn bản</string>
 
     <string name="cd_toggle_original_visibility">Bật/tắt hiển thị văn bản gốc</string>
+
+    <string name="header_action_hide_original">Ẩn văn bản gốc</string>
+
+    <string name="header_action_show_original">Hiện văn bản gốc</string>
+
+    <string name="header_action_hide_translation">Ẩn bản dịch</string>
+
+    <string name="header_action_show_translation">Hiện bản dịch</string>
 
     <string name="cd_toggle_words_visibility">Bật/tắt hiển thị từ</string>
 
@@ -2031,10 +2066,23 @@
 
     <string name="tts_voice_needs_download">Cần tải xuống</string>
 
+    <string name="tts_voice_online">Trực tuyến</string>
+
+    <string name="tts_voice_offline">Ngoại tuyến</string>
+
     <string name="tts_no_engine_row_subtitle">Không có công cụ chuyển văn bản thành giọng nói nào khả dụng. Nhấn để thêm một công cụ.</string>
 
-    <string name="tts_voices_section_header">GIỌNG <xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
     <string name="tts_speed_title">Tốc độ</string>
+
+    <string name="tts_auto_play_header">Tự động phát</string>
+
+    <string name="tts_auto_play_words_title">Từ</string>
+
+    <string name="tts_auto_play_words_subtitle">Phát âm mỗi khi bạn tra một từ</string>
+
+    <string name="tts_auto_play_original_title">Văn bản gốc</string>
+
+    <string name="tts_auto_play_original_subtitle">Đọc to sau mỗi lần chụp. Không đọc trong khi tự động dịch.</string>
 
     <string name="tts_no_engine_dialog_title">Không có công cụ đọc văn bản</string>
 
@@ -2271,7 +2319,7 @@
     <string name="audio_source_tts_name">Chuyển văn bản thành giọng nói</string>
 
     <string name="audio_source_commons_name">Wikimedia Commons</string>
-    <string name="audio_source_voice_service_name">Dịch vụ giọng nói</string>
+    <string name="audio_source_voice_service_name">Dịch vụ giọng nói AI</string>
     <string name="audio_error_playing">Không thể phát âm thanh này</string>
     <string name="voice_service_connect_title">Kết nối dịch vụ giọng nói</string>
     <string name="voice_service_connect_subtitle">Dùng giọng nói AI trực tuyến với khóa API của riêng bạn</string>

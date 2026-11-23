@@ -293,8 +293,13 @@
 
     <string name="ocr_source_label">由 <xliff:g id="ocr_engine" example="PaddleOCR">%1$s</xliff:g> 识别</string>
     <string name="ocr_picker_title">选择 OCR 工具</string>
-    <string name="ocr_picker_message">OCR 负责从截图中提取文字。不同的工具可能更适合不同的字体</string>
+    <string name="ocr_picker_message">OCR 负责从截图中提取文字。不同的工具可能更适合不同的字体。</string>
     <string name="cd_choose_ocr">选择 OCR 工具</string>
+    <string name="translation_picker_title">选择翻译服务</string>
+    <string name="translation_picker_message">你选择的服务会重新翻译这段文字。你的设置保持不变。</string>
+    <string name="cd_choose_translation_service">选择翻译服务</string>
+    <string name="translation_pick_failed_title">无法翻译</string>
+    <string name="translation_pick_failed_generic"><xliff:g id="service" example="Firefox Translations">%1$s</xliff:g> 无法翻译这段文字。</string>
     <string name="cd_change_source_language">更改游戏语言</string>
     <string name="cd_change_target_language">更改你的语言</string>
 
@@ -436,6 +441,7 @@
     <string name="icon_gesture_tap">点按</string>
 
     <string name="icon_action_lookup_words">移到单词上查看释义</string>
+    <string name="icon_action_pull_out_window">拉出结果窗口</string>
 
     <string name="icon_action_show_translations">在屏幕上显示翻译</string>
 
@@ -1338,6 +1344,14 @@
     <string name="floating_menu_panel_overlays">叠加层</string>
 
     <string name="floating_menu_panel_open_app">打开 <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
+    <string name="floating_menu_panel_detach">转为窗口</string>
+    <string name="detached_bar_capture">截取</string>
+    <string name="detached_bar_minimize">最小化</string>
+    <string name="detached_status_idle">点按“截取”以翻译游戏画面</string>
+    <string name="detached_status_idle_hint">拖动顶部栏以移动此窗口。拖动底部任一角以调整大小。其他操作都在 ⋯ 菜单中。</string>
+    <string name="detached_menu_group_result">当前结果</string>
+    <string name="detached_menu_group_text">文字</string>
+    <string name="detached_menu_group_capture">屏幕截取</string>
 
     <string name="floating_menu_drag_instruction">拖动手指以截取特定区域</string>
 
@@ -1396,6 +1410,8 @@
     <string name="settings_edge_indicator_title">边缘指示器</string>
 
     <string name="settings_edge_indicator_subtitle">叠加层显示期间，屏幕四周会出现柔和的光晕。</string>
+    <string name="settings_auto_copy_title">自动复制到剪贴板</string>
+    <string name="settings_auto_copy_subtitle">截取后复制原文，自动翻译期间除外。</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
@@ -1440,6 +1456,10 @@
     <string name="header_action_edit">编辑文字</string>
 
     <string name="cd_toggle_original_visibility">切换原文可见性</string>
+    <string name="header_action_hide_original">隐藏原文</string>
+    <string name="header_action_show_original">显示原文</string>
+    <string name="header_action_hide_translation">隐藏译文</string>
+    <string name="header_action_show_translation">显示译文</string>
 
     <string name="cd_toggle_words_visibility">切换单词可见性</string>
 
@@ -2075,11 +2095,17 @@
     <string name="tts_voice_default_subtitle">引擎的默认语音</string>
 
     <string name="tts_voice_needs_download">需要下载</string>
+    <string name="tts_voice_online">在线</string>
+    <string name="tts_voice_offline">离线</string>
 
     <string name="tts_no_engine_row_subtitle">没有可用的语音引擎。点按以添加一个。</string>
 
-    <string name="tts_voices_section_header"><xliff:g id="language" example="JAPANESE">%1$s</xliff:g>语音</string>
     <string name="tts_speed_title">速度</string>
+    <string name="tts_auto_play_header">自动播放</string>
+    <string name="tts_auto_play_words_title">单词</string>
+    <string name="tts_auto_play_words_subtitle">查询单词时播放发音</string>
+    <string name="tts_auto_play_original_title">原文</string>
+    <string name="tts_auto_play_original_subtitle">截取后朗读，自动翻译期间除外。</string>
 
     <string name="tts_no_engine_dialog_title">无文字转语音引擎</string>
 
@@ -2318,7 +2344,7 @@
     <string name="audio_source_tts_name">文字转语音</string>
 
     <string name="audio_source_commons_name">Wikimedia Commons</string>
-    <string name="audio_source_voice_service_name">语音服务</string>
+    <string name="audio_source_voice_service_name">AI 语音服务</string>
     <string name="audio_error_playing">无法播放此音频</string>
     <string name="voice_service_connect_title">连接语音服务</string>
     <string name="voice_service_connect_subtitle">通过你自己的 API 密钥使用在线 AI 语音</string>

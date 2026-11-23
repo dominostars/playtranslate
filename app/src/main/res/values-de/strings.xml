@@ -296,8 +296,13 @@
 
     <string name="ocr_source_label">Erkannt von <xliff:g id="ocr_engine" example="PaddleOCR">%1$s</xliff:g></string>
     <string name="ocr_picker_title">OCR-Tool auswählen</string>
-    <string name="ocr_picker_message">OCR erkennt den Text auf einem Screenshot. Je nach Schriftart kann ein anderes Tool besser funktionieren</string>
+    <string name="ocr_picker_message">OCR erkennt den Text auf einem Screenshot. Je nach Schriftart kann ein anderes Tool besser funktionieren.</string>
     <string name="cd_choose_ocr">OCR-Tool auswählen</string>
+    <string name="translation_picker_title">Übersetzungsdienst auswählen</string>
+    <string name="translation_picker_message">Der Dienst, den du hier auswählst, übersetzt diesen Text noch einmal. Deine Einstellungen bleiben unverändert.</string>
+    <string name="cd_choose_translation_service">Übersetzungsdienst auswählen</string>
+    <string name="translation_pick_failed_title">Übersetzung fehlgeschlagen</string>
+    <string name="translation_pick_failed_generic"><xliff:g id="service" example="Firefox Translations">%1$s</xliff:g> konnte diesen Text nicht übersetzen.</string>
     <string name="cd_change_source_language">Spielsprache ändern</string>
     <string name="cd_change_target_language">Deine Sprache ändern</string>
 
@@ -439,6 +444,8 @@
     <string name="icon_gesture_tap">Tippen</string>
 
     <string name="icon_action_lookup_words">Über ein Wort fahren, um seine Definition zu sehen</string>
+
+    <string name="icon_action_pull_out_window">Ergebnisfenster herausziehen</string>
 
     <string name="icon_action_show_translations">Übersetzungen auf dem Bildschirm anzeigen</string>
 
@@ -1304,6 +1311,22 @@
 
     <string name="floating_menu_panel_open_app"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> öffnen</string>
 
+    <string name="floating_menu_panel_detach">Abdocken</string>
+
+    <string name="detached_bar_capture">Aufnehmen</string>
+
+    <string name="detached_bar_minimize">Minimieren</string>
+
+    <string name="detached_status_idle">Tippe auf „Aufnehmen“, um den Spielbildschirm zu übersetzen</string>
+
+    <string name="detached_status_idle_hint">Ziehe die obere Leiste, um dieses Fenster zu verschieben. Ziehe eine untere Ecke, um seine Größe zu ändern. Alles Weitere findest du im Menü ⋯.</string>
+
+    <string name="detached_menu_group_result">Dieses Ergebnis</string>
+
+    <string name="detached_menu_group_text">Text</string>
+
+    <string name="detached_menu_group_capture">Aufnahme</string>
+
     <string name="floating_menu_drag_instruction">Ziehe mit dem Finger, um einen bestimmten Bereich aufzunehmen</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
@@ -1362,6 +1385,10 @@
 
     <string name="settings_edge_indicator_subtitle">Zeigt ein sanftes Leuchten am Bildschirmrand, solange das Overlay zu sehen ist.</string>
 
+    <string name="settings_auto_copy_title">Automatisch in die Zwischenablage kopieren</string>
+
+    <string name="settings_auto_copy_subtitle">Kopiert den Originaltext nach jeder Aufnahme, aber nicht während der automatischen Übersetzung.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
          ═══════════════════════════════════════════════════════════════ -->
@@ -1405,6 +1432,14 @@
     <string name="header_action_edit">Text bearbeiten</string>
 
     <string name="cd_toggle_original_visibility">Original ein-/ausblenden</string>
+
+    <string name="header_action_hide_original">Original ausblenden</string>
+
+    <string name="header_action_show_original">Original einblenden</string>
+
+    <string name="header_action_hide_translation">Übersetzung ausblenden</string>
+
+    <string name="header_action_show_translation">Übersetzung einblenden</string>
 
     <string name="cd_toggle_words_visibility">Wörter ein-/ausblenden</string>
 
@@ -2045,10 +2080,23 @@
 
     <string name="tts_voice_needs_download">Download erforderlich</string>
 
+    <string name="tts_voice_online">Online</string>
+
+    <string name="tts_voice_offline">Offline</string>
+
     <string name="tts_no_engine_row_subtitle">Keine Sprachausgabe-Engine verfügbar. Zum Hinzufügen tippen.</string>
 
-    <string name="tts_voices_section_header">STIMMEN FÜR <xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
     <string name="tts_speed_title">Geschwindigkeit</string>
+
+    <string name="tts_auto_play_header">Automatisch vorlesen</string>
+
+    <string name="tts_auto_play_words_title">Wörter</string>
+
+    <string name="tts_auto_play_words_subtitle">Liest jedes Wort vor, das du nachschlägst.</string>
+
+    <string name="tts_auto_play_original_title">Originaltext</string>
+
+    <string name="tts_auto_play_original_subtitle">Liest den Originaltext nach jeder Aufnahme vor, aber nicht während der automatischen Übersetzung.</string>
 
     <string name="tts_no_engine_dialog_title">Keine Sprachausgabe</string>
 
@@ -2288,7 +2336,7 @@
     <string name="audio_source_tts_name">Sprachausgabe</string>
 
     <string name="audio_source_commons_name">Wikimedia Commons</string>
-    <string name="audio_source_voice_service_name">Sprachausgabe-Dienst</string>
+    <string name="audio_source_voice_service_name">KI-Sprachausgabe-Dienst</string>
     <string name="audio_error_playing">Dieses Audio konnte nicht abgespielt werden</string>
     <string name="voice_service_connect_title">Sprachausgabe-Dienst verbinden</string>
     <string name="voice_service_connect_subtitle">Eine Online-KI-Stimme mit deinem eigenen API-Schlüssel nutzen</string>

@@ -1189,3 +1189,138 @@ Fresh read of all 213 values by screen. I read each against its neighbours on sc
 **PASS**: 0 🛑 / 0 ❌ / 0 ⚠️ / 0 💬. All 6 round-1 fixes landed byte-exact and broke no neighbour. Round 1's two source-side notes (the hub digest's `MMM d` date, `voice_service_failed_title`) remain with the developer and are not string fixes.
 
 **Correction to the round-1 Disposition (2026-11-16):** its list names the first applied finding as "1 applied: `⚠️`", a slip of the coordinator's script; that finding is ⚠️ `pt_cloud_display_name_alpha`, applied byte-exact like the others.
+
+## Delta review 2026-11-23 (translation service picker, detached window, Auto Copy to Clipboard, text-to-speech auto-play, AI Voice Service: 27 new keys, 1 changed, 1 orphan removed)
+
+Mechanical layer: `mech_check.py zh-rCN` -> `zh-rCN: 28 keys checked, 0 problems, 0 warnings`; `l10n_diff.py` against the sync's English base -> `values-zh-rCN   missing=0  orphan=0  modified=1`, the one being `audio_source_voice_service_name` (base "Voice service", now "AI Voice Service", locale AI 语音服务, which carries the new meaning). `git diff` on the file: 28 insertions, 2 deletions, i.e. the 27 new keys, the changed key replaced in place, and the coordinator's deletion of `tts_voices_section_header` (0 occurrences in English and in this file now). Nothing outside the delta changed. **No 🛑 issues.**
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| settings_auto_copy_subtitle, tts_auto_play_original_subtitle (2 strings, one fix) | 💬 | 截取后复制原文。自动翻译期间除外。 / 截取后朗读。自动翻译期间除外。 | 截取后复制原文，自动翻译期间除外。 / 截取后朗读，自动翻译期间除外。 | A 除外 clause is an exception to the rule just stated, and Chinese joins the two with a comma (每天营业，节假日除外). After a full stop, 自动翻译期间除外。 stands alone as a sentence, which follows the English's two-sentence break. With the comma both subtitles still match word for word, stay short, and keep 截取后 / 自动翻译期间 (the file's phrase, `settings_capture_interval_hint`). The English comment says "keep the two short sentences"; this keeps both statements and changes only the joint. Optional. **Carry to zh-rHK** if applied: 擷取後複製原文，自動翻譯期間除外。 / 擷取後朗讀，自動翻譯期間除外。 |
+
+Counts: 0 🛑, 0 ❌, 0 ⚠️, 1 💬 (one row, two keys).
+
+### Clean areas (checked, no findings)
+
+Each value was read where it renders, beside its neighbours on screen, with the render code opened (`TranslationPicker`, `ChosenServiceTranslation`, `DetachedWindow`, `DetachedPage`, `TranslationSectionBinder`, `OverlayUiController.quickSettings`, `IconGestureBindings`, `TtsVoiceActivity`, `TtsVoiceLabels`, `OnlineTtsServiceActivity`, `AudioSourcePickerView`). Nothing was seen on a device.
+
+**The picker, read as one alert.** Title 选择翻译服务, message 你选择的服务会重新翻译这段文字。你的设置保持不变。, then the existing headers 在线翻译 / 离线翻译 over the service buttons, then the footer 翻译服务 / 取消. The title has the same shape as `ocr_picker_title` 选择 OCR 工具, and 翻译服务 is `settings_cell_translation_services` exactly. The message has both facts. Its subject is the service the user picks, so it does not describe the footer button under the lists. 保持不变 is the file's wording (`pt_cloud_sign_out_message`). `cd_choose_translation_service` is the same text as the title, as `cd_choose_ocr` is `ocr_picker_title`. TalkBack reads it after the credit: 由 DeepL 翻译, 选择翻译服务.
+
+**The failure alert, read as one alert.** 无法翻译 / Firefox Translations 无法翻译这段文字。 / 好的. The title is `anki_translation_error` and `hold_translation_failed` byte for byte. The title's words come back in the message, as they do in English. The more specific reasons that can take the message's place are the error pill's 服务名：原因 lines (`ChosenServiceTranslation.message` -> `TranslationErrorMessages`). The generic line is a full sentence beside them, the same mix as English.
+
+**The bar and the idle text.** The pills read 自动 (暂停 while running) and 截取. All three are 28.0 dp at 14 sp, so each pill is 11 + 18 + 6 + 28 + 14 = 77 dp, against English Capture 98.1 dp and Pause 87.8 dp. 截取 is the file's capture verb (44 uses: 截取\n屏幕, 截取\n区域, 截取间隔). `detached_status_idle` 点按“截取”以翻译游戏画面 has the same shape as `status_idle` 点按“翻译”以截取游戏画面, and its quoted word byte-matches `detached_bar_capture`. The hint 拖动顶部栏以移动此窗口。拖动底部任一角以调整大小。其他操作都在 ⋯ 菜单中。 has three sentences and keeps ⋯ as is, spaced like the file's 点按 ⋮ 菜单 (`a11y_restricted_settings_addendum`). 拖动 is `icon_gesture_drag`, and 菜单 is the file's word (快捷菜单). 最小化 is AOSP's own word for the window's minimize button (the translator's fetch of WM Shell `minimize_button_text`; I did not fetch it again).
+
+**The ⋯ menu, as a set.** The headings read 当前结果 / 文字 / 屏幕截取 / PlayTranslate. Each is a noun phrase on one line. Measured at 12 sp medium (room 248 dp): 当前结果 48.0, 文字 24.0, 屏幕截取 48.0, PlayTranslate 74.0. 屏幕截取 is the NOUN (`notif_channel_name`, `history_capture_screen_cd`). When the bar folds, the command row 截取 sits under it, so the two differ as the brief asks and the heading does not repeat the row. The rows, measured at 15 sp medium (room ≤ 208 dp):
+- 隐藏原文 / 显示原文 / 隐藏译文 / 显示译文: 60.0 each, 78.0 at font scale 1.3.
+- 最小化 45.0, 截取 / 自动 / 暂停 30.0.
+- Their existing neighbours: 添加到 Anki 78.7, 朗读 30.0, 文字大小 60.0, 编辑区域 60.0, 游戏语言 / 你的语言 60.0.
+
+The hide/show verbs are one pair (隐藏 / 显示), used the same way in both pairs. 原文 / 译文 are `section_original` / `section_translation`, which the eye buttons' labels already pair (切换原文可见性 / 切换译文可见性). 隐藏 is also the icon's Hide row (`floating_icon_close_label_hide`) in the last group, the same verb with no clash. Under the 文字 heading the row 文字大小 shares the word, as English's Text / Text size do.
+
+**The icon's two entry points.** On the gestures page, under 拖动, the action 拉出结果窗口 sits beside 移到单词上查看释义 and reads as the same kind of command. 拉出 is "pull out" as of a drawer, and 结果窗口 names the window. On the quick-settings panel, 转为窗口 (60.0 dp) sits under 打开 PlayTranslate (126.2 dp) and says what the tap does, where a literal 分离 would say nothing. Its head noun 窗口 is the one the gestures page and the hint (此窗口) use, so the window has one name. The English row names no window either. 转为结果窗口 (the translator's alternative) would also fit; I see no reason to prefer it.
+
+**Auto Copy to Clipboard.** 自动复制到剪贴板 uses Android's own 复制到剪贴板 / 剪贴板 (the translator's AOSP SystemUI fetch). The file had no 剪贴板 before, and its copy toasts 已复制 match SystemUI's `clipboard_overlay_text_copied`. Chinese has no title case, and the row sits under 边缘指示器 in the same plain form. The subtitle and `tts_auto_play_original_subtitle` share 截取后 and 自动翻译期间除外 byte for byte. 原文 is `tts_auto_play_original_title` / `section_original`, and 自动翻译 is `settings_header_auto_translate`. Only the joint is a nit (Findings).
+
+**Text-to-speech page.** The headers on the page now read AI 语音服务 / 文字转语音 (or the engine's name) / 导入的录音 / 自动播放. The two rows under 自动播放 read 单词 with 查询单词时播放发音, and 原文 with 截取后朗读。自动翻译期间除外。. The titles are nouns and are `section_words` / `section_original` exactly. The words subtitle gains a verb (播放发音), so it reads as a subtitle rather than the fragment 查询单词时. 查询单词 is the file's phrase (4 uses). Using 播放 for words and 朗读 for the original holds up: `PronunciationPlayer` can play a recording for a word, while the original is always spoken from text, and 朗读 is the file's verb for that (`header_action_read_aloud`, `cd_read_original_aloud`). 在线 / 离线 are short status words, as in 在线翻译 / 离线翻译. They read "… · 在线 · 需要下载" with `tts_voice_needs_download`.
+
+**The changed key.** AI 语音服务 uses the file's one Latin "AI", with a Pangu space (`service_llm_badge` AI, `settings_header_advanced_llm` AI 高级配置, `ask_no_llm_title` …AI 模型, `voice_service_connect_subtitle` 在线 AI 语音), and does not say 在线. As the settings page's toolbar title (22 sp regular, one line, room 296 dp on a 360 dp phone) it is 113.8 dp, 147.9 at font scale 1.3. As the 11 sp group header on the TTS page and in the Anki audio picker (`settings_group_header`, wraps) it is 57.2 dp + 7 × 1.32 ≈ 66.4 dp; textAllCaps changes nothing. The other `voice_service_*` strings keep the generic 语音服务 (连接语音服务, 语音服务未响应, 移除语音服务？, and the Anki toast's 语音服务不可用), as English does. No string quotes the header by name.
+
+### Source-side notes
+
+- **The bar's Capture button is spoken with a space inside a Chinese word.** `DetachedWindow.refreshActions` sets `captureAction.contentDescription` to `floating_menu_capture_screen` / `floating_menu_btn_capture_region` with `replace('\n', ' ')`, so TalkBack hears 截取 屏幕 / 截取 区域. That is a space between two Han runs (ja and zh-rHK have it too). Joining without a space for scripts that do not use spaces, or a dedicated content-description string, would fix it. The translator found it too; I confirmed it in the code. Cosmetic, not run.
+- **A voice row's subtitle stays half English in zh.** `TtsVoiceLabels.subtitle` hard-codes the quality ("High quality") and joins the localized 在线 / 离线 / 需要下载 to it, so a zh row reads High quality · 在线 · 需要下载. CONTEXT already names this as known. A string cannot fix it; five quality strings would.
+
+### Simplified Chinese appendix
+
+**Script, register and spacing**, checked by script over the 28 values, each `<xliff:g>` span counted as one unit:
+- Every Han character is in GB2312, so the text is Simplified only.
+- No 您, no straight quotes, every value NFC, no dashes.
+- Han/Latin seams take one space: AI 语音服务, and `%1$s` followed by 无法翻译.
+- No space sits between two Han runs or beside full-width punctuation, and no half-width punctuation touches Han.
+
+**Placeholder contact point** (`translation_pick_failed_generic`, the only placeholder in the delta), read with real values:
+- Firefox Translations 无法翻译这段文字。, DeepL 无法翻译这段文字。, Gemini 无法翻译这段文字。, ML Kit 无法翻译这段文字。 and Hunyuan-MT 1.5 1.8B 无法翻译这段文字。 all read naturally.
+- A Custom service is named 自定义 (`llm_backend_preset_custom`), so in that case the space falls between two Han runs: 自定义 无法翻译这段文字。. This is the file's settled trade for service-name slots: `translation_source_label` 由 %1$s 翻译 and `ask_answered_by` 由 %1$s 回答 space it the same way, and every other name in the slot is Latin. It is also rare: an online service's failure takes the error pill's wording, so only an unclassified failure reaches the generic line (`ChosenServiceTranslation.message`).
+
+**For zh-rHK.** The one 💬 above carries as written, in Traditional script (given in the row).
+
+### Verdict (round 1)
+
+**PASS with one optional nit**: 0 🛑 / 0 ❌ / 0 ⚠️ / 1 💬 (two subtitles, one joint). Every term matches the file (截取, 原文 / 译文, 翻译服务, 自动翻译, 朗读, AI). Every cross-reference byte-matches (“截取”, 翻译服务). Every one-line widget is far under its room. The coordinator decides whether to apply the comma, and if so carries it to zh-rHK.
+
+### Disposition (round 1, 2026-11-23)
+
+Applied by the coordinator: the 💬 on `settings_auto_copy_subtitle` and `tts_auto_play_original_subtitle` (除外 clause joined with a comma). A bare 自动翻译期间除外。 reads as a fragment; the comment's "two short sentences" asks for brevity, and de, fr, es and pt-rBR joined the two in the same way. The same change is carried to zh-rHK. Mechanical check after the fix: `zh-rCN: 28 keys checked, 0 problems, 0 warnings`.
+
+### Round 2 (2026-11-23), final review after applying round 1
+
+Mechanical layer: `mech_check.py zh-rCN` -> `zh-rCN: 28 keys checked, 0 problems, 0 warnings`; `l10n_diff.py` against the sync's English base -> `values-zh-rCN   missing=0  orphan=0  modified=1`, the one being `audio_source_voice_service_name` (base "Voice service", now "AI Voice Service", locale AI 语音服务, which holds the new meaning). `git diff` on the file: 28 insertions, 2 deletions: the 27 new keys, the changed key replaced in place, and the deletion of `tts_voices_section_header` (0 occurrences in English, in this file and in the code). Nothing outside the delta changed. **No 🛑 issues.**
+
+Round-1 changes checked:
+- `settings_auto_copy_subtitle` 截取后复制原文，自动翻译期间除外。 and `tts_auto_play_original_subtitle` 截取后朗读，自动翻译期间除外。 landed byte-exact as round 1 suggested.
+- The two still match word for word (截取后 … ，自动翻译期间除外。), so the mirror CONTEXT asks for holds.
+- 自动翻译期间 is still the file's phrase (`settings_capture_interval_hint` 在自动翻译期间截取游戏画面的频率。), and 自动翻译 is `settings_header_auto_translate`.
+- The auto-copy subtitle still ends in 。 like the subtitle above it (`settings_edge_indicator_subtitle` 叠加层显示期间，屏幕四周会出现柔和的光晕。), so the Overlay group's last two rows read alike.
+- On the TTS page the fix leaves the pair as it was before: 查询单词时播放发音 (one phrase, no 。) over 截取后朗读，自动翻译期间除外。 (a clause with a comma, 。). That follows the English, which also has a period on one subtitle and none on the other, and the page's own habit (`tts_voice_default_subtitle` 引擎的默认语音 has no 。, `tts_no_engine_row_subtitle` has 。). The fix broke nothing nearby.
+
+#### Findings (round 2)
+
+None.
+
+#### Clean areas (round 2)
+
+A fresh read of all 28 values, each beside its on-screen neighbours, with the render code opened (`TranslationPicker`, `ChosenServiceTranslation`, `DetachedWindow`, `DetachedWindowBar`, `DetachedPage`, `TranslationSectionBinder`, `OverlayUiController`, `IconGestureBindings`, `TtsVoiceActivity`, `TtsVoiceLabels`, `OnlineTtsAudioSource`, `AudioSourcePickerView`). Widths measured with Measure.java and Android's fonts. Nothing was seen on a device.
+
+- **The picker, as one alert** (`TranslationPicker.populate`): 选择翻译服务 / 你选择的服务会重新翻译这段文字。你的设置保持不变。 / 在线翻译 · 离线翻译 over the service buttons / footer 翻译服务 (outlined, gear) and 取消.
+  - The title has the shape of `ocr_picker_title` 选择 OCR 工具.
+  - The message gives both facts. Its subject is the service the user picks, so it cannot be read as describing the footer button.
+  - The footer button is `settings_cell_translation_services` exactly.
+  - `cd_choose_translation_service` equals the title, as `cd_choose_ocr` equals `ocr_picker_title`. TalkBack reads 由 DeepL 翻译, then 选择翻译服务.
+- **The failure alert** (`ChosenServiceTranslation.failureAlert`): 无法翻译 / Firefox Translations 无法翻译这段文字。 / 好的.
+  - The title is `anki_translation_error` and `hold_translation_failed` byte for byte.
+  - With DeepL, Gemini, ML Kit or Hunyuan-MT 7B in the slot, the line reads naturally, with one space after the Latin name.
+  - The more specific reasons that replace the message are the error pill's lines (`TranslationErrorMessages`).
+  - A custom service named 自定义 puts a space between two Han runs. That is the file's settled trade for service-name slots (由 %1$s 翻译), as round 1 recorded.
+- **The bar and the idle text.**
+  - The pills read 自动 (暂停 while running) and 截取. Each label is 28.0 dp at 14 sp medium, the style CONTEXT now gives (36.4 at font scale 1.3). A pill is 11 + 18 + 6 + 28 + 14 = 77 dp, against English Capture 49.5 dp and Pause 39.1 dp for the label alone.
+  - 点按“截取”以翻译游戏画面 has the shape of `status_idle` 点按“翻译”以截取游戏画面, and its quoted word byte-matches `detached_bar_capture`.
+  - In the hint, 拖动底部任一角 ("either bottom corner") is accurate: the code gives both bottom corners a resize pad (`DetachedWindow.HandlePad`, BOTTOM_LEFT and bottom right).
+  - ⋯ is kept, spaced as the file's 点按 ⋮ 菜单. 拖动 is `icon_gesture_drag`, and 其他操作 echoes `cd_more_actions` 更多操作.
+  - 最小化 is the universal window-control word. Minimize never folds into the menu (`DetachedWindowBar`: "Minimize and the menu button always stand"), so it is in practice only the button's spoken name.
+- **The ⋯ menu, as a set** (`DetachedWindow.Menu.menuGroups`).
+  - Headings 当前结果 / 文字 / 屏幕截取 / PlayTranslate, at 12 sp medium (room 248 dp): 48.0 / 24.0 / 48.0 / 74.0 dp. The CJK ones are 62.4 dp at 1.3.
+  - 屏幕截取 is the noun (`notif_channel_name`, `history_capture_screen_cd`). The folded command row under it is 截取 (`captureAction` uses `detached_bar_capture`), so heading and row differ.
+  - Rows at 15 sp medium (room ≤ 208 dp): 隐藏原文 / 显示原文 / 隐藏译文 / 显示译文 are 60.0 dp each (78.0 at 1.3), and 截取 is 30.0. They sit beside 假名注音 / 拼音 and 文字大小 (60.0) in the 文字 group.
+  - One hide/show pair (隐藏 / 显示) is used the same way in both pairs. 原文 / 译文 are `section_original` / `section_translation`, the nouns of the eye labels 切换原文可见性 / 切换译文可见性.
+  - The same labels name the eye in the compact page's menu (`TranslationSectionBinder`), with the same words.
+- **The two entry points.**
+  - On the gestures page under 拖动, 拉出结果窗口 sits beside 移到单词上查看释义 as the same kind of command.
+  - On the quick-settings panel, 转为窗口 sits under 打开 PlayTranslate and says what the tap does.
+  - The window has one name across the gestures page (结果窗口), the panel (窗口) and the hint (此窗口).
+- **Auto Copy to Clipboard.**
+  - 自动复制到剪贴板 uses Android's 复制到剪贴板 / 剪贴板 (the translator's SystemUI fetch; not fetched again). It sits beside the file's copy family 复制 / 已复制 / 链接已复制.
+  - No title case applies. The subtitle is checked above.
+- **Text-to-speech page** (`TtsVoiceActivity`).
+  - Headers: AI 语音服务 / 文字转语音 (or the engine's name) / 导入的录音 / 自动播放.
+  - Under 自动播放: 单词 + 查询单词时播放发音, and 原文 + 截取后朗读，自动翻译期间除外。. The titles are nouns and equal `section_words` / `section_original`. 查询单词 is the file's phrase (`onboarding_a11y_row_lookup_title`, `settings_cell_dictionary_summary`). 播放 for words (which may be recordings) and 朗读 for the original (always spoken from text) stays justified.
+  - The voice row's subtitle parts 在线 / 离线 are short status words, as in 在线翻译 / 离线翻译, and read "High quality · 在线 · 需要下载" (`TtsVoiceLabels.subtitle`).
+- **The changed key.** AI 语音服务 uses the file's one Latin "AI" with a Pangu space (`service_llm_badge` AI, AI 高级配置, AI 模型, and the row under it 通过你自己的 API 密钥使用在线 AI 语音), and does not say 在线.
+  - As the toolbar title (22 sp regular, room 296 dp) it is 113.8 dp, 147.9 at 1.3.
+  - As the 11 sp group header (wraps) and the Anki audio picker's section header (`AudioSourcePickerView`, the same `settings_group_header`) it is short.
+  - It is also the fallback pill name of a picked voice whose name is unknown (`OnlineTtsAudioSource.selectionLabel`), shorter than English there too.
+  - The other `voice_service_*` strings keep 语音服务, as English keeps "voice service".
+- **Script and spacing**, checked by a script over the 28 values, each `<xliff:g>` span counted as one Latin unit:
+  - Every Han character is in GB2312.
+  - No 您, no straight quotes, every value NFC, no dashes.
+  - Each Han/Latin seam takes one space, no space sits between two Han runs or beside full-width punctuation, and no half-width punctuation touches Han. 0 issues.
+- **Outside the delta (not a finding, noted for a later sync):** the OCR twin's `ocr_picker_message` OCR 负责从截图中提取文字。不同的工具可能更适合不同的字体 lacks the final 。 that the English's period and the new picker message both have.
+
+#### Verdict (round 2)
+
+**PASS**: 0 🛑 / 0 ❌ / 0 ⚠️ / 0 💬. Round 1's one fix (the 除外 joint on two subtitles) landed byte-exact, the two subtitles still mirror each other, and nothing nearby broke. Every term matches the file (截取, 原文 / 译文, 翻译服务, 自动翻译, 朗读, 剪贴板, AI). Every cross-reference byte-matches (“截取”, 翻译服务). Every one-line widget is far under its room. Round 1's two source-side notes (the bar Capture button's spoken 截取 屏幕, and the voice row's hard-coded English quality) remain code issues and are not string fixes.
+
+### Disposition (round 2, 2026-11-23)
+
+Round 2 found nothing. Applied after the final review at the developer's request, by the coordinator, without a further review round: `ocr_picker_message` (outside the delta) gets the final stop its English has, as its new twin `translation_picker_message` does. Analyzer, mechanical check and `:app:processDebugResources` green afterwards.

@@ -1210,3 +1210,91 @@ Fresh read of all 213 keys, by screen, against the file's existing strings:
 #### Disposition (round 2, 2026-11-16)
 
 The optional 💬 applied byte-exact at the developer's request: `voice_service_failure_bad_list` («conseguisse»). After applying: mech_check 0 errors, aapt2 ok, only delta keys changed, `:app:processDebugResources` green.
+
+## Delta review 2026-11-23 (translation service picker, detached window, Auto Copy to Clipboard, text-to-speech auto-play, AI Voice Service: 27 new keys, 1 changed, 1 orphan removed)
+
+Mechanical layer: `mech_check.py pt-rBR` -> `pt-rBR: 28 keys checked, 0 problems, 2 warnings` (`tts_voice_online: identical to English`, `tts_voice_offline: identical to English`; both are the file's own spelling, as in «Traduções online» / «Traduções offline», so intended). `l10n_diff.py --english-base <scratchpad>/en-base.xml` -> `values-pt-rBR   missing=0  orphan=0  modified=1` (the one MODIFIED `audio_source_voice_service_name`, listed by design, now «Serviço de voz de IA»). Scope: `git diff -- app/src/main/res/values-pt-rBR/strings.xml` adds exactly the 27 new keys at English's places, changes only `audio_source_voice_service_name` («Serviço de voz» -> «Serviço de voz de IA») and removes only `tts_voices_section_header`. The one `<xliff:g>` span (`translation_pick_failed_generic`) is byte-identical to English. No straight quotes, no em dashes, «⋯» kept. **No 🛑 issues.**
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| (none) | | | | |
+
+### Clean areas (checked, no findings)
+
+Widths are `Measure.java` in Roboto at 1.0× unless a scale is named; constraints read from the render code (`ActionOverflowMenu.kt` lines 130 to 148: headings and rows `maxLines = 1`, ellipsized, card 160 to 280 dp; `DetachedWindowBar.applyFit`: the pills drop their names, then fold, before anything clips; `settings_row_switch.xml` / `Text.PT.RowTitle`: no line limit).
+
+- **Translation service picker, read as one dialog.**
+  - Title «Escolher serviço de tradução» mirrors `ocr_picker_title` «Escolher ferramenta de OCR» (infinitive, no article), and `cd_choose_translation_service` repeats it, as pt's `cd_choose_ocr` repeats the OCR title. A screen reader hears «Traduzido por DeepL» then «Escolher serviço de tradução».
+  - Message «O serviço que você escolher traduz este texto novamente. Isso não altera suas configurações.» carries both facts (this text only; no setting changes). It opens on the pick, so it cannot be read as a caption of the [Serviços de tradução] footer button. The future subjunctive «escolher» is right, and «alterar» / «novamente» are the file's words.
+  - The set reads: title, message, «TRADUÇÕES ONLINE» / «TRADUÇÕES OFFLINE» headers over the service buttons, then [Serviços de tradução] (= `settings_cell_translation_services`) and [Cancelar] (= `btn_cancel`).
+- **Failure alert.** «Não foi possível traduzir» is byte-identical to `anki_translation_error` and `hold_translation_failed` and works as a title. «O %1$s não conseguiu traduzir este texto.» read with values: «O Firefox Translations…», «O DeepL…», «O Gemini…», «O ML Kit…», «O Hunyuan-MT 7B…», «O LM Studio…» for a typed name. The masculine article before a service is the file's rule (`tr_service_remove_title_fmt` «Remover o %1$s?», `llm_backend_invalid_key_alert_message_fmt` «O %1$s rejeitou…»). Title + message + [OK] repeat «traduzir» exactly as English repeats "translate".
+- **Detached window: entry points and name.**
+  - `icon_action_pull_out_window` «Puxar a janela de resultados» is an infinitive like its siblings under «Arrastar» («Passar sobre uma palavra para ver a definição», 310.9 dp, against 189.8 dp here); «puxar» is the drawer verb the English comment asks for, and the window is named once, «janela de resultados», then «esta janela» in the hint, as English does.
+  - `floating_menu_panel_detach` «Abrir em janela» (101.6 dp; 132.1 dp at 1.3×) sits under «Abrir o PlayTranslate» (141.3 dp, the existing row), so it is never the longer of the two. «Destacar» would read as "highlight" in this file (`anki_content_*_desc` «palavra destacada»), so the translator's choice holds; AOSP WMShell pt-rBR has no "detach" word to match ("Nova janela", "Gerenciar janelas" are the window words).
+- **Detached window: bar and idle text.**
+  - Pills at 14 sp regular: «Auto» 29.4 dp (pill 78.4 dp), «Pausar» 43.8 dp (92.8 dp), «Capturar» 54.0 dp (103.0 dp; English «Capture» 49.1 dp, 98.1 dp). The bar drops names a few dp sooner than in English; nothing clips by construction.
+  - «Capturar» is the file's capture verb (`floating_menu_capture_screen` «Capturar\ntela», `icon_action_capture_screen` «Capturar tela»), and «Minimizar» is Android's own (WMShell `minimize_button_text`).
+  - `detached_status_idle` «Toque em Capturar para traduzir a tela do jogo»: «Capturar» byte-matches `detached_bar_capture`, in the file's unquoted «Toque em X» pattern (`voice_service_*` «Toque em Modelo»). No final period, as English.
+  - The hint: three sentences, «Arraste a barra superior…», «Arraste um canto inferior para redimensioná-la.» (the clitic agrees with «janela»; AOSP's own «Arraste o canto para redimensionar»), «Todo o resto fica no menu ⋯.».
+- **Detached window: the ⋯ menu as a set.**
+  - Headings at 12 sp medium: «Este resultado» 77.1 dp, «Texto» 30.6 dp, «Captura» 42.5 dp, «PlayTranslate» 74.0 dp, against 248 dp. Three noun headings plus the brand.
+  - «Captura» (noun, the file's «Intervalo de captura») heads a group whose folded row is «Capturar» (command): the two stay apart as the brief asks.
+  - Rows at 15 sp medium: «Ocultar original» 102.8, «Mostrar original» 107.1, «Ocultar tradução» 112.2, «Mostrar tradução» 116.5 (151.5 at 1.3×), «Minimizar» 67.0 dp, against 208 dp. The hide/show pair is the one pair of `cd_toggle_original_visibility` «Mostrar/ocultar original» and `cd_toggle_translation_visibility` «Mostrar/ocultar tradução», used identically in both pairs, and the bare noun matches the other rows («Editar texto», «Ler em voz alta», «Tamanho do texto», «Editar região»).
+- **Auto Copy to Clipboard.**
+  - «área de transferência» is Android's pt-BR clipboard word (AOSP SystemUI pt-rBR: «copiar para a área de transferência.», «Editor da área de transferência», checked in the translator's saved copy). It is new to this file, which had only «Copiado» / «Copiar».
+  - Title «Copiar automaticamente para a área de transferência» is 358.4 dp: two lines in the switch row, which has no line limit. Infinitive title like the screen's «Filtrar furigana do resultado do OCR» and «Alargar texto vertical»; sentence case as every pt row.
+  - Subtitle «Copia o texto original depois de cada captura, mas não durante a tradução automática.» follows «Mostra um brilho suave…» above it (third-person present). «texto original» = `tts_auto_play_original_title`, «tradução automática» = `settings_header_auto_translate`, and «depois de cada captura, mas não durante a tradução automática» is word for word the TTS subtitle. Joining the English's two sentences with «mas» avoids the verbless «Não durante…» fragment; I agree with that departure from the comment.
+- **Text-to-speech page, as a set.**
+  - Header «Reprodução automática» (the everyday pt-BR word for autoplay; normal case, the style uppercases it): 143.8 dp + 21 × 1.32 dp letter spacing ≈ 171 dp, one line on a phone, and it wraps anyway.
+  - Rows «Palavras» (= `section_words`) / «Ao consultar uma palavra» («consultar» is the file's look-up verb: «Consultando palavras…», «consulta por toque») and «Texto original» / «Depois de cada captura, mas não durante a tradução automática.». Both subtitles say when; the period on the second and none on the first follow English.
+  - Voice-row subtitle: «High quality · Online» / «… · Offline · Precisa baixar»: short standalone status words, capitalised like «Precisa baixar».
+- **AI Voice Service (MODIFIED).** «Serviço de voz de IA» uses the file's one AI word («IA»: `service_llm_badge`, «Configuração avançada de IA», «voz de IA online»), not «online». Toolbar title at 22 sp regular: 196.7 dp (255.6 dp at 1.3×) against 296 dp. As the TTS page's and the Anki picker's group header, «SERVIÇO DE VOZ DE IA» ≈ 141 dp with letter spacing. Only this key changed; «Conectar um serviço de voz» and the other `voice_service_*` keep the generic word, as English does.
+- **Register and vocabulary.** você-form imperatives («Toque», «Arraste»); BR vocabulary only (tela, app, configurações); no pt-PT forms.
+- Outside this delta, not findings: pt `ocr_picker_message` has no final period where English has one (its new twin `translation_picker_message` has them; the translator noted it too); `tts_no_engine_dialog_message` and `crash_email_body` still hold an em dash.
+
+### Source-side notes
+
+- `TtsVoiceLabels.subtitle` (lines 67 to 72) hard-codes the voice quality in English ("High quality", "Very high quality"…), so a pt-BR voice row reads «High quality · Online · Precisa baixar». The new `tts_voice_online` / `tts_voice_offline` are localized beside an English word; only string resources for the quality labels can fix it. Confirmed from the code.
+
+### Verdict (round 1)
+
+**PASS** (0 🛑, 0 ❌, 0 ⚠️, 0 💬). Every cross-reference byte-matches («Capturar» in the idle text, «Serviços de tradução» and «Cancelar» in the picker, the hide/show verbs of the eye toggles), every one-line widget fits with room at 1.3×, the two subtitles share their words, and the AI term is the file's one word. The translator's seven judgment calls hold on independent reading.
+
+### Disposition (round 1, 2026-11-23)
+
+No findings, nothing applied. The file stands as translated.
+
+### Round 2 (2026-11-23), final review after applying round 1
+
+Mechanical layer: `mech_check.py pt-rBR` -> `pt-rBR: 28 keys checked, 0 problems, 2 warnings` (`tts_voice_online: identical to English`, `tts_voice_offline: identical to English`; the file's own spelling, as in «Traduções online» / «Traduções offline», so intended). `l10n_diff.py --english-base <scratchpad>/en-base.xml` -> `values-pt-rBR   missing=0  orphan=0  modified=1` (`audio_source_voice_service_name`, listed by design, now «Serviço de voz de IA»). Scope: `git diff -- app/src/main/res/values-pt-rBR/strings.xml` shows only the 27 new keys at English's places, the one changed line («Serviço de voz» -> «Serviço de voz de IA») and the removal of `tts_voices_section_header`. The file parses as XML; the one `<xliff:g>` span is byte-identical to English; the added values hold no em or en dash, straight quote or "..."; «⋯» is kept. **No 🛑 issues.**
+
+Round-1 fixes: none were found, so nothing was applied and the file is as translated. One input changed after round 1: CONTEXT now gives the bar pill's label as 14 sp sans-serif-medium (`DetachedWindowBar.kt` line 309, read: `Typeface.create("sans-serif-medium", …)`, `maxLines = 1`), where round 1 measured regular. Re-measured medium: «Auto» 29.7 dp, «Pausar» 44.1 dp, «Capturar» 54.5 dp (English «Capture» 49.5 dp), so the Capture pill is 11 + 18 + 6 + 54.5 + 14 = 103.5 dp against English's 98.5 dp; 70.8 dp label at 1.3×. Round 1's conclusion holds: `applyFit` drops both names, then folds the pills, before a label could be cut, so a 5 dp longer label only makes the bar lose its names a little sooner.
+
+#### Findings (round 2)
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| tts_auto_play_original_subtitle | 💬 | Depois de cada captura, mas não durante a tradução automática. | Depois de cada captura, mas não durante a tradução automática | The two auto-play subtitles sit on adjacent rows under one header, and pt made them one family: two "when" phrases with no verb («Ao consultar uma palavra» / «Depois de cada captura, mas não…»). Only the second ends in a period. Round 1 kept it because English has one. New evidence: English's period is there because its subtitle is two sentences ("After a capture. Not during auto-translate."), and English's own phrase subtitles, `tts_voice_default_subtitle` "The engine's default voice" on this same page among them, take none. pt merged the two into one phrase, so English's reason no longer applies. The file's phrase subtitles take none either: «A voz padrão do mecanismo» on this page, and «OCR no servidor, sem pesar no dispositivo» (a phrase plus a comma clause, the same shape as this one). The words still mirror `settings_auto_copy_subtitle` exactly. That subtitle is a full sentence («Copia…»), so its period stays. Optional. |
+
+#### Clean areas (round 2)
+
+Widths are `Measure.java` (Roboto) at 1.0× unless a scale is named. Constraints were read from the code: `ActionOverflowMenu` headings and rows are one line; `OverlayAlert.buildWideCard`/`buttonView` footer buttons are 14 sp with no line limit, so they wrap; `settings_row_switch.xml` titles and subtitles have no `maxLines`.
+
+- **Picker, as one dialog.** Title «Escolher serviço de tradução» = `cd_choose_translation_service`, the same as `ocr_picker_title`/`cd_choose_ocr` relate. TalkBack hears «Traduzido por DeepL», then «Escolher serviço de tradução». The message «O serviço que você escolher traduz este texto novamente. Isso não altera suas configurações.» carries both facts. It opens on the pick, so it cannot read as a caption of [Serviços de tradução]. The future subjunctive plus present is normal pt-BR. Under it: «Traduções online» / «Traduções offline», then [Serviços de tradução] and [Cancelar], both existing labels. The footer label in the wide card is 132.1 dp at 14 sp medium against about 150 dp of label room in the narrowest wide card (520 dp window: (440 − 8) / 2 − 40 padding − 26 icon and gap). It is one line at 1.0×, and wraps like English's 126.9 dp at 1.3×, with no line limit.
+- **Failure alert.** Title «Não foi possível traduzir» is byte-identical to `anki_translation_error` and `hold_translation_failed`. The message «O %1$s não conseguiu traduzir este texto.» was read with each value: «O Firefox Translations / DeepL / Gemini / ML Kit / Hunyuan-MT 7B / PlayTranslate Cloud…». The masculine article is the file's rule for services («Remover o %1$s?», «O %1$s rejeitou…»). Read with [OK] as one alert.
+- **Entry points.** «Puxar a janela de resultados» is an infinitive like the other Drag action, «Passar sobre uma palavra…» (189.8 dp against 310.9 dp). «puxar» is the drawer verb, and it names the window once, as «janela de resultados». «Abrir em janela» (101.6 dp; 132.1 dp at 1.3×) sits under «Abrir o PlayTranslate» (141.3 dp). AOSP WMShell pt-rBR (the translator's saved copy, read) has «Nova janela» and «Minimizar janela», and no "detach" word. «destacar» would read as "highlight" in this file.
+- **Bar and idle text.** «Auto» / «Pausar» / «Capturar» as above. «Minimizar» = WMShell `minimize_button_text`. «Toque em Capturar para traduzir a tela do jogo» byte-matches `detached_bar_capture`, in the file's «Toque em X» pattern. The hint's «-la» refers back to «esta janela»; «Arraste o canto para redimensionar» is AOSP's own phrasing, and «menu ⋯.» keeps the glyph.
+- **⋯ menu as a set.** Headings at 12 sp medium: «Este resultado» 77.1, «Texto» 30.6, «Captura» 42.5, «PlayTranslate» 74.0 dp, against 248 dp. «Captura» (noun) heads the folded «Capturar» (command). Rows at 15 sp medium: «Ocultar original» 102.8, «Mostrar original» 107.1, «Ocultar tradução» 112.2, «Mostrar tradução» 116.5 (151.5 at 1.3×), «Minimizar» 67.0, beside «Adicionar ao Anki» 118.4 dp, against 208 dp. The hide/show pair is the one pair of `cd_toggle_*_visibility` «Mostrar/ocultar …» and of `floating_icon_close_label_hide` «Ocultar». «Mostrar original» without an article is the everyday pt-BR menu form.
+- **Overlay group's last rows.** «Indicador de bordas» / «Mostra um brilho suave…» is followed by «Copiar automaticamente para a área de transferência» / «Copia o texto original depois de cada captura, mas não durante a tradução automática.». The title is two lines; the row has no line limit. «área de transferência» is SystemUI pt-rBR's clipboard word («copiar para a área de transferência.», «Editor da área de transferência», saved copy read), new to this file. The subtitle repeats `settings_header_auto_translate` and `tts_auto_play_original_title`'s «texto original» exactly. Joining the two English sentences with «mas» avoids a verbless «Não durante…».
+- **TTS page.** Headers: «GRAVAÇÕES IMPORTADAS», «SERVIÇO DE VOZ DE IA» (114.3 dp + 20 × 1.32 ≈ 141 dp), the engine's name, then «REPRODUÇÃO AUTOMÁTICA» (143.8 + 21 × 1.32 ≈ 172 dp), all in normal case for the style to uppercase. The two titles are nouns: «Palavras» = `section_words`, and «Texto original», not the translation. «consultar» is the file's look-up verb. The voice row reads «High quality · Online · Precisa baixar», short standalone status words (the English quality part is code, already noted). «Serviço de voz de IA» uses the file's one AI word (`service_llm_badge` «IA», «voz de IA online»). The toolbar title is 196.7 dp (255.6 dp at 1.3×) against 296 dp. The other `voice_service_*` keep the generic «serviço de voz».
+- **Register and vocabulary.** você imperatives («Toque», «Arraste»); BR words only (tela, app, configurações, baixar); no pt-PT forms.
+
+#### Verdict (round 2)
+
+**PASS** (0 🛑, 0 ❌, 0 ⚠️, 1 💬). Every cross-reference byte-matches, every one-line widget fits at 1.3×, and the corrected pill weight changes nothing. The one 💬 is an optional period on `tts_auto_play_original_subtitle`.
+
+### Disposition (round 2, 2026-11-23)
+
+Applied after the final review at the developer's request, by the coordinator, without a further review round: `tts_auto_play_original_subtitle` drops its final period (round 2's 💬: one phrase now, beside «Ao consultar uma palavra»), and `ocr_picker_message` (outside the delta) gets the final stop its English has, as its new twin `translation_picker_message` does. Analyzer, mechanical check and `:app:processDebugResources` green afterwards.

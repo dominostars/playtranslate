@@ -296,6 +296,11 @@
     <string name="ocr_picker_title">選擇 OCR 工具</string>
     <string name="ocr_picker_message">OCR 負責從截圖中擷取文字。不同工具可能更適合不同字型。</string>
     <string name="cd_choose_ocr">選擇 OCR 工具</string>
+    <string name="translation_picker_title">選擇翻譯服務</string>
+    <string name="translation_picker_message">你選擇的服務會重新翻譯這段文字。你的設定保持不變。</string>
+    <string name="cd_choose_translation_service">選擇翻譯服務</string>
+    <string name="translation_pick_failed_title">無法翻譯</string>
+    <string name="translation_pick_failed_generic"><xliff:g id="service" example="Firefox Translations">%1$s</xliff:g> 無法翻譯這段文字。</string>
     <string name="cd_change_source_language">更改遊戲語言</string>
     <string name="cd_change_target_language">更改你的語言</string>
 
@@ -437,6 +442,7 @@
     <string name="icon_gesture_tap">點按</string>
 
     <string name="icon_action_lookup_words">移到詞語上以查看釋義</string>
+    <string name="icon_action_pull_out_window">拉出結果視窗</string>
 
     <string name="icon_action_show_translations">在螢幕上顯示翻譯</string>
 
@@ -1339,6 +1345,14 @@
     <string name="floating_menu_panel_overlays">疊加層</string>
 
     <string name="floating_menu_panel_open_app">開啟 <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
+    <string name="floating_menu_panel_detach">轉為視窗</string>
+    <string name="detached_bar_capture">擷取</string>
+    <string name="detached_bar_minimize">最小化</string>
+    <string name="detached_status_idle">點按「擷取」以翻譯遊戲畫面</string>
+    <string name="detached_status_idle_hint">拖曳頂部列以移動此視窗。拖曳底部任一角以調整大小。其他操作都在 ⋯ 選單中。</string>
+    <string name="detached_menu_group_result">目前結果</string>
+    <string name="detached_menu_group_text">文字</string>
+    <string name="detached_menu_group_capture">螢幕擷取</string>
 
     <string name="floating_menu_drag_instruction">拖曳手指以擷取特定區域</string>
 
@@ -1397,6 +1411,8 @@
     <string name="settings_edge_indicator_title">邊緣指示器</string>
 
     <string name="settings_edge_indicator_subtitle">疊加層顯示期間，螢幕四周會出現柔和的光暈。</string>
+    <string name="settings_auto_copy_title">自動複製到剪貼簿</string>
+    <string name="settings_auto_copy_subtitle">擷取後複製原文，自動翻譯期間除外。</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
@@ -1441,6 +1457,10 @@
     <string name="header_action_edit">編輯文字</string>
 
     <string name="cd_toggle_original_visibility">切換原文可見性</string>
+    <string name="header_action_hide_original">隱藏原文</string>
+    <string name="header_action_show_original">顯示原文</string>
+    <string name="header_action_hide_translation">隱藏譯文</string>
+    <string name="header_action_show_translation">顯示譯文</string>
 
     <string name="cd_toggle_words_visibility">切換詞語可見性</string>
 
@@ -2076,11 +2096,17 @@
     <string name="tts_voice_default_subtitle">引擎的預設語音</string>
 
     <string name="tts_voice_needs_download">需要下載</string>
+    <string name="tts_voice_online">線上</string>
+    <string name="tts_voice_offline">離線</string>
 
     <string name="tts_no_engine_row_subtitle">沒有可用的語音引擎。點按以新增一個。</string>
 
-    <string name="tts_voices_section_header"><xliff:g id="language" example="JAPANESE">%1$s</xliff:g>語音</string>
     <string name="tts_speed_title">速度</string>
+    <string name="tts_auto_play_header">自動播放</string>
+    <string name="tts_auto_play_words_title">詞語</string>
+    <string name="tts_auto_play_words_subtitle">查詢詞語時播放發音</string>
+    <string name="tts_auto_play_original_title">原文</string>
+    <string name="tts_auto_play_original_subtitle">擷取後朗讀，自動翻譯期間除外。</string>
 
     <string name="tts_no_engine_dialog_title">無文字轉語音引擎</string>
 
@@ -2319,7 +2345,7 @@
     <string name="audio_source_tts_name">文字轉語音</string>
 
     <string name="audio_source_commons_name">Wikimedia Commons</string>
-    <string name="audio_source_voice_service_name">語音服務</string>
+    <string name="audio_source_voice_service_name">AI 語音服務</string>
     <string name="audio_error_playing">無法播放此音訊</string>
     <string name="voice_service_connect_title">連接語音服務</string>
     <string name="voice_service_connect_subtitle">透過你自己的 API 金鑰使用線上 AI 語音</string>

@@ -1162,3 +1162,123 @@ Process note (not a translation finding): `S/frag/th.xml` still holds the pre-fi
 **PASS.** 🛑 0 / ❌ 0 / ⚠️ 0 / 💬 0. All 7 round-1 fixes landed byte-exact, and none broke a neighbour.
 
 **Correction to the round-1 Disposition (2026-11-16):** its list names the first applied finding as "1 applied: `⚠️`", a slip of the coordinator's script; that finding is ⚠️ `translation_error_membership_inactive`, applied byte-exact like the others.
+
+## Delta review 2026-11-23 (translation service picker, detached window, Auto Copy to Clipboard, text-to-speech auto-play, AI Voice Service: 27 new keys, 1 changed, 1 orphan removed)
+
+Mechanical layer: `mech_check.py th` -> "th: 28 keys checked, 0 problems, 0 warnings" (no placement warning); `l10n_diff.py` against the sync's `en-base.xml` -> "values-th   missing=0  orphan=0  modified=1", the one MODIFIED being `audio_source_voice_service_name` by design, its `loc:` already «บริการเสียงพูด AI». `git diff -- app/src/main/res/values-th/strings.xml` shows only the 27 additions, the one changed line and the removed `tts_voices_section_header`; nothing outside the delta moved, and no Java/Kotlin code or Thai string still names the removed key. **No 🛑 issues.**
+
+### Findings
+
+No findings.
+
+### Clean areas (checked, no findings)
+
+- **Translation service picker, read as one dialog.**
+  - Title «เลือกบริการแปล» has the shape of `ocr_picker_title` «เลือกเครื่องมือ OCR», and บริการแปล is `settings_cell_translation_services`. `cd_choose_translation_service` is the same text, as `cd_choose_ocr` equals `ocr_picker_title` in this file; TalkBack reads «แปลโดย DeepL» then «เลือกบริการแปล».
+  - Message «บริการที่คุณเลือกจะแปลข้อความนี้อีกครั้ง การตั้งค่าของคุณจะยังคงเหมือนเดิม» carries both facts: ข้อความนี้ limits the run to this text, and the second clause says the settings stay. Its subject is "the service you pick", so it speaks of the service buttons under it and cannot be read as a caption of the footer button «บริการแปล». One clause space.
+  - Under it the existing headers «การแปลออนไลน์» / «การแปลออฟไลน์», then «บริการแปล» and «ยกเลิก». The title and the footer button share บริการแปล, as the English title and button share "translation service(s)".
+- **Failure alert, read as one.** Title «ไม่สามารถแปลได้» is byte-identical to `anki_translation_error` and `hold_translation_failed`. Message with real values: «Firefox Translations ไม่สามารถแปลข้อความนี้ได้», «DeepL ไม่สามารถ…», «Hunyuan-MT 7B ไม่สามารถ…»; a Thai name the user typed gets the subject-boundary space, which Thai allows. Then «ตกลง». The title/message repetition is the English's own.
+- **Detached window bar and idle text.**
+  - `detached_bar_capture` «จับภาพ» is the file's capture verb (`icon_action_capture_screen`, `floating_menu_capture_screen`), one word.
+  - `detached_status_idle` «แตะ “จับภาพ” เพื่อแปลหน้าจอเกม»: the quoted word byte-matches `detached_bar_capture`, with the file's “ ” quotes.
+  - `detached_status_idle_hint`: three clauses split by spaces (the file uses no full stops), «เมนู ⋯» spaced before the symbol and the glyph kept. «ตัวเลือกอื่นๆ» is fine: Android's own overflow name is «ตัวเลือกเพิ่มเติม» (`action_menu_overflow_description`, local SDK android-36 values-th), and the sentence names the glyph, not the button, so it does not need to match. The space after ๆ follows the file.
+  - `detached_bar_minimize` «ย่อ»: AOSP WMShell `minimize_button_text` values-th is «ย่อ» (checked with one fetch of `libs/WindowManager/Shell/res/values-th/strings.xml`; its siblings there are «ขยายใหญ่สุด» and «ปิด»). As a menu row it stands beside the minimize icon.
+- **Detached window menu, as a set.**
+  - Headings «ผลลัพธ์นี้» / «ข้อความ» / «การจับภาพ» / PlayTranslate. The capture heading is the noun with การ, the bar button the bare verb, as CONTEXT asks.
+  - Rows: «เพิ่มไปยัง Anki», «อ่านออกเสียง» under the result group; ฟุริงานะ/พินอิน, «ซ่อนต้นฉบับ» / «แสดงต้นฉบับ», «ซ่อนคำแปล» / «แสดงคำแปล», «ขนาดตัวอักษร» under text. The hide/show verbs ซ่อน / แสดง are one pair, used identically in both pairs, and ต้นฉบับ / คำแปล are `section_original` / `section_translation`. «ซ่อนคำแปล» equals `history_hide_translations_toggle_title`; แสดง is also the verb of «แสดงบนหน้าจอ» on the same page.
+- **Entry points and the window's name.** `icon_action_pull_out_window` «ดึงหน้าต่างผลลัพธ์ออกมา» is a verb phrase like its Drag sibling «วางไว้บนคำเพื่อดูคำจำกัดความ», and ดึง…ออกมา is the drawer's "pull out". On the translator's open choice (judgment call 1), I keep หน้าต่างผลลัพธ์: it follows "results window", the window shows the original and words as well as the translation (so ผลการแปล would narrow it), and it shares ผลลัพธ์ with the menu heading. The window strings say «หน้าต่างนี้». `floating_menu_panel_detach` «แยกเป็นหน้าต่าง» is a command beside «เปิด PlayTranslate» and names the window.
+- **Auto Copy to Clipboard.** Title «คัดลอกไปยังคลิปบอร์ดอัตโนมัติ» is Android's «คัดลอกไปยังคลิปบอร์ด» (framework `failed_to_copy_to_clipboard`) plus the file's trailing อัตโนมัติ, which several titles end on (`enhanced_auto_translate_title`, the OEM autostart rows). Subtitle «คัดลอกข้อความต้นฉบับหลังการจับภาพ ยกเว้นระหว่างการแปลอัตโนมัติ»: ข้อความต้นฉบับ = `tts_auto_play_original_title`, การแปลอัตโนมัติ = `settings_header_auto_translate`, and its tail is byte-identical to `tts_auto_play_original_subtitle`. «ยกเว้น» reads as a native subtitle, not a calqued fragment. It sits under «ตัวบ่งชี้ขอบจอ» and its subtitle, which also start with a verb.
+- **Text-to-speech page, as a set.** Group header «อ่านออกเสียงอัตโนมัติ» over «คำ» / «เมื่อค้นหาคำ» and «ข้อความต้นฉบับ» / «หลังการจับภาพ ยกเว้นระหว่างการแปลอัตโนมัติ». I agree with judgment call 4: เล่นอัตโนมัติ reads as media autoplay, and อ่านออกเสียง is the page's own verb (title `settings_cell_tts` «การอ่านออกเสียงข้อความ», the Read aloud row «อ่านออกเสียง»). The titles are nouns, «คำ» = `section_words`, the original is not the translation, and the two subtitles are parallel time phrases. ค้นหาคำ is the file's look-up (`icon_action_tap_to_lookup`). No คุณ.
+- **Voice rows.** «ออนไลน์» / «ออฟไลน์» are the file's spellings (`settings_header_online_translations` / `_offline_translations`) and stand alone, so «High quality · ออฟไลน์ · ต้องดาวน์โหลด» reads as three status words with spaced « · ».
+- **AI Voice Service (MODIFIED).** «บริการเสียงพูด AI» keeps the 11-16 «บริการเสียงพูด» and adds the file's AI word, Latin and spaced, as in «บริการ AI» / «เสียง AI ออนไลน์». Not ออนไลน์. The other `voice_service_*` strings keep the generic «บริการเสียงพูด», as English does. It is read in three places (code: `TtsVoiceActivity` group header, `OnlineTtsAudioSource.label`, `OnlineTtsServiceActivity` toolbar title); no string composes it into a sentence.
+- **Register and spacing.** A script over the 28 values, the placeholder filled with "Firefox Translations": no ครับ/ค่ะ, no Thai letter touching a Latin letter or digit, no double space, all NFC, no zero-width character, no dash, no final «.». Spaces between Thai letters: 1 in the picker message, 3 in the idle hint, 1 in each subtitle; each is at a clause boundary. No placeholder takes a language name, so the ภาษา rule does not come up.
+
+### Widths (Measure.java, Noto Sans Thai UI, font scale 1)
+
+The tool draws Thai with the Regular face even with `--medium`; every margin below is wide enough that the medium weight cannot matter.
+
+| widget | room | Thai | English |
+|---|---|---|---|
+| Menu rows, 15 sp medium | ≤ 208 dp | ซ่อนต้นฉบับ 76.0, แสดงต้นฉบับ 82.6, ซ่อนคำแปล 72.6, แสดงคำแปล 79.2, ย่อ 18.4 | Hide/Show translation 106.9 / 113.0 |
+| Menu headings, 12 sp medium | ≤ 248 dp | ผลลัพธ์นี้ 45.7, ข้อความ 41.6, การจับภาพ 55.8 | This result 56.8 |
+| Toolbar title, 22 sp | 296 dp | บริการเสียงพูด AI 160.8 (209.0 at scale 1.3) | 157.7 |
+| Bar pill label, 14 sp | folds, never clips | จับภาพ 42.6 beside อัตโนมัติ 49.6 (พัก 18.4 while running) | Capture 49.1 beside Auto 29.4 |
+| Quick-settings row, 15 sp medium, one line, ellipsized | lane − 60 dp | แยกเป็นหน้าต่าง 101.2 (131.6 at 1.3) | its neighbour «เปิด PlayTranslate» 120.0 already fits there |
+
+The Thai pills together are 92.2 dp against the English 78.5 dp, so the bar drops its names about 14 dp of window width sooner (the bar's code drops names, then folds; nothing clips). That comes from the existing Auto label, not from this delta. The panel row is shorter than the row above it, so it fits wherever that row fits. The picker title and message, the idle texts, the subtitles, the gesture action and the group header all wrap, so they were read, not sized.
+
+### Source-side notes
+
+- `TtsVoiceLabels.subtitle` hard-codes the quality part in English ("High quality"), so a Thai voice row reads «High quality · ออนไลน์». The translator raised this too; a string cannot fix it, and the five qualities need resources.
+
+### Verdict (round 1)
+
+**PASS.** 🛑 0 / ❌ 0 / ⚠️ 0 / 💬 0. Nothing to apply. The translator's two open choices (หน้าต่างผลลัพธ์ for the results window, อ่านออกเสียงอัตโนมัติ for "Play automatically") are upheld above.
+
+### Disposition (round 1, 2026-11-23)
+
+No findings, nothing applied. The file stands as translated.
+
+### Round 2 (2026-11-23), final review after applying round 1
+
+Mechanical layer: `mech_check.py th` -> "th: 28 keys checked, 0 problems, 0 warnings"; `l10n_diff.py` against the sync's `en-base.xml` -> "values-th   missing=0  orphan=0  modified=1", the one MODIFIED being `audio_source_voice_service_name` by design ("loc: บริการเสียงพูด AI"). `git diff -- app/src/main/res/values-th/strings.xml` (read-only) shows the 27 additions, the one changed line and the removed `tts_voices_section_header`, nothing else; no Kotlin, layout or English string still names the removed key. **No 🛑 issues.**
+
+Round-1 fixes: round 1 had no findings and the disposition applied nothing, so there is no fix to check and no neighbour a fix could have broken. The file is the translator's text; I read it fresh.
+
+#### Findings (round 2)
+
+None.
+
+#### Clean areas (round 2)
+
+- **Checked again myself, not taken from round 1.**
+  - Minimize: one fetch of AOSP WMShell `values-th/strings.xml` (main) gives `minimize_button_text` «ย่อ», beside «ขยายใหญ่สุด» and «ปิด». `detached_bar_minimize` «ย่อ» matches. The same file's resize word is «ปรับขนาด», which the idle hint uses.
+  - Clipboard: the local SDK android-36 framework `values-th` has `failed_to_copy_to_clipboard` «ไม่สามารถคัดลอกไปยังคลิปบอร์ด» and `copy` «คัดลอก». The auto-copy title is that phrase plus อัตโนมัติ. Titles in the file such as «อัปเดตอัตโนมัติ» put อัตโนมัติ last in the same way.
+  - Overflow: Android's own name is «ตัวเลือกเพิ่มเติม» (`action_menu_overflow_description`). The idle hint names the ⋯ glyph, not the button, so «ตัวเลือกอื่นๆ อยู่ในเมนู ⋯» does not need to quote it.
+- **The picker, read as one dialog.**
+  - Credit «แปลโดย DeepL» and gear (TalkBack «เลือกบริการแปล»). Title «เลือกบริการแปล» has the shape of «เลือกเครื่องมือ OCR».
+  - The message says two things: the picked service translates this text again, and the settings stay as they are. It has its own subject, so it does not read as a caption of the footer button «บริการแปล».
+  - Below it: «การแปลออนไลน์» / «การแปลออฟไลน์», then «บริการแปล» and «ยกเลิก». The title and the footer button share บริการแปล, as the English title and button share "translation service(s)".
+  - คุณ appears twice in the message, once in each clause. That is not the heavy repetition that the 11-16 round trimmed in `local_audio_load_subtitle`.
+- **The failure alert, read as one.** «ไม่สามารถแปลได้» is byte-identical to `anki_translation_error` and `hold_translation_failed`. The body reads «Firefox Translations ไม่สามารถแปลข้อความนี้ได้» (also with DeepL and Hunyuan-MT 7B), then «ตกลง». The xliff span is byte-identical to the English. The Latin name sits before a space.
+- **The bar and the idle text.** The pills read «อัตโนมัติ» (or «พัก» while running) and «จับภาพ», the file's capture verb (`icon_action_capture_screen`, `floating_menu_capture_screen`). `detached_status_idle` quotes “จับภาพ” byte for byte, with U+201C/U+201D. The hint has three clauses split by spaces, «หน้าต่างนี้» for the window, and «เมนู ⋯» with the space before the symbol and the glyph kept.
+- **The menu: four headings and their rows** (from `DetachedWindow.Menu.menuGroups`).
+  - «ผลลัพธ์นี้» over «เพิ่มไปยัง Anki» and «อ่านออกเสียง».
+  - «ข้อความ» over ฟุริงานะ/พินอิน, «ซ่อน/แสดงต้นฉบับ», «ซ่อน/แสดงคำแปล» and «ขนาดตัวอักษร». ซ่อน / แสดง are one pair, used identically in both pairs. They are also the verbs of `cd_toggle_*_visibility` «สลับการแสดง…» and of the PlayTranslate group's «ซ่อน». The same four rows serve the results header's overflow (`TranslationSectionBinder`), where they read the same way.
+  - «การจับภาพ» over the folded Auto/Capture, «แก้ไขพื้นที่», the languages, OCR and Overlays. The heading is the noun with การ, and the button and row are the bare verb.
+  - PlayTranslate.
+- **Entry points.**
+  - `icon_action_pull_out_window` «ดึงหน้าต่างผลลัพธ์ออกมา» is the second Drag action (`DragAction.titleRes`) beside «วางไว้บนคำเพื่อดูคำจำกัดความ». Both are verb phrases, and ดึง…ออกมา is a drawer's pull-out.
+  - `floating_menu_panel_detach` «แยกเป็นหน้าต่าง» is a command row (`OverlayUiController`, QuickSetting.DETACH) under «เปิด PlayTranslate».
+  - I agree with round 1 on หน้าต่างผลลัพธ์ and have no new evidence against it.
+- **The Overlay group's last rows.** Under «ตัวบ่งชี้ขอบจอ» / «แสดงแสงเรืองนุ่มนวล…» come «คัดลอกไปยังคลิปบอร์ดอัตโนมัติ» / «คัดลอกข้อความต้นฉบับหลังการจับภาพ ยกเว้นระหว่างการแปลอัตโนมัติ». ข้อความต้นฉบับ = `tts_auto_play_original_title`, and การแปลอัตโนมัติ = `settings_header_auto_translate`. The tail is byte-identical to `tts_auto_play_original_subtitle`. The row is a standard switch row whose title and subtitle wrap (`CaptureOverlaySettingsActivity`, rowAutoCopy).
+- **The TTS page, as `TtsVoiceActivity` builds it.**
+  - The headers are «เสียงบันทึกที่นำเข้า», «บริการเสียงพูด AI», the device header «การอ่านออกเสียงข้อความ» (or the engine's name) and «อ่านออกเสียงอัตโนมัติ».
+  - Under the last: «คำ» / «เมื่อค้นหาคำ» and «ข้อความต้นฉบับ» / «หลังการจับภาพ ยกเว้นระหว่างการแปลอัตโนมัติ». The titles are nouns, «คำ» = `section_words`, and the original is not the translation. ค้นหาคำ is the file's look-up (`icon_action_tap_to_lookup`, `settings_cell_dictionary_summary`).
+  - I uphold อ่านออกเสียง over เล่น: the page's verb, and the Read aloud row's.
+  - Voice-row subtitle (`TtsVoiceLabels.subtitle`, joined with " · "): «High quality · ออนไลน์ · ต้องดาวน์โหลด». It reads as standalone status words.
+- **AI Voice Service.** «บริการเสียงพูด AI» uses the file's AI word, Latin and spaced, as in «บริการ AI ออนไลน์» and «เสียง AI ออนไลน์». Either parse means "AI voice service". It is not ออนไลน์. Under it the generic «เชื่อมต่อบริการเสียงพูด» and the other `voice_service_*` strings keep «บริการเสียงพูด», as the English keeps "voice service".
+- **Widths, re-measured with Measure.java** (Noto Sans Thai UI; the tool draws Thai Regular even with `--medium`, and every margin is wide).
+
+  | widget | room | Thai |
+  |---|---|---|
+  | Menu rows, 15 sp | ≤ 208 dp | «แสดงต้นฉบับ» 82.6 is the widest (107.3 at scale 1.3); «ย่อ» 18.4 |
+  | Menu headings, 12 sp | ≤ 248 dp | «การจับภาพ» 55.8 |
+  | Toolbar title, 22 sp | 296 dp | «บริการเสียงพูด AI» 160.8 (209.0 at 1.3) |
+  | Pills, 14 sp | the bar folds, never clips | «จับภาพ» 42.6 beside «อัตโนมัติ» 49.6 |
+  | Panel row, 15 sp | one line, the same lane as the row above | «แยกเป็นหน้าต่าง» 101.2, under «เปิด PlayTranslate» 120.0 |
+
+- **Register and spacing.** I ran a script over the 28 values, with the placeholder filled with "Firefox Translations". It found:
+  - no ครับ/ค่ะ, no Thai letter touching a Latin letter or digit, and no double space;
+  - everything in NFC, no zero-width character, no dash, no comma, and no final «.» or «?»;
+  - spaces between Thai letters only at clause boundaries: 1 in the picker message, 3 in the idle hint (one after ๆ, as the file does), and 1 in each subtitle.
+
+  No placeholder takes a language name, so the ภาษา rule does not come up.
+
+#### Verdict (round 2)
+
+**PASS.** 🛑 0 / ❌ 0 / ⚠️ 0 / 💬 0. Round 1 applied nothing, so no fix needed checking. A fresh read of all 28 keys and the deletion, done screen by screen, found nothing to change.
+
+### Disposition (round 2, 2026-11-23)
+
+Round 2 found nothing; nothing applied.

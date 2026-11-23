@@ -294,8 +294,13 @@
 
     <string name="ocr_source_label"><xliff:g id="ocr_engine" example="PaddleOCR">%1$s</xliff:g> 인식</string>
     <string name="ocr_picker_title">OCR 도구 선택</string>
-    <string name="ocr_picker_message">OCR은 스크린샷에서 텍스트를 추출합니다. 글꼴에 따라 다른 도구가 더 잘 작동할 수 있습니다</string>
+    <string name="ocr_picker_message">OCR은 스크린샷에서 텍스트를 추출합니다. 글꼴에 따라 다른 도구가 더 잘 작동할 수 있습니다.</string>
     <string name="cd_choose_ocr">OCR 도구 선택</string>
+    <string name="translation_picker_title">번역 서비스 선택</string>
+    <string name="translation_picker_message">선택한 서비스로 이 텍스트만 다시 번역합니다. 설정은 그대로 유지됩니다.</string>
+    <string name="cd_choose_translation_service">번역 서비스 선택</string>
+    <string name="translation_pick_failed_title">번역할 수 없음</string>
+    <string name="translation_pick_failed_generic"><xliff:g id="service" example="Firefox Translations">%1$s</xliff:g>이(가) 이 텍스트를 번역하지 못했습니다.</string>
     <string name="cd_change_source_language">게임 언어 변경</string>
     <string name="cd_change_target_language">내 언어 변경</string>
 
@@ -436,6 +441,8 @@
     <string name="icon_gesture_tap">탭</string>
 
     <string name="icon_action_lookup_words">단어 위에 올려 정의 보기</string>
+
+    <string name="icon_action_pull_out_window">결과 창 꺼내기</string>
 
     <string name="icon_action_show_translations">화면에 번역 표시</string>
 
@@ -1301,6 +1308,22 @@
 
     <string name="floating_menu_panel_open_app"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> 열기</string>
 
+    <string name="floating_menu_panel_detach">결과 창으로 전환</string>
+
+    <string name="detached_bar_capture">캡처</string>
+
+    <string name="detached_bar_minimize">최소화</string>
+
+    <string name="detached_status_idle">“캡처” 버튼을 눌러 게임 화면을 번역하세요</string>
+
+    <string name="detached_status_idle_hint">이 창을 이동하려면 상단 바를 드래그하세요. 크기를 조절하려면 아래쪽 모서리를 드래그하세요. 나머지 기능은 모두 ⋯ 메뉴에 있습니다.</string>
+
+    <string name="detached_menu_group_result">이 결과</string>
+
+    <string name="detached_menu_group_text">텍스트</string>
+
+    <string name="detached_menu_group_capture">캡처</string>
+
     <string name="floating_menu_drag_instruction">손가락을 드래그하여 특정 영역 캡처</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
@@ -1359,6 +1382,10 @@
 
     <string name="settings_edge_indicator_subtitle">오버레이가 표시되는 동안 화면 가장자리가 은은하게 빛납니다.</string>
 
+    <string name="settings_auto_copy_title">클립보드에 자동 복사</string>
+
+    <string name="settings_auto_copy_subtitle">캡처 후 원문을 복사합니다. 자동 번역 중에는 복사하지 않습니다.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
          ═══════════════════════════════════════════════════════════════ -->
@@ -1402,6 +1429,14 @@
     <string name="header_action_edit">텍스트 편집</string>
 
     <string name="cd_toggle_original_visibility">원문 표시 전환</string>
+
+    <string name="header_action_hide_original">원문 숨기기</string>
+
+    <string name="header_action_show_original">원문 표시</string>
+
+    <string name="header_action_hide_translation">번역 숨기기</string>
+
+    <string name="header_action_show_translation">번역 표시</string>
 
     <string name="cd_toggle_words_visibility">단어 표시 전환</string>
 
@@ -2018,10 +2053,23 @@
 
     <string name="tts_voice_needs_download">다운로드 필요</string>
 
+    <string name="tts_voice_online">온라인</string>
+
+    <string name="tts_voice_offline">오프라인</string>
+
     <string name="tts_no_engine_row_subtitle">사용 가능한 음성 엔진이 없습니다. 탭하여 추가하세요.</string>
 
-    <string name="tts_voices_section_header"><xliff:g id="language" example="JAPANESE">%1$s</xliff:g> 음성</string>
     <string name="tts_speed_title">속도</string>
+
+    <string name="tts_auto_play_header">자동 재생</string>
+
+    <string name="tts_auto_play_words_title">단어</string>
+
+    <string name="tts_auto_play_words_subtitle">단어를 검색할 때 소리 내어 읽습니다.</string>
+
+    <string name="tts_auto_play_original_title">원문</string>
+
+    <string name="tts_auto_play_original_subtitle">캡처 후 소리 내어 읽습니다. 자동 번역 중에는 읽지 않습니다.</string>
 
     <string name="tts_no_engine_dialog_title">텍스트 음성 변환 없음</string>
 
@@ -2260,7 +2308,7 @@
     <string name="audio_source_tts_name">텍스트 음성 변환</string>
 
     <string name="audio_source_commons_name">Wikimedia Commons</string>
-    <string name="audio_source_voice_service_name">음성 서비스</string>
+    <string name="audio_source_voice_service_name">AI 음성 서비스</string>
     <string name="audio_error_playing">이 오디오를 재생할 수 없음</string>
     <string name="voice_service_connect_title">음성 서비스 연결</string>
     <string name="voice_service_connect_subtitle">내 API 키로 온라인 AI 음성 사용</string>

@@ -288,9 +288,19 @@
 
     <string name="ocr_picker_title">اختيار أداة OCR</string>
 
-    <string name="ocr_picker_message">تقنية OCR هي التي تستخرج النص من لقطة الشاشة. قد تكون أدوات مختلفة أفضل مع خطوط مختلفة</string>
+    <string name="ocr_picker_message">تقنية OCR هي التي تستخرج النص من لقطة الشاشة. قد تكون أدوات مختلفة أفضل مع خطوط مختلفة.</string>
 
     <string name="cd_choose_ocr">اختيار أداة OCR</string>
+
+    <string name="translation_picker_title">اختيار خدمة ترجمة</string>
+
+    <string name="translation_picker_message">تُعاد ترجمة هذا النص بالخدمة التي تختارها. تبقى إعداداتك كما هي.</string>
+
+    <string name="cd_choose_translation_service">اختيار خدمة ترجمة</string>
+
+    <string name="translation_pick_failed_title">تعذّرت الترجمة</string>
+
+    <string name="translation_pick_failed_generic">تعذّر على خدمة <xliff:g id="service" example="Firefox Translations">%1$s</xliff:g> ترجمة هذا النص.</string>
 
     <string name="cd_change_source_language">تغيير لغة اللعبة</string>
 
@@ -427,6 +437,8 @@
     <string name="icon_gesture_tap">الضغط</string>
 
     <string name="icon_action_lookup_words">عرض تعريف الكلمة عند المرور فوقها</string>
+
+    <string name="icon_action_pull_out_window">إخراج نافذة النتائج</string>
 
     <string name="icon_action_show_translations">عرض الترجمات على الشاشة</string>
 
@@ -1239,6 +1251,22 @@
 
     <string name="floating_menu_panel_open_app">فتح <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
 
+    <string name="floating_menu_panel_detach">تحويل إلى نافذة</string>
+
+    <string name="detached_bar_capture">التقاط</string>
+
+    <string name="detached_bar_minimize">تصغير</string>
+
+    <string name="detached_status_idle">اضغط على «التقاط» لترجمة شاشة اللعبة</string>
+
+    <string name="detached_status_idle_hint">اسحب الشريط العلوي لنقل هذه النافذة. اسحب إحدى الزاويتين السفليتين لتغيير حجمها. بقية الإجراءات في القائمة ⋯.</string>
+
+    <string name="detached_menu_group_result">هذه النتيجة</string>
+
+    <string name="detached_menu_group_text">النص</string>
+
+    <string name="detached_menu_group_capture">الالتقاط</string>
+
     <string name="floating_menu_drag_instruction">اسحب بإصبعك لالتقاط منطقة محددة</string>
 
     <!-- ═══ DEEPL SETTINGS — API-key field label ═══ -->
@@ -1293,6 +1321,10 @@
 
     <string name="settings_edge_indicator_subtitle">إظهار توهّج خفيف حول الشاشة أثناء ظهور التراكب.</string>
 
+    <string name="settings_auto_copy_title">النسخ التلقائي إلى الحافظة</string>
+
+    <string name="settings_auto_copy_subtitle">يُنسخ النص الأصلي بعد كل التقاط. لا يُنسخ أثناء الترجمة التلقائية.</string>
+
     <!-- ═══ HOTKEY SETUP DIALOG ═══ -->
 
     <string name="dialog_hotkey_setup_title">تعيين اختصار</string>
@@ -1332,6 +1364,14 @@
     <string name="header_action_edit">تعديل النص</string>
 
     <string name="cd_toggle_original_visibility">إظهار/إخفاء النص الأصلي</string>
+
+    <string name="header_action_hide_original">إخفاء النص الأصلي</string>
+
+    <string name="header_action_show_original">إظهار النص الأصلي</string>
+
+    <string name="header_action_hide_translation">إخفاء الترجمة</string>
+
+    <string name="header_action_show_translation">إظهار الترجمة</string>
 
     <string name="cd_toggle_words_visibility">إظهار/إخفاء الكلمات</string>
 
@@ -1990,10 +2030,23 @@
 
     <string name="tts_voice_needs_download">يتطلب تنزيلاً</string>
 
+    <string name="tts_voice_online">عبر الإنترنت</string>
+
+    <string name="tts_voice_offline">دون اتصال</string>
+
     <string name="tts_no_engine_row_subtitle">لا يوجد محرك صوت متاح. اضغط لإضافة واحد.</string>
 
-    <string name="tts_voices_section_header">أصوات <xliff:g id="language" example="JAPANESE">%1$s</xliff:g></string>
     <string name="tts_speed_title">السرعة</string>
+
+    <string name="tts_auto_play_header">النطق التلقائي</string>
+
+    <string name="tts_auto_play_words_title">الكلمات</string>
+
+    <string name="tts_auto_play_words_subtitle">تُنطق الكلمة عند البحث عنها.</string>
+
+    <string name="tts_auto_play_original_title">النص الأصلي</string>
+
+    <string name="tts_auto_play_original_subtitle">يُنطق بعد كل التقاط. لا يُنطق أثناء الترجمة التلقائية.</string>
 
     <string name="tts_no_engine_dialog_title">لا يوجد تحويل نص إلى كلام</string>
 
@@ -2217,7 +2270,7 @@
     <string name="audio_source_tts_name">تحويل النص إلى كلام</string>
 
     <string name="audio_source_commons_name">Wikimedia Commons</string>
-    <string name="audio_source_voice_service_name">خدمة الصوت</string>
+    <string name="audio_source_voice_service_name">خدمة الصوت بالذكاء الاصطناعي</string>
     <string name="audio_error_playing">تعذّر تشغيل هذا الصوت</string>
     <string name="voice_service_connect_title">ربط خدمة صوت</string>
     <string name="voice_service_connect_subtitle">استخدم صوت ذكاء اصطناعي عبر الإنترنت بمفتاح API الخاص بك</string>

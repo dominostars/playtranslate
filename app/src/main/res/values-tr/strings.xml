@@ -280,9 +280,19 @@
 
     <string name="ocr_picker_title">OCR aracını seçin</string>
 
-    <string name="ocr_picker_message">OCR, ekran görüntüsündeki metni çıkarır. Farklı araçlar farklı yazı tipleri için daha iyi çalışabilir</string>
+    <string name="ocr_picker_message">OCR, ekran görüntüsündeki metni çıkarır. Farklı araçlar farklı yazı tipleri için daha iyi çalışabilir.</string>
 
     <string name="cd_choose_ocr">OCR aracını seç</string>
+
+    <string name="translation_picker_title">Çeviri hizmetini seçin</string>
+
+    <string name="translation_picker_message">Seçtiğiniz hizmet bu metni yeniden çevirir. Ayarlarınız değişmez.</string>
+
+    <string name="cd_choose_translation_service">Çeviri hizmetini seç</string>
+
+    <string name="translation_pick_failed_title">Çevrilemedi</string>
+
+    <string name="translation_pick_failed_generic"><xliff:g id="service" example="Firefox Translations">%1$s</xliff:g> bu metni çeviremedi.</string>
 
     <string name="cd_change_source_language">Oyun dilini değiştir</string>
 
@@ -431,6 +441,8 @@
     <string name="icon_gesture_tap">Dokunma</string>
 
     <string name="icon_action_lookup_words">Üzerine gelinen sözcüğün tanımını göster</string>
+
+    <string name="icon_action_pull_out_window">Sonuç penceresini çekip aç</string>
 
     <string name="icon_action_show_translations">Çevirileri ekranda göster</string>
 
@@ -1328,7 +1340,23 @@
 
     <string name="floating_menu_panel_overlays">Yer paylaşımları</string>
 
-    <string name="floating_menu_panel_open_app"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g> uygulamasını aç</string>
+    <string name="floating_menu_panel_open_app">Aç: <xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g></string>
+
+    <string name="floating_menu_panel_detach">Pencere olarak ayır</string>
+
+    <string name="detached_bar_capture">Yakala</string>
+
+    <string name="detached_bar_minimize">Küçült</string>
+
+    <string name="detached_status_idle">Oyun ekranını çevirmek için Yakala düğmesine dokunun</string>
+
+    <string name="detached_status_idle_hint">Bu pencereyi taşımak için üst çubuğu sürükleyin. Yeniden boyutlandırmak için alt köşelerden birini sürükleyin. Diğer tüm işlemler ⋯ menüsünde.</string>
+
+    <string name="detached_menu_group_result">Bu sonuç</string>
+
+    <string name="detached_menu_group_text">Metin</string>
+
+    <string name="detached_menu_group_capture">Ekran yakalama</string>
 
     <string name="floating_menu_drag_instruction">Belirli bir alanı yakalamak için parmağınızı sürükleyin</string>
 
@@ -1386,6 +1414,10 @@
 
     <string name="settings_edge_indicator_subtitle">Yer paylaşımı ekrandayken ekranın çevresinde hafif bir parıltı gösterir.</string>
 
+    <string name="settings_auto_copy_title">Panoya otomatik kopyala</string>
+
+    <string name="settings_auto_copy_subtitle">Bir yakalamadan sonra orijinal metni kopyalar. Otomatik çeviri sırasında kopyalamaz.</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
          ═══════════════════════════════════════════════════════════════ -->
@@ -1429,6 +1461,14 @@
     <string name="header_action_edit">Metni düzenle</string>
 
     <string name="cd_toggle_original_visibility">Orijinal görünürlüğünü değiştir</string>
+
+    <string name="header_action_hide_original">Orijinal metni gizle</string>
+
+    <string name="header_action_show_original">Orijinal metni göster</string>
+
+    <string name="header_action_hide_translation">Çeviriyi gizle</string>
+
+    <string name="header_action_show_translation">Çeviriyi göster</string>
 
     <string name="cd_toggle_words_visibility">Sözcük görünürlüğünü değiştir</string>
 
@@ -1981,10 +2021,23 @@
 
     <string name="tts_voice_needs_download">İndirme gerekli</string>
 
+    <string name="tts_voice_online">Çevrimiçi</string>
+
+    <string name="tts_voice_offline">Çevrimdışı</string>
+
     <string name="tts_no_engine_row_subtitle">Kullanılabilir konuşma motoru yok. Eklemek için dokunun.</string>
 
-    <string name="tts_voices_section_header"><xliff:g id="language" example="JAPANESE">%1$s</xliff:g> SESLERİ</string>
     <string name="tts_speed_title">Hız</string>
+
+    <string name="tts_auto_play_header">Otomatik sesli okuma</string>
+
+    <string name="tts_auto_play_words_title">Sözcükler</string>
+
+    <string name="tts_auto_play_words_subtitle">Bir sözcük aradığınızda sesli okur</string>
+
+    <string name="tts_auto_play_original_title">Orijinal metin</string>
+
+    <string name="tts_auto_play_original_subtitle">Bir yakalamadan sonra sesli okur. Otomatik çeviri sırasında okumaz.</string>
 
     <string name="tts_no_engine_dialog_title">Metin Okuma Yok</string>
 
@@ -2217,7 +2270,7 @@
          ═══════════════════════════════════════════════════════════════ -->
     <string name="audio_source_tts_name">Metin okuma</string>
     <string name="audio_source_commons_name">Wikimedia Commons</string>
-    <string name="audio_source_voice_service_name">Ses hizmeti</string>
+    <string name="audio_source_voice_service_name">AI ses hizmeti</string>
     <string name="audio_error_playing">Bu ses oynatılamadı</string>
     <string name="voice_service_connect_title">Ses hizmeti bağla</string>
     <string name="voice_service_connect_subtitle">Kendi API anahtarınızla çevrimiçi bir AI sesi kullanın</string>

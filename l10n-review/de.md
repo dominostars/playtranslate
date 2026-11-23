@@ -1277,3 +1277,109 @@ The current form is the family's shape, and what the ellipsis leaves („Bedingu
 #### Disposition (round 2, 2026-11-16)
 
 Both optional 💬 applied byte-exact at the developer's request: `pt_cloud_trial_until` („Testzeitraum bis …“, now the same as the hub) and `pt_cloud_intro` („zu rechenintensiv“). After applying: mech_check 0 errors, aapt2 ok, only delta keys changed, `:app:processDebugResources` green.
+
+## Delta review 2026-11-23 (translation service picker, detached window, Auto Copy to Clipboard, text-to-speech auto-play, AI Voice Service: 27 new keys, 1 changed, 1 orphan removed)
+
+Mechanical layer: `mech_check.py de` -> `de: 28 keys checked, 0 problems, 3 warnings` (all three "identical to English": `detached_menu_group_text`, `tts_voice_online`, `tts_voice_offline`; „Text“, „Online“ and „Offline“ are correct German, as in the file's „Online-Übersetzungen“ / „Offline-Übersetzungen“; no placement warning). `l10n_diff.py` against `en-base.xml` -> `values-de   missing=0  orphan=0  modified=1`, the one being `audio_source_voice_service_name`, which already holds the new meaning („KI-Sprachausgabe-Dienst“). `git diff` on the locale file: only the 27 inserted keys, the one changed value and the removed `tts_voices_section_header` line; nothing outside the delta. The xliff span of `translation_pick_failed_generic` is byte-identical to English; the „ “ quotes are U+201E/U+201C; the ⋯ is U+22EF, as in English. **No 🛑 issues.**
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| translation_pick_failed_title | 💬 | Konnte nicht übersetzt werden | Übersetzung fehlgeschlagen | Optional. The two places that already say „Konnte nicht übersetzt werden“ are a pill and an Anki field's placeholder; this one is an alert title, and the file titles its failure alerts „X fehlgeschlagen“ (`lang_download_error_title` „Download fehlgeschlagen“, `update_error_title`, `update_check_failed_title`, `yomitan_io_error_title` „Import fehlgeschlagen“). It also avoids the echo in the alert as a whole: „Konnte nicht übersetzt werden“ over „DeepL konnte diesen Text nicht übersetzen.“ says the same thing twice. It does not suggest the translation on screen is gone; the message names the service. The translator's reason for reuse (one wording for one English string) is sound, so keeping it is also acceptable. |
+
+### Clean areas (checked, no findings)
+
+**Widths, measured with Measure.java (Android's Roboto), against the render code:**
+- ⋯ menu rows, 15 sp medium, room at most 208 dp: „Original ausblenden“ 133.6, „Original einblenden“ 129.6, „Übersetzung ausblenden“ 166.6, „Übersetzung einblenden“ 162.6, „Minimieren“ 75.8, the folded „Aufnehmen“ 77.8 dp. All fit at font scale 1.0; at 1.3 the two Übersetzung rows are 216.5 / 211.4 dp and ellipsize by 3 to 9 dp, with no shorter wording that keeps the file's „ausblenden/einblenden“ and „Übersetzung“ (noted, not a finding).
+- ⋯ menu headings, 12 sp medium, room 248 dp: „Dieses Ergebnis“ 86.1, „Text“ 23.8, „Aufnahme“ 55.6, „PlayTranslate“ 74.0 dp.
+- Bar pill, 14 sp regular (`DetachedWindowBar`: 11 dp + 18 dp icon + 6 dp + label + 14 dp): „Aufnehmen“ 72.0 dp, so a 121.0 dp pill against English's 98.1 dp; beside it „Auto“ 29.4 dp (78.4 dp pill) and „Pause“ 38.8 dp (87.8 dp pill). `applyFit` drops both pills to icons when they do not fit with names, so the German bar loses its names about 23 dp sooner than English and never clips. „Aufnehmen“ is the one short word the comment asks for and the file's capture verb.
+- Toolbar title, 22 sp regular, room 296 dp at 360 dp: „KI-Sprachausgabe-Dienst“ 246.4 dp (fits; 320.2 dp at font scale 1.3, where it ellipsizes, as would „KI-Sprachausgabedienst“ at 238.3 / 309.8 dp).
+- Floating menu panel row: „Abdocken“ 67.5 dp, beside „PlayTranslate öffnen“ 140.1 dp.
+- Wrapping widgets, no constraint: „Automatisch in die Zwischenablage kopieren“ (301.1 dp at 15 sp medium) breaks as „Automatisch in die“ / „Zwischenablage kopieren“ (125.8 / 171.5 dp), two lines as the brief allows; the group headers „AUTOMATISCH VORLESEN“ and „KI-SPRACHAUSGABE-DIENST“ (134.3 / 146.9 dp before letter spacing, about 161 / 177 dp with it) stay on one line on a phone and contain no ß.
+
+**The picker as a set:** „Übersetzungsdienst auswählen“ mirrors `ocr_picker_title` „OCR-Tool auswählen“ (tool → service), and `cd_choose_translation_service` is the same text, as `cd_choose_ocr` is. The message carries both facts in two sentences: „Der Dienst, den du hier auswählst, übersetzt diesen Text noch einmal.“ (only this text, once) and „Deine Einstellungen bleiben unverändert.“ (nothing remembered). Its subject is the singular service picked „hier“, so it cannot be read as describing the plural footer button „Übersetzungsdienste“ (byte-equal to `settings_cell_translation_services`). Beside the existing headers „Online-Übersetzungen“ / „Offline-Übersetzungen“ and „Abbrechen“ the dialog reads as one. The gear's label is read after „Übersetzt von DeepL“ and makes sense there.
+
+**The failure alert:** `translation_pick_failed_generic` with real values: „Firefox Translations konnte diesen Text nicht übersetzen.“, „DeepL konnte …“, „Gemini konnte …“, „ML Kit konnte …“, „Hunyuan-MT 7B konnte …“, and a user-typed „Mein Server konnte …“. German takes any name as an uninflected nominative subject, so no value breaks it; a brand that looks plural takes the singular verb as a product name does („Google Maps zeigt“). The title is the 💬 above.
+
+**Detached window:**
+- `icon_action_pull_out_window` „Ergebnisfenster herausziehen“ is an infinitive with no period like its siblings („Schnellmenü öffnen“, „Bildschirm aufnehmen“, „Spielsprache ändern“), and „herausziehen“ is the drawer verb the comment asks for. On the gestures page it reads „Ziehen · Ergebnisfenster herausziehen“, beside „Über ein Wort fahren, um seine Definition zu sehen“. „Ergebnisfenster“ names the window once; the window's own text says „dieses Fenster“.
+- `floating_menu_panel_detach` „Abdocken“: a command beside „PlayTranslate öffnen“, with the row's window-detach icon. It is German UI's verb for turning a docked panel into a window, and the code's own model is a dock (the window returns to the icon by the „dock gesture“ at the edge), so the metaphor is the app's. English "Detach" is no less abstract. Accepted.
+- `detached_bar_minimize` „Minimieren“ is the window-control word.
+- `detached_bar_capture` „Aufnehmen“ (command) and `detached_menu_group_capture` „Aufnahme“ (noun) differ as the brief asks, and „Aufnahme“ is the app's capture noun („Aufnahme und Overlay“).
+- `detached_status_idle` „Tippe auf „Aufnehmen“, um den Spielbildschirm zu übersetzen“: the quoted name byte-matches `detached_bar_capture`; „Spielbildschirm“ as in `status_idle`; no final period, as English and as `status_idle`. Quoting the button is the file's convention for a named button („Tippe auf „Modell““ in `voice_service_no_model_list_type_model`) and needed here, since an unquoted verb would not read as a name.
+- `detached_status_idle_hint`: three du-sentences, drag phrasing as in `label_region_drag_hint` („Ziehe …“), „seine Größe“ referring correctly to „dieses Fenster“, and „im Menü ⋯“ with the character kept.
+- The four headings as a set: „Dieses Ergebnis / Text / Aufnahme / PlayTranslate“, all nouns, all one line.
+- The menu rows as a set: „Zu Anki hinzufügen“, „Vorlesen“, „Original ausblenden/einblenden“, „Übersetzung ausblenden/einblenden“, „Textgröße“, „Bereich bearbeiten“: infinitive commands throughout, and the two eye pairs use one verb pair, „ausblenden/einblenden“, exactly as `cd_toggle_original_visibility` / `cd_toggle_translation_visibility` („… ein-/ausblenden“), with „Original“ and „Übersetzung“ = `section_original` / `section_translation`.
+
+**Auto Copy to Clipboard:** „Zwischenablage“ is Android's German term („In die Zwischenablage kopiert“); the locale had no clipboard string before, and „kopieren/Kopiert“ is the file's copy verb (`history_action_copy`, `toast_copied`). The title is an infinitive in German sentence case, like the Overlay group's other switch titles („Furigana aus dem OCR-Ergebnis filtern“, „Vertikalen Text verbreitern“). The subtitle opens with a third-person verb like its neighbour „Zeigt ein sanftes Leuchten …“, uses „Originaltext“ (= `tts_auto_play_original_title`) and „während der automatischen Übersetzung“ (= `settings_header_auto_translate`, and the phrase of `settings_capture_interval_hint`), and shares „nach jeder Aufnahme“ and „, aber nicht während der automatischen Übersetzung“ word for word with `tts_auto_play_original_subtitle`. Joining the English's two sentences with „, aber nicht …“ avoids a verbless German fragment and keeps the mirror; I agree with the translator. „Aufnahme“ rather than „Bildschirmaufnahme“ is right here: the copy also follows a Camera snapshot, and the file says „Kamera- oder Bildschirmaufnahme“ for the two.
+
+**Text-to-speech page, read top to bottom** (toolbar „Sprachausgabe“, „Geschwindigkeit“, „AUTOMATISCH VORLESEN“ with its two rows, „KI-SPRACHAUSGABE-DIENST“ with „Sprachausgabe-Dienst verbinden“, the device voices under „Sprachausgabe“ or the engine's name, „IMPORTIERTE SPRACHAUFNAHMEN“):
+- „Automatisch vorlesen“ uses the file's TTS verb (`header_action_read_aloud` „Vorlesen“, „um Wörter vorzulesen“), and both subtitles continue it („Liest … vor“).
+- „Wörter“ = `section_words`; „Liest jedes Wort vor, das du nachschlägst.“ is a native subtitle in place of the English fragment, with the file's lookup verb.
+- „Originaltext“ is the text under „Original“, not the translation.
+- „nach jeder Aufnahme“ on this page: since round 1 of 2026-11-16 the recordings header says „Sprachaufnahmen“, so „Aufnahme“ alone on the page reads as the capture, as it does across the file.
+- `tts_voice_online` / `tts_voice_offline` are short standalone status words, so a row reads „… · Online · Download erforderlich“.
+- `audio_source_voice_service_name` „KI-Sprachausgabe-Dienst“: „KI“ is the locale's one AI word (`service_llm_badge` „KI“, „Erweiterte KI-Konfiguration“, „Für Fragen ist ein KI-Modell nötig“), „Sprachausgabe-Dienst“ is the noun settled on 2026-11-16, and the other `voice_service_*` strings keep the generic „Sprachausgabe-Dienst“, as English keeps "voice service". No German string quotes the page title by name, so nothing has to follow the change. Not „Online“.
+
+**Register and typography:** a scan of the 28 added values finds no Sie, Ihr or Ihnen; every address is du („Tippe“, „Ziehe“, „findest du“, „du auswählst“, „du nachschlägst“, „Deine Einstellungen“). No em dash, no straight quote, every „ closed by “.
+
+### Source-side notes
+
+- `TtsVoiceLabels.subtitle` (`app/src/main/java/com/playtranslate/tts/TtsVoiceLabels.kt:66-80`) hard-codes the quality part in English („High quality“, „Very high quality“ …), so a German voice row reads „High quality · Online · Download erforderlich“. No string can fix it. (Confirms the translator's note.)
+- `detached_status_idle` names the Capture button by its label, but where the bar is too narrow for names (`DetachedWindowBar.applyFit`), the pill shows only its icon or folds into the menu, so „Tippe auf „Aufnehmen““ then names a word that is not on screen. The same is true in English; a design point, not a string fix. (Confirms the translator's note.)
+
+### German appendix
+
+- Placeholder contact point (the one in the delta): `translation_pick_failed_generic` puts the service name first as the nominative subject of „konnte“; no case, article or gender meets it.
+- Compounds: „Übersetzungsdienst“, „Ergebnisfenster“, „Spielbildschirm“, „Zwischenablage“, „Originaltext“ are closed compounds; „KI-Sprachausgabe-Dienst“ keeps the file's hyphenated „Sprachausgabe-Dienst“ and joins the abbreviation with a hyphen, which the orthography allows for readability.
+
+### Verdict (round 1)
+
+**PASS**: 🛑 0 / ❌ 0 / ⚠️ 0 / 💬 1 (`translation_pick_failed_title`, optional). Nothing outside the delta changed.
+
+### Disposition (round 1, 2026-11-23)
+
+Applied by the coordinator: `translation_pick_failed_title` «Konnte nicht übersetzt werden» → «Übersetzung fehlgeschlagen» (💬; the file's failure-alert titles take the «X fehlgeschlagen» form, and the old title repeated the message). Left as noted, no fix proposed: the toolbar title and the two «Übersetzung …» menu rows ellipsize at font scale 1.3. Mechanical check after the fix: `de: 28 keys checked, 0 problems, 3 warnings` (Text, Online, Offline identical to English, correct German).
+
+### Round 2 (2026-11-23), final review after applying round 1
+
+Mechanical layer: `mech_check.py de` -> `de: 28 keys checked, 0 problems, 3 warnings` (`detached_menu_group_text`, `tts_voice_online`, `tts_voice_offline`: identical to English, correct German; no placement warning). `l10n_diff.py` against `en-base.xml` -> `values-de   missing=0  orphan=0  modified=1`, the one being `audio_source_voice_service_name` („KI-Sprachausgabe-Dienst“, the new meaning). `git diff` on the locale file (read-only): the 27 inserted keys, the one changed value and the removed `tts_voices_section_header` line, nothing else. A script over the 28 values: the xliff span of `translation_pick_failed_generic` is byte-identical to English; the only non-ASCII characters besides umlauts are „ “ (U+201E/U+201C) in `detached_status_idle` and ⋯ (U+22EF, as in English) in `detached_status_idle_hint`; no em dash, no straight quote or apostrophe, no Sie/Ihr/Ihnen. **No 🛑 issues.**
+
+Round-1 fix checked: `translation_pick_failed_title` now reads „Übersetzung fehlgeschlagen“, byte-equal to round 1's `suggested`. The alert as a set (`ChosenServiceTranslation.failureAlert`): title „Übersetzung fehlgeschlagen“, then either „DeepL konnte diesen Text nicht übersetzen.“ or an online service's reason in the error pill's words („DeepL: …“), then „OK“. Title and message no longer repeat each other, the title does not suggest the translation on screen is gone, and it takes the file's failure-alert form (`lang_download_error_title`, `update_error_title`, `yomitan_io_error_title`). The two older „Konnte nicht übersetzt werden“ strings (`anki_translation_error`, `hold_translation_failed`) are a field placeholder and a pill, not alert titles, so they need not follow. No neighbour broke.
+
+#### Findings (round 2)
+
+None.
+
+#### Clean areas (round 2)
+
+**Widths re-measured** (Measure.java, Roboto; font scale 1.0 unless stated):
+- Bar pill, now at the corrected 14 sp sans-serif-medium (`DetachedWindowBar.iconAndLabel`, constants 11 + 18 + 6 + label + 14 dp): „Aufnehmen“ 72.6 dp, so a 121.6 dp pill against English „Capture“'s 98.5 dp; „Auto“ 29.7, „Pause“ 39.1 dp. Round 1 measured at regular weight (72.0 dp); the 0.6 dp changes nothing. `applyFit` measures each pill at its natural width and drops both to icons when they do not fit, so the label never clips; the German bar loses its names about 23 dp sooner.
+- ⋯ menu rows, 15 sp medium, room 280 − 72 = 208 dp (`ActionOverflowMenu` MAX_W_DP 280): „Original ausblenden“ 133.6, „Original einblenden“ 129.6, „Übersetzung ausblenden“ 166.6, „Übersetzung einblenden“ 162.6, „Minimieren“ 75.8, the folded „Aufnehmen“ 77.8, beside the existing „Zu Anki hinzufügen“ 129.8 and „Bereich bearbeiten“ 126.2 dp. All fit; the two Übersetzung rows ellipsize only at font scale 1.3, as round 1 and the disposition left.
+- ⋯ menu headings, 12 sp medium, room 248 dp: „Dieses Ergebnis“ 86.1, „Text“ 23.8, „Aufnahme“ 55.6, „PlayTranslate“ 74.0 dp.
+- Toolbar title, 22 sp regular, 296 dp at 360 dp: „KI-Sprachausgabe-Dienst“ 246.4 dp (320.2 dp at 1.3, left as disposed).
+- Panel row: „Abdocken“ 67.5 dp beside „PlayTranslate öffnen“ 140.1 dp.
+- Wrapping: „Automatisch in die Zwischenablage kopieren“ 301.1 dp breaks into „Automatisch in die“ / „Zwischenablage kopieren“ (125.8 / 171.5 dp), two lines; the group headers „AUTOMATISCH VORLESEN“ / „KI-SPRACHAUSGABE-DIENST“ are about 161 / 177 dp with letter spacing, one line, no ß for the caps to change.
+
+**The picker as one dialog:** title „Übersetzungsdienst auswählen“ mirrors `ocr_picker_title` „OCR-Tool auswählen“; the gear's label is the same text, as `cd_choose_ocr` is, and reads well after „Übersetzt von DeepL“. The message („Der Dienst, den du hier auswählst, übersetzt diesen Text noch einmal. Deine Einstellungen bleiben unverändert.“) carries both facts in natural German; its singular subject picked „hier“ belongs to the service buttons under „Online-Übersetzungen“ / „Offline-Übersetzungen“ and cannot be read as describing the plural footer button „Übersetzungsdienste“ (= `settings_cell_translation_services`, which `TranslationPicker` uses as is) beside „Abbrechen“.
+
+**The detached window as a set:**
+- The bar: „Auto“ / „Pause“ and „Aufnehmen“; the idle text „Tippe auf „Aufnehmen“, um den Spielbildschirm zu übersetzen“ names the button byte-exact, quoted so the verb reads as a name, and mirrors the in-app `status_idle` („Tippe auf Übersetzen, um den Spielbildschirm aufzunehmen“).
+- The hint: three du-sentences; „seine Größe“ can only refer to „dieses Fenster“ (die Ecke is feminine); „im Menü ⋯“ keeps the character.
+- The menu: headings „Dieses Ergebnis / Text / Aufnahme / PlayTranslate“, all nouns; under „Aufnahme“ the folded command „Aufnehmen“ sits beside the noun heading, which is the noun/command split the brief asks for. The two eye pairs use one verb pair, „ausblenden/einblenden“, the file's („… ein-/ausblenden“ in `cd_toggle_*_visibility`), with „Original“ / „Übersetzung“ = `section_original` / `section_translation`. All rows are infinitive commands, as „Vorlesen“, „Textgröße“, „Bereich bearbeiten“ around them.
+- Entry points: „Ergebnisfenster herausziehen“ is an infinitive like its siblings under „Ziehen“ („Über ein Wort fahren, …“) and names the window once; „Abdocken“ on the panel row was accepted in round 1 with reasons (the icon docks at the edge; German UI's verb for a docked panel becoming a window), and I have no new evidence to reopen it. „Minimieren“ is the window-control word.
+
+**Overlay group's last rows:** „Randanzeige“ / „Zeigt ein sanftes Leuchten …“, then „Automatisch in die Zwischenablage kopieren“ / „Kopiert den Originaltext nach jeder Aufnahme, aber nicht während der automatischen Übersetzung.“ German sentence case like „Vertikalen Text verbreitern“ above; „Zwischenablage“ is Android's German term and „kopieren“ the file's copy verb; the subtitle opens with a verb like its neighbour; „während der automatischen Übersetzung“ is `settings_header_auto_translate`'s term and the phrase this same screen uses (`settings_capture_interval_hint`); „jeder …, aber nicht …“ is a normal German exception pattern, not a contradiction.
+
+**Text-to-speech page:** „AUTOMATISCH VORLESEN“ over „Wörter“ (= `section_words`) / „Liest jedes Wort vor, das du nachschlägst.“ and „Originaltext“ / „Liest den Originaltext nach jeder Aufnahme vor, aber nicht während der automatischen Übersetzung.“: titles are the things read, „vorlesen“ is the file's TTS verb, and the second subtitle shares its two phrases word for word with the Auto Copy subtitle. A voice row reads „High quality · Online · Download erforderlich“ (quality hard-coded in `TtsVoiceLabels.subtitle`, as round 1 noted). „KI-SPRACHAUSGABE-DIENST“ over „Sprachausgabe-Dienst verbinden“: „KI“ is the locale's AI word (`service_llm_badge`, `settings_header_advanced_llm`, `ask_no_llm_title`), the other `voice_service_*` strings keep the generic „Sprachausgabe-Dienst“ as English keeps "voice service", and the same name serves the Anki audio picker header and the service page's toolbar.
+
+**Register:** du throughout („Tippe“, „Ziehe“, „findest du“, „du auswählst“, „du nachschlägst“, „Deine Einstellungen“ capitalized only as a sentence start).
+
+#### Verdict (round 2)
+
+**PASS**: 🛑 0 / ❌ 0 / ⚠️ 0 / 💬 0. The applied round-1 fix is correct and broke nothing; nothing outside the delta changed. Still open from round 1, no fix proposed: the toolbar title and the two „Übersetzung …“ menu rows ellipsize at font scale 1.3.
+
+### Disposition (round 2, 2026-11-23)
+
+Round 2 found nothing. Applied after the final review at the developer's request, by the coordinator, without a further review round: `ocr_picker_message` (outside the delta) gets the final stop its English has, as its new twin `translation_picker_message` does. Analyzer, mechanical check and `:app:processDebugResources` green afterwards.

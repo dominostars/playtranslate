@@ -1139,3 +1139,90 @@ Fresh read of the 213 keys by screen, against the neighbours already on each scr
 #### Disposition (round 2, 2026-11-16)
 
 Both optional 💬 applied byte-exact at the developer's request: `local_audio_load_subtitle` and `local_audio_remove_confirm_message` (no repeated 読み上げ). After applying: mech_check 0 errors, aapt2 ok, only delta keys changed, `:app:processDebugResources` green.
+
+## Delta review 2026-11-23 (translation service picker, detached window, Auto Copy to Clipboard, text-to-speech auto-play, AI Voice Service: 27 new keys, 1 changed, 1 orphan removed)
+
+Mechanical layer: `python3 mech_check.py ja` -> `ja: 28 keys checked, 0 problems, 0 warnings`; `python3 scripts/l10n_diff.py --locale app/src/main/res/values-ja/strings.xml --english-base en-base.xml` -> `values-ja   missing=0  orphan=0  modified=1`, the one being `audio_source_voice_service_name` (base "Voice service", now "AI Voice Service", ja 「AI音声サービス」), listed by design. `git diff --stat` of values-ja: 55 insertions, 2 deletions, which is the 27 new keys with their blank lines, the changed value, the old value and the orphan `tts_voices_section_header`; no other line moved, and the 27 sit in English order (mech_check reports no placement warning). A scripted pass over the 28 values: all NFC, no space, no あなた, no half-width punctuation, no em dash; the only character outside kana, kanji and full-width punctuation is the hint's ⋯, U+22EF, the same code point as the English. The one `<xliff:g id="service">` span is byte-identical. **No 🛑 issues.**
+
+### Findings
+
+None. (`review1/ja.json` is an empty array.)
+
+### Clean areas (checked, no findings)
+
+**Translation service picker, read as one alert.** Title 「翻訳サービスを選択」 mirrors `ocr_picker_title` 「OCRツールを選択」, and the gear's label `cd_choose_translation_service` is the same text, as `cd_choose_ocr` = `ocr_picker_title` in this file; TalkBack reads it after 「DeepLによる翻訳」. The message 「選択したサービスで、このテキストのみを再翻訳します。設定は変更されません。」 states both facts of the comment (のみ for "only the text on screen"; 設定は変更されません for "your settings stay"). 選択した is the file's form, and 再翻訳 is `translate_button_prefix_reload`'s word. It names no button, so it cannot be taken as describing the footer's 翻訳サービス (`settings_cell_translation_services`) beside キャンセル. Under it the existing headers オンライン翻訳 / オフライン翻訳 sit over service names. The failure alert reads as one: title 「翻訳できませんでした」, byte-identical to `anki_translation_error` and `hold_translation_failed`; message 「Firefox Translationsでこのテキストを翻訳できませんでした。」 (likewise DeepL, Gemini, ML Kit, Hunyuan-MT 7B, a user-typed 「My Server」: で attaches to any proper noun); button OK. The title's verb repeats in the message, as the English repeats "couldn't translate". When a specific reason replaces the generic message, it is a pill line such as 「Gemini：APIキーが無効です」, a fragment beside this one full sentence; the English pairs them the same way.
+
+**Detached window.**
+- Entry points. `icon_action_pull_out_window` 「結果ウィンドウを引き出す」 sits in the Drag list beside 「単語にかざして定義を表示」, both plain-form commands like the other `icon_action_*` values (クイックメニューを開く, 画面をキャプチャ). 引き出す is the verb Japanese uses for drawers and edge panels. 結果ウィンドウ is the window's one name; the window's own strings call it このウィンドウ. The gestures page's row titles wrap (`IconGesturesSettingsActivity` sets a row title with no line cap), so its 180 dp at 15 sp is no issue. `floating_menu_panel_detach` 「ウィンドウで表示」 is a command beside 「PlayTranslateを開く」, and the row's icon (`ic_window_detach`) carries "detach". The quick-settings row is one line, ellipsized (`QuickSettingsRows.populate`). Its room, from `FloatingIconMenu` (300 dp card, 22 dp padding, 48 dp secondary lane, 11 dp gap: 219 dp) and `settings_row_link.xml` (24 dp padding, 16 dp margin, 20 dp icon), is 159 dp. The label is 120.0 dp, 156.0 dp at font scale 1.3. A literal 「ウィンドウに切り離す」 would ellipsize just above scale 1.0, as the translator measured. The existing neighbour 「PlayTranslateを開く」 already ellipsizes at 1.3 (178.7 dp).
+- Bar. 「キャプチャ」 is the file's capture word (42 uses, never キャプチャー; `floating_menu_capture_screen` 「キャプチャ\n全画面」). The pill is 11 + 18 + 6 + 70.0 + 14 = 119 dp against the English 98.1 dp. Beside 自動 / 停止 (28.0 dp each, pill 77 dp), the two pills take 196 dp against the English 176.5 dp (Auto) or 185.9 dp (Pause). The bar only drops the names about 20 dp sooner (`DetachedWindowBar.applyFit`), and the default window is 420 dp wide. No shorter word is the app's capture term, and the idle text must quote it. 最小化 is Android's word for the window control.
+- Idle text. 「「キャプチャ」をタップしてゲーム画面を翻訳」 quotes the pill's label byte-exact and takes `status_idle`'s frame (「「翻訳」をタップしてゲーム画面をキャプチャ」), with no 。 as there. The hint keeps three sentences, two of them a parallel 〜をドラッグすると、〜できます, and その他の操作 is `cd_more_actions`. 下の角 covers both bottom corners.
+- Menu. Headings この結果 (48.0 dp), テキスト (48.0 dp) and キャプチャ (60.0 dp), with PlayTranslate (74.0 dp) as the fourth, at 12 sp medium in a one-line, ellipsized heading (`ActionOverflowMenu`: maxLines 1, END) with up to 248 dp: all fit. The heading キャプチャ and the bar's キャプチャ are one word: a katakana する-noun serves as the noun and, 体言止め, as the button, which is how the file writes its buttons. A heading such as キャプチャ設定 would misname the folded Auto and Capture rows under it. Rows at 15 sp medium, room 208 dp: 原文を非表示 90.0, 原文を表示 75.0, 翻訳を非表示 90.0, 翻訳を表示 75.0 dp (117.0 dp at 1.3), beside 文字サイズ, 範囲を編集, Ankiに追加 (75.0 dp each) and 読み上げ (60.0 dp). The eye rows use one verb pair, 非表示 / 表示, identically in both pairs, as `hidden_word_hide_content_description` / `_show_` (単語を非表示 / 単語を表示) and `history_hide_translations_toggle_title` (翻訳を非表示) already do, and the eye buttons' labels say 表示・非表示.
+
+**Auto Copy to Clipboard.** 「クリップボードに自動コピー」 uses Android's クリップボード (the file had no clipboard string before; its copy verb is コピー, as in `toast_copied`) and needs no title case. It closes the Overlay group under 「画面端のインジケーター」, whose subtitle is a です/ます sentence ending in 。. The subtitle 「キャプチャ後に原文をコピーします。自動翻訳中はコピーしません。」 mirrors `tts_auto_play_original_subtitle` 「キャプチャ後に読み上げます。自動翻訳中は読み上げません。」 frame for frame. 原文 is `tts_auto_play_original_title` / `section_original`, and 自動翻訳 is `settings_header_auto_translate`. The verbless English is not calqued.
+
+**Text-to-speech page.** オンライン / オフライン are standalone status words, as ダウンロードが必要 is after them. The header 自動再生 is the plain Japanese for "play automatically" and covers recordings as well as speech. Under it, 単語 (`section_words`) / 「単語を調べたときに読み上げます。」 and 原文 / 「キャプチャ後に読み上げます。自動翻訳中は読み上げません。」 read as a set: noun titles for the thing played, です/ます subtitles with one verb. 読み上げ is the file's speaking verb (`header_action_read_aloud`, `cd_read_original_aloud`). A word that plays from a recording (`PronunciationPlayer` through `LensSpeech`) makes 読み上げ slightly loose, as the file's other word strings already are. 「AI音声サービス」 uses the file's one AI word (`service_llm_badge` AI, AIの詳細設定, AIモデル). It reads as a header beside テキスト読み上げ on the voice page, and beside ゲーム音声 / Wikimedia Commons / android.dbファイル in the Anki picker. As the toolbar title (`OnlineTtsServiceActivity`: 22 sp, one line) it is 152.3 dp, 198.0 dp at 1.3, against 296 dp (English 157.7 dp). The `voice_service_*` strings and `anki_added_voice_fell_back` keep 音声サービス, as English keeps "voice service", and no string quotes the name in 「」.
+
+**Outside the delta (no finding, for the coordinator).** `ocr_picker_message`, the twin dialog's body, ends without 。 (「…正確に読み取れることがあります」), while its first sentence and the new `translation_picker_message` end with one. The translator flagged it too. Changing it would touch a line outside this sync's scope, so it is not in the JSON.
+
+### Source-side notes
+
+- `detached_bar_minimize`: the English comment says the string is also the button's "name in the bar's overflow menu", but `DetachedWindowBar` pins Minimize (`val pinned = listOf(actions.minimize)…`, line 185; class doc: "Minimize and the menu button always stand"), so from the code it is only ever the screen-reader label. This confirms the translator's note. Harmless for every locale.
+- A voice row's subtitle starts with a quality that `TtsVoiceLabels.subtitle` hard-codes in English (lines 67 to 72: "High quality" and the rest), so a Japanese user reads 「High quality · オンライン · ダウンロードが必要」. CONTEXT already knows this; no string can fix it.
+
+### Japanese appendix
+
+Placeholder contact points, read with real values: 「Firefox Translationsでこのテキストを翻訳できませんでした。」, 「DeepLでこのテキストを…」, 「Hunyuan-MT 7Bでこのテキストを…」, and a custom name 「My Serverでこのテキストを…」. A Latin name sits flush against で, as in `translation_source_label` 「DeepLによる翻訳」. No other delta key has a placeholder.
+
+Register: dialog bodies, subtitles and the hint are short です/ます sentences ending in 。 (the picker message, the failure message, both auto-play subtitles, the auto-copy subtitle, the hint). The idle status has no 。, as `status_idle` has none. Buttons, rows, headings and titles end in a noun or 体言止め (翻訳サービスを選択, ウィンドウで表示, 原文を非表示, 最小化, 自動再生), or in a plain-form verb on the gestures list (結果ウィンドウを引き出す), matching each list's neighbours. No あなた.
+
+Widths (Measure.java, `--lang ja`):
+
+| widget | text | width | room |
+|---|---|---|---|
+| ⋯ menu heading, 12 sp medium, 1 line | この結果 / テキスト / キャプチャ / PlayTranslate | 48.0 / 48.0 / 60.0 / 74.0 dp | 248 dp |
+| ⋯ menu row, 15 sp medium, 1 line | 原文を非表示 / 原文を表示 / 翻訳を非表示 / 翻訳を表示 | 90.0 / 75.0 / 90.0 / 75.0 dp (117.0 at 1.3) | 208 dp |
+| Bar pill, 14 sp regular | キャプチャ (Capture 49.1); 自動 / 停止 (Auto 29.4, Pause 38.8) | 70.0; 28.0 / 28.0 dp, so pills 119 + 77 dp | names drop about 20 dp sooner, never clip |
+| Toolbar title, 22 sp regular, 1 line | AI音声サービス (AI Voice Service 157.7) | 152.3 dp (198.0 at 1.3) | 296 dp on a 360 dp phone |
+| Quick-settings row, 15 sp medium, 1 line | ウィンドウで表示 | 120.0 dp (156.0 at 1.3) | 159 dp |
+| Group header, 11 sp medium (wraps; CJK not uppercased) | 自動再生 / AI音声サービス | 44.0 / 76.4 dp, plus 1.32 dp a character of letter spacing | wraps |
+
+### Verdict (round 1)
+
+**PASS**: 0 🛑 / 0 ❌ / 0 ⚠️ / 0 💬. The 28 values read as native Japanese and use the file's own terms (キャプチャ, 原文, 自動翻訳, 再翻訳, 翻訳サービス, AI). Every cross-reference byte-matches its label (「キャプチャ」, the failure title's shared 翻訳できませんでした). Every one-line widget fits with room, measured against its render code. The one open item is outside the delta: `ocr_picker_message` lacks its final 。, the coordinator's call.
+
+### Disposition (round 1, 2026-11-23)
+
+No findings in the delta. Applied by the coordinator, outside the delta, on the reviewer's note: `ocr_picker_message` gets the final 。 its English has, so it matches its new twin `translation_picker_message` in the same family of dialogs. Mechanical check after the fix: `ja: 28 keys checked, 0 problems, 0 warnings`.
+
+### Round 2 (2026-11-23), final review after applying round 1
+
+Mechanical layer: `python3 mech_check.py ja` -> `ja: 28 keys checked, 0 problems, 0 warnings`; `python3 scripts/l10n_diff.py --locale app/src/main/res/values-ja/strings.xml --english-base en-base.xml` -> `values-ja   missing=0  orphan=0  modified=1`, the one being `audio_source_voice_service_name` (now 「AI音声サービス」), listed by design. `git diff --stat` of values-ja: 56 insertions, 3 deletions, which is the 27 new keys with their blank lines, the changed voice-service value, the orphan `tts_voices_section_header` and the coordinator's `ocr_picker_message` fix; nothing else moved. A scripted pass over the 28 values and `ocr_picker_message`: all NFC, no space, no half-width punctuation, no あなた, no dash; the only character outside kana, kanji and full-width punctuation is the hint's ⋯, U+22EF, the English code point. The `<xliff:g id="service">` span is byte-identical. **No 🛑 issues.**
+
+Round-1 change checked: `ocr_picker_message` now ends 「…正確に読み取れることがあります。」, as its English ends with a period and as its first sentence and its new twin `translation_picker_message` end. It is a wrapping alert body, so the added 。 costs no width, and no other string quotes it. Nothing else was applied, so no neighbour could break.
+
+#### Findings (round 2)
+
+None. (`review2/ja.json` is an empty array.)
+
+#### Clean areas (round 2)
+
+Read fresh, screen by screen, against the strings already on each screen and the render code.
+
+- **Picker, as one alert.** 「翻訳サービスを選択」 over 「選択したサービスで、このテキストのみを再翻訳します。設定は変更されません。」, then オンライン翻訳 / オフライン翻訳 over service names, then 翻訳サービス and キャンセル (`TranslationPicker.populate`). The title mirrors 「OCRツールを選択」, and the gear's label is the same text, as `cd_choose_ocr` is. The body gives both facts of the comment and names no button, so it cannot be taken for the footer's 翻訳サービス. 選択した reads as the pick about to be made, as in 選択したファイルを削除します.
+- **Failure alert.** 「翻訳できませんでした」 (byte-identical to `anki_translation_error`, `hold_translation_failed`) over 「Firefox Translationsでこのテキストを翻訳できませんでした。」 and OK (`ChosenServiceTranslation.failureAlert`). で takes any service name, a typed one included. When an online service's reason replaces the generic message, it comes from `TranslationErrorMessages`, as the error pill says it.
+- **Bar.** Re-measured at the corrected style, 14 sp sans-serif-medium (`DetachedWindowBar` line 309): キャプチャ 70.0 dp, 自動 / 停止 28.0 dp (CJK glyphs have the same advance in medium as in regular, so round 1's figures stand), against Capture 49.5, Auto 29.7, Pause 39.1. The label is measured unconstrained (`widthOf`), so a long one only drops the pills' names sooner and never clips. 最小化 is Android's window word.
+- **Idle text.** 「「キャプチャ」をタップしてゲーム画面を翻訳」 quotes `detached_bar_capture` byte-exact and takes `status_idle`'s frame, without 。 as there. The hint reads as three natural sentences; その他の操作 is `cd_more_actions`, and 下の角 covers both resize corners.
+- **Menu, as a set** (`DetachedWindow.Menu.menuGroups`). Headings この結果 / テキスト / キャプチャ / PlayTranslate (48.0 / 48.0 / 60.0 / 74.0 dp at 12 sp medium). この結果 is a noun phrase here, as in Google's 「この検索結果について」, not the connective. Under テキスト the rows ふりがな, 原文を非表示 / 原文を表示, 翻訳を非表示 / 翻訳を表示 (90.0 / 75.0 dp at 15 sp medium), 文字サイズ: one verb pair, 非表示 / 表示, used the same way in both pairs and matching `history_hide_translations_toggle_title`. The heading キャプチャ over the folded 自動 / キャプチャ rows: a katakana する-noun is both the noun and the 体言止め button, so Japanese has no noun/command split to make here.
+- **Entry points.** 「結果ウィンドウを引き出す」 sits among the `icon_action_*` values (開く, 有効にする are dictionary-form verbs too) and names the window once; the window's own strings say このウィンドウ. 「ウィンドウで表示」 beside 「PlayTranslateを開く」 says what the tap gives. Its one-line, ellipsized row (`QuickSettingsRows.populate`: 12 dp padding a side, 16 dp margin, 20 dp icon, in the 300 dp card's 219 dp panel) leaves 159 dp; the label is 120.0 dp, 156.0 dp at font scale 1.3.
+- **Overlay group.** 「クリップボードに自動コピー」 closes the group under 「画面端のインジケーター」 as a noun-ending row title like the screen's others (キャプチャ間隔, オーバーレイモード). Its subtitle 「キャプチャ後に原文をコピーします。自動翻訳中はコピーしません。」 and `tts_auto_play_original_subtitle` 「キャプチャ後に読み上げます。自動翻訳中は読み上げません。」 share キャプチャ後に and 自動翻訳中は…ません; 原文 and 自動翻訳 are the file's terms.
+- **Text-to-speech page.** Headers インポートした録音 / AI音声サービス / テキスト読み上げ / 速度 / 自動再生 read as one set of noun headers. Under 自動再生, 単語 / 「単語を調べたときに読み上げます。」 and 原文 / the subtitle above are noun titles with です/ます subtitles. 「High quality · オンライン · ダウンロードが必要」: オンライン / オフライン stand alone as status words. 「AI音声サービス」 uses the file's AI and is 152.3 dp as the 22 sp toolbar title against 296 dp; the `voice_service_*` strings keep 音声サービス or サービス, as English keeps "voice service", and none quotes the page's name.
+
+Not re-opened: ウィンドウで表示 for "Detach", the shared キャプチャ for heading and button, and 読み上げ under 自動再生, each settled in round 1 with reasons I agree with and no new evidence against.
+
+#### Verdict (round 2)
+
+**PASS**: 0 🛑 / 0 ❌ / 0 ⚠️ / 0 💬. The coordinator's `ocr_picker_message` fix is correct. Nothing for the coordinator to decide.
+
+### Disposition (round 2, 2026-11-23)
+
+Round 2 found nothing; nothing applied.

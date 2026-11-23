@@ -295,9 +295,19 @@
 
     <string name="ocr_picker_title">OCRツールを選択</string>
 
-    <string name="ocr_picker_message">OCRはスクリーンショットからテキストを抽出する機能です。フォントによっては、別のツールの方が正確に読み取れることがあります</string>
+    <string name="ocr_picker_message">OCRはスクリーンショットからテキストを抽出する機能です。フォントによっては、別のツールの方が正確に読み取れることがあります。</string>
 
     <string name="cd_choose_ocr">OCRツールを選択</string>
+
+    <string name="translation_picker_title">翻訳サービスを選択</string>
+
+    <string name="translation_picker_message">選択したサービスで、このテキストのみを再翻訳します。設定は変更されません。</string>
+
+    <string name="cd_choose_translation_service">翻訳サービスを選択</string>
+
+    <string name="translation_pick_failed_title">翻訳できませんでした</string>
+
+    <string name="translation_pick_failed_generic"><xliff:g id="service" example="Firefox Translations">%1$s</xliff:g>でこのテキストを翻訳できませんでした。</string>
 
     <string name="cd_change_source_language">ゲームの言語を変更</string>
 
@@ -446,6 +456,8 @@
     <string name="icon_gesture_tap">タップ</string>
 
     <string name="icon_action_lookup_words">単語にかざして定義を表示</string>
+
+    <string name="icon_action_pull_out_window">結果ウィンドウを引き出す</string>
 
     <string name="icon_action_show_translations">画面に翻訳を表示</string>
 
@@ -1353,6 +1365,22 @@
 
     <string name="floating_menu_panel_open_app"><xliff:g id="app_name" example="PlayTranslate">%1$s</xliff:g>を開く</string>
 
+    <string name="floating_menu_panel_detach">ウィンドウで表示</string>
+
+    <string name="detached_bar_capture">キャプチャ</string>
+
+    <string name="detached_bar_minimize">最小化</string>
+
+    <string name="detached_status_idle">「キャプチャ」をタップしてゲーム画面を翻訳</string>
+
+    <string name="detached_status_idle_hint">上部のバーをドラッグすると、このウィンドウを移動できます。下の角をドラッグすると、サイズを変更できます。その他の操作は⋯メニューにあります。</string>
+
+    <string name="detached_menu_group_result">この結果</string>
+
+    <string name="detached_menu_group_text">テキスト</string>
+
+    <string name="detached_menu_group_capture">キャプチャ</string>
+
     <string name="floating_menu_drag_instruction">指でドラッグして特定の範囲をキャプチャ</string>
 
     <!-- ═══════════════════════════════════════════════════════════════
@@ -1411,6 +1439,10 @@
 
     <string name="settings_edge_indicator_subtitle">オーバーレイの表示中は、画面の周囲をほのかに光らせます。</string>
 
+    <string name="settings_auto_copy_title">クリップボードに自動コピー</string>
+
+    <string name="settings_auto_copy_subtitle">キャプチャ後に原文をコピーします。自動翻訳中はコピーしません。</string>
+
     <!-- ═══════════════════════════════════════════════════════════════
          HOTKEY SETUP DIALOG
          ═══════════════════════════════════════════════════════════════ -->
@@ -1454,6 +1486,14 @@
     <string name="header_action_edit">テキストを編集</string>
 
     <string name="cd_toggle_original_visibility">原文の表示・非表示を切り替え</string>
+
+    <string name="header_action_hide_original">原文を非表示</string>
+
+    <string name="header_action_show_original">原文を表示</string>
+
+    <string name="header_action_hide_translation">翻訳を非表示</string>
+
+    <string name="header_action_show_translation">翻訳を表示</string>
 
     <string name="cd_toggle_words_visibility">単語の表示・非表示を切り替え</string>
 
@@ -2090,10 +2130,23 @@
 
     <string name="tts_voice_needs_download">ダウンロードが必要</string>
 
+    <string name="tts_voice_online">オンライン</string>
+
+    <string name="tts_voice_offline">オフライン</string>
+
     <string name="tts_no_engine_row_subtitle">利用できる音声エンジンがありません。タップして追加してください。</string>
 
-    <string name="tts_voices_section_header"><xliff:g id="language" example="JAPANESE">%1$s</xliff:g>の音声</string>
     <string name="tts_speed_title">速度</string>
+
+    <string name="tts_auto_play_header">自動再生</string>
+
+    <string name="tts_auto_play_words_title">単語</string>
+
+    <string name="tts_auto_play_words_subtitle">単語を調べたときに読み上げます。</string>
+
+    <string name="tts_auto_play_original_title">原文</string>
+
+    <string name="tts_auto_play_original_subtitle">キャプチャ後に読み上げます。自動翻訳中は読み上げません。</string>
 
     <string name="tts_no_engine_dialog_title">テキスト読み上げがありません</string>
 
@@ -2330,7 +2383,7 @@
     <string name="audio_source_tts_name">テキスト読み上げ</string>
 
     <string name="audio_source_commons_name">Wikimedia Commons</string>
-    <string name="audio_source_voice_service_name">音声サービス</string>
+    <string name="audio_source_voice_service_name">AI音声サービス</string>
     <string name="audio_error_playing">この音声を再生できませんでした</string>
     <string name="voice_service_connect_title">音声サービスを接続</string>
     <string name="voice_service_connect_subtitle">お持ちのAPIキーでオンラインのAI音声を使用</string>

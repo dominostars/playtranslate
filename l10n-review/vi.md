@@ -968,3 +968,88 @@ Not a string, for the record: the vi file's banner comment still says `ADVANCED 
 **PASS**: 0 🛑 / 0 ❌ / 0 ⚠️ / 0 💬. All 9 round-1 changes are in the file byte-exact and broke no neighbour.
 
 **Correction to the round-1 Disposition (2026-11-16):** its list names the first applied finding as "1 applied: `⚠️`", a slip of the coordinator's script; that finding is ⚠️ `definitions_need_webview`, applied byte-exact like the others.
+
+## Delta review 2026-11-23 (translation service picker, detached window, Auto Copy to Clipboard, text-to-speech auto-play, AI Voice Service: 27 new keys, 1 changed, 1 orphan removed)
+
+Mechanical layer: `mech_check.py vi` -> `vi: 28 keys checked, 0 problems, 0 warnings`; `l10n_diff.py --english-base en-base.xml` -> `values-vi   missing=0  orphan=0  modified=1`, the 1 being `audio_source_voice_service_name` (base "Voice service", now "AI Voice Service", loc «Dịch vụ giọng nói AI»), listed by design. `git diff` of the file: the 27 new keys at English order, the one changed value, and the removal of `tts_voices_section_header` (0 occurrences left); nothing else moved (50 insertions, 2 deletions). Scripted over the 28 values: all NFC, no raw apostrophe, no double or edge space, no em or en dash, the hint's ⋯ is U+22EF as in English, the `<xliff:g>` span of `translation_pick_failed_generic` byte-identical. Every ASCII-only word is a real toneless syllable (sao, sau, thanh, thao, thu, khi, trong, tra, ra, di, to) or Latin (AI, menu). **No 🛑 issues.**
+
+### Findings
+
+| name | severity | current | suggested | note |
+|---|---|---|---|---|
+| icon_action_pull_out_window | 💬 | Kéo ra cửa sổ kết quả | Kéo cửa sổ kết quả ra | With «ra» straight after the verb and a place noun after it, «kéo ra cửa sổ …» first reads as "drag out to the results window" (as in «kéo ứng dụng ra màn hình chính»), with «ra» as "out to". "Pull X out" as of a drawer is verb + object + «ra» in Vietnamese («kéo ngăn kéo ra», «kéo thanh thông báo xuống»), which reads only one way and still starts with the verb like its sibling «Đưa lên một từ để xem định nghĩa» under the «Kéo» header. Same width (135.1 dp at 14 sp); the option row wraps in any case. It keeps the window's name «cửa sổ kết quả». |
+
+### Clean areas (checked, no findings)
+
+- **Picker, as one dialog.** «Chọn dịch vụ dịch thuật» is built like `ocr_picker_title` «Chọn công cụ OCR», and `cd_choose_translation_service` equals it as `cd_choose_ocr` equals the OCR title; TalkBack reads «Dịch bởi DeepL», then «Chọn dịch vụ dịch thuật, nút». The message «Dịch vụ bạn chọn sẽ dịch lại văn bản này. Cài đặt của bạn vẫn giữ nguyên.» keeps both facts, has the service as its subject, and cannot be read as a caption for the footer button «Dịch vụ dịch thuật» (= `settings_cell_translation_services`, the term the title reuses) beside «Hủy». The headers «Dịch trực tuyến» / «Dịch ngoại tuyến» sit between them naturally.
+- **Failure alert.** «Không thể dịch» = `anki_translation_error` = `hold_translation_failed`, and works as a title. Read with real values: «Firefox Translations không thể dịch văn bản này.», «DeepL …», «Gemini …», «ML Kit …», «Hunyuan-MT 7B …», a typed «Máy chủ của tôi không thể dịch văn bản này.»; Vietnamese has no case or agreement on the name, so every value reads. Then «OK».
+- **Bar and idle text.** «Chụp» is one word, the verb of «Chụp\nmàn hình» / «Chụp\nvùng». Pills at 14 sp regular: «Chụp» 32.4 dp beside «Tự động» 52.4 / «Tạm dừng» 63.9 (English Capture 49.1 beside Auto 29.4 / Pause 38.8): the two labels together are 84.8 / 96.3 dp against English's 78.5 / 87.9, so the bar drops its names a few dp sooner and nothing clips (`DetachedWindowBar.applyFit`). «Nhấn Chụp để dịch màn hình trò chơi» names the button byte for byte and is built like `status_idle` «Nhấn Dịch để chụp màn hình trò chơi», which also names its button capitalised without quotes. The hint's three sentences read natively; «đổi kích thước» is Android's resize, «Các thao tác khác» echoes the ⋯ button's own label `cd_more_actions` «Thao tác khác», and «menu» is the file's word («Mở menu nhanh»).
+- **Minimize.** «Thu nhỏ» is WMShell's caption-button word (translator's source, consistent with what I know of Android vi). Minimize is pinned on the bar and never folds into the menu (`DetachedWindowBar`: "Minimize and the menu button always stand"), so «Thu nhỏ» never stands next to «Cỡ chữ», where it could read as "smaller". 54.7 dp at 15 sp medium.
+- **Menu headings, as a set (12 sp medium, room 248 dp).** «Kết quả này» 63.0, «Văn bản» 43.9, «Chụp màn hình» 80.7 (104.8 at 1.3×), «PlayTranslate» 74.0. The capture heading is the noun phrase of `notif_channel_name`, kept apart from the button «Chụp»; Vietnamese has no separate noun form, and the longer phrase is what makes the heading "the capture".
+- **Menu rows (15 sp medium, room ≤ 208 dp).** «Ẩn văn bản gốc» 103.2, «Hiện văn bản gốc» 115.8 (150.5 at 1.3×), «Ẩn bản dịch» 79.2, «Hiện bản dịch» 91.8; neighbours «Thêm vào Anki» 100.1, «Đọc to» 43.7, «Cỡ chữ» 47.7, «Chỉnh sửa vùng» 104.0. One verb pair, Ẩn / Hiện, in both pairs, as in `hidden_word_hide/show_content_description` and `icon_action_show_translations`. The nouns are the eye buttons' own (`cd_toggle_original_visibility` / `cd_toggle_translation_visibility`); «Ẩn bản dịch» = `history_hide_translations_toggle_title`.
+- **Quick-settings panel row.** «Tách thành cửa sổ» beside «Mở PlayTranslate». The row is one line, ellipsized (`QuickSettingsRows.populate`), with 300 − 22 − 48 − 11 = 219 dp, less 2×12 padding, 16 margin and the 20 dp icon = 159 dp of title. Measured 124.3 dp at 1.0×, 142.9 at 1.15×, 161.6 at 1.3× (about 3 dp cut at the largest classic scale; «Mở PlayTranslate» is 153.4 there). I keep the translator's trade-off: «Tách cửa sổ» (82.4 / 107.2 dp) would fit everywhere but can read as "split the window", and «Tách thành cửa s…» stays legible.
+- **Window name.** «cửa sổ kết quả» on the gestures page, «cửa sổ này» in the hint, «cửa sổ» on the panel row: one name, new to the file (no earlier «cửa sổ»).
+- **Auto Copy to Clipboard.** «bảng nhớ tạm» is Android's clipboard word, and «sao chép» is the file's copy verb («Đã sao chép», `history_action_copy`). Sentence case, like «Chỉ báo viền màn hình» above it. 245.3 dp at 15 sp medium, so two lines on a 360 dp phone in a title with no `maxLines` (`settings_row_switch`), which the brief allows. The subtitle «Sao chép văn bản gốc sau mỗi lần chụp. Không sao chép trong khi tự động dịch.» mirrors `tts_auto_play_original_subtitle` «Đọc to sau mỗi lần chụp. Không đọc trong khi tự động dịch.»: «sau mỗi lần chụp» and «trong khi tự động dịch» are identical, and only the verb differs, which Vietnamese needs where English has the bare "Not during". «trong khi tự động dịch» is `settings_capture_interval_hint`'s phrase, lowercase mid-sentence as there; «văn bản gốc» is `tts_auto_play_original_title`'s term; «lần chụp» covers the Camera snapshot too (`history_capture_image_toggle_subtitle`).
+- **Text-to-speech page.** Headers on the page: «BẢN GHI ÂM ĐÃ NHẬP», «DỊCH VỤ GIỌNG NÓI AI», «CHUYỂN VĂN BẢN THÀNH GIỌNG NÓI», «TỰ ĐỘNG PHÁT» (11 sp medium uppercase: 79.0 + 15.8 = 94.8 dp and 113.0 + 26.4 = 139.4 dp; they wrap anyway). «Tự động phát» is the everyday autoplay word. The rows «Từ» (= `section_words`) / «Phát âm mỗi khi bạn tra một từ» and «Văn bản gốc» / «Đọc to …» are nouns over verb-led subtitles, not calqued "When…" / "After…" fragments; «phát âm» suits a single word, including a recording, and «đọc to» is the file's read-aloud verb (`header_action_read_aloud`). The subtitles' punctuation follows English (none on the first, two sentences with periods on the second).
+- **Voice rows.** «Trực tuyến» / «Ngoại tuyến» are short standalone status words and the file's terms; a row reads «High quality · Ngoại tuyến · Cần tải xuống» (quality hard-coded English, see below).
+- **AI Voice Service (MODIFIED).** «Dịch vụ giọng nói AI» uses the file's Latin «AI» (`service_llm_badge`, `settings_header_advanced_llm`, `ask_no_llm_title` «… mô hình AI»), after the noun as in «giọng nói AI» (`voice_service_connect_subtitle`). Not «trực tuyến». Toolbar title at 22 sp regular: 193.2 dp (251.1 at 1.3×) against 296 dp. The row under the header, «Kết nối dịch vụ giọng nói», keeps the generic wording, as English does; no other `voice_service_*` value changed.
+- **Register.** «bạn» where a pronoun is needed («Dịch vụ bạn chọn», «Cài đặt của bạn», «mỗi khi bạn tra một từ»); commands bare, as the file's buttons and menu rows are.
+
+### Source-side notes
+
+- `TtsVoiceLabels.subtitle` hard-codes the quality part in English ("High quality", "Very high quality" …), so a Vietnamese voice row reads «High quality · Trực tuyến · Cần tải xuống». No string can fix it; already named in the context pack and by the translator.
+
+### Vietnamese appendix
+
+**The translator's judgment calls, weighed.**
+1. «cửa sổ kết quả» for "the results window": right, and used once per surface as listed above.
+2. «Tách thành cửa sổ» for Detach: right; the 1.3× cut is measured above and accepted.
+3. Subtitles that share a frame, not every byte: right. «Không áp dụng trong khi tự động dịch» would be byte-identical but vaguer ("does not apply"), and the two rows are on different screens.
+4. Verbs in the three subtitles and «sau mỗi lần chụp» over «sau một lần chụp»: right; the latter is a calque.
+5. «Tự động phát» with «Phát âm» / «Đọc to»: right.
+6. «Chụp màn hình» as the capture heading against the button «Chụp»: right.
+7. Hide/Show nouns from the eye buttons' labels rather than the section header «Bản gốc»: right; the rows are those buttons' menu form.
+8. «Thu nhỏ» over SystemUI's «Thu nhỏ cửa sổ»: right, and it never appears as a menu row.
+
+**Placeholder contact point.** One: `translation_pick_failed_generic`, the name as subject at the start of the sentence, which takes any Latin brand or typed name with no particle or case.
+
+### Verdict (round 1)
+
+0 🛑, 0 ❌, 0 ⚠️, 1 💬 (`icon_action_pull_out_window`). The other 27 keys and the orphan removal pass as written.
+
+### Disposition (round 1, 2026-11-23)
+
+Applied by the coordinator: `icon_action_pull_out_window` «Kéo ra cửa sổ kết quả» → «Kéo cửa sổ kết quả ra» (💬). Kept, as the reviewer accepted: `floating_menu_panel_detach` «Tách thành cửa sổ», which ellipsizes by about 3 dp only at font scale 1.3 (the panel's other rows do too), against «Tách cửa sổ», which can read as "split the window". Mechanical check after the fix: `vi: 28 keys checked, 0 problems, 0 warnings`.
+
+### Round 2 (2026-11-23), final review after applying round 1
+
+Mechanical layer: `mech_check.py vi` -> `vi: 28 keys checked, 0 problems, 0 warnings`; `l10n_diff.py --english-base en-base.xml` -> `values-vi   missing=0  orphan=0  modified=1`, the 1 being `audio_source_voice_service_name` (base "Voice service", now "AI Voice Service", loc «Dịch vụ giọng nói AI»), listed by design. `git diff --stat` of the file: 50 insertions, 2 deletions, holding only the 27 new keys at English order, the one changed value and the removal of `tts_voices_section_header` (0 occurrences left). Scripted over the 28 values: all NFC, no raw apostrophe, no double or edge space, no em or en dash; every ASCII-only token is a real toneless syllable (di, khi, ra, sao, sau, thanh, thao, thu, to, tra, trong) or Latin (AI, menu); the `<xliff:g>` span of `translation_pick_failed_generic` is byte-identical. **No 🛑 issues.**
+
+Round-1 change checked:
+- `icon_action_pull_out_window` (💬): landed, byte-equal to round 1's suggestion: «Kéo cửa sổ kết quả ra». On the gestures page it is a `settings_row_choice` title (wraps) under the uppercased header «KÉO», beside «Đưa lên một từ để xem định nghĩa»: verb-led like its sibling, it reads only as "pull the results window out" and keeps the window's name «cửa sổ kết quả». «Kéo» under «KÉO» is accurate (the drag is what pulls the window out), as English pairs Drag with Pull. 145.5 dp at 15 sp medium. No other string quotes it, and the hint's «Kéo thanh trên cùng …» uses the same verb for a different drag, which is right.
+
+One measurement redone after the context pack's correction (the bar pill's label is 14 sp sans-serif-medium, `DetachedWindowBar.kt:309`, not regular as round 1 measured): «Chụp» 32.6 dp, «Tự động» 53.0, «Tạm dừng» 64.0 (English Capture 49.5, Auto 29.7, Pause 39.1), so the two labels together are 85.6 / 96.6 dp against English's 79.2 / 88.6; at 1.3× 42.3 / 68.8 / 83.2. `applyFit` drops both names when the pills do not fit and never clips, so round 1's conclusion stands.
+
+#### Findings (round 2)
+
+None.
+
+#### Clean areas (round 2)
+
+- **Picker, as one dialog.** «Chọn dịch vụ dịch thuật» (title) is built like «Chọn công cụ OCR», and `cd_choose_translation_service` equals it as `cd_choose_ocr` equals the OCR title. The message «Dịch vụ bạn chọn sẽ dịch lại văn bản này. Cài đặt của bạn vẫn giữ nguyên.» keeps both facts, is a statement about the picked service, and does not caption the footer button «Dịch vụ dịch thuật» (= `settings_cell_translation_services`) beside «Hủy», with «Dịch trực tuyến» / «Dịch ngoại tuyến» between them.
+- **Failure alert.** «Không thể dịch» = `anki_translation_error` = `hold_translation_failed`; body read with real values («Firefox Translations / DeepL / ML Kit / Hunyuan-MT 7B không thể dịch văn bản này.», a typed name likewise), then «OK». No case or agreement touches the name.
+- **Bar and idle text.** «Chụp» is one word and the verb of «Chụp\nmàn hình» / «Chụp\nvùng»; «Nhấn Chụp để dịch màn hình trò chơi» names it byte for byte, built like `status_idle` «Nhấn Dịch để chụp màn hình trò chơi». The hint's three sentences read natively; «Các thao tác khác» echoes the ⋯ button's `cd_more_actions` «Thao tác khác» (`DetachedWindowBar.kt:149`); ⋯ is U+22EF. «Thu nhỏ» is the bar's Minimize label only: it is pinned on the bar and is not a menu row (`DetachedWindow.Menu.menuGroups`), so it never sits beside «Cỡ chữ».
+- **Menu, as a set (read from `DetachedWindow.Menu`).** Headings «Kết quả này» (Thêm vào Anki, Đọc to), «Văn bản» (Furigana, Ẩn/Hiện văn bản gốc, Ẩn/Hiện bản dịch, Cỡ chữ), «Chụp màn hình» (folded Tự động / Chụp, Chỉnh sửa vùng, the languages, OCR, MangaOCR, Lớp phủ), «PlayTranslate». The capture heading is the noun of `notif_channel_name`, apart from the command «Chụp» that can fold under it. At 1.3×: headings 81.8 / 57.0 / 104.8 dp against 248; rows 134.2 / 150.5 / 103.0 / 119.3 dp against at most 208. One verb pair, Ẩn / Hiện, in both pairs.
+- **Quick-settings row.** «Tách thành cửa sổ» beside «Mở PlayTranslate»: 161.6 dp at 1.3× against about 159 (`QuickSettings.populate`, one line, ellipsized). Settled by round 1 and the coordinator; I have no new evidence and keep it.
+- **Auto Copy to Clipboard.** «Tự động sao chép vào bảng nhớ tạm», sentence case like «Chỉ báo viền màn hình» above it, with Android's «bảng nhớ tạm» and the file's «sao chép» («Đã sao chép»); 245.3 dp, so two lines in `settings_row_switch`, whose title has no `maxLines`. The subtitle shares «sau mỗi lần chụp» and «Không … trong khi tự động dịch» with `tts_auto_play_original_subtitle`, only the verb differing; «văn bản gốc» is `tts_auto_play_original_title`'s term; «trong khi tự động dịch» is `settings_capture_interval_hint`'s phrase.
+- **Text-to-speech page, top to bottom (`activity_tts_voice.xml`).** Toolbar «Chuyển văn bản thành giọng nói», «Tốc độ», header «TỰ ĐỘNG PHÁT» over «Từ» / «Phát âm mỗi khi bạn tra một từ» and «Văn bản gốc» / «Đọc to sau mỗi lần chụp. Không đọc trong khi tự động dịch.», then «DỊCH VỤ GIỌNG NÓI AI» over «Kết nối dịch vụ giọng nói» / «Dùng giọng nói AI trực tuyến …», then the device voices («High quality · Trực tuyến · Cần tải xuống») and «BẢN GHI ÂM ĐÃ NHẬP». «Tự động phát» with «Phát âm» is the autoplay wording of Vietnamese dictionary apps; titles are nouns, subtitles verb-led rather than calqued fragments.
+- **AI Voice Service (MODIFIED).** «Dịch vụ giọng nói AI»: the file's Latin «AI» after the noun («giọng nói AI», «mô hình AI»), not «trực tuyến»; toolbar 251.1 dp at 1.3× against 296. It also heads the Anki audio picker's section (`AudioSourcePickerView.buildInto`, a wrapping group header). The other `voice_service_*` values keep the generic «dịch vụ giọng nói», as English does.
+- **Register.** «bạn» only where a pronoun is needed; commands bare, like the file's buttons and menu rows.
+
+#### Verdict (round 2)
+
+**PASS**: 0 🛑 / 0 ❌ / 0 ⚠️ / 0 💬. The one round-1 change is in the file byte-exact and broke no neighbour; the other 27 keys and the orphan removal pass as written.
+
+### Disposition (round 2, 2026-11-23)
+
+Round 2 found nothing. Applied after the final review at the developer's request, by the coordinator, without a further review round: `ocr_picker_message` (outside the delta) gets the final stop its English has, as its new twin `translation_picker_message` does. Analyzer, mechanical check and `:app:processDebugResources` green afterwards.
