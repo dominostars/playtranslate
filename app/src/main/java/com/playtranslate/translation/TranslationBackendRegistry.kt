@@ -400,22 +400,11 @@ object TranslationBackendRegistry {
     }
 
     /**
-     * The order a question goes round in ([complete]): the order a
-     * translation tries its backends ([orderedBackends]: the online services
-     * in the user's order, then the on-device models), with the models made
-     * for translation ([PromptCompleter.madeForTranslation]) after everyone
-     * else, in that same order among themselves. Such a model leads the
-     * on-device translations it was made for and answers a question worse
-     * than a chat model, so with both switched on the chat model is asked,
-     * and the translation model only when no other answers.
-     */
-    private fun askingOrder(): List<TranslationBackend> =
-        orderedBackends().sortedBy { (it as? PromptCompleter)?.madeForTranslation == true }
-
-    /**
      * Put a question about a sentence to the user's services: one pass over
      * those that can answer one ([asking]: the LLMs, and a service that
-     * writes the prompt itself) in [askingOrder], skipping one in a cooldown,
+     * writes the prompt itself) in the order a translation tries them
+     * ([orderedBackends]: the online services in the user's order, then the
+     * on-device models), skipping one in a cooldown,
      * falling through on a failure, returning the first answer. A blank
      * reply is a failure. A service
      * saying the question is outside what it answers
@@ -457,7 +446,7 @@ object TranslationBackendRegistry {
     ): Completion {
         var firstTried: TranslationBackend? = null
         var firstFailure: Exception? = null
-        for (backend in askingOrder()) {
+        for (backend in orderedBackends()) {
             val ask = asking(backend) ?: continue
             val now = System.currentTimeMillis()
             val coolDown = listOfNotNull(

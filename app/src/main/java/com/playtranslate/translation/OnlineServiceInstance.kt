@@ -97,15 +97,16 @@ enum class ServiceType(
  *  auth headers ([OnlineBackendFactory.modelsAuthHeadersFor]).
  *
  *  What each preset lets a request choose about reasoning, model by model,
- *  is [ReasoningControls]'s table, not a property here. */
+ *  is [ReasoningControls]'s table, not a property here.
+ *
+ *  Every preset's models answer a free-form prompt ([PromptCompleter]),
+ *  INDEX_TRANSLATE's translation fine-tune included: sent the Ask
+ *  section's own prompts on 2026-11-24 (six questions, Japanese and
+ *  Chinese into English, Japanese into Spanish), it answered every one in
+ *  the language asked for and translated none. */
 @Serializable
 enum class OpenAiPreset(
     val account: AccountRequirement = ServiceType.OPENAI.account,
-    /** Whether the preset's models are general chat models, which answer a
-     *  free-form prompt ([PromptCompleter]). False for an endpoint that
-     *  serves a model fine-tuned for translation alone: it speaks the chat
-     *  protocol, and translates whatever it is sent. */
-    val answersPrompts: Boolean = true,
 ) {
     OPENAI,
     DEEPSEEK,
@@ -113,7 +114,7 @@ enum class OpenAiPreset(
     GROQ,
     OPENROUTER,
     CLAUDE,
-    INDEX_TRANSLATE(account = AccountRequirement.NONE, answersPrompts = false),
+    INDEX_TRANSLATE(account = AccountRequirement.NONE),
     CUSTOM;
 
     /** Named under the OpenAI row (its provider line in the add-service

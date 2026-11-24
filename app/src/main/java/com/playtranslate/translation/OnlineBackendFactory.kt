@@ -113,7 +113,6 @@ object OnlineBackendFactory {
             // Whether a key exists to send: the preset's requirement, read
             // through the one per-instance resolver (INDEX_TRANSLATE takes none).
             account = { current().account },
-            answersPrompts = { current().preset.answersPrompts },
             requestExtras = { model -> requestExtrasFor(current(), model) },
             thinkingCatalog = { ThinkingCatalog.forPreset(current().preset) },
             usageTracker = UsageTracker(sharedPrefs, id),

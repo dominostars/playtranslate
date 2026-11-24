@@ -25,7 +25,7 @@ data class DiskFootprint(val human: String, val hasCache: Boolean)
  * Every on-device LLM also answers a free-form prompt ([PromptCompleter]),
  * through the same [MnnTranslator] and in its own chat envelope
  * ([promptStyle]): the general chat models (Qwen, Gemma), and Hunyuan-MT,
- * which was made to translate and says so ([madeForTranslation]).
+ * which was made to translate and answers a prompt all the same.
  *
  * Subclasses can override [supportsPair] to whitelist specific language pairs;
  * the default accepts any pair where source != target. They can also override

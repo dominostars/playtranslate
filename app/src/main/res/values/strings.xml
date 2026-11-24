@@ -2000,10 +2000,12 @@
     <!-- Note on the Bilibili Index-Translate settings page, shown in place
          of the API-key field because the service takes no key. It says the
          service is free, who runs it, that no usage limits are published
-         for it, and that the captured text goes to its operator. Keep
-         "Bilibili" in Latin script, as the untranslated service name above
-         it shows it. -->
-    <string name="llm_backend_index_translate_note">Free, no API key needed. Run by Bilibili, which publishes no usage limits for it. Captured text is sent to Bilibili for translation.</string>
+         for it, that the captured text goes to its operator, and that the
+         user's questions about that text (the Ask section and the word
+         explanations) may go there too: whether one does depends on what
+         else the user has switched on. Keep "Bilibili" in Latin script, as
+         the untranslated service name above it shows it. -->
+    <string name="llm_backend_index_translate_note">Free, no API key needed. Run by Bilibili, which publishes no usage limits for it. Captured text is sent to Bilibili for translation. Questions you ask about it may go there too.</string>
 
     <!-- Row label for the model picker. -->
     <string name="llm_backend_model_label">Model</string>

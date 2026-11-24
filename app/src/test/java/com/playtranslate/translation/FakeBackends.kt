@@ -190,8 +190,7 @@ internal class FakeMixedResultCooldownableBackend(
  *  suspension), [canComplete] is fixed, and it takes part in cooldowns
  *  through its own [cooldownState]. It also translates, so the same fake
  *  can stand on both sides of a "complete versus translate" contrast.
- *  [requiresInternet] picks the online or the on-device shape, and
- *  [madeForTranslation] a translation model that answers a prompt. Counters
+ *  [requiresInternet] picks the online or the on-device shape. Counters
  *  say what the registry called. */
 internal class FakeCompleterBackend(
     override val id: BackendId,
@@ -199,7 +198,6 @@ internal class FakeCompleterBackend(
     override val displayName: String = "fake-llm-$id",
     override val requiresInternet: Boolean = true,
     private val canComplete: Boolean = true,
-    override val madeForTranslation: Boolean = false,
     val cooldownState: CooldownState = CooldownState(context = null, backendId = id),
     private val answer: suspend (system: String, user: String) -> String = { _, _ -> "answer-from-$id" },
 ) : TranslationBackend, PromptCompleter, Cooldownable {

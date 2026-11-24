@@ -117,10 +117,6 @@ class OpenAiBackend(
      *  sends no Authorization at all, as its own client doesn't, and a blank
      *  stored key does not make it unconfigured. */
     private val account: () -> AccountRequirement = { ServiceType.OPENAI.account },
-    /** Whether the endpoint's models answer a free-form prompt
-     *  ([OpenAiPreset.answersPrompts]); an endpoint serving a
-     *  translation-only model is not offered one ([canComplete]). */
-    private val answersPrompts: () -> Boolean = { true },
     /** Extra top-level fields for the chat-completions body, chosen per
      *  model: the instance's thinking pick as its preset's
      *  [ReasoningControls] entry sends it, or nothing
@@ -288,8 +284,7 @@ class OpenAiBackend(
         return arr.map { cleanLlmOutput(it) }
     }
 
-    override fun canComplete(): Boolean =
-        answersPrompts() && enabledProvider() && credential() != null
+    override fun canComplete(): Boolean = enabledProvider() && credential() != null
 
     override suspend fun complete(system: String, user: String): String =
         exchange(system, user, answerCall)

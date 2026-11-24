@@ -20,8 +20,7 @@ import java.util.concurrent.atomic.AtomicLong
  *  - which backends the pass tries (prompt completers that can complete and
  *    answerers that can answer, not in a cooldown, and for an answerer not
  *    in a pause of its answers alone) and in what order (the registry's,
- *    setOrder included, with a model made for translation after everyone
- *    else, so that it answers only when no other does); a pass past the
+ *    setOrder included); a pass past the
  *    cooldowns (a retry's) lifts those two skips and nothing else, its
  *    answer clears the cooldown and its failure leaves a running one as it
  *    was;
@@ -139,70 +138,6 @@ class TranslationBackendRegistryCompleteTest {
         val result = TranslationBackendRegistry.complete(question())
         assertSame(userFirst, result.backend)
         assertEquals(1, byPriority.completeCalls.get())
-    }
-
-    // ── a model made for translation is asked last ──────────────────────
-
-    /** An on-device translation model that answers a prompt, as Hunyuan-MT
-     *  is. */
-    private fun translationModel(id: String, priority: Int) =
-        FakeCompleterBackend(id = id, priority = priority, requiresInternet = false, madeForTranslation = true)
-
-    @Test fun `a model made for translation is asked after every other completer, whatever the order says`() = runBlocking<Unit> {
-        // The translation's order puts the translation model first: it
-        // leads the on-device translations.
-        val hymt = translationModel("hymt", 10)
-        val chat = FakeCompleterBackend(id = "chat", priority = 20, requiresInternet = false)
-        TranslationBackendRegistry.init(listOf(hymt, chat))
-        assertEquals(
-            "the precondition: a translation tries the translation model first",
-            listOf("hymt", "chat"), TranslationBackendRegistry.orderedBackends().map { it.id },
-        )
-
-        assertSame(chat, TranslationBackendRegistry.complete(question()).backend)
-        assertEquals("the translation model is not asked", 0, hymt.completeCalls.get())
-
-        // Nor does the user's order put it ahead for a question.
-        TranslationBackendRegistry.setOrder(listOf("hymt", "chat"))
-        assertSame(chat, TranslationBackendRegistry.complete(question()).backend)
-        assertEquals(0, hymt.completeCalls.get())
-    }
-
-    @Test fun `a model made for translation answers when it is the only completer`() = runBlocking<Unit> {
-        val hymt = translationModel("hymt", 25)
-        TranslationBackendRegistry.init(listOf(FakeOnlineBackend(id = "deepl", priority = 10), hymt))
-
-        assertTrue("it is a service to ask", TranslationBackendRegistry.hasCompleter())
-        val result = TranslationBackendRegistry.complete(question("the system", "the user"))
-
-        assertSame(hymt, result.backend)
-        assertEquals(SentenceAnswer.Text("answer-from-hymt"), result.answer)
-        assertEquals("the system" to "the user", hymt.lastPrompt)
-    }
-
-    @Test fun `a model made for translation answers when the others cannot or fail, and is named after them`() = runBlocking<Unit> {
-        val named = mutableListOf<String>()
-        val hymt = translationModel("hymt", 10)
-        val off = FakeCompleterBackend(id = "off", priority = 20, canComplete = false)
-        val failing = failing("failing", 30, IOException("no route"))
-        TranslationBackendRegistry.init(listOf(hymt, off, failing))
-
-        val result = TranslationBackendRegistry.complete(question()) { named += it.id }
-
-        assertSame(hymt, result.backend)
-        assertEquals(listOf("failing", "hymt"), named)
-        assertEquals(0, off.completeCalls.get())
-    }
-
-    @Test fun `models made for translation keep the registry's order among themselves`() = runBlocking<Unit> {
-        val older = translationModel("hymt-1", 26)
-        val newer = translationModel("hymt-2", 25)
-        val chat = failing("chat", 30, IOException("no route"))
-        TranslationBackendRegistry.init(listOf(older, newer, chat))
-
-        assertSame(newer, TranslationBackendRegistry.complete(question()).backend)
-        assertEquals(1, chat.completeCalls.get())
-        assertEquals(0, older.completeCalls.get())
     }
 
     @Test fun `complete skips translation-only backends, completers that cannot complete and completers in a cooldown`() = runBlocking<Unit> {

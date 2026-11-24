@@ -28,8 +28,7 @@ import java.io.File
  *
  * Type rule: every on-device LLM is a [PromptCompleter], the general chat
  * models (Qwen 2.5, Qwen 3.5, Gemma 4) and the two Hunyuan-MT models, which
- * were made to translate and say so ([PromptCompleter.madeForTranslation],
- * what puts them after the chat models when a question goes round).
+ * were made to translate and answer a prompt all the same.
  *
  * [PromptCompleter.canComplete] on any of them is "the model can be run":
  * the device meets its hardware floor (64-bit, total RAM), the user has it
@@ -111,24 +110,15 @@ class OnDeviceCompleterTest {
         model.file(ctx).deleteRecursively()
     }
 
-    @Test fun `every on-device model is a prompt completer, and the Hunyuan models say they were made for translation`() {
-        val chatModels: List<TranslationBackend> = listOf(
+    @Test fun `every on-device model is a prompt completer`() {
+        val models: List<TranslationBackend> = listOf(
             QwenMnnBackend(ctx) { true },
             Qwen35Mnn2bBackend(ctx) { true },
             GemmaE2BMnnBackend(ctx) { true },
-        )
-        val translationModels: List<TranslationBackend> = listOf(
             HyMtBackend(ctx, enabledProvider = { true }, permitted = { true }),
             HyMt2Backend(ctx) { true },
         )
-        chatModels.forEach {
-            assertTrue("${it.id} answers prompts", it is PromptCompleter)
-            assertFalse("${it.id} is a chat model", (it as PromptCompleter).madeForTranslation)
-        }
-        translationModels.forEach {
-            assertTrue("${it.id} answers prompts", it is PromptCompleter)
-            assertTrue("${it.id} is a translation model", (it as PromptCompleter).madeForTranslation)
-        }
+        models.forEach { assertTrue("${it.id} answers prompts", it is PromptCompleter) }
     }
 
     @Test fun `Hunyuan-MT 1_5 answers no question outside its licence's territory`() {

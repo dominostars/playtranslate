@@ -36,9 +36,7 @@ import java.util.Locale
  * under mnn_chat.cpp's runtime config, where the system marker is one token
  * of its tokenizer and the model answered Ask's prompts in the language
  * asked for instead of translating them. Its answers are short and its
- * grammar explanations often wrong, so it is put a question after every
- * chat model ([com.playtranslate.translation.PromptCompleter.madeForTranslation]).
- * 1.5 was not tried.
+ * grammar explanations often wrong. 1.5 was not tried.
  *
  * **Special tokens** — the markers use full-width pipe `｜` (U+FF5C, UTF-8
  * `EF BD 9C`) and SentencePiece word-boundary `▁` (U+2581, UTF-8 `E2 96 81`),

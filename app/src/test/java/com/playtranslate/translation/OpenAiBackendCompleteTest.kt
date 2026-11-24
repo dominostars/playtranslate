@@ -69,7 +69,6 @@ class OpenAiBackendCompleteTest {
         key: String? = "sk-test",
         enabled: Boolean = true,
         account: AccountRequirement = AccountRequirement.REQUIRED,
-        answersPrompts: Boolean = true,
         extras: (String) -> Map<String, JsonElement> = { emptyMap() },
         baseUrl: String = BASE,
         usage: UsageTracker = UsageTracker(FakeSharedPreferences(), "openai"),
@@ -84,7 +83,6 @@ class OpenAiBackendCompleteTest {
             modelProvider = { MODEL },
             baseUrlProvider = { baseUrl },
             account = { account },
-            answersPrompts = { answersPrompts },
             requestExtras = extras,
             usageTracker = usage,
             applyOwnedByFilter = { false },
@@ -168,6 +166,32 @@ class OpenAiBackendCompleteTest {
         )
         assertEquals("low", body["reasoning_effort"]?.jsonPrimitive?.content)
         assertFalse("no structured output on an answer: $body", body.containsKey("response_format"))
+    }
+
+    /** Index-Translate's question goes out as its translations do, in the
+     *  shape its endpoint was seen to answer: no Authorization header, the
+     *  preset's own thinking switch, the two messages. */
+    @Test fun `a keyless Index-Translate question carries no Authorization and the preset's thinking switch`() = runBlocking<Unit> {
+        val seen = mutableListOf<SeenRequest>()
+        val backend = openAi(
+            recordingClient(seen) { CannedReply(200, reply("an answer")) },
+            key = null,
+            account = OpenAiPreset.INDEX_TRANSLATE.account,
+            extras = { OnlineBackendFactory.requestExtrasFor(OpenAiPreset.INDEX_TRANSLATE, it, ReasoningLevel.UNSET) },
+        )
+
+        assertEquals("an answer", backend.complete(SYSTEM, USER))
+
+        val answer = seen.single()
+        assertNull("keyless: no Authorization", answer.request.header("Authorization"))
+        assertEquals(
+            """{"enable_thinking":false}""",
+            answer.json["chat_template_kwargs"].toString(),
+        )
+        assertEquals(
+            listOf("system", "user"),
+            answer.json.getValue("messages").jsonArray.map { it.jsonObject.getValue("role").jsonPrimitive.content },
+        )
     }
 
     // ── b. the reply ─────────────────────────────────────────────────────
@@ -366,29 +390,28 @@ class OpenAiBackendCompleteTest {
 
     // ── h. canComplete ───────────────────────────────────────────────────
 
-    @Test fun `canComplete needs the service on, a credential, and a model that answers prompts`() {
+    @Test fun `canComplete needs the service on and a credential`() {
         fun backend(
             enabled: Boolean = true,
             key: String? = "sk-test",
             account: AccountRequirement = AccountRequirement.REQUIRED,
-            answers: Boolean = true,
         ) = openAi(
             recordingClient { CannedReply(200, reply("x")) },
-            key = key, enabled = enabled, account = account, answersPrompts = answers,
+            key = key, enabled = enabled, account = account,
         )
 
-        assertTrue("on, keyed, a chat model", backend().canComplete())
-        assertTrue("a keyless provider needs no key", backend(key = null, account = AccountRequirement.NONE).canComplete())
+        assertTrue("on, keyed", backend().canComplete())
+        assertTrue(
+            "a keyless provider (Index-Translate) needs no key",
+            backend(key = null, account = AccountRequirement.NONE).canComplete(),
+        )
         assertFalse("switched off", backend(enabled = false).canComplete())
+        assertFalse(
+            "a keyless provider switched off",
+            backend(enabled = false, key = null, account = AccountRequirement.NONE).canComplete(),
+        )
         assertFalse("no key where one is needed", backend(key = null).canComplete())
         assertFalse("a blank key where one is needed", backend(key = "  ").canComplete())
-        val translationOnly = backend(answers = false)
-        assertFalse("a model that answers no prompt", translationOnly.canComplete())
-        assertTrue("which still translates", translationOnly.isUsable("ja", "en"))
-        assertFalse(
-            "the Index-Translate shape: keyless and translation-only",
-            backend(key = null, account = AccountRequirement.NONE, answers = false).canComplete(),
-        )
     }
 
     // ── i. the translation paths, unchanged ──────────────────────────────

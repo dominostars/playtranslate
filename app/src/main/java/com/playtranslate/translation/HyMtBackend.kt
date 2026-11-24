@@ -70,10 +70,6 @@ class HyMtBackend(
     override val modelHelper = HyMtModel
     override val promptStyle = PromptStyle.HyMtChat
 
-    /** A translation model: it answers an Ask question, after every chat
-     *  model ([PromptCompleter.madeForTranslation]). */
-    override val madeForTranslation: Boolean = true
-
     /** Spike-measured peak resident RAM: ~2.07 GB. Per-call floor at 2.5 GB
      *  gives ~400 MB headroom above the steady-state working set for prefill
      *  activations and decode buffers. */
