@@ -66,7 +66,7 @@ class MnnTranslator private constructor(private val context: Context) {
      *  stays in the KV cache between calls ([prefillSystemIfChanged]), and
      *  the user turn that opens the model's reply. Both carry their model's
      *  full envelope. */
-    private class Prompt(val systemBlock: String, val userBlock: String)
+    internal class Prompt(val systemBlock: String, val userBlock: String)
 
     /**
      * Translate [text] from [source] to [target] using the MNN model at
@@ -118,8 +118,8 @@ class MnnTranslator private constructor(private val context: Context) {
                 GemmaE2BChatTemplate.systemBlock(source, target),
                 GemmaE2BChatTemplate.userBlock(text, source, target),
             )
-            // Hunyuan-MT 1.5 has no system role per the model card;
-            // the "system block" we set here is the invariant
+            // A Hunyuan-MT translation is one user turn, per the model
+            // card; the "system block" we set here is the invariant
             // instruction prefix (`<bos><｜hy_User｜>Translate the
             // following text into …\n\n`). The per-sentence body
             // and `<｜hy_Assistant｜>` open marker come from
@@ -154,8 +154,9 @@ class MnnTranslator private constructor(private val context: Context) {
      * The system block differs from a translation's, so alternating the
      * two re-reads it each time ([prefillSystemIfChanged] keys on the text).
      *
-     * Only the general chat models take one. Hunyuan-MT is fine-tuned for
-     * translation alone and its backends are not prompt completers.
+     * Every on-device model takes one ([answerPrompt]), Hunyuan-MT
+     * included: a model made to translate, which answers a question all
+     * the same.
      */
     suspend fun complete(
         system: String,
@@ -164,24 +165,9 @@ class MnnTranslator private constructor(private val context: Context) {
         promptStyle: PromptStyle,
         availMemFloorBytes: Long = DEFAULT_AVAIL_MEM_FLOOR_BYTES,
     ): String = mutex.withLock {
-        val prompt = when (promptStyle) {
-            PromptStyle.StandardChat -> Prompt(
-                QwenChatTemplate.systemEnvelope(system), QwenChatTemplate.userEnvelope(user),
-            )
-            // Thinking stays off for an answer too: the reasoning pass
-            // would spend the output limit before the answer began.
-            PromptStyle.Qwen35Chat -> Prompt(
-                QwenChatTemplate.systemEnvelope(system), QwenChatTemplate.userEnvelopeNoThink(user),
-            )
-            PromptStyle.Gemma4Chat -> Prompt(
-                GemmaE2BChatTemplate.systemEnvelope(system), GemmaE2BChatTemplate.userEnvelope(user),
-            )
-            PromptStyle.HyMtChat ->
-                throw IllegalArgumentException("Hunyuan-MT is a translation model; it takes no free-form prompt")
-        }
         generateLocked(
-            prompt, ANSWER_MAX_NEW_TOKENS, modelPath, promptStyle, availMemFloorBytes,
-            inputChars = user.length,
+            answerPrompt(promptStyle, system, user), ANSWER_MAX_NEW_TOKENS, modelPath, promptStyle,
+            availMemFloorBytes, inputChars = user.length,
         )
     }
 
@@ -466,6 +452,29 @@ class MnnTranslator private constructor(private val context: Context) {
         /** Conservative default for callers that don't supply their own floor.
          *  Production backends override via [OnDeviceLlmBackend.availMemFloorBytes]. */
         const val DEFAULT_AVAIL_MEM_FLOOR_BYTES = 1_500_000_000L
+
+        /** A free-form prompt's two blocks: [system] and [user] as the
+         *  system turn and the user turn of [promptStyle]'s own chat
+         *  template, the user turn opening the model's reply. */
+        internal fun answerPrompt(promptStyle: PromptStyle, system: String, user: String): Prompt =
+            when (promptStyle) {
+                PromptStyle.StandardChat -> Prompt(
+                    QwenChatTemplate.systemEnvelope(system), QwenChatTemplate.userEnvelope(user),
+                )
+                // Thinking stays off for an answer too: the reasoning pass
+                // would spend the output limit before the answer began.
+                PromptStyle.Qwen35Chat -> Prompt(
+                    QwenChatTemplate.systemEnvelope(system), QwenChatTemplate.userEnvelopeNoThink(user),
+                )
+                PromptStyle.Gemma4Chat -> Prompt(
+                    GemmaE2BChatTemplate.systemEnvelope(system), GemmaE2BChatTemplate.userEnvelope(user),
+                )
+                // The template's own system turn, which a translation's
+                // prompt has no use for ([HyMtChatTemplate]).
+                PromptStyle.HyMtChat -> Prompt(
+                    HyMtChatTemplate.systemEnvelope(system), HyMtChatTemplate.userEnvelope(user),
+                )
+            }
 
         @Volatile private var INSTANCE: MnnTranslator? = null
 

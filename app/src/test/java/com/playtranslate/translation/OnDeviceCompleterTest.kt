@@ -4,8 +4,11 @@ import android.app.ActivityManager
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.translation.gemma.GemmaE2BMnnModel
+import com.playtranslate.translation.hymt.HyMt2Model
+import com.playtranslate.translation.hymt.HyMtModel
 import com.playtranslate.translation.llm.ModelHelper
-import com.playtranslate.translation.llm.OnDeviceChatLlmBackend
+import com.playtranslate.translation.llm.MultiFileSha
+import com.playtranslate.translation.llm.OnDeviceLlmBackend
 import com.playtranslate.translation.qwen.Qwen35Mnn2bModel
 import com.playtranslate.translation.qwen.QwenMnnModel
 import org.junit.After
@@ -23,18 +26,22 @@ import java.io.File
 /**
  * Which on-device models answer a free-form prompt, and when.
  *
- * Type rule: the general chat models (Qwen 2.5, Qwen 3.5, Gemma 4) are
- * [PromptCompleter]s; Hunyuan-MT, fine-tuned for translation alone, is not.
+ * Type rule: every on-device LLM is a [PromptCompleter], the general chat
+ * models (Qwen 2.5, Qwen 3.5, Gemma 4) and the two Hunyuan-MT models, which
+ * were made to translate and say so ([PromptCompleter.madeForTranslation],
+ * what puts them after the chat models when a question goes round).
  *
- * [PromptCompleter.canComplete] on a chat model is "the model can be run":
+ * [PromptCompleter.canComplete] on any of them is "the model can be run":
  * the device meets its hardware floor (64-bit, total RAM), the user has it
  * switched on, and it is installed. That is exactly the part of
  * [TranslationBackend.isUsable] that is not about a language pair, pinned
  * as a truth table over the three conditions against isUsable, plus a
  * same-language pair, which isUsable refuses and canComplete ignores.
+ * Hunyuan-MT 1.5 has a fourth condition, its licence's territory.
  *
  * Robolectric: installation is the model directory's `.sentinel` holding
- * the shipped catalog's sha (as [HyMt2CatalogTest] fakes it), the RAM is
+ * the shipped catalog's sha (as [HyMt2CatalogTest] fakes it; a set of
+ * files' aggregate, for a model that is several), the RAM is
  * ActivityManager's memory info and the ABI is the runtime's 64-bit flag.
  * MnnTranslator itself needs the native engine and is not exercised.
  */
@@ -43,28 +50,41 @@ class OnDeviceCompleterTest {
 
     private val ctx: Context = ApplicationProvider.getApplicationContext()
 
-    /** One chat backend, the helper whose directory says it is installed,
-     *  and its RAM floor. */
-    private class Chat(val backend: OnDeviceChatLlmBackend, val model: ModelHelper, val totalMemFloor: Long)
+    /** One backend, the helper whose directory says it is installed, and
+     *  its RAM floor. */
+    private class Chat(val backend: OnDeviceLlmBackend, val model: ModelHelper, val totalMemFloor: Long)
 
     private var enabled = true
+    private var permitted = true
 
+    private val models: List<ModelHelper> =
+        listOf(QwenMnnModel, Qwen35Mnn2bModel, GemmaE2BMnnModel, HyMt2Model, HyMtModel)
+
+    /** Every on-device LLM: the three chat models, then the two made for
+     *  translation. */
     private fun chats(): List<Chat> = listOf(
         QwenMnnBackend(ctx) { enabled }.let { Chat(it, QwenMnnModel, it.totalMemFloorBytes) },
         Qwen35Mnn2bBackend(ctx) { enabled }.let { Chat(it, Qwen35Mnn2bModel, it.totalMemFloorBytes) },
         GemmaE2BMnnBackend(ctx) { enabled }.let { Chat(it, GemmaE2BMnnModel, it.totalMemFloorBytes) },
+        HyMt2Backend(ctx) { enabled }.let { Chat(it, HyMt2Model, it.totalMemFloorBytes) },
+        hyMt15().let { Chat(it, HyMtModel, it.totalMemFloorBytes) },
     )
+
+    /** As the app wires it: the territory in the switch's provider, and
+     *  again apart from the switch. */
+    private fun hyMt15() = HyMtBackend(ctx, enabledProvider = { enabled && permitted }, permitted = { permitted })
 
     @Before fun setUp() {
         enabled = true
+        permitted = true
         setTotalMem(16_000_000_000L)
         ShadowVMRuntime.setIs64Bit(true)
-        listOf(QwenMnnModel, Qwen35Mnn2bModel, GemmaE2BMnnModel).forEach { uninstall(it) }
+        models.forEach { uninstall(it) }
     }
 
     @After fun tearDown() {
         ShadowVMRuntime.setIs64Bit(true)
-        listOf(QwenMnnModel, Qwen35Mnn2bModel, GemmaE2BMnnModel).forEach { uninstall(it) }
+        models.forEach { uninstall(it) }
     }
 
     private fun setTotalMem(bytes: Long) {
@@ -75,10 +95,13 @@ class OnDeviceCompleterTest {
         })
     }
 
-    /** What the downloader leaves after a verified extract: the catalog's
-     *  sha in the model directory's sentinel. */
+    /** What the downloader leaves after a verified download: the catalog's
+     *  sha in the model directory's sentinel (a set of files' aggregate,
+     *  for a model that is several). */
     private fun install(model: ModelHelper) {
-        val sha = requireNotNull(model.catalogEntry(ctx)?.sha256) { "${model.catalogKey} has no sha in the catalog" }
+        val entry = requireNotNull(model.catalogEntry(ctx)) { "${model.catalogKey} is not in the catalog" }
+        val sha = entry.files?.let { MultiFileSha.aggregate(it) }
+            ?: requireNotNull(entry.sha256) { "${model.catalogKey} has no sha in the catalog" }
         val dir = model.file(ctx)
         dir.mkdirs()
         File(dir, ".sentinel").writeText(sha)
@@ -88,18 +111,36 @@ class OnDeviceCompleterTest {
         model.file(ctx).deleteRecursively()
     }
 
-    @Test fun `the chat models are prompt completers and the translation-only Hunyuan models are not`() {
+    @Test fun `every on-device model is a prompt completer, and the Hunyuan models say they were made for translation`() {
         val chatModels: List<TranslationBackend> = listOf(
             QwenMnnBackend(ctx) { true },
             Qwen35Mnn2bBackend(ctx) { true },
             GemmaE2BMnnBackend(ctx) { true },
         )
-        val translationOnly: List<TranslationBackend> = listOf(
+        val translationModels: List<TranslationBackend> = listOf(
             HyMtBackend(ctx, enabledProvider = { true }, permitted = { true }),
             HyMt2Backend(ctx) { true },
         )
-        chatModels.forEach { assertTrue("${it.id} answers prompts", it is PromptCompleter) }
-        translationOnly.forEach { assertFalse("${it.id} only translates", it is PromptCompleter) }
+        chatModels.forEach {
+            assertTrue("${it.id} answers prompts", it is PromptCompleter)
+            assertFalse("${it.id} is a chat model", (it as PromptCompleter).madeForTranslation)
+        }
+        translationModels.forEach {
+            assertTrue("${it.id} answers prompts", it is PromptCompleter)
+            assertTrue("${it.id} is a translation model", (it as PromptCompleter).madeForTranslation)
+        }
+    }
+
+    @Test fun `Hunyuan-MT 1_5 answers no question outside its licence's territory`() {
+        install(HyMtModel)
+        // The switch says on throughout, so the territory alone decides.
+        val hymt = HyMtBackend(ctx, enabledProvider = { true }, permitted = { permitted })
+        assertTrue("the precondition: permitted, on, downloaded", hymt.canComplete())
+
+        permitted = false
+        assertFalse("on, and not permitted", hymt.canComplete())
+        permitted = true
+        assertTrue("read live", hymt.canComplete())
     }
 
     @Test fun `canComplete is true when the model can be run, whatever the language pair`() {

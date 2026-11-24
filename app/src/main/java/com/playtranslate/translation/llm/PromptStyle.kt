@@ -29,10 +29,13 @@ sealed interface PromptStyle {
     object Gemma4Chat : PromptStyle
 
     /**
-     * Tencent Hunyuan-MT 1.5 chat template — single user turn (no `system`
-     * role per the model card). Full-width pipe markers `<｜hy_User｜>` /
-     * `<｜hy_Assistant｜>` (UTF-8 U+FF5C "｜" pipes, not ASCII `|`) wrap the
-     * single user message; runtime stop is `<｜hy_place▁holder▁no▁2｜>`.
+     * Tencent Hunyuan-MT chat template (1.5 and Hy-MT2). A translation is
+     * a single user turn, per the model card's prompt. Full-width pipe
+     * markers `<｜hy_User｜>` / `<｜hy_Assistant｜>` (UTF-8 U+FF5C "｜" pipes,
+     * not ASCII `|`) wrap the single user message; runtime stop is
+     * `<｜hy_place▁holder▁no▁2｜>`. A free-form prompt uses the template's
+     * system turn as well
+     * ([com.playtranslate.translation.hymt.HyMtChatTemplate.systemEnvelope]).
      *
      * We still go through the same `setSystemPrompt` + `sendUserPrompt`
      * dispatch as the other styles — the "system block" here is the

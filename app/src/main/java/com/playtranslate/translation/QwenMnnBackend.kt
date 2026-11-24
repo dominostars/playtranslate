@@ -2,7 +2,7 @@ package com.playtranslate.translation
 
 import android.content.Context
 import com.playtranslate.R
-import com.playtranslate.translation.llm.OnDeviceChatLlmBackend
+import com.playtranslate.translation.llm.OnDeviceLlmBackend
 import com.playtranslate.translation.llm.PromptStyle
 import com.playtranslate.translation.llm.StatusStringIds
 import com.playtranslate.translation.qwen.QwenMnnModel
@@ -36,7 +36,7 @@ import com.playtranslate.translation.qwen.QwenMnnModel
 class QwenMnnBackend(
     context: Context,
     enabledProvider: () -> Boolean,
-) : OnDeviceChatLlmBackend(context, enabledProvider) {
+) : OnDeviceLlmBackend(context, enabledProvider) {
 
     override val id: BackendId = "qwen_mnn"
     override val displayName: String = context.getString(R.string.qwen_mnn_display_name)

@@ -22,6 +22,11 @@ data class DiskFootprint(val human: String, val hasCache: Boolean)
  * The shared logic — usability gating, status formatting, dispatch through
  * the [MnnTranslator] singleton — lives here.
  *
+ * Every on-device LLM also answers a free-form prompt ([PromptCompleter]),
+ * through the same [MnnTranslator] and in its own chat envelope
+ * ([promptStyle]): the general chat models (Qwen, Gemma), and Hunyuan-MT,
+ * which was made to translate and says so ([madeForTranslation]).
+ *
  * Subclasses can override [supportsPair] to whitelist specific language pairs;
  * the default accepts any pair where source != target. They can also override
  * [translate] if they need engine-specific dispatch, but the default
@@ -39,7 +44,7 @@ abstract class OnDeviceLlmBackend(
      *  one model for cannot pass a restriction the switch's provider also
      *  carries. */
     private val permitted: () -> Boolean = { true },
-) : TranslationBackend {
+) : TranslationBackend, PromptCompleter {
 
     protected abstract val modelHelper: ModelHelper
     protected abstract val promptStyle: PromptStyle
@@ -119,8 +124,19 @@ abstract class OnDeviceLlmBackend(
      *  the device can host it, the user has it switched on, and it is on
      *  disk. The part of [isUsable] that is not about a language pair. The
      *  switch stays in it: a question is only ever put to a model that is
-     *  switched on ([OnDeviceChatLlmBackend.canComplete]). */
-    protected fun canRun(): Boolean = enabledProvider() && onDevice()
+     *  switched on ([canComplete]). */
+    private fun canRun(): Boolean = enabledProvider() && onDevice()
+
+    final override fun canComplete(): Boolean = canRun()
+
+    final override suspend fun complete(system: String, user: String): String =
+        MnnTranslator.getInstance(context).complete(
+            system = system,
+            user = user,
+            modelPath = modelHelper.file(context).absolutePath,
+            promptStyle = promptStyle,
+            availMemFloorBytes = availMemFloorBytes,
+        )
 
     /** The device can host the model, it may be run here, and it is on
      *  disk: [canRun] without the user's switch. */
@@ -319,30 +335,6 @@ abstract class OnDeviceLlmBackend(
                     )
             }
         }
-}
-
-/**
- * An on-device LLM that is a general chat model (Qwen, Gemma), as opposed to
- * one fine-tuned for translation alone (Hunyuan-MT, which extends
- * [OnDeviceLlmBackend] directly): besides translating, it answers a
- * free-form prompt ([PromptCompleter]), through the same [MnnTranslator]
- * and with its own chat envelope ([promptStyle]).
- */
-abstract class OnDeviceChatLlmBackend(
-    context: Context,
-    enabledProvider: () -> Boolean,
-) : OnDeviceLlmBackend(context, enabledProvider), PromptCompleter {
-
-    final override fun canComplete(): Boolean = canRun()
-
-    final override suspend fun complete(system: String, user: String): String =
-        MnnTranslator.getInstance(context).complete(
-            system = system,
-            user = user,
-            modelPath = modelHelper.file(context).absolutePath,
-            promptStyle = promptStyle,
-            availMemFloorBytes = availMemFloorBytes,
-        )
 }
 
 /**

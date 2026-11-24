@@ -73,6 +73,10 @@ class HyMt2Backend(
     override val modelHelper = HyMt2Model
     override val promptStyle = PromptStyle.HyMtChat
 
+    /** A translation model: it answers an Ask question, after every chat
+     *  model ([PromptCompleter.madeForTranslation]). */
+    override val madeForTranslation: Boolean = true
+
     /** Carried from the 1.5 spike's ~2.07 GB peak resident measurement (same
      *  tensor shapes, same quantization): a 2.5 GB per-call floor leaves
      *  ~400 MB above the steady-state working set for prefill activations and

@@ -3,7 +3,7 @@ package com.playtranslate.translation
 import android.content.Context
 import com.playtranslate.R
 import com.playtranslate.translation.gemma.GemmaE2BMnnModel
-import com.playtranslate.translation.llm.OnDeviceChatLlmBackend
+import com.playtranslate.translation.llm.OnDeviceLlmBackend
 import com.playtranslate.translation.llm.PromptStyle
 import com.playtranslate.translation.llm.StatusStringIds
 
@@ -39,7 +39,7 @@ import com.playtranslate.translation.llm.StatusStringIds
 class GemmaE2BMnnBackend(
     context: Context,
     enabledProvider: () -> Boolean,
-) : OnDeviceChatLlmBackend(context, enabledProvider) {
+) : OnDeviceLlmBackend(context, enabledProvider) {
 
     override val id: BackendId = "gemma_e2b_mnn"
     override val displayName: String = context.getString(R.string.gemma_e2b_mnn_display_name)

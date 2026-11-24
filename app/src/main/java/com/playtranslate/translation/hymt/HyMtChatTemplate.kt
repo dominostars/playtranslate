@@ -4,24 +4,41 @@ import com.playtranslate.translation.llm.languageDisplayName
 import java.util.Locale
 
 /**
- * The Tencent Hunyuan-MT 1.5 chat-template envelope, fed to the MNN-backed
+ * The Tencent Hunyuan-MT chat-template envelope (1.5 and Hy-MT2, whose
+ * templates are the same), fed to the MNN-backed
  * [com.playtranslate.translation.mnn.MnnTranslator].
  *
- * Hunyuan-MT 1.5 has **no system role** per the model card — a single user
- * turn carries both the instruction and the source text. We still split the
- * envelope across [systemBlock] / [userBlock] so the MNN translator's
- * per-pair caching ([com.playtranslate.translation.mnn.MnnTranslator]'s
- * `setSystemPrompt` + `resetForNextPrompt`) prefills the invariant
- * instruction prefix once per `(source, target)` and decodes only the
- * per-sentence suffix on each call. This is **Option A** in the plan review's
- * terminology and matches the spike's `benchmark_reuse()` exactly: sysLen=23
- * cached tokens, 0% catastrophic over 500 sentences (see
- * `mnn-spike/HYMT_SPIKE_REPORT.md`).
+ * **A translation is one user turn.** The model card's translation prompt
+ * carries the instruction and the source text together and has no system
+ * message (the card: "our models do not have a default system_prompt"). We
+ * still split the envelope across [systemBlock] / [userBlock] so the MNN
+ * translator's per-pair caching
+ * ([com.playtranslate.translation.mnn.MnnTranslator]'s `setSystemPrompt` +
+ * `resetForNextPrompt`) prefills the invariant instruction prefix once per
+ * `(source, target)` and decodes only the per-sentence suffix on each call.
+ * This is **Option A** in the plan review's terminology and matches the
+ * spike's `benchmark_reuse()` exactly: sysLen=23 cached tokens, 0%
+ * catastrophic over 500 sentences (see `mnn-spike/HYMT_SPIKE_REPORT.md`).
  *
  * The model sees one user turn at inference time — the cache-boundary split
  * between "system block" and "user block" is invisible to it because
  * `mnn_chat.cpp` runs with `use_template:false` and concatenates the two
  * strings verbatim with no role markers injected.
+ *
+ * **A free-form prompt has a system turn.** The chat template itself takes
+ * a system message, written `<bos>{system}<｜hy_place▁holder▁no▁3｜>` ahead
+ * of the user turn (`chat_template.jinja`, the same text in the MNN
+ * export's `llm_config.json`), and that is where a question's system
+ * message goes ([systemEnvelope], [userEnvelope]: an Ask answer, through
+ * [com.playtranslate.translation.mnn.MnnTranslator.complete]). The model was
+ * made to translate and answers a question all the same. Tried on a Mac,
+ * not on a device: the shipped 4-bit Hy-MT2 export through pymnn 3.6.2
+ * under mnn_chat.cpp's runtime config, where the system marker is one token
+ * of its tokenizer and the model answered Ask's prompts in the language
+ * asked for instead of translating them. Its answers are short and its
+ * grammar explanations often wrong, so it is put a question after every
+ * chat model ([com.playtranslate.translation.PromptCompleter.madeForTranslation]).
+ * 1.5 was not tried.
  *
  * **Special tokens** — the markers use full-width pipe `｜` (U+FF5C, UTF-8
  * `EF BD 9C`) and SentencePiece word-boundary `▁` (U+2581, UTF-8 `E2 96 81`),
@@ -36,12 +53,30 @@ import java.util.Locale
  * exported `llm_config.json`'s `jinja.eos` field; we don't need to emit it
  * here.
  *
- * **Instruction** — the prompt body matches the Hunyuan model card's
- * recommended non-Chinese-pair format: "Translate the following text into
- * <target_language>. Note that you should only output the translated result
- * without any additional explanation:" followed by the source.
+ * **Instruction** — the translation prompt's body matches the Hunyuan model
+ * card's recommended non-Chinese-pair format: "Translate the following text
+ * into <target_language>. Note that you should only output the translated
+ * result without any additional explanation:" followed by the source.
  */
 object HyMtChatTemplate {
+
+    private const val BOS = "<｜hy_begin▁of▁sentence｜>"
+    private const val USER = "<｜hy_User｜>"
+    private const val ASSISTANT = "<｜hy_Assistant｜>"
+
+    /** What the chat template closes a system message with. */
+    private const val SYSTEM_END = "<｜hy_place▁holder▁no▁3｜>"
+
+    /** [content] as the template's system turn, `<bos>` first: the block a
+     *  free-form prompt's system message is cached as. A translation has
+     *  no such turn ([systemBlock]). */
+    fun systemEnvelope(content: String): String = "$BOS$content$SYSTEM_END"
+
+    /** [content] as the user turn plus the assistant role-open marker: with
+     *  `<bos>` before it, the whole of a translation's prompt
+     *  ([systemBlock] and [userBlock] together), and after [systemEnvelope]
+     *  a free-form prompt's user message. */
+    fun userEnvelope(content: String): String = "$USER$content$ASSISTANT"
 
     /**
      * The cacheable instruction prefix — the invariant portion that
@@ -61,7 +96,7 @@ object HyMtChatTemplate {
     @Suppress("UNUSED_PARAMETER")
     fun systemBlock(source: String, target: String): String {
         val tgtName = languageDisplayName(target.lowercase(Locale.ROOT))
-        return "<｜hy_begin▁of▁sentence｜><｜hy_User｜>" +
+        return BOS + USER +
             "Translate the following text into $tgtName. " +
             "Note that you should only output the translated result without any " +
             "additional explanation:\n\n"
@@ -83,5 +118,5 @@ object HyMtChatTemplate {
      */
     @Suppress("UNUSED_PARAMETER")
     fun userBlock(text: String, source: String, target: String): String =
-        "$text<｜hy_Assistant｜>"
+        text + ASSISTANT
 }

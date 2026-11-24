@@ -11,7 +11,6 @@ import com.playtranslate.translation.hymt.HyMt2Model
 import com.playtranslate.translation.hymt.HyMtModel
 import com.playtranslate.translation.llm.ModelHelper
 import com.playtranslate.translation.llm.MultiFileSha
-import com.playtranslate.translation.llm.OnDeviceChatLlmBackend
 import com.playtranslate.translation.llm.OnDeviceLlmBackend
 import com.playtranslate.translation.qwen.Qwen35Mnn2bModel
 import com.playtranslate.translation.qwen.QwenMnnModel
@@ -40,7 +39,7 @@ import java.io.File
  * it. ML Kit has no switch and PlayTranslate Cloud's call refuses while its
  * own is off, so for those two set up is usable.
  *
- * A chat model that is switched off is set up and still answers no
+ * An on-device model that is switched off is set up and still answers no
  * question ([PromptCompleter.canComplete] keeps the switch): only a run the
  * user asks that one model for reaches it.
  *
@@ -227,17 +226,17 @@ class BackendSetUpForTest {
         assertEquals("off: a pick is refused as the waterfall is", "false/false", answers(hymt.backend))
     }
 
-    @Test fun `a chat model that is switched off is set up and still answers no question`() {
-        for (m in onDevice().filter { it.backend is OnDeviceChatLlmBackend }) {
+    @Test fun `an on-device model that is switched off is set up and still answers no question`() {
+        for (m in onDevice()) {
             install(m.model)
             enabled = false
             assertEquals("${m.backend.id}", "false/true", answers(m.backend))
             assertEquals(
                 "${m.backend.id}: a question is only put to a model that is switched on",
-                false, (m.backend as OnDeviceChatLlmBackend).canComplete(),
+                false, m.backend.canComplete(),
             )
             enabled = true
-            assertEquals("${m.backend.id}: read live", true, (m.backend as OnDeviceChatLlmBackend).canComplete())
+            assertEquals("${m.backend.id}: read live", true, m.backend.canComplete())
         }
     }
 

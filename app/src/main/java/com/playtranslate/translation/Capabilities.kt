@@ -198,9 +198,12 @@ class StructuralFailureException(
  * Backends that can answer a free-form prompt: a system message and a user
  * message in, the model's reply out, untouched. What the Ask section runs
  * on, beside the services that take a question's parts instead
- * ([SentenceAnswerer]). It is a capability of chat LLMs alone: a
- * machine-translation service does not implement it, and neither does a
- * model fine-tuned for translation only.
+ * ([SentenceAnswerer]). It is a capability of LLMs: a machine-translation
+ * service does not implement it. A model fine-tuned for translation has it
+ * where it has been seen to answer a prompt and says what it is
+ * ([madeForTranslation]: Hunyuan-MT on the device), and is not offered one
+ * where it has not (an online preset serving such a model, whose
+ * [canComplete] is false).
  *
  * A [complete] call differs from a translation in what its failure may do
  * to the service's standing with the translation waterfall. What the
@@ -225,6 +228,12 @@ interface PromptCompleter {
     /** The model's reply to [user] under [system]. Throws as a translation
      *  call does ([ClassifiedFailure] where the failure is understood). */
     suspend fun complete(system: String, user: String): String
+
+    /** True for a model that was made to translate and answers a prompt all
+     *  the same (Hunyuan-MT). It answers worse than a chat model does, so a
+     *  question goes to it after every completer that is not one
+     *  ([TranslationBackendRegistry.complete]). */
+    val madeForTranslation: Boolean get() = false
 
     companion object {
         /** How long an online completer waits for an answer. A reply that
@@ -279,7 +288,7 @@ sealed interface SentenceAnswer {
 /**
  * Backends that answer a question about a sentence from its parts
  * ([SentenceQuestion]'s pair, sentence and question) and write the prompt
- * themselves: the Ask section's other kind of answerer, beside the chat LLMs
+ * themselves: the Ask section's other kind of answerer, beside the LLMs
  * that are put a prompt ([PromptCompleter]). PlayTranslate Cloud is one
  * (`POST /v1/ask`). Unlike a prompt completer it answers within a scope of
  * its own and can say a question is outside it ([SentenceAnswer.OutOfScope]).
