@@ -1308,6 +1308,12 @@ button.act:active, .act.cur { background: var(--pt-press); }
         /** The ✕'s accessible name
          *  (`R.string.anki_word_remove_content_description`). */
         val removeLabel: String,
+        /** The flat index of the first sense of the groups this call draws:
+         *  0 for a word's whole list, and the number of senses in the groups
+         *  left out before them for a block that is only part of it (the
+         *  Anki word sheet's block below the built-in dictionary's senses,
+         *  [DefRow.Curation.base]). */
+        val base: Int = 0,
     )
 
     /**
@@ -1320,6 +1326,12 @@ button.act:active, .act.cur { background: var(--pt-press); }
      * page reports its tap. Under it each run of definitions is headed by
      * its part of speech alone, when it has one. A dictionary in [shut]
      * ([dictionaryKey]) draws its title and nothing else.
+     *
+     * Where the row draws an imported dictionary, the built-in dictionary's
+     * own senses are one more dictionary under a title of their own,
+     * [ownTitle] ([DefAction.OWN_DICTIONARY], [OWN_DICTIONARY_KEY] in
+     * [shut]); alone in the row they have none, and are drawn whatever the
+     * row was told is shut.
      */
     class ImportedCollapse(
         val shut: Set<String>,
@@ -1327,14 +1339,20 @@ button.act:active, .act.cur { background: var(--pt-press); }
          *  points toward the line's end (the page turns it down for an open
          *  block). Built by the row renderer, which can read the drawable. */
         val arrow: String,
+        /** The built-in dictionary's title
+         *  (`R.string.dictionary_title_builtin`). */
+        val ownTitle: String,
     )
 
     /**
      * A word's definitions as markup, the body of a row of the page
-     * ([DefRowHtml]): imported groups first (in
-     * their given order — [TermMerge] already ordered them), each in its
-     * own `<section class="dict-group">`, then the pack's own senses with
-     * the classic numbered layout. A structured sense's glossary is wrapped
+     * ([DefRowHtml]): imported groups (in their given order — [TermMerge]
+     * already ordered them), each in its own `<section class="dict-group">`,
+     * and the pack's own senses with the classic numbered layout, which
+     * stand where the user's dictionary order puts the built-in dictionary:
+     * before the first group marked
+     * [com.playtranslate.model.ImportedSenseGroup.belowBuiltIn], after every
+     * group when none is. A structured sense's glossary is wrapped
      * in `<div class="gloss-scope" data-dictionary>`, the one element its
      * dictionary's scoped CSS is keyed to, so the stylesheet reaches its own
      * structured content and nothing of ours (the headers, the flat rows,
@@ -1358,7 +1376,9 @@ button.act:active, .act.cur { background: var(--pt-press); }
      * its tap. Null emits no wrapper at all.
      *
      * [collapse] (a word row only) gives each dictionary its title line and
-     * leaves a shut one's definitions out (see [ImportedCollapse]).
+     * leaves a shut one's definitions out (see [ImportedCollapse]), the
+     * built-in dictionary's among them where the row also holds an imported
+     * one.
      *
      * [references] is whether a dictionary's links to its other words are
      * followed where this markup is drawn ([DefAction.reference]): each is
@@ -1405,10 +1425,45 @@ button.act:active, .act.cur { background: var(--pt-press); }
             }
             sb.append("</div>")
         }
+        // The built-in dictionary's own senses, drawn once: before the first
+        // group the user's order puts below its row, or after every group.
+        val packSenses = data.senses.filter { !it.imported }
+        var builtInDrawn = false
+        fun appendBuiltIn() {
+            if (builtInDrawn) return
+            builtInDrawn = true
+            // More than one dictionary in the row: the pack's own is titled
+            // too, and only a titled block can be shut.
+            val ownTitled = collapse != null && data.importedGroups.isNotEmpty() && packSenses.isNotEmpty()
+            val ownShut = ownTitled && OWN_DICTIONARY_KEY in collapse!!.shut
+            if (ownTitled) {
+                appendDictionaryTitle(sb, DefAction.OWN_DICTIONARY, ownShut, collapse!!.ownTitle, collapse.arrow)
+            }
+            if (ownShut) return
+            var previousPos: List<String>? = null
+            packSenses.forEachIndexed { i, sense ->
+                if (sense.pos.isNotEmpty() && sense.pos != previousPos) {
+                    sb.append("<div class=\"pos-h\">")
+                        .append(htmlEscape(localizePos(sense.pos))).append("</div>")
+                    previousPos = sense.pos
+                }
+                sb.append("<div class=\"def-row\">")
+                    .append("<div class=\"def-num\">").append(i + 1).append(".</div>")
+                    .append("<div class=\"def-text\">")
+                    .append(htmlEscape(sense.definition).replace("\n", "<br>"))
+                if (showMisc) {
+                    renderMisc(sense.misc)?.let {
+                        sb.append("<div class=\"def-misc\">").append(htmlEscape(it)).append("</div>")
+                    }
+                }
+                sb.append("</div></div>")
+            }
+        }
         // The flat index of each group's first sense, counted over removed
         // senses too: the curation's identity names a row across every group.
-        var groupBase = 0
+        var groupBase = importedCuration?.base ?: 0
         for ((groupIndex, group) in data.importedGroups.withIndex()) {
+            if (group.belowBuiltIn) appendBuiltIn()
             val base = groupBase
             groupBase += group.senses.size
             val kept = group.senses.withIndex()
@@ -1465,25 +1520,7 @@ button.act:active, .act.cur { background: var(--pt-press); }
             }
             sb.append("</section>")
         }
-        val packSenses = data.senses.filter { !it.imported }
-        var previousPos: List<String>? = null
-        packSenses.forEachIndexed { i, sense ->
-            if (sense.pos.isNotEmpty() && sense.pos != previousPos) {
-                sb.append("<div class=\"pos-h\">")
-                    .append(htmlEscape(localizePos(sense.pos))).append("</div>")
-                previousPos = sense.pos
-            }
-            sb.append("<div class=\"def-row\">")
-                .append("<div class=\"def-num\">").append(i + 1).append(".</div>")
-                .append("<div class=\"def-text\">")
-                .append(htmlEscape(sense.definition).replace("\n", "<br>"))
-            if (showMisc) {
-                renderMisc(sense.misc)?.let {
-                    sb.append("<div class=\"def-misc\">").append(htmlEscape(it)).append("</div>")
-                }
-            }
-            sb.append("</div></div>")
-        }
+        appendBuiltIn()
         return sb.toString()
     }
 

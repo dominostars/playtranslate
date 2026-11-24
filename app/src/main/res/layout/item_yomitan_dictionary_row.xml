@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Yomitan dictionary list row: drag handle · title/description · delete.
      Mirrors item_region_row's edit-mode affordances; lives inside a
-     MaterialCardView so it paints only its ripple + in-card divider. -->
+     MaterialCardView so it paints only its ripple + in-card divider.
+     The Terms list's Built-in dictionary row is this same row with the
+     switch in the delete button's place (it cannot be deleted): the
+     adapter shows one of the two. -->
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -96,6 +99,21 @@
             android:scaleType="centerInside"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/cd_yomitan_delete" />
+
+        <!-- The Built-in dictionary row's on/off switch; GONE on every other
+             row. A tap target of its own, and the row's content block
+             toggles it too (that row opens no page). An id of its own, not
+             the footer rows' switchRowToggle, so a lookup in the section
+             card can never land here. saveEnabled="false": the adapter sets
+             it from the registry at every bind (see settings_row_switch.xml). -->
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchYomitanBuiltIn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:saveEnabled="false"
+            android:visibility="gone"
+            app:materialThemeOverlay="@style/Widget.PlayTranslate.MaterialSwitch" />
 
     </LinearLayout>
 

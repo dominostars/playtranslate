@@ -1,9 +1,12 @@
 package com.playtranslate.ui
 
 import com.playtranslate.language.DefinitionResult
+import com.playtranslate.language.TargetSense
 import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.DictionaryResponse
 import com.playtranslate.model.Headword
+import com.playtranslate.model.ImportedSense
+import com.playtranslate.model.ImportedSenseGroup
 import com.playtranslate.model.Sense
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -19,6 +22,88 @@ class SenseDisplaysTest {
 
     private fun sense(def: String, imported: Boolean = false, pos: List<String> = emptyList()) =
         SenseDisplay(pos = pos, definition = def, misc = emptyList(), imported = imported)
+
+    // ── The built-in dictionary's place among the imported ones ─────────
+
+    private fun group(name: String, below: Boolean) = ImportedSenseGroup(
+        name, listOf(ImportedSense("def of $name")), dictId = name, belowBuiltIn = below,
+    )
+
+    private fun packSense(def: String) = Sense(
+        targetDefinitions = listOf(def), partsOfSpeech = listOf("noun"),
+        tags = emptyList(), restrictions = emptyList(), info = emptyList(),
+    )
+
+    private fun entry(groups: List<ImportedSenseGroup>, vararg defs: String) = DictionaryEntry(
+        slug = "猫", isCommon = null, tags = emptyList(), jlpt = emptyList(),
+        headwords = listOf(Headword("猫", "ねこ")),
+        senses = defs.map(::packSense),
+        importedSenses = groups,
+    )
+
+    private fun rowsOf(e: DictionaryEntry) = buildSenseDisplays(
+        DefinitionResult.EnglishFallback(DictionaryResponse(listOf(e)), null), listOf(e), "en",
+    ).map { it.definition }
+
+    @Test fun `the rows are in the user's dictionary order, the built-in ones where its row is`() {
+        assertEquals(
+            listOf("def of A", "def of B", "cat", "kitten"),
+            rowsOf(entry(listOf(group("A", below = false), group("B", below = false)), "cat", "kitten")),
+        )
+        assertEquals(
+            listOf("def of A", "cat", "kitten", "def of B"),
+            rowsOf(entry(listOf(group("A", below = false), group("B", below = true)), "cat", "kitten")),
+        )
+        assertEquals(
+            listOf("cat", "kitten", "def of A", "def of B"),
+            rowsOf(entry(listOf(group("A", below = true), group("B", below = true)), "cat", "kitten")),
+        )
+    }
+
+    @Test fun `the target-language rows take the built-in dictionary's place`() {
+        val e = entry(listOf(group("A", below = false), group("B", below = true)), "cat")
+        val rows = buildSenseDisplays(
+            DefinitionResult.Native(
+                DictionaryResponse(listOf(e)),
+                listOf(TargetSense(0, emptyList(), listOf("chat"), "jmdict")),
+                "jmdict",
+            ),
+            listOf(e), "fr",
+        )
+        assertEquals(listOf("def of A", "chat", "def of B"), rows.map { it.definition })
+    }
+
+    @Test fun `the flat text numbers its lines in that same order`() {
+        val groups = listOf(group("A", below = false), group("B", below = true))
+        assertEquals(
+            listOf("def of A (A)", "cat", "kitten", "def of B (B)"),
+            flatDefinitionLines(groups, listOf("cat", "kitten")),
+        )
+        assertEquals(
+            "1. def of A (A)\n2. cat\n3. kitten\n4. def of B (B)",
+            flatCardDefinition(entry(groups, "cat", "kitten")),
+        )
+        // And it is the text the rows themselves flatten to.
+        val e = entry(groups, "cat", "kitten")
+        assertEquals(
+            flatCardDefinition(e),
+            flatMeaningOf(
+                buildSenseDisplays(DefinitionResult.EnglishFallback(DictionaryResponse(listOf(e)), null), listOf(e), "en"),
+            ),
+        )
+        assertEquals("cat", flatCardDefinition(entry(emptyList(), "cat")))
+    }
+
+    @Test fun `the rows rebuild the groups with their side of the built-in dictionary`() {
+        for (marks in listOf(listOf(false, false), listOf(false, true), listOf(true, true))) {
+            val groups = listOf(group("A", marks[0]), group("B", marks[1]))
+            val e = entry(groups, "cat")
+            val rows = buildSenseDisplays(
+                DefinitionResult.EnglishFallback(DictionaryResponse(listOf(e)), null), listOf(e), "en",
+            )
+            assertEquals("$marks", groups, importedGroupsFromSenses(rows))
+        }
+    }
 
     // ── flatMeaningOf ────────────────────────────────────────────────────
 

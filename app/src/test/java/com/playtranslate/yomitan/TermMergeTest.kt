@@ -156,21 +156,120 @@ class TermMergeTest {
         assertEquals("よみえー", result.resolvedReading)
     }
 
+    // ── The Built-in dictionary row: place and shown-rule ───────────────
+
+    private fun group(label: String, below: Boolean = false) = ImportedSenseGroup(
+        label, listOf(ImportedSense("def of $label")), dictId = label, belowBuiltIn = below,
+    )
+
     @Test
-    fun `single-dictionary mode keeps only the highest-priority group`() {
+    fun `the row's default place is below every dictionary`() {
         val result = merge(
-            rows = listOf(row("dictB", "ねこ", 0.0, "b-def"), row("dictA", "ねこ", 0.0, "a-def")),
+            rows = listOf(row("dictA", "ねこ", 0.0, "a-def"), row("dictB", "ねこ", 0.0, "b-def")),
             normalizedReading = null,
-            singleDictionary = true,
         )
-        assertEquals(
-            listOf(ImportedSenseGroup("Dict A", listOf(ImportedSense("a-def")), dictId = "dictA")),
-            result.groups,
-        )
+        assertEquals(listOf(false, false), result.groups.map { it.belowBuiltIn })
     }
 
     @Test
-    fun `single-dictionary mode falls through dicts without results`() {
+    fun `a dictionary at or past the row's slot is marked below it`() {
+        val rows = listOf(row("dictA", "ねこ", 0.0, "a-def"), row("dictB", "ねこ", 0.0, "b-def"))
+        fun marks(slot: Int) =
+            TermMerge.merge(rows, order, null, "猫", builtInSlot = slot).groups.map { it.belowBuiltIn }
+        assertEquals(listOf(true, true), marks(0))
+        assertEquals(listOf(false, true), marks(1))
+        assertEquals(listOf(false, false), marks(2))
+    }
+
+    @Test
+    fun `the merge keeps every dictionary's group and hands both switches on`() {
+        // Which groups are shown is the caller's, through shown(): it is the
+        // one that knows whether the built-in dictionary has the word.
+        val result = TermMerge.merge(
+            rows = listOf(row("dictB", "ねこ", 0.0, "b-def"), row("dictA", "ねこ", 0.0, "a-def")),
+            dictOrder = order,
+            normalizedReadings = null,
+            normalizedTerm = "猫",
+            singleDictionary = true,
+            builtInEnabled = false,
+        )
+        assertEquals(listOf("Dict A", "Dict B"), result.groups.map { it.source })
+        assertEquals(true, result.singleDictionary)
+        assertEquals(false, result.builtInEnabled)
+    }
+
+    @Test
+    fun `with no imported dictionary having the word the built-in one is shown, whatever the switches`() {
+        for (single in listOf(false, true)) for (enabled in listOf(false, true)) for (has in listOf(false, true)) {
+            val shown = TermMerge.shown(emptyList(), single, enabled, has)
+            assertEquals(emptyList<ImportedSenseGroup>(), shown.groups)
+            assertEquals("single=$single enabled=$enabled has=$has", false, shown.builtInWithheld)
+        }
+    }
+
+    @Test
+    fun `switched on, every dictionary is shown beside the built-in one`() {
+        val groups = listOf(group("A"), group("B", below = true))
+        for (has in listOf(false, true)) {
+            val shown = TermMerge.shown(groups, singleDictionary = false, builtInEnabled = true, builtInHasWord = has)
+            assertEquals(groups, shown.groups)
+            assertEquals(false, shown.builtInWithheld)
+        }
+    }
+
+    @Test
+    fun `switched off, the built-in one is withheld from a word another dictionary has`() {
+        // Wherever its row is: above every group here.
+        val groups = listOf(group("A", below = true), group("B", below = true))
+        val shown = TermMerge.shown(groups, singleDictionary = false, builtInEnabled = false, builtInHasWord = true)
+        assertEquals(groups, shown.groups)
+        assertEquals(true, shown.builtInWithheld)
+    }
+
+    @Test
+    fun `one-dictionary mode gives the word to the built-in one when its row is above every dictionary that has it`() {
+        val shown = TermMerge.shown(
+            listOf(group("A", below = true), group("B", below = true)),
+            singleDictionary = true, builtInEnabled = true, builtInHasWord = true,
+        )
+        assertEquals(emptyList<ImportedSenseGroup>(), shown.groups)
+        assertEquals(false, shown.builtInWithheld)
+    }
+
+    @Test
+    fun `one-dictionary mode gives the word to the first imported dictionary above the built-in row`() {
+        val shown = TermMerge.shown(
+            listOf(group("A"), group("B", below = true)),
+            singleDictionary = true, builtInEnabled = true, builtInHasWord = true,
+        )
+        assertEquals(listOf("A"), shown.groups.map { it.source })
+        assertEquals(true, shown.builtInWithheld)
+    }
+
+    @Test
+    fun `one-dictionary mode passes over a built-in row on top that lacks the word`() {
+        val shown = TermMerge.shown(
+            listOf(group("A", below = true), group("B", below = true)),
+            singleDictionary = true, builtInEnabled = true, builtInHasWord = false,
+        )
+        assertEquals(listOf("A"), shown.groups.map { it.source })
+        assertEquals(true, shown.builtInWithheld)
+    }
+
+    @Test
+    fun `one-dictionary mode never picks a switched-off built-in row over a dictionary that has the word`() {
+        for (has in listOf(false, true)) {
+            val shown = TermMerge.shown(
+                listOf(group("A", below = true), group("B", below = true)),
+                singleDictionary = true, builtInEnabled = false, builtInHasWord = has,
+            )
+            assertEquals(listOf("A"), shown.groups.map { it.source })
+            assertEquals(true, shown.builtInWithheld)
+        }
+    }
+
+    @Test
+    fun `one-dictionary mode falls through dictionaries without results`() {
         // dictA has rows, but reading narrowing removes them all — dictB is
         // the first dict WITH results and must win, not an empty lookup.
         val result = merge(
@@ -180,39 +279,20 @@ class TermMergeTest {
         )
         assertEquals(
             listOf(ImportedSenseGroup("Dict B", listOf(ImportedSense("edge")), dictId = "dictB")),
-            result.groups,
+            result.shown(builtInHasWord = true).groups,
         )
     }
 
     @Test
-    fun `single-dictionary mode suppresses pack senses when a group wins`() {
-        val result = merge(
-            rows = listOf(row("dictA", "ねこ", 0.0, "a-def")),
-            normalizedReading = null,
-            singleDictionary = true,
-        )
-        assertEquals(true, result.suppressesPackSenses)
-    }
-
-    @Test
-    fun `single-dictionary mode with no surviving group leaves the pack alone`() {
-        // The pack is the implicit last dictionary in the priority order —
-        // with every imported row narrowed away it IS the one with results.
+    fun `one-dictionary mode with no surviving group leaves the built-in dictionary alone`() {
+        // With every imported row narrowed away the built-in dictionary IS
+        // the one with results.
         val result = merge(
             rows = listOf(row("dictA", "はじ", 0.0, "shame")),
             normalizedReading = "はし",
             singleDictionary = true,
         )
-        assertEquals(false, result.suppressesPackSenses)
-    }
-
-    @Test
-    fun `multi-dictionary mode never suppresses pack senses`() {
-        val result = merge(
-            rows = listOf(row("dictA", "ねこ", 0.0, "a-def")),
-            normalizedReading = null,
-        )
-        assertEquals(false, result.suppressesPackSenses)
+        assertEquals(false, result.shown(builtInHasWord = true).builtInWithheld)
     }
 
     @Test
@@ -321,7 +401,7 @@ class TermMergeTest {
             readingKey = PinyinFormatter::canonicalPinyin, excludedReadings = setOf("dōng xī"),
         )
         assertEquals(emptyList<ImportedSenseGroup>(), result.groups)
-        assertEquals(false, result.suppressesPackSenses)
+        assertEquals(false, result.shown(builtInHasWord = true).builtInWithheld)
     }
 
     @Test

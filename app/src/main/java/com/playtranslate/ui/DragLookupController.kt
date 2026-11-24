@@ -1548,7 +1548,8 @@ class DragLookupController(
 
         // Build popup data. The sense rows come from the shared tier
         // cascade every definitions surface uses ([buildSenseDisplays]:
-        // imported rows lead, then Native target-driven / MT /
+        // imported rows around the built-in dictionary's, in the user's
+        // dictionary order, those from the Native target-driven / MT /
         // English-fallback branching, flattened across every entry so
         // Wiktionary's per-POS entry split doesn't lose senses). This
         // replaced a hand-rolled copy of that cascade — the last one

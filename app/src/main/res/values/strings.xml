@@ -1857,10 +1857,10 @@
     <!-- Picker option description for “Definitions (Yomitan format)”. “Glossary” is the name of a Lapis field, shown as written. -->
     <string name="anki_content_glossary_desc">Every dictionary\'s definitions of the highlighted word, written the way <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g> writes them. For card types made for <xliff:g id="brand_yomitan2" example="Yomitan">Yomitan</xliff:g>, such as <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>\'s “Glossary”.</string>
 
-    <!-- Picker option label: the definitions from one dictionary only, in Yomitan's HTML. The “main dictionary” is the one highest in the user's own dictionary order that has the word. -->
+    <!-- Picker option label: the definitions from one dictionary only, in Yomitan's HTML. The “main dictionary” is the one highest in the user's own dictionary order that has the word; the built-in dictionary has a place in that order too. -->
     <string name="anki_content_glossary_primary">Main dictionary (<xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g> format)</string>
     <!-- Picker option description for “Main dictionary (Yomitan format)”. “MainDefinition” is the name of a Lapis field, shown as written. -->
-    <string name="anki_content_glossary_primary_desc">Only the first dictionary in your order that has the highlighted word, written the way <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g> writes it. The built-in dictionary comes last. For <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>\'s “MainDefinition”.</string>
+    <string name="anki_content_glossary_primary_desc">Only the first dictionary in your order that has the highlighted word, written the way <xliff:g id="brand_yomitan" example="Yomitan">Yomitan</xliff:g> writes it. For <xliff:g id="brand_lapis" example="Lapis">Lapis</xliff:g>\'s “MainDefinition”.</string>
 
     <!-- Picker option label: the free-text note the user types on the card editor (the box headed by anki_group_notes; keep the two the same word). -->
     <string name="anki_content_notes">Notes</string>
@@ -4257,8 +4257,12 @@
     <string name="yomitan_no_space_message">Importing this dictionary needs about <xliff:g id="needed" example="180 MB">%1$s</xliff:g> of free space, but only <xliff:g id="available" example="42 MB">%2$s</xliff:g> is available. Free up space and try again.</string>
     <!-- Title of the single-dictionary toggle at the bottom of the Terms section. -->
     <string name="yomitan_single_dict_title">Only show definitions from one dictionary</string>
-    <!-- Subtitle of the single-dictionary toggle, explaining which dictionary wins. -->
-    <string name="yomitan_single_dict_subtitle">Definitions come from the highest-priority dictionary with results; the built-in dictionary is the final fallback</string>
+    <!-- Subtitle of the single-dictionary toggle, explaining which dictionary wins. "Highest-priority" is the highest row of the Terms list above this toggle that has the word; the built-in dictionary is one of those rows. -->
+    <string name="yomitan_single_dict_subtitle">Definitions come from the highest-priority dictionary with results</string>
+    <!-- Title of the row for the app's own dictionary in the Terms list on the Yomitan page, listed among the dictionaries the user imported so it can be dragged to a place in their order. It is the dictionary that comes with the app's language pack, the one a word's definitions title "Built-in". The row has an on/off switch where the other rows have a delete button. -->
+    <string name="yomitan_builtin_title">Built-in dictionary</string>
+    <!-- Subtitle of the Built-in dictionary row, beside its on/off switch: what turning the switch off does. Off, the built-in dictionary's definitions are hidden for every word another dictionary in the list has, and still shown for a word none of them has. Keep it to about two short lines. -->
+    <string name="yomitan_builtin_subtitle">When off, it is only used for words no other dictionary has</string>
     <!-- Title of the dictionary-styling toggle at the bottom of the Terms section. -->
     <string name="yomitan_styling_title">Dictionary styling</string>
     <!-- Subtitle of the dictionary-styling toggle; only affects dictionaries imported with structured content. -->

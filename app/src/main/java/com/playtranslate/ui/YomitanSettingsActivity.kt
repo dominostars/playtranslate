@@ -53,6 +53,12 @@ import java.io.File
  * independently in each). OUTDATED dictionaries (registry entries whose rows
  * were dropped by a schema bump) render as warning rows: tapping one opens
  * the file picker to re-import, and delete still removes it.
+ *
+ * The Terms section also lists the app's own dictionary, as one more row to
+ * drag ([Row.BuiltIn]): where it stands among the imported ones is where its
+ * definitions are drawn among theirs. It has an on/off switch where the
+ * others have their delete button, and no page of its own. The section, and
+ * so the row, is there only while a term dictionary is imported.
  */
 class YomitanSettingsActivity : SettingsSubPageActivity() {
 
@@ -400,7 +406,16 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
 
             val recycler = section.findViewById<RecyclerView>(R.id.rvYomitanSection)
             recycler.layoutManager = LinearLayoutManager(this)
-            val adapter = DictionaryAdapter(dictionaries.toMutableList(), outdatedIds)
+            val rows: List<Row> = if (category == YomitanCategory.TERMS) {
+                // The Built-in dictionary's row at its place among them.
+                val byId = dictionaries.associateBy { it.id }
+                registry.termsRowIds().mapNotNull { id ->
+                    if (id == YomitanRegistry.BUILT_IN_TERMS_ID) Row.BuiltIn else byId[id]?.let(Row::Imported)
+                }
+            } else {
+                dictionaries.map(Row::Imported)
+            }
+            val adapter = DictionaryAdapter(rows.toMutableList(), outdatedIds, registry.builtInTermsEnabled)
             recycler.adapter = adapter
             adapter.touchHelper = attachDragHelper(recycler, category, adapter)
 
@@ -578,9 +593,40 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
 
     // ── Adapter ─────────────────────────────────────────────────────────
 
+    /** A row of a section's list. [id] is what the section's stored order
+     *  holds for it ([YomitanDictionaryStore.reorder]). */
+    private sealed interface Row {
+        val id: String
+
+        /** A dictionary the user imported. */
+        data class Imported(val dictionary: YomitanDictionary) : Row {
+            override val id: String get() = dictionary.id
+        }
+
+        /** The app's own dictionary, in the Terms list alone. */
+        object BuiltIn : Row {
+            override val id: String get() = YomitanRegistry.BUILT_IN_TERMS_ID
+        }
+    }
+
+    /** Saves the Built-in dictionary row's switch. Chained on the previous
+     *  toggle write, like the section's footer switches: launch order on
+     *  Main is tap order, and joining the prior job keeps the writes in it. */
+    private fun writeBuiltInTermsEnabled(enabled: Boolean) {
+        val previous = toggleWriteJob
+        toggleWriteJob = lifecycleScope.launch {
+            previous?.join()
+            YomitanDictionaryStore.setBuiltInTermsEnabled(this@YomitanSettingsActivity, enabled)
+        }
+    }
+
     private inner class DictionaryAdapter(
-        val working: MutableList<YomitanDictionary>,
+        val working: MutableList<Row>,
         private val outdatedIds: Set<String>,
+        /** The Built-in dictionary row's switch as the list shows it: the
+         *  registry's value when the list was built, then every tap. A
+         *  rebind (each drop rebinds every row) draws the switch from this. */
+        private var builtInEnabled: Boolean,
     ) : RecyclerView.Adapter<DictionaryAdapter.VH>() {
 
         var touchHelper: ItemTouchHelper? = null
@@ -590,6 +636,7 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
             val title: TextView = view.findViewById(R.id.tvYomitanTitle)
             val subtitle: TextView = view.findViewById(R.id.tvYomitanSubtitle)
             val delete: ImageView = view.findViewById(R.id.btnYomitanDelete)
+            val builtInSwitch: MaterialSwitch = view.findViewById(R.id.switchYomitanBuiltIn)
             val divider: View = view.findViewById(R.id.yomitanRowDivider)
             val content: View = view.findViewById(R.id.yomitanRowContent)
             val colorDot: View = view.findViewById(R.id.yomitanColorDot)
@@ -608,7 +655,52 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
         override fun getItemCount(): Int = working.size
 
         override fun onBindViewHolder(holder: VH, position: Int) {
-            val entry = working[position]
+            holder.divider.isVisible = position < working.size - 1
+            holder.dragHandle.setOnTouchListener { v, event ->
+                if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                    touchHelper?.startDrag(holder)
+                } else if (event.actionMasked == MotionEvent.ACTION_UP) {
+                    v.performClick()
+                }
+                false
+            }
+            when (val row = working[position]) {
+                is Row.Imported -> bindImported(holder, row.dictionary)
+                Row.BuiltIn -> bindBuiltIn(holder)
+            }
+        }
+
+        /** The app's own dictionary: its name, what its switch does, and the
+         *  switch where an imported row has its delete button. The row opens
+         *  no page, so a tap on its text is a tap on the switch. */
+        private fun bindBuiltIn(holder: VH) {
+            holder.title.setText(R.string.yomitan_builtin_title)
+            holder.title.setTextColor(holder.defaultTitleColors)
+            holder.subtitle.setText(R.string.yomitan_builtin_subtitle)
+            holder.subtitle.setTextColor(holder.defaultSubtitleColors)
+            holder.subtitle.isGone = false
+            holder.colorDot.background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(this@YomitanSettingsActivity.themeColor(R.attr.ptTextMuted))
+            }
+            holder.delete.isGone = true
+            holder.delete.setOnClickListener(null)
+            holder.builtInSwitch.isVisible = true
+            holder.builtInSwitch.contentDescription = getString(R.string.yomitan_builtin_title)
+            // Detached while the bind sets it, so only a tap reaches the write.
+            holder.builtInSwitch.setOnCheckedChangeListener(null)
+            holder.builtInSwitch.isChecked = builtInEnabled
+            holder.builtInSwitch.setOnCheckedChangeListener { _, checked ->
+                builtInEnabled = checked
+                writeBuiltInTermsEnabled(checked)
+            }
+            holder.content.setOnClickListener { holder.builtInSwitch.toggle() }
+        }
+
+        private fun bindImported(holder: VH, entry: YomitanDictionary) {
+            holder.delete.isVisible = true
+            holder.builtInSwitch.setOnCheckedChangeListener(null)
+            holder.builtInSwitch.isGone = true
             val outdated = entry.id in outdatedIds
             // Show the user's alias (nickname) when set; the detail page keeps
             // the original title.
@@ -639,37 +731,31 @@ class YomitanSettingsActivity : SettingsSubPageActivity() {
                 holder.subtitle.isGone = description.isEmpty()
                 holder.subtitle.text = description
             }
-            holder.divider.isVisible = position < working.size - 1
 
-            holder.dragHandle.setOnTouchListener { v, event ->
-                if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                    touchHelper?.startDrag(holder)
-                } else if (event.actionMasked == MotionEvent.ACTION_UP) {
-                    v.performClick()
-                }
-                false
+            // The handlers read the row at tap time (a drag moves rows under
+            // a bound holder), and act only on an imported one.
+            fun dictionaryAtTap(): YomitanDictionary? {
+                val pos = holder.bindingAdapterPosition
+                if (pos == RecyclerView.NO_POSITION) return null
+                return (working[pos] as? Row.Imported)?.dictionary
             }
             holder.delete.setOnClickListener {
-                val pos = holder.bindingAdapterPosition
-                if (pos != RecyclerView.NO_POSITION) confirmDelete(working[pos])
+                dictionaryAtTap()?.let(::confirmDelete)
             }
             // Scoped to the content block (not itemView) so tapping the drag
             // handle never also opens details. An outdated row's tap is the
             // heal path: open the import picker instead of the detail page
             // (a same-title re-import supersedes the outdated entry).
             holder.content.setOnClickListener {
-                val pos = holder.bindingAdapterPosition
-                if (pos != RecyclerView.NO_POSITION) {
-                    val dict = working[pos]
-                    if (dict.id in outdatedIds) {
-                        pickDictionaries.launch(IMPORT_MIME_TYPES)
-                    } else {
-                        startActivity(
-                            YomitanDictionaryDetailActivity.intent(
-                                this@YomitanSettingsActivity, dict.id, dict.title,
-                            ),
-                        )
-                    }
+                val dict = dictionaryAtTap() ?: return@setOnClickListener
+                if (dict.id in outdatedIds) {
+                    pickDictionaries.launch(IMPORT_MIME_TYPES)
+                } else {
+                    startActivity(
+                        YomitanDictionaryDetailActivity.intent(
+                            this@YomitanSettingsActivity, dict.id, dict.title,
+                        ),
+                    )
                 }
             }
         }

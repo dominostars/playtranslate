@@ -908,8 +908,10 @@ class WordAnkiReviewBinder(
     }
 
     /**
-     * The card's rows as they stand: the imported dictionaries' block, then
-     * a row per kept sense. Sets [rowRemovalAllowed], the one count over
+     * The card's rows as they stand, in the user's dictionary order: the
+     * imported dictionaries above the built-in one as a block, a row per
+     * kept sense, the imported dictionaries below it as a second block
+     * ([importedRowsAround]). Sets [rowRemovalAllowed], the one count over
      * imported and pack rows together that decides whether any × is drawn:
      * the last row standing, of either kind, can never be removed, so the
      * card never goes empty.
@@ -948,16 +950,26 @@ class WordAnkiReviewBinder(
         rowRemovalAllowed = visibleImported + visiblePack > 1
 
         val rows = mutableListOf<DefRow>()
-        // Imported term-dictionary definitions lead, mirroring the detail
-        // page and what WordCardDefinition puts on the card. They curate
-        // like pack senses, keyed by their flat index across the groups
-        // ([removedImported]).
-        if (visibleImported > 0) {
-            rows += DefRow.Imported(
-                IMPORTED_ROW_ID, entry.importedSenses, DefRow.SenseLook.SHEET,
-                DefRow.Curation(removedImported.toSet(), rowRemovalAllowed),
+        // Imported term-dictionary definitions stand around the built-in
+        // dictionary's senses, in the user's dictionary order, mirroring the
+        // detail page and what WordCardDefinition puts on the card. They
+        // curate like pack senses, keyed by their flat index across ALL the
+        // groups ([removedImported]), which the block below the built-in
+        // senses continues from its base.
+        val (importedAbove, importedBelow) = importedRowsAround(
+            entry.importedSenses, IMPORTED_ROW_ID, IMPORTED_BELOW_ROW_ID,
+        ) { id, groups, base ->
+            DefRow.Imported(
+                id, groups, DefRow.SenseLook.SHEET,
+                DefRow.Curation(removedImported.toSet(), rowRemovalAllowed, base),
             )
         }
+        // A block whose every definition was taken off draws nothing.
+        fun DefRow.Imported.hasKept(): Boolean {
+            val base = curation?.base ?: 0
+            return (base until base + groups.sumOf { it.senses.size }).any { it !in removedImported }
+        }
+        importedAbove?.takeIf { it.hasKept() }?.let { rows += it }
 
         /** [senseIndex] is the sense's index in its own space (see above):
          *  what its ✕ removes and what its examples are keyed under. */
@@ -1022,6 +1034,7 @@ class WordAnkiReviewBinder(
                 )
             }
         }
+        importedBelow?.takeIf { it.hasKept() }?.let { rows += it }
         return rows
     }
 
@@ -1562,6 +1575,10 @@ class WordAnkiReviewBinder(
          *  the sense rows carry their own sizes. */
         private const val DEFINITIONS_BASE_PX = 15f
         private const val IMPORTED_ROW_ID = "imported"
+
+        /** The imported dictionaries the user's order puts below the
+         *  built-in dictionary's senses ([importedRowsAround]). */
+        private const val IMPORTED_BELOW_ROW_ID = "imported-below"
 
         /** A sense row's id is this and the sense's index in its own space
          *  (the target sense's in target-driven mode, the flat one's

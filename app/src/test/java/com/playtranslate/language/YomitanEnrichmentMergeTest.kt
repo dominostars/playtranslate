@@ -54,8 +54,11 @@ class YomitanEnrichmentMergeTest {
     private fun lookup(
         groups: List<ImportedSenseGroup> = emptyList(),
         resolvedReading: String? = null,
-        suppressesPackSenses: Boolean = false,
-    ) = YomitanDataStore.TermLookup(groups, resolvedReading, suppressesPackSenses)
+        singleDictionary: Boolean = false,
+        builtInEnabled: Boolean = true,
+    ) = YomitanDataStore.TermLookup(groups, resolvedReading, singleDictionary, builtInEnabled)
+
+    private val packSense = Sense(listOf("packdef"), emptyList(), emptyList(), emptyList(), emptyList())
 
     @Test
     fun `packReadings collects every matched entry's readings`() {
@@ -142,17 +145,108 @@ class YomitanEnrichmentMergeTest {
 
     @Test
     fun `single-dictionary suppression strips pack senses across all entries`() {
-        val sense = Sense(listOf("packdef"), emptyList(), emptyList(), emptyList(), emptyList())
         val pack = DictionaryResponse(
-            listOf(entry("first", listOf(sense)), entry("second", listOf(sense)))
+            listOf(entry("first", listOf(packSense)), entry("second", listOf(packSense)))
         )
         val merged = YomitanEnrichment.mergeImportedTerms(
             pack, "w",
-            lookup(groups = listOf(group("dictA")), suppressesPackSenses = true),
+            lookup(groups = listOf(group("dictA"), group("dictB")), singleDictionary = true),
             resolvedTerm = "w",
         )!!
         assertTrue(merged.entries.all { it.senses.isEmpty() })
         assertEquals(listOf("dictA"), merged.entries[0].importedSenses.map { it.source })
+        assertTrue(merged.builtInWithheld)
+    }
+
+    @Test
+    fun `a switched-off built-in dictionary is withheld from a word an imported one has`() {
+        val pack = DictionaryResponse(
+            listOf(entry("first", listOf(packSense)), entry("second", listOf(packSense)))
+        )
+        val merged = YomitanEnrichment.mergeImportedTerms(
+            pack, "w",
+            lookup(groups = listOf(group("dictA"), group("dictB")), builtInEnabled = false),
+            resolvedTerm = "w",
+        )!!
+        assertTrue(merged.entries.all { it.senses.isEmpty() })
+        assertEquals(listOf("dictA", "dictB"), merged.entries[0].importedSenses.map { it.source })
+        assertTrue(merged.builtInWithheld)
+        // The entry still gives the word its identity.
+        assertEquals(listOf("first", "second"), merged.entries.map { it.headwords.first().reading })
+    }
+
+    @Test
+    fun `a switched-off built-in dictionary still answers a word no imported one has`() {
+        // The request's case: Japanese dictionaries imported, the built-in
+        // row off, then a language (or a word) none of them covers.
+        val pack = DictionaryResponse(listOf(entry("only", listOf(packSense))))
+        val merged = YomitanEnrichment.mergeImportedTerms(
+            pack, "w", lookup(builtInEnabled = false), resolvedTerm = "w",
+        )
+        assertSame(pack, merged)
+        assertEquals(false, merged!!.builtInWithheld)
+        for (single in listOf(false, true)) {
+            assertSame(
+                pack,
+                YomitanEnrichment.mergeImportedTerms(
+                    pack, "w", lookup(singleDictionary = single, builtInEnabled = false), resolvedTerm = "w",
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun `switched on, the pack's senses stay beside the imported groups, which keep their marks`() {
+        val pack = DictionaryResponse(listOf(entry("first", listOf(packSense))))
+        val groups = listOf(group("above"), group("below").copy(belowBuiltIn = true))
+        val merged = YomitanEnrichment.mergeImportedTerms(
+            pack, "w", lookup(groups = groups), resolvedTerm = "w",
+        )!!
+        assertEquals(listOf(packSense), merged.entries.first().senses)
+        assertEquals(groups, merged.entries.first().importedSenses)
+        assertEquals(false, merged.builtInWithheld)
+    }
+
+    @Test
+    fun `one-dictionary mode with the built-in row on top answers from the pack alone`() {
+        val pack = DictionaryResponse(listOf(entry("first", listOf(packSense))))
+        val merged = YomitanEnrichment.mergeImportedTerms(
+            pack, "w",
+            lookup(groups = listOf(group("dictA").copy(belowBuiltIn = true)), singleDictionary = true),
+            resolvedTerm = "w",
+        )
+        assertSame(pack, merged)
+    }
+
+    @Test
+    fun `one-dictionary mode with the built-in row on top falls to an imported dictionary on a pack miss`() {
+        val merged = YomitanEnrichment.mergeImportedTerms(
+            packResponse = null,
+            word = "w",
+            lookup = lookup(
+                groups = listOf(
+                    group("dictA").copy(belowBuiltIn = true), group("dictB").copy(belowBuiltIn = true),
+                ),
+                singleDictionary = true,
+            ),
+            resolvedTerm = "w",
+        )!!
+        assertEquals(listOf("dictA"), merged.entries.single().importedSenses.map { it.source })
+        // No later tier may add a built-in line under the winning dictionary.
+        assertTrue(merged.builtInWithheld)
+    }
+
+    @Test
+    fun `a synthesized entry leaves the built-in tiers open while the built-in row is on`() {
+        val merged = YomitanEnrichment.mergeImportedTerms(
+            packResponse = null, word = "w", lookup = lookup(groups = listOf(group("dictA"))), resolvedTerm = "w",
+        )!!
+        assertEquals(false, merged.builtInWithheld)
+        val off = YomitanEnrichment.mergeImportedTerms(
+            packResponse = null, word = "w",
+            lookup = lookup(groups = listOf(group("dictA")), builtInEnabled = false), resolvedTerm = "w",
+        )!!
+        assertTrue(off.builtInWithheld)
     }
 
     @Test
@@ -216,7 +310,7 @@ class YomitanEnrichmentMergeTest {
         )
         val merged = YomitanEnrichment.mergeImportedTerms(
             DictionaryResponse(listOf(soretomo)), "それとも",
-            lookup(groups = listOf(group("dictA")), suppressesPackSenses = true), null,
+            lookup(groups = listOf(group("dictA")), singleDictionary = true), null,
         )!!
         assertTrue(merged.entries.first().senses.isEmpty())
         assertTrue(merged.entries.first().isKanaOnly)
@@ -242,7 +336,7 @@ class YomitanEnrichmentMergeTest {
         )
         val merged = YomitanEnrichment.mergeImportedTerms(
             DictionaryResponse(listOf(leakASecret)), "秘密を漏らす",
-            lookup(groups = listOf(group("Jitendex")), suppressesPackSenses = true), null,
+            lookup(groups = listOf(group("Jitendex")), singleDictionary = true), null,
         )!!
         assertTrue(merged.entries.first().senses.isEmpty())
         assertTrue(merged.entries.first().isExpression)

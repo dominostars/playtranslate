@@ -1,6 +1,9 @@
 package com.playtranslate.ui
 
+import com.playtranslate.language.DefinitionResult
+import com.playtranslate.language.TargetSense
 import com.playtranslate.model.DictionaryEntry
+import com.playtranslate.model.DictionaryResponse
 import com.playtranslate.model.Example
 import com.playtranslate.model.Headword
 import com.playtranslate.model.ImportedSense
@@ -449,6 +452,147 @@ class WordCardDefinitionTest {
         assertEquals(listOf("", "d1"), groups.map { it.dictId })
         val html = WordCardDefinition.fromSenses("猫", rows, fallback = "f").panelHtml(classStyler, null, header, noMisc)
         assertTrue(html, html.contains(">Legacy · x</div>"))
+    }
+
+    // ── The built-in dictionary's place among the card's dictionaries ───
+
+    private fun WordCardDefinition.rows() =
+        glossary(null, emptyMap(), RAW_POS, noMisc).items.map { Triple(it.text, it.group, it.imported) }
+
+    @Test
+    fun `the card's dictionaries stand in the user's order, the built-in one where its row is`() {
+        val senses = listOf(sense("a cat"), sense("kitten"))
+        fun card(gBelow: Boolean, hBelow: Boolean) = WordCardDefinition(
+            fallback = "fallback",
+            entry = entry(
+                imported = listOf(groupG.copy(belowBuiltIn = gBelow), groupH.copy(belowBuiltIn = hBelow)),
+                senses = senses,
+            ),
+        )
+        // The row at the bottom of the list: today's order.
+        assertEquals(
+            listOf(
+                Triple("alpha", 0, true), Triple("beta", 0, true), Triple("gamma", 1, true),
+                Triple("a cat", 2, false), Triple("kitten", 2, false),
+            ),
+            card(gBelow = false, hBelow = false).rows(),
+        )
+        // Between two dictionaries.
+        assertEquals(
+            listOf(
+                Triple("alpha", 0, true), Triple("beta", 0, true),
+                Triple("a cat", 1, false), Triple("kitten", 1, false),
+                Triple("gamma", 2, true),
+            ),
+            card(gBelow = false, hBelow = true).rows(),
+        )
+        // On top.
+        assertEquals(
+            listOf(
+                Triple("a cat", 0, false), Triple("kitten", 0, false),
+                Triple("alpha", 1, true), Triple("beta", 1, true), Triple("gamma", 2, true),
+            ),
+            card(gBelow = true, hBelow = true).rows(),
+        )
+    }
+
+    @Test
+    fun `the main dictionary is the first row of the user's order that has the word, the built-in one included`() {
+        fun primary(gBelow: Boolean) = WordCardDefinition(
+            fallback = "fallback",
+            entry = entry(imported = listOf(groupG.copy(belowBuiltIn = gBelow)), senses = listOf(sense("a cat"))),
+        ).glossary(null, emptyMap(), RAW_POS, noMisc).yomitanHtml(primaryOnly = true)
+
+        val importedLeads = primary(gBelow = false)
+        assertTrue(importedLeads, importedLeads.contains("alpha") && importedLeads.contains("beta"))
+        assertFalse(importedLeads, importedLeads.contains("a cat"))
+        val builtInLeads = primary(gBelow = true)
+        assertTrue(builtInLeads, builtInLeads.contains("a cat"))
+        assertFalse(builtInLeads, builtInLeads.contains("alpha"))
+    }
+
+    @Test
+    fun `a built-in dictionary with every sense curated away takes no place among the groups`() {
+        val def = WordCardDefinition(
+            fallback = "fallback",
+            entry = entry(
+                imported = listOf(groupG, groupH.copy(belowBuiltIn = true)),
+                senses = listOf(sense("a cat")),
+            ),
+            removedSenses = setOf(0),
+        )
+        assertEquals(
+            listOf(Triple("alpha", 0, true), Triple("beta", 0, true), Triple("gamma", 1, true)),
+            def.rows(),
+        )
+    }
+
+    @Test
+    fun `the target-language senses stand at the built-in dictionary's place too`() {
+        val e = entry(
+            imported = listOf(groupG, groupH.copy(belowBuiltIn = true)),
+            senses = listOf(sense("a cat")),
+        )
+        val def = WordCardDefinition(
+            fallback = "fallback",
+            entry = e,
+            defResult = DefinitionResult.Native(
+                DictionaryResponse(listOf(e)),
+                listOf(TargetSense(0, emptyList(), listOf("un chat"), "jmdict")),
+                "jmdict",
+            ),
+            targetLang = "fr",
+        )
+        assertEquals(listOf("alpha", "beta", "un chat", "gamma"), def.rows().map { it.first })
+    }
+
+    @Test
+    fun `fromSenses keeps the built-in rows' place among the dictionaries`() {
+        val e = entry(
+            imported = listOf(groupG, groupH.copy(belowBuiltIn = true)),
+            senses = listOf(sense("a cat"), sense("kitten")),
+        )
+        // The transport's rows, in drawn order (buildSenseDisplays).
+        val rows = buildSenseDisplays(
+            DefinitionResult.EnglishFallback(DictionaryResponse(listOf(e)), null), listOf(e), "en",
+        )
+        assertEquals(
+            listOf("alpha", "beta", "a cat", "kitten", "gamma"),
+            rows.map { it.definition },
+        )
+        val fromRows = WordCardDefinition.fromSenses("猫", rows, fallback = "fallback")
+        assertEquals(e.importedSenses, fromRows.importedGroups)
+        assertEquals(
+            WordCardDefinition(fallback = "fallback", entry = e).panelHtml(inlineStyler, null, header, noMisc),
+            fromRows.panelHtml(inlineStyler, null, header, noMisc),
+        )
+    }
+
+    @Test
+    fun `a row list filtered to its imported rows reads as every dictionary above the built-in one`() {
+        // What importedGroupsFromSenses says of its input: the place is the
+        // built-in rows' position in the list, gone once they are filtered out.
+        val rows = listOf(
+            SenseDisplay(pos = listOf("noun"), definition = "a cat", misc = emptyList()),
+            importedRow,
+        )
+        assertEquals(listOf(true), importedGroupsFromSenses(rows).map { it.belowBuiltIn })
+        assertEquals(listOf(false), importedGroupsFromSenses(rows.filter { it.imported }).map { it.belowBuiltIn })
+    }
+
+    @Test
+    fun `a built-in row with no definition stands nowhere among the dictionaries`() {
+        // The card skips such a sense, so the groups after it are not below
+        // a built-in block: there is none to be below.
+        val blank = SenseDisplay(pos = listOf("noun"), definition = "", misc = emptyList())
+        assertEquals(listOf(false), importedGroupsFromSenses(listOf(blank, importedRow)).map { it.belowBuiltIn })
+        // And the card is the one a list without the blank row makes.
+        assertEquals(
+            WordCardDefinition.fromSenses("猫", listOf(importedRow), fallback = "f")
+                .panelHtml(inlineStyler, null, header, noMisc),
+            WordCardDefinition.fromSenses("猫", listOf(blank, importedRow), fallback = "f")
+                .panelHtml(inlineStyler, null, header, noMisc),
+        )
     }
 
     @Test

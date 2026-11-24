@@ -5,6 +5,7 @@ import com.playtranslate.model.DictionaryEntry
 import com.playtranslate.model.Example
 import com.playtranslate.model.ImportedSenseGroup
 import com.playtranslate.model.Sense
+import com.playtranslate.model.aroundBuiltIn
 import com.playtranslate.model.unambiguousFallbackPos
 
 /**
@@ -77,11 +78,17 @@ data class WordCardDefinition(
      * card's panel, the words table's cells and Yomitan's markup are three
      * layouts of what this returns.
      *
-     * Imported term-dictionary definitions lead, final text: the kept rows
-     * only ([importedGroups]), each as its dictionary's structured glossary
+     * The rows are in the user's dictionary order: the imported
+     * dictionaries that order puts above the built-in dictionary's row,
+     * the built-in dictionary's rows, the imported ones below
+     * ([aroundBuiltIn]); each block is one [CardGlossary.Item.group],
+     * numbered in that drawn order, so the card's first dictionary is the
+     * first row of the user's list that has the word. Imported
+     * term-dictionary definitions are final text: the kept rows only
+     * ([importedGroups]), each as its dictionary's structured glossary
      * when the sense retained one and [styled] delivered it, as its flat
      * text otherwise (null [styled] = flat throughout). The built-in
-     * dictionary's rows follow: the target-language senses when the
+     * dictionary's rows are the target-language senses when the
      * surface resolved them for a non-English target, the pack's own
      * senses otherwise, each minus what the editor removed. A pack sense
      * with no definition is skipped. With no row at all, which is no entry
@@ -105,32 +112,43 @@ data class WordCardDefinition(
         val dictStyles = styled?.dictStyles.orEmpty()
         if (entry == null) return CardGlossary(emptyList(), fallback, dictStyles)
         val items = mutableListOf<CardGlossary.Item>()
-        val groups = importedGroups
-        groups.forEachIndexed { groupIndex, group ->
-            val dictionary = titles[group.dictId] ?: group.source
-            for (sense in group.senses) {
-                items += CardGlossary.Item(
-                    imported = true,
-                    dictionary = dictionary,
-                    dictId = group.dictId,
-                    label = group.source,
-                    group = groupIndex,
-                    pos = sense.pos,
-                    structuredHtml = sense.scRowid
-                        ?.let { styled?.structured?.get(it) }
-                        ?.let { YomitanContentHtml.glossaryHtml(it, group.dictId, includeImages = false) },
-                    text = sense.definition,
-                )
+        // Each dictionary's rows are one group, numbered as the blocks are
+        // drawn: the imported ones above the built-in dictionary, it, the
+        // ones below. Only a block with a row takes a number.
+        var nextGroup = 0
+        fun imported(groups: List<ImportedSenseGroup>) {
+            for (group in groups) {
+                if (group.senses.isEmpty()) continue
+                val groupIndex = nextGroup++
+                val dictionary = titles[group.dictId] ?: group.source
+                for (sense in group.senses) {
+                    items += CardGlossary.Item(
+                        imported = true,
+                        dictionary = dictionary,
+                        dictId = group.dictId,
+                        label = group.source,
+                        group = groupIndex,
+                        pos = sense.pos,
+                        structuredHtml = sense.scRowid
+                            ?.let { styled?.structured?.get(it) }
+                            ?.let { YomitanContentHtml.glossaryHtml(it, group.dictId, includeImages = false) },
+                        text = sense.definition,
+                    )
+                }
             }
         }
+        val (above, below) = importedGroups.aroundBuiltIn()
+        imported(above)
+        // One dictionary, at the built-in dictionary's place among them.
+        var builtInGroup = -1
         fun builtIn(pos: List<String>, gloss: String, misc: List<String>, examples: List<Example>) {
+            if (builtInGroup < 0) builtInGroup = nextGroup++
             items += CardGlossary.Item(
                 imported = false,
                 dictionary = CardGlossary.BUILT_IN_DICTIONARY,
                 dictId = "",
                 label = "",
-                // One dictionary, after every imported one.
-                group = groups.size,
+                group = builtInGroup,
                 pos = if (pos.isEmpty()) "" else localizePos(pos),
                 structuredHtml = null,
                 text = gloss,
@@ -159,6 +177,7 @@ data class WordCardDefinition(
                     examples = target.examples.filterIndexed { e, _ -> (index to e) !in removedExamples },
                 )
             }
+            imported(below)
             return CardGlossary(items, fallback, dictStyles)
         }
 
@@ -188,6 +207,7 @@ data class WordCardDefinition(
                 },
             )
         }
+        imported(below)
         return CardGlossary(items, fallback, dictStyles)
     }
 

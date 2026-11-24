@@ -96,6 +96,15 @@ class DefinitionResolver(
     suspend fun resolve(response: DictionaryResponse, word: String, reading: String?): DefinitionResult {
         Log.d(TAG, "lookup($word, $reading): engine returned ${response.entries.size} entries, targetLang=$targetLang, targetGlossDb=${targetGlossDb != null}, srcToTgt=${sourceToTargetTranslator != null}")
 
+        // The built-in dictionary's definitions are not shown for this word
+        // (DictionaryResponse.builtInWithheld): every tier below is one of
+        // them, the target pack's senses and a translated headword as much
+        // as the source pack's own, so none runs and nothing is translated.
+        if (response.builtInWithheld) {
+            Log.d(TAG, "  -> built-in dictionary withheld, no tier")
+            return DefinitionResult.EnglishFallback(response, null)
+        }
+
         val entry = response.entries.firstOrNull()
 
         // Tier 1: target-pack native definition
@@ -142,10 +151,11 @@ class DefinitionResolver(
      * configured [resolve] returns the English text. Runs only the Tier 1
      * probe, querying the same headwords [resolve] does, and never
      * translates. Not suspend because that probe is a synchronous read of
-     * the target gloss database.
+     * the target gloss database. False for a response whose built-in
+     * definitions are withheld: [resolve] runs no tier for it.
      */
     fun needsMachineTranslation(response: DictionaryResponse, word: String, reading: String?): Boolean =
-        targetLang != "en" && nativeGloss(response, word, reading) == null
+        !response.builtInWithheld && targetLang != "en" && nativeGloss(response, word, reading) == null
 
     /**
      * Tier 1: the target pack's senses for the first hit among every written

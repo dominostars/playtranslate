@@ -302,6 +302,10 @@ class WordDetailBinder(
         private const val DEFINITIONS_BASE_PX = 16.5f
         private const val IMPORTED_ROW_ID = "imported"
 
+        /** The imported dictionaries the user's order puts below the
+         *  built-in dictionary's senses ([importedRowsAround]). */
+        private const val IMPORTED_BELOW_ROW_ID = "imported-below"
+
         /**
          * The sentence every Anki action on the page rides: [host], the
          * host's live context (the embedded host activity's provider, the
@@ -862,10 +866,10 @@ class WordDetailBinder(
             ?.takeIf { it.isNotEmpty() }
         val isTargetDriven = targetLangCode != "en" && nativeTargetSenses != null
 
-        // Imported term-dictionary lines lead (one per line, source in
-        // parens), numbered continuously with the pack's lines — the same
-        // flat shape every Anki definition builder emits.
-        val importedLines = importedFlatLines(entry.importedSenses)
+        // Imported term-dictionary lines (one per line, source in parens)
+        // around the pack's lines, numbered continuously — the same flat
+        // shape and order every Anki definition builder emits
+        // (flatDefinitionLines).
         val packLines: List<String> = if (isTargetDriven) {
             nativeTargetSenses.map { it.glosses.joinToString("; ") }
         } else {
@@ -883,10 +887,8 @@ class WordDetailBinder(
                     ?: sense.targetDefinitions.joinToString("; ")
             }
         }
-        val rawLines = importedLines + packLines
         val definition =
-            (if (rawLines.size > 1) rawLines.mapIndexed { i, l -> "${i + 1}. $l" } else rawLines)
-                .joinToString("\n")
+            numberedLines(flatDefinitionLines(entry.importedSenses, packLines)).joinToString("\n")
         return Triple(reading, pos, definition)
     }
 
@@ -1271,19 +1273,20 @@ class WordDetailBinder(
         addGroupHeader(content, ctx.getString(R.string.word_detail_group_definitions), definitionsSuffix)
         val definitionsCard = addGroupCard(content)
 
-        // The card is ONE definitions document. The imported term
-        // dictionaries' definitions lead, unnumbered and unclamped, one
-        // labelled block per dictionary in the user's section order (final
-        // text, never machine-translated); then a row per sense.
+        // The card is ONE definitions document, in the user's dictionary
+        // order: the imported term dictionaries' definitions, unnumbered and
+        // unclamped, one labelled block per dictionary (final text, never
+        // machine-translated), around a row per sense of the built-in
+        // dictionary's, which stand where that order puts its row.
         val rows = mutableListOf<DefRow>()
         val rowOfSense = HashMap<Int, Int>()
         // A word tapped in the card's text opens its lens, where the host
         // has a window for one: the rows then report taps on their text.
         val taps = ui.wordLens()?.let { DefinitionWordTaps(ctx, scope, it, ::wireDictionaryWordLens) }
-        val importedGroups = primary.importedSenses
-        if (importedGroups.any { it.senses.isNotEmpty() }) {
-            rows += DefRow.Imported(IMPORTED_ROW_ID, importedGroups, links = true, words = taps != null)
-        }
+        val (importedAbove, importedBelow) = importedRowsAround(
+            primary.importedSenses, IMPORTED_ROW_ID, IMPORTED_BELOW_ROW_ID,
+        ) { id, groups, _ -> DefRow.Imported(id, groups, links = true, words = taps != null) }
+        importedAbove?.let { rows += it }
         val italic = targetSupportsItalics(ctx)
         fun senseRow(
             id: String,
@@ -1349,6 +1352,7 @@ class WordDetailBinder(
                 displayCount++
             }
         }
+        importedBelow?.let { rows += it }
 
         releaseDefinitions()
         if (rows.isNotEmpty()) {

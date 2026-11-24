@@ -176,9 +176,18 @@ object YomitanDataStore {
          *  with this: it is what Yomitan writes, and so what a note type
          *  made for Yomitan styles by ([com.playtranslate.ui.CardGlossary]). */
         val termDictTitles: Map<String, String>,
-        /** User toggle: only the highest-priority TERMS dict with results
-         *  contributes its group (see [TermMerge.merge]). */
+        /** User toggle: only the highest-priority TERMS row with results
+         *  is shown (see [TermMerge.shown]). */
         val termsSingleDictionary: Boolean,
+        /** The Built-in dictionary row's place among THIS language's
+         *  [termDicts]: how many of them the user's TERMS list puts above
+         *  that row ([YomitanRegistry.termsRowIds]). The list is one for
+         *  every language, so the count is over the dictionaries this
+         *  language consults. */
+        val builtInTermsSlot: Int,
+        /** The Built-in dictionary row's switch
+         *  ([YomitanRegistry.builtInTermsEnabled]). */
+        val builtInTermsEnabled: Boolean,
         /** Whether any enabled TERMS dict retained structured glossaries
          *  (`term_sc` rows); with the styling toggle, what makes their
          *  own markup the one drawn. */
@@ -208,12 +217,27 @@ object YomitanDataStore {
     data class TermLookup(
         val groups: List<ImportedSenseGroup>,
         val resolvedReading: String?,
-        /** Single-dictionary mode with an imported group winning: the
-         *  built-in pack counts as the lowest-priority source, so its
-         *  senses must be excluded by the caller. False whenever [groups]
-         *  is empty — the pack is then the dictionary that "has results". */
-        val suppressesPackSenses: Boolean = false,
-    )
+        /** The user's two TERMS switches as they stood for this lookup:
+         *  one-dictionary mode, and the Built-in dictionary row's own
+         *  switch. [groups] is every dictionary that has the word; which of
+         *  them, and whether the built-in dictionary, are shown is
+         *  [TermMerge.shown]'s, applied by the caller that knows whether
+         *  the built-in dictionary has the word. The defaults are the
+         *  settings' own, for a lookup that found no group to decide over. */
+        val singleDictionary: Boolean = false,
+        val builtInEnabled: Boolean = true,
+    ) {
+        /** Which of this lookup's dictionaries the word shows, given
+         *  whether the built-in dictionary has the word
+         *  ([TermMerge.shown], the rule). */
+        fun shown(builtInHasWord: Boolean): ShownTerms =
+            TermMerge.shown(groups, singleDictionary, builtInEnabled, builtInHasWord)
+    }
+
+    /** What [TermLookup.shown] decided for one word: the imported [groups]
+     *  to show, in order, and whether the built-in dictionary's definitions
+     *  are left out ([builtInWithheld]). */
+    data class ShownTerms(val groups: List<ImportedSenseGroup>, val builtInWithheld: Boolean)
 
     private class KanjiDictMeta(
         val id: String,
@@ -531,6 +555,8 @@ object YomitanDataStore {
             normalizedReadings = readings?.mapTo(mutableSetOf(), Deinflector::katakanaToHiragana),
             normalizedTerm = Deinflector.katakanaToHiragana(term),
             singleDictionary = caps.termsSingleDictionary,
+            builtInSlot = caps.builtInTermsSlot,
+            builtInEnabled = caps.builtInTermsEnabled,
             dictColors = caps.dictColors,
             resolveToFirstReading = resolveToFirstReading,
             readingKey = readingKeyFor(sourceLanguage),
@@ -828,6 +854,11 @@ object YomitanDataStore {
                     termDictTitles = ordered(YomitanCategory.TERMS)
                         .associate { it.id to it.title },
                     termsSingleDictionary = registry.termsSingleDictionary,
+                    builtInTermsSlot = builtInTermsSlot(
+                        registry.termsRowIds(),
+                        ordered(YomitanCategory.TERMS).map { it.id },
+                    ),
+                    builtInTermsEnabled = registry.builtInTermsEnabled,
                     hasStructuredTerms = ordered(YomitanCategory.TERMS)
                         .map { it.id }
                         .let { ids -> ids.isNotEmpty() && hasStructuredRows(database, ids) },
@@ -840,6 +871,15 @@ object YomitanDataStore {
             }
             database to caps
         }
+    }
+
+    /** How many of [languageTermIds] (one language's term dictionaries)
+     *  the TERMS list puts above the Built-in dictionary's row, given the
+     *  list's [rowIds] ([YomitanRegistry.termsRowIds], every language's
+     *  dictionaries and the row). */
+    internal fun builtInTermsSlot(rowIds: List<String>, languageTermIds: List<String>): Int {
+        val ofLanguage = languageTermIds.toSet()
+        return rowIds.takeWhile { it != YomitanRegistry.BUILT_IN_TERMS_ID }.count { it in ofLanguage }
     }
 
     private fun hasStructuredRows(database: SQLiteDatabase, dictIds: List<String>): Boolean {

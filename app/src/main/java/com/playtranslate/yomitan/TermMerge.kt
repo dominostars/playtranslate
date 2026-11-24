@@ -51,13 +51,16 @@ internal object TermMerge {
      * reading the built-in pack resolved for the spelling, so the imported
      * groups are narrowed by exactly the identity the pack landed on.
      *
-     * [singleDictionary] (the user's TERMS-section toggle) keeps only the
-     * first dictionary's group — groups exist only for dicts whose rows
-     * survived narrowing, so "first" already IS the highest-priority dict
-     * with results, and falling through to lower-priority dicts on a miss
-     * needs no extra logic. The built-in pack is the implicit LAST source
-     * in that priority order: when a group wins, the returned lookup also
-     * flags the pack's senses for exclusion.
+     * Every dictionary with surviving rows gets its group: which of them
+     * are SHOWN, and whether the built-in dictionary's senses are, is
+     * [shown]'s, decided by the caller that knows whether the built-in
+     * dictionary has the word. [singleDictionary] and [builtInEnabled] (the
+     * user's two TERMS switches) ride the returned lookup to it untouched.
+     * [builtInSlot] is the Built-in dictionary row's place in [dictOrder],
+     * the number of its dictionaries the user's list puts above that row:
+     * a group of a dictionary at or past it is marked
+     * [ImportedSenseGroup.belowBuiltIn]. The default is the row's own
+     * default place, below every dictionary.
      */
     fun merge(
         rows: List<Row>,
@@ -65,6 +68,8 @@ internal object TermMerge {
         normalizedReadings: Set<String>?,
         normalizedTerm: String,
         singleDictionary: Boolean = false,
+        builtInSlot: Int = dictOrder.size,
+        builtInEnabled: Boolean = true,
         /** Per-dictionary accent override (ARGB) keyed by dict id; tints each
          *  imported group's title. Defaulted so existing callers are unaffected. */
         dictColors: Map<String, Int?> = emptyMap(),
@@ -114,7 +119,8 @@ internal object TermMerge {
         // parallel glosses of one sense (JMdict ships one entry per sense),
         // joined the same way the pack joins its glosses; distinct senses
         // arrive as distinct entries and stay distinct rows.
-        val groups = dictOrder.mapNotNull { (dictId, label) ->
+        val groups = dictOrder.withIndex().mapNotNull { (position, dict) ->
+            val (dictId, label) = dict
             narrowed.filter { it.dictId == dictId }
                 .sortedByDescending { it.score }
                 .map { row ->
@@ -125,8 +131,13 @@ internal object TermMerge {
                     )
                 }
                 .takeIf { it.isNotEmpty() }
-                ?.let { ImportedSenseGroup(label, it, dictColors[dictId], dictId = dictId) }
-        }.let { if (singleDictionary) it.take(1) else it }
+                ?.let {
+                    ImportedSenseGroup(
+                        label, it, dictColors[dictId], dictId = dictId,
+                        belowBuiltIn = position >= builtInSlot,
+                    )
+                }
+        }
         // One supplied reading IS the resolved reading; a SET disambiguates
         // without naming one, so the surviving rows answer instead — the
         // same source a null disambiguator has always used.
@@ -137,7 +148,44 @@ internal object TermMerge {
         return YomitanDataStore.TermLookup(
             groups,
             resolvedReading,
-            suppressesPackSenses = singleDictionary && groups.isNotEmpty(),
+            singleDictionary = singleDictionary,
+            builtInEnabled = builtInEnabled,
         )
+    }
+
+    /**
+     * THE rule for which dictionaries' definitions a word shows, over the
+     * imported [groups] that have it (in the user's order, each marked with
+     * its side of the Built-in dictionary row), the user's two TERMS
+     * switches, and whether the built-in dictionary has the word
+     * ([builtInHasWord]):
+     *
+     *  - No imported dictionary has the word: the built-in one is shown
+     *    whatever its switch says. It is the only dictionary with a result,
+     *    which is also what gives a language with no imported dictionary
+     *    its definitions while the switch is off.
+     *  - Its row switched off ([builtInEnabled] false): withheld. Off, it
+     *    never counts as a dictionary with a result while another has one.
+     *  - [singleDictionary]: the first row in the user's order that has the
+     *    word wins and nothing else is shown. The Built-in row is one of
+     *    those rows, at its own place: it wins when it has the word and
+     *    every imported group is below it. Otherwise the first group wins,
+     *    which is the highest-priority imported dictionary with a result
+     *    (groups exist only for dictionaries whose rows survived the
+     *    narrowing), and the built-in one is withheld.
+     *  - Otherwise every group and the built-in dictionary are shown, the
+     *    built-in one where the groups' marks put it.
+     */
+    fun shown(
+        groups: List<ImportedSenseGroup>,
+        singleDictionary: Boolean,
+        builtInEnabled: Boolean,
+        builtInHasWord: Boolean,
+    ): YomitanDataStore.ShownTerms = when {
+        groups.isEmpty() -> YomitanDataStore.ShownTerms(groups, builtInWithheld = false)
+        !singleDictionary -> YomitanDataStore.ShownTerms(groups, builtInWithheld = !builtInEnabled)
+        builtInEnabled && builtInHasWord && groups.first().belowBuiltIn ->
+            YomitanDataStore.ShownTerms(emptyList(), builtInWithheld = false)
+        else -> YomitanDataStore.ShownTerms(groups.take(1), builtInWithheld = true)
     }
 }

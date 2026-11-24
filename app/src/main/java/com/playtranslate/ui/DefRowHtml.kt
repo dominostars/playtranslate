@@ -50,8 +50,8 @@ internal object DefRowHtml {
      * A word of the Anki sentence sheet. Top to bottom in one element, so
      * the target's wash covers all of it: the title line (the word, its
      * reading under its accent contour, the stars, and the eye at the line's
-     * end), the audio row while the word is a target, then the definition,
-     * kept clear of the eye's column. The row is the target toggle; the
+     * end), the audio row while the word is a target, then the definition
+     * ([DefRow.SheetWord] says which), kept clear of the eye's column. The row is the target toggle; the
      * audio row and its two controls, and the eye, each take their own tap.
      * Links are inert: a tap on the definition is a tap on the row.
      */
@@ -97,7 +97,15 @@ internal object DefRowHtml {
 
         row.audio?.let { appendAudioRow(ctx, sb, it) }
 
-        val styled = row.importedGroups.any { g -> g.senses.any { it.scRowid?.let(structured::containsKey) == true } }
+        // The body previews the dictionary that leads the word's definitions
+        // on the card. The built-in one leads when the user's order puts it
+        // above every imported dictionary that has the word: the body is
+        // then the meaning's first line, which is its first sense, and not
+        // the imported dictionaries' markup under a word whose card opens
+        // with another dictionary's definition.
+        val builtInLeads = row.importedGroups.firstOrNull()?.belowBuiltIn == true && row.meaning.isNotBlank()
+        val styled = !builtInLeads &&
+            row.importedGroups.any { g -> g.senses.any { it.scRowid?.let(structured::containsKey) == true } }
         if (styled) {
             sb.append("<div class=\"swd\">")
                 .append(
@@ -180,7 +188,7 @@ internal object DefRowHtml {
                     structured,
                     localizePos = { it.joinToString(" \u00b7 ") },
                     importedCuration = row.curation?.let {
-                        DefinitionsDocument.ImportedCuration(it.removed, it.removable, removeLabel)
+                        DefinitionsDocument.ImportedCuration(it.removed, it.removable, removeLabel, it.base)
                     },
                     references = row.links && row.curation == null,
                     wordTaps = wordTaps,
@@ -188,7 +196,7 @@ internal object DefRowHtml {
         }
         val sb = StringBuilder(512)
         sb.append("<div class=\"row impl\" id=\"").append(domId).append("\" data-row").append(words).append('>')
-        var flat = 0
+        var flat = row.curation?.base ?: 0
         for (group in row.groups) {
             var labelled = false
             for (sense in group.senses) {
@@ -404,8 +412,10 @@ internal object DefRowHtml {
 
     /**
      * The definitions under a word's header: the warning label and the meta
-     * chips, then the imported dictionaries, then the pack's own senses, or
-     * the row's placeholder when the word has none of either. Every
+     * chips, then the word's dictionaries in the user's order, the imported
+     * ones and the pack's own senses where that order puts the built-in
+     * dictionary ([DefinitionsDocument.contentHtml]), or the row's
+     * placeholder when the word has none of either. Every
      * dictionary's definitions are drawn in full, in a list's row as in the
      * lens's, each dictionary under its title, and a dictionary the user has
      * shut in this row ([DefRow.Word.shutDictionaries]) is its title alone:
@@ -423,36 +433,22 @@ internal object DefRowHtml {
         if (chips.isNotEmpty() || !row.label.isNullOrBlank()) {
             sb.append(DefinitionsDocument.contentHtml(none, emptyMap(), localize, metaChips = chips, label = row.label))
         }
-        val arrow = VectorDrawableSvg.svg(ctx.resources, R.drawable.ic_chevron_right, "dict-a")
-        if (d.importedGroups.isNotEmpty()) {
-            sb.append("<div class=\"imp\">")
-                .append(
-                    DefinitionsDocument.contentHtml(
-                        none.copy(importedGroups = d.importedGroups), structured, localize,
-                        collapse = DefinitionsDocument.ImportedCollapse(row.shutDictionaries, arrow),
-                        // A link opens its word as the row opens its own:
-                        // live where the row's links are and the row opens.
-                        references = row.full && row.opens,
-                    ),
-                )
-                .append("</div>")
-        }
-        // More than one dictionary in the row: the pack's own is titled too.
-        val ownTitled = d.importedGroups.isNotEmpty() && d.senses.any { !it.imported }
-        val ownShut = ownTitled && OWN_DICTIONARY_KEY in row.shutDictionaries
-        if (ownTitled) {
-            DefinitionsDocument.appendDictionaryTitle(
-                sb, DefAction.OWN_DICTIONARY, ownShut, ctx.getString(R.string.dictionary_title_builtin), arrow,
-            )
-        }
-        if (!ownShut) {
-            sb.append(
-                DefinitionsDocument.contentHtml(
-                    none.copy(senses = d.senses), emptyMap(), localize,
-                    showMisc = true, renderMisc = { ctx.renderMiscText(it) },
+        // Every dictionary in ONE call: the order is its to draw, and a
+        // dictionary's links are numbered over the call.
+        sb.append(
+            DefinitionsDocument.contentHtml(
+                none.copy(senses = d.senses, importedGroups = d.importedGroups), structured, localize,
+                showMisc = true, renderMisc = { ctx.renderMiscText(it) },
+                collapse = DefinitionsDocument.ImportedCollapse(
+                    row.shutDictionaries,
+                    arrow = VectorDrawableSvg.svg(ctx.resources, R.drawable.ic_chevron_right, "dict-a"),
+                    ownTitle = ctx.getString(R.string.dictionary_title_builtin),
                 ),
-            )
-        }
+                // A link opens its word as the row opens its own:
+                // live where the row's links are and the row opens.
+                references = row.full && row.opens,
+            ),
+        )
         if (d.senses.none { !it.imported } && d.importedGroups.isEmpty() && row.emptyText != null) {
             sb.append("<div class=\"empty\">").append(htmlEscape(row.emptyText)).append("</div>")
         }

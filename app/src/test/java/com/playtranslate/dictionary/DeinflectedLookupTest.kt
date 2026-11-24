@@ -168,11 +168,16 @@ class DeinflectedLookupTest {
         )
         val pack = DictionaryResponse(listOf(entry), deinflection = listOf(POTENTIAL))
         val groups = listOf(ImportedSenseGroup(source = "J", senses = listOf(ImportedSense("to swim"))))
-        for (suppress in listOf(false, true)) {
+        // With the built-in dictionary shown beside the group, and withheld
+        // (its row switched off).
+        for (builtInEnabled in listOf(true, false)) {
             val merged = YomitanEnrichment.mergeImportedTerms(
-                pack, "泳げる", YomitanDataStore.TermLookup(groups, null, suppress), "泳げる",
+                pack, "泳げる",
+                YomitanDataStore.TermLookup(groups, null, builtInEnabled = builtInEnabled),
+                "泳げる",
             )
             assertEquals(listOf(POTENTIAL), merged?.deinflection)
+            assertEquals(!builtInEnabled, merged?.builtInWithheld)
         }
         // A pack miss synthesized from an imported dictionary carries no chain.
         val synthesized = YomitanEnrichment.mergeImportedTerms(

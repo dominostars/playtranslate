@@ -35,8 +35,9 @@ import com.playtranslate.model.Example
  * times off the main thread and must get the same bytes each time.
  */
 internal class CardGlossary(
-    /** The definitions, in card order: imported dictionaries in the user's
-     *  order, then the built-in dictionary's. */
+    /** The definitions, in card order: the user's dictionary order, the
+     *  built-in dictionary's at the place its row has among the imported
+     *  ones ([WordCardDefinition.glossary]). */
     val items: List<Item>,
     /** Flat text drawn when [items] is empty: no entry resolved, or every
      *  row was removed in the editor. Unused otherwise. */
@@ -61,8 +62,9 @@ internal class CardGlossary(
          *  the cell do not name. */
         val label: String,
         /** Which of the card's dictionaries the row belongs to: that
-         *  dictionary's place in the card's order (0 is the first, the
-         *  built-in one is last). THE identity rows are grouped by, for the
+         *  dictionary's place in the card's order (0 is the first; the
+         *  built-in one has the place the user's order gives it). THE
+         *  identity rows are grouped by, for the
          *  panel's label and for the primary dictionary. [dictionary] and
          *  [label] are display text and two dictionaries can share either:
          *  an import titled like the built-in tag, or two labels standing in
@@ -243,8 +245,8 @@ internal class CardGlossary(
      * never the tag, which two dictionaries can share): Lapis's
      * MainDefinition, where the full list is its Glossary. "First" is the
      * card's own order (the user's dictionary order, the built-in
-     * dictionary last), the order the single-dictionary setting already
-     * reads.
+     * dictionary where its row is), the order the single-dictionary
+     * setting already reads.
      *
      * "" when there is nothing to show.
      */

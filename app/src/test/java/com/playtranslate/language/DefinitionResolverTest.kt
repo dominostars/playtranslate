@@ -521,4 +521,49 @@ class DefinitionResolverTest {
         assertTrue(resolved is DefinitionResult.Native)
         assertEquals(probed, glossDb.queriedHeadwords)
     }
+
+    // ── A withheld built-in dictionary: no tier ─────────────────────────
+
+    /** The shape the imported-term merge hands on when the built-in
+     *  dictionary's definitions are not shown: senses stripped, flag set. */
+    private fun withheld(word: String) =
+        DictionaryResponse(listOf(entry(word, senses = emptyList())), builtInWithheld = true)
+
+    @Test fun `withheld - the target pack's senses are not resolved`() = runBlocking {
+        // The target pack is the built-in dictionary too: read by headword,
+        // it would answer although the source pack's senses are stripped.
+        val resp = withheld("食べる")
+        val glossDb = FakeTargetGlossDb(mapOf("ja:食べる" to listOf(targetSense(0, "manger"))))
+        val resolver = DefinitionResolver(FakeEngine(mapOf("食べる" to resp)), glossDb, null, "fr")
+
+        val result = resolver.resolve(resp, "食べる", null)
+
+        assertEquals(DefinitionResult.EnglishFallback(resp, null), result)
+        assertTrue("No tier may probe", glossDb.queriedHeadwords.isEmpty())
+        assertEquals(result, resolver.lookup("食べる", null))
+    }
+
+    @Test fun `withheld - no headword is machine-translated`() = runBlocking {
+        val resp = withheld("食べる")
+        val headwordTranslator = FakeTranslator("HW:")
+        val defTranslator = FakeTranslator("DEF:")
+        val resolver = DefinitionResolver(
+            FakeEngine(mapOf("食べる" to resp)), FakeTargetGlossDb(), headwordTranslator, "de", defTranslator
+        )
+
+        assertEquals(DefinitionResult.EnglishFallback(resp, null), resolver.resolve(resp, "食べる", null))
+        assertTrue(headwordTranslator.calls.isEmpty())
+        assertTrue(defTranslator.calls.isEmpty())
+        assertFalse(resolver.needsMachineTranslation(resp, "食べる", null))
+    }
+
+    @Test fun `the same stripped response resolves its tiers when nothing is withheld`() = runBlocking {
+        // The flag decides, not the empty senses: an entry synthesized from
+        // an imported dictionary while the built-in row is on keeps its tiers.
+        val resp = DictionaryResponse(listOf(entry("食べる", senses = emptyList())))
+        val glossDb = FakeTargetGlossDb(mapOf("ja:食べる" to listOf(targetSense(0, "manger"))))
+        val resolver = DefinitionResolver(FakeEngine(mapOf("食べる" to resp)), glossDb, null, "fr")
+
+        assertTrue(resolver.resolve(resp, "食べる", null) is DefinitionResult.Native)
+    }
 }

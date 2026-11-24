@@ -211,12 +211,12 @@ suspend fun resolveWordRows(
             val reading = display.reading ?: ""
             val freqScore = entry.freqScore
 
-            // Imported term-dictionary lines lead the flat
-            // definition string (one per line, source in parens),
-            // numbered continuously with the pack's lines below.
-            // Built BEFORE the empty-check so an imported-only
+            // Imported term-dictionary lines (one per line, source in
+            // parens) stand around the pack's lines in the flat
+            // definition string, in the order the dictionaries are
+            // drawn, numbered continuously (flatDefinitionLines).
+            // Joined BEFORE the empty-check so an imported-only
             // word (pack-miss synthesis) still gets a row.
-            val importedLines = importedFlatLines(entry.importedSenses)
             var headerLine: String? = null
             val packLines: List<String> = when (defResult) {
                 is DefinitionResult.Native -> {
@@ -248,10 +248,9 @@ suspend fun resolveWordRows(
                     }
                 }
             }
-            val rawLines = importedLines + packLines.filter { it.isNotEmpty() }
-            val numbered =
-                if (rawLines.size > 1) rawLines.mapIndexed { i, l -> "${i + 1}. $l" }
-                else rawLines
+            val numbered = numberedLines(
+                flatDefinitionLines(entry.importedSenses, packLines.filter { it.isNotEmpty() }),
+            )
             val meaning =
                 (listOfNotNull(headerLine) + numbered).joinToString("\n")
             if (meaning.isEmpty()) return RowOutcome.Skipped

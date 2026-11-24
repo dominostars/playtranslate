@@ -364,67 +364,81 @@ class YomitanEnrichment(
         }
 
         /** Pure term-merge, extracted so it's unit-testable without a Context:
-         *  attaches imported definition groups from [lookup] to [packResponse]
-         *  (groups ride the first entry; single-dictionary mode also strips the
-         *  pack's own senses), synthesizes an entry on a pack miss, or returns
-         *  null when the pack missed and nothing imported matched. With no group
-         *  to attach it returns [packResponse] untouched — so the order the
-         *  engine chose its entries in is never disturbed by the wrap. */
+         *  attaches the imported definition groups of [lookup] that the user's
+         *  TERMS settings show ([YomitanDataStore.TermLookup.shown])
+         *  to [packResponse] (groups ride the first entry), synthesizes an
+         *  entry on a pack miss, or returns null when the pack missed and
+         *  nothing imported matched. Where those settings leave the built-in
+         *  dictionary out, the pack's own senses are stripped and the
+         *  response says so ([DictionaryResponse.builtInWithheld]). With no
+         *  group to attach it returns [packResponse] untouched — so the order
+         *  the engine chose its entries in is never disturbed by the wrap. */
         internal fun mergeImportedTerms(
             packResponse: DictionaryResponse?,
             word: String,
             lookup: YomitanDataStore.TermLookup,
             resolvedTerm: String?,
-        ): DictionaryResponse? = when {
-            // The pack entry anchors the word's identity (headword display, TTS
-            // reading, badges, POS); imported groups attach to the first entry —
-            // the one every surface renders.
-            packResponse != null -> {
-                if (lookup.groups.isEmpty()) {
-                    packResponse
-                } else {
-                    // Single-dictionary mode: the pack is the lowest-priority
-                    // source, so a winning imported group excludes its senses
-                    // too. Stripped across ALL entries (surfaces flatMap senses
-                    // over them); the entry keeps anchoring identity — the
-                    // already-supported synthesized-entry shape.
-                    val entries = if (lookup.suppressesPackSenses) {
-                        packResponse.entries.map { it.copy(senses = emptyList()) }
+        ): DictionaryResponse? {
+            // The built-in dictionary "has the word" when the pack resolved
+            // an entry with a sense. A pack miss is no result, even where a
+            // later tier could still translate the headword.
+            val shown = lookup.shown(
+                builtInHasWord = packResponse?.entries?.any { it.senses.isNotEmpty() } == true,
+            )
+            return when {
+                // The pack entry anchors the word's identity (headword display, TTS
+                // reading, badges, POS); imported groups attach to the first entry —
+                // the one every surface renders.
+                packResponse != null -> {
+                    if (shown.groups.isEmpty()) {
+                        // No imported dictionary has the word, or one-dictionary
+                        // mode picked the built-in one: the pack's answer as it is.
+                        packResponse
                     } else {
-                        packResponse.entries
+                        // Withheld: stripped across ALL entries (surfaces
+                        // flatMap senses over them); the entry keeps anchoring
+                        // identity — the already-supported synthesized-entry
+                        // shape.
+                        val entries = if (shown.builtInWithheld) {
+                            packResponse.entries.map { it.copy(senses = emptyList()) }
+                        } else {
+                            packResponse.entries
+                        }
+                        packResponse.copy(
+                            entries = listOf(
+                                entries.first().copy(importedSenses = shown.groups)
+                            ) + entries.drop(1),
+                            builtInWithheld = shown.builtInWithheld,
+                        )
                     }
-                    packResponse.copy(
+                }
+                // Pack miss but an imported dict has the word: synthesize an entry
+                // so it resolves everywhere. No senses/POS/badges — the imported
+                // groups are the content.
+                shown.groups.isNotEmpty() -> {
+                    val term = resolvedTerm ?: word
+                    DictionaryResponse(
                         entries = listOf(
-                            entries.first().copy(importedSenses = lookup.groups)
-                        ) + entries.drop(1),
+                            DictionaryEntry(
+                                slug = term,
+                                isCommon = null,
+                                tags = emptyList(),
+                                jlpt = emptyList(),
+                                headwords = listOf(
+                                    Headword(
+                                        written = term,
+                                        reading = lookup.resolvedReading?.takeIf { it != term },
+                                    )
+                                ),
+                                senses = emptyList(),
+                                importedSenses = shown.groups,
+                            )
+                        ),
+                        builtInWithheld = shown.builtInWithheld,
                     )
                 }
+                else -> null
             }
-            // Pack miss but an imported dict has the word: synthesize an entry
-            // so it resolves everywhere. No senses/POS/badges — the imported
-            // groups are the content.
-            lookup.groups.isNotEmpty() -> {
-                val term = resolvedTerm ?: word
-                DictionaryResponse(
-                    entries = listOf(
-                        DictionaryEntry(
-                            slug = term,
-                            isCommon = null,
-                            tags = emptyList(),
-                            jlpt = emptyList(),
-                            headwords = listOf(
-                                Headword(
-                                    written = term,
-                                    reading = lookup.resolvedReading?.takeIf { it != term },
-                                )
-                            ),
-                            senses = emptyList(),
-                            importedSenses = lookup.groups,
-                        )
-                    ),
-                )
-            }
-            else -> null
         }
     }
 

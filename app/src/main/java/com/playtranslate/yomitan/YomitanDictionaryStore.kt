@@ -136,8 +136,20 @@ data class YomitanRegistry(
      *  missing Boolean at its declared default, so pre-v8 registries read
      *  as true — the intended out-of-box behavior. */
     val dictionaryStyling: Boolean = true,
+    /** The switch of the TERMS list's Built-in dictionary row: whether the
+     *  app's own dictionary's definitions are shown beside the imported
+     *  ones. OFF withholds them for every word an imported dictionary has;
+     *  a word none has still gets them ([TermMerge.shown]). One switch for
+     *  every source language. Default ON, and a registry from before the
+     *  field reads as ON (the absent-field default, see [dictionaryStyling]).
+     *  The row's place in the list is [BUILT_IN_TERMS_ID] in the TERMS
+     *  [sectionOrder]; both are kept when the last term dictionary is
+     *  deleted, so the row comes back as the user left it. */
+    val builtInTermsEnabled: Boolean = true,
 ) {
-    /** Dictionaries belonging to [category], in that section's stored order. */
+    /** Dictionaries belonging to [category], in that section's stored order.
+     *  An id that names no dictionary of the category is skipped, which is
+     *  how [BUILT_IN_TERMS_ID] stays out of every dictionary list. */
     fun orderedFor(category: YomitanCategory): List<YomitanDictionary> {
         val byId = dictionaries.associateBy { it.id }
         val inCategory = dictionaries.filter { category in it.categories }
@@ -146,6 +158,30 @@ data class YomitanRegistry(
         // Defensive: anything in the category but missing from the order list
         // (e.g. registry hand-edited) renders at the end instead of vanishing.
         return ordered + inCategory.filterNot { it in ordered }
+    }
+
+    /** The TERMS list's rows in order: each term dictionary's id
+     *  ([orderedFor]) with [BUILT_IN_TERMS_ID] where the user put the
+     *  Built-in dictionary's row, which is after the dictionaries the stored
+     *  order lists before it, and last when the stored order does not hold
+     *  it (nobody has moved a row since the row existed). The one reader of
+     *  the row's place: the settings list draws this, and the data store
+     *  counts a language's dictionaries above the row from it. */
+    fun termsRowIds(): List<String> {
+        val ids = orderedFor(YomitanCategory.TERMS).map { it.id }
+        val stored = sectionOrder[YomitanCategory.TERMS.name].orEmpty()
+        val at = stored.indexOf(BUILT_IN_TERMS_ID)
+        if (at < 0) return ids + BUILT_IN_TERMS_ID
+        val before = stored.subList(0, at).toSet()
+        val above = ids.takeWhile { it in before }.size
+        return ids.subList(0, above) + BUILT_IN_TERMS_ID + ids.subList(above, ids.size)
+    }
+
+    companion object {
+        /** The Built-in dictionary row's entry in the TERMS [sectionOrder].
+         *  Not a dictionary id (those are 16 hex characters), so it names no
+         *  entry of [dictionaries]. */
+        const val BUILT_IN_TERMS_ID = "@builtin"
     }
 }
 
@@ -1102,8 +1138,11 @@ object YomitanDictionaryStore {
      * ([replacing] non-null): swaps the old id → new id IN PLACE in each section
      * (preserving the user's priority slot), drops the old id from sections the
      * update no longer matches, de-dupes any stale new id, and appends to any
-     * section the update newly gained. `copy()` so untouched registry fields
-     * (e.g. termsSingleDictionary) survive.
+     * section the update newly gained. "The end" is above the Built-in
+     * dictionary's row when that row is the TERMS list's last
+     * ([appendDictionary]); the row itself is never moved or dropped here.
+     * `copy()` so untouched registry fields (e.g. termsSingleDictionary)
+     * survive.
      */
     internal fun buildRegistryAfterInstall(
         registry: YomitanRegistry,
@@ -1137,12 +1176,43 @@ object YomitanDictionaryStore {
         for (cat in dictionary.categories) {
             val list = sectionOrder[cat.name] ?: emptyList()
             sectionOrder[cat.name] = when {
-                oldId == null -> list.filterNot { it == newId } + newId // fresh: append at end
-                newId in list -> list                                   // update: already in slot
-                else -> list + newId                                    // update: newly-gained section
+                oldId == null -> appendDictionary(list.filterNot { it == newId }, newId) // fresh: at end
+                newId in list -> list                                                    // update: already in slot
+                else -> appendDictionary(list, newId)                                    // update: newly-gained section
             }
         }
         return registry.copy(dictionaries = dictionaries, sectionOrder = sectionOrder)
+    }
+
+    /** [order] with [id] joining at the end: the lowest priority, but above
+     *  the Built-in dictionary's row when that row is the list's last
+     *  ([YomitanRegistry.BUILT_IN_TERMS_ID]; only the TERMS order holds
+     *  one). A row the user left at the bottom stays at the bottom, the
+     *  place it has when the stored order does not hold it at all, so a new
+     *  import leads the built-in dictionary either way. */
+    internal fun appendDictionary(order: List<String>, id: String): List<String> =
+        if (order.lastOrNull() == YomitanRegistry.BUILT_IN_TERMS_ID) {
+            order.dropLast(1) + id + YomitanRegistry.BUILT_IN_TERMS_ID
+        } else {
+            order + id
+        }
+
+    /** The order [reorder] stores for a section: the UI's [orderedIds]
+     *  without repeats and without an id that is no longer one of
+     *  [inCategory] (a stale snapshot's), then whatever of [inCategory] the
+     *  snapshot is missing. [keepBuiltIn] (the TERMS section) lets the
+     *  Built-in dictionary's row keep the place the snapshot gives it. */
+    internal fun reorderedSection(
+        orderedIds: List<String>,
+        inCategory: List<String>,
+        keepBuiltIn: Boolean,
+    ): List<String> {
+        val known = inCategory.toSet()
+        val cleaned = orderedIds.distinct().filter {
+            it in known || (keepBuiltIn && it == YomitanRegistry.BUILT_IN_TERMS_ID)
+        }
+        val listed = cleaned.toSet()
+        return inCategory.filterNot { it in listed }.fold(cleaned, ::appendDictionary)
     }
 
     /** Removes the dictionary's files and every registry reference. No-op
@@ -1180,17 +1250,36 @@ object YomitanDictionaryStore {
                 val inCategory = registry.dictionaries
                     .filter { category in it.categories }
                     .map { it.id }
-                val cleaned = orderedIds.distinct().filter { it in inCategory.toSet() }
                 writeRegistry(
                     ctx,
                     registry.copy(
                         sectionOrder = registry.sectionOrder.toMutableMap().apply {
-                            put(category.name, cleaned + inCategory.filterNot { it in cleaned.toSet() })
+                            put(
+                                category.name,
+                                reorderedSection(
+                                    orderedIds, inCategory,
+                                    keepBuiltIn = category == YomitanCategory.TERMS,
+                                ),
+                            )
                         },
                     ),
                 )
             }
             // Priority order feeds conflict resolution in the data store.
+            YomitanDataStore.invalidate()
+        }
+
+    /** Sets the Built-in dictionary row's switch
+     *  ([YomitanRegistry.builtInTermsEnabled]). No-op when the registry is
+     *  unreadable. */
+    suspend fun setBuiltInTermsEnabled(ctx: Context, enabled: Boolean) =
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                val registry = readRegistry(ctx) ?: return@withLock
+                if (registry.builtInTermsEnabled == enabled) return@withLock
+                writeRegistry(ctx, registry.copy(builtInTermsEnabled = enabled))
+            }
+            // The flag is part of the data store's registry-derived cache.
             YomitanDataStore.invalidate()
         }
 

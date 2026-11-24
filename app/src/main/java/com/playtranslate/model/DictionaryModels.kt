@@ -25,6 +25,19 @@ data class DictionaryResponse(
      *  match, for an entry synthesized from an imported dictionary on a pack
      *  miss, and for every other language's dictionary. */
     val deinflection: List<InflectionTag> = emptyList(),
+    /** The built-in dictionary's definitions are NOT shown for this word:
+     *  an imported dictionary has it, and the user's TERMS settings leave
+     *  the built-in one out (its row is switched off, or one-dictionary
+     *  mode picked an imported dictionary;
+     *  [com.playtranslate.yomitan.TermMerge.shown]). Set by
+     *  [com.playtranslate.language.YomitanEnrichment.mergeImportedTerms],
+     *  which also empties every entry's [DictionaryEntry.senses]. Carried,
+     *  not re-derived from the empty senses, because the built-in
+     *  dictionary has definitions that are not in [DictionaryEntry.senses]:
+     *  the target-language pack's senses and a machine-translated headword
+     *  come from [com.playtranslate.language.DefinitionResolver], which
+     *  reads this and resolves neither. */
+    val builtInWithheld: Boolean = false,
 )
 
 data class DictionaryEntry(
@@ -46,14 +59,18 @@ data class DictionaryEntry(
      *  user's section order. Deliberately SEPARATE from [senses]: these are
      *  final display text (often monolingual) that must never enter the
      *  machine-translation tiers, the per-entry sense cap, or POS
-     *  inference. Rendered ahead of [senses] on every surface. */
+     *  inference. Where [senses] are drawn among them is each group's
+     *  [ImportedSenseGroup.belowBuiltIn]: the built-in dictionary has a row
+     *  of its own in that order. */
     val importedSenses: List<ImportedSenseGroup> = emptyList(),
     /** Whether the entry's natural display is kana even though a kanji form
      *  exists — [kanaOnlyFrom] over the pack's senses, decided when the entry
      *  is BUILT and carried from then on. Carried rather than re-derived from
      *  [senses] because the senses do not survive to render time on every
-     *  path: Yomitan single-dictionary mode strips them off the pack entry
-     *  when an imported group wins (YomitanEnrichment.mergeImportedTerms),
+     *  path: where the built-in dictionary's definitions are withheld
+     *  ([DictionaryResponse.builtInWithheld]: its TERMS row switched off, or
+     *  one-dictionary mode with an imported group winning) the merge strips
+     *  them off the pack entry (YomitanEnrichment.mergeImportedTerms),
      *  and a derived check saw the empty list, answered false, and left the
      *  lens pill on 其れとも for それとも although the entry's only sense is
      *  uk (Thor, 2026-09-02). `copy` keeps it. Engines without the uk
@@ -62,9 +79,9 @@ data class DictionaryEntry(
     /** Whether the entry is EXPRESSION-class (JMdict exp / phrase / proverb)
      *  rather than an ordinary word or compound — [expressionFrom] over the
      *  source dictionary's POS, decided when the entry is BUILT and carried
-     *  from then on, for the same reason as [isKanaOnly]: Yomitan
-     *  single-dictionary mode strips the senses off the pack entry when an
-     *  imported group wins (YomitanEnrichment.mergeImportedTerms), and a
+     *  from then on, for the same reason as [isKanaOnly]: a withheld
+     *  built-in dictionary's senses are stripped off the pack entry
+     *  (YomitanEnrichment.mergeImportedTerms), and a
      *  derived check saw the empty list, answered false, and withheld the
      *  member-word split from every fused expression carrying a particle or
      *  a one-character member — 秘密を漏らす showed one body instead of
@@ -99,7 +116,24 @@ data class ImportedSenseGroup(
      *  media paths. Empty on legacy/synthetic groups; the flat tier never
      *  reads it. */
     val dictId: String = "",
+    /** Whether the user's TERMS order puts this dictionary BELOW the
+     *  Built-in dictionary's row, so the group is drawn after the built-in
+     *  dictionary's own senses and not before them. Set where the groups
+     *  are ordered ([com.playtranslate.yomitan.TermMerge.merge]) and carried
+     *  with the group from then on: THE one record of where the built-in
+     *  block goes among a word's groups, read through [aroundBuiltIn]. A
+     *  flag on the group, not an index beside the list, because a list that
+     *  loses a group (a card's curation) would shift an index. In an ordered
+     *  list every group above the row comes before every group below it. */
+    val belowBuiltIn: Boolean = false,
 )
+
+/** A word's imported groups as the ones drawn above the built-in
+ *  dictionary's senses and the ones drawn below them
+ *  ([ImportedSenseGroup.belowBuiltIn]), each in the list's order. Every
+ *  surface that draws both kinds of definition places them by this. */
+fun List<ImportedSenseGroup>.aroundBuiltIn(): Pair<List<ImportedSenseGroup>, List<ImportedSenseGroup>> =
+    partition { !it.belowBuiltIn }
 
 /** One imported definition. [pos] is the entry's part-of-speech tags
  *  (resolved against the dictionary's tag bank, joined ", "), empty for

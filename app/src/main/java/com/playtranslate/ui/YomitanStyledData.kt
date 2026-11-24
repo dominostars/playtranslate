@@ -30,32 +30,53 @@ class YomitanStyledData(
  * the sentence sheet's shape, where only the flattened form survived the
  * enrichment transport. Groups by consecutive dictId; the group label is
  * the header's source prefix (the part before " · "), per-sense pos is the
- * suffix. Non-imported rows are skipped. The first imported row always
- * opens a group: its dictId can be null (a legacy or synthetic group), which
- * is also what "no group yet" would compare equal to, and a run that never
- * opened would keep no label.
+ * suffix. The first imported row always opens a group: its dictId can be
+ * null (a legacy or synthetic group), which is also what "no group yet"
+ * would compare equal to, and a run that never opened would keep no label.
+ *
+ * A non-imported row is the built-in dictionary's, and is not a group: it
+ * is where the built-in dictionary's block stands among the dictionaries
+ * ([buildSenseDisplays] lists the rows in drawn order), so it ends the
+ * group before it and every group after it is marked
+ * [com.playtranslate.model.ImportedSenseGroup.belowBuiltIn]. Only a row
+ * with a definition counts: a blank one is a sense the card skips
+ * ([WordCardDefinition.fromSenses]), and a built-in dictionary with no
+ * definition to show stands nowhere. Pass the word's WHOLE row list: one
+ * filtered to its imported rows has lost that place and reads as every
+ * dictionary above the built-in one.
  */
 internal fun importedGroupsFromSenses(
     senses: List<SenseDisplay>,
 ): List<com.playtranslate.model.ImportedSenseGroup> {
     val groups = mutableListOf<com.playtranslate.model.ImportedSenseGroup>()
     var opened = false
+    var belowBuiltIn = false
     var curDict: String? = null
     var curSource = ""
     var curAccent: Int? = null
+    var curBelow = false
     var cur = mutableListOf<com.playtranslate.model.ImportedSense>()
     fun flush() {
         if (cur.isNotEmpty()) {
             groups.add(
                 com.playtranslate.model.ImportedSenseGroup(
                     curSource, cur.toList(), curAccent, dictId = curDict.orEmpty(),
+                    belowBuiltIn = curBelow,
                 ),
             )
         }
         cur = mutableListOf()
     }
     for (s in senses) {
-        if (!s.imported) continue
+        if (!s.imported) {
+            // The built-in block: whatever follows is another group, below it.
+            if (s.definition.isNotBlank()) {
+                flush()
+                opened = false
+                belowBuiltIn = true
+            }
+            continue
+        }
         val header = s.pos.firstOrNull().orEmpty()
         val source = header.substringBefore(" · ")
         val pos = header.substringAfter(" · ", "")
@@ -65,6 +86,7 @@ internal fun importedGroupsFromSenses(
             curDict = s.dictId
             curSource = source
             curAccent = s.accentColor
+            curBelow = belowBuiltIn
         }
         cur.add(com.playtranslate.model.ImportedSense(s.definition, pos, s.scRowid))
     }

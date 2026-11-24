@@ -1,5 +1,7 @@
 package com.playtranslate.ui
 
+import com.playtranslate.model.aroundBuiltIn
+
 /**
  * One row of a definitions document ([DefinitionDocument]): what a surface
  * maps its own data to, and the only thing the HTML renderer ([DefRowHtml])
@@ -101,10 +103,12 @@ internal sealed class DefRow {
     data class More(override val id: String, val text: String) : DefRow()
 
     /**
-     * The imported dictionaries' definitions of a word's own page: one
-     * labelled block per dictionary, in full, with live links. Under a
-     * [curation] (the Anki word sheet) the definitions taken off the card
-     * are left out and the rest carry a ✕.
+     * Imported dictionaries' definitions of a word's own page: one
+     * labelled block per dictionary, in full, with live links. A page has
+     * up to two of these rows, the dictionaries the user's order puts above
+     * the built-in dictionary's senses and the ones it puts below them
+     * ([importedRowsAround]). Under a [curation] (the Anki word sheet) the
+     * definitions taken off the card are left out and the rest carry a ✕.
      *
      * [links] is whether a dictionary's links to its other words are
      * followed here ([DefAction.reference]): on the word's page, where the
@@ -128,12 +132,16 @@ internal sealed class DefRow {
     /**
      * Per-card removal inside an imported block. [removed] holds the
      * definitions already taken off, each named by its flat index across
-     * the block's groups in order: the index it had before any removal,
-     * which is what its ✕ reports ([DefAction.removeItem]), so a tap that
-     * lands late still names the definition it was drawn on. [removable]
-     * says whether the ones left offer a ✕ at all.
+     * ALL the word's imported groups in order: the index it had before any
+     * removal, which is what its ✕ reports ([DefAction.removeItem]), so a
+     * tap that lands late still names the definition it was drawn on.
+     * [removable] says whether the ones left offer a ✕ at all. [base] is
+     * the flat index of the block's own first definition: 0 for a block
+     * that starts the word's groups, and the number of definitions in the
+     * groups before it for the block below the built-in dictionary's
+     * senses, so both blocks name a definition in the one index space.
      */
-    data class Curation(val removed: Set<Int>, val removable: Boolean)
+    data class Curation(val removed: Set<Int>, val removable: Boolean, val base: Int = 0)
 
     /**
      * One sense of a word's own page: its [number] in the left column (null
@@ -177,8 +185,13 @@ internal sealed class DefRow {
      * again ([DefAction.TRAILING]). A [target] draws the accent wash and
      * carries its [audio] row. The body is the imported dictionaries'
      * definitions ([importedGroups]) when they hold structured content, else
-     * the first line of [meaning]. A stub is the word alone on the sunk
-     * band, inert but for its eye.
+     * the first line of [meaning]; and the first line of [meaning] too
+     * where the built-in dictionary leads the word's definitions (the
+     * first group is marked
+     * [com.playtranslate.model.ImportedSenseGroup.belowBuiltIn]), since the
+     * card then opens with the built-in dictionary's and that line is its
+     * first sense. A stub is the word alone on the sunk band, inert but
+     * for its eye.
      */
     data class SheetWord(
         override val id: String,
@@ -371,6 +384,26 @@ internal object DefAction {
 /** What names the pack's own definitions in [DefRow.Word.shutDictionaries].
  *  No dictionary's id or label starts with a NUL. */
 internal const val OWN_DICTIONARY_KEY = "\u0000own"
+
+/**
+ * A word page's imported rows around its built-in senses: the dictionaries
+ * the user's order puts above the built-in dictionary's row as [aboveId]'s
+ * row, and the ones below it as [belowId]'s, each made by [row] from its
+ * groups and the flat index of its first definition among all of [groups]
+ * ([DefRow.Curation.base]). A side with no definition has no row. The page
+ * lists the first, its sense rows, then the second.
+ */
+internal fun importedRowsAround(
+    groups: List<com.playtranslate.model.ImportedSenseGroup>,
+    aboveId: String,
+    belowId: String,
+    row: (id: String, groups: List<com.playtranslate.model.ImportedSenseGroup>, base: Int) -> DefRow.Imported,
+): Pair<DefRow.Imported?, DefRow.Imported?> {
+    val (above, below) = groups.aroundBuiltIn()
+    fun of(id: String, side: List<com.playtranslate.model.ImportedSenseGroup>, base: Int) =
+        if (side.any { it.senses.isNotEmpty() }) row(id, side, base) else null
+    return of(aboveId, above, 0) to of(belowId, below, above.sumOf { it.senses.size })
+}
 
 /** What names an imported dictionary's block in a word row
  *  ([DefRow.Word.shutDictionaries]): the dictionary's id, or its label for a

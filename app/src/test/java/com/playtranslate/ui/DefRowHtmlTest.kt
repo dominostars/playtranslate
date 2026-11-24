@@ -253,26 +253,72 @@ class DefRowHtmlTest {
         for (gone in listOf("class=\"rd", "class=\"infl\"", "class=\"body\"")) assertFalse(gone, h.contains(gone))
     }
 
-    @Test fun `the body is the chips, the imported dictionaries, then the pack's numbered senses`() {
+    @Test fun `the body is the chips, then the dictionaries, the pack's numbered senses last while its row is at the bottom`() {
         val imported = listOf(ImportedSenseGroup("Jitendex", listOf(ImportedSense("to eat (jitendex)")), dictId = "jt"))
         val h = html(data().copy(isCommon = true, importedGroups = imported))
         val body = h.substringAfter("<div class=\"body\">")
         val chips = body.indexOf("class=\"meta-row\"")
-        val imp = body.indexOf("<div class=\"imp\">")
+        val imp = body.indexOf("<section class=\"dict-group\">")
         val pack = body.indexOf("<div class=\"def-num\">1.</div>")
         assertTrue(body, chips in 0 until imp && imp < pack)
         assertTrue(body, body.contains("to eat (jitendex)"))
+    }
+
+    @Test fun `the pack's senses stand where the user's order puts the built-in dictionary`() {
+        fun group(name: String, id: String, below: Boolean) = ImportedSenseGroup(
+            name, listOf(ImportedSense("def of $name")), dictId = id, belowBuiltIn = below,
+        )
+        fun order(vararg groups: ImportedSenseGroup): List<String> {
+            val body = html(data().copy(importedGroups = groups.toList())).substringAfter("<div class=\"body\">")
+            val marks = groups.map { "def of ${it.source}" to it.source } +
+                ("<div class=\"def-num\">1.</div>" to "built-in")
+            return marks.sortedBy { (mark, _) -> body.indexOf(mark).also { assertTrue(mark, it >= 0) } }.map { it.second }
+        }
+        assertEquals(
+            listOf("A", "B", "built-in"),
+            order(group("A", "a", below = false), group("B", "b", below = false)),
+        )
+        assertEquals(
+            listOf("A", "built-in", "B"),
+            order(group("A", "a", below = false), group("B", "b", below = true)),
+        )
+        assertEquals(
+            listOf("built-in", "A", "B"),
+            order(group("A", "a", below = true), group("B", "b", below = true)),
+        )
+    }
+
+    @Test fun `between two dictionaries the pack's block keeps its title, and each title names its own dictionary`() {
+        val imported = listOf(
+            ImportedSenseGroup("A", listOf(ImportedSense("def of A")), dictId = "a"),
+            ImportedSenseGroup("B", listOf(ImportedSense("def of B")), dictId = "b", belowBuiltIn = true),
+        )
+        val h = html(data().copy(importedGroups = imported))
+        val first = h.indexOf("data-act=\"dict:0\"")
+        val own = h.indexOf("data-act=\"dict:own\"")
+        val second = h.indexOf("data-act=\"dict:1\"")
+        assertTrue(h, first in 0 until own && own < second)
+        // The titles' numbers count the imported dictionaries alone, in the
+        // list's order, whatever stands between them: what a tap resolves by.
+        assertTrue(h, h.indexOf("def of A") in first until own)
+        assertTrue(h, h.indexOf("<div class=\"def-num\">1.</div>") in own until second)
+        assertTrue(h, h.indexOf("def of B") > second)
+        assertEquals(1, h.count("data-act=\"dict:own\""))
+        // Shut, the pack's block is its title alone, where it stood.
+        val shut = html(data().copy(importedGroups = imported), shut = setOf(OWN_DICTIONARY_KEY))
+        assertFalse(shut, shut.contains("def-num"))
+        assertTrue(shut, shut.indexOf("dict:own") in shut.indexOf("def of A") until shut.indexOf("def of B"))
     }
 
     @Test fun `an imported block is drawn in full, structured or flat, in a list's row as in the lens's`() {
         val glossary = """[{"type":"structured-content","content":{"tag":"span","content":"structured eat"}}]"""
         val imported = listOf(ImportedSenseGroup("Jitendex", listOf(ImportedSense("flat eat", scRowid = 5L)), dictId = "jt"))
         val styled = html(data().copy(importedGroups = imported), structured = mapOf(5L to glossary))
-        assertTrue(styled, styled.contains("<div class=\"imp\">"))
+        assertTrue(styled, styled.contains("<section class=\"dict-group\">"))
         assertTrue(styled, styled.contains("structured eat") && styled.contains("data-dictionary=\"jt\""))
         // The same row before its content arrived, or with styling off.
         val flat = html(data().copy(importedGroups = imported))
-        assertTrue(flat, flat.contains("<div class=\"imp\">") && flat.contains("flat eat"))
+        assertTrue(flat, flat.contains("<section class=\"dict-group\">") && flat.contains("flat eat"))
         // No cap of either kind, on the row or in the page that draws it.
         val shell = DefinitionsDocument.documentShellHtml()
         for (cap in listOf("clamp", "max-height", "class=\"imp pv")) {
@@ -615,6 +661,51 @@ class DefRowHtmlTest {
         assertTrue(h, h.contains("class=\"imp-x\" data-act=\"remove:0\"") && h.contains("class=\"imp-x\" data-act=\"remove:1\""))
     }
 
+    @Test fun `a page's imported dictionaries are a block above its built-in senses and a block below them`() {
+        val a = ImportedSenseGroup("A", listOf(ImportedSense("one"), ImportedSense("two")), dictId = "a")
+        val b = ImportedSenseGroup("B", listOf(ImportedSense("three")), dictId = "b", belowBuiltIn = true)
+        val c = ImportedSenseGroup("C", listOf(ImportedSense("four")), dictId = "c", belowBuiltIn = true)
+        fun rows(groups: List<ImportedSenseGroup>) = importedRowsAround(groups, "up", "down") { id, side, base ->
+            DefRow.Imported(id, side, curation = DefRow.Curation(emptySet(), removable = true, base = base))
+        }
+        val (above, below) = rows(listOf(a, b, c))
+        assertEquals("up", above!!.id)
+        assertEquals(listOf(a), above.groups)
+        assertEquals(0, above.curation!!.base)
+        assertEquals("down", below!!.id)
+        assertEquals(listOf(b, c), below.groups)
+        // The second block's first definition continues the first's count.
+        assertEquals(2, below.curation!!.base)
+        // A side with no definition has no row.
+        assertEquals(null, rows(listOf(a)).second)
+        assertEquals(null, rows(listOf(b, c)).first)
+        assertEquals(0, rows(listOf(b, c)).second!!.curation!!.base)
+        assertEquals(null to null, rows(emptyList()))
+    }
+
+    @Test fun `the block below the built-in senses reports removals in the word's one index space`() {
+        val glossary = """[{"type":"structured-content","content":{"tag":"span","content":"structured"}}]"""
+        val below = listOf(
+            ImportedSenseGroup("B", listOf(ImportedSense("three", scRowid = 5L), ImportedSense("four", scRowid = 6L)), dictId = "b", belowBuiltIn = true),
+        )
+        // Two definitions stand in the block above: this one starts at 2.
+        for (structured in listOf(emptyMap(), mapOf(5L to glossary, 6L to glossary))) {
+            val h = pageRow(
+                DefRow.Imported("down", below, DefRow.SenseLook.SHEET, DefRow.Curation(setOf(2), removable = true, base = 2)),
+                structured,
+            )
+            assertFalse(h, h.contains("data-act=\"remove:2\""))
+            assertEquals(h, 1, h.count("data-act=\"remove:3\""))
+            assertFalse("no index of the other block's", h.contains("remove:0") || h.contains("remove:1"))
+        }
+        // The flat block leaves the removed definition's text out.
+        val flat = pageRow(
+            DefRow.Imported("down", below, DefRow.SenseLook.SHEET, DefRow.Curation(setOf(2), removable = true, base = 2)),
+        )
+        assertFalse(flat, flat.contains(">three<"))
+        assertTrue(flat, flat.contains(">four<"))
+    }
+
     @Test fun `a remove action names its item, and nothing else does`() {
         assertEquals(3, DefAction.removedItem(DefAction.removeItem(3)))
         for (other in listOf(DefAction.REMOVE, DefAction.OPEN, "remove:", "remove:x")) {
@@ -684,6 +775,36 @@ class DefRowHtmlTest {
         val flat = pageRow(sheetWord(groups = groups))
         assertTrue(flat, flat.contains("<div class=\"swd swm\">cat</div>"))
         assertFalse(flat, flat.contains("flat cat"))
+    }
+
+    @Test fun `a sheet word whose built-in dictionary leads draws that dictionary's first line, not the imported markup`() {
+        val glossary = """[{"type":"structured-content","content":{"tag":"span","content":"structured cat"}}]"""
+        val content = mapOf(5L to glossary)
+        fun group(below: Boolean) = ImportedSenseGroup(
+            "Dict", listOf(ImportedSense("flat cat", scRowid = 5L)), dictId = "d", belowBuiltIn = below,
+        )
+        // The built-in dictionary above every imported one that has the
+        // word: the card opens with its definition, and so does the row.
+        val leads = pageRow(sheetWord(groups = listOf(group(below = true))), content)
+        assertTrue(leads, leads.contains("<div class=\"swd swm\">cat</div>"))
+        assertFalse(leads, leads.contains("structured cat") || leads.contains("class=\"swd\">"))
+        // An imported dictionary first, the built-in one between or after:
+        // the imported dictionaries' own markup, as before.
+        val other = ImportedSenseGroup("Other", listOf(ImportedSense("other cat")), dictId = "o", belowBuiltIn = true)
+        for (groups in listOf(listOf(group(below = false)), listOf(group(below = false), other))) {
+            val styled = pageRow(sheetWord(groups = groups), content)
+            assertTrue(styled, styled.contains("<div class=\"swd\">") && styled.contains("structured cat"))
+            assertFalse(styled, styled.contains("class=\"swd swm\""))
+        }
+        // With no line of its own to show, the row keeps the markup.
+        val noMeaning = pageRow(
+            DefRow.SheetWord(
+                "w", "猫", "ねこ", pitch = emptyList(), stars = "", target = false, hidden = false,
+                meaning = "", importedGroups = listOf(group(below = true)),
+            ),
+            content,
+        )
+        assertTrue(noMeaning, noMeaning.contains("structured cat"))
     }
 
     @Test fun `text is escaped`() {

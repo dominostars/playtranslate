@@ -1437,7 +1437,7 @@ class SentenceAnkiContentView(
             target = target,
             hidden = hidden,
             meaning = entry.meaning,
-            importedGroups = importedGroupsFromSenses(entry.senses.filter { it.imported }),
+            importedGroups = importedGroupsFromSenses(entry.senses),
             audio = if (target && !hidden) wordAudio(entry.word) else null,
         )
     }
