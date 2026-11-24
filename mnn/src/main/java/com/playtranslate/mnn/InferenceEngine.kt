@@ -34,9 +34,11 @@ interface InferenceEngine {
     suspend fun loadModel(pathToModelDir: String, useMmap: Boolean)
 
     /**
-     * Decode the system prompt as a prefill-only pass (max_new_tokens=0) and
-     * record the post-prefill KV-cache position so subsequent
-     * [resetForNextPrompt] calls can rewind to here.
+     * Start a new context with the system prompt: whatever the engine held
+     * (an earlier system prompt, the last turn) is dropped, the prompt is
+     * decoded as a prefill-only pass (max_new_tokens=0), and the post-prefill
+     * KV-cache position is recorded so subsequent [resetForNextPrompt] calls
+     * can rewind to here.
      */
     suspend fun setSystemPrompt(systemPrompt: String)
 

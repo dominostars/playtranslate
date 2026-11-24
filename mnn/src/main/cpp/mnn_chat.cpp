@@ -258,6 +258,22 @@ Java_com_playtranslate_mnn_internal_MnnChatImpl_processSystemPrompt(
     std::string sys_str(sys);
     env->ReleaseStringUTFChars(jsystem_prompt, sys);
 
+    // A system prompt starts a context of its own. Under reuse_kv the engine
+    // keeps its history from call to call (`generate_init` clears nothing), so
+    // without this a block that replaces another (a changed language pair, an
+    // edited template, an Ask answer's prompt after a translation's) would be
+    // prefilled AFTER the old block and the last turn, and the boundary
+    // recorded below would pin all of it under every later turn until the
+    // model is unloaded: translations conditioned on a question and its
+    // answer, and a context that grows with every change. `Llm::reset()`
+    // marks the whole history for removal by this prefill; for a
+    // mixed-attention model (Qwen 3.5) it also drops the pending restore of
+    // the old boundary's snapshot, and the linear layers zero their state on
+    // a prefill that removes everything (`previous == remove`,
+    // CPULinearAttention). On the first prefill after a load there is nothing
+    // to remove.
+    g_llm->reset();
+
     // Prefill only — max_new_tokens=0 stops generation immediately after the
     // forward pass ingests the prompt tokens. The post-prefill KV position is
     // recorded as the rewind boundary for subsequent `eraseHistory` calls
