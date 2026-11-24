@@ -65,7 +65,10 @@ import org.robolectric.android.controller.ActivityController
  * The visibility table, row by row: the card, which of its groups shows, the
  * eye's icon and the label's colour, and what a tap on the eye does to the pref
  * (whether it is WRITTEN at all, read from a recording preferences store, not
- * just its value) and to the session. A question asked from the collapsed header
+ * just its value) and to the session: the eye over a question shelves it and
+ * never ends it, so the same eye brings the answer back, an answer that
+ * arrives while shelved stays out of sight, and a pill asked over a shelved
+ * question takes its place. A question asked from the collapsed header
  * shows its answer without writing the pref, and X collapses the section again.
  * The header's pills: offered only while collapsed with nothing asked, in
  * [AskPresets.ordered]'s order, never with ⋯, and dropped (the label whole and
@@ -376,12 +379,13 @@ class AskSectionBinderTest {
     }
 
     @Test
-    fun `row 2, shown with a question on screen, is the answer under an open eye, whose tap writes the pref and closes the session`() {
+    fun `row 2, shown with a question on screen, is the answer under an open eye, whose tap writes the pref and shelves the question`() {
         start()
         tap(chips().first())
         answer("Ga marks the cat as the one who ate.")
         assertFalse("precondition: the pref shows the section", prefs.hideAskSection)
-        assertTrue(session.state.value is AskState.Answered)
+        val answered = session.state.value
+        assertTrue(answered is AskState.Answered)
         assertEquals(View.VISIBLE, card.visibility)
         assertFalse(shown(idleGroup))
         assertTrue(shown(answerGroup))
@@ -392,10 +396,13 @@ class AskSectionBinderTest {
         tap(eye)
         assertTrue(prefs.hideAskSection)
         assertEquals("the tap wrote the pref, once", 1, store.writes.size)
-        assertEquals("the answer is gone", AskState.Idle, session.state.value)
+        assertEquals("the answer stands", answered, session.state.value)
+        assertTrue("shelved", session.shelved)
+        assertTrue(binder.isHidden)
         assertEquals(View.GONE, card.visibility)
         assertEquals(R.drawable.ic_visibility_off, eyeIcon())
         assertEquals(color(R.attr.ptTextHint), label.currentTextColor)
+        assertTrue("nobody was asked again", calls.size == 1)
     }
 
     @Test
@@ -421,13 +428,15 @@ class AskSectionBinderTest {
     }
 
     @Test
-    fun `row 4, collapsed with a question on screen, is the answer under an open eye, whose tap closes the session and writes nothing`() {
+    fun `row 4, collapsed with a question on screen, is the answer under an open eye, whose tap shelves the question and writes nothing`() {
         prefs.hideAskSection = true
         start()
         tap(pills().first())
         answer("Ga marks the cat as the one who ate.")
         assertTrue("precondition: the pref collapses the section", prefs.hideAskSection)
-        assertTrue(session.state.value is AskState.Answered)
+        val answered = session.state.value
+        assertTrue(answered is AskState.Answered)
+        assertFalse("precondition: on show", session.shelved)
         assertEquals(View.VISIBLE, card.visibility)
         assertFalse(shown(idleGroup))
         assertTrue(shown(answerGroup))
@@ -439,10 +448,122 @@ class AskSectionBinderTest {
         tap(eye)
         assertTrue("the pref stays hidden", prefs.hideAskSection)
         assertEquals("and the tap wrote no pref at all", emptyList<String>(), store.writes)
-        assertEquals("the answer is gone", AskState.Idle, session.state.value)
+        assertEquals("the answer stands", answered, session.state.value)
+        assertTrue("shelved", session.shelved)
+        assertTrue(binder.isHidden)
         assertEquals(View.GONE, card.visibility)
         assertEquals(R.drawable.ic_visibility_off, eyeIcon())
         assertEquals(color(R.attr.ptTextHint), label.currentTextColor)
+    }
+
+    @Test
+    fun `row 5, collapsed over a shelved question, is the header alone under a crossed eye, whose tap writes the pref shown and brings the answer back`() {
+        start()
+        tap(chips().first())
+        answer("Ga marks the cat as the one who ate.")
+        val answered = session.state.value
+        tap(eye)
+        assertTrue("precondition: the pref collapses the section", prefs.hideAskSection)
+        assertTrue("precondition: shelved", session.shelved)
+        assertEquals(View.GONE, card.visibility)
+        assertEquals(R.drawable.ic_visibility_off, eyeIcon())
+        assertEquals(color(R.attr.ptTextHint), label.currentTextColor)
+        assertTrue("the pills are offered over it", shown(pills().first()))
+        assertFalse("and no Text size, with no text on screen to size", shown(textSizeButton))
+
+        store.writes.clear()
+        tap(eye)
+        assertFalse(prefs.hideAskSection)
+        assertEquals("the tap wrote the pref, once", 1, store.writes.size)
+        assertEquals("the same answer", answered, session.state.value)
+        assertFalse("on show again", session.shelved)
+        assertEquals(View.VISIBLE, card.visibility)
+        assertFalse(shown(idleGroup))
+        assertTrue(shown(answerGroup))
+        assertEquals("Ga marks the cat as the one who ate.", body.text.toString())
+        assertEquals(R.drawable.ic_visibility, eyeIcon())
+        assertEquals(color(R.attr.ptTextMuted), label.currentTextColor)
+        assertTrue("the Text size is back with the text", shown(textSizeButton))
+        assertTrue("nobody was asked again", calls.size == 1)
+    }
+
+    // ── A shelved question ──────────────────────────────────────────────
+
+    @Test
+    fun `a question hidden while in flight goes on, and its answer arrives out of sight, there when the section is shown`() {
+        start()
+        tap(chips().first())
+        assertTrue("precondition: in flight", session.state.value is AskState.Asking)
+
+        tap(eye)
+        assertTrue("the request goes on", session.state.value is AskState.Asking)
+        assertEquals(View.GONE, card.visibility)
+
+        answer("Ga marks the cat as the one who ate.")
+        assertTrue(session.state.value is AskState.Answered)
+        assertTrue("the user's hide stands", prefs.hideAskSection)
+        assertTrue(session.shelved)
+        assertEquals("the answer did not bring the card back", View.GONE, card.visibility)
+        assertEquals(R.drawable.ic_visibility_off, eyeIcon())
+        assertFalse(shown(textSizeButton))
+
+        tap(eye)
+        assertEquals(View.VISIBLE, card.visibility)
+        assertTrue(shown(answerGroup))
+        assertEquals("Ga marks the cat as the one who ate.", body.text.toString())
+    }
+
+    @Test
+    fun `a failure that arrives out of sight stays there, with Try again when the section is shown`() {
+        start()
+        tap(chips().first())
+        tap(eye)
+
+        fail(CompletionFailedException(null, null))
+        assertTrue(session.state.value is AskState.Failed)
+        assertEquals(View.GONE, card.visibility)
+
+        tap(eye)
+        assertEquals(View.VISIBLE, card.visibility)
+        assertTrue(shown(retry))
+    }
+
+    @Test
+    fun `a pill asked over a shelved question takes its place, on show, without writing the pref`() {
+        start()
+        tap(chips().first())
+        answer("Ga marks the cat as the one who ate.")
+        tap(eye)
+        assertTrue("precondition: shelved", session.shelved)
+
+        store.writes.clear()
+        tap(pills().first(::shown))
+        assertTrue("a new question", session.state.value is AskState.Asking)
+        assertEquals("asked of the LLM", 2, calls.size)
+        assertFalse("on show", session.shelved)
+        assertTrue("the pref still hides the section", prefs.hideAskSection)
+        assertFalse("and was not written", "hide_ask_section" in store.writes)
+        assertEquals(View.VISIBLE, card.visibility)
+        assertTrue(shown(answerGroup))
+
+        answer("A second answer.")
+        assertEquals("A second answer.", body.text.toString())
+        tap(close)
+        assertEquals("X collapses the section again", View.GONE, card.visibility)
+        assertEquals(AskState.Idle, session.state.value)
+    }
+
+    @Test
+    fun `a binder built over a session with a shelved answer starts collapsed, and the eye shows the answer`() {
+        prefs.hideAskSection = true
+        session.restore(session.sentence!!, AskState.Answered(AskQuestion.Custom("Why ga?"), "Because.", "Gemini"), shelved = true)
+        start()
+        assertEquals(View.GONE, card.visibility)
+        assertEquals(R.drawable.ic_visibility_off, eyeIcon())
+
+        tap(eye)
+        assertEquals(View.VISIBLE, card.visibility)
+        assertEquals("Because.", body.text.toString())
     }
 
     // ── A question from the collapsed header ────────────────────────────

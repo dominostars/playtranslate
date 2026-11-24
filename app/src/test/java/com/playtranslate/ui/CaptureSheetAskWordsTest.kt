@@ -31,6 +31,7 @@ import com.playtranslate.ask.AskQuestion
 import com.playtranslate.ask.AskSession
 import com.playtranslate.ask.AskSentence
 import com.playtranslate.ask.AskState
+import com.playtranslate.ask.CarriedAnswer
 import com.playtranslate.ask.Explanation
 import com.playtranslate.language.SourceLangId
 import com.playtranslate.language.SourceLanguageEngines
@@ -293,7 +294,7 @@ class CaptureSheetAskWordsTest {
         translation: String,
         askHidden: Boolean? = false,
         wordsHidden: Boolean = true,
-        askAnswer: AskState.Answered? = null,
+        askAnswer: CarriedAnswer? = null,
         configure: (CaptureResultOverlay) -> Unit = {},
     ): CaptureResultOverlay =
         open(screen, result(original, translation), askHidden, wordsHidden, askAnswer, configure)
@@ -309,7 +310,7 @@ class CaptureSheetAskWordsTest {
         shown: TranslationResult,
         askHidden: Boolean? = false,
         wordsHidden: Boolean = true,
-        askAnswer: AskState.Answered? = null,
+        askAnswer: CarriedAnswer? = null,
         configure: (CaptureResultOverlay) -> Unit = {},
     ): CaptureResultOverlay {
         RuntimeEnvironment.setQualifiers("w${screen.w}dp-h${screen.h}dp-mdpi")
@@ -665,7 +666,7 @@ class CaptureSheetAskWordsTest {
     }
 
     @Test fun `a page opened from the sheet receives the result and the finished answer, and no answer while the question is in flight`() {
-        val navigations = mutableListOf<Pair<TranslationResult, AskState.Answered?>>()
+        val navigations = mutableListOf<Pair<TranslationResult, CarriedAnswer?>>()
         val shown = result(text(2), text(2))
         val o = open(screen, shown, askHidden = false, wordsHidden = false) {
             it.onNavigateToDetail = { r, a -> navigations += r to a }
@@ -681,7 +682,7 @@ class CaptureSheetAskWordsTest {
         settle()
         assertEquals(1, navigations.size)
         assertEquals("the result on show", shown, navigations[0].first)
-        assertEquals("and the answer on show", answered, navigations[0].second)
+        assertEquals("and the answer on show", CarriedAnswer(answered, shelved = false), navigations[0].second)
 
         tap(o.v(R.id.btnAskClose))
         tap(chips(o)[0])
@@ -693,10 +694,75 @@ class CaptureSheetAskWordsTest {
         assertNull("no answer while the question is in flight", navigations[1].second)
     }
 
+    @Test fun `the Ask eye over an answer keeps it, out of sight, and the same eye brings it back at the height it had`() {
+        val o = open(screen, text(4), text(3), askHidden = false)
+        giveLlm()
+        tap(chips(o)[0])
+        answer("It is about a fox.")
+        val answered = o.askSession.state.value
+        assertTrue("precondition: an answer on show", answered is AskState.Answered)
+        val need = o.need
+        val dropped = o.v(R.id.askHeaderRow).height + o.v(R.id.cardAsk).height
+        assertTrue("precondition: the hidden need is above the floor", need - dropped > floor(screen))
+
+        tap(o.v(R.id.btnToggleAsk))
+        assertTrue(prefs.hideAskSection)
+        assertEquals("the answer stands", answered, o.askSession.state.value)
+        assertEquals(View.GONE, o.v(R.id.cardAsk).visibility)
+        assertEquals("the need dropped by the header and the card", need - dropped, o.need)
+
+        tap(o.v(R.id.btnToggleAsk))
+        assertFalse(prefs.hideAskSection)
+        assertEquals(answered, o.askSession.state.value)
+        assertEquals(View.VISIBLE, o.v(R.id.cardAsk).visibility)
+        assertEquals(View.VISIBLE, o.v(R.id.askAnswer).visibility)
+        assertEquals("It is about a fox.", (o.v(R.id.tvAskBody) as TextView).text.toString())
+        assertEquals("the need came back exactly", need, o.need)
+    }
+
+    @Test fun `a page opened from the sheet receives an answer its eye hid as shelved, and the sheet shown again keeps it out of sight until the eye shows it`() {
+        val navigations = mutableListOf<CarriedAnswer?>()
+        val shown = result(text(2), text(2))
+        val o = open(screen, shown, askHidden = false, wordsHidden = false) {
+            it.onNavigateToDetail = { _, a -> navigations += a }
+        }
+        giveLlm()
+        showRows(o, words)
+        tap(chips(o)[0])
+        answer("It is about a fox.")
+        val answered = o.askSession.state.value as AskState.Answered
+        tap(o.v(R.id.btnToggleAsk))
+        assertEquals("precondition: hidden", View.GONE, o.v(R.id.cardAsk).visibility)
+
+        o.wordRows.tapForTest(0, DefAction.OPEN)
+        settle()
+        assertEquals(listOf<CarriedAnswer?>(CarriedAnswer(answered, shelved = true)), navigations)
+        close(o)
+
+        // Back from the page: a new sheet, shown with what the first handed on.
+        val again = open(screen, shown, askHidden = null, askAnswer = navigations.single())
+        assertTrue("the hide stands", prefs.hideAskSection)
+        assertEquals("out of sight", View.GONE, again.v(R.id.cardAsk).visibility)
+        assertEquals("and kept", answered, again.askSession.state.value)
+
+        tap(again.v(R.id.btnToggleAsk))
+        assertEquals(View.VISIBLE, again.v(R.id.askAnswer).visibility)
+        assertEquals("It is about a fox.", (again.v(R.id.tvAskBody) as TextView).text.toString())
+    }
+
+    @Test fun `a sheet shown again with an answer asked from the collapsed header shows it over the hiding pref`() {
+        val answered = AskState.Answered(AskQuestion.Custom("Why the fox?"), "Because it is quick.", "Test LLM")
+        val o = open(screen, result(text(2), text(2)), askHidden = true, askAnswer = CarriedAnswer(answered))
+        assertTrue("the pref still hides the section", prefs.hideAskSection)
+        assertEquals(View.VISIBLE, o.v(R.id.cardAsk).visibility)
+        assertEquals(View.VISIBLE, o.v(R.id.askAnswer).visibility)
+        assertEquals("Because it is quick.", (o.v(R.id.tvAskBody) as TextView).text.toString())
+    }
+
     @Test fun `a sheet shown again with an answer shows it, about the result it was shown with`() {
         val answered = AskState.Answered(AskQuestion.Custom("Why the fox?"), "Because it is quick.", "Test LLM")
         val shown = result(text(2), text(2))
-        val o = open(screen, shown, askHidden = false, askAnswer = answered)
+        val o = open(screen, shown, askHidden = false, askAnswer = CarriedAnswer(answered))
         assertEquals(View.VISIBLE, o.v(R.id.askAnswer).visibility)
         assertEquals(View.GONE, o.v(R.id.askIdle).visibility)
         assertEquals("Because it is quick.", (o.v(R.id.tvAskBody) as TextView).text.toString())

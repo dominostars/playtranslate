@@ -44,28 +44,41 @@ import com.playtranslate.translation.TranslationBackendRegistry
  * answer takes the questions' place rather than sitting under them; X
  * brings them back.
  *
- * Hidden is DERIVED, never stored ([isHidden]): the eye's pref AND a session
- * with nothing on screen. A collapsed section shows its card exactly while a
- * question is on screen, so a question asked from the collapsed header shows
- * its answer without the pref being written, and putting the answer away
- * collapses the section again. The eye acts on what the card is SHOWING:
+ * Hidden is DERIVED, never stored here ([isHidden]): the eye's pref AND a
+ * session with no question on show. A collapsed section shows its card
+ * exactly while a question is on show, so a question asked from the
+ * collapsed header shows its answer without the pref being written, and
+ * putting the answer away (X) collapses the section again. The eye hides
+ * and shows, and discards nothing, as the other sections' eyes: over a
+ * question it shelves it ([AskSession.shelved]), so the request goes on and
+ * the answer is there when the section is shown again, and an answer that
+ * arrives while shelved stays out of sight. Only X, a new question or a new
+ * sentence ends a question. The eye acts on what the card is SHOWING:
  *
- * | pref hidden | state    | card               | eye     | a tap on the eye               |
- * |-------------|----------|--------------------|---------|--------------------------------|
- * | no          | Idle     | the questions      | open    | pref = hidden                  |
- * | no          | not Idle | the answer         | open    | pref = hidden, session closed  |
- * | yes         | Idle     | GONE (header only) | crossed | pref = shown                   |
- * | yes         | not Idle | the answer         | open    | session closed, pref untouched |
+ * | pref hidden | state    | shelved | card               | eye     | a tap on the eye                   |
+ * |-------------|----------|---------|--------------------|---------|------------------------------------|
+ * | no          | Idle     | -       | the questions      | open    | pref = hidden                      |
+ * | no          | not Idle | no      | the answer         | open    | pref = hidden, question shelved    |
+ * | yes         | Idle     | -       | GONE (header only) | crossed | pref = shown                       |
+ * | yes         | not Idle | no      | the answer         | open    | question shelved, pref untouched   |
+ * | yes         | not Idle | yes     | GONE (header only) | crossed | pref = shown, question unshelved   |
+ *
+ * (A question is shelved only by the eye's hide, which leaves the pref
+ * hidden, and unshelved by its show, so pref shown never meets shelved
+ * here; were another surface to show the section meanwhile, the pref wins
+ * and the card is up.)
  *
  * The header is a [SectionHeaderRow] without ⋯. Collapsed, it carries the
  * presets as text pills, in their order and as many as fit beside the label
  * and the eye, so a question is one tap away without opening the section; a
  * pill that doesn't fit is simply not shown, since the opened section lists
- * every preset. Expanded, it is the label and the eye, and while a question
- * is on screen a Text size between them, pinned like the eye since nothing
- * else reaches it: the one-handle [FontSizePopover] for the answer's text
- * ([Prefs.askFontSp]). The pills are fixed slots, one per preset, given the
- * preset in their place whenever the order is read ([applyPresets]).
+ * every preset. Over a shelved question they are offered too, and one asked
+ * takes the shelved question's place. Expanded, it is the label and the
+ * eye, and while a question is on screen a Text size between them, pinned
+ * like the eye since nothing else reaches it: the one-handle
+ * [FontSizePopover] for the answer's text ([Prefs.askFontSp]). The pills
+ * are fixed slots, one per preset, given the preset in their place whenever
+ * the order is read ([applyPresets]).
  *
  * Nothing here shows an alert, starts an Activity or touches a window; the
  * size picker goes on the surface's [PopoverHost], as the other headers' ⋯
@@ -157,9 +170,11 @@ class AskSectionBinder(
     /** The state [render] last drew: Idle until the first render. */
     private var state: AskState = AskState.Idle
 
-    /** Whether the card is hidden: the pref, and nothing on screen (class
-     *  doc). A question on screen keeps the card up whatever the pref says. */
-    val isHidden: Boolean get() = prefs.hideAskSection && state is AskState.Idle
+    /** Whether the card is hidden: the pref, and no question on show (class
+     *  doc). A question keeps the card up whatever the pref says, unless
+     *  the user shelved it. */
+    val isHidden: Boolean
+        get() = prefs.hideAskSection && (state is AskState.Idle || session.shelved)
 
     val fieldHasFocus: Boolean get() = questionField.isFocused
 
@@ -174,18 +189,17 @@ class AskSectionBinder(
             popovers.toggle(sizePicker, anchor)
         }
         eye.onClick = {
-            if (isHidden) {
-                prefs.hideAskSection = false
-            } else {
-                // A shown card is hidden. The pref says so unless it already
-                // does (a collapsed section a question keeps open), and the
-                // question goes, or it would keep the card up.
-                clearFieldFocus()
-                if (!prefs.hideAskSection) prefs.hideAskSection = true
-                session.close()
-            }
-            // From the state rendered so far: the session's emission, when
-            // it closes, re-renders through the host.
+            // The opposite of what the card is SHOWING. The pref says so
+            // unless it already does (a collapsed section a question keeps
+            // open), and a question is shelved with it, or it would keep
+            // the card up: kept, not closed, so the eye that hid an answer
+            // brings it back.
+            val hide = !isHidden
+            if (hide) clearFieldFocus()
+            if (prefs.hideAskSection != hide) prefs.hideAskSection = hide
+            session.shelve(hide)
+            // Shelving is no change of the session's state, so nothing
+            // re-renders: the card follows from here.
             applyVisibility()
             host.onHeightChanged()
         }
@@ -299,16 +313,16 @@ class AskSectionBinder(
 
     /** Reflect [isHidden]: the card, the eye, the label, and the header's
      *  pills, which are offered only while the card is hidden. The Text size
-     *  is offered while a question is on screen, which is also exactly when
-     *  the card is up and expanded with the text it sizes (a question keeps
-     *  even a collapsed section's card up). */
+     *  is offered while a question is on screen: the card up with the text
+     *  it sizes (a question keeps even a collapsed section's card up), and
+     *  not over a shelved question, whose text is out of sight. */
     private fun applyVisibility() {
         val hidden = isHidden
         card.visibility = if (hidden) View.GONE else View.VISIBLE
         eye.icon = if (hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility
         header.labelDimmed = hidden
         for (slot in slots) slot.available = hidden
-        textSize.available = state !is AskState.Idle
+        textSize.available = !hidden && state !is AskState.Idle
     }
 
     /** The answer's text at its saved size ([Prefs.askFontSp]): the

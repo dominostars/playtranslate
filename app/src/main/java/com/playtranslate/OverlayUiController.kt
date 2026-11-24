@@ -214,9 +214,9 @@ class OverlayUiController(
         val region: RegionEntry,
         val stashedAtMs: Long,
         /** The Ask section's finished answer about [result], if it had one:
-         *  it comes back with the result. A question still in flight is not
-         *  kept (its request ended with the sheet). */
-        val askAnswer: com.playtranslate.ask.AskState.Answered? = null,
+         *  it comes back with the result, shelved if it was. A question
+         *  still in flight is not kept (its request ended with the sheet). */
+        val askAnswer: com.playtranslate.ask.CarriedAnswer? = null,
     )
 
     /** The floating workspace while showing (single-screen). Single instance —
@@ -4103,7 +4103,7 @@ class OverlayUiController(
         displayId: Int,
         result: com.playtranslate.model.TranslationResult,
         region: RegionEntry,
-        askAnswer: com.playtranslate.ask.AskState.Answered? = null,
+        askAnswer: com.playtranslate.ask.CarriedAnswer? = null,
     ) {
         // A page takes the screen: the restart is forgone, and the sheet
         // that comes back on Back owes nothing.
@@ -4133,7 +4133,7 @@ class OverlayUiController(
         displayId: Int,
         result: com.playtranslate.model.TranslationResult,
         region: RegionEntry,
-        askAnswer: com.playtranslate.ask.AskState.Answered?,
+        askAnswer: com.playtranslate.ask.CarriedAnswer?,
     ) {
         endSheetCapture(sheetCapture)
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager

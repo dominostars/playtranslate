@@ -91,7 +91,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.ceil
 import com.playtranslate.ask.AskSession
-import com.playtranslate.ask.AskState
+import com.playtranslate.ask.CarriedAnswer
 import com.playtranslate.ask.Explanation
 
 /**
@@ -172,10 +172,11 @@ class CaptureResultOverlay(
 
     /** Invoked when a page opened from this sheet takes the screen (a word's
      *  detail, the sentence's Anki editor), carrying the currently-bound
-     *  result and the Ask section's finished answer about it, if any, so the
-     *  controller can stash both and re-show this sheet with them when the
-     *  user backs out of the page. Null → the sheet just dismisses. */
-    var onNavigateToDetail: ((TranslationResult, AskState.Answered?) -> Unit)? = null
+     *  result and the Ask section's finished answer about it, if any (shelved
+     *  or on show, as it was left), so the controller can stash both and
+     *  re-show this sheet with them when the user backs out of the page.
+     *  Null → the sheet just dismisses. */
+    var onNavigateToDetail: ((TranslationResult, CarriedAnswer?) -> Unit)? = null
 
     // ── Host behavior overrides (in-app hosting, e.g. the camera tool) ────
     // Everything defaults to the over-game behavior; an in-app host swaps
@@ -1517,12 +1518,15 @@ class CaptureResultOverlay(
         result: TranslationResult,
         backdrop: Bitmap? = null,
         /** The Ask section's answer about [result] from the sheet the page
-         *  took off the screen, to show again. */
-        askAnswer: AskState.Answered? = null,
+         *  took off the screen, to show again, or to keep out of sight if
+         *  it was shelved there. */
+        askAnswer: CarriedAnswer? = null,
     ) {
         show(screenW, screenH, backdrop)
         bindResult(result)
-        askAnswer?.let { askSession.restore(askSentence(result.originalText, result.langContext), it) }
+        askAnswer?.let {
+            askSession.restore(askSentence(result.originalText, result.langContext), it.answer, it.shelved)
+        }
         if (sliverMode) {
             expandFromSliver()
             loadingPeekExpand = true
@@ -2883,7 +2887,7 @@ class CaptureResultOverlay(
         pendingTranslation = result.pendingTranslation,
         audioAnchorMs = result.createdAtMs.takeIf { it > 0 },
         words = LastSentenceCache.snapshotFor(result.originalText),
-        notes = sentenceCardNote(finishedAnswer(), wordRows?.explainedWords().orEmpty()),
+        notes = sentenceCardNote(finishedAnswer()?.answer, wordRows?.explainedWords().orEmpty()),
     )
 
     // Long-press = headless one-tap send of the captured sentence. The send
@@ -3231,9 +3235,10 @@ class CaptureResultOverlay(
     }
 
     /** The Ask section's finished answer about the result on show, for the
-     *  hand-off to a page ([onNavigateToDetail]); null with none, or with a
-     *  question still in flight. */
-    private fun finishedAnswer(): AskState.Answered? = askSession.state.value as? AskState.Answered
+     *  hand-off to a page ([onNavigateToDetail]) and a card's note; null
+     *  with none, or with a question still in flight. A shelved answer is
+     *  one too: out of sight, it still stands. */
+    private fun finishedAnswer(): CarriedAnswer? = askSession.carried()
 
     /** The sheet is in Definitions, so its window holds key focus, Back
      *  closing a card and then the sheet without a controller and the D-pad

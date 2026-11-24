@@ -16,8 +16,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/** Where one question stands. Everything but [Idle] is "a question is on
- *  screen", which is what keeps a collapsed Ask section's card up. */
+/** Where one question stands. Everything but [Idle] is "a question is in
+ *  hand", which keeps a collapsed Ask section's card up unless the user
+ *  shelved it ([AskSession.shelved]). */
 sealed class AskState {
     object Idle : AskState()
 
@@ -56,6 +57,12 @@ sealed class AskState {
     ) : AskState()
 }
 
+/** A finished answer as one surface hands it to the next
+ *  ([AskSession.carried], [AskSession.restore]): the answer, and whether
+ *  the user had shelved it ([AskSession.shelved]), so it comes back as it
+ *  was left, on show or out of sight. */
+data class CarriedAnswer(val answer: AskState.Answered, val shelved: Boolean = false)
+
 /**
  * One pass putting a question to the user's services: [question], whether a
  * service is asked even while its cooldown or a pause of its answers runs
@@ -72,8 +79,9 @@ typealias AskPass = suspend (
 
 /**
  * One results surface's Ask conversation: the question being asked about the
- * sentence on show, and its answer. The surface's view renders [state];
- * nothing else holds any of it.
+ * sentence on show, its answer, and whether the user has it out of sight
+ * ([shelved]). The surface's view renders [state]; nothing else holds any
+ * of it.
  *
  * The session is KEYED BY ITS SENTENCE (the text and the language pair,
  * [AskSentence]): [bind] says what is on show, and binding anything other
@@ -98,6 +106,22 @@ class AskSession(
         private set
 
     private var job: Job? = null
+
+    /** Whether the question in hand is shelved: the user took it out of
+     *  sight ([shelve]) without ending it, so its request goes on and its
+     *  answer stands, unseen. False with nothing asked, and a new question
+     *  starts on show. Only a view that would otherwise show the question
+     *  reads this; it is not part of [state], so whoever changes it redraws
+     *  itself. */
+    var shelved: Boolean = false
+        private set
+
+    /** Take the question in hand out of sight ([shelved]), or bring it
+     *  back. Unlike [close], nothing ends: a request in flight goes on and
+     *  its answer is kept. A no-op with nothing asked. */
+    fun shelve(shelved: Boolean) {
+        this.shelved = shelved && _state.value !is AskState.Idle
+    }
 
     /** [sentence] is what the surface shows now (null: no result). Binding
      *  the sentence already bound changes nothing, so a surface may call
@@ -128,6 +152,8 @@ class AskSession(
     private fun send(question: AskQuestion, pastCooldowns: Boolean) {
         val about = sentence ?: return
         job?.cancel()
+        // Before the state, so no reader sees the new question shelved.
+        shelved = false
         _state.value = AskState.Asking(question)
         job = scope.launch {
             val next = try {
@@ -172,16 +198,27 @@ class AskSession(
     fun close() {
         job?.cancel()
         job = null
+        shelved = false
         _state.value = AskState.Idle
     }
+
+    /** The finished answer in hand as it is handed to the surface that
+     *  shows this result next ([restore]); null with none, or with a
+     *  question still in flight. */
+    fun carried(): CarriedAnswer? =
+        (_state.value as? AskState.Answered)?.let { CarriedAnswer(it, shelved) }
 
     /** Take up a finished [answer] to a question about [sentence], as if it
      *  had been asked here, in place of whatever was being asked: a surface
      *  rebuilt around the same result (the capture sheet coming back from a
-     *  page) carries its answer over. */
-    fun restore(sentence: AskSentence, answer: AskState.Answered) {
+     *  page) carries its answer over, [shelved] as it was left
+     *  ([CarriedAnswer]). */
+    fun restore(sentence: AskSentence, answer: AskState.Answered, shelved: Boolean = false) {
         this.sentence = sentence
         close()
+        // Before the state, as in [send]: the answer is first read shelved
+        // or not, as it will stay.
+        this.shelved = shelved
         _state.value = answer
     }
 

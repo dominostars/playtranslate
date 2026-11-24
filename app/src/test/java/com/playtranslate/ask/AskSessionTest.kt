@@ -47,7 +47,12 @@ import org.junit.Test
  *    the question;
  *  - [AskSession.retry] only from Failed, its pass alone asking past the
  *    cooldowns (a new question keeps them), through the registry's own
- *    pass too; and [AskSession.restore].
+ *    pass too; and [AskSession.restore];
+ *  - shelving: [AskSession.shelve] ends nothing (the request in flight goes
+ *    on and its answer arrives shelved), does nothing with nothing asked,
+ *    and is undone by a new question, [AskSession.close] and another
+ *    sentence; [AskSession.carried] hands the finished answer on with it,
+ *    and restore takes it up as carried.
  *
  * The LLM is a fake whose every call parks on a gate the test opens. The
  * session's scope runs on [Dispatchers.Unconfined], so launching, resuming
@@ -628,7 +633,111 @@ class AskSessionTest {
         assertNull("the answer ended the cooldown", gemini.unavailableUntil())
     }
 
+    // ── shelving ─────────────────────────────────────────────────────────
+
+    @Test fun `shelving a question in flight ends nothing, and its answer arrives shelved`() {
+        val session = newSession()
+        session.bind(sentence)
+        session.ask(grammar)
+        val call = llm.calls.single()
+        assertFalse("a question starts on show", session.shelved)
+
+        session.shelve(true)
+
+        assertTrue(session.shelved)
+        assertEquals("still in flight", AskState.Asking(grammar), session.state.value)
+        assertFalse("the request was not cancelled", call.sawCancellation.isCompleted)
+
+        call.reply.complete(Completion("An answer.", online))
+        val answered = AskState.Answered(grammar, "An answer.", "OpenAI")
+        assertEquals(answered, session.state.value)
+        assertTrue("the answer arrived shelved", session.shelved)
+
+        session.shelve(false)
+        assertFalse(session.shelved)
+        assertEquals("unshelving keeps the answer", answered, session.state.value)
+        assertEquals("nobody was asked again", 1, llm.calls.size)
+    }
+
+    @Test fun `shelving with nothing asked does nothing`() {
+        val session = newSession()
+        session.bind(sentence)
+
+        session.shelve(true)
+
+        assertFalse(session.shelved)
+        session.ask(grammar)
+        assertFalse("and the question asked next is on show", session.shelved)
+    }
+
+    @Test fun `a new question, a retry, close and another sentence each end the shelving`() {
+        val session = newSession()
+        session.bind(sentence)
+        fun shelvedAnswer() {
+            session.ask(grammar)
+            llm.calls.last().reply.complete(Completion("An answer.", online))
+            session.shelve(true)
+            assertTrue("precondition: shelved", session.shelved)
+        }
+
+        shelvedAnswer()
+        session.ask(custom)
+        assertFalse("a new question is on show", session.shelved)
+
+        llm.calls.last().reply.completeExceptionally(IllegalStateException("boom"))
+        assertEquals("precondition: failed", AskState.Failed(custom), session.state.value)
+        session.shelve(true)
+        session.retry()
+        assertFalse("a retry is on show", session.shelved)
+
+        session.shelve(true)
+        session.close()
+        assertFalse("close ends it", session.shelved)
+
+        shelvedAnswer()
+        session.bind(sentence.copy())
+        assertTrue("the same sentence keeps it", session.shelved)
+        session.bind(sentence.copy(text = "犬が好きです"))
+        assertFalse("another sentence ends it", session.shelved)
+        assertEquals(AskState.Idle, session.state.value)
+    }
+
+    @Test fun `carried is the finished answer and whether it is shelved, and nothing with none or with a question in flight`() {
+        val session = newSession()
+        session.bind(sentence)
+        assertNull("nothing asked", session.carried())
+
+        session.ask(grammar)
+        assertNull("in flight", session.carried())
+        session.shelve(true)
+        assertNull("in flight, shelved or not", session.carried())
+        session.shelve(false)
+
+        llm.calls.single().reply.complete(Completion("An answer.", online))
+        val answered = AskState.Answered(grammar, "An answer.", "OpenAI")
+        assertEquals(CarriedAnswer(answered, shelved = false), session.carried())
+
+        session.shelve(true)
+        assertEquals(CarriedAnswer(answered, shelved = true), session.carried())
+    }
+
     // ── restore ──────────────────────────────────────────────────────────
+
+    @Test fun `restore takes a carried answer up as it was left, shelved or on show`() {
+        val answered = AskState.Answered(grammar, "A carried answer.", "OpenAI")
+
+        val shelved = newSession()
+        shelved.restore(sentence, answered, shelved = true)
+        assertEquals(answered, shelved.state.value)
+        assertTrue(shelved.shelved)
+        assertEquals(CarriedAnswer(answered, shelved = true), shelved.carried())
+
+        // Over a shelved question of its own, an answer carried on show is
+        // on show.
+        shelved.restore(sentence, answered)
+        assertFalse(shelved.shelved)
+        assertTrue("restoring asked nothing", llm.calls.isEmpty())
+    }
 
     @Test fun `restore binds the sentence and shows the answer, which the same sentence keeps and another ends`() {
         val answered = AskState.Answered(grammar, "A carried answer.", "OpenAI")
