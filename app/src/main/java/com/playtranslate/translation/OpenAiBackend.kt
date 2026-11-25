@@ -284,7 +284,9 @@ class OpenAiBackend(
         return arr.map { cleanLlmOutput(it) }
     }
 
-    override fun canComplete(): Boolean = enabledProvider() && credential() != null
+    override fun canComplete(): Boolean = enabledProvider() && isSetUpToComplete()
+
+    override fun isSetUpToComplete(): Boolean = credential() != null
 
     override suspend fun complete(system: String, user: String): String =
         exchange(system, user, answerCall)

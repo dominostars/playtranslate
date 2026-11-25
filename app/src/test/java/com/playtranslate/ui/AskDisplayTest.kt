@@ -7,6 +7,7 @@ import com.playtranslate.ask.AskQuestion
 import com.playtranslate.ask.AskState
 import com.playtranslate.translation.BackendFailure
 import com.playtranslate.translation.BackendFailureKind
+import com.playtranslate.translation.FakeCompleterBackend
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -30,6 +31,13 @@ import org.robolectric.RobolectricTestRunner
  * | Out of scope                   | the service's scope, by name | yes   | none                  | no        |
  * | Failed, nothing to say why     | the generic line             | yes   | none                  | yes       |
  * | Failed, a service and a reason | the generic line, the reason | yes   | none                  | yes       |
+ *
+ * The footer is two lines kept apart, for a surface that draws them apart
+ * (the Ask card, whose credit is a row with a gear): the cut line is the
+ * notice and who answered is the credit, and the footer is the two as one
+ * block, the notice first. Only an answer has either. A failure reads the
+ * same whether the question went to the services in their order or to one
+ * the user picked.
  *
  * The title is the question's own in every state. The Ask card's drawing of
  * these is [AskSectionBinderTest]'s, a row's [DefRowHtmlTest]'s.
@@ -67,6 +75,8 @@ class AskDisplayTest {
         assertEquals("It is the past of to eat.", answered.body)
         assertFalse(answered.muted)
         assertEquals(ctx.getString(R.string.ask_answered_by, "Gemini"), answered.footer)
+        assertEquals("the credit alone", ctx.getString(R.string.ask_answered_by, "Gemini"), answered.credit)
+        assertNull("nothing was cut", answered.notice)
         assertFalse(answered.retry)
     }
 
@@ -77,6 +87,41 @@ class AskDisplayTest {
             ctx.getString(R.string.ask_answer_cut) + "\n" + ctx.getString(R.string.ask_answered_by, "Gemini"),
             cut.footer,
         )
+        assertEquals("the cut line is the notice", ctx.getString(R.string.ask_answer_cut), cut.notice)
+        assertEquals(
+            "and who answered is still the credit alone",
+            ctx.getString(R.string.ask_answered_by, "Gemini"), cut.credit,
+        )
+    }
+
+    @Test fun `only an answer has a credit or a notice`() {
+        for (state in listOf(
+            AskState.Asking(question, "Gemini"),
+            AskState.Asking(question),
+            AskState.OutOfScope(question, "PlayTranslate Cloud"),
+            AskState.Failed(question),
+            AskState.Failed(question, service = "OpenAI", failure = BackendFailure(BackendFailureKind.RATE_LIMITED, 429)),
+        )) {
+            val shown = shown(state)
+            assertNull("$state", shown.credit)
+            assertNull("$state", shown.notice)
+        }
+    }
+
+    @Test fun `a failed pick reads as any failure does`() {
+        val failure = BackendFailure(BackendFailureKind.RATE_LIMITED, 429)
+        val chosen = FakeCompleterBackend(id = "openai", priority = 10, displayName = "OpenAI")
+        for ((ordinary, picked) in listOf(
+            AskState.Failed(question) to AskState.Failed(question, chosen = chosen),
+            AskState.Failed(question, "OpenAI", failure) to AskState.Failed(question, "OpenAI", failure, chosen),
+        )) {
+            val a = shown(ordinary)
+            val b = shown(picked)
+            assertEquals(a.body, b.body)
+            assertEquals(a.muted, b.muted)
+            assertEquals(a.retry, b.retry)
+            assertNull(b.footer)
+        }
     }
 
     @Test fun `a question the service does not take is the app's word on it, with no Try again`() {

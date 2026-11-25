@@ -223,6 +223,17 @@ interface PromptCompleter {
      *  user has an LLM" means. */
     fun canComplete(): Boolean
 
+    /** Whether the model could be put a prompt if asked now, whatever its
+     *  switch says: [canComplete] without the switch, as
+     *  [TranslationBackend.isSetUpFor] is [TranslationBackend.isUsable]
+     *  without it, so a completer with a switch states this and derives
+     *  [canComplete] from it; the default is for one with no switch of its
+     *  own. The gate of a question the user asked this one service
+     *  ([TranslationBackendRegistry.completeWith]) and of the list they
+     *  pick it from ([TranslationBackendRegistry.setUpToAnswer]). A
+     *  cooldown has no say here either. */
+    fun isSetUpToComplete(): Boolean = canComplete()
+
     /** The model's reply to [user] under [system]. Throws as a translation
      *  call does ([ClassifiedFailure] where the failure is understood). */
     suspend fun complete(system: String, user: String): String
@@ -297,6 +308,12 @@ interface SentenceAnswerer {
      *  [PromptCompleter.canComplete] says of a completer. */
     fun canAnswer(): Boolean
 
+    /** Whether the service could be put a question if asked now, whatever
+     *  its switch says, as [PromptCompleter.isSetUpToComplete] says of a
+     *  completer. The default is [canAnswer]: a service that takes no call
+     *  while it is switched off is set up only while it is on. */
+    fun isSetUpToAnswer(): Boolean = canAnswer()
+
     /** The epoch-ms time until which this service takes no question, for a
      *  reason that is its answers' alone (a cap on how many it gives), or
      *  null when there is none. Apart from [Cooldownable.unavailableUntil],
@@ -316,6 +333,11 @@ interface SentenceAnswerer {
  * is the failure worth telling the user about (their first-choice service);
  * both are null when nothing was tried (every one in a cooldown, or none
  * set up).
+ *
+ * Thrown by [TranslationBackendRegistry.completeWith] too, when the one
+ * service the user picked did not answer: [backend] is that service (null
+ * when it is no longer registered) and [cause] what it threw, null when
+ * nothing was sent (the service gone, or no longer set up to answer).
  */
 class CompletionFailedException(
     val backend: TranslationBackend?,

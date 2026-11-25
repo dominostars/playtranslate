@@ -16,10 +16,14 @@ import android.view.View.MeasureSpec
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.graphics.drawable.GradientDrawable
+import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.TextView
+import androidx.core.view.allViews
 import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.Prefs
 import com.playtranslate.R
@@ -28,10 +32,13 @@ import com.playtranslate.ask.AskQuestion
 import com.playtranslate.ask.AskSentence
 import com.playtranslate.ask.AskSession
 import com.playtranslate.ask.AskState
+import com.playtranslate.overlayThemedContext
 import com.playtranslate.themeColor
 import com.playtranslate.translation.BackendFailure
 import com.playtranslate.translation.BackendFailureKind
 import com.playtranslate.translation.CompletionFailedException
+import com.playtranslate.translation.FakeCompleterBackend
+import com.playtranslate.translation.FakeOnlineBackend
 import com.playtranslate.translation.OpenAiRateLimitException
 import com.playtranslate.translation.SentenceAnswer
 import com.playtranslate.translation.TranslationBackend
@@ -93,6 +100,16 @@ import org.robolectric.android.controller.ActivityController
  * asked. The host hears of every render, every eye tap and the field's focus.
  * The controller's targets in each state, and the chips' order after a preset
  * was asked.
+ *
+ * Who gave an answer is a row with a gear, shown under an answer and under
+ * nothing else, the cut line a line of its own over it. Its tap is an
+ * interaction that hands the host the picker of who answers, listing the
+ * services set up to answer with the accent on the one credited; a pick asks
+ * the same question of that service alone, through the session's seam for a
+ * chosen one, and from there the card is a question's: "Asking <service>…",
+ * its answer credited to it, or its failure with a Try again that asks it
+ * again. A pick made over an answer since put away asks nothing. The row is
+ * no controller target.
  */
 @RunWith(RobolectricTestRunner::class)
 class AskSectionBinderTest {
@@ -113,8 +130,14 @@ class AskSectionBinderTest {
 
         override fun onInteraction() { interactions++ }
         override fun onLlmNeeded() { llmNeeded++ }
+        /** Every alert the binder handed over, as what fills its builder. */
+        val alerts = mutableListOf<(OverlayAlert.Builder) -> Unit>()
+        var servicesOpened = 0
+
         override fun onFieldFocusChanged(focused: Boolean) { focusChanges += focused }
         override fun onHeightChanged() { heightChanges++ }
+        override fun showAlert(configure: (OverlayAlert.Builder) -> Unit) { alerts += configure }
+        override fun openTranslationServices() { servicesOpened++ }
     }
 
     /** The app's preferences, with every write made through them recorded by
@@ -172,6 +195,13 @@ class AskSectionBinderTest {
         val reply = CompletableDeferred<TranslationBackendRegistry.Completion>()
     }
 
+    /** One question put to the one service the user picked: the prompt it
+     *  got, that service, and the gate the test answers or fails it
+     *  through. */
+    private class Pick(val user: String, val backend: TranslationBackend) {
+        val reply = CompletableDeferred<TranslationBackendRegistry.Completion>()
+    }
+
     private val app: Context = ApplicationProvider.getApplicationContext()
     private lateinit var controller: ActivityController<Host>
     private lateinit var activity: Host
@@ -195,6 +225,9 @@ class AskSectionBinderTest {
     /** Every question the fake LLM was asked, in order. */
     private val calls = mutableListOf<Call>()
 
+    /** Every question put to a service the user picked, in order. */
+    private val picks = mutableListOf<Pick>()
+
     /** Every state the host's collection handed the binder, in order. */
     private val rendered = mutableListOf<AskState>()
 
@@ -214,12 +247,16 @@ class AskSectionBinderTest {
         activity.setContentView(root)
         // As the registry's pass does, the fake names its first pick
         // (Gemini) before it first waits.
-        session = AskSession(scope) { asked, pastCooldowns, onAttempt ->
-            val call = Call(asked.user, onAttempt, pastCooldowns)
-            calls += call
-            onAttempt(gemini)
-            call.reply.await()
-        }
+        session = AskSession(
+            scope,
+            complete = { asked, pastCooldowns, onAttempt ->
+                val call = Call(asked.user, onAttempt, pastCooldowns)
+                calls += call
+                onAttempt(gemini)
+                call.reply.await()
+            },
+            completeWith = { asked, backend -> Pick(asked.user, backend).also { picks += it }.reply.await() },
+        )
         session.bind(AskSentence("猫が魚を食べた。", "ja", "en"))
     }
 
@@ -229,6 +266,7 @@ class AskSectionBinderTest {
         controller.pause().stop().destroy()
         idle()
         clearPrefs()
+        TranslationBackendRegistry.close()
     }
 
     /** Build the binder the way a host does, with the session's state
@@ -305,6 +343,9 @@ class AskSectionBinderTest {
     private val title: TextView get() = view(R.id.tvAskTitle)
     private val body: TextView get() = view(R.id.tvAskBody)
     private val footer: TextView get() = view(R.id.tvAskFooter)
+    private val creditRow: View get() = view(R.id.askCreditRow)
+    private val gear: ImageView get() = view(R.id.btnAskService)
+    private val cutLine: TextView get() = view(R.id.tvAskCut)
     private val warning: View get() = view(R.id.tvAskWarning)
 
     /** The card's chips, in order. */
@@ -784,7 +825,7 @@ class AskSectionBinderTest {
         assertEquals(color(R.attr.ptTextHint), title.currentTextColor)
         assertEquals(activity.getString(R.string.ask_status_asking, "Gemini"), body.text.toString())
         assertEquals(color(R.attr.ptText), body.currentTextColor)
-        assertFalse(shown(footer))
+        assertFalse(shown(creditRow))
         assertFalse(shown(retry))
         assertEquals("X is tinted in code", color(R.attr.ptTextMuted), close.imageTintList?.defaultColor)
 
@@ -796,7 +837,7 @@ class AskSectionBinderTest {
         assertEquals(preset.title, title.text.toString())
         assertEquals("Ga marks the cat as the one who ate.", body.text.toString())
         assertEquals(color(R.attr.ptText), body.currentTextColor)
-        assertTrue(shown(footer))
+        assertTrue(shown(creditRow))
         assertEquals(activity.getString(R.string.ask_answered_by, "Gemini"), footer.text.toString())
         assertFalse(shown(retry))
     }
@@ -971,18 +1012,23 @@ class AskSectionBinderTest {
         start()
         tap(chips().first())
         answer("Ga marks the cat as the one who ate.", by = gemini)
-        assertTrue(shown(footer))
+        assertTrue(shown(creditRow))
         // The same page's note, as section_target.xml draws it; italic is
         // TranslationSectionBinder's, set when it says who translated.
         val note = view<TextView>(R.id.tvTranslationNote)
         assertEquals("size", note.textSize, footer.textSize)
         assertEquals("colour", note.currentTextColor, footer.currentTextColor)
-        // The note's gap is its row's top padding (the row is the tap
-        // target of the translation service picker).
+        // Each note's gap is its row's top padding (the row is the tap
+        // target of its picker), and each has its gear beside it.
+        assertEquals("gap above", view<View>(R.id.translationNoteRow).paddingTop, creditRow.paddingTop)
+        assertEquals(0, (footer.layoutParams as ViewGroup.MarginLayoutParams).topMargin)
+        val noteGear = view<ImageView>(R.id.btnTranslationService)
+        assertEquals("the gear's size", noteGear.layoutParams.width, gear.layoutParams.width)
+        assertEquals(noteGear.layoutParams.height, gear.layoutParams.height)
         assertEquals(
-            "gap above",
-            view<View>(R.id.translationNoteRow).paddingTop,
-            (footer.layoutParams as ViewGroup.MarginLayoutParams).topMargin,
+            "the gear's gap",
+            (noteGear.layoutParams as ViewGroup.MarginLayoutParams).marginStart,
+            (gear.layoutParams as ViewGroup.MarginLayoutParams).marginStart,
         )
         assertTrue("italic", italic(footer))
     }
@@ -1082,6 +1128,208 @@ class AskSectionBinderTest {
         assertEquals(sp(18), body.textSize)
     }
 
+    // ── The credit and its gear ─────────────────────────────────────────
+
+    private val geminiService = FakeCompleterBackend(id = "gemini", priority = 10, displayName = "Gemini")
+    private val claudeService = FakeCompleterBackend(
+        id = "claude", priority = 20, displayName = "Claude", canComplete = false, setUp = true,
+    )
+    private val qwenService = FakeCompleterBackend(
+        id = "qwen", priority = 30, displayName = "Qwen 3.5", requiresInternet = false,
+    )
+
+    /** The user's services: Gemini on, Claude set up and switched off, Qwen
+     *  on the device, and a service that only translates. */
+    private fun registerServices() = TranslationBackendRegistry.init(
+        listOf(FakeOnlineBackend(id = "deepl", priority = 5, displayName = "DeepL"), geminiService, claudeService, qwenService),
+    )
+
+    /** An answer by Gemini on show, and its question. */
+    private fun answeredByGemini(): AskQuestion {
+        registerServices()
+        start()
+        tap(chips().first())
+        val asked = (session.state.value as AskState.Asking).question
+        answer("Ga marks the cat as the one who ate.", by = gemini)
+        return asked
+    }
+
+    /** The alert the binder last handed its host, shown in a host view as a
+     *  surface shows it: every text on it, in order. */
+    private fun shownAlert(): List<TextView> {
+        val parent = FrameLayout(activity)
+        OverlayAlert.Builder(activity).also(host.alerts.last()).showInParent(parent)
+        return parent.allViews.filterIsInstance<TextView>().toList()
+    }
+
+    private fun List<TextView>.button(label: String): Button =
+        filterIsInstance<Button>().single { it.text.toString() == label }
+
+    private fun Button.isAccent(): Boolean =
+        (background as GradientDrawable).color?.defaultColor ==
+            overlayThemedContext(activity).themeColor(R.attr.ptAccent)
+
+    @Test
+    fun `who answered is a row with a gear, under an answer and under nothing else`() {
+        assertNotEquals(color(R.attr.ptTextHint), 0)
+        registerServices()
+        start()
+        assertFalse("nothing asked", creditRow.isShown)
+
+        tap(chips().first())
+        assertFalse("a question in flight credits nobody", shown(creditRow))
+
+        answer("Ga marks the cat as the one who ate.", by = gemini)
+        assertTrue(creditRow.isShown)
+        assertTrue("the gear beside the credit", gear.isShown)
+        assertTrue("to the credit's end", gear.left >= footer.right)
+        assertEquals("tinted in code", color(R.attr.ptTextHint), gear.imageTintList?.defaultColor)
+        assertEquals(activity.getString(R.string.cd_choose_ask_service), gear.contentDescription)
+        assertTrue("the row is the tap target", creditRow.isClickable)
+        assertFalse("the gear is part of it, no target of its own", gear.isClickable)
+        assertTrue("down to the card's edge", creditRow.bottom >= (creditRow.parent as View).height - 1)
+        assertFalse("no controller target", creditRow in navViews() || gear in navViews())
+        assertEquals(listOf(textSizeButton, eye, close), navViews())
+
+        tap(close)
+        tap(chips().first())
+        fail(CompletionFailedException(NamedBackend("OpenAI", online = true), IllegalStateException("x")))
+        assertFalse("a failure credits nobody", shown(creditRow))
+
+        tap(retry)
+        calls.last().reply.complete(
+            TranslationBackendRegistry.Completion(SentenceAnswer.OutOfScope, NamedBackend("PlayTranslate Cloud", online = true)),
+        )
+        settle()
+        assertFalse("nor does a question the service does not take", shown(creditRow))
+        assertEquals("the row never asked anyone anything", 0, picks.size)
+        assertEquals(0, host.alerts.size)
+    }
+
+    @Test
+    fun `a tap on the credit is an interaction that hands the host the picker of who answers`() {
+        val asked = answeredByGemini()
+        val answered = session.state.value
+        val interactions = host.interactions
+
+        tap(creditRow)
+
+        assertEquals("an interaction, as every control of the card", interactions + 1, host.interactions)
+        assertEquals("one alert, the host's to show", 1, host.alerts.size)
+        assertSame("the tap asks nothing by itself", answered, session.state.value)
+        assertEquals(1, calls.size)
+        assertEquals(0, picks.size)
+
+        val alert = shownAlert()
+        val texts = alert.map { it.text.toString() }
+        assertEquals(activity.getString(R.string.ask_picker_title), texts[0])
+        assertEquals(activity.getString(R.string.ask_picker_message), texts[1])
+        assertEquals(
+            "who can answer, set up: the switched-off among them, nothing that only translates",
+            listOf(
+                activity.getString(R.string.ask_picker_header_online), "Gemini", "Claude",
+                activity.getString(R.string.ask_picker_header_offline), "Qwen 3.5",
+                activity.getString(R.string.settings_cell_translation_services),
+                activity.getString(R.string.btn_cancel),
+            ),
+            texts.drop(2),
+        )
+        assertTrue("the accent on who answered", alert.button("Gemini").isAccent())
+        assertFalse(alert.button("Claude").isAccent())
+        assertFalse(alert.button("Qwen 3.5").isAccent())
+
+        alert.button(activity.getString(R.string.settings_cell_translation_services)).performClick()
+        assertEquals("the way to the services is the host's", 1, host.servicesOpened)
+        assertEquals(0, picks.size)
+        assertEquals(AskState.Answered(asked, "Ga marks the cat as the one who ate.", "Gemini"), session.state.value)
+    }
+
+    @Test
+    fun `a pick asks the same question of that service alone, and the card follows it as a question's`() {
+        val asked = answeredByGemini()
+        tap(creditRow)
+
+        shownAlert().button("Claude").performClick()
+        settle()
+
+        val pick = picks.single()
+        assertSame("the service picked, switched off as it is", claudeService, pick.backend)
+        assertEquals("the same question", calls.single().user, pick.user)
+        assertEquals("the services in their order are not asked again", 1, calls.size)
+        assertEquals(AskState.Asking(asked, "Claude"), session.state.value)
+        assertEquals(asked.title, title.text.toString())
+        assertEquals(activity.getString(R.string.ask_status_asking, "Claude"), body.text.toString())
+        assertFalse("the answer it replaces is gone, and its credit", shown(creditRow))
+        assertTrue("X puts the question away, as any", close.isShown)
+
+        pick.reply.complete(TranslationBackendRegistry.Completion(SentenceAnswer.Text("Claude's reading."), claudeService))
+        settle()
+
+        assertEquals(AskState.Answered(asked, "Claude's reading.", "Claude"), session.state.value)
+        assertEquals("Claude's reading.", body.text.toString())
+        assertTrue(creditRow.isShown)
+        assertEquals(activity.getString(R.string.ask_answered_by, "Claude"), footer.text.toString())
+
+        // The picker over the new answer marks who gave it.
+        tap(creditRow)
+        val again = shownAlert()
+        assertTrue(again.button("Claude").isAccent())
+        assertFalse(again.button("Gemini").isAccent())
+
+        // And a pick of the one credited asks it again.
+        again.button("Claude").performClick()
+        settle()
+        assertEquals(2, picks.size)
+        assertSame(claudeService, picks[1].backend)
+        assertEquals(AskState.Asking(asked, "Claude"), session.state.value)
+    }
+
+    @Test
+    fun `a failed pick is the card's failure, and Try again asks the service picked`() {
+        val asked = answeredByGemini()
+        tap(creditRow)
+        shownAlert().button("Claude").performClick()
+        settle()
+        val failure = BackendFailure(BackendFailureKind.RATE_LIMITED, 429)
+
+        picks.single().reply.completeExceptionally(
+            CompletionFailedException(claudeService, OpenAiRateLimitException(failure)),
+        )
+        settle()
+
+        assertEquals(AskState.Failed(asked, "Claude", failure, chosen = claudeService), session.state.value)
+        assertEquals(
+            activity.getString(R.string.ask_failed) + "\n" +
+                activity.getString(R.string.translation_error_rate_limited, "Claude"),
+            body.text.toString(),
+        )
+        assertTrue(shown(retry))
+        assertFalse(shown(creditRow))
+        assertEquals("said in the card: no alert but the picker's", 1, host.alerts.size)
+
+        tap(retry)
+
+        assertEquals("the service picked is asked again", 2, picks.size)
+        assertSame(claudeService, picks[1].backend)
+        assertEquals("and not the services in their order", 1, calls.size)
+        assertEquals(activity.getString(R.string.ask_status_asking, "Claude"), body.text.toString())
+    }
+
+    @Test
+    fun `a pick made over an answer since put away asks nothing`() {
+        answeredByGemini()
+        tap(creditRow)
+        val stale = shownAlert()
+
+        tap(close)
+        stale.button("Claude").performClick()
+        settle()
+
+        assertEquals(AskState.Idle, session.state.value)
+        assertEquals(0, picks.size)
+        assertTrue("the questions are back, untouched", shown(idleGroup))
+    }
+
     // ── Failure ─────────────────────────────────────────────────────────
 
     @Test
@@ -1097,7 +1345,7 @@ class AskSectionBinderTest {
         assertEquals(activity.getString(R.string.ask_failed), body.text.toString())
         assertEquals(color(R.attr.ptTextMuted), body.currentTextColor)
         assertTrue(shown(retry))
-        assertFalse(shown(footer))
+        assertFalse(shown(creditRow))
 
         val interactions = host.interactions
         tap(retry)
@@ -1126,7 +1374,7 @@ class AskSectionBinderTest {
         )
         assertEquals(color(R.attr.ptTextMuted), body.currentTextColor)
         assertTrue(shown(retry))
-        assertFalse(shown(footer))
+        assertFalse(shown(creditRow))
     }
 
     // ── A cut answer ────────────────────────────────────────────────────
@@ -1150,14 +1398,20 @@ class AskSectionBinderTest {
         )
         assertEquals("the text as it came", "Ga marks the cat as the one who", body.text.toString())
         assertEquals(color(R.attr.ptText), body.currentTextColor)
-        assertTrue(shown(footer))
-        assertEquals(activity.getString(R.string.ask_answer_cut) + "\n" + by, footer.text.toString())
+        assertTrue(shown(creditRow))
+        assertTrue("the cut line is a line of its own", shown(cutLine))
+        assertEquals(activity.getString(R.string.ask_answer_cut), cutLine.text.toString())
+        assertEquals("the credit, and so its gear, stands apart from it", by, footer.text.toString())
+        assertTrue("over the credit", cutLine.bottom <= creditRow.top)
+        assertEquals("styled as the credit", footer.textSize, cutLine.textSize)
+        assertEquals(footer.currentTextColor, cutLine.currentTextColor)
         assertFalse("an answer, so nothing to try again", shown(retry))
 
-        // The same footer view serves the next answer: no note left behind.
+        // The next whole answer: no cut line left behind.
         tap(close)
         tap(chips().first())
         answer("Ga marks the cat as the one who ate.", by = cloud)
+        assertFalse(shown(cutLine))
         assertEquals(by, footer.text.toString())
     }
 
@@ -1183,7 +1437,7 @@ class AskSectionBinderTest {
         assertTrue("the line names who declined: ${body.text}", body.text.contains("PlayTranslate Cloud"))
         assertEquals(color(R.attr.ptTextMuted), body.currentTextColor)
         assertFalse("nothing to try again", shown(retry))
-        assertFalse("not an answer, so no Answered by", shown(footer))
+        assertFalse("not an answer, so no Answered by", shown(creditRow))
         assertEquals("the Text size, the eye and X, and no Try again", listOf(textSizeButton, eye, close), navViews())
         assertEquals("nobody was asked again", 1, calls.size)
 

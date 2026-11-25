@@ -211,12 +211,12 @@
                         android:textSize="13sp"
                         android:visibility="gone" />
 
-                    <!-- "Answered by <service>", under a finished answer.
-                         Styled as the Translation card's "Translated by"
-                         (section_target.xml's tvTranslationNote, italic in
-                         TranslationSectionBinder). -->
+                    <!-- Under an answer the service cut at its length limit:
+                         a line saying so (its words are AskDisplay's). A line
+                         of its own over the credit, so the credit's gear
+                         stands beside the credit alone. -->
                     <TextView
-                        android:id="@+id/tvAskFooter"
+                        android:id="@+id/tvAskCut"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
@@ -224,6 +224,48 @@
                         android:textSize="11sp"
                         android:textStyle="italic"
                         android:visibility="gone" />
+
+                    <!-- "Answered by <service>" + gear, under a finished
+                         answer: the whole row taps to the picker of who
+                         answers (AskPicker). The twin of the Translation
+                         card's translationNoteRow (section_target.xml) and
+                         styled as it: the bottom padding, cancelled by the
+                         negative margin, carries the tap target down to the
+                         card's edge through the 12dp padding of the holder
+                         above. The gear is tinted in code (AskSectionBinder):
+                         the over-game panel's plain inflater drops app:tint. -->
+                    <LinearLayout
+                        android:id="@+id/askCreditRow"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="-12dp"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:paddingTop="6dp"
+                        android:paddingBottom="12dp"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?attr/selectableItemBackground"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:id="@+id/tvAskFooter"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:textColor="?attr/ptTextHint"
+                            android:textSize="11sp"
+                            android:textStyle="italic" />
+
+                        <ImageView
+                            android:id="@+id/btnAskService"
+                            android:layout_width="14dp"
+                            android:layout_height="14dp"
+                            android:layout_marginStart="6dp"
+                            android:contentDescription="@string/cd_choose_ask_service"
+                            android:src="@drawable/ic_settings" />
+
+                    </LinearLayout>
 
                 </LinearLayout>
 

@@ -40,8 +40,11 @@ import java.io.File
  * own is off, so for those two set up is usable.
  *
  * An on-device model that is switched off is set up and still answers no
- * question ([PromptCompleter.canComplete] keeps the switch): only a run the
- * user asks that one model for reaches it.
+ * question put to the user's models in their order
+ * ([PromptCompleter.canComplete] keeps the switch): only a run the user
+ * asks that one model for reaches it, a translation or an answer, and for
+ * an answer its gate is [PromptCompleter.isSetUpToComplete], which is
+ * canComplete without the switch and no language pair's business.
  *
  * Robolectric, as [OnDeviceCompleterTest]: a model is installed by its
  * directory's `.sentinel` holding the catalog's sha (for Firefox
@@ -238,6 +241,38 @@ class BackendSetUpForTest {
             enabled = true
             assertEquals("${m.backend.id}: read live", true, m.backend.canComplete())
         }
+    }
+
+    @Test fun `an on-device model is set up to answer when it is downloaded and the device can run it, whatever its switch`() {
+        for (m in onDevice()) {
+            val id = m.backend.id
+            assertEquals("$id: on, not downloaded", false, m.backend.isSetUpToComplete())
+            install(m.model)
+            assertEquals("$id: on, downloaded", true, m.backend.isSetUpToComplete())
+            enabled = false
+            assertEquals("$id: off, downloaded: a pick can ask it", true, m.backend.isSetUpToComplete())
+            assertEquals("$id: and no ordinary question does", false, m.backend.canComplete())
+            ShadowVMRuntime.setIs64Bit(false)
+            assertEquals("$id: off, downloaded, a device that cannot load it", false, m.backend.isSetUpToComplete())
+            ShadowVMRuntime.setIs64Bit(true)
+            setTotalMem(1_000_000_000L)
+            assertEquals("$id: off, downloaded, too little RAM", false, m.backend.isSetUpToComplete())
+            setTotalMem(16_000_000_000L)
+            uninstall(m.model)
+            assertEquals("$id: off, not downloaded", false, m.backend.isSetUpToComplete())
+            enabled = true
+        }
+    }
+
+    @Test fun `Hunyuan 1_5 in a restricted region is not set up to answer, switch on or off`() {
+        val hymt = onDevice().last()
+        install(hymt.model)
+        assertEquals("the precondition: permitted, on, downloaded", true, hymt.backend.isSetUpToComplete())
+
+        permitted = false
+        assertEquals("on", false, hymt.backend.isSetUpToComplete())
+        enabled = false
+        assertEquals("off: a pick is refused as a question is", false, hymt.backend.isSetUpToComplete())
     }
 
     @Test fun `Firefox Translations is set up when the pair's model is downloaded, whatever its switch`() {

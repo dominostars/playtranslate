@@ -372,6 +372,8 @@ class TranslationResultContent(
                 override fun onLlmNeeded() = host.onAskNeedsLlm()
                 // The pill makes way while the question is typed in.
                 override fun onFieldFocusChanged(focused: Boolean) = syncAnkiPill()
+                override fun showAlert(configure: (OverlayAlert.Builder) -> Unit) = host.showAlert(configure)
+                override fun openTranslationServices() = host.openTranslationServices()
             },
         )
         // The session is the view-model's and outlives this page: draw

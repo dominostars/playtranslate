@@ -414,6 +414,28 @@ class OpenAiBackendCompleteTest {
         assertFalse("a blank key where one is needed", backend(key = "  ").canComplete())
     }
 
+    @Test fun `set up to complete is the credential alone, whatever the switch says`() {
+        fun backend(
+            enabled: Boolean = true,
+            key: String? = "sk-test",
+            account: AccountRequirement = AccountRequirement.REQUIRED,
+        ) = openAi(
+            recordingClient { CannedReply(200, reply("x")) },
+            key = key, enabled = enabled, account = account,
+        )
+
+        assertTrue("on, keyed", backend().isSetUpToComplete())
+        assertTrue("switched off, keyed: a pick can ask it", backend(enabled = false).isSetUpToComplete())
+        assertFalse("and still no ordinary question reaches it", backend(enabled = false).canComplete())
+        assertTrue(
+            "a keyless provider switched off",
+            backend(enabled = false, key = null, account = AccountRequirement.NONE).isSetUpToComplete(),
+        )
+        assertFalse("no key where one is needed", backend(key = null).isSetUpToComplete())
+        assertFalse("off, no key where one is needed", backend(enabled = false, key = null).isSetUpToComplete())
+        assertFalse("a blank key where one is needed", backend(enabled = false, key = "  ").isSetUpToComplete())
+    }
+
     // ── i. the translation paths, unchanged ──────────────────────────────
 
     @Test fun `translate sends no response_format and translateBatch does`() = runBlocking<Unit> {

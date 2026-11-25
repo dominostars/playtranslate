@@ -1105,6 +1105,10 @@ class CaptureResultOverlay(
                 override fun onLlmNeeded() = showAskNeedsLlm()
                 override fun onFieldFocusChanged(focused: Boolean) = onAskFieldFocusChanged(focused)
                 override fun onHeightChanged() = refitWhenLaidOut()
+                // On this sheet's own alert surface, as its other alerts.
+                override fun showAlert(configure: (OverlayAlert.Builder) -> Unit) =
+                    showAlertOn(alertTarget) { configure(this) }
+                override fun openTranslationServices() = this@CaptureResultOverlay.openTranslationServices()
             },
         )
         askBinder = ask

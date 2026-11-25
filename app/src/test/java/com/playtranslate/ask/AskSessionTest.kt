@@ -230,12 +230,12 @@ class AskSessionTest {
         val reply = CompletableDeferred<Completion>()
         // As the registry's pass does: the first pick is named before the
         // pass first waits, the next one when the first has failed.
-        val session = AskSession(scope) { _, _, onAttempt ->
+        val session = AskSession(scope, complete = { _, _, onAttempt ->
             onAttempt(online)
             fellThrough.await()
             onAttempt(onDevice)
             reply.await()
-        }
+        })
         session.bind(sentence)
 
         session.ask(grammar)
@@ -254,14 +254,14 @@ class AskSessionTest {
         // through and would name, then ask, the next one.
         val gates = mutableListOf<CompletableDeferred<Unit>>()
         var askedAfterFallingThrough = 0
-        val session = AskSession(scope) { _, _, onAttempt ->
+        val session = AskSession(scope, complete = { _, _, onAttempt ->
             onAttempt(online)
             val gate = CompletableDeferred<Unit>().also { gates += it }
             withContext(NonCancellable) { gate.await() }
             onAttempt(onDevice)
             askedAfterFallingThrough++
             Completion("An answer.", onDevice)
-        }
+        })
         session.bind(sentence)
 
         // Put away.

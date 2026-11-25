@@ -976,6 +976,71 @@ class CaptureSheetAskWordsTest {
         assertTrue(o.dismissed)
     }
 
+    @Test fun `the answer's credit opens the picker of who answers in the sheet's own alert, and a pick asks the same question of that service`() {
+        val o = open(screen, text(2), text(2), askHidden = false)
+        giveLlm()
+        var second = CompletableDeferred<String>()
+        val other = FakeCompleterBackend(
+            id = "ask-sheet-test-off", priority = 1, displayName = "Switched off", canComplete = false, setUp = true,
+            answer = { _, _ -> second.await() },
+        )
+        TranslationBackendRegistry.addOnlineBackend(other)
+        tap(chips(o)[0])
+        answer("The first answer.")
+        val asked = (o.askSession.state.value as AskState.Answered).question
+        val credit = o.v(R.id.tvAskFooter) as TextView
+        assertEquals(ctx.getString(R.string.ask_answered_by, "Test LLM"), credit.text.toString())
+        assertTrue("precondition: no alert yet", otherWindows(o).isEmpty())
+
+        tap(o.v(R.id.askCreditRow))
+
+        val alert = otherWindows(o).single()
+        val texts = textViewsIn(alert)
+        assertTrue("the picker's title", texts.any { it.text.toString() == ctx.getString(R.string.ask_picker_title) })
+        assertEquals(
+            "the two that could answer, the switched-off one among them",
+            listOf("Test LLM", "Switched off"),
+            texts.filterIsInstance<Button>().map { it.text.toString() }.take(2),
+        )
+        assertFalse("the picker changes nothing by itself", o.dismissed)
+
+        texts.filterIsInstance<Button>().single { it.text.toString() == "Switched off" }.performClick()
+        settle()
+
+        assertEquals(AskState.Asking(asked, "Switched off"), o.askSession.state.value)
+        assertEquals(
+            ctx.getString(R.string.ask_status_asking, "Switched off"),
+            (o.v(R.id.tvAskBody) as TextView).text.toString(),
+        )
+        assertEquals("the first answer's credit is gone with it", View.GONE, o.v(R.id.askCreditRow).visibility)
+        assertEquals("the service on was not asked again", 1, llm.completeCalls.get())
+
+        second.complete("The second answer.")
+        settle()
+
+        assertEquals(AskState.Answered(asked, "The second answer.", "Switched off"), o.askSession.state.value)
+        assertEquals(ctx.getString(R.string.ask_answered_by, "Switched off"), credit.text.toString())
+        assertEquals("the sheet still fits its content", o.need.coerceAtMost(CaptureResultGeometry.autoMaxHeight(screen.h)), o.panelHeight)
+        assertFalse(o.dismissed)
+    }
+
+    @Test fun `the picker's Translation services button opens the page and an over-game sheet makes way for it`() {
+        val o = open(screen, text(2), text(2), askHidden = false)
+        giveLlm()
+        tap(chips(o)[0])
+        answer("An answer.")
+
+        tap(o.v(R.id.askCreditRow))
+        textViewsIn(otherWindows(o).single()).filterIsInstance<Button>()
+            .single { it.text.toString() == ctx.getString(R.string.settings_cell_translation_services) }
+            .performClick()
+        settle()
+
+        val started = shadowOf(ctx as Application).nextStartedActivity
+        assertEquals(TranslationServicesActivity::class.java.name, started?.component?.className)
+        assertEquals(listOf(CaptureResultOverlay.DismissReason.PAGE), dismissals)
+    }
+
     /** The sentence the sheet's own lookup settled with: what its rows'
      *  explain questions are about. */
     private fun lookupSentence(o: CaptureResultOverlay): AskSentence =

@@ -266,7 +266,7 @@ class WordDetailAnkiContextTest {
     private val pageQuestion = AskQuestion.Word("弾ける", "はじける", listOf("弾けた"), "In this sentence")
 
     /** The page's session about [text]: never answering what it is asked. */
-    private fun session(text: String = "一番うまく弾けた！") = AskSession(sessionScope) { _, _, _ -> awaitCancellation() }
+    private fun session(text: String = "一番うまく弾けた！") = AskSession(sessionScope, complete = { _, _, _ -> awaitCancellation() })
         .apply { bind(AskSentence(text, "ja", "en")) }
 
     private fun AskSession.answered(text: String, by: String = "Claude", cut: Boolean = false) = apply {

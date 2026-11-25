@@ -384,17 +384,34 @@ object TranslationBackendRegistry {
      *  question. */
     fun hasCompleter(): Boolean = orderedBackends().any { asking(it) != null }
 
+    /** The services that could be put a question if asked now, whatever
+     *  their switches and cooldowns say ([asking] as for a chosen one), in
+     *  the order questions try them: what the user picks one service from
+     *  to ask a question again ([completeWith]). The twin of [setUpFor]. */
+    fun setUpToAnswer(): List<TranslationBackend> =
+        orderedBackends().filter { asking(it, chosen = true) != null }
+
     /**
      * How [backend] is put a question about a sentence, or null when it
-     * takes none or is not set up to ([SentenceAnswerer.canAnswer],
-     * [PromptCompleter.canComplete]): a [SentenceAnswerer] is given the
+     * takes none or is not set up to: a [SentenceAnswerer] is given the
      * question whole and reads its parts, a [PromptCompleter] the two
-     * messages made of them, its reply being the answer. The one statement
-     * of who answers and how, for [hasCompleter] and [complete].
+     * messages made of them, its reply being the answer. Set up to means
+     * switched on too ([SentenceAnswerer.canAnswer],
+     * [PromptCompleter.canComplete]), except for a service the user
+     * [chosen] for the question, whose switch has no say
+     * ([SentenceAnswerer.isSetUpToAnswer],
+     * [PromptCompleter.isSetUpToComplete]). The one statement of who
+     * answers and how, for [hasCompleter], [complete], [setUpToAnswer] and
+     * [completeWith], so the list a service is picked from and the run that
+     * asks it cannot disagree.
      */
-    private fun asking(backend: TranslationBackend): (suspend (SentenceQuestion) -> SentenceAnswer)? = when {
-        backend is SentenceAnswerer -> if (backend.canAnswer()) backend::answer else null
-        backend is PromptCompleter && backend.canComplete() ->
+    private fun asking(
+        backend: TranslationBackend,
+        chosen: Boolean = false,
+    ): (suspend (SentenceQuestion) -> SentenceAnswer)? = when {
+        backend is SentenceAnswerer ->
+            if (if (chosen) backend.isSetUpToAnswer() else backend.canAnswer()) backend::answer else null
+        backend is PromptCompleter && (if (chosen) backend.isSetUpToComplete() else backend.canComplete()) ->
             { question -> SentenceAnswer.Text(backend.complete(question.system, question.user)) }
         else -> null
     }
@@ -443,11 +460,63 @@ object TranslationBackendRegistry {
         question: SentenceQuestion,
         pastCooldowns: Boolean = false,
         onAttempt: (TranslationBackend) -> Unit = {},
+    ): Completion = completePass(question, orderedBackends(), pastCooldowns, chosen = false, onAttempt)
+
+    /**
+     * Put [question] to the one service [id], which the user picked for it
+     * ([setUpToAnswer] is the list): no other service is asked. [complete]'s
+     * own pass over that one service ([completePass]), so an answer, a
+     * blank reply and a failure mean what they mean there, with two
+     * differences. It is asked whether or not it is switched on, provided
+     * it is set up to answer ([asking] as for a chosen one). And it is
+     * asked past a cooldown and past a pause of its answers, as a question
+     * asked again is ([complete]'s pastCooldowns): only the skip is lifted,
+     * so an answer clears the cooldown as any answer does and a failure is
+     * recorded by the backend as on any question.
+     *
+     * Throws [CompletionFailedException] when it did not answer, carrying
+     * the service and what it threw; when the service is gone or no longer
+     * set up to answer, nothing is sent and the exception carries no cause.
+     * Cancellation re-throws. Nothing is reported to
+     * [onlineAttemptListener], as for [complete].
+     *
+     * An on-device model that is switched off is released when the run
+     * ends, however it ends ([OnDeviceLlmBackend.releaseAfterChosenRun]),
+     * as after a translation it was picked for ([translateWith]).
+     */
+    suspend fun completeWith(id: BackendId, question: SentenceQuestion): Completion {
+        val backend = byId(id)
+        if (backend == null || asking(backend, chosen = true) == null) {
+            throw CompletionFailedException(backend, null)
+        }
+        try {
+            return completePass(question, listOf(backend), pastCooldowns = true, chosen = true, onAttempt = {})
+        } finally {
+            if (backend is OnDeviceLlmBackend) {
+                withContext(NonCancellable) { backend.releaseAfterChosenRun() }
+            }
+        }
+    }
+
+    /**
+     * [complete]'s pass over [ordered] ([complete] says what it does).
+     * [chosen] is a question the user asked one service ([completeWith],
+     * whose [ordered] is that one service): it is asked whatever its switch
+     * says. Everything else is the same pass: the cooldown skip unless
+     * [pastCooldowns], the blank reply that is a failure, the success it
+     * records, the first failure it carries out.
+     */
+    private suspend fun completePass(
+        question: SentenceQuestion,
+        ordered: List<TranslationBackend>,
+        pastCooldowns: Boolean,
+        chosen: Boolean,
+        onAttempt: (TranslationBackend) -> Unit,
     ): Completion {
         var firstTried: TranslationBackend? = null
         var firstFailure: Exception? = null
-        for (backend in orderedBackends()) {
-            val ask = asking(backend) ?: continue
+        for (backend in ordered) {
+            val ask = asking(backend, chosen) ?: continue
             val now = System.currentTimeMillis()
             val coolDown = listOfNotNull(
                 (backend as? Cooldownable)?.unavailableUntil(),

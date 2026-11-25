@@ -1012,6 +1012,28 @@
          answered (e.g. Gemini). -->
     <string name="ask_answered_by">Answered by <xliff:g id="service_name" example="Gemini">%1$s</xliff:g></string>
 
+    <!-- Title of the dialog opened by tapping the "Answered by ..." line (or
+         the gear beside it) under an answer in the Ask section. It lists the
+         user's AI services and on-device AI models; picking one asks it the
+         same question again. Mirror of translation_picker_title. -->
+    <string name="ask_picker_title">Choose who answers</string>
+    <!-- Body text of that same dialog, under the title. Two facts: the pick
+         asks only the question on screen again, and it does not change which
+         services the app uses from now on. "The one you pick" is a service
+         or a model from the lists below it. Mirror of
+         translation_picker_message. -->
+    <string name="ask_picker_message">Asks this question again with the one you pick. Your settings stay as they are.</string>
+    <!-- Header over the first list in that dialog (ask_picker_title): the
+         AI services that answer over the internet (e.g. Gemini). -->
+    <string name="ask_picker_header_online">Online AI services</string>
+    <!-- Header over the second list in that dialog (ask_picker_title): the
+         AI models downloaded to the device, which answer without the
+         internet. -->
+    <string name="ask_picker_header_offline">On-device models</string>
+    <!-- Accessibility label (contentDescription) for the gear beside the
+         "Answered by ..." line; read after the line itself. -->
+    <string name="cd_choose_ask_service">Choose who answers</string>
+
     <!-- A line under an answer in the Ask section, above "Answered by", when
          the service stopped the AI model at its limit on how long an answer
          may be: the text above ends before the answer was finished, often

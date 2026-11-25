@@ -559,6 +559,61 @@ class TranslationResultContentTest {
         assertNull(vm.ask.sentence)
     }
 
+    // Mutations: the page's Ask host shows no alert; opens no services page.
+    @Test
+    fun `the answer's credit opens the picker of who answers on the host's alert surface, and a pick asks the same question of that service`() {
+        val gemini = com.playtranslate.translation.FakeCompleterBackend(
+            id = "content-test-gemini", priority = 0, displayName = "Gemini",
+        )
+        val off = com.playtranslate.translation.FakeCompleterBackend(
+            id = "content-test-off", priority = 1, displayName = "Switched off", canComplete = false, setUp = true,
+            answer = { _, _ -> "Its own reading." },
+        )
+        TranslationBackendRegistry.addOnlineBackend(gemini)
+        TranslationBackendRegistry.addOnlineBackend(off)
+        try {
+            content.render(ResultState.Ready(result("猫が食べる。", "The cat eats.")))
+            idle()
+            vm.ask.restore(sentence("猫が食べる。"), answered("It marks the subject."))
+            idle()
+            val interactions = host.interactions
+            val alerts = host.alertsShown
+
+            view(R.id.askCreditRow).performClick()
+            idle()
+
+            assertEquals("an interaction, as every Ask control", interactions + 1, host.interactions)
+            assertEquals("on the host's alert surface", alerts + 1, host.alertsShown)
+            val buttons = host.alertLayer.allViews.filterIsInstance<Button>().toList()
+            assertEquals(
+                listOf("Gemini", "Switched off", app.getString(R.string.settings_cell_translation_services)),
+                buttons.map { it.text.toString() }.take(3),
+            )
+
+            buttons.single { it.text.toString() == app.getString(R.string.settings_cell_translation_services) }
+                .performClick()
+            assertEquals("the host's way to the page", 1, host.servicesOpened)
+
+            view(R.id.askCreditRow).performClick()
+            idle()
+            host.alertLayer.allViews.filterIsInstance<Button>().last { it.text.toString() == "Switched off" }
+                .performClick()
+            idle()
+
+            assertEquals(
+                "asked of the one picked, through the registry, and answered by it",
+                AskState.Answered(AskQuestion.Custom("Why が?"), "Its own reading.", "Switched off"),
+                vm.ask.state.value,
+            )
+            assertEquals("Its own reading.", text(R.id.tvAskBody))
+            assertEquals(app.getString(R.string.ask_answered_by, "Switched off"), text(R.id.tvAskFooter))
+            assertEquals("the service that is on was never asked", 0, gemini.completeCalls.get())
+        } finally {
+            TranslationBackendRegistry.removeOnlineBackend(gemini.id)
+            TranslationBackendRegistry.removeOnlineBackend(off.id)
+        }
+    }
+
     @Test
     fun `with no LLM a Words row's explain button leads to the same alert of the host, as an interaction`() {
         assertFalse("precondition: nothing here could answer", TranslationBackendRegistry.hasCompleter())

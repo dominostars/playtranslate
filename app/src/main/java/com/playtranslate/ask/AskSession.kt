@@ -49,11 +49,15 @@ sealed class AskState {
     /** Nothing answered. [service] and [failure] say which online service
      *  refused first and how, for the reason line; both null when there is
      *  nothing to say beyond "it failed" (an on-device model, or every
-     *  service in a cooldown). */
+     *  service in a cooldown). [chosen] is the one service the user had
+     *  picked for the question ([AskSession.askWith]), null for a question
+     *  put to the services in their order: whom asking again asks
+     *  ([AskSession.retry]). */
     data class Failed(
         val question: AskQuestion,
         val service: String? = null,
         val failure: BackendFailure? = null,
+        val chosen: TranslationBackend? = null,
     ) : AskState()
 }
 
@@ -78,6 +82,18 @@ typealias AskPass = suspend (
 ) -> TranslationBackendRegistry.Completion
 
 /**
+ * A question put to the one service the user picked for it, and to no
+ * other ([AskSession.askWith]): [question] and that [backend]. Beside
+ * [AskPass], not a case of it: there is no order to pass over, nobody to
+ * name as the pass moves on, and no cooldown is waited out. Production's
+ * is [AskSession.registryChosenPass]; a test substitutes its own.
+ */
+typealias AskChosenPass = suspend (
+    question: SentenceQuestion,
+    backend: TranslationBackend,
+) -> TranslationBackendRegistry.Completion
+
+/**
  * One results surface's Ask conversation: the question being asked about the
  * sentence on show, its answer, and whether the user has it out of sight
  * ([shelved]). The surface's view renders [state]; nothing else holds any
@@ -97,6 +113,10 @@ class AskSession(
     /** Puts a question to the user's services ([AskPass]). The registry's
      *  pass in production; a test substitutes it. */
     private val complete: AskPass = registryPass,
+    /** Puts a question to the one service the user picked for it
+     *  ([AskChosenPass]). The registry's in production; a test substitutes
+     *  it. */
+    private val completeWith: AskChosenPass = registryChosenPass,
 ) {
     private val _state = MutableStateFlow<AskState>(AskState.Idle)
     val state: StateFlow<AskState> = _state.asStateFlow()
@@ -135,35 +155,64 @@ class AskSession(
     /** Ask [question] about the bound sentence, in place of whatever was
      *  being asked. A no-op with no sentence bound. */
     fun ask(question: AskQuestion) {
-        send(question, pastCooldowns = false)
+        send(question)
+    }
+
+    /** Ask the question [on] answers again, of [backend] alone: the service
+     *  the user picked for it from those that could answer
+     *  ([TranslationBackendRegistry.setUpToAnswer]), whether or not it is
+     *  switched on. A question like any other from here: [on] gives way to
+     *  it at once, and its answer, or its failure, takes the card. A no-op
+     *  unless [on] is the answer in hand: a pick is for the answer it was
+     *  made over, and one that has since been put away, or whose sentence
+     *  has changed, asks nothing. */
+    fun askWith(backend: TranslationBackend, on: AskState.Answered) {
+        if (_state.value !== on) return
+        send(on.question, chosen = backend)
     }
 
     /** Ask the failed question again, a service in a cooldown or with its
      *  answers paused included ([AskPass]'s pastCooldowns): the user asks
      *  to hear from their services now, and the service whose failure is
      *  on screen may be in a cooldown that very failure started, which
-     *  would leave nobody to ask. A no-op in any other state. */
+     *  would leave nobody to ask. Of the one service the user had picked
+     *  for it, where they had ([AskState.Failed.chosen]): the failure on
+     *  screen is that service's, and an answer from another would not be
+     *  what they asked for. A no-op in any other state. */
     fun retry() {
-        (_state.value as? AskState.Failed)?.let { send(it.question, pastCooldowns = true) }
+        (_state.value as? AskState.Failed)?.let { send(it.question, pastCooldowns = true, chosen = it.chosen) }
     }
 
-    /** Puts [question] for [ask] and [retry]; [pastCooldowns] is the
-     *  retry's alone. */
-    private fun send(question: AskQuestion, pastCooldowns: Boolean) {
+    /** Puts [question] for [ask], [retry] and [askWith]. [pastCooldowns] is
+     *  the retry's alone, and says something only of a question put to the
+     *  services in their order; [chosen] is the one service asked instead
+     *  of them ([AskChosenPass], which waits out no cooldown), named from
+     *  the start, there being nobody else the question could go to. */
+    private fun send(
+        question: AskQuestion,
+        pastCooldowns: Boolean = false,
+        chosen: TranslationBackend? = null,
+    ) {
         val about = sentence ?: return
         job?.cancel()
         // Before the state, so no reader sees the new question shelved.
         shelved = false
-        _state.value = AskState.Asking(question)
+        _state.value = AskState.Asking(question, chosen?.displayName)
         job = scope.launch {
             val next = try {
-                val completion = complete(AskPrompts.build(question, about), pastCooldowns) { backend ->
-                    // Named only while this request is the live one, by the
-                    // same promise as the write below: a pass that goes on
-                    // after its cancel (a completer that returned or failed
-                    // without seeing it) is stopped here, naming nobody.
-                    ensureActive()
-                    _state.value = AskState.Asking(question, backend.displayName)
+                val prompt = AskPrompts.build(question, about)
+                val completion = if (chosen != null) {
+                    completeWith(prompt, chosen)
+                } else {
+                    complete(prompt, pastCooldowns) { backend ->
+                        // Named only while this request is the live one, by
+                        // the same promise as the write below: a pass that
+                        // goes on after its cancel (a completer that
+                        // returned or failed without seeing it) is stopped
+                        // here, naming nobody.
+                        ensureActive()
+                        _state.value = AskState.Asking(question, backend.displayName)
+                    }
                 }
                 val by = completion.backend.displayName
                 when (val answer = completion.answer) {
@@ -180,14 +229,17 @@ class AskSession(
                     question,
                     service = service?.displayName,
                     failure = service?.let { _ -> e.cause?.let(::classifyBackendFailure) },
+                    chosen = chosen,
                 )
             } catch (_: Exception) {
-                AskState.Failed(question)
+                AskState.Failed(question, chosen = chosen)
             }
             // "A cancelled request writes nothing" is kept here, not left
             // to the completer: one that returned normally without seeing
-            // the cancel would otherwise have its answer shown. (Today's
-            // completers all throw the cancellation.)
+            // the cancel would otherwise have its answer shown. A chosen
+            // service's reply can come back that way: a switched-off
+            // on-device model is released under NonCancellable after its
+            // run ([TranslationBackendRegistry.completeWith]).
             ensureActive()
             _state.value = next
         }
@@ -230,6 +282,13 @@ class AskSession(
          *  by the same line from every surface. */
         val registryPass: AskPass = { question, pastCooldowns, onAttempt ->
             TranslationBackendRegistry.complete(question, pastCooldowns, onAttempt)
+        }
+
+        /** The registry's question to one service
+         *  ([TranslationBackendRegistry.completeWith]): the [AskChosenPass]
+         *  of every session production makes. */
+        val registryChosenPass: AskChosenPass = { question, backend ->
+            TranslationBackendRegistry.completeWith(backend.id, question)
         }
     }
 }

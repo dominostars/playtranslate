@@ -198,6 +198,10 @@ internal class FakeCompleterBackend(
     override val displayName: String = "fake-llm-$id",
     override val requiresInternet: Boolean = true,
     private val canComplete: Boolean = true,
+    /** [isSetUpToComplete]: [canComplete] without the switch. A completer
+     *  that is switched off and set up passes `canComplete = false,
+     *  setUp = true`. */
+    private val setUp: Boolean = canComplete,
     val cooldownState: CooldownState = CooldownState(context = null, backendId = id),
     private val answer: suspend (system: String, user: String) -> String = { _, _ -> "answer-from-$id" },
 ) : TranslationBackend, PromptCompleter, Cooldownable {
@@ -216,6 +220,7 @@ internal class FakeCompleterBackend(
     }
 
     override fun canComplete(): Boolean = canComplete
+    override fun isSetUpToComplete(): Boolean = setUp
     override suspend fun complete(system: String, user: String): String {
         completeCalls.incrementAndGet()
         lastPrompt = system to user
@@ -244,6 +249,8 @@ internal class FakeAnswererBackend(
     override val priority: Int,
     override val displayName: String = "fake-answerer-$id",
     private val canAnswer: Boolean = true,
+    /** [isSetUpToAnswer]: [canAnswer] without the switch. */
+    private val setUp: Boolean = canAnswer,
     @Volatile var pausedUntil: Long? = null,
     val cooldownState: CooldownState = CooldownState(context = null, backendId = id),
     private val answer: suspend (SentenceQuestion) -> SentenceAnswer = { SentenceAnswer.Text("answer-from-$id") },
@@ -264,6 +271,7 @@ internal class FakeAnswererBackend(
     }
 
     override fun canAnswer(): Boolean = canAnswer
+    override fun isSetUpToAnswer(): Boolean = setUp
     override fun answersUnavailableUntil(): Long? = pausedUntil
     override suspend fun answer(question: SentenceQuestion): SentenceAnswer {
         answerCalls.incrementAndGet()

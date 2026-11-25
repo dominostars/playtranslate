@@ -12,6 +12,7 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
@@ -43,6 +44,15 @@ import com.playtranslate.translation.TranslationBackendRegistry
  * the question is not one it answers, or the failure and Try again. An
  * answer takes the questions' place rather than sitting under them; X
  * brings them back.
+ *
+ * Who gave an answer is a row with a gear, the twin of the Translation
+ * card's "Translated by": a tap opens the picker of who answers
+ * ([AskPicker]), and a pick asks the same question again of that one
+ * service ([AskSession.askWith]), changing no setting. From there it is a
+ * question like any other: the answer on show gives way to "Asking
+ * <service>…", and a failure is the card's, with a Try again that asks the
+ * service picked. Only an answer has the row; the service's word that a
+ * question is not one it answers, and a failure, credit nobody.
  *
  * Hidden is DERIVED, never stored here ([isHidden]): the eye's pref AND a
  * session with no question on show. A collapsed section shows its card
@@ -83,8 +93,11 @@ import com.playtranslate.translation.TranslationBackendRegistry
  * Nothing here shows an alert, starts an Activity or touches a window; the
  * size picker goes on the surface's [PopoverHost], as the other headers' ⋯
  * menus do. A question reached for with no LLM to put it to (a preset, the
- * field, a send) is the host's to explain ([Host.onLlmNeeded]), and a field
- * that needs a keyboard is the host's to give one ([Host.onFieldFocusChanged]).
+ * field, a send) is the host's to explain ([Host.onLlmNeeded]), a field
+ * that needs a keyboard is the host's to give one ([Host.onFieldFocusChanged]),
+ * and the picker of who answers is filled here and shown by the host
+ * ([Host.showAlert]), its way to Translation services the host's too
+ * ([Host.openTranslationServices]).
  */
 class AskSectionBinder(
     root: View,
@@ -112,6 +125,16 @@ class AskSectionBinder(
         /** The card's height or visibility may have changed (a host that
          *  sizes itself to its content). It may not have laid out yet. */
         fun onHeightChanged() {}
+
+        /** Show an alert of the section's on this surface: the host makes
+         *  the builder for where it lives (an activity, a window over the
+         *  game, the workspace's modal layer), [configure] fills it, the
+         *  host shows it. The picker of who answers ([AskPicker]). */
+        fun showAlert(configure: (OverlayAlert.Builder) -> Unit)
+
+        /** Open the Translation services page from this surface, as the
+         *  button of [onLlmNeeded]'s alert does. */
+        fun openTranslationServices()
     }
 
     private val header: SectionHeaderRow = root.findViewById(R.id.askHeaderRow)
@@ -126,7 +149,12 @@ class AskSectionBinder(
     private val warningText: TextView = root.findViewById(R.id.tvAskWarning)
     private val bodyText: TextView = root.findViewById(R.id.tvAskBody)
     private val retryButton: TextView = root.findViewById(R.id.btnAskRetry)
+    private val cutText: TextView = root.findViewById(R.id.tvAskCut)
+    // "Answered by <service>" + gear, under an answer: the row the credit
+    // sits in, which taps to the picker of who answers.
+    private val creditRow: View = root.findViewById(R.id.askCreditRow)
     private val footerText: TextView = root.findViewById(R.id.tvAskFooter)
+    private val serviceGear: ImageView = root.findViewById(R.id.btnAskService)
 
     private val chipGapPx = (CHIP_GAP_DP * ctx.resources.displayMetrics.density).toInt()
 
@@ -216,6 +244,9 @@ class AskSectionBinder(
             host.onInteraction()
             session.retry()
         }
+        // Tinted in code like the X, and for the same reason.
+        serviceGear.imageTintList = ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextHint))
+        creditRow.setOnClickListener { chooseService() }
 
         // With no LLM a touch on the field leads to the host's explanation,
         // not to a keyboard: every event of it is kept from the field, so it
@@ -302,7 +333,10 @@ class AskSectionBinder(
      *  the card's. One of the card's two groups shows, so keeping the shown
      *  views of both gives the chips, the field and send, or X and Try
      *  again; send has nothing to do (and is no target) while disabled. The
-     *  field's A is a click ([reachForField]). */
+     *  field's A is a click ([reachForField]). The answer's credit row is
+     *  left out, as the Translation card's two credit rows are
+     *  ([TranslationSectionBinder.navigableActions]): it opens a picker
+     *  window the controller cannot drive. */
     fun navigableActions(): List<NavAction> {
         val chips = (0 until chipRow.childCount).map(chipRow::getChildAt)
         val inCard = chips + listOf(questionField, sendButton, closeButton, retryButton)
@@ -370,9 +404,33 @@ class AskSectionBinder(
         titleText.setTypeface(null, if (readsInItalic(shown.title)) Typeface.ITALIC else Typeface.NORMAL)
         bodyText.text = shown.body
         bodyText.setTextColor(ctx.themeColor(if (shown.muted) R.attr.ptTextMuted else R.attr.ptText))
-        footerText.text = shown.footer
-        footerText.isVisible = shown.footer != null
+        cutText.text = shown.notice
+        cutText.isVisible = shown.notice != null
+        // The credit and its gear come and go together: whatever is
+        // credited with an answer can be asked again, or another in its
+        // place ([chooseService]).
+        footerText.text = shown.credit
+        creditRow.isVisible = shown.credit != null
         retryButton.isVisible = shown.retry
+    }
+
+    /** The credit tapped, its text or its gear: the picker of who answers
+     *  ([AskPicker]) for the answer on show, on the host's alert surface. A
+     *  pick asks that answer's question again of the service picked, and of
+     *  it alone ([AskSession.askWith]); nothing else changes. An
+     *  interaction, like every control of this card: a live host holds the
+     *  sentence the answer is about, which the next line would otherwise
+     *  replace under the open picker, ending the question a pick is for. */
+    private fun chooseService() {
+        val answered = state as? AskState.Answered ?: return
+        host.onInteraction()
+        host.showAlert { builder ->
+            AskPicker.populate(
+                builder, ctx, answered.answeredBy,
+                onPick = { backend -> session.askWith(backend, answered) },
+                onOpenServices = { host.openTranslationServices() },
+            )
+        }
     }
 
     /** Whether [text] is drawn in italic: when every letter in it is Latin

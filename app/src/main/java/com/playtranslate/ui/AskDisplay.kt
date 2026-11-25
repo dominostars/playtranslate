@@ -20,14 +20,21 @@ internal class AskDisplay(
     /** [body] reads as the app's word on the question (out of scope, a
      *  failure), not as an answer or a wait: drawn muted. */
     val muted: Boolean = false,
-    /** The lines under an answer: who gave it, and before that, for an
-     *  answer the service cut at its length limit, a line saying so. */
-    val footer: String? = null,
+    /** A line under an answer the service cut at its length limit, saying
+     *  so, so that a text that stops mid-sentence does not read as the
+     *  whole answer. */
+    val notice: String? = null,
+    /** The line under an answer that says who gave it. */
+    val credit: String? = null,
     /** Whether asking again is offered: after a failure, never after the
      *  service said the question is outside what it answers (asking again
      *  would get the same). */
     val retry: Boolean = false,
-)
+) {
+    /** The lines under an answer as one block, for a surface that draws
+     *  them so: [notice], then [credit]. Null with neither. */
+    val footer: String? get() = listOfNotNull(notice, credit).joinToString("\n").ifEmpty { null }
+}
 
 /** [state] in words; null with nothing asked ([AskState.Idle]). */
 internal fun askDisplay(ctx: Context, state: AskState): AskDisplay? = when (state) {
@@ -37,19 +44,15 @@ internal fun askDisplay(ctx: Context, state: AskState): AskDisplay? = when (stat
         state.service?.let { ctx.getString(R.string.ask_status_asking, it) }
             ?: ctx.getString(R.string.ask_status_asking_unnamed),
     )
-    is AskState.Answered -> AskDisplay(state.question.title, state.text, footer = answerFooter(ctx, state))
+    is AskState.Answered -> AskDisplay(
+        state.question.title, state.text,
+        notice = if (state.cut) ctx.getString(R.string.ask_answer_cut) else null,
+        credit = ctx.getString(R.string.ask_answered_by, state.answeredBy),
+    )
     is AskState.OutOfScope -> AskDisplay(
         state.question.title, ctx.getString(R.string.ask_out_of_scope, state.answeredBy), muted = true,
     )
     is AskState.Failed -> AskDisplay(state.question.title, failureText(ctx, state), muted = true, retry = true)
-}
-
-/** The lines under an answer: who gave it, and first, for an answer the
- *  service cut at its length limit, a line saying so, so that a text that
- *  stops mid-sentence does not read as the whole answer. */
-private fun answerFooter(ctx: Context, answered: AskState.Answered): String {
-    val by = ctx.getString(R.string.ask_answered_by, answered.answeredBy)
-    return if (answered.cut) ctx.getString(R.string.ask_answer_cut) + "\n" + by else by
 }
 
 /** The failure in words: the generic line, and under it the service's

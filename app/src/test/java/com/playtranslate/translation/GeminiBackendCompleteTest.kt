@@ -377,6 +377,19 @@ class GeminiBackendCompleteTest {
         assertFalse("a blank key", backend(key = "   ").canComplete())
     }
 
+    @Test fun `set up to complete is the key alone, whatever the switch says`() {
+        fun backend(enabled: Boolean = true, key: String? = "AIza-test") =
+            gemini(recordingClient { CannedReply(200, reply("x")) }, key = key, enabled = enabled)
+
+        assertTrue("on, with a key", backend().isSetUpToComplete())
+        assertTrue("switched off, with a key: a pick can ask it", backend(enabled = false).isSetUpToComplete())
+        assertFalse("and still no ordinary question reaches it", backend(enabled = false).canComplete())
+        for (key in listOf(null, "", "   ")) {
+            assertFalse("on, key '$key'", backend(key = key).isSetUpToComplete())
+            assertFalse("off, key '$key'", backend(enabled = false, key = key).isSetUpToComplete())
+        }
+    }
+
     // ── i. the translation paths, unchanged ──────────────────────────────
 
     @Test fun `translate sends no JSON schema and translateBatch does`() = runBlocking<Unit> {

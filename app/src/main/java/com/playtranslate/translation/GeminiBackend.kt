@@ -170,7 +170,9 @@ class GeminiBackend(
         return arr.map { cleanLlmOutput(it) }
     }
 
-    override fun canComplete(): Boolean = enabledProvider() && !keyProvider().isNullOrBlank()
+    override fun canComplete(): Boolean = enabledProvider() && isSetUpToComplete()
+
+    override fun isSetUpToComplete(): Boolean = !keyProvider().isNullOrBlank()
 
     override suspend fun complete(system: String, user: String): String =
         exchange(system, user, answerCall)

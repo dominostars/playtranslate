@@ -123,11 +123,16 @@ abstract class OnDeviceLlmBackend(
     /** Whether the model can be run at all right now, whatever it is asked:
      *  the device can host it, the user has it switched on, and it is on
      *  disk. The part of [isUsable] that is not about a language pair. The
-     *  switch stays in it: a question is only ever put to a model that is
-     *  switched on ([canComplete]). */
-    private fun canRun(): Boolean = enabledProvider() && onDevice()
+     *  switch stays in it: a question put to the user's models in their
+     *  order only ever reaches one that is switched on. */
+    final override fun canComplete(): Boolean = enabledProvider() && isSetUpToComplete()
 
-    final override fun canComplete(): Boolean = canRun()
+    /** [canComplete] without the switch ([onDevice]): the gate of a
+     *  question the user asked this one model
+     *  ([com.playtranslate.translation.TranslationBackendRegistry.completeWith]),
+     *  which is released afterwards when it is switched off
+     *  ([releaseAfterChosenRun]). */
+    final override fun isSetUpToComplete(): Boolean = onDevice()
 
     final override suspend fun complete(system: String, user: String): String =
         MnnTranslator.getInstance(context).complete(
@@ -139,7 +144,7 @@ abstract class OnDeviceLlmBackend(
         )
 
     /** The device can host the model, it may be run here, and it is on
-     *  disk: [canRun] without the user's switch. */
+     *  disk: everything [canComplete] asks but the user's switch. */
     private fun onDevice(): Boolean {
         // Hardware gate is the cheapest check and a hard prerequisite — a
         // device that can't even host the native library never proceeds. This
@@ -152,10 +157,12 @@ abstract class OnDeviceLlmBackend(
     }
 
     /**
-     * After a run the user asked this one model for
-     * ([com.playtranslate.translation.TranslationBackendRegistry.translateWith]):
+     * After a run the user asked this one model for, a translation
+     * ([com.playtranslate.translation.TranslationBackendRegistry.translateWith])
+     * or an answer
+     * ([com.playtranslate.translation.TranslationBackendRegistry.completeWith]):
      * a model that is switched off is released as switching it off releases
-     * it, unloaded and its mmap weight cache deleted, so one translation
+     * it, unloaded and its mmap weight cache deleted, so one run
      * does not leave gigabytes resident and a model-sized cache on disk
      * that only the switch ever removes. A model that is switched on stays
      * loaded as after any translation, and is not made to wait for the
