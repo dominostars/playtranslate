@@ -3,8 +3,11 @@ package com.playtranslate.ui
 import android.content.Context
 import android.hardware.display.DisplayManager
 import android.os.Looper
+import android.view.ActionMode
 import android.view.Display
 import android.view.KeyEvent
+import android.view.Menu
+import android.view.MenuItem
 import android.view.WindowManager
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -35,6 +38,10 @@ import java.time.Duration
  * back to the game; the window is raised by the keyboard's overlap, stays
  * raised while the keyboard shows (the overlap of a raised window reads
  * zero), and comes back down, the field unfocused, when the keyboard goes.
+ * A text field of the page gets the app's Cut / Copy / Paste bar
+ * ([OverlayWindowRoot]), which Android draws in no overlay window, and a
+ * clean capture of the window's display takes that bar down first: the window
+ * the overlay host blanks is the root that has it.
  */
 @RunWith(RobolectricTestRunner::class)
 class DetachedWindowTypingTest {
@@ -112,6 +119,35 @@ class DetachedWindowTypingTest {
     @Test fun `at rest the window takes no key focus`() {
         assertFalse(focusable)
         assertEquals(rest.y, frameY())
+    }
+
+    @Test fun `a text field of the page gets the app's Cut, Copy and Paste bar`() {
+        field.setText("hello")
+        val mode = field.startActionMode(object : ActionMode.Callback {
+            override fun onCreateActionMode(mode: ActionMode, menu: Menu) = true
+            override fun onPrepareActionMode(mode: ActionMode, menu: Menu) = false
+            override fun onActionItemClicked(mode: ActionMode, item: MenuItem) = false
+            override fun onDestroyActionMode(mode: ActionMode) {}
+        }, ActionMode.TYPE_FLOATING)
+        assertTrue("the app's bar: $mode", mode is OverlayTextToolbar)
+        mode!!.finish()
+    }
+
+    @Test fun `a clean capture of the window's display takes a field's bar down before the screenshot`() {
+        field.setText("hello")
+        val bar = field.startActionMode(object : ActionMode.Callback {
+            override fun onCreateActionMode(mode: ActionMode, menu: Menu) = true
+            override fun onPrepareActionMode(mode: ActionMode, menu: Menu) = false
+            override fun onActionItemClicked(mode: ActionMode, item: MenuItem) = false
+            override fun onDestroyActionMode(mode: ActionMode) {}
+        }, ActionMode.TYPE_FLOATING) as OverlayTextToolbar
+        idle()
+        assertTrue(bar.isShowing)
+
+        val state = overlayHost.prepareForCleanCapture(window.root.display.displayId)
+
+        assertFalse(bar.isShowing)
+        overlayHost.restoreAfterCapture(state)
     }
 
     @Test fun `a text field taking focus makes the window focusable for typing`() {

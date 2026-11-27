@@ -401,15 +401,17 @@ class PopoverHost(
             FocusFinder.getInstance().findNextFocus(this, focused, direction) ?: focused
     }
 
-    private companion object {
-        const val MATCH = FrameLayout.LayoutParams.MATCH_PARENT
-        const val WRAP = FrameLayout.LayoutParams.WRAP_CONTENT
-        val UNSPECIFIED = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+    companion object {
+        private const val MATCH = FrameLayout.LayoutParams.MATCH_PARENT
+        private const val WRAP = FrameLayout.LayoutParams.WRAP_CONTENT
+        private val UNSPECIFIED = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
 
-        const val CARD_RADIUS_DP = 12f
+        /** The card's corners, which a text field's bar in an overlay window
+         *  shares ([OverlayTextToolbar]). */
+        internal const val CARD_RADIUS_DP = 12f
         /** Gap between the anchor and the arrow's tip. */
-        const val ANCHOR_GAP_DP = 4f
-        const val ARROW_W_DP = 20f
-        const val ARROW_H_DP = 10f
+        private const val ANCHOR_GAP_DP = 4f
+        private const val ARROW_W_DP = 20f
+        private const val ARROW_H_DP = 10f
     }
 }

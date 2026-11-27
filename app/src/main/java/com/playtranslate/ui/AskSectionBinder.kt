@@ -52,7 +52,9 @@ import com.playtranslate.translation.TranslationBackendRegistry
  * question like any other: the answer on show gives way to "Asking
  * <service>…", and a failure is the card's, with a Try again that asks the
  * service picked. Only an answer has the row; the service's word that a
- * question is not one it answers, and a failure, credit nobody.
+ * question is not one it answers, and a failure, credit nobody. A long press
+ * on an answer copies it, as one on the Translation's text copies the
+ * translation; on the card's other words it does nothing.
  *
  * Hidden is DERIVED, never stored here ([isHidden]): the eye's pref AND a
  * session with no question on show. A collapsed section shows its card
@@ -247,6 +249,15 @@ class AskSectionBinder(
         // Tinted in code like the X, and for the same reason.
         serviceGear.imageTintList = ColorStateList.valueOf(ctx.themeColor(R.attr.ptTextHint))
         creditRow.setOnClickListener { chooseService() }
+        // A long press on an answer copies it, as one on the Translation's
+        // text copies the translation. An answer only: "Asking…", the
+        // out-of-scope line and a failure are the app's words on the
+        // question, and a press on them is no long press.
+        bodyText.setOnLongClickListener {
+            val answer = (state as? AskState.Answered)?.text ?: return@setOnLongClickListener false
+            copyToClipboard(ctx, answer)
+            true
+        }
 
         // With no LLM a touch on the field leads to the host's explanation,
         // not to a keyboard: every event of it is kept from the field, so it

@@ -3744,8 +3744,9 @@ class CaptureResultOverlay(
      *  can reach below the panel's visible bottom — a child can't receive touches
      *  past the parent's bounds) and the tap-outside dismiss. A DOWN in the resize
      *  band drags the panel height; a DOWN below that band is on the game and
-     *  dismisses. (Rotation dismisses too, via the controller's display listener.) */
-    private inner class CaptureResultRoot(c: Context) : FrameLayout(c) {
+     *  dismisses. (Rotation dismisses too, via the controller's display listener.)
+     *  Its text fields' Cut / Copy / Paste bar is [OverlayWindowRoot]'s. */
+    private inner class CaptureResultRoot(c: Context) : OverlayWindowRoot(c) {
         // Sliver gesture state: a DOWN on the sliver zone becomes either a tap
         // (auto-expand to the reading height) or a drag (the user pulls the
         // sheet edge themselves; see endSliverDrag for the commit threshold).

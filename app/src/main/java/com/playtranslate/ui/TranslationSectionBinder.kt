@@ -13,7 +13,6 @@ import android.util.TypedValue
 import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
-import android.widget.Toast
 import com.google.android.material.card.MaterialCardView
 import com.playtranslate.Prefs
 import com.playtranslate.R
@@ -753,10 +752,10 @@ class TranslationSectionBinder(
         // via super.onTouchEvent; verify on-device that the word-tap path doesn't
         // suppress this long-click. Do NOT remove the word-tap handling.
         tvOriginal.setOnLongClickListener {
-            copyToClipboard(tvOriginal.text?.toString() ?: return@setOnLongClickListener true); true
+            copyToClipboard(ctx, tvOriginal.text?.toString() ?: return@setOnLongClickListener true); true
         }
         tvTranslation.setOnLongClickListener {
-            copyToClipboard(tvTranslation.text?.toString() ?: return@setOnLongClickListener true); true
+            copyToClipboard(ctx, tvTranslation.text?.toString() ?: return@setOnLongClickListener true); true
         }
         edit.onClick = { onEdit() }
         targetEye.onClick = { toggleTranslationHidden() }
@@ -960,12 +959,6 @@ class TranslationSectionBinder(
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
-
-    private fun copyToClipboard(text: String) {
-        val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("PlayTranslate", text))
-        Toast.makeText(ctx, ctx.getString(R.string.toast_copied), Toast.LENGTH_SHORT).show()
-    }
 
     private fun sourceLangLocalizedDisplayName(): String =
         prefs.sourceLangId.displayName(Locale.forLanguageTag(prefs.targetLang))

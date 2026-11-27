@@ -6,10 +6,14 @@ import android.graphics.Insets
 import android.hardware.input.InputManager
 import android.os.Looper
 import android.os.SystemClock
+import android.view.ActionMode
 import android.view.Display
 import android.view.InputDevice
 import android.view.KeyEvent
+import android.view.Menu
+import android.view.MenuItem
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
@@ -60,6 +64,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowInputDevice
 import org.robolectric.util.ReflectionHelpers
@@ -87,7 +92,12 @@ import java.time.Duration
  * change; the window takes key focus and the keyboard for the field and
  * gives them back; with no LLM a chip raises the sheet's alert, whose button
  * opens Translation services and closes an over-game sheet (an in-app host's
- * stays).
+ * stays). The question field and the source editor get the app's Cut / Copy
+ * / Paste bar ([OverlayWindowRoot]), which Android draws in no overlay window;
+ * and with the keyboard full screen, when Android selects nothing in a field,
+ * a long press and a double tap on a word of the question select it with that
+ * bar ([OverlayTextSelection]), through the sheet root's own touch routing;
+ * and a clean capture of the sheet's display takes the bar down first.
  *
  * Words on the sheet: a shown card's row opens the word's page by the
  * sheet's route; the sentence cache holds the sentence's translation whether
@@ -951,6 +961,97 @@ class CaptureSheetAskWordsTest {
             assertEquals("the policy is back to what it was ($controller)", before, focusPolicy(windowParams(o)))
             close(o)
         }
+    }
+
+    @Test fun `the question field and the source editor get the app's Cut, Copy and Paste bar over the game`() {
+        val o = open(screen, text(2), text(2), askHidden = false)
+        giveLlm()
+        touch(o, o.askField)
+        o.askField.setText("なぜ？")
+        val editor: EditText = o.field("editText")
+        val noItems = object : ActionMode.Callback {
+            override fun onCreateActionMode(mode: ActionMode, menu: Menu) = true
+            override fun onPrepareActionMode(mode: ActionMode, menu: Menu) = false
+            override fun onActionItemClicked(mode: ActionMode, item: MenuItem) = false
+            override fun onDestroyActionMode(mode: ActionMode) {}
+        }
+        for ((name, field) in listOf("the question field" to o.askField, "the source editor" to editor)) {
+            val mode = field.startActionMode(noItems, ActionMode.TYPE_FLOATING)
+            assertTrue("$name: the app's bar: $mode", mode is OverlayTextToolbar)
+            mode!!.finish()
+        }
+        close(o)
+    }
+
+    @Test fun `a clean capture of the sheet's display takes the question field's bar down before the screenshot`() {
+        val o = open(screen, text(2), text(2), askHidden = false)
+        giveLlm()
+        touch(o, o.askField)
+        o.askField.setText("なぜ？")
+        val bar = o.askField.startActionMode(object : ActionMode.Callback {
+            override fun onCreateActionMode(mode: ActionMode, menu: Menu) = true
+            override fun onPrepareActionMode(mode: ActionMode, menu: Menu) = false
+            override fun onActionItemClicked(mode: ActionMode, item: MenuItem) = false
+            override fun onDestroyActionMode(mode: ActionMode) {}
+        }, ActionMode.TYPE_FLOATING) as OverlayTextToolbar
+        settle()
+        assertTrue(bar.isShowing)
+
+        val state = host.prepareForCleanCapture(o.root.display.displayId)
+
+        assertFalse(bar.isShowing)
+        host.restoreAfterCapture(state)
+        close(o)
+    }
+
+    @Config(shadows = [FullScreenKeyboard::class])
+    @Test fun `with the keyboard full screen, a long press and a double tap on a word of the question select it and show the app's bar, through the sheet's own touch routing`() {
+        val o = open(screen, text(2), text(2), askHidden = false)
+        giveLlm()
+        touch(o, o.askField)
+        o.askField.setText("why is this here")
+        settle()
+        FullScreenKeyboard.on = true
+        try {
+            val field = o.askField
+            val root = o.root as OverlayWindowRoot
+            val at = IntArray(2)
+            field.getLocationInWindow(at)
+            val layout = field.layout
+            val y = at[1] + field.totalPaddingTop + (layout.getLineTop(0) + layout.getLineBottom(0)) / 2f
+            fun xOf(offset: Int) = at[0] + field.totalPaddingLeft + layout.getPrimaryHorizontal(offset) + 1f
+            fun send(action: Int, x: Float, down: Long) {
+                val e = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, x, y, 0)
+                e.source = InputDevice.SOURCE_TOUCHSCREEN
+                root.dispatchTouchEvent(e)
+                e.recycle()
+            }
+            fun selected() = field.text.substring(field.selectionStart, field.selectionEnd)
+            fun bar() = root.selectionForTest?.barForTest as? OverlayTextToolbar
+
+            val press = SystemClock.uptimeMillis()
+            send(MotionEvent.ACTION_DOWN, xOf(1), press)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ViewConfiguration.getLongPressTimeout() + 100L))
+            send(MotionEvent.ACTION_UP, xOf(1), press)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(50))
+            assertEquals("a long press", "why", selected())
+            assertTrue("the app's bar, at a long press", bar()?.isShowing == true)
+
+            field.setSelection(field.text.length)
+            repeat(2) {
+                val down = SystemClock.uptimeMillis()
+                send(MotionEvent.ACTION_DOWN, xOf(13), down)
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(30))
+                send(MotionEvent.ACTION_UP, xOf(13), down)
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100))
+            }
+            assertEquals("a double tap", "here", selected())
+            assertTrue("the app's bar, at a double tap", bar()?.isShowing == true)
+            bar()?.finish()
+        } finally {
+            FullScreenKeyboard.on = false
+        }
+        close(o)
     }
 
     @Test fun `with no LLM a chip raises the sheet's alert and asks nothing, and the alert's button opens Translation services and closes an over-game sheet`() {

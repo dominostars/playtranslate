@@ -1,6 +1,8 @@
 package com.playtranslate.ui
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.SharedPreferences
@@ -62,6 +64,7 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
+import org.robolectric.shadows.ShadowToast
 
 /**
  * Pins [AskSectionBinder] on the real results page (fragment_translation_result.xml,
@@ -110,6 +113,10 @@ import org.robolectric.android.controller.ActivityController
  * its answer credited to it, or its failure with a Try again that asks it
  * again. A pick made over an answer since put away asks nothing. The row is
  * no controller target.
+ *
+ * A long press on an answer copies the answer alone, with the "Copied"
+ * toast, as one on the Translation's text does; on "Asking…", the
+ * out-of-scope line and a failure it is not taken and copies nothing.
  */
 @RunWith(RobolectricTestRunner::class)
 class AskSectionBinderTest {
@@ -1331,6 +1338,47 @@ class AskSectionBinderTest {
     }
 
     // ── Failure ─────────────────────────────────────────────────────────
+
+    // ── Copying an answer ───────────────────────────────────────────────
+
+    private val clipboard: ClipboardManager get() = app.getSystemService(ClipboardManager::class.java)
+
+    private fun clip() = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
+
+    @Test
+    fun `a long press on an answer copies it, as one on the Translation's text does, with the Copied toast`() {
+        start()
+        tap(chips().first())
+        answer("The cat ate the fish.")
+        assertTrue("precondition: an answer", session.state.value is AskState.Answered)
+
+        assertTrue("the long press is taken", body.performLongClick())
+        assertEquals("the answer alone, no title or credit", "The cat ate the fish.", clip())
+        assertEquals(activity.getString(R.string.toast_copied), ShadowToast.getTextOfLatestToast())
+    }
+
+    @Test
+    fun `a long press on Asking, on the out-of-scope line or on a failure copies nothing`() {
+        clipboard.setPrimaryClip(ClipData.newPlainText("test", "kept"))
+        start()
+        tap(chips().first())
+        assertTrue("precondition: asking", session.state.value is AskState.Asking)
+        assertFalse("Asking", body.performLongClick())
+
+        calls.last().reply.complete(TranslationBackendRegistry.Completion(SentenceAnswer.OutOfScope, gemini))
+        settle()
+        assertTrue("precondition: out of scope", session.state.value is AskState.OutOfScope)
+        assertFalse("the out-of-scope line", body.performLongClick())
+
+        tap(close)
+        tap(chips().first())
+        fail(CompletionFailedException(NamedBackend("Qwen 3.5", online = false), IllegalStateException("engine")))
+        assertTrue("precondition: a failure", session.state.value is AskState.Failed)
+        assertFalse("a failure", body.performLongClick())
+
+        assertEquals("the clipboard is as it was", "kept", clip())
+        assertEquals("no toast", 0, ShadowToast.shownToastCount())
+    }
 
     @Test
     fun `a failure with nothing to say shows the generic line alone, and Try again asks the same question`() {

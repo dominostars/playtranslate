@@ -1216,8 +1216,9 @@ internal class DetachedWindow(
 
     // ── The root ──────────────────────────────────────────────────────────
 
-    /** The window's root view: the touch arbiter and the handles' painter. */
-    inner class Root : FrameLayout(ctx) {
+    /** The window's root view: the touch arbiter and the handles' painter.
+     *  Its text fields' Cut / Copy / Paste bar is [OverlayWindowRoot]'s. */
+    inner class Root : OverlayWindowRoot(ctx) {
 
         private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE

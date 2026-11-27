@@ -817,8 +817,9 @@ class OverlayWorkspace(
     // ── Root ─────────────────────────────────────────────────────────────
 
     /** Full-screen transparent host: owns tap-outside dismissal (consuming
-     *  the DOWN so it can never leak to the game) and the key ladder. */
-    private inner class WorkspaceRoot(c: Context) : FrameLayout(c) {
+     *  the DOWN so it can never leak to the game) and the key ladder. Its
+     *  text fields' Cut / Copy / Paste bar is [OverlayWindowRoot]'s. */
+    private inner class WorkspaceRoot(c: Context) : OverlayWindowRoot(c) {
         val keyGuard = WindowKeyPairGuard()
 
         /** Hardware back/Escape when controller nav is off (IME editing via a

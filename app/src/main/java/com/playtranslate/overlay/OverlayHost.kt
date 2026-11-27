@@ -672,6 +672,12 @@ class OverlayHost(
      * re-show overlays another capture still needs hidden.
      */
     fun prepareForCleanCapture(displayId: Int): OverlayState {
+        // First what the blanking cannot reach: windows a registered view put
+        // up of its own (a text field's bar). Every window of the display,
+        // one already blanked by another capture included.
+        for (handle in overlayWindows.toList()) {
+            if (handle.displayId == displayId) (handle.view as? CleanCaptureAware)?.beforeCleanCapture()
+        }
         val saved = mutableListOf<SavedHandle>()
         for (handle in overlayWindows) {
             if (handle.displayId != displayId) continue
