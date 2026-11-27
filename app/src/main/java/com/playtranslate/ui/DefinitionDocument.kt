@@ -53,6 +53,22 @@ internal data class DocHead(
     val height: Int,
 )
 
+/** A box of a laid-out document, in CSS px from its top-left corner. */
+internal data class DocBox(val left: Int, val top: Int, val width: Int, val height: Int)
+
+/**
+ * A word row's label, as the page last reported it: the box around its word
+ * and the reading beside it ([title]), and the box around its line of
+ * readings under the head ([readings], null for a row with none). A
+ * controller's ring on the row's own target outlines this, never the whole
+ * row ([DefinitionDocument.ringRectOnScreen]).
+ */
+internal data class DocLabel(
+    val rowId: String,
+    val title: DocBox,
+    val readings: DocBox?,
+)
+
 /** One tappable document target as a controller action ([NavAction.target]). */
 internal data class DocNavTarget(
     val document: DefinitionDocument,
@@ -60,6 +76,7 @@ internal data class DocNavTarget(
     val act: String,
 ) : NavTarget {
     override fun rectOnScreen(out: Rect): Boolean = document.rectOnScreen(rowId, act, out)
+    override fun ringRectOnScreen(out: Rect): Boolean = document.ringRectOnScreen(rowId, act, out)
     override fun revealRectOnScreen(out: Rect): Boolean = document.revealRectOnScreen(rowId, act, out)
     override fun activate() = document.activate(rowId, act)
     override fun successor(): NavTarget? = DefAction.fallback(act)?.let { copy(act = it) }
@@ -200,6 +217,10 @@ internal class DefinitionDocument(
 
     /** Every word head of the last layout that pins, by row id. */
     var heads: Map<String, DocHead> = emptyMap()
+        private set
+
+    /** Every word row's label in the last layout, by row id. */
+    var labels: Map<String, DocLabel> = emptyMap()
         private set
 
     /**
@@ -343,6 +364,7 @@ internal class DefinitionDocument(
         buildFailed = false
         targets = emptyList()
         heads = emptyMap()
+        labels = emptyMap()
         anchor = null
         cursor = null
         shell?.destroy()
@@ -375,6 +397,7 @@ internal class DefinitionDocument(
         structured = emptyMap()
         targets = emptyList()
         heads = emptyMap()
+        labels = emptyMap()
         anchor = null
         if (!ensureShell()) return
         syncFocusable()
@@ -542,10 +565,10 @@ internal class DefinitionDocument(
     }
 
     private val listener = object : DefinitionShell.Listener {
-        override fun onLayout(gen: Int, heightCssPx: Int, targetsJson: String, headsJson: String, redrawnJson: String) {
+        override fun onLayout(gen: Int, heightCssPx: Int, targetsJson: String, headsJson: String, redrawnJson: String, labelsJson: String) {
             if (gen != this@DefinitionDocument.gen) return
             applyHeight((heightCssPx * density).roundToInt())
-            laidOut(parseTargets(targetsJson), parseHeads(headsJson), parseRedrawn(redrawnJson))
+            laidOut(parseTargets(targetsJson), parseHeads(headsJson), parseRedrawn(redrawnJson), parseLabels(labelsJson))
             this@DefinitionDocument.onLayout()
             feedIfNear()
         }
@@ -610,6 +633,24 @@ internal class DefinitionDocument(
         out
     } catch (e: Exception) {
         Log.w(TAG, "heads unreadable: ${e.javaClass.simpleName}")
+        emptyMap()
+    }
+
+    private fun parseLabels(json: String): Map<String, DocLabel> = try {
+        val a = JSONArray(json)
+        val out = HashMap<String, DocLabel>(a.length() / 9)
+        var i = 0
+        while (i + 8 < a.length()) {
+            rowIds[a.getString(i)]?.let { rowId ->
+                val title = DocBox(a.getInt(i + 1), a.getInt(i + 2), a.getInt(i + 3), a.getInt(i + 4))
+                val readings = DocBox(a.getInt(i + 5), a.getInt(i + 6), a.getInt(i + 7), a.getInt(i + 8))
+                out[rowId] = DocLabel(rowId, title, readings.takeIf { it.width > 0 && it.height > 0 })
+            }
+            i += 9
+        }
+        out
+    } catch (e: Exception) {
+        Log.w(TAG, "labels unreadable: ${e.javaClass.simpleName}")
         emptyMap()
     }
 
@@ -697,12 +738,12 @@ internal class DefinitionDocument(
         return true
     }
 
-    /** What a cursor on [t] needs to show of the view, top to bottom in its
-     *  own px ([revealRect]): for a host that scrolls the view itself to a
-     *  target inside a row (the lens). */
+    /** What a ringed cursor on [t] needs to show of the view, top to bottom
+     *  in its own px ([ringedRevealRect]): for a host that scrolls the view
+     *  itself to a target inside a row (the lens). */
     internal fun revealSpanPx(t: DocTarget): IntRange {
         val r = Rect()
-        revealRect(t, r)
+        ringedRevealRect(t, r)
         return r.top..r.bottom
     }
 
@@ -736,10 +777,16 @@ internal class DefinitionDocument(
     internal fun rectOnScreen(rowId: String, act: String, out: Rect): Boolean =
         onScreen(rowId, act, out, ::drawnRect)
 
-    /** What of the screen a cursor moving onto the target [act] of row
-     *  [rowId] needs to see ([revealRect]). */
+    /** What of the screen a ringed cursor moving onto the target [act] of
+     *  row [rowId] needs to see ([ringedRevealRect]). */
     internal fun revealRectOnScreen(rowId: String, act: String, out: Rect): Boolean =
-        onScreen(rowId, act, out, ::revealRect)
+        onScreen(rowId, act, out, ::ringedRevealRect)
+
+    /** Where a controller's ring on the target [act] of row [rowId] goes on
+     *  screen now ([ringRect]); false when the page does not hold it or the
+     *  view is not shown. */
+    internal fun ringRectOnScreen(rowId: String, act: String, out: Rect): Boolean =
+        onScreen(rowId, act, out, ::ringRect)
 
     private inline fun onScreen(rowId: String, act: String, out: Rect, rect: (DocTarget, Rect) -> Unit): Boolean {
         val v = view ?: return false
@@ -779,6 +826,57 @@ internal class DefinitionDocument(
         val head = heads[t.rowId] ?: return
         if (t.top >= head.top + head.height) out.top -= (head.height * density).roundToInt()
     }
+
+    /**
+     * What a cursor drawn as a ring ([ringRect]) on [t] needs of the screen:
+     * on a word row's own target, nothing more while its ring shows (the
+     * word and reading, in its place or on a pinned head), so a move onto the
+     * word, from its own buttons above all, never scrolls the row under it;
+     * else, and for every other target, [revealRect]: the whole row for a
+     * row's own target. The page's own highlight, the whole row's tint on an
+     * Activity, keeps [revealRect] ([moveCursorTo]).
+     */
+    private fun ringedRevealRect(t: DocTarget, out: Rect) {
+        if (labelOf(t) != null) {
+            ringRect(t, out)
+            val visible = Rect()
+            if (view?.getLocalVisibleRect(visible) == true && visible.contains(out)) return
+        }
+        revealRect(t, out)
+    }
+
+    /** The label of [t]'s row when [t] is that row's own target (its first
+     *  reported one, with an action), else null. */
+    private fun labelOf(t: DocTarget): DocLabel? {
+        val label = labels[t.rowId] ?: return null
+        return label.takeIf { t.act.isNotEmpty() && targets.firstOrNull { it.rowId == t.rowId } == t }
+    }
+
+    /**
+     * Where a ring on [t] goes, in the view's px: on a word row's own target,
+     * around the row's label, never the whole row ([DocLabel]): the word and
+     * the reading beside it, moved with the head when it is pinned
+     * ([drawnRect]), and the line of readings under the head while the head
+     * is in its place (a pinned head stands over where they were). Every
+     * other target is ringed where it is drawn.
+     */
+    private fun ringRect(t: DocTarget, out: Rect) {
+        val label = labelOf(t) ?: run {
+            drawnRect(t, out)
+            return
+        }
+        val title = t.at(label.title)
+        drawnRect(title, out)
+        val readings = label.readings ?: return
+        if (pinShiftPx(title) != 0) return
+        val r = Rect()
+        drawnRect(t.at(readings), r)
+        out.union(r)
+    }
+
+    /** This target at [box]: its row and action, drawn at another place. */
+    private fun DocTarget.at(box: DocBox) =
+        copy(left = box.left, top = box.top, width = box.width, height = box.height)
 
     /**
      * How far below its reported place the page draws [t], in px: as far as
@@ -880,14 +978,20 @@ internal class DefinitionDocument(
      * action when it has one, a word row's buttons after it as the page
      * reports them. Goes through what a real report does: the height, the
      * targets and the heads that pin (each word row's, unless a stub, at its
-     * top and as tall as its buttons), the rows the page redrew since its
-     * last report ([redrawn], by row id), the host's callback, the next
-     * chunk.
+     * top and as tall as its buttons), each word row's label (its word in
+     * the head, and a line of readings under the head for the rows in
+     * [readingsLines]), the rows the page redrew since its last report
+     * ([redrawn], by row id), the host's callback, the next chunk.
      */
     @VisibleForTesting
-    fun layoutForTest(rowHeightCssPx: Int, redrawn: Set<String> = emptySet()) {
+    fun layoutForTest(
+        rowHeightCssPx: Int,
+        redrawn: Set<String> = emptySet(),
+        readingsLines: Set<String> = emptySet(),
+    ) {
         val out = ArrayList<DocTarget>()
         val heads = HashMap<String, DocHead>()
+        val labels = HashMap<String, DocLabel>()
         var top = 0
         for (row in rows) {
             if (row.id !in domIds) break
@@ -898,6 +1002,10 @@ internal class DefinitionDocument(
                 is DefRow.SheetWord -> if (row.hidden) "" else DefAction.TARGET
             }
             out += DocTarget(row.id, act, 0, top, 300, rowHeightCssPx)
+            if (row is DefRow.Word || row is DefRow.SheetWord) {
+                val readings = if (row.id in readingsLines) DocBox(16, top + 42, 120, 20) else null
+                labels[row.id] = DocLabel(row.id, DocBox(16, top + 9, 96, 22), readings)
+            }
             if (row is DefRow.Word) {
                 val stub = row.trailing == DefRow.Trailing.SHOW
                 // A head that pins, as tall as its buttons, at the row's top.
@@ -915,14 +1023,15 @@ internal class DefinitionDocument(
             top += rowHeightCssPx
         }
         applyHeight((top * density).roundToInt())
-        laidOut(out, heads, redrawn)
+        laidOut(out, heads, redrawn, labels)
         onLayout()
         feedIfNear()
     }
 
     /** The page laid its rows out as [laid], with the heads that pin
-     *  [laidHeads], having redrawn the rows [redrawn] since its last report:
-     *  they are the targets now, and the cursor stands on its own target
+     *  [laidHeads] and the word rows' labels [laidLabels], having redrawn the
+     *  rows [redrawn] since its last report: they are the targets now, and
+     *  the cursor stands on its own target
      *  among them or on what took its place ([DocNav.settle]). A move is
      *  told to the page, which draws the highlight from its own copy of the
      *  cursor; a cursor that merely lost its target is dropped here, as it
@@ -930,9 +1039,15 @@ internal class DefinitionDocument(
      *  scroll may have changed). A row a tap changed while its head was
      *  pinned comes to the top once this is its redraw with that change, or
      *  stays where it is if the user has scrolled since ([PendingAnchor]). */
-    private fun laidOut(laid: List<DocTarget>, laidHeads: Map<String, DocHead>, redrawn: Set<String>) {
+    private fun laidOut(
+        laid: List<DocTarget>,
+        laidHeads: Map<String, DocHead>,
+        redrawn: Set<String>,
+        laidLabels: Map<String, DocLabel>,
+    ) {
         targets = laid
         heads = laidHeads
+        labels = laidLabels
         // What a row's content offers a cursor is known only now.
         syncFocusable()
         val was = cursor
@@ -950,7 +1065,11 @@ internal class DefinitionDocument(
         }
     }
 
-    /** Draws the controller's highlight on a target, or clears it (null). */
+    /** Draws the controller's highlight on a target in the page, or clears
+     *  it (null): a tint, the highlight of a page on an Activity, whose
+     *  D-pad [keys] drive. A surface over the game rings its cursor itself,
+     *  as its other controls are ([ringRectOnScreen]), and sends nothing
+     *  here. */
     fun setCursor(target: DocTarget?) {
         cursor = target
         val dom = target?.let { domIds[it.rowId] }

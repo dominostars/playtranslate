@@ -309,6 +309,24 @@ class CaptureSheetControllerNavTest {
         }
     }
 
+    /** A target ringed around part of itself ([NavTarget.ringRectOnScreen]),
+     *  as a document's word row is around its word and reading. */
+    private data class LabelledTarget(val spot: Spot, val label: Rect) : NavTarget {
+        override fun rectOnScreen(out: Rect): Boolean {
+            out.set(spot.rect)
+            return true
+        }
+
+        override fun ringRectOnScreen(out: Rect): Boolean {
+            out.set(label)
+            return true
+        }
+
+        override fun activate() {
+            spot.activations++
+        }
+    }
+
     /** A target that names what takes its place when a press of it removes
      *  it ([NavTarget.successor]): [next]'s target, as a document's ✕ of an
      *  explain answer names the row's explain button. */
@@ -405,6 +423,22 @@ class CaptureSheetControllerNavTest {
         press(b.nav, KeyEvent.KEYCODE_DPAD_DOWN)
         assertEquals("the room the target needs", reveal, b.host.ensured)
         assertEquals("ringed at its own rect", b.second.rect, b.host.ring)
+    }
+
+    // Mutation: the ring drawn at the target's whole rect.
+    @Test
+    fun `a target that names its ring is ringed there, and is reached and brought into view by its whole rect`() {
+        val b = Board()
+        val r = b.first.rect
+        val label = Rect(r.left, r.top, r.left + 80, r.top + 20)
+        b.host.actions = { listOf(NavAction(b.doc, target = LabelledTarget(b.first, label)), b.inDoc(b.second)) }
+        press(b.nav, KeyEvent.KEYCODE_DPAD_DOWN)
+        assertEquals("ringed around its label", label, b.host.ring)
+        assertEquals("brought into view whole", r, b.host.ensured)
+        press(b.nav, KeyEvent.KEYCODE_DPAD_DOWN)
+        assertEquals(b.second.rect, b.host.ring)
+        press(b.nav, KeyEvent.KEYCODE_DPAD_UP)
+        assertEquals("back on it, ringed around its label", label, b.host.ring)
     }
 
     @Test

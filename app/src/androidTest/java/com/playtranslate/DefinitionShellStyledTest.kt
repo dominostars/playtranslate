@@ -106,7 +106,7 @@ class DefinitionShellStyledTest {
                 shell = s
                 s.adopt(themed)
                 s.listener = object : DefinitionShell.Listener {
-                    override fun onLayout(gen: Int, heightCssPx: Int, targetsJson: String, headsJson: String, redrawnJson: String) {
+                    override fun onLayout(gen: Int, heightCssPx: Int, targetsJson: String, headsJson: String, redrawnJson: String, labelsJson: String) {
                         if (heightCssPx > 0) heights.add(heightCssPx)
                     }
                     override fun onAction(domId: String, act: String) {

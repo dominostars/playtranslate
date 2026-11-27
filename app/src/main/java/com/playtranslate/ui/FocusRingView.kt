@@ -6,6 +6,7 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
 import android.view.View
+import androidx.annotation.VisibleForTesting
 import com.playtranslate.R
 import com.playtranslate.themeColor
 
@@ -57,6 +58,11 @@ class FocusRingView(ctx: Context) : View(ctx) {
         clipRect?.let(clip::set)
         invalidate()
     }
+
+    /** The item the ring is around as last set ([setTarget]); null while
+     *  it is hidden. */
+    @get:VisibleForTesting
+    internal val targetForTest: Rect? get() = if (hasItem) Rect(item) else null
 
     override fun onDraw(canvas: Canvas) {
         if (!hasItem) return

@@ -74,6 +74,22 @@ class WorkspaceControllerNavPopoverTest {
         override fun activate() = Unit
     }
 
+    /** A target ringed around part of itself ([NavTarget.ringRectOnScreen]),
+     *  as a document's word row is around its word and reading. */
+    private data class LabelledTarget(val rect: Rect, val label: Rect) : NavTarget {
+        override fun rectOnScreen(out: Rect): Boolean {
+            out.set(rect)
+            return true
+        }
+
+        override fun ringRectOnScreen(out: Rect): Boolean {
+            out.set(label)
+            return true
+        }
+
+        override fun activate() = Unit
+    }
+
     private lateinit var host: FakeHost
     private lateinit var nav: WorkspaceControllerNav
     private lateinit var toggle: View
@@ -141,6 +157,18 @@ class WorkspaceControllerNavPopoverTest {
         press(KeyEvent.KEYCODE_DPAD_DOWN)
         assertEquals(reveal, host.ensured)
         assertEquals(drawn, host.ring)
+    }
+
+    // Mutation: the ring drawn at the target's whole rect.
+    @Test
+    fun `a target that names its ring is ringed there, and brought into view whole`() {
+        host.inViewport = { it === row1 }
+        val drawn = rectOf(row1)
+        val label = Rect(drawn.left, drawn.top, drawn.left + 30, drawn.top + 10)
+        host.page = listOf(NavAction(row1, target = LabelledTarget(drawn, label)))
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertEquals(label, host.ring)
+        assertEquals(drawn, host.ensured)
     }
 
     @Test

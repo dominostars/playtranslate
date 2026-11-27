@@ -61,6 +61,25 @@ object SheetNavGeometry {
         return best.takeIf { it >= 0 }
     }
 
+    /**
+     * How far to scroll (as `scrollBy`: positive moves the content up) so a
+     * cursor's item, from [itemTop] to [itemBottom] on screen, shows in the
+     * viewport from [viewTop] to [viewBottom], kept [pad] in from both edges:
+     * 0 when it shows already, else the least scroll that shows it. An item
+     * taller than that room shows its top: a scroll never takes the item's
+     * top out of view to bring its end in, since the top is what says what it
+     * is (a definitions row's word, which the ring outlines).
+     */
+    fun revealScrollDelta(itemTop: Int, itemBottom: Int, viewTop: Int, viewBottom: Int, pad: Int = 0): Int {
+        val top = viewTop + pad
+        val bottom = viewBottom - pad
+        return when {
+            itemTop < top -> itemTop - top
+            itemBottom > bottom -> minOf(itemBottom - bottom, itemTop - top)
+            else -> 0
+        }
+    }
+
     /** Selection for the first-ever controller press: topmost, then leftmost. */
     fun firstItem(candidates: List<NavRect>): Int? {
         var best = -1

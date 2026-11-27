@@ -568,11 +568,7 @@ class OverlayWorkspace(
         override fun ensureVisible(itemOnScreen: Rect) {
             val viewport = Rect()
             if (!scrollViewportOnScreen(viewport)) return
-            val dy = when {
-                itemOnScreen.bottom > viewport.bottom -> itemOnScreen.bottom - viewport.bottom
-                itemOnScreen.top < viewport.top -> itemOnScreen.top - viewport.top
-                else -> 0
-            }
+            val dy = SheetNavGeometry.revealScrollDelta(itemOnScreen.top, itemOnScreen.bottom, viewport.top, viewport.bottom)
             if (dy != 0) scrollBy(dy)
         }
 

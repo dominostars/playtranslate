@@ -320,7 +320,7 @@ class DefinitionDocumentBenchmark {
             frame.addView(shell.webView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             shell.adopt(themed)
             shell.listener = object : DefinitionShell.Listener {
-                override fun onLayout(gen: Int, heightCssPx: Int, targetsJson: String, headsJson: String, redrawnJson: String) {
+                override fun onLayout(gen: Int, heightCssPx: Int, targetsJson: String, headsJson: String, redrawnJson: String, labelsJson: String) {
                     if (gen == this@Page.gen) onHeight?.invoke((heightCssPx * density).roundToInt())
                 }
                 override fun onAction(domId: String, act: String) = Unit

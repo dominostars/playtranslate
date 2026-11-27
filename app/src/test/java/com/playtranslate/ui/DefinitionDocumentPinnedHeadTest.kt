@@ -132,6 +132,32 @@ class DefinitionDocumentPinnedHeadTest {
     private fun revealed(rowId: String, act: String): Rect =
         Rect().also { assertTrue(DocNavTarget(doc, rowId, act).revealRectOnScreen(it)) }
 
+    private fun ringed(rowId: String, act: String): Rect =
+        Rect().also { assertTrue(DocNavTarget(doc, rowId, act).ringRectOnScreen(it)) }
+
+    // Mutations: the ring is the label's box, not the row's; the readings
+    // join it only while the head is in its place; a pinned head moves it.
+    @Test fun `a row's ring is around its word and the readings under it while its head is in its place`() {
+        doc.layoutForTest(300, readingsLines = setOf("w1"))
+        idle()
+        scrollDocumentTo(250)
+        val row = drawn("w1", DefAction.OPEN)
+        // The word 16..112 x 9..31 down the row, the readings 16..136 x 42..62.
+        assertEquals(Rect(row.left + 16, row.top + 9, row.left + 136, row.top + 62), ringed("w1", DefAction.OPEN))
+        assertEquals("moving on still goes by the whole row", 300, row.height())
+        assertEquals("a button is ringed whole", drawn("w1", DefAction.SPEAK), ringed("w1", DefAction.SPEAK))
+    }
+
+    @Test fun `on a pinned head the ring is the word alone, where the head is drawn`() {
+        doc.layoutForTest(300, readingsLines = setOf("w1"))
+        idle()
+        scrollDocumentTo(450)
+        val ring = ringed("w1", DefAction.OPEN)
+        assertEquals("9 px down the head pinned at the visible top", viewportTop + 9, ring.top)
+        assertEquals("the readings went under the head", 22, ring.height())
+        assertEquals("the row itself is where the page put it", viewportTop - 150, drawn("w1", DefAction.OPEN).top)
+    }
+
     @Test fun `the page's heads are kept by row`() {
         assertEquals(DocHead("w1", 300, 40), doc.heads["w1"])
         assertEquals(setOf("w0", "w1", "w2"), doc.heads.keys)
@@ -168,7 +194,20 @@ class DefinitionDocumentPinnedHeadTest {
         assertEquals(x.top - 40, reveal.top)
         assertEquals(x.bottom, reveal.bottom)
         assertEquals("a head's own button needs only itself", drawn("w1", DefAction.SPEAK), revealed("w1", DefAction.SPEAK))
-        assertEquals("a row's own target needs only itself", drawn("w1", DefAction.OPEN), revealed("w1", DefAction.OPEN))
+        assertEquals("a row's own target, its word on the pinned head, needs only its ring", ringed("w1", DefAction.OPEN), revealed("w1", DefAction.OPEN))
+    }
+
+    // Mutations: the whole row whatever shows (a move back onto the word
+    // scrolls the row under it); the ring even when the word is off screen
+    // (a move down shows only the word's line, not the row).
+    @Test fun `a row's own target needs only its ring while its word shows, and the whole row once it does not`() {
+        scrollDocumentTo(250)
+        assertEquals("the head in its place, its word on screen", ringed("w1", DefAction.OPEN), revealed("w1", DefAction.OPEN))
+        scrollDocumentTo(450)
+        assertEquals("the word on the pinned head", ringed("w1", DefAction.OPEN), revealed("w1", DefAction.OPEN))
+        scrollDocumentTo(0)
+        // Row w2 is 600..900 down the document; the 400 px viewport shows 0..400 of it.
+        assertEquals("a word below what shows brings its row", drawn("w2", DefAction.OPEN), revealed("w2", DefAction.OPEN))
     }
 
     @Test fun `the page's report lets the view line the page up with what is visible`() {

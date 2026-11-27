@@ -41,6 +41,12 @@ interface NavTarget {
     /** The target's live rect on screen; false when it is not showing. */
     fun rectOnScreen(out: Rect): Boolean
 
+    /** Where the controller's ring around this target goes on screen: its
+     *  rect, the default, or less of it where only part of the target says
+     *  what it is (a definitions document's word row: its word and
+     *  reading). Moving between targets still goes by [rectOnScreen]. */
+    fun ringRectOnScreen(out: Rect): Boolean = rectOnScreen(out)
+
     /** What of the screen a cursor moving onto this target needs to see,
      *  for the scroll that brings it into view: its rect, the default, or
      *  more where something can draw over it (a definitions document's
@@ -300,7 +306,8 @@ class CaptureSheetControllerNav(
 
     private val tmpLoc = IntArray(2)
     private val tmpRect = Rect()
-    /** Where the ring last was, for [revalidateCursor]'s nearest retarget. */
+    /** Where the cursor last was (its target's whole rect, which the ring
+     *  may draw around less of), for [revalidateCursor]'s nearest retarget. */
     private val lastItemRect = Rect()
 
     private fun viewRectOnScreen(v: View, out: Rect): Boolean {
@@ -313,7 +320,8 @@ class CaptureSheetControllerNav(
     /** A button's live rect: its target's when it has one (a row of a
      *  document), else its view's. False when it is not showing, which
      *  makes it no candidate and leaves it no ring. Everything that reads a
-     *  button's rect reads it here. */
+     *  button's rect reads it here; only the ring may draw around less of
+     *  it ([NavTarget.ringRectOnScreen]). */
     private fun buttonRectOnScreen(b: Item.Button, out: Rect): Boolean =
         b.target?.rectOnScreen(out) ?: viewRectOnScreen(b.view, out)
 
@@ -459,10 +467,15 @@ class CaptureSheetControllerNav(
             return
         }
         lastItemRect.set(tmpRect)
-        host.setRing(tmpRect, clip)
+        // The ring goes where the target says (a document's word row: around
+        // its word and reading); where the cursor is, for moving on, stays
+        // the target's whole rect.
+        val target = (cur as? Item.Button)?.target
+        host.setRing(if (target != null && target.ringRectOnScreen(ringTmp)) ringTmp else tmpRect, clip)
     }
 
     private val clipRect = Rect()
+    private val ringTmp = Rect()
 
     /** The cursor is stale (rebind, sliver park, edit open): drop it. */
     fun clearCursor() {

@@ -171,7 +171,9 @@ class WorkspaceControllerNav(
     private val tmpLoc = IntArray(2)
     private val tmpRect = Rect()
     private val clipRect = Rect()
-    /** Where the ring last was, for [revalidateCursor]'s nearest retarget. */
+    private val ringTmp = Rect()
+    /** Where the cursor last was (its target's whole rect, which the ring
+     *  may draw around less of), for [revalidateCursor]'s nearest retarget. */
     private val lastItemRect = Rect()
 
     private fun viewRectOnScreen(v: View, out: Rect): Boolean {
@@ -317,7 +319,11 @@ class WorkspaceControllerNav(
             host.scrollViewportOnScreen(clipRect)
         ) clipRect else null
         lastItemRect.set(tmpRect)
-        host.setRing(tmpRect, clip)
+        // The ring goes where the target says (a document's word row: around
+        // its word and reading); where the cursor is, for moving on, stays
+        // the target's whole rect.
+        val target = cur.target
+        host.setRing(if (target != null && target.ringRectOnScreen(ringTmp)) ringTmp else tmpRect, clip)
     }
 
     /** The cursor is stale (page push/pop): drop it. */

@@ -134,13 +134,22 @@ class DefinitionDocumentTest {
     }
 
     /** The page reports a layout of row set [gen], with the word heads that
-     *  pin [heads] (rowId, top, height for each, as the page sends them) and
-     *  the rows it replaced since its last report [redrawn]. */
-    private fun layout(gen: Int, heightCssPx: Int, targets: String = "[]", heads: String = "[]", redrawn: String = "[]") {
+     *  pin [heads] (rowId, top, height for each, as the page sends them),
+     *  the rows it replaced since its last report [redrawn] and the word
+     *  rows' labels [labels] (rowId, then the word's box and the readings'
+     *  box, four numbers each). */
+    private fun layout(
+        gen: Int,
+        heightCssPx: Int,
+        targets: String = "[]",
+        heads: String = "[]",
+        redrawn: String = "[]",
+        labels: String = "[]",
+    ) {
         val bridge = shadowOf(web).getJavascriptInterface("PTBridge")
         val s = String::class.java
-        bridge.javaClass.getMethod("onLayout", Int::class.java, Int::class.java, s, s, s)
-            .invoke(bridge, gen, heightCssPx, targets, heads, redrawn)
+        bridge.javaClass.getMethod("onLayout", Int::class.java, Int::class.java, s, s, s, s)
+            .invoke(bridge, gen, heightCssPx, targets, heads, redrawn, labels)
         idle()
     }
 
@@ -319,6 +328,38 @@ class DefinitionDocumentTest {
         assertEquals(listOf("w1" to DefAction.SPEAK), actions)
         tap("k99", DefAction.OPEN)
         assertEquals("a row the document does not hold is no tap", 1, actions.size)
+    }
+
+    // Mutations: the label's box is the ring's; a row with no label, or a
+    // button, rings its own rect; the readings box joins the word's.
+    @Test fun `a row's ring is around its label, a button's and an unlabelled row's around themselves`() {
+        doc.setRows(rows(3), "ja")
+        pageReady()
+        layout(
+            1, 300,
+            """["k0","open",0,0,300,100,"k0","speak",200,5,40,40,"k1","open",0,100,300,100,"k2","open",0,200,300,100]""",
+            labels = """["k0",16,9,96,22,0,0,0,0,"k1",16,109,80,22,16,142,120,20,"k9",1,1,1,1,0,0,0,0]""",
+        )
+        assertEquals(
+            "the readings box of none is no box; a row the document does not hold has no label",
+            mapOf(
+                "w0" to DocLabel("w0", DocBox(16, 9, 96, 22), null),
+                "w1" to DocLabel("w1", DocBox(16, 109, 80, 22), DocBox(16, 142, 120, 20)),
+            ),
+            doc.labels,
+        )
+        val at = IntArray(2).also { view.getLocationOnScreen(it) }
+        fun ring(rowId: String, act: String) = Rect().also { assertTrue(doc.ringRectOnScreen(rowId, act, it)) }
+        fun rect(rowId: String, act: String) = Rect().also { assertTrue(doc.rectOnScreen(rowId, act, it)) }
+        // A JVM test's density is 1: CSS px are px.
+        assertEquals(Rect(at[0] + 16, at[1] + 9, at[0] + 112, at[1] + 31), ring("w0", DefAction.OPEN))
+        assertEquals("the word and the readings under it", Rect(at[0] + 16, at[1] + 109, at[0] + 136, at[1] + 162), ring("w1", DefAction.OPEN))
+        assertEquals("a button is ringed whole", rect("w0", DefAction.SPEAK), ring("w0", DefAction.SPEAK))
+        assertEquals("a row with no label is ringed whole", rect("w2", DefAction.OPEN), ring("w2", DefAction.OPEN))
+        assertEquals("moving on still goes by the whole row", Rect(at[0], at[1], at[0] + 300, at[1] + 100), rect("w0", DefAction.OPEN))
+
+        doc.setRows(listOf(row("other")), "ja")
+        assertEquals("a new row set starts with none", emptyMap<String, DocLabel>(), doc.labels)
     }
 
     @Test fun `the heads a report names are kept by their rows' own ids, and a new row set starts with none`() {

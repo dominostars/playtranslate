@@ -426,13 +426,17 @@ ruby > rt { font-size: .5em; }
      * host's answer to a tap on a row's text (`PTBridge.onText`, from a row
      * marked `data-words`; `PTBridge.onMark` is the page's reply). From the
      * page: `PTBridge.onLayout(gen, height, targets,
-     * heads)` after every change, and when the rows' height changes with
-     * none (a late image, an opened `<details>`), `targets` a flat JSON
-     * array of rowId, act, left, top, width, height (CSS px from the root's
-     * corner) for every row and every tappable element, and `heads` one of
-     * rowId, top, height for every word head that pins, all measured with
-     * every head in its place in its row, and `redrawn` the rows replaced
-     * since the last report; and `PTBridge.onAction(rowId, act)` for a tap.
+     * heads, redrawn, labels)` after every change, and when the rows' height
+     * changes with none (a late image, an opened `<details>`), `targets` a
+     * flat JSON array of rowId, act, left, top, width, height (CSS px from
+     * the root's corner) for every row and every tappable element, `heads`
+     * one of rowId, top, height for every word head that pins, and `labels`
+     * one of rowId, then left, top, width, height of the box around a word
+     * row's word and the reading beside it, then the same four of the box
+     * around its line of readings (zeros for a row with none), all measured
+     * with every head in its place in its row, and `redrawn` the rows
+     * replaced since the last report; and `PTBridge.onAction(rowId, act)`
+     * for a tap.
      *
      * The page scrolls in step with the host's scroll
      * ([DefinitionDocumentView]): its top edge is the top of what is visible
@@ -591,15 +595,24 @@ $DOCUMENT_JS
 .rds .rd { display: inline-block; margin: 0 12px 6px 0; }
 [dir=rtl] .rds { margin: 2px 0 0 12px; }
 [dir=rtl] .rds .rd { margin: 0 0 6px 12px; }
+/* A button is a square as tall as the head's line, so its press is a circle
+   and a controller's ring around it a square. The icons stand 52px apart: a
+   40px button and a 12px gap. The group takes the room of 36px buttons with
+   16px gaps (52 per button, less 16), as it always has: the 2px a button
+   reaches past that at each of the group's ends stands outside the group's
+   room (the first button's start margin, the group's end margin, into the
+   row's end padding). So the headword's room, where the buttons wrap under
+   it and where each icon stands do not depend on the buttons' size. */
 .act {
-  flex: none; width: 36px; height: 40px; margin: 0 0 0 16px; padding: 0;
+  flex: none; width: 40px; height: 40px; margin: 0 0 0 12px; padding: 0;
   border: 0; border-radius: 50%; background: none; color: var(--pt-secondary);
   display: flex; align-items: center; justify-content: center;
 }
-[dir=rtl] .act { margin: 0 16px 0 0; }
-.acts { flex: none; display: flex; align-self: flex-start; margin-left: auto; }
-[dir=rtl] .acts { margin-left: 0; margin-right: auto; }
-.acts > .act:first-child, [dir=rtl] .acts > .act:first-child { margin: 0; }
+[dir=rtl] .act { margin: 0 12px 0 0; }
+.acts { flex: none; display: flex; align-self: flex-start; margin-left: auto; margin-right: -2px; }
+[dir=rtl] .acts { margin-left: -2px; margin-right: auto; }
+.acts > .act:first-child { margin: 0 0 0 -2px; }
+[dir=rtl] .acts > .act:first-child { margin: 0 -2px 0 0; }
 .act.chev { position: absolute; top: 0; right: 0; width: 20px; margin: 0; color: var(--pt-hint); }
 [dir=rtl] .act.chev { right: auto; left: 0; margin: 0; }
 /* Lit while its answer is open. */
@@ -625,8 +638,11 @@ button.act:active, .act.cur { background: var(--pt-press); }
   font-size: .72em; font-weight: 600; letter-spacing: .07em;
   text-transform: uppercase; color: var(--pt-accent);
 }
+/* Square like the head's buttons: 36px tall on its 32px line, the 2px over
+   and under it outside the line's room (its margins), so the line keeps its
+   height. */
 .xp-x {
-  flex: none; width: 36px; height: 32px; padding: 0; border: 0; border-radius: 50%;
+  flex: none; width: 36px; height: 36px; margin: -2px 0; padding: 0; border: 0; border-radius: 50%;
   background: none; color: var(--pt-hint);
   display: flex; align-items: center; justify-content: center;
 }
@@ -871,6 +887,27 @@ button.act:active, .act.cur { background: var(--pt-press); }
       if (hb.height <= 0) continue;
       heads.push(hs[j].parentNode.id, Math.round(hb.top - base.top), Math.round(hb.height));
     }
+    // Every word row's label, where the host rings the row's own target: its
+    // row, the box around its word and the reading beside it (everything in
+    // the title: an accent's overline is a border inside the word, outside
+    // the word's own line box), then the box around its line of readings
+    // under the head, zeros for a row with none.
+    var labels = [];
+    var ts = r.querySelectorAll('.cell > .head > .title, .sw > .swt > .swl');
+    for (var k = 0; k < ts.length; k++) {
+      var lrow = ts[k].closest('[data-row]');
+      if (!lrow) continue;
+      var tb = unionBox(ts[k].querySelectorAll('*'), base);
+      if (!tb) continue;
+      var rds = null;
+      for (var c = 0; c < lrow.children.length; c++) {
+        if (lrow.children[c].classList.contains('rds')) rds = lrow.children[c];
+      }
+      var rb = rds ? unionBox(rds.querySelectorAll('.rd'), base) : null;
+      labels.push(lrow.id, tb[0], tb[1], tb[2], tb[3]);
+      if (rb) labels.push(rb[0], rb[1], rb[2], rb[3]);
+      else labels.push(0, 0, 0, 0);
+    }
     de.classList.remove('ptm');
     // The rows may have moved under the mark: it is measured again where
     // its text is now and the host told, also one that is only measured so
@@ -880,8 +917,23 @@ button.act:active, .act.cur { background: var(--pt-press); }
     var rows = redrawn;
     redrawn = [];
     if (window.PTBridge && window.PTBridge.onLayout) {
-      window.PTBridge.onLayout(gen, sent, JSON.stringify(out), JSON.stringify(heads), JSON.stringify(rows));
+      window.PTBridge.onLayout(gen, sent, JSON.stringify(out), JSON.stringify(heads), JSON.stringify(rows),
+        JSON.stringify(labels));
     }
+  }
+
+  // The box around everything in [els] that has a size, relative to [base]
+  // and rounded as a target's is: [left, top, width, height], or null.
+  function unionBox(els, base) {
+    var l = Infinity, t = Infinity, rt = -Infinity, b = -Infinity;
+    for (var i = 0; i < els.length; i++) {
+      var e = els[i].getBoundingClientRect();
+      if (e.width <= 0 || e.height <= 0) continue;
+      l = Math.min(l, e.left); t = Math.min(t, e.top);
+      rt = Math.max(rt, e.right); b = Math.max(b, e.bottom);
+    }
+    if (l === Infinity) return null;
+    return [Math.round(l - base.left), Math.round(t - base.top), Math.round(rt - l), Math.round(b - t)];
   }
 
   // Now (getBoundingClientRect forces layout, and this works while the view

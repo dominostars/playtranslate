@@ -128,4 +128,29 @@ class SheetNavGeometryTest {
     @Test fun `single candidate is first`() {
         assertEquals(0, SheetNavGeometry.firstItem(listOf(rect(500, 500))))
     }
+
+    // ─── revealScrollDelta ──────────────────────────────────────────────
+    // A viewport from 100 to 500, items kept 10 in from its edges.
+
+    @Test fun `an item that shows already needs no scroll`() {
+        assertEquals(0, SheetNavGeometry.revealScrollDelta(200, 300, 100, 500, 10))
+    }
+
+    @Test fun `an item below scrolls up until its end shows`() {
+        assertEquals(50, SheetNavGeometry.revealScrollDelta(450, 540, 100, 500, 10))
+    }
+
+    @Test fun `an item above scrolls down until its top shows`() {
+        assertEquals(-40, SheetNavGeometry.revealScrollDelta(70, 150, 100, 500, 10))
+    }
+
+    // Mutation: the item's end brought in at its top's expense (the bottom
+    // alone), which takes a tall row's word, and its ring, out of view.
+    @Test fun `an item taller than the room, coming from below, shows its top`() {
+        assertEquals(490, SheetNavGeometry.revealScrollDelta(600, 1500, 100, 500, 10))
+    }
+
+    @Test fun `an item taller than the room that reaches past both edges shows its top`() {
+        assertEquals(-10, SheetNavGeometry.revealScrollDelta(90, 900, 100, 500))
+    }
 }

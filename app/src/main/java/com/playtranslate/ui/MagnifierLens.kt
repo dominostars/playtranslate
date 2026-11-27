@@ -531,6 +531,11 @@ class MagnifierLens(
     @VisibleForTesting
     internal fun cursorForTest(): Pair<String, String>? = lensView?.cursorForTest()
 
+    /** Where the controller's ring is drawn, in the lens view's own
+     *  coordinates; null while it draws none. */
+    @VisibleForTesting
+    internal fun navRingForTest(): Rect? = lensView?.navRingForTest()
+
     /** The scrolling body's top and bottom padding, in px. */
     @VisibleForTesting
     internal fun bodyPadsForTest(): Pair<Int, Int>? = lensView?.bodyPadsForTest()
@@ -1803,7 +1808,6 @@ class MagnifierLens(
             bind = null
             pendingReveal = null
             docCursor = null
-            shownDocCursor = null
         }
 
         /** The page laid the rows out: the loading body steps aside (it
@@ -1839,7 +1843,6 @@ class MagnifierLens(
             docCursor?.let { (row, act) ->
                 DocNav.settle(list.targets, row, act)?.let { docCursor = it.rowId to it.act }
             }
-            shownDocCursor = null
             if (focusWhenLaidOut) {
                 focusWhenLaidOut = false
                 if (isInteractive && !hasCursor()) focusStart()
@@ -2579,7 +2582,6 @@ class MagnifierLens(
                     )
                 }
                 docCursor = row?.let { it to if (it == WordRowList.FOOTER_ID) DefAction.MORE else DefAction.OPEN }
-                shownDocCursor = null
                 syncNavRing()
             }
             syncPill()
@@ -2611,6 +2613,7 @@ class MagnifierLens(
         fun layoutRowsForTest(rowHeightCssPx: Int) = list.layoutForTest(rowHeightCssPx)
         fun shownRowsForTest(): List<DefRow> = list.shownDocRows
         fun cursorForTest(): Pair<String, String>? = docCursor
+        fun navRingForTest(): Rect? = focusRing.targetForTest
         fun rowTopForTest(id: String): Int? = list.rowTop(id)
         fun tapRowForTest(id: String, act: String) = list.activate(id, act)
         fun pillShownForTest(): Boolean = pillView.visibility == VISIBLE
@@ -2720,10 +2723,6 @@ class MagnifierLens(
          *  is set. */
         private var docCursor: Pair<String, String>? = null
 
-        /** The target the page is drawing the cursor on, so the per-preDraw
-         *  [syncNavRing] only talks to the page on an actual change. */
-        private var shownDocCursor: Pair<String, String>? = null
-
         private var navPreDraw: ViewTreeObserver.OnPreDrawListener? = null
         /** Keycodes whose DOWN we consumed, so the matching UP is too — and
          *  so the A that OPENED the lens (pressed on the sheet, released over
@@ -2732,6 +2731,7 @@ class MagnifierLens(
         private val navItemLoc = IntArray(2)
         private val navSelfLoc = IntArray(2)
         private val navTmp = Rect()
+        private val navClip = Rect()
         private val navRtl = resources.configuration.layoutDirection == LAYOUT_DIRECTION_RTL
 
         /** The laid-out target [at] names, null when the page does not hold
@@ -2784,19 +2784,37 @@ class MagnifierLens(
             return true
         }
 
-        /** Draws the cursor where it is. A row or a button renders its
-         *  selection in the page; the pill gets the boundary ring. */
+        /** What of the definitions shows, in THIS view's coordinates: the
+         *  scroll view's box, moved and cut as a grow leaves it
+         *  ([setGrowFrame]). */
+        private fun definitionsViewportInView(out: Rect): Boolean {
+            val v = definitionsScroll
+            if (!v.isShown || v.width <= 0 || v.height <= 0) return false
+            val top = v.top + v.translationY.roundToInt()
+            out.set(v.left, top, v.right, top + (v.clipBounds?.bottom ?: v.height))
+            return true
+        }
+
+        /** Draws the cursor where it is, with the capture sheet's ring: on a
+         *  row or a button of the list, where the list says its ring goes (a
+         *  word row's outlines its word and reading, not the row), clipped to
+         *  what of the definitions shows; on the pill, around it. Nothing of
+         *  the cursor is drawn in the page. */
         private fun syncNavRing() {
-            val doc = docCursor?.takeIf { docTarget(it) != null }
-            if (doc != shownDocCursor) {
-                shownDocCursor = doc
-                list.setCursor(docTarget(doc))
+            val doc = docTarget(docCursor)
+            when {
+                doc != null -> {
+                    if (!list.ringRectOnScreen(doc, navTmp) || !definitionsViewportInView(navClip)) {
+                        focusRing.setTarget(null, null)
+                        return
+                    }
+                    getLocationOnScreen(navSelfLoc)
+                    navTmp.offset(-navSelfLoc[0], -navSelfLoc[1])
+                    focusRing.setTarget(navTmp, navClip)
+                }
+                pillCursor && pillRectInView(navTmp) -> focusRing.setTarget(navTmp, null)
+                else -> focusRing.setTarget(null, null)
             }
-            if (doc != null || !pillCursor || !pillRectInView(navTmp)) {
-                focusRing.setTarget(null, null)
-                return
-            }
-            focusRing.setTarget(navTmp, null)
         }
 
         /** An activate key held on a target that takes a hold (a row's Anki

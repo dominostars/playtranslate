@@ -1,6 +1,7 @@
 package com.playtranslate.ui
 
 import android.content.Context
+import android.graphics.Rect
 import android.view.View
 import android.view.ViewGroup
 import androidx.annotation.VisibleForTesting
@@ -519,8 +520,12 @@ internal class WordRowList<T>(
      *  order, for a host that walks them with its own cursor (the lens). */
     val targets: List<DocTarget> get() = document.targets
 
-    /** Draws the controller's highlight on [target], or clears it (null). */
-    fun setCursor(target: DocTarget?) = document.setCursor(target)
+    /** Where a controller's ring on [target] goes on screen now, for a host
+     *  that draws its own ring (the lens): around a word row's word and
+     *  reading for the row's own target ([DefinitionDocument.ringRectOnScreen]).
+     *  False when the page does not hold it or the view is not shown. */
+    fun ringRectOnScreen(target: DocTarget, out: Rect): Boolean =
+        document.ringRectOnScreen(target.rowId, target.act, out)
 
     /** What a tap on [act] of row [rowId] does (a controller's press). */
     fun activate(rowId: String, act: String) = document.activate(rowId, act)

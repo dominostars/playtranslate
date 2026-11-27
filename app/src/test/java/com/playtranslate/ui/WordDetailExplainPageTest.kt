@@ -380,7 +380,7 @@ class WordDetailExplainPageTest {
         giveLlm()
         open(launch)
         val web = definitionsPage()
-        web.page("onLayout", 1, 400, "[]", "[]", "[]")
+        web.page("onLayout", 1, 400, "[]", "[]", "[]", "[]")
 
         val lens = tapWord(web, tapId = 5, line = "a leaden metal", word = "leaden")
 
@@ -403,7 +403,7 @@ class WordDetailExplainPageTest {
         ui.lensHost = lensHost()
         open(launch.copy(screenshotPath = "/shot.png"))
         val web = definitionsPage()
-        web.page("onLayout", 1, 400, "[]", "[]", "[]")
+        web.page("onLayout", 1, 400, "[]", "[]", "[]", "[]")
 
         val lens = tapWord(web, tapId = 7, line = "a leaden metal", word = "leaden")
         lens.tapRowForTest(lens.rowOf("leaden").id, DefAction.TRAILING)
@@ -426,7 +426,7 @@ class WordDetailExplainPageTest {
         ui.lensHost = lensHost()
         open(launch)
         val web = definitionsPage()
-        web.page("onLayout", 1, 400, "[]", "[]", "[]")
+        web.page("onLayout", 1, 400, "[]", "[]", "[]", "[]")
         val taps = binder.wordTapsForTest()!!
 
         // Text its markup says is another language's.
@@ -468,7 +468,7 @@ class WordDetailExplainPageTest {
         ui.lensHost = lensHost()
         open(launch)
         val web = definitionsPage()
-        web.page("onLayout", 1, 400, "[]", "[]", "[]")
+        web.page("onLayout", 1, 400, "[]", "[]", "[]", "[]")
         return web
     }
 

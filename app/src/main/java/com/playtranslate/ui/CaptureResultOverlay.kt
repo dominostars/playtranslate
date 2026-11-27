@@ -3463,12 +3463,7 @@ class CaptureResultOverlay(
         override fun ensureVisible(itemOnScreen: Rect) {
             val vp = Rect()
             if (!scrollViewportOnScreen(vp)) return
-            val pad = dp(12)
-            val dy = when {
-                itemOnScreen.top < vp.top + pad -> itemOnScreen.top - (vp.top + pad)
-                itemOnScreen.bottom > vp.bottom - pad -> itemOnScreen.bottom - (vp.bottom - pad)
-                else -> 0
-            }
+            val dy = SheetNavGeometry.revealScrollDelta(itemOnScreen.top, itemOnScreen.bottom, vp.top, vp.bottom, dp(12))
             if (dy != 0) scroll.smoothScrollBy(0, dy)
         }
 

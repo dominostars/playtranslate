@@ -7,6 +7,7 @@ import android.view.Display
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.WebView
 import android.widget.ScrollView
 import com.playtranslate.R
 import org.junit.After
@@ -222,6 +223,73 @@ class MagnifierLensLoadMoreTest {
         assertNull(lens.cursorForTest())
         val nav = laidOut()
         assertEquals("the next A opens the word", nav.first() to DefAction.OPEN, lens.cursorForTest())
+    }
+
+    /** The page under the lens's rows. */
+    private fun page(): WebView {
+        fun find(v: View): WebView? = when (v) {
+            is WebView -> v
+            is ViewGroup -> (0 until v.childCount).firstNotNullOfOrNull { find(v.getChildAt(it)) }
+            else -> null
+        }
+        return requireNotNull(find(requireNotNull(lens.rootViewForTest())))
+    }
+
+    // Mutations: the ring on the row is its label's, not the row's; a
+    // button's is the button's; the page is told nothing of the cursor.
+    @Test fun `the cursor is the capture sheet's ring, around a row's word and around a button, and nothing in the page`() {
+        lens.setSplitDefinitions(section("弾ける", "はじける", anki = true), listOf(sec1), false)
+        laidOut()
+        // The page has loaded: whatever the lens tells it now is run.
+        shadowOf(page()).webViewClient.onPageFinished(page(), "")
+        shadowOf(Looper.getMainLooper()).idle()
+        lens.focusForController()
+        val d = lens.rootViewForTest()!!.resources.displayMetrics.density
+        fun px(cssPx: Int) = Math.round(cssPx * d)
+        val word = requireNotNull(lens.navRingForTest()) { "the row's own target is ringed" }
+        // The test page's label: 96 x 22, 16 px in and 9 down its row.
+        assertEquals(px(16 + 96) - px(16), word.width())
+        assertEquals(px(9 + 22) - px(9), word.height())
+
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        val speak = requireNotNull(lens.navRingForTest()) { "the speak button is ringed" }
+        // The test page's speak button: 36 x 40 at 180, 0 in its row.
+        assertEquals(px(180 + 36) - px(180), speak.width())
+        assertEquals(px(40), speak.height())
+        assertEquals(px(180) - px(16), speak.left - word.left)
+        assertEquals(-px(9), speak.top - word.top)
+        val last = shadowOf(page()).lastEvaluatedJavascript.orEmpty()
+        assertFalse("nothing of the cursor is drawn in the page: $last", last.startsWith("ptCursor("))
+    }
+
+    /** Runs the body's scroll animation to its end: the clock past it, then
+     *  the step a draw would take. */
+    private fun settleScroll() {
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+        requireNotNull(lens.definitionsScrollForTest()).computeScroll()
+    }
+
+    // Mutation: a row's own target revealed whole (back onto the word from
+    // its button, a long row scrolled to its end).
+    @Test fun `back onto a long row's word from its button, the body stays where it is`() {
+        lens.setSplitDefinitions(section("弾ける", "はじける", anki = true), listOf(sec1), false)
+        lens.layoutRowsForTest(3000)
+        shadowOf(Looper.getMainLooper()).idle()
+        val (p, s) = lens.shownRowsForTest().map { it.id }
+        lens.focusForController()
+        val bodyHeight = requireNotNull(lens.definitionsScrollForTest()).height
+        assertTrue("precondition: the row is longer than the body shows ($bodyHeight)", bodyHeight in 1 until 3000)
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        settleScroll()
+        assertEquals(p to DefAction.OPEN, lens.cursorForTest())
+        assertEquals("the word shows: nothing to scroll to", 0, lens.scrollYForTest())
+
+        // The control: a move to the next row does scroll here.
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        settleScroll()
+        assertEquals(s to DefAction.OPEN, lens.cursorForTest())
+        assertTrue("the next row's top comes up: ${lens.scrollYForTest()}", lens.scrollYForTest() > 0)
     }
 
     @Test fun `the rows take the space the pill held`() {

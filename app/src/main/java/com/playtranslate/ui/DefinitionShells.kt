@@ -39,9 +39,10 @@ internal class DefinitionShell private constructor(
 ) {
     interface Listener {
         /** The page laid out row set [gen]: its height in CSS px, its
-         *  targets, the word heads that pin and the rows it replaced since
-         *  its last report (see [DefinitionsDocument.documentShellHtml]). */
-        fun onLayout(gen: Int, heightCssPx: Int, targetsJson: String, headsJson: String, redrawnJson: String)
+         *  targets, the word heads that pin, the rows it replaced since its
+         *  last report and the word rows' labels (see
+         *  [DefinitionsDocument.documentShellHtml]). */
+        fun onLayout(gen: Int, heightCssPx: Int, targetsJson: String, headsJson: String, redrawnJson: String, labelsJson: String)
 
         /** A tap on [act] in the row whose DOM id is [domId]. */
         fun onAction(domId: String, act: String)
@@ -103,8 +104,8 @@ internal class DefinitionShell private constructor(
 
     private inner class Bridge {
         @JavascriptInterface
-        fun onLayout(gen: Int, heightCssPx: Int, targetsJson: String, headsJson: String, redrawnJson: String) {
-            MAIN.post { listener?.onLayout(gen, heightCssPx, targetsJson, headsJson, redrawnJson) }
+        fun onLayout(gen: Int, heightCssPx: Int, targetsJson: String, headsJson: String, redrawnJson: String, labelsJson: String) {
+            MAIN.post { listener?.onLayout(gen, heightCssPx, targetsJson, headsJson, redrawnJson, labelsJson) }
         }
 
         @JavascriptInterface
