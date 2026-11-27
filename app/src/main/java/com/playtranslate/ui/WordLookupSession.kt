@@ -21,13 +21,19 @@ import kotlinx.coroutines.withContext
  * moving a card that is up for another word; a tap on the word whose card
  * is up closes that card; a tap farther from every word closes the card
  * when one is up and is the host's otherwise ([onTapAt] returns false, and
- * the host closes as the user would). The controller drives the boxes the
- * whole time (the card never takes it, [MagnifierLens] built with
- * takesControllerFocus = false): the D-pad moves a cursor over the boxes,
- * left and right along the cursor word's row and up and down across rows,
- * A on the cursor's word opens its card, A on the word whose card is up
- * closes it, A on another word moves the card there; Back with a card up
- * closes the card ([onBack] true), with none it is the host's.
+ * the host closes as the user would). The controller drives the boxes: the
+ * D-pad moves a cursor over them, left and right along the cursor word's
+ * row and up and down across rows, and A on the cursor's word opens its
+ * card. A card that comes up with a controller attached takes the
+ * controller while it is up, as the capture sheet's word lens does
+ * ([MagnifierLens.makeInteractive]): the D-pad and A drive its rows, its
+ * cursor starting on the first row when A opened it (a tap's card waits
+ * for the first press), and B closes the card alone
+ * ([MagnifierLens.onBackKey]), handing the controller back to the boxes,
+ * their cursor where it was. A card that does not hold the
+ * controller leaves the keys to the host: A on the word whose card is up
+ * closes it, A on another word moves the card there, and Back with a card
+ * up closes the card ([onBack] true); with none Back is the host's.
  *
  * A card that ends by its own means (it opened a page, an Activity, a touch
  * outside its window, a lost window) ends the presentation with it
@@ -79,6 +85,7 @@ internal class WordLookupSession(
 
     init {
         magnifier.onOffCardDown = { x, y -> onTapAt(x, y) }
+        magnifier.onBackKey = { closeCard() }
         lookup.onSettled = { onCardGone() }
     }
 
@@ -193,8 +200,9 @@ internal class WordLookupSession(
     }
 
     /** Highlight the box at [index] and open its card there, moving a card
-     *  that is up for another box. */
-    private fun select(index: Int) {
+     *  that is up for another box. [fromController]: the cursor's A, whose
+     *  card starts its own cursor on its first row. */
+    private fun select(index: Int, fromController: Boolean = false) {
         val box = boxes.getOrNull(index) ?: return
         val line = lines.getOrNull(box.lineIndex) ?: return
         val token = lineTokens.getOrNull(box.lineIndex)?.getOrNull(box.tokenIndex) ?: return
@@ -206,12 +214,13 @@ internal class WordLookupSession(
             lines,
             DragLookupController.TokenAt(line, token, box.charOffset, box.surface),
             anchor,
+            fromController,
         )
     }
 
-    /** Close the card ourselves (a tap off it, A on its word, Back): the
-     *  selection goes first, so the card's end ([onCardGone]) leaves the
-     *  boxes up. */
+    /** Close the card ourselves (a tap off it, A on its word, Back, B on the
+     *  card): the selection goes first, so the card's end ([onCardGone])
+     *  leaves the boxes up. */
     fun closeCard() {
         deselect()
         lookup.dismiss()
@@ -248,9 +257,11 @@ internal class WordLookupSession(
      * put at the row's end ([TapLookupGeometry.nextInRow]: left and right
      * on a horizontal line, up and down on a vertical column), and across
      * rows to the nearest box that way ([SheetNavGeometry.nextInDirection]).
-     * A on the cursor's box opens its card, or closes it when it is that
-     * box's card that is up. Acts on the DOWN and consumes the UP; keys it
-     * does not drive pass on.
+     * A on the cursor's box opens its card, which takes the keys from here
+     * once it is up when a controller is attached, until B closes it; on a
+     * card that leaves them here, A closes it when it is that box's card
+     * that is up. Acts on the DOWN and consumes the UP; keys it does not
+     * drive pass on.
      */
     fun onKey(ev: KeyEvent): Boolean {
         val dir = ControllerKeys.direction(ev.keyCode)
@@ -282,7 +293,7 @@ internal class WordLookupSession(
             return true
         }
         if (ev.repeatCount == 0) {
-            if (current == selected) closeCard() else select(current)
+            if (current == selected) closeCard() else select(current, fromController = true)
         }
         return true
     }

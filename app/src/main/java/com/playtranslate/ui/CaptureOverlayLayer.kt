@@ -365,15 +365,15 @@ internal class CaptureOverlayLayer(
         val session = words ?: WordLookupSession(
             // The card acts in the app's context, as the drag lens's acts in
             // its service's: a page or Anki activity it starts is not tied
-            // to the game display. Its windows are the display's. It never
-            // takes the controller: the D-pad drives the boxes.
+            // to the game display. Its windows are the display's. While it
+            // is up it takes the controller from the boxes, as the sheet's
+            // word lens takes it from the sheet, and B hands it back.
             kit = LookupLensKit.overGame(
                 context = host.displayCtx.applicationContext,
                 displayCtx = host.displayCtx,
                 wm = host.wm,
                 overlayHost = host.overlayHost,
                 displayId = host.displayId,
-                takesControllerFocus = false,
             ),
             density = density,
             view = view,

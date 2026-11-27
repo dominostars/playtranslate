@@ -116,9 +116,9 @@ internal class ReviewWordBoxes(
             view = v,
             scope = scope,
             tokenize = { text -> tokenizeLine(text, src) },
-            // A card that ended by its own means (Back, a page or Anki it
-            // opened over the review, which stays up behind it): only the
-            // selection goes.
+            // A card that ended by its own means (a page or Anki it opened
+            // over the review, which stays up behind it): only the
+            // selection goes, as when the session closes it (Back).
             onEnded = { s.deselect() },
             onBoxesSettled = { if (session === s) onSettled(s) },
         )

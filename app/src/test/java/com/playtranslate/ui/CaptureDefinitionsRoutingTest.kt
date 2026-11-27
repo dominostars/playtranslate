@@ -598,6 +598,39 @@ class CaptureDefinitionsRoutingTest {
         assertEquals(listOf(CaptureResultOverlay.DismissReason.USER), dismissals)
     }
 
+    @Test fun `parked with a controller, the card A opens takes the controller, B closes the card alone and the next B the sheet`() {
+        prefs.sourceLang = "en"
+        val o = create(override = OverlayMode.DEFINITIONS, controller = true)
+        bind(o, top)
+
+        key(o, KeyEvent.KEYCODE_DPAD_RIGHT)
+        key(o, KeyEvent.KEYCODE_BUTTON_A)
+        val card: MagnifierLens = words(o).field("magnifier")
+        val deadline = System.currentTimeMillis() + 3000
+        while (!card.isInteractive && System.currentTimeMillis() < deadline) {
+            idle()
+            Thread.sleep(5)
+        }
+        assertTrue("precondition: the real lookup put the card up", card.isInteractive)
+        assertTrue("the card holds the controller", card.isConsumingController)
+
+        // B where the keys now go: the card's own window.
+        val window = requireNotNull(card.rootViewForTest())
+        window.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_B))
+        window.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_B))
+        idleLong()
+
+        assertFalse("the card is gone", card.isInteractive)
+        assertNull(selected(o))
+        assertEquals("the words keep the cursor on its word", 0, cursor(o))
+        assertTrue("the sheet stays, parked", parked(o))
+        assertTrue(dismissals.isEmpty())
+
+        key(o, KeyEvent.KEYCODE_BUTTON_B)
+        idleLong()
+        assertEquals(listOf(CaptureResultOverlay.DismissReason.USER), dismissals)
+    }
+
     /** Back as the platform's callback delivers it (target 36 on Android
      *  16), where the key never arrives. */
     private fun systemBack(o: CaptureResultOverlay) {

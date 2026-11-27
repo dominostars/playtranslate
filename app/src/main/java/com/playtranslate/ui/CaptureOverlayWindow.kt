@@ -43,12 +43,13 @@ import kotlinx.coroutines.CoroutineScope
  * nothing drawn in it.
  *
  * In Definitions the window holds key focus ([wantsFocus]; the host sets
- * the window's flags): the D-pad and A drive the words, Back closes a card
- * and with none hands the screen back, acted on at the UP of a DOWN this
- * window saw, or through the back-invoked callback where the platform no
- * longer sends the key. A key still held when the window goes keeps it as
- * an invisible key sink until the release ([remove]), so the release does
- * not land in the game.
+ * the window's flags): the D-pad and A drive the words (a card that holds
+ * the controller takes them while it is up, [WordLookupSession]), Back
+ * closes a card and with none hands the screen back, acted on at the UP of
+ * a DOWN this window saw, or through the back-invoked callback where the
+ * platform no longer sends the key. A key still held when the window goes
+ * keeps it as an invisible key sink until the release ([remove]), so the
+ * release does not land in the game.
  *
  * A released window ([release], which every way its host disowns it calls
  * first) asks its host for nothing more: a segment's click is posted after

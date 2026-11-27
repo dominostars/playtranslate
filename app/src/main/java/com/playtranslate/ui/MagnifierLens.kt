@@ -16,6 +16,7 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
+import android.os.Build
 import android.os.SystemClock
 import android.text.TextUtils
 import android.util.TypedValue
@@ -42,6 +43,9 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
+import androidx.annotation.RequiresApi
 import androidx.annotation.VisibleForTesting
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.graphics.drawable.DrawableCompat
@@ -229,11 +233,6 @@ class MagnifierLens(
     /** Whether the rows carry the "already in Anki" deck pill, asked for
      *  once the definitions are up ([WordRowList.Host.deckBadges]). */
     private val deckBadges: Boolean = true,
-    /** When false, the sticky lens never takes window focus, a controller
-     *  attached or not: the owner keeps the controller (tap-to-lookup, whose
-     *  boxes' cursor A and B drive while its card is up), and the card's own
-     *  controls are touch's. */
-    private val takesControllerFocus: Boolean = true,
 ) {
     private val density = rawCtx.resources.displayMetrics.density
     private fun dp(v: Float) = (v * density).toInt()
@@ -326,6 +325,13 @@ class MagnifierLens(
      *  lens: the tap dismisses it. A touch outside the window altogether
      *  (ACTION_OUTSIDE) dismisses either way. Read at each tap. */
     var onOffCardDown: ((rawX: Float, rawY: Float) -> Unit)? = null
+    /** For the same owner as [onOffCardDown]: B, Back or Escape on the
+     *  sticky lens while it holds the controller goes here in place of the
+     *  lens dismissing itself, so the owner closes the card its own way (the
+     *  card alone, the words under it staying up with the controller back
+     *  on them). Null for every other lens: B dismisses it. Read at each
+     *  press. */
+    var onBackKey: (() -> Unit)? = null
     /** Fires when the card or pill is tapped in sticky mode. In split mode
      *  ([setSplitDefinitions]) this is the PRIMARY section's open action —
      *  the pill and the primary section both fire it. */
@@ -602,7 +608,7 @@ class MagnifierLens(
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
             WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
-        tookControllerFocus = takesControllerFocus && hasNavInputDevice(rawCtx)
+        tookControllerFocus = hasNavInputDevice(rawCtx)
         if (!tookControllerFocus) {
             flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         } else {
@@ -624,11 +630,12 @@ class MagnifierLens(
         try { wm.updateViewLayout(root, p) } catch (_: Exception) {}
         // Sticky now: the root catches off-card taps to dismiss (and consumes
         // them so they don't reach the app/game behind), and — while focusable
-        // for the controller — the B button dismisses the same way.
+        // for the controller — the B button dismisses the same way; each is
+        // the owner's where it hooked it ([onOffCardDown], [onBackKey]).
         root.interactive = true
         root.onOffCardDown = { x, y -> offCardDown(x, y) }
         root.onOutside = { dismiss() }
-        root.onDismissKey = { dismiss() }
+        root.onDismissKey = { backKey() }
         view.attachInteractiveListeners(onDismissRequest = { x, y -> offCardDown(x, y) })
         view.setArrowVisible(true, arrowRelX())
         // Release commit: grow the card to fit the dictionary, animated inside
@@ -651,6 +658,13 @@ class MagnifierLens(
     private fun offCardDown(rawX: Float, rawY: Float) {
         val hook = onOffCardDown
         if (hook != null) hook(rawX, rawY) else dismiss()
+    }
+
+    /** B on the focused sticky lens: the owner's [onBackKey] when it set
+     *  one, else the dismissal. */
+    private fun backKey() {
+        val hook = onBackKey
+        if (hook != null) hook() else dismiss()
     }
 
     /** Controller-opened lens: the cursor starts on its first target (the
@@ -1127,9 +1141,10 @@ class MagnifierLens(
          *  (FLAG_WATCH_OUTSIDE_TOUCH). */
         var onOutside: (() -> Unit)? = null
         /** Controller B / back while the sticky lens holds window focus (it
-         *  goes focusable when a controller is attached — [makeInteractive]).
-         *  A separate hook from [onOffCardDown]: same dismissal, different
-         *  intent. */
+         *  goes focusable when a controller is attached — [makeInteractive]),
+         *  as a key or as the platform's Back callback
+         *  ([registerBackCallback]). A separate hook from [onOffCardDown]:
+         *  same dismissal, different intent. */
         var onDismissKey: (() -> Unit)? = null
         /** The insets last dispatched to this window, the one source for
          *  what the card keeps clear of: the system bars this window is
@@ -1189,6 +1204,43 @@ class MagnifierLens(
             }
             if (interactive && lens.handleNavKey(ev)) return true
             return super.dispatchKeyEvent(ev)
+        }
+
+        /** The platform Back callback while attached ([registerBackCallback]). */
+        private var backCallback: Any? = null
+
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) registerBackCallback()
+        }
+
+        override fun onDetachedFromWindow() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) unregisterBackCallback()
+            super.onDetachedFromWindow()
+        }
+
+        /** Back as the platform delivers it to an app given callback-based
+         *  back (target 36 on Android 16), where the key [dispatchKeyEvent]
+         *  reads never arrives: on the sticky lens the press does what B
+         *  does ([onDismissKey]). It reaches only the focused window, so only
+         *  a lens holding the controller hears it; the two paths are
+         *  exclusive by the platform's mode, so a press runs once. As the
+         *  capture sheet and its two-screen window do. */
+        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+        private fun registerBackCallback() {
+            val dispatcher = findOnBackInvokedDispatcher() ?: return
+            val callback = OnBackInvokedCallback {
+                if (!keyGuard.isLingering && interactive) onDismissKey?.invoke()
+            }
+            dispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback)
+            backCallback = callback
+        }
+
+        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+        private fun unregisterBackCallback() {
+            val callback = backCallback as? OnBackInvokedCallback ?: return
+            backCallback = null
+            findOnBackInvokedDispatcher()?.unregisterOnBackInvokedCallback(callback)
         }
 
         init {

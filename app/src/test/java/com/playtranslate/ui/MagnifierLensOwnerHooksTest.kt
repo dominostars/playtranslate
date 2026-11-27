@@ -29,11 +29,14 @@ import org.robolectric.util.ReflectionHelpers
 import java.time.Duration
 
 /**
- * A sticky lens's owner hook ([MagnifierLens.onOffCardDown]): set, a DOWN
+ * A sticky lens's owner hooks. [MagnifierLens.onOffCardDown]: set, a DOWN
  * off the card (beside its column, or in the column away from the card) goes
  * to the owner with its screen position, and the lens stays; unset, it
  * dismisses the lens, as every lens did before the hook. A touch outside the
- * window dismisses either way, and B on a focused lens dismisses it.
+ * window dismisses either way. [MagnifierLens.onBackKey]: set, B on the lens
+ * goes to the owner and the lens stays; unset, B dismisses it; the
+ * platform's Back callback does what B does, once the lens is sticky. A lens
+ * takes the controller when one is attached as it turns sticky.
  */
 @RunWith(RobolectricTestRunner::class)
 class MagnifierLensOwnerHooksTest {
@@ -53,6 +56,7 @@ class MagnifierLensOwnerHooksTest {
     private val lens = MagnifierLens(ctx, wm, Display.DEFAULT_DISPLAY, host)
     private var dismissals = 0
     private val downs = mutableListOf<Pair<Float, Float>>()
+    private var backs = 0
 
     @Before fun setUp() {
         lens.onDismiss = { dismissals++ }
@@ -86,6 +90,15 @@ class MagnifierLensOwnerHooksTest {
 
     private fun hooked() {
         lens.onOffCardDown = { x, y -> downs += x to y }
+    }
+
+    private fun backHooked() {
+        lens.onBackKey = { backs++ }
+    }
+
+    private fun pressB(root: ViewGroup) {
+        key(root, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_B)
+        key(root, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_B)
     }
 
     @Test fun `with the hook a DOWN beside the column goes to the owner and the lens stays`() {
@@ -132,14 +145,64 @@ class MagnifierLensOwnerHooksTest {
         assertEquals(emptyList<Pair<Float, Float>>(), downs)
     }
 
-    @Test fun `B dismisses the lens, hook or not`() {
+    @Test fun `without the B hook B dismisses the lens, an off-card hook or not`() {
         hooked()
         val root = stickyLens()
 
-        key(root, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_B)
-        key(root, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_B)
+        pressB(root)
 
         assertEquals(1, dismissals)
+    }
+
+    /** Back as the platform's callback delivers it (target 36 on Android
+     *  16), where the key never arrives. */
+    private fun systemBack(root: ViewGroup) {
+        val callback = root.javaClass.getDeclaredField("backCallback")
+            .apply { isAccessible = true }.get(root) as android.window.OnBackInvokedCallback
+        callback.onBackInvoked()
+    }
+
+    @Test fun `the platform's Back does what B does, the owner's with the hook and the dismissal without`() {
+        backHooked()
+        val root = stickyLens()
+
+        systemBack(root)
+        assertEquals(1, backs)
+        assertEquals(0, dismissals)
+
+        lens.onBackKey = null
+        systemBack(root)
+        assertEquals(1, dismissals)
+    }
+
+    @Test fun `while the lens is not sticky the platform's Back is not its, before its first promotion or after a reset`() {
+        backHooked()
+        val screen = ctx.displaySizePx()
+        assertTrue(lens.show(screen.x - 10, screen.y - 40, screen.x, screen.y))
+        shadowOf(Looper.getMainLooper()).idle()
+        val root = wm.added.last() as ViewGroup
+
+        systemBack(root)
+
+        // Back to the zoom state, as a card switching words passes through:
+        // the B hook stays wired from the promotion.
+        assertTrue(lens.makeInteractive())
+        lens.resetToZoom()
+        systemBack(root)
+
+        assertEquals(0, backs)
+        assertEquals(0, dismissals)
+    }
+
+    @Test fun `with the B hook B goes to the owner and the lens stays`() {
+        backHooked()
+        val root = stickyLens()
+
+        pressB(root)
+
+        assertEquals(1, backs)
+        assertEquals(0, dismissals)
+        assertTrue(lens.isInteractive)
     }
 
     /** A gamepad attached, as a handheld's built-in controls are. */
@@ -151,30 +214,29 @@ class MagnifierLensOwnerHooksTest {
         assertTrue(hasNavInputDevice(ctx))
     }
 
-    @Test fun `with a controller attached a lens takes it, and one built not to leaves it to its owner`() {
-        controllerAttached()
-
+    @Test fun `a lens takes the controller when one is attached as it turns sticky`() {
+        assertFalse("precondition: no controller", hasNavInputDevice(ctx))
         stickyLens()
-        assertTrue("the default lens holds the controller", lens.isConsumingController)
+        assertFalse("nothing to navigate with", lens.isConsumingController)
 
-        val owned = MagnifierLens(ctx, wm, Display.DEFAULT_DISPLAY, host, takesControllerFocus = false)
-        val screen = ctx.displaySizePx()
-        assertTrue(owned.show(10, screen.y - 40, screen.x, screen.y))
-        assertTrue(owned.makeInteractive())
-        assertTrue(owned.isInteractive)
-        assertFalse("this one leaves the controller to its owner", owned.isConsumingController)
-        owned.dismiss()
+        controllerAttached()
+        lens.resetToZoom()
+        stickyLens()
+        assertTrue(lens.isConsumingController)
     }
 
     @Test fun `the hooks survive a reset and a second promotion, as a card switching words does`() {
         hooked()
+        backHooked()
         stickyLens()
         lens.resetToZoom()
         val root = stickyLens()
 
         touch(root, MotionEvent.ACTION_DOWN, 1f, 5f)
+        pressB(root)
 
         assertEquals(1, downs.size)
+        assertEquals(1, backs)
         assertEquals(0, dismissals)
     }
 }

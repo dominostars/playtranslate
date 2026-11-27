@@ -55,9 +55,10 @@ import java.time.Duration
  * up closes it, a tap off every word closes a card and is the host's with
  * none); a card that ends by its own means ends the presentation, one the
  * session closes does not; Back closes a card and is the host's with none;
- * the controller lights, moves and selects, the card never taking it. A card
- * cites the capture's frame whether it came with the lines or after the card
- * opened.
+ * the controller lights, moves and selects, and with a controller attached
+ * the card takes it, its cursor on its first row when A opened it, until B
+ * closes the card and hands it back to the boxes. A card cites the capture's
+ * frame whether it came with the lines or after the card opened.
  */
 @RunWith(RobolectricTestRunner::class)
 class WordLookupSessionTest {
@@ -82,7 +83,6 @@ class WordLookupSessionTest {
                 wm = wm,
                 overlayHost = host,
                 displayId = Display.DEFAULT_DISPLAY,
-                takesControllerFocus = false,
             ),
             density = ctx.resources.displayMetrics.density,
             view = view,
@@ -352,13 +352,18 @@ class WordLookupSessionTest {
         Prefs(ctx).sourceLang = "en"
         load(helloWorld)
         session.onTapAt(150f, 315f)
+        awaitCard()
+        return lens().shownRowsForTest().filterIsInstance<DefRow.Word>().first()
+    }
+
+    /** Wait out the real lookup until its card is up and sticky. */
+    private fun awaitCard() {
         val deadline = System.currentTimeMillis() + 3000
         while (!lens().isInteractive && System.currentTimeMillis() < deadline) {
             shadowOf(Looper.getMainLooper()).idle()
             Thread.sleep(5)
         }
         assertTrue("precondition: the card came up", lens().isInteractive)
-        return lens().shownRowsForTest().filterIsInstance<DefRow.Word>().first()
     }
 
     private fun alertTexts(): List<String> {
@@ -585,7 +590,7 @@ class WordLookupSessionTest {
         assertEquals("down crosses to the next row", 3, cursor())
     }
 
-    @Test fun `A on the word whose card is up closes it, and A on another word moves the card there`() {
+    @Test fun `with no controller attached, A on the word whose card is up closes it, and A on another word moves the card there`() {
         load(helloWorld)
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
         press(KeyEvent.KEYCODE_BUTTON_A)
@@ -601,21 +606,65 @@ class WordLookupSessionTest {
         assertEquals(0, ended)
     }
 
-    @Test fun `with a controller attached the card leaves the controller to the boxes`() {
+    /** A gamepad attached, as a handheld's built-in controls are. */
+    private fun controllerAttached() {
         val pad = ShadowInputDevice.makeInputDeviceNamed("pad")
         ReflectionHelpers.setField(pad, "mId", 42)
         ReflectionHelpers.setField(pad, "mSources", InputDevice.SOURCE_GAMEPAD)
         shadowOf(ctx.getSystemService(InputManager::class.java)).addInputDevice(pad)
-        load(helloWorld)
-        session.onTapAt(150f, 315f)
-        val lens = cardUp()
+    }
 
-        assertFalse("the card does not take the controller", lens.isConsumingController)
-        // So A reaches the boxes: the first press puts the cursor on the
-        // card's word, the next closes its card.
+    /** With a controller attached, A on "hello": its card up by the real
+     *  lookup. */
+    private fun cardByController() {
+        controllerAttached()
+        Prefs(ctx).sourceLang = "en"
+        load(helloWorld)
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
         press(KeyEvent.KEYCODE_BUTTON_A)
-        assertNull(selected())
+        awaitCard()
+    }
+
+    /** B on the card's own window, where the keys go while it holds them. */
+    private fun pressBOnCard() {
+        val window = requireNotNull(lens().rootViewForTest())
+        window.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_B))
+        window.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_B))
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    @Test fun `with a controller attached, the card A opens takes the controller, its cursor on its first row`() {
+        cardByController()
+
+        assertTrue("the card holds the controller", lens().isConsumingController)
+        lens().layoutRowsForTest(ROW_CSS_PX)
+        val first = lens().navRowsForTest().first()
+        assertEquals("the next A opens the word", first to DefAction.OPEN, lens().cursorForTest())
+    }
+
+    @Test fun `a card a tap opens takes the controller too, its cursor waiting for the first press`() {
+        controllerAttached()
+        cardOnHello()
+
+        assertTrue(lens().isConsumingController)
+        lens().layoutRowsForTest(ROW_CSS_PX)
+        assertNull(lens().cursorForTest())
+    }
+
+    @Test fun `B on the card closes the card alone, and the boxes have the controller again on the same word`() {
+        cardByController()
+
+        pressBOnCard()
+
+        assertFalse("the card is gone", lens().isInteractive)
+        assertNull("its word is no longer selected", selected())
+        assertEquals("the presentation goes on", 0, ended)
+        assertTrue("the boxes stay", session.hasBoxes)
+        assertEquals("the cursor is on the word it was on", 0, cursor())
+        assertEquals("and lit", 0, highlighted())
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("the D-pad moves it on from there", 1, cursor())
+        assertFalse("with no card up, Back is the host's", session.onBack())
     }
 
     // ── a host whose picture moves, and a word known before the read ─────
@@ -773,5 +822,11 @@ class WordLookupSessionTest {
         } finally {
             inApp.release()
         }
+    }
+
+    private companion object {
+        /** A laid-out row's height in the page's CSS px
+         *  ([MagnifierLens.layoutRowsForTest]). */
+        const val ROW_CSS_PX = 300
     }
 }

@@ -32,11 +32,8 @@ class LookupLensKit private constructor(
             wm: WindowManager,
             overlayHost: OverlayHost,
             displayId: Int,
-            takesControllerFocus: Boolean,
         ): LookupLensKit {
-            val magnifier = MagnifierLens(
-                displayCtx, wm, displayId, overlayHost, takesControllerFocus = takesControllerFocus,
-            )
+            val magnifier = MagnifierLens(displayCtx, wm, displayId, overlayHost)
             val lookup = DragLookupController(
                 context = context,
                 displayId = displayId,
@@ -54,12 +51,9 @@ class LookupLensKit private constructor(
          * activity surfaces, and the lens's open and Anki actions keep to
          * the activity's own routing.
          */
-        fun inActivity(activity: Activity, takesControllerFocus: Boolean = true): LookupLensKit {
+        fun inActivity(activity: Activity): LookupLensKit {
             val wm = OwnWindows.managerOf(activity)
-            val magnifier = MagnifierLens(
-                activity, wm, Display.DEFAULT_DISPLAY,
-                overlayHost = null, takesControllerFocus = takesControllerFocus,
-            )
+            val magnifier = MagnifierLens(activity, wm, Display.DEFAULT_DISPLAY, overlayHost = null)
             val lookup = DragLookupController(
                 activity, Display.DEFAULT_DISPLAY, WordLookupPopup(activity, wm), magnifier,
                 // Dead in this configuration: every consumer that would

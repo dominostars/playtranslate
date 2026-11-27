@@ -1095,6 +1095,9 @@ class DragLookupController(
          *  that page already shows) stays there: sending the line would
          *  replace the result, and with it the capture's presentation. */
         sendsLineToApp: Boolean = true,
+        /** The lookup was the controller's: the sticky lens's cursor starts
+         *  on its first row ([MagnifierLens.focusForController]). */
+        fromController: Boolean = false,
         place: () -> Boolean = { true },
     ) {
         val popupData = resolved.word
@@ -1132,6 +1135,8 @@ class DragLookupController(
                 // No lens to show them in (its window was refused):
                 // the session ends here, settled.
                 endSession()
+            } else if (fromController) {
+                magnifier.focusForController()
             }
             // Lens is now in DEFINITIONS mode — the zoom no longer
             // renders, so the bitmap can be released.
@@ -1173,11 +1178,16 @@ class DragLookupController(
      * ([MagnifierLens.resetToZoom]: the same window and no dismissal, so no
      * [onSettled]) and re-anchored in the same step. A newer call cancels an
      * older one still resolving, with its secondary load and its speech.
+     * [fromController] (the A of the boxes' cursor) starts the lens's own
+     * cursor on its first row, so the next A opens it, as the sheet's word
+     * lens does for its cursor's word ([SourceTextLens]); a tap leaves the
+     * cursor to the first controller press.
      */
     internal fun lookUpWord(
         lines: List<OcrManager.OcrLine>,
         at: TokenAt,
         anchor: Rect,
+        fromController: Boolean,
     ) {
         lookupJob?.cancel()
         clearSecondaryLoad()
@@ -1193,7 +1203,7 @@ class DragLookupController(
                     endSession()
                     return@launch
                 }
-                presentResolution(resolved, sendsLineToApp = false) {
+                presentResolution(resolved, sendsLineToApp = false, fromController = fromController) {
                     if (magnifier.isInteractive) magnifier.resetToZoom()
                     val screen = queryScreenSize()
                     magnifier.show(

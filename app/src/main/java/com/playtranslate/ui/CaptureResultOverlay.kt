@@ -3257,9 +3257,9 @@ class CaptureResultOverlay(
 
     /** The controller's B / system back, in sheet-modal precedence order —
      *  the mirror of [CaptureResultRoot.dispatchTouchEvent]'s ladder. The
-     *  lens branch is normally unreachable (an interactive lens window sits
-     *  above us and holds focus, handling B itself); it covers the lens's
-     *  no-controller non-focusable mode. */
+     *  lens and Definitions card branches are normally unreachable (an
+     *  interactive lens window sits above us and holds focus, handling B
+     *  itself); they cover the lens's no-controller non-focusable mode. */
     private fun onControllerBack() {
         when {
             popovers.isShowing -> popovers.dismiss()
