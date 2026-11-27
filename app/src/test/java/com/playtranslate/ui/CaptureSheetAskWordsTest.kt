@@ -1230,6 +1230,77 @@ class CaptureSheetAskWordsTest {
         assertTrue("the sheet's alert, the one its Ask chips raise: $raised", ctx.getString(R.string.ask_no_llm_title) in raised)
     }
 
+    @Test fun `R1 on the sheet's own word lens closes the lens and steps the mode pill`() {
+        RuntimeEnvironment.setQualifiers("w${screen.w}dp-h${screen.h}dp-mdpi")
+        prefs.hideOriginalSection = false
+        prefs.hideTranslationSection = false
+        prefs.hideAskSection = true
+        prefs.hideWordsSection = true
+        prefs.capturePanelPosture = CaptureResultGeometry.NO_POSTURE
+        prefs.captureOverlayMode = OverlayMode.TRANSLATION
+        dismissals.clear()
+        val o = CaptureResultOverlay(ctx, wm, Display.DEFAULT_DISPLAY, host)
+        sheet = o
+        o.onDismiss = { dismissals += it }
+        o.show(screen.w, screen.h)
+        // A capture, so the pill is up: its boxes are what it offers modes for.
+        val original = text(2)
+        val box = android.graphics.Rect(100, 100, 300, 140)
+        val data = com.playtranslate.OneShotOverlayData(
+            boxes = listOf(TextBox("hi", box)),
+            cropLeft = 0, cropTop = 0, screenshotW = screen.w, screenshotH = screen.h,
+            cropWidth = screen.w, cropHeight = screen.h,
+            text = listOf(box),
+            groups = listOf(
+                com.playtranslate.OcrManager.OcrGroup(
+                    original, box, lines = listOf(com.playtranslate.OcrManager.LineBox(original, box, groupIndex = 0)),
+                ),
+            ),
+        )
+        val flow = MutableStateFlow<CaptureState>(CaptureState.InProgress("Capturing"))
+        o.observe(CaptureSession(flow, Job()))
+        flow.value = CaptureState.Translating(original, listOf(TextSegment(original)), null, data)
+        settle()
+        awaitLookupAtRest(o)
+        // The tap spans of the first two words, as an analysis gives them.
+        val the = com.playtranslate.language.TokenSpan("The", "the")
+        val quick = com.playtranslate.language.TokenSpan("quick", "quick")
+        o.lookupsRenderer.render(
+            WordLookupsState.Analyzed(
+                tokenSpans = listOf(the, quick),
+                annotation = com.playtranslate.language.SentenceAnnotation(
+                    original, SourceLangId.EN, 0,
+                    listOf(
+                        com.playtranslate.language.AnnotatedSpan(0, 3, "The", lookupForm = "the", lookupHint = ""),
+                        com.playtranslate.language.AnnotatedSpan(4, 9, "quick", lookupForm = "quick", lookupHint = ""),
+                    ),
+                ),
+                phrases = emptyList(),
+            ),
+        )
+        settle()
+        val sourceLens: SourceTextLens = o.field("sourceLens")
+        sourceLens.onTapAtOffset(5)
+        val deadline = System.currentTimeMillis() + 3000
+        while (!sourceLens.isShowing && System.currentTimeMillis() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(5)
+        }
+        assertTrue("precondition: the lens came up over the word", sourceLens.isShowing)
+        val lens: MagnifierLens = sourceLens.field("lens")
+
+        // R1 where the keys go while the lens holds the controller: its window.
+        val window = requireNotNull(lens.rootViewForTest())
+        assertTrue(window.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_R1)))
+        assertTrue(window.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_R1)))
+        settle()
+
+        assertFalse("the lens is gone", sourceLens.isShowing)
+        assertEquals("English offers Translation, Definitions, None: R1 from Translation", OverlayMode.DEFINITIONS, o.overlayMode)
+        assertEquals(OverlayMode.DEFINITIONS, prefs.captureOverlayMode)
+        assertTrue(dismissals.isEmpty())
+    }
+
     @Test fun `a Words row's explain question is answered in its row, and the Ask section is left as it was`() {
         giveLlm()
         val o = open(screen, text(2), text(2), askHidden = false, wordsHidden = false)

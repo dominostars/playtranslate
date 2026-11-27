@@ -111,6 +111,13 @@ internal class CaptureOverlayLayer(
      *  user would ([WordLookupSession]'s class doc). */
     var onSessionEnded: (() -> Unit)? = null
 
+    /** L1 or R1 on a Definitions card that holds the controller, with the
+     *  side it points to: the host steps its mode pill
+     *  ([WordLookupSession]'s onShoulderKey). Null (the two-screen window)
+     *  leaves those keys unhandled on the card. Set before the first paint;
+     *  a session takes it when it is built. */
+    var onShoulderKey: ((toRight: Boolean) -> Unit)? = null
+
     /** Where Definitions' dimming ([WordBoxesView.spotlight]) goes when the
      *  host keeps it apart from the boxes: the sheet keeps it beneath its
      *  panel, so a parked strip is never dimmed while the boxes sit over it.
@@ -381,6 +388,7 @@ internal class CaptureOverlayLayer(
             tokenize = { text -> tokenizeLine(text, src) },
             onEnded = { onSessionEnded?.invoke() },
             onBoxesSettled = { has -> onBoxesLaidOut?.invoke(); onBoxesSettled?.invoke(has) },
+            onShoulderKey = onShoulderKey,
         ).also { words = it }
         val load = { if (words === session) session.load(screenLines(d), screenshotPath, capturedAtMs) }
         if (isLaidOut && width > 0 && height > 0) load() else doOnNextLayout { load() }

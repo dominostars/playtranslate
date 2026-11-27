@@ -824,6 +824,46 @@ class WordLookupSessionTest {
         }
     }
 
+    @Test fun `a host's shoulder hook reaches its card, and without one L1 and R1 on the card go unhandled`() {
+        load(helloWorld)
+        val window = requireNotNull(cardUp().rootViewForTest())
+        assertFalse(
+            "no hook, as the two-screen window builds it",
+            window.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_R1)),
+        )
+        assertFalse(window.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_R1)))
+
+        val steps = mutableListOf<Boolean>()
+        val hooked = WordLookupSession(
+            kit = LookupLensKit.overGame(
+                context = ctx,
+                displayCtx = ctx,
+                wm = wm,
+                overlayHost = host,
+                displayId = Display.DEFAULT_DISPLAY,
+            ),
+            density = ctx.resources.displayMetrics.density,
+            view = WordBoxesView(overlayThemedContext(ctx)),
+            scope = scope,
+            tokenize = { tokenizer(it) },
+            onEnded = {},
+            onBoxesSettled = {},
+            onShoulderKey = { steps += it },
+        )
+        try {
+            val card: MagnifierLens = hooked.field("magnifier")
+            val screen = ctx.displaySizePx()
+            assertTrue(card.show(150, 300, screen.x, screen.y, anchorHeight = 30))
+            assertTrue(card.makeInteractive())
+            val hookedWindow = requireNotNull(card.rootViewForTest())
+            assertTrue(hookedWindow.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_L1)))
+            assertTrue(hookedWindow.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_L1)))
+            assertEquals("L1: the left", listOf(false), steps)
+        } finally {
+            hooked.release()
+        }
+    }
+
     private companion object {
         /** A laid-out row's height in the page's CSS px
          *  ([MagnifierLens.layoutRowsForTest]). */

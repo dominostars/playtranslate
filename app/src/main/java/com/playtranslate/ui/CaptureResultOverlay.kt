@@ -883,6 +883,9 @@ class CaptureResultOverlay(
         // a lost window) ends the sheet as the user would: the boxes never
         // sit over what the card opened.
         layer.onSessionEnded = { if (!dismissed && !animatingOut) animateOutAndDismiss() }
+        // L1 / R1 on a Definitions card that holds the controller step the
+        // mode pill as on the sheet; the card goes with Definitions.
+        layer.onShoulderKey = { toRight -> stepOverlayMode(toRight) }
         // Outside gestures go to the layer first (a word of Definitions, a
         // card to close); a host with a frame of its own replaces this.
         outsideLookupRouter = { ev -> layer.onTouch(ev) }
@@ -1705,25 +1708,14 @@ class CaptureResultOverlay(
         placeSliverHint()   // nothing covers the strip any more: the row re-centres
     }
 
-    /** The user's pick of a mode, from the mode pill or from the host's own
-     *  control ([hostOwnsModeControl]): paint the bound result in [mode] and
-     *  remember it. A switch to Translations on a deferred result runs the
-     *  skipped translation, so the skeletons fill instead of pulsing
-     *  forever; a switch to None while parked leaves nothing on screen but
-     *  the strip, so the panel comes up. */
+    /** The user's pick of a mode, from the mode pill (a tap, or the shoulder
+     *  buttons: [stepOverlayMode]) or from the host's own control
+     *  ([hostOwnsModeControl]): paint the bound result in [mode] and
+     *  remember it ([showMode]). */
     fun selectOverlayMode(mode: OverlayMode) {
         if (presentationPrefs.overlayMode == mode) return
         presentationPrefs.overlayMode = mode
-        val data = overlayData
-        if (data != null) paintBoxes(data) else hideChips()
-        // Definitions holds the keys; the other modes give them back.
-        applyWindowFocusPolicy()
-        when (mode) {
-            OverlayMode.TRANSLATION -> maybeCompleteDeferred()
-            OverlayMode.NONE -> if (sliverMode) expandFromSliver()
-            OverlayMode.FURIGANA, OverlayMode.DEFINITIONS -> {}
-        }
-        updateModeControl()
+        showMode(mode)
     }
 
     /** The tap-to-lookup gesture or hotkey over a sheet already up in another
@@ -1732,11 +1724,60 @@ class CaptureResultOverlay(
     fun applyOverlayModeOverride(mode: OverlayMode) {
         if (presentationPrefs.overlayMode == mode) return
         overlayModeOverride = mode
+        showMode(mode)
+    }
+
+    /** None brought the sheet out of its park ([showMode]) and the user has
+     *  set no height since: a switch to a mode that draws parks it again.
+     *  Ended by any park, the user's or that one ([park]), and by a height
+     *  the user lets the sheet go at ([commitHeight]); every height the
+     *  user sets ends in one of the two. A park the switch could not make
+     *  (nothing drawn to stand on, a field being typed in) leaves it for the
+     *  next switch. Not a posture: the sheet closed meanwhile records itself
+     *  open, as it always has ([recordPosture]). */
+    private var noneHoldsOpen = false
+
+    /** Paint the bound result in [mode], the sheet's mode now, picked or by
+     *  an override. Definitions holds the keys and the other modes give
+     *  them back. A switch to Translations on a deferred result runs the
+     *  skipped translation, so the skeletons fill instead of pulsing
+     *  forever. A switch to None while parked leaves nothing on screen but
+     *  the strip, so the panel comes up, and None holds it there
+     *  ([noneHoldsOpen]) until a switch to a mode with something drawn, or
+     *  building, to stand on parks it again. */
+    private fun showMode(mode: OverlayMode) {
         val data = overlayData
         if (data != null) paintBoxes(data) else hideChips()
         applyWindowFocusPolicy()
-        if (mode == OverlayMode.TRANSLATION) maybeCompleteDeferred()
+        if (mode == OverlayMode.NONE) {
+            if (sliverMode) {
+                expandFromSliver()
+                noneHoldsOpen = true
+            }
+        } else {
+            if (mode == OverlayMode.TRANSLATION) maybeCompleteDeferred()
+            if (noneHoldsOpen && sliverJustified()) collapseToSliver()
+        }
         updateModeControl()
+    }
+
+    /** L1 ([toRight] false) or R1: the mode pill's segment on that side of
+     *  the selected one, wrapping at the ends, picked as a tap on it picks
+     *  it ([OverlayModePill.step]), which leaves the pill collapsed or
+     *  expanded as it was. What floats over the capture closes first: a
+     *  popover, the word lens (which hands the press here while it holds
+     *  the controller). A Definitions card, which hands it here too, goes
+     *  with Definitions itself, which every step leaves: the layer releases
+     *  its words, the card's window lingering until the release
+     *  ([MagnifierLens.onShoulderKey]). Nothing while a field is typed in
+     *  (the keys are the field's), or while the pill takes no tap (the
+     *  capture still reading, the pill on its way out, nothing offered), so
+     *  a press that steps nothing closes nothing either. */
+    private fun stepOverlayMode(toRight: Boolean) {
+        if (dismissed || animatingOut || typingIn != TypingIn.NOTHING || !modePill.canStep) return
+        popovers.dismiss()
+        dismissWordLens()
+        modePill.step(toRight)
     }
 
     /** The one exit from the park: every exit drops the sliver cursor, and
@@ -1773,7 +1814,9 @@ class CaptureResultOverlay(
      *  came from. Parking hands the wheel back to the pref: whatever the user
      *  stated before, the sliver is what they state now (the capture's own
      *  park runs only while nothing was stated, where this changes nothing).
-     *  The reading height stays as it is, for the sheet to come back to. */
+     *  Parked, nothing holds the sheet open for None any more
+     *  ([noneHoldsOpen]). The reading height stays as it is, for the sheet
+     *  to come back to. */
     private fun park() {
         if (!sliverMode) {
             sliverMode = true
@@ -1784,6 +1827,7 @@ class CaptureResultOverlay(
         }
         userStatedPosture = false
         loadingPeekExpand = false
+        noneHoldsOpen = false
         settle()
     }
 
@@ -2450,8 +2494,9 @@ class CaptureResultOverlay(
 
     /** The user let the sheet go at a height of their choosing (a drag or the
      *  stick, from the sliver or not): it lives there now, out of the park if
-     *  the capture parked it meanwhile. It stands down the capture's re-park
-     *  and supersedes a loading peek; the height becomes the auto-size
+     *  the capture parked it meanwhile. It stands down the capture's re-park,
+     *  supersedes a loading peek and ends None's hold ([noneHoldsOpen]); the
+     *  height becomes the auto-size
      *  ceiling ([committedCeiling]) and the reading height, and the content's
      *  fit then applies, which leaves the sheet where it is unless the
      *  content needs less (or a status more) than that. */
@@ -2459,6 +2504,7 @@ class CaptureResultOverlay(
         leaveSliver()
         userStatedPosture = true
         loadingPeekExpand = false
+        noneHoldsOpen = false
         autoMaxPx = committedCeiling()
         readingHeightPx = panelHeightPx
         autoSizeAndFit()
@@ -2637,10 +2683,17 @@ class CaptureResultOverlay(
     /** Open-detail tap + a row's Anki button — same actions as the drag flow. The
      *  resolved unit is this tap's word/entry; sentence + screenshot come
      *  from the current capture result, read lazily at chip-tap time (the
-     *  bind guard in [bindResult] keeps that read same-source). */
+     *  bind guard in [bindResult] keeps that read same-source). Also the
+     *  shoulder buttons' hook, over the game ([stepOverlayMode]). */
     private fun wireLensActions(lens: MagnifierLens, resolvedAt: SourceWordLookup.ResolvedAt) {
         val resolved = resolvedAt.word
         val secondaries = resolvedAt.secondaries()
+        // L1 / R1 on the lens while it holds the controller step the mode
+        // pill as on the sheet, the lens closing first. Over the game only:
+        // an in-activity host has no pill the shoulder buttons drive.
+        if (!hostOwnsModeControl && !wordLensInActivity) {
+            lens.onShoulderKey = { toRight -> stepOverlayMode(toRight) }
+        }
         SourceLensActions(
             ctx.applicationContext, displayId, overlayHost, lens,
             // Anki review pushes a full screen → tear the sheet down. Open-detail
@@ -3857,6 +3910,13 @@ class CaptureResultOverlay(
         override fun dispatchKeyEvent(ev: KeyEvent): Boolean {
             if (keyGuard.isLingering) return keyGuard.lingerKey(ev)
             keyGuard.track(ev)
+            // L1 / R1 step the mode pill in every state this window holds the
+            // keys in, at the first DOWN of a press; its repeats and its
+            // release are consumed with it.
+            ControllerKeys.shoulderStep(ev.keyCode)?.let { toRight ->
+                if (ev.action == KeyEvent.ACTION_DOWN && ev.repeatCount == 0) stepOverlayMode(toRight)
+                return true
+            }
             // Definitions while parked: the D-pad and A drive the words (the
             // boxes are all that is on screen); expanded, the nav owns them.
             if (sliverMode && layer.onKey(ev)) return true

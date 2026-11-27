@@ -76,6 +76,16 @@ object ControllerKeys {
         else -> null
     }
 
+    /** The shoulder buttons, by the side of the screen they point to: true
+     *  for R1, false for L1, null for every other key. They step the capture
+     *  sheet's mode pill to the segment on that side ([OverlayModePill.step]),
+     *  from the sheet and from the lens or card it has up. */
+    fun shoulderStep(keyCode: Int): Boolean? = when (keyCode) {
+        KeyEvent.KEYCODE_BUTTON_R1 -> true
+        KeyEvent.KEYCODE_BUTTON_L1 -> false
+        else -> null
+    }
+
     /** True for every keycode a focused controller-nav surface consumes
      *  (back, activate, dpad). While a focusable sticky lens is up, these
      *  keys are driving it — the a11y key filter's "game input clears the

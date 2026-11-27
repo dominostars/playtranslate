@@ -21,7 +21,9 @@ import java.time.Duration
 /**
  * The accent indicator of both sliding segmented controls ([buildPillToggle]
  * and [buildAnkiModeToggle]) sits under the selected segment, at first
- * layout and after a tap's slide, in either layout direction. Under RTL the
+ * layout, after a tap's slide and after a pick without a touch
+ * ([PillToggle.select]), one made before the control's first layout
+ * included, in either layout direction. Under RTL the
  * row lays segment 0 out at the right edge, so the indicator's position has
  * to come from where the segment actually is, not from its index.
  */
@@ -193,5 +195,59 @@ class PillToggleIndicatorTest {
         width = 200
         settle()
         assertIndicatorUnder(1)
+    }
+
+    // ── a pick without a touch ([PillToggle.select]) ────────────────────
+
+    /** The control's first traversal, with no animation frame run: a
+     *  layout pass, then the second pass a window runs in the same traversal
+     *  for a layout requested during the first (ViewRootImpl's
+     *  requestLayoutDuringLayout), which is where the indicator takes the
+     *  size its layout listener gave it. */
+    private fun firstTraversal() {
+        container.layoutParams = FrameLayout.LayoutParams(width, FrameLayout.LayoutParams.WRAP_CONTENT)
+        fun pass() {
+            container.measure(
+                MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
+            )
+            container.layout(0, 0, width, container.measuredHeight)
+        }
+        pass()
+        indicator.requestLayout()
+        pass()
+    }
+
+    @Test
+    fun `select picks a segment as its tap does, and the selected one's own pick does nothing`() {
+        val picked = mutableListOf<Int>()
+        val toggle = buildPillToggle(
+            container, listOf("Off" to 0, "Low" to 1, "Medium" to 2, "High" to 3), 0,
+        ) { picked += it }
+        settle()
+        toggle.select(2)
+        settle()
+        assertIndicatorUnder(2)
+        assertEquals(listOf(2), picked)
+        assertEquals(2, toggle.selectedIndex)
+        toggle.select(2)
+        assertEquals("the selected segment's own pick reports nothing", listOf(2), picked)
+    }
+
+    @Test
+    fun `a pick before the control's first layout puts the indicator under it at that layout`() {
+        val toggle = pillToggle(selected = 0)
+        toggle.select(3)
+        firstTraversal()
+        assertIndicatorUnder(3)
+    }
+
+    @Test
+    fun `a pick before the control's first layout puts the indicator under it at that layout, RTL`() {
+        container.layoutDirection = View.LAYOUT_DIRECTION_RTL
+        val toggle = pillToggle(selected = 0)
+        toggle.select(3)
+        firstTraversal()
+        assertIndicatorUnder(3)
     }
 }

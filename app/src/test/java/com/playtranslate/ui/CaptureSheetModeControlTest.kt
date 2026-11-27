@@ -3,7 +3,9 @@ package com.playtranslate.ui
 import android.content.Context
 import android.graphics.Rect
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Display
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -20,6 +22,7 @@ import com.playtranslate.Prefs
 import com.playtranslate.R
 import com.playtranslate.fillOneShotOverlayData
 import com.playtranslate.language.SourceLangId
+import com.playtranslate.language.TokenSpan
 import com.playtranslate.model.PendingTranslation
 import com.playtranslate.model.TextSegment
 import com.playtranslate.model.TranslationResult
@@ -484,5 +487,213 @@ class CaptureSheetModeControlTest {
         land()
         assertTrue(field<Boolean>(o, "dismissed"))
         assertEquals(View.GONE, pill.visibility)
+    }
+
+    // ── the shoulder buttons ────────────────────────────────────────────
+
+    /** [code]'s press on the sheet's window, as the focused window gets it:
+     *  its DOWN, [repeats] repeats and its UP; whether the window took each. */
+    private fun press(o: CaptureResultOverlay, code: Int, repeats: Int = 0): List<Boolean> {
+        val root: View = field(o, "root")
+        val now = SystemClock.uptimeMillis()
+        val taken = (0..repeats).map { r ->
+            root.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, code, r))
+        } + root.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, code, 0))
+        idle()
+        return taken
+    }
+
+    /** A sheet whose capture has read "hello", its boxes painted in [mode]
+     *  (the readings land for Furigana), parked for a collapsed [posture]. */
+    private fun read(mode: OverlayMode, posture: Float = CaptureResultGeometry.NO_POSTURE): Pair<CaptureResultOverlay, MutableStateFlow<CaptureState>> {
+        val o = open(mode, posture, readings = listOf(readingBox))
+        val (flow, s) = session()
+        o.observe(s)
+        flow.value = translating(data(""))
+        idle()
+        settle(layerOf(o))
+        return o to flow
+    }
+
+    @Test fun `R1 and L1 step the mode a segment at a time, wrapping at the ends, and each step is remembered`() {
+        val (o, _) = read(OverlayMode.TRANSLATION)
+        assertEquals(listOf(true, true), press(o, KeyEvent.KEYCODE_BUTTON_R1))
+        assertEquals(OverlayMode.FURIGANA, o.overlayMode)
+        assertEquals(OverlayMode.FURIGANA, prefs.captureOverlayMode)
+
+        press(o, KeyEvent.KEYCODE_BUTTON_L1)
+        press(o, KeyEvent.KEYCODE_BUTTON_L1)
+        assertEquals("L1 on the first segment goes to the last", OverlayMode.NONE, o.overlayMode)
+        assertEquals(OverlayMode.NONE, prefs.captureOverlayMode)
+
+        press(o, KeyEvent.KEYCODE_BUTTON_R1)
+        assertEquals("R1 on the last goes to the first", OverlayMode.TRANSLATION, o.overlayMode)
+        assertTrue("the boxes are the mode's", layerOf(o).hasBoxes)
+        assertFalse("an expanded pill stays expanded", pillOf(o).collapsed)
+    }
+
+    @Test fun `a held shoulder button steps once, and a release the sheet never saw pressed does nothing`() {
+        val (o, _) = read(OverlayMode.TRANSLATION)
+        assertTrue("every event of the press is the sheet's", press(o, KeyEvent.KEYCODE_BUTTON_R1, repeats = 3).all { it })
+        assertEquals(OverlayMode.FURIGANA, o.overlayMode)
+
+        val root: View = field(o, "root")
+        root.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_R1))
+        idle()
+        assertEquals(OverlayMode.FURIGANA, o.overlayMode)
+    }
+
+    @Test fun `a step leaves a collapsed pill a disc, showing the new mode`() {
+        prefs.captureOverlayPillCollapsed = true
+        val (o, _) = read(OverlayMode.TRANSLATION)
+        press(o, KeyEvent.KEYCODE_BUTTON_R1)
+        assertEquals(OverlayMode.FURIGANA, o.overlayMode)
+        assertTrue(pillOf(o).collapsed)
+        assertTrue("nothing written for the pill's shape", prefs.captureOverlayPillCollapsed)
+        idleLong()
+        assertTrue(glyphShown(pillOf(o)))
+        assertEquals(emptyList<String>(), shownSegments(pillOf(o)))
+    }
+
+    @Test fun `no step while the capture still reads`() {
+        val o = open(OverlayMode.TRANSLATION)
+        val (_, s) = session()
+        o.observe(s)
+        idle()
+        assertTrue("precondition: the pill is the spinner", spinnerShown(pillOf(o)))
+        press(o, KeyEvent.KEYCODE_BUTTON_R1)
+        assertEquals(OverlayMode.TRANSLATION, o.overlayMode)
+        assertEquals(OverlayMode.TRANSLATION, prefs.captureOverlayMode)
+    }
+
+    @Test fun `no step while the source is being edited`() {
+        val (o, _) = read(OverlayMode.TRANSLATION)
+        CaptureResultOverlay::class.java.getDeclaredMethod("startInPlaceEdit")
+            .apply { isAccessible = true }.invoke(o)
+        idle()
+        press(o, KeyEvent.KEYCODE_BUTTON_R1)
+        assertEquals(OverlayMode.TRANSLATION, o.overlayMode)
+    }
+
+    @Test fun `R1 with a popover up closes it, then steps`() {
+        val (o, _) = read(OverlayMode.TRANSLATION)
+        field<View>(o, "panel").findViewById<View>(R.id.btnFontSize).performClick()
+        idle()
+        val popovers: PopoverHost = field(o, "popovers")
+        assertTrue("precondition: the text-size picker is up", popovers.isShowing)
+        press(o, KeyEvent.KEYCODE_BUTTON_R1)
+        assertFalse(popovers.isShowing)
+        assertEquals(OverlayMode.FURIGANA, o.overlayMode)
+    }
+
+    @Test fun `with no pill up, R1 changes nothing, an open popover included`() {
+        prefs.captureOverlayMode = OverlayMode.TRANSLATION
+        val o = CaptureResultOverlay(ctx, wm, Display.DEFAULT_DISPLAY, host)
+        sheet = o
+        o.showWithResult(1280, 720, result())
+        idle()
+        assertEquals("precondition: a result with no boxes has no pill", View.GONE, pillOf(o).visibility)
+        field<View>(o, "panel").findViewById<View>(R.id.btnFontSize).performClick()
+        idle()
+        val popovers: PopoverHost = field(o, "popovers")
+        assertTrue("precondition: the text-size picker is up", popovers.isShowing)
+        press(o, KeyEvent.KEYCODE_BUTTON_R1)
+        assertTrue("a press that steps nothing closes nothing", popovers.isShowing)
+        assertEquals(OverlayMode.TRANSLATION, o.overlayMode)
+    }
+
+    // ── None's hold ──────────────────────────────────────────────────────
+
+    @Test fun `a pick of None opens a parked sheet, and a pick of a mode that draws parks it again`() {
+        val (o, _) = read(OverlayMode.TRANSLATION, CaptureResultGeometry.COLLAPSED_POSTURE)
+        assertTrue("precondition: parked on the chips", parked(o))
+        pillOf(o).onSelect!!.invoke(OverlayMode.NONE)
+        idle()
+        assertFalse("None leaves nothing on screen but the strip: up", parked(o))
+        pillOf(o).onSelect!!.invoke(OverlayMode.TRANSLATION)
+        idle()
+        assertTrue("its height untouched, back to a mode that draws: parked", parked(o))
+    }
+
+    @Test fun `after the re-park, a sheet the user opens again stays open through the next pick`() {
+        val (o, _) = read(OverlayMode.TRANSLATION, CaptureResultGeometry.COLLAPSED_POSTURE)
+        pillOf(o).onSelect!!.invoke(OverlayMode.NONE)
+        pillOf(o).onSelect!!.invoke(OverlayMode.TRANSLATION)
+        idle()
+        assertTrue("precondition: parked again", parked(o))
+        CaptureResultOverlay::class.java.getDeclaredMethod("userExpandFromSliver")
+            .apply { isAccessible = true }.invoke(o)
+        idle()
+        assertFalse("precondition: the user's tap on the strip opened it", parked(o))
+        pillOf(o).onSelect!!.invoke(OverlayMode.FURIGANA)
+        idle()
+        assertFalse("the park ended None's hold: the sheet is the user's now", parked(o))
+    }
+
+    @Test fun `L1 into None and R1 out of it open and park the sheet the same way`() {
+        val (o, _) = read(OverlayMode.TRANSLATION, CaptureResultGeometry.COLLAPSED_POSTURE)
+        press(o, KeyEvent.KEYCODE_BUTTON_L1)
+        assertEquals(OverlayMode.NONE, o.overlayMode)
+        assertFalse(parked(o))
+        press(o, KeyEvent.KEYCODE_BUTTON_R1)
+        assertEquals(OverlayMode.TRANSLATION, o.overlayMode)
+        assertTrue(parked(o))
+    }
+
+    @Test fun `a sheet open before None stays open through the picks`() {
+        val (o, _) = read(OverlayMode.TRANSLATION)
+        assertFalse(parked(o))
+        pillOf(o).onSelect!!.invoke(OverlayMode.NONE)
+        pillOf(o).onSelect!!.invoke(OverlayMode.TRANSLATION)
+        idle()
+        assertFalse(parked(o))
+    }
+
+    @Test fun `a pick with nothing to stand on keeps None's hold for the next pick that has`() {
+        val (o, flow) = read(OverlayMode.TRANSLATION, CaptureResultGeometry.COLLAPSED_POSTURE)
+        pillOf(o).onSelect!!.invoke(OverlayMode.NONE)
+        idle()
+        flow.value = CaptureState.Done(result(), fillOneShotOverlayData(data(""), listOf(" ")))
+        idle()
+
+        pillOf(o).onSelect!!.invoke(OverlayMode.TRANSLATION)
+        idle()
+        assertFalse("precondition: every translation blank, nothing drawn", layerOf(o).hasBoxes)
+        assertFalse("nothing to stand on: up", parked(o))
+
+        pillOf(o).onSelect!!.invoke(OverlayMode.FURIGANA)
+        assertTrue("the readings building are something to stand on", parked(o))
+        settle(layerOf(o))
+        assertTrue("and they landed", parked(o))
+    }
+
+    @Test fun `a pick while the source is edited keeps None's hold, and the next pick after the edit parks the sheet`() {
+        val (o, _) = read(OverlayMode.TRANSLATION, CaptureResultGeometry.COLLAPSED_POSTURE)
+        pillOf(o).onSelect!!.invoke(OverlayMode.NONE)
+        idle()
+        fun call(name: String) {
+            CaptureResultOverlay::class.java.getDeclaredMethod(name).apply { isAccessible = true }.invoke(o)
+            idle()
+        }
+        call("startInPlaceEdit")
+        pillOf(o).onSelect!!.invoke(OverlayMode.FURIGANA)
+        idle()
+        assertFalse("no park under the keyboard", parked(o))
+
+        call("cancelEdit")
+        pillOf(o).onSelect!!.invoke(OverlayMode.TRANSLATION)
+        idle()
+        assertTrue("the hold outlived the edit", parked(o))
+    }
+
+    @Test fun `tap-to-lookup switching a sheet None holds open parks it, as a pick does`() {
+        val (o, _) = read(OverlayMode.TRANSLATION, CaptureResultGeometry.COLLAPSED_POSTURE)
+        layerOf(o).tokenizeLine = { text, _ -> listOf(TokenSpan(text, text)) }
+        pillOf(o).onSelect!!.invoke(OverlayMode.NONE)
+        idle()
+        assertFalse(parked(o))
+        o.applyOverlayModeOverride(OverlayMode.DEFINITIONS)
+        assertTrue("the words building are something to stand on", parked(o))
+        assertEquals("the override remembers nothing", OverlayMode.NONE, prefs.captureOverlayMode)
     }
 }

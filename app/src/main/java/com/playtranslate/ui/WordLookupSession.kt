@@ -30,7 +30,9 @@ import kotlinx.coroutines.withContext
  * cursor starting on the first row when A opened it (a tap's card waits
  * for the first press), and B closes the card alone
  * ([MagnifierLens.onBackKey]), handing the controller back to the boxes,
- * their cursor where it was. A card that does not hold the
+ * their cursor where it was; L1 and R1 on it step the host's mode pill,
+ * for a host that has one (the capture sheet), out of Definitions, which
+ * releases this session and its card. A card that does not hold the
  * controller leaves the keys to the host: A on the word whose card is up
  * closes it, A on another word moves the card there, and Back with a card
  * up closes the card ([onBack] true); with none Back is the host's.
@@ -53,6 +55,12 @@ internal class WordLookupSession(
     private val tokenize: suspend (String) -> List<TokenSpan>,
     private val onEnded: () -> Unit,
     private val onBoxesSettled: (hasBoxes: Boolean) -> Unit,
+    /** L1 or R1 on a card that holds the controller, with the side it
+     *  points to: the host's mode pill steps ([MagnifierLens.onShoulderKey])
+     *  out of Definitions, which releases this session, its card with it.
+     *  Null, for a host with no pill the shoulder buttons drive, leaves
+     *  those keys unhandled on the card. */
+    onShoulderKey: ((toRight: Boolean) -> Unit)? = null,
 ) {
     private val magnifier = kit.magnifier
     private val lookup = kit.lookup
@@ -86,6 +94,7 @@ internal class WordLookupSession(
     init {
         magnifier.onOffCardDown = { x, y -> onTapAt(x, y) }
         magnifier.onBackKey = { closeCard() }
+        magnifier.onShoulderKey = onShoulderKey
         lookup.onSettled = { onCardGone() }
     }
 

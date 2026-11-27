@@ -332,6 +332,16 @@ class MagnifierLens(
      *  on them). Null for every other lens: B dismisses it. Read at each
      *  press. */
     var onBackKey: (() -> Unit)? = null
+    /** For an owner over a capture whose mode pill the shoulder buttons
+     *  drive (the capture sheet, for its word lens and for a Definitions
+     *  card): L1 or R1 on the sticky lens while it holds the controller goes
+     *  here, once per press, at its first DOWN, with the side it points to
+     *  ([ControllerKeys.shoulderStep]); the lens consumes the press, its
+     *  repeats and its release. The owner closes the lens as it sees fit (a
+     *  close here lingers the window until the release, [removeOverlayInternal]).
+     *  Null for every other lens: the keys go unhandled, as they always
+     *  did. Read at each press. */
+    var onShoulderKey: ((toRight: Boolean) -> Unit)? = null
     /** Fires when the card or pill is tapped in sticky mode. In split mode
      *  ([setSplitDefinitions]) this is the PRIMARY section's open action —
      *  the pill and the primary section both fire it. */
@@ -636,6 +646,7 @@ class MagnifierLens(
         root.onOffCardDown = { x, y -> offCardDown(x, y) }
         root.onOutside = { dismiss() }
         root.onDismissKey = { backKey() }
+        root.shoulderHook = { onShoulderKey }
         view.attachInteractiveListeners(onDismissRequest = { x, y -> offCardDown(x, y) })
         view.setArrowVisible(true, arrowRelX())
         // Release commit: grow the card to fit the dictionary, animated inside
@@ -1146,6 +1157,11 @@ class MagnifierLens(
          *  ([registerBackCallback]). A separate hook from [onOffCardDown]:
          *  same dismissal, different intent. */
         var onDismissKey: (() -> Unit)? = null
+        /** The owner's shoulder-button hook ([MagnifierLens.onShoulderKey]),
+         *  asked at each key while the sticky lens holds window focus: with
+         *  one, L1 and R1 are the owner's (at the first DOWN of a press) and
+         *  consumed; with none they go unhandled. */
+        var shoulderHook: () -> ((toRight: Boolean) -> Unit)? = { null }
         /** The insets last dispatched to this window, the one source for
          *  what the card keeps clear of: the system bars this window is
          *  dispatched (below them on the MediaProjection backend; an
@@ -1200,6 +1216,15 @@ class MagnifierLens(
                         onDismissKey?.invoke()
                     }
                 }
+                return true
+            }
+            // L1 / R1: the owner's, acted on at the first DOWN. Its close of
+            // this focused window lingers it as a key sink until the release
+            // ([removeOverlayInternal]), which is consumed with the repeats.
+            val shoulder = if (interactive) ControllerKeys.shoulderStep(ev.keyCode) else null
+            val hook = shoulder?.let { shoulderHook() }
+            if (shoulder != null && hook != null) {
+                if (ev.action == KeyEvent.ACTION_DOWN && ev.repeatCount == 0) hook(shoulder)
                 return true
             }
             if (interactive && lens.handleNavKey(ev)) return true

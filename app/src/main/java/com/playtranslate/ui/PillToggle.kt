@@ -164,33 +164,52 @@ fun <T> buildPillToggle(
 
     val slider = SegmentIndicator(indicator, pillRow, pillH, selectedIdx)
 
-    pills.forEachIndexed { idx, pill ->
-        pill.setOnClickListener {
-            if (idx == currentIdx) return@setOnClickListener
-            currentIdx = idx
+    // A segment becoming the selected one, by a tap or by [PillToggle.select]:
+    // the indicator slides there, the labels restyle, and it is reported.
+    fun choose(idx: Int) {
+        if (idx == currentIdx) return
+        currentIdx = idx
 
-            slider.slideTo(idx)
+        slider.slideTo(idx)
 
-            pills.forEachIndexed { i, p ->
-                val active = i == idx
-                p.setTextColor(if (active) surfaceColor else mutedColor)
-                p.typeface = Typeface.create(
-                    "sans-serif-medium",
-                    if (active) Typeface.BOLD else Typeface.NORMAL,
-                )
-            }
-
-            onSelect(options[idx].second)
+        pills.forEachIndexed { i, p ->
+            val active = i == idx
+            p.setTextColor(if (active) surfaceColor else mutedColor)
+            p.typeface = Typeface.create(
+                "sans-serif-medium",
+                if (active) Typeface.BOLD else Typeface.NORMAL,
+            )
         }
+
+        onSelect(options[idx].second)
     }
 
-    return PillToggle(pills)
+    pills.forEachIndexed { idx, pill ->
+        pill.setOnClickListener { choose(idx) }
+    }
+
+    return PillToggle(pills, currentIndex = { currentIdx }, choose = ::choose)
 }
 
 /** The segments of one [buildPillToggle] control. */
-class PillToggle internal constructor(private val segments: List<View>) {
+class PillToggle internal constructor(
+    private val segments: List<View>,
+    private val currentIndex: () -> Int,
+    private val choose: (Int) -> Unit,
+) {
     /** A disabled segment takes no taps; the indicator stays where it is. */
     fun setEnabled(enabled: Boolean) = segments.forEach { it.isEnabled = enabled }
+
+    /** The segment selected now, by index into the options. */
+    val selectedIndex: Int get() = currentIndex()
+
+    /** Select the segment at [index] as a tap on it does (the indicator's
+     *  slide, the labels, the report), for a host that picks without a
+     *  touch (the game screen's mode pill, from the shoulder buttons). The
+     *  selected segment's own index does nothing, as its tap does. */
+    fun select(index: Int) {
+        if (index in segments.indices) choose(index)
+    }
 }
 
 /**
@@ -220,10 +239,13 @@ internal class SegmentIndicator(
         row.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> if (!sliding) snap() }
     }
 
-    /** Slides the indicator to segment [idx] (a tap). */
+    /** Slides the indicator to segment [idx] (a tap). A row not laid out
+     *  yet (a pick in the frame its control was built) has nothing to slide
+     *  to: its first layout puts the indicator under [idx] ([snap]). */
     fun slideTo(idx: Int) {
         selected = idx
         val segment = row.getChildAt(idx) ?: return
+        if (segment.width <= 0) return
         sliding = true
         indicator.animate()
             .translationX(offsetOf(segment))

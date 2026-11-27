@@ -631,6 +631,35 @@ class CaptureDefinitionsRoutingTest {
         assertEquals(listOf(CaptureResultOverlay.DismissReason.USER), dismissals)
     }
 
+    @Test fun `with a controller, R1 on the card A opened closes the card and steps the mode`() {
+        prefs.sourceLang = "en"
+        val o = create(override = OverlayMode.DEFINITIONS, controller = true)
+        bind(o, top)
+
+        key(o, KeyEvent.KEYCODE_DPAD_RIGHT)
+        key(o, KeyEvent.KEYCODE_BUTTON_A)
+        val card: MagnifierLens = words(o).field("magnifier")
+        val deadline = System.currentTimeMillis() + 3000
+        while (!card.isInteractive && System.currentTimeMillis() < deadline) {
+            idle()
+            Thread.sleep(5)
+        }
+        assertTrue("precondition: the real lookup put the card up", card.isInteractive)
+        assertTrue("the card holds the controller", card.isConsumingController)
+
+        // R1 where the keys now go: the card's own window.
+        val window = requireNotNull(card.rootViewForTest())
+        assertTrue(window.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_R1)))
+        assertTrue(window.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_R1)))
+        idleLong()
+
+        assertFalse("the card is gone", card.isInteractive)
+        assertEquals("R1 from Definitions: None (English offers no furigana)", OverlayMode.NONE, o.overlayMode)
+        assertEquals("a step is a pick: remembered, the override over", OverlayMode.NONE, prefs.captureOverlayMode)
+        assertFalse("None brings the parked sheet up", parked(o))
+        assertTrue(dismissals.isEmpty())
+    }
+
     /** Back as the platform's callback delivers it (target 36 on Android
      *  16), where the key never arrives. */
     private fun systemBack(o: CaptureResultOverlay) {

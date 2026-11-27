@@ -239,4 +239,77 @@ class MagnifierLensOwnerHooksTest {
         assertEquals(1, backs)
         assertEquals(0, dismissals)
     }
+
+    // ── the shoulder buttons ([MagnifierLens.onShoulderKey]) ─────────────
+
+    private val shoulders = mutableListOf<Boolean>()
+
+    /** [code] [action]ed on [root], [repeat] times repeated; whether the
+     *  window consumed it. */
+    private fun sent(root: ViewGroup, action: Int, code: Int, repeat: Int = 0): Boolean {
+        val now = SystemClock.uptimeMillis()
+        return root.dispatchKeyEvent(KeyEvent(now, now, action, code, repeat))
+    }
+
+    @Test fun `with the shoulder hook L1 and R1 go to the owner once a press, their repeats and releases consumed`() {
+        lens.onShoulderKey = { shoulders += it }
+        val root = stickyLens()
+
+        assertTrue(sent(root, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_R1))
+        assertTrue(sent(root, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_R1, repeat = 1))
+        assertTrue(sent(root, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_R1))
+        assertTrue(sent(root, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_L1))
+        assertTrue(sent(root, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_L1))
+
+        assertEquals("R1 to the right, L1 to the left", listOf(true, false), shoulders)
+        assertEquals("the owner closes the lens as it sees fit", 0, dismissals)
+        assertTrue(lens.isInteractive)
+    }
+
+    @Test fun `without the shoulder hook L1 and R1 go unhandled`() {
+        val root = stickyLens()
+
+        assertFalse(sent(root, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_R1))
+        assertFalse(sent(root, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_R1))
+
+        assertEquals(0, dismissals)
+        assertTrue(lens.isInteractive)
+    }
+
+    @Test fun `while the lens is not sticky the shoulder hook hears nothing, before its first promotion or after a reset`() {
+        lens.onShoulderKey = { shoulders += it }
+        val screen = ctx.displaySizePx()
+        assertTrue(lens.show(screen.x - 10, screen.y - 40, screen.x, screen.y))
+        shadowOf(Looper.getMainLooper()).idle()
+        val root = wm.added.last() as ViewGroup
+
+        sent(root, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_R1)
+        sent(root, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_R1)
+
+        // Back to the zoom state, as a card switching words passes through:
+        // the hook stays wired from the promotion.
+        assertTrue(lens.makeInteractive())
+        lens.resetToZoom()
+        assertFalse("a reset lens takes no press", sent(root, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_R1))
+        sent(root, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_R1)
+
+        assertTrue(shoulders.isEmpty())
+    }
+
+    @Test fun `an owner that closes the lens at the press keeps its window until the release`() {
+        controllerAttached()
+        lens.onShoulderKey = { lens.dismiss() }
+        val root = stickyLens()
+
+        sent(root, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BUTTON_R1)
+
+        assertEquals(1, dismissals)
+        assertFalse(lens.isInteractive)
+        assertTrue("the window stays, a key sink until the release", root.isAttachedToWindow)
+        assertTrue("the release is the sink's", sent(root, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BUTTON_R1))
+        // The removal goes through the window churn gate, which may hold it
+        // up to its linger cap.
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(3))
+        assertFalse("then the window goes", root.isAttachedToWindow)
+    }
 }

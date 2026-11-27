@@ -20,6 +20,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.playtranslate.OverlayMode
 import com.playtranslate.R
 import com.playtranslate.overlayThemedContext
+import com.playtranslate.themeColor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
@@ -38,7 +39,10 @@ import java.time.Duration
  * between the two states: one capsule, the disc the bar's height, its end
  * edge where the host pins it. While the capture reads, the disc with a
  * spinner whatever the user left; and the fade as it comes up and as it
- * goes, its bar closing on the way out.
+ * goes, its bar closing on the way out. The shoulder buttons' step: the
+ * segment on that side picked as a tap picks it, wrapping, mirrored right
+ * to left, collapsed or expanded left as it was, and none while the pill
+ * takes no tap.
  */
 @RunWith(RobolectricTestRunner::class)
 class OverlayModePillTest {
@@ -672,6 +676,79 @@ class OverlayModePillTest {
         assertEquals(View.VISIBLE, p.visibility)
         assertEquals(1f, p.alpha, 0f)
         assertTrue("the fade cut short dropped nothing", shown(spinner(p), p))
+    }
+
+    // ── the shoulder buttons' step ───────────────────────────────────────
+
+    @Test fun `a step picks the segment on that side as a tap does, and a render of the pick rebuilds nothing`() {
+        val p = pill()
+        p.render(options, OverlayMode.FURIGANA, collapsed = false)
+        val bar = p.getChildAt(0)
+        p.step(toRight = true)
+        assertEquals(listOf(OverlayMode.NONE), picked)
+        assertEquals("the picked segment is the highlighted one", ctx.themeColor(R.attr.ptSurface), segments(p)[2].currentTextColor)
+        assertEquals(ctx.themeColor(R.attr.ptTextMuted), segments(p)[1].currentTextColor)
+        // The host renders the pick it was told of, as the sheet does.
+        p.render(options, OverlayMode.NONE, collapsed = false)
+        assertSame("the step kept the pill's selection, so nothing is rebuilt", bar, p.getChildAt(0))
+        p.step(toRight = false)
+        assertEquals(listOf(OverlayMode.NONE, OverlayMode.FURIGANA), picked)
+        assertFalse(p.collapsed)
+        assertTrue(collapses.isEmpty())
+        assertTrue(segments(p).all { shown(it, p) })
+    }
+
+    @Test fun `steps wrap at both ends`() {
+        val p = pill()
+        p.render(options, OverlayMode.NONE, collapsed = false)
+        p.step(toRight = true)
+        p.step(toRight = false)
+        assertEquals(listOf(OverlayMode.TRANSLATION, OverlayMode.NONE), picked)
+    }
+
+    @Test fun `right to left, the segment to the right is the one before`() {
+        val h = Hosted(rtl = true)
+        h.pill.render(options, OverlayMode.FURIGANA, collapsed = false)
+        h.layout()
+        h.pill.step(toRight = true)
+        assertEquals(listOf(OverlayMode.TRANSLATION), picked)
+        h.pill.step(toRight = false)
+        assertEquals(listOf(OverlayMode.TRANSLATION, OverlayMode.FURIGANA), picked)
+    }
+
+    @Test fun `a step on the disc takes the new mode's glyph and stays a disc`() {
+        val p = pill()
+        p.render(options, OverlayMode.TRANSLATION, collapsed = true)
+        p.step(toRight = true)
+        assertEquals(listOf(OverlayMode.FURIGANA), picked)
+        assertTrue(p.collapsed)
+        assertTrue(collapses.isEmpty())
+        idleFor(MORPH_RUN_OUT_MS)
+        assertTrue(shown(disc(p), p))
+        assertEquals(View.INVISIBLE, bar(p).visibility)
+        assertEquals(
+            ctx.getString(R.string.capture_overlay_pill_collapsed_cd, "Furigana"),
+            disc(p).contentDescription,
+        )
+    }
+
+    @Test fun `no step before a render, while the capture reads, while the pill leaves, or with one mode`() {
+        val p = pill()
+        assertFalse("nothing rendered", p.canStep)
+        p.step(toRight = true)
+        p.render(options, OverlayMode.TRANSLATION, collapsed = false, loading = true)
+        assertFalse("reading", p.canStep)
+        p.step(toRight = true)
+        p.render(options, OverlayMode.TRANSLATION, collapsed = false)
+        assertTrue(p.canStep)
+        p.leave()
+        assertFalse("leaving", p.canStep)
+        p.step(toRight = true)
+        val single = pill()
+        single.render(listOf("Translation" to OverlayMode.TRANSLATION), OverlayMode.TRANSLATION, collapsed = false)
+        assertFalse("one mode", single.canStep)
+        single.step(toRight = true)
+        assertTrue(picked.isEmpty())
     }
 
     private companion object {

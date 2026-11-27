@@ -51,6 +51,10 @@ import kotlin.math.roundToInt
  * anything to offer ([render] with no options) or as its host's capture
  * closes ([leave]), and a bar closes to the disc as it fades.
  *
+ * A controller picks with the shoulder buttons, through the host's key
+ * path: [step] picks the segment beside the selected one as a tap on it
+ * would, collapsed or not.
+ *
  * Idempotent: [render] rebuilds only when the options, the selection, the
  * collapsed state or the loading state changed, so a host may call it from
  * every refresh without cutting a segment's slide or the morph short.
@@ -96,6 +100,10 @@ internal class OverlayModePill(context: Context) : FrameLayout(context) {
 
     /** The segments and the X; null while nothing is offered. */
     private var bar: View? = null
+
+    /** The bar's segments, for a pick without a touch ([step]); null with
+     *  no bar. */
+    private var toggle: PillToggle? = null
 
     /** The disc's glyph and its tap target: a square the bar's height. */
     private val glyph = ImageView(context).apply {
@@ -198,6 +206,7 @@ internal class OverlayModePill(context: Context) : FrameLayout(context) {
         morph = null
         removeAllViews()
         bar = null
+        toggle = null
         options = emptyList()
         leaving = false
         visibility = View.GONE
@@ -222,6 +231,26 @@ internal class OverlayModePill(context: Context) : FrameLayout(context) {
      *  down on a segment when either begins is cancelled there (the
      *  interception's own doing) and ends as nothing. */
     private val takesNoTouch: Boolean get() = loading || leaving
+
+    /** A [step] would pick something: the pill is up and taking touches,
+     *  with more than one mode on offer. */
+    val canStep: Boolean
+        get() = toggle != null && !takesNoTouch && options.size > 1
+
+    /** Pick the segment beside the selected one on screen, [toRight] of it
+     *  or left of it, the far end's past either end (the shoulder buttons,
+     *  R1 and L1), as a tap on that segment picks it: expanded, the
+     *  highlight slides there; collapsed, the disc takes its glyph; either
+     *  way [onSelect] reports it. Collapsed or expanded stays as the user
+     *  left it. Under a right-to-left layout the row starts at the right, so
+     *  the segment to the right is the one before. Nothing unless it
+     *  [canStep]. */
+    fun step(toRight: Boolean) {
+        val toggle = toggle ?: return
+        if (!canStep) return
+        val forward = toRight != (layoutDirection == View.LAYOUT_DIRECTION_RTL)
+        toggle.select((toggle.selectedIndex + if (forward) 1 else -1).mod(options.size))
+    }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean = takesNoTouch
 
@@ -381,7 +410,7 @@ internal class OverlayModePill(context: Context) : FrameLayout(context) {
                 1f,
             )
         }
-        buildPillToggle(toggleHost, options, selected, roundEnds = true) { mode ->
+        toggle = buildPillToggle(toggleHost, options, selected, roundEnds = true) { mode ->
             this.selected = mode
             showGlyph(mode)
             onSelect?.invoke(mode)

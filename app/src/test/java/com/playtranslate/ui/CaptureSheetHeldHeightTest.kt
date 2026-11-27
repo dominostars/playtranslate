@@ -756,6 +756,52 @@ class CaptureSheetHeldHeightTest {
         assertTrue("released in the collapse band, parked", o.parked)
     }
 
+    // ── None's hold: a height the user sets ends it ─────────────────────
+
+    /** [openParked], then None picked: the sheet up with nothing drawn. */
+    private fun openParkedThenNone(): CaptureResultOverlay {
+        val (o, _) = openParked()
+        o.selectOverlayMode(OverlayMode.NONE)
+        settle()
+        assertFalse("precondition: None brought it up", o.parked)
+        return o
+    }
+
+    @Test fun `a drag that moved the sheet while None held it up keeps it up through the next pick`() {
+        val o = openParkedThenNone()
+        val finger = Finger(o, screenW / 2f, grabberY(o))
+        finger.down()
+        finger.moveBy(60f)
+        finger.up()
+        settle()
+        val dragged = o.panelHeight
+        o.selectOverlayMode(OverlayMode.TRANSLATION)
+        settle()
+        assertFalse("the user set its height", o.parked)
+        assertEquals(dragged, o.panelHeight)
+    }
+
+    @Test fun `a grab that went nowhere while None held the sheet up leaves the next pick to park it`() {
+        val o = openParkedThenNone()
+        val finger = Finger(o, screenW / 2f, grabberY(o))
+        finger.down()
+        finger.up()
+        settle()
+        o.selectOverlayMode(OverlayMode.TRANSLATION)
+        settle()
+        assertTrue("a grab that went nowhere sets no height", o.parked)
+    }
+
+    @Test fun `a stick resize while None held the sheet up keeps it up through the next pick`() {
+        val o = openParkedThenNone()
+        o.call("stickResizeBy", -100)
+        o.call("commitStickResize")
+        settle()
+        o.selectOverlayMode(OverlayMode.TRANSLATION)
+        settle()
+        assertFalse("the user set its height", o.parked)
+    }
+
     // ── The band's colour ───────────────────────────────────────────────
 
     @Test fun `the Words list's page sits on the card as it is seen, opaque`() {
